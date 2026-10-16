@@ -228,7 +228,7 @@ export async function createTrainingRequest(input: CreateTrainingRequestInput) {
         .select({
           id: employees.id,
           name: employees.name,
-          position: employees.position,
+          position: employees.jobTitle,
           department: masterDepartments.name,
         })
         .from(employees)
@@ -580,7 +580,7 @@ export async function approveTrainingRequestStep(
         await notifyWorkflowBellRecipients({
           recipientEmails: [request.requesterEmail],
           eventType: 'training_request_approved',
-          category: 'approval_results',
+          category: 'info',
           title: `Pengajuan Training Disetujui Penuh - ${request.requestNumber}`,
           body: `Selamat, pengajuan training "${request.trainingTitle}" (${request.requestNumber}) telah selesai dan disetujui oleh seluruh pihak.`,
           url: `/dashboard/training/pengajuan?id=${request.id}`,
@@ -741,7 +741,7 @@ export async function rejectTrainingRequestStep(
       await notifyWorkflowBellRecipients({
         recipientEmails: [request.requesterEmail],
         eventType: 'training_request_rejected',
-        category: 'approval_results',
+        category: 'info',
         title: `Pengajuan Training Ditolak - ${request.requestNumber}`,
         body: `Pengajuan training "${request.trainingTitle}" ditolak pada tahap ${approval.roleLabel}. Alasan: ${data.remarks || '-'}`,
         url: `/dashboard/training/pengajuan?id=${request.id}`,

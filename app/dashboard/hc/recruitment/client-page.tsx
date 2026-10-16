@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   IconBriefcase,
   IconUsers,
@@ -56,6 +56,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { HeroSearchableSelect } from "@/components/templates";
 import {
   Dialog,
   DialogContent,
@@ -364,6 +366,7 @@ export function RecruitmentClientPage({
   // Import Dialog
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importRecruitmentId, setImportRecruitmentId] = useState("");
   const [importResults, setImportResults] = useState<Array<{ fullName: string; email: string; success: boolean; error?: string }> | null>(null);
 
   // Bulk Email Dialog
@@ -674,6 +677,44 @@ export function RecruitmentClientPage({
     return true;
   });
 
+  const [candidateSortField, setCandidateSortField] = useState<string | null>(null);
+  const [candidateSortDir, setCandidateSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleCandidateSort = (field: string) => {
+    if (candidateSortField === field) {
+      if (candidateSortDir === 'asc') {
+        setCandidateSortDir('desc');
+      } else {
+        setCandidateSortField(null);
+        setCandidateSortDir('asc');
+      }
+    } else {
+      setCandidateSortField(field);
+      setCandidateSortDir('asc');
+    }
+  };
+
+  const sortedCandidates = useMemo<Candidate[]>(() => {
+    if (!candidateSortField) return visibleCandidates;
+    return [...visibleCandidates].sort((a, b) => {
+      let aVal = (a as any)[candidateSortField] ?? '';
+      let bVal = (b as any)[candidateSortField] ?? '';
+      if (candidateSortField === 'createdAt') {
+        aVal = new Date(aVal).getTime() || 0;
+        bVal = new Date(bVal).getTime() || 0;
+      } else if (candidateSortField === 'aiScore') {
+        aVal = Number(aVal) || 0;
+        bVal = Number(bVal) || 0;
+      } else {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+      }
+      if (aVal < bVal) return candidateSortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return candidateSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [visibleCandidates, candidateSortField, candidateSortDir]);
+
   const toggleSelect = (id: number) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -683,10 +724,10 @@ export function RecruitmentClientPage({
   };
 
   const toggleSelectAll = () => {
-    if (visibleCandidates.every(c => selectedIds.has(c.id))) {
+    if (sortedCandidates.every(c => selectedIds.has(c.id))) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(visibleCandidates.map(c => c.id)));
+      setSelectedIds(new Set(sortedCandidates.map(c => c.id)));
     }
   };
 
@@ -777,31 +818,33 @@ export function RecruitmentClientPage({
 
   const candidateFilters = (
     <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-      <select
-        className="flex h-9 w-[200px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      <HeroSearchableSelect
         value={pipelineJobTitleFilter}
-        onChange={(e) => setPipelineJobTitleFilter(e.target.value)}
-      >
-        <option value="">Semua Lowongan</option>
-        {recruitments.map(r => (
-          <option key={r.id} value={r.jobTitle}>{r.jobTitle}</option>
-        ))}
-      </select>
-      <select
-        className="flex h-9 w-[160px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        onChange={(val: string) => setPipelineJobTitleFilter(val)}
+        options={[
+          { value: "", label: "Semua Lowongan" },
+          ...recruitments.map(r => ({ value: r.jobTitle, label: r.jobTitle })),
+        ]}
+        placeholder="Semua Lowongan"
+        className="h-9 w-[200px] text-xs"
+      />
+      <HeroSearchableSelect
         value={pipelineStageFilter}
-        onChange={(e) => setPipelineStageFilter(e.target.value)}
-      >
-        <option value="">Semua Tahapan</option>
-        <option value="Sourcing">Sourcing</option>
-        <option value="Screening">Screening</option>
-        <option value="Psikotes">Psikotes</option>
-        <option value="Interview">Interview</option>
-        <option value="Medical Checkup">Medical Checkup</option>
-        <option value="Offering">Offering</option>
-        <option value="Hired">Hired</option>
-        <option value="Rejected">Rejected</option>
-      </select>
+        onChange={(val: string) => setPipelineStageFilter(val)}
+        options={[
+          { value: "", label: "Semua Tahapan" },
+          { value: "Sourcing", label: "Sourcing" },
+          { value: "Screening", label: "Screening" },
+          { value: "Psikotes", label: "Psikotes" },
+          { value: "Interview", label: "Interview" },
+          { value: "Medical Checkup", label: "Medical Checkup" },
+          { value: "Offering", label: "Offering" },
+          { value: "Hired", label: "Hired" },
+          { value: "Rejected", label: "Rejected" },
+        ]}
+        placeholder="Semua Tahapan"
+        className="h-9 w-[170px] text-xs"
+      />
       <div className="flex items-center gap-1.5 ml-auto">
         <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={() => { setImportResults(null); setIsImportOpen(true); }}>
           <IconUpload className="w-3 h-3 mr-1" /> Import
@@ -1430,17 +1473,15 @@ export function RecruitmentClientPage({
                           <IconBriefcase className="w-3.5 h-3.5" />
                         </Button>
                         <div className="mx-1 h-6 w-px bg-border" />
-                        <select
-                          className="h-7 w-36 rounded-md border border-input bg-background px-2 text-xs shadow-sm"
-                          value={bulkStageTarget}
-                          onChange={(event) => setBulkStageTarget(event.target.value)}
-                          title="Pilih stage bulk"
-                        >
-                          <option value="">Ganti stage...</option>
-                          {CANDIDATE_STAGES.map(stage => (
-                            <option key={stage} value={stage}>{stage}</option>
-                          ))}
-                        </select>
+                        <div className="w-40">
+                          <HeroSearchableSelect
+                            placeholder="Ganti stage..."
+                            value={bulkStageTarget}
+                            onChange={(val) => setBulkStageTarget(val || "")}
+                            options={CANDIDATE_STAGES.map(stage => ({ value: stage, label: stage }))}
+                            className="h-7 text-xs"
+                          />
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1461,26 +1502,61 @@ export function RecruitmentClientPage({
                       <TableRow className="hover:bg-transparent border-border/50">
                         <TableHead className="w-9 px-2 text-center">
                           <Checkbox
-                            checked={visibleCandidates.length > 0 && visibleCandidates.every(c => selectedIds.has(c.id))}
+                            checked={sortedCandidates.length > 0 && sortedCandidates.every(c => selectedIds.has(c.id))}
                             onCheckedChange={toggleSelectAll}
                           />
                         </TableHead>
                         <TableHead className="w-10 px-2 text-center">NO</TableHead>
-                        <TableHead className="w-36 px-2">TGL DAFTAR</TableHead>
-                        <TableHead className="w-40 px-2">NAMA</TableHead>
-                        <TableHead className="w-36 px-2">LOWONGAN</TableHead>
-                        <TableHead className="w-24 px-2">LOKASI</TableHead>
-                        <TableHead className="w-44 px-2">EMAIL</TableHead>
+                        <TableHead className="w-36 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('createdAt')}>
+                            TGL DAFTAR
+                            {candidateSortField === 'createdAt' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
+                        <TableHead className="w-40 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('fullName')}>
+                            NAMA
+                            {candidateSortField === 'fullName' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
+                        <TableHead className="w-36 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('jobTitle')}>
+                            LOWONGAN
+                            {candidateSortField === 'jobTitle' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
+                        <TableHead className="w-24 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('location')}>
+                            LOKASI
+                            {candidateSortField === 'location' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
+                        <TableHead className="w-44 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('email')}>
+                            EMAIL
+                            {candidateSortField === 'email' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
                         <TableHead className="w-28 px-2">PHONE</TableHead>
-                        <TableHead className="w-32 px-2">STAGE</TableHead>
+                        <TableHead className="w-36 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('currentStage')}>
+                            STAGE
+                            {candidateSortField === 'currentStage' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
                         <TableHead className="w-24 px-2 text-center">HASIL</TableHead>
-                        <TableHead className="w-36 px-2">Smart</TableHead>
+                        <TableHead className="w-36 px-2">
+                          <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleCandidateSort('aiScore')}>
+                            Smart
+                            {candidateSortField === 'aiScore' ? (candidateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                          </Button>
+                        </TableHead>
                         <TableHead className="w-16 px-2 text-center">MAIL</TableHead>
                         <TableHead className="sticky right-0 z-10 w-28 bg-muted/95 px-2 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">ACTIONS</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {visibleCandidates.map((candidate, idx) => (
+                      {sortedCandidates.map((candidate, idx) => (
                         <TableRow key={candidate.id} className={hcTableRowClassName} data-filter-stage={candidate.currentStage} data-filter-job={candidate.jobTitle || ""}>
                           <TableCell className="px-2 text-center">
                             <Checkbox
@@ -1510,11 +1586,9 @@ export function RecruitmentClientPage({
                           <TableCell className="px-2"><div className="truncate" title={candidate.email}>{candidate.email}</div></TableCell>
                           <TableCell className="px-2"><div className="truncate" title={candidate.phone}>{candidate.phone}</div></TableCell>
                           <TableCell className="px-2">
-                            <select
-                              className="flex h-8 w-full rounded-md border border-input bg-background px-1.5 py-1 text-xs shadow-sm cursor-pointer"
+                            <Select
                               value={candidate.currentStage}
-                              onChange={async (e) => {
-                                const newStage = e.target.value;
+                              onValueChange={async (newStage) => {
                                 const oldStage = candidate.currentStage;
                                 if (newStage === oldStage) return;
                                 setCandidates(prev => prev.map(c => c.id === candidate.id ? { ...c, currentStage: newStage } : c));
@@ -1527,10 +1601,17 @@ export function RecruitmentClientPage({
                                 }
                               }}
                             >
-                              {CANDIDATE_STAGES.map(s => (
-                                <option key={s} value={s}>{s}</option>
-                              ))}
-                            </select>
+                              <SelectTrigger className="h-7 text-xs px-2 py-0">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CANDIDATE_STAGES.map(s => (
+                                  <SelectItem key={s} value={s} className="text-xs">
+                                    {s}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell className="px-2 text-center">
                             {candidate.currentStage === "Hired" ? (
@@ -2735,12 +2816,15 @@ export function RecruitmentClientPage({
           <div className="space-y-2"><Label>Date *</Label><Input type="date" value={bulkMcuForm.date} onChange={e => setBulkMcuForm({...bulkMcuForm, date: e.target.value})} /></div>
           <div className="space-y-2">
             <Label>Penandatangan</Label>
-            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={bulkMcuForm.signatoryName} onChange={e => {
-              const signer = MCU_SIGNERS.find(s => s.name === e.target.value) || MCU_SIGNERS[0];
-              setBulkMcuForm({...bulkMcuForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
-            }}>
-              {MCU_SIGNERS.map(s => <option key={s.name} value={s.name}>{s.name} — {s.title}</option>)}
-            </select>
+            <HeroSearchableSelect
+              value={bulkMcuForm.signatoryName}
+              onChange={(val) => {
+                const signer = MCU_SIGNERS.find(s => s.name === val) || MCU_SIGNERS[0];
+                setBulkMcuForm({...bulkMcuForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
+              }}
+              options={MCU_SIGNERS.map(s => ({ value: s.name, label: `${s.name} — ${s.title}` }))}
+              placeholder="Pilih Penandatangan"
+            />
           </div>
         </div>
         <DialogFooter>
@@ -2897,12 +2981,15 @@ export function RecruitmentClientPage({
             </div>
             <div className="space-y-2">
               <Label>Penandatangan</Label>
-              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={bulkOfferingForm.signatoryName} onChange={e => {
-                const signer = MCU_SIGNERS.find(s => s.name === e.target.value) || MCU_SIGNERS[0];
-                setBulkOfferingForm({...bulkOfferingForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
-              }}>
-                {MCU_SIGNERS.map(s => <option key={s.name} value={s.name}>{s.name} — {s.title}</option>)}
-              </select>
+              <HeroSearchableSelect
+                value={bulkOfferingForm.signatoryName}
+                onChange={(val) => {
+                  const signer = MCU_SIGNERS.find(s => s.name === val) || MCU_SIGNERS[0];
+                  setBulkOfferingForm({...bulkOfferingForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
+                }}
+                options={MCU_SIGNERS.map(s => ({ value: s.name, label: `${s.name} — ${s.title}` }))}
+                placeholder="Pilih Penandatangan"
+              />
             </div>
           </div>
           <div className="space-y-2">
@@ -3028,16 +3115,12 @@ export function RecruitmentClientPage({
         <div className="grid gap-4 py-4">
           <div className="space-y-2">
             <Label>Lowongan *</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            <HeroSearchableSelect
               value={manualAddForm.recruitmentId}
-              onChange={(e) => setManualAddForm({ ...manualAddForm, recruitmentId: e.target.value })}
-            >
-              <option value="">Pilih Lowongan</option>
-              {recruitments.map((r) => (
-                <option key={r.id} value={r.id}>{r.jobTitle}</option>
-              ))}
-            </select>
+              onChange={(val) => setManualAddForm({ ...manualAddForm, recruitmentId: val || "" })}
+              options={recruitments.map((r) => ({ value: r.id.toString(), label: r.jobTitle }))}
+              placeholder="Pilih Lowongan"
+            />
           </div>
           <div className="space-y-2">
             <Label>Nama Lengkap *</Label>
@@ -3144,15 +3227,12 @@ export function RecruitmentClientPage({
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Pilih Lowongan</Label>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                id="import-recruitment-id"
-              >
-                <option value="">Pilih Lowongan</option>
-                {recruitments.map((r) => (
-                  <option key={r.id} value={r.id}>{r.jobTitle}</option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                value={importRecruitmentId}
+                onChange={(val) => setImportRecruitmentId(val || "")}
+                options={recruitments.map((r) => ({ value: r.id.toString(), label: r.jobTitle }))}
+                placeholder="Pilih Lowongan"
+              />
             </div>
             <div className="space-y-2">
               <Label>File Excel / CSV</Label>
@@ -3168,9 +3248,8 @@ export function RecruitmentClientPage({
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsImportOpen(false)}>Batal</Button>
               <Button onClick={async () => {
-                const select = document.getElementById("import-recruitment-id") as HTMLSelectElement;
                 const fileInput = document.getElementById("import-file-input") as HTMLInputElement;
-                if (!select?.value) { toast.error("Pilih lowongan dulu"); return; }
+                if (!importRecruitmentId) { toast.error("Pilih lowongan dulu"); return; }
                 if (!fileInput?.files?.length) { toast.error("Pilih file dulu"); return; }
 
                 setIsImporting(true);
@@ -3188,7 +3267,7 @@ export function RecruitmentClientPage({
                     return;
                   }
 
-                  const recruitmentId = parseInt(select.value);
+                  const recruitmentId = parseInt(importRecruitmentId);
                   const candidates = jsonData.map((row: any) => ({
                     recruitmentId,
                     fullName: row.fullName || row.full_name || row.nama || row.Nama || row["Nama Lengkap"] || row["Nama"] || "",

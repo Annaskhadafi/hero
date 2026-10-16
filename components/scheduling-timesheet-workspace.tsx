@@ -61,6 +61,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { HeroSearchableSelect } from '@/components/templates'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   Select,
@@ -1362,7 +1363,7 @@ function NativeSelect({
   value,
   onValueChange,
   options,
-  placeholder,
+  placeholder = 'Pilih...',
   className = '',
   disabled,
   ariaLabel,
@@ -1376,24 +1377,98 @@ function NativeSelect({
   ariaLabel?: string
 }) {
   return (
-    <select
-      aria-label={ariaLabel}
-      className={`${nativeSelectClass} ${className}`}
+    <Select
+      value={value || ''}
+      onValueChange={onValueChange}
       disabled={disabled}
-      value={value ?? ''}
-      onChange={(event) => onValueChange(event.target.value)}
     >
-      {placeholder ? (
-        <option value="" disabled>
-          {placeholder}
-        </option>
-      ) : null}
-      {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      <SelectTrigger
+        aria-label={ariaLabel}
+        className={cn('h-10 w-full bg-white text-sm', className)}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem
+            key={option.value}
+            value={option.value}
+            disabled={option.disabled}
+          >
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function SchedulingTableFilterItem({
+  filterKey,
+  placeholder,
+  options,
+  width = 'w-44',
+  ariaLabel,
+}: {
+  filterKey: string
+  placeholder: string
+  options: { value: string; label: string }[]
+  width?: string
+  ariaLabel?: string
+}) {
+  const [val, setVal] = React.useState('')
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleChange = (newVal: string) => {
+    setVal(newVal)
+    if (inputRef.current) {
+      inputRef.current.value = newVal
+      inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+  }
+
+  React.useEffect(() => {
+    const handleReset = () => {
+      setVal('')
+      if (inputRef.current) inputRef.current.value = ''
+    }
+    const handlePreset = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key?: string; value?: string }>
+      if (customEvent.detail?.key !== filterKey) return
+      const nextValue = customEvent.detail.value?.trim() ?? ''
+      setVal(nextValue)
+      if (inputRef.current) {
+        inputRef.current.value = nextValue
+        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+        inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+    window.addEventListener('hero-table-reset-filters', handleReset)
+    window.addEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    return () => {
+      window.removeEventListener('hero-table-reset-filters', handleReset)
+      window.removeEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    }
+  }, [filterKey])
+
+  return (
+    <div className="flex-none relative">
+      <input
+        ref={inputRef}
+        type="hidden"
+        data-table-filter-key={filterKey}
+        value={val}
+        readOnly
+      />
+      <HeroSearchableSelect
+        placeholder={placeholder}
+        options={options}
+        value={val}
+        onChange={handleChange}
+        width={width}
+      />
+    </div>
   )
 }
 
@@ -8154,32 +8229,34 @@ export function SchedulingTimesheetWorkspace({
           dateFilter={false}
           filters={
             <>
-              <select
-                data-table-filter-key="year"
-                className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-                aria-label="Filter tahun payroll"
-              >
-                <option value="">Semua tahun</option>
-                {payrollHistoryYears.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-              <select
-                data-table-filter-key="month"
-                className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-                aria-label="Filter bulan payroll"
-              >
-                <option value="">Semua bulan</option>
-                {payrollHistoryMonths.map((month) => (
-                  <option key={month} value={month}>
-                    {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(
+              <SchedulingTableFilterItem
+                filterKey="year"
+                placeholder="Semua tahun"
+                ariaLabel="Filter tahun payroll"
+                options={[
+                  { value: '', label: 'Semua tahun' },
+                  ...payrollHistoryYears.map((year) => ({
+                    value: String(year),
+                    label: String(year),
+                  })),
+                ]}
+                width="w-36"
+              />
+              <SchedulingTableFilterItem
+                filterKey="month"
+                placeholder="Semua bulan"
+                ariaLabel="Filter bulan payroll"
+                options={[
+                  { value: '', label: 'Semua bulan' },
+                  ...payrollHistoryMonths.map((month) => ({
+                    value: String(month),
+                    label: new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(
                       new Date(2000, Number(month) - 1, 1)
-                    )}
-                  </option>
-                ))}
-              </select>
+                    ),
+                  })),
+                ]}
+                width="w-40"
+              />
             </>
           }
         >
@@ -8787,19 +8864,18 @@ export function SchedulingTimesheetWorkspace({
                         </p>
                       </div>
                       <div className="w-full sm:w-56">
-                        <select
-                          className="h-9 w-full rounded-md border border-blue-200 bg-white px-3 py-1 text-sm font-medium text-blue-950 shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                        <HeroSearchableSelect
+                          placeholder="Pilih Timezone"
+                          options={Object.values(INDONESIA_TIMEZONES).map((tz) => ({
+                            value: tz.code,
+                            label: `${tz.code} (${tz.offsetString}) - ${tz.label}`,
+                          }))}
                           value={siteConfig.timezone || 'WITA'}
-                          onChange={(e) =>
-                            updateSiteConfig('timezone', e.target.value as IndonesiaTimezoneCode)
+                          onChange={(val) =>
+                            updateSiteConfig('timezone', val as IndonesiaTimezoneCode)
                           }
-                        >
-                          {Object.values(INDONESIA_TIMEZONES).map((tz) => (
-                            <option key={tz.code} value={tz.code}>
-                              {tz.code} ({tz.offsetString}) - {tz.label}
-                            </option>
-                          ))}
-                        </select>
+                          width="w-full"
+                        />
                       </div>
                     </div>
                   </div>
@@ -10257,21 +10333,16 @@ export function SchedulingTimesheetWorkspace({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 sm:ml-4">
-                        <select
-                          aria-label="Pilih site"
+                        <HeroSearchableSelect
+                          placeholder="Pilih site"
+                          options={sites.map((item) => ({
+                            value: String(item.id),
+                            label: item.name,
+                          }))}
                           value={siteId}
-                          onChange={(e) => {
-                            const newSiteId = e.target.value
-                            setSiteId(newSiteId)
-                          }}
-                          className="border-border/70 focus:ring-primary h-9 rounded-lg border bg-white px-3 text-xs font-semibold text-slate-900 shadow-2xs focus:ring-1"
-                        >
-                          {sites.map((item) => (
-                            <option key={item.id} value={String(item.id)}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(val) => setSiteId(val)}
+                          width="w-48"
+                        />
                         <Input
                           type="month"
                           aria-label="Pilih bulan"
@@ -12061,17 +12132,18 @@ export function SchedulingTimesheetWorkspace({
               dateFilter={false}
               filters={
                 <>
-                  <select
-                    data-table-filter-key="site"
-                    className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-                  >
-                    <option value="">Semua site</option>
-                    {sites.map((item) => (
-                      <option key={item.id} value={item.name}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
+                  <SchedulingTableFilterItem
+                    filterKey="site"
+                    placeholder="Semua site"
+                    options={[
+                      { value: '', label: 'Semua site' },
+                      ...sites.map((item) => ({
+                        value: item.name,
+                        label: item.name,
+                      })),
+                    ]}
+                    width="w-44"
+                  />
                   <Input
                     type="month"
                     data-table-filter-key="period"

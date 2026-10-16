@@ -36,6 +36,92 @@ Untuk memastikan seluruh berkas yang diunggah dapat diakses secara persisten di 
 
 ---
 
+# Standar Wajib UI & Reusable Component System (MANDATORI - SETIAP FITUR / PERBAIKAN)
+
+## 🎨 Aturan Wajib Komponen Baku Shadcn UI (`@/components/templates`)
+
+Untuk menjaga keseragaman antarmuka, konsistensi palet warna, dan kebersihan kode di seluruh HERO Desktop, **SETIAP KALI** membuat fitur baru, memodifikasi halaman, atau memperbaiki bug (fix) UI:
+**WAJIB HUKUMNYA** mengimpor dan menggunakan modul template terpusat dari `@/components/templates`.
+
+### 1. Standar Tabel Data (`HeroDataTable`)
+* **DILARANG KERAS** menggunakan tag HTML biasa `<table>`, `<thead>`, `<tbody>`, `<tr>`, `<td>`, `<th>` atau membuat div tabel ad-hoc.
+* **WAJIB** menggunakan `<HeroDataTable>` dari `@/components/templates`:
+  * Mendukung otomatis: Sorting kolom berikon, Search query real-time, Filter searchable multi-select/single-select, Checkbox multi-select, Floating bulk actions bar (*Bulk Edit Status / Bulk Delete*), Import CSV/Excel terintegrasi, Export Excel `.xlsx`, dan Export PDF A4 resmi.
+  * Tombol aksi baris (View, Edit, Delete) wajib berikon rapi dan dibungkus Shadcn `Tooltip`.
+  * Seluruh tombol toolbar dan action bar **WAJIB** seragam pada tinggi **`h-9`** (36px desktop dense standard).
+
+### 2. Standar Form Controls & Dropdown Searchable
+* **DILARANG** menggunakan tag HTML `<select>` biasa.
+* Semua dropdown pilihan **WAJIB** menggunakan `HeroSearchableSelect` dari `@/components/templates` (mendukung pencarian teks real-time, badge kategori, dan mode multi-select tags).
+* Kontrol input form lainnya wajib menggunakan standar `@/components/templates`:
+  * `HeroFormField`: Pembungkus dengan label, asterisk wajib (`*`), tooltip info, dan error text.
+  * `HeroInput`: Input teks tinggi `h-9` dengan prefix/suffix icon atau teks dan tombol clear.
+  * `HeroNumberInput`: Input angka otomatis format mata uang Rupiah (`Rp`).
+  * `HeroDatePicker` & `HeroDateRangePicker`: Pemilih tanggal format Indonesia dengan tombol preset cepat (*Hari Ini*, *7 Hari*, *30 Hari*, *Reset*).
+  * `HeroTextarea`: Textarea rapi dengan opsi penghitung karakter (*character counter*).
+  * `HeroSwitch`: Toggle switch deskriptif.
+  * `HeroFileUpload`: Upload berkas persisten S3/Dokploy lengkap dengan thumbnail dan wide preview lightbox dialog.
+
+### 3. Standar Dialog & Modal
+* **DILARANG** merender modal custom manual dengan `<div className="fixed inset-0 z-50 bg-black/50...">`.
+* **WAJIB** menggunakan dialog baku dari `@/components/templates`:
+  * `HeroFormDialog`: Modal formulir Create/Edit dengan scrollable container dan tombol aksi seragam (`h-9`).
+  * `HeroConfirmDialog`: Modal konfirmasi tindakan kritis (Hapus, Tolak, Setujui) dengan nada warna peringatan (*destructive / warning / success*).
+  * `HeroDetailModal`: Pratinjau dokumen resmi (*Document Preview Detail View max-w-4xl/5xl*) dengan status badge dan tombol shortcut Edit langsung.
+
+### 4. Standar Scorecard KPI & Status Badge
+* **Scorecard KPI**: Wajib menggunakan `HeroKpiCard` dari `@/components/templates` dengan tema warna cerah (*colorful tones*: `blue`, `emerald`, `amber`, `rose`, `purple`, `cyan`), badge ikon gradien prominen (`size-11`), dan watermark ikon latar belakang.
+* **Status Badge**: Wajib menggunakan `HeroStatusBadge` dari `@/components/templates` yang mempertahankan 100% palet warna asli HERO (*Approved* emerald, *Pending* amber, *Rejected* rose, *Draft* sky), dilengkapi fitur interaktif inline status change via popover.
+* **Empty State**: Wajib menggunakan `HeroEmptyState` ketika data kosong.
+
+### 5. Ukuran Tombol & Warna Asli HERO
+* **Ukuran Button**: Seluruh tombol di toolbar, filter, baris tabel, modal, dan formulir **WAJIB BERUKURAN SAMA**: tinggi **`h-9`** (36px).
+* **Konservasi Warna**: Pertahankan palet warna asli HERO (Brand Blue `#0753e7`, Primary Dark `#0f172a`, border halus `border-border/70`, row hover `hover:bg-muted/35`).
+* **Halaman Referensi Baku**: Rujuk `/dashboard/ui-showcase` (`app/dashboard/ui-showcase/page.tsx`) sebagai acuan hidup (*living design system*) sebelum dan sesudah mengimplementasikan kode.
+
+---
+
+# Standar Wajib E2E Testing, Screenshot Verification & Login (MANDATORI - SETIAP FITUR / PERBAIKAN)
+
+## 🧪 Aturan Wajib Pengujian Otomatis E2E (`tester-army/e2e`)
+
+Untuk menjamin seluruh fitur baru dan perbaikan bug (fix) berfungsi secara nyata dari perspektif pengguna (*real-browser verified*) dan bebas dari regresi:
+
+### 1. Eksekusi E2E Otomatis pada Setiap Pembuatan & Perbaikan Fitur
+* **WAJIB HUKUMNYA** menjalankan pengujian E2E (`npx e2e run` atau `npm run test:e2e`) setelah menyelesaikan pembuatan fitur baru maupun perbaikan (fix) bug:
+  ```bash
+  npx e2e run tests/<feature>.e2e.ts
+  # Atau jalankan seluruh suite e2e
+  npm run test:e2e
+  ```
+* Dilarang menganggap pekerjaan selesai hanya berdasarkan unit test atau build pass semata tanpa bukti eksekusi E2E pada alur antarmuka yang bersangkutan.
+
+### 2. Kredensial Otentikasi Baku untuk Pengujian HERO
+Jika skenario pengetesan membutuhkan akses login ke dalam HERO, **WAJIB** menggunakan akun kredensial standar sistem berikut:
+* **Username / NIK / SN**: `71261`
+* **Password**: `Chitra#71261`
+* Helper reusable dapat diimpor langsung dari `tests/e2e-auth-helper.ts`:
+  ```typescript
+  import { loginToHero } from '@/tests/e2e-auth-helper';
+  // atau import { loginToHero } from '../tests/e2e-auth-helper';
+  
+  await loginToHero(app, screen, browser);
+  ```
+
+### 3. Wajib Pengambilan Tangkapan Layar (Screenshot / SS)
+* Di setiap tes E2E fitur baru atau perbaikan, **WAJIB** mengambil screenshot pada momen kritis (kondisi form terisi, sesudah submit/aksi, atau pratinjau halaman hasil):
+  ```typescript
+  await app.screenshot('nama-momen-fitur');
+  ```
+* File tangkapan layar otomatis tersimpan di `.e2e/artifacts/web/.../screenshots/` dan dicatat dalam `.e2e/report.json`.
+
+### 4. Wajib Memberikan Ringkasan & Lampiran Screenshot ke User
+* Di akhir pengerjaan setiap fitur / perbaikan, Agent **WAJIB** menyajikan:
+  1. **Summary Hasil Tes E2E**: Menampilkan status PASS/FAIL, durasi run, token AI yang terpakai, dan file tes yang dieksekusi.
+  2. **Tangkapan Layar (Screenshot)**: Menampilkan/merujuk bukti visual UI hasil tangkapan layar E2E yang membuktikan alur fitur berjalan sesuai harapan.
+
+---
+
 # MAESTRO Trigger (`/maestro`)
 
 Jika request user menyertakan marker `/maestro`, perlakukan seluruh request
@@ -60,6 +146,13 @@ Aturan otomatis:
 * Gunakan service/query scoped MAESTRO untuk data HERO; jangan menyalin tabel
   transaksi atau mengamankan data hanya melalui filter UI.
 * Ikuti standar upload proxy, `resolveUploadUrl`, dan `documentation/Design.md`.
+* **Wajib Komponen Baku Shadcn UI MAESTRO**: Seluruh halaman, tabel, scorecard KPI, filter, form input, dan modal di portal MAESTRO (`app/maestro/**`, `app/dashboard/maestro/**`, dan `app/dashboard/settings/maestro/**`) **WAJIB** menggunakan reusable components dari `@/components/templates`:
+  * **Tabel Data Customer**: Wajib memakai `HeroDataTable` (pencarian instan, sorting kolom, filter searchable, paginasi lengkap, ekspor Excel `.xlsx`, dan ekspor PDF A4 resmi). DILARANG menggunakan raw `<table>` atau div tabel ad-hoc.
+  * **Dropdown & Form**: Wajib memakai `HeroSearchableSelect`, `HeroFormField`, `HeroInput`, `HeroDatePicker`, dll. DILARANG memakai raw `<select>`.
+  * **Scorecard KPI Customer**: Wajib memakai `HeroKpiCard` dengan tema warna cerah (*colorful tones*: `blue`, `emerald`, `amber`, `rose`, `purple`, `cyan`), badge ikon gradien prominen (`size-11`), dan watermark ikon latar belakang.
+  * **Status Badge**: Wajib memakai `HeroStatusBadge` yang mempertahankan palet warna asli sistem dan mendukung inline status change jika diberi akses.
+  * **Modal & Dialog**: Wajib memakai `HeroDetailModal` (Large Dialog max-w-4xl/5xl untuk detail tiket/dokumen customer), `HeroConfirmDialog`, dan `HeroFormDialog`.
+  * **Ukuran Tombol Seragam**: Seluruh tombol di toolbar, filter, baris tabel, dan modal MAESTRO wajib seragam pada tinggi **`h-9`** (36px desktop standard).
 
 Marker `/maestro` adalah trigger konteks kerja, bukan route literal yang harus
 disimpan pada URL atau nama file.
@@ -115,6 +208,7 @@ disimpan pada URL atau nama file.
 
 * Saat memulai thread/session baru, selalu baca `documentation/Design.md` secara otomatis bersamaan dengan `AGENTS.md`.
 * Semua implementasi UI (layout, table, form, action bar, visual hierarchy) wajib mengikuti `documentation/Design.md` tanpa menunggu user memanggil manual.
+* **WAJIB Reusable Templates**: Setiap membuat fitur baru, perbaikan bug, atau refactoring UI di HERO Desktop, WAJIB mengimpor dan menggunakan reusable template komponen dari `@/components/templates` (`HeroDataTable`, `HeroSearchableSelect`, `HeroFormField`, `HeroInput`, `HeroDatePicker`, `HeroFormDialog`, `HeroKpiCard`, dll.) dengan ukuran tombol seragam `h-9` (36px). DILARANG menggunakan raw `<table>`, raw `<button>`, atau raw `<select>`.
 * Jika ada konflik antara request user dan `documentation/Design.md`, prioritaskan request user lalu update `documentation/Design.md` agar sinkron.
 
 ### Memory Management

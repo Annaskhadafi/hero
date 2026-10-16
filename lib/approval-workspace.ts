@@ -2058,7 +2058,7 @@ async function getTrainingRequestInboxItems(
       attachmentUrl: row.attachmentUrl,
       submittedAt: row.updatedAt ?? row.createdAt,
       dueAt: new Date(Date.now() + 7 * 86400000),
-      dueState: 'open' as const,
+      dueState: getContractReviewDueState(new Date(Date.now() + 7 * 86400000), new Date()),
       url: `/dashboard/training/pengajuan?id=${row.requestId}`,
     }
   })

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { createRfrRequest, resolveRfrMatrixAction, resubmitRfrRequest, getEmployeeJobTitleAction } from '@/app/actions/rfr'
@@ -787,15 +788,19 @@ export function RfrClientForm({
                   </div>
                   <div className="md:col-span-3">
                     <Label className="text-xs">Level</Label>
-                    <select
-                      className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs mt-1"
+                    <Select
                       value={comp.level}
-                      onChange={(e) => updateCompetency(idx, 'level', e.target.value)}
+                      onValueChange={(val: any) => updateCompetency(idx, 'level', val)}
                     >
-                      <option value="basic">Basic</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advance">Advance</option>
-                    </select>
+                      <SelectTrigger className="w-full h-8 text-xs mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="basic" className="text-xs">Basic</SelectItem>
+                        <SelectItem value="intermediate" className="text-xs">Intermediate</SelectItem>
+                        <SelectItem value="advance" className="text-xs">Advance</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="md:col-span-3">
                     <Label className="text-xs">Remarks</Label>

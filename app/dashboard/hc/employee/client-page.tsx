@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/enterprise-table-kit";
 import { MinePermitReminderDialog } from "@/components/mine-permit-reminder-dialog";
 import { TableMultiFilter } from "@/components/ui/table-multi-filter";
+import { HeroSearchableSelect } from "@/components/templates";
 import {
   Table,
   TableHeader,
@@ -1257,28 +1258,30 @@ export function EmployeeClientPage({
               <label className="text-sm font-medium text-foreground">
                 Jenis Kelamin
               </label>
-              <select
+              <HeroSearchableSelect
+                placeholder="-- Pilih Jenis Kelamin --"
+                options={[
+                  { value: "", label: "-- Pilih --" },
+                  { value: "L", label: "Laki-laki" },
+                  { value: "P", label: "Perempuan" },
+                ]}
                 value={formData.genderCode}
-                onChange={(e) => updateFormField("genderCode", e.target.value)}
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">-- Pilih --</option>
-                <option value="L">Laki-laki</option>
-                <option value="P">Perempuan</option>
-              </select>
+                onChange={(val) => updateFormField("genderCode", val)}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
                 Manpower
               </label>
-              <select
+              <HeroSearchableSelect
+                placeholder="-- Pilih Manpower --"
+                options={[
+                  { value: "Lokal", label: "Lokal" },
+                  { value: "Non Lokal", label: "Non Lokal" },
+                ]}
                 value={formData.manpower}
-                onChange={(e) => updateFormField("manpower", e.target.value)}
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="Lokal">Lokal</option>
-                <option value="Non Lokal">Non Lokal</option>
-              </select>
+                onChange={(val) => updateFormField("manpower", val)}
+              />
             </div>
 
             {/* Row 3: Department & Section */}
@@ -1286,38 +1289,38 @@ export function EmployeeClientPage({
               <label className="text-sm font-medium text-foreground">
                 Departemen
               </label>
-              <select
-                value={formData.departmentId}
-                onChange={(e) => {
-                  updateFormField("departmentId", e.target.value);
+              <HeroSearchableSelect
+                placeholder="-- Pilih Departemen --"
+                options={[
+                  { value: "", label: "-- Pilih Departemen --" },
+                  ...filterOptions.departments.map((d) => ({
+                    value: String(d.id),
+                    label: d.code ? `[${d.code}] ${d.name}` : d.name,
+                  })),
+                ]}
+                value={String(formData.departmentId || "")}
+                onChange={(val) => {
+                  updateFormField("departmentId", val);
                   updateFormField("sectionId", "");
                 }}
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">-- Pilih Departemen --</option>
-                {filterOptions.departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.code ? `[${d.code}] ` : ""}{d.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
                 Section
               </label>
-              <select
-                value={formData.sectionId}
-                onChange={(e) => updateFormField("sectionId", e.target.value)}
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">-- Pilih Section --</option>
-                {filteredSections.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code ? `[${s.code}] ` : ""}{s.name}
-                  </option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                placeholder="-- Pilih Section --"
+                options={[
+                  { value: "", label: "-- Pilih Section --" },
+                  ...filteredSections.map((s) => ({
+                    value: String(s.id),
+                    label: s.code ? `[${s.code}] ${s.name}` : s.name,
+                  })),
+                ]}
+                value={String(formData.sectionId || "")}
+                onChange={(val) => updateFormField("sectionId", val)}
+              />
             </div>
 
             {/* Row 4: Site & Location */}
@@ -1325,20 +1328,18 @@ export function EmployeeClientPage({
               <label className="text-sm font-medium text-foreground">
                 Lokasi Kerja
               </label>
-              <select
-                value={formData.workLocationId}
-                onChange={(e) =>
-                  updateFormField("workLocationId", e.target.value)
-                }
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">-- Pilih Lokasi --</option>
-                {filterOptions.locations.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                placeholder="-- Pilih Lokasi --"
+                options={[
+                  { value: "", label: "-- Pilih Lokasi --" },
+                  ...filterOptions.locations.map((l) => ({
+                    value: String(l.id),
+                    label: l.name,
+                  })),
+                ]}
+                value={String(formData.workLocationId || "")}
+                onChange={(val) => updateFormField("workLocationId", val)}
+              />
             </div>
 
             {editingEmployee &&
@@ -1352,38 +1353,33 @@ export function EmployeeClientPage({
                 <p className="text-[11px] text-amber-700 leading-tight">
                   Pilih apakah pemindahan tugas resmi (akan dicatat di riwayat mutasi) atau sekadar koreksi data.
                 </p>
-                <select
+                <HeroSearchableSelect
+                  placeholder="Pilih Alasan Perubahan"
+                  options={[
+                    { value: "Pemindahan Lokasi", label: "Pemindahan Lokasi (Masuk Riwayat Mutasi)" },
+                    { value: "Perbaikan Data", label: "Perbaikan Data (Tidak masuk riwayat)" },
+                  ]}
                   value={formData.locationChangeReason || "Pemindahan Lokasi"}
-                  onChange={(e) =>
-                    updateFormField("locationChangeReason", e.target.value)
-                  }
-                  className="flex h-9 w-full rounded-lg border border-amber-300 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="Pemindahan Lokasi">
-                    Pemindahan Lokasi (Masuk Riwayat Mutasi)
-                  </option>
-                  <option value="Perbaikan Data">
-                    Perbaikan Data (Tidak masuk riwayat)
-                  </option>
-                </select>
+                  onChange={(val) => updateFormField("locationChangeReason", val)}
+                />
               </div>
             ) : null}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
                 Job Title
               </label>
-              <select
-                value={formData.positionId}
-                onChange={(e) => updateFormField("positionId", e.target.value)}
-                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="">-- Pilih Posisi --</option>
-                {filterOptions.positions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                placeholder="-- Pilih Posisi --"
+                options={[
+                  { value: "", label: "-- Pilih Posisi --" },
+                  ...filterOptions.positions.map((p) => ({
+                    value: String(p.id),
+                    label: p.name,
+                  })),
+                ]}
+                value={String(formData.positionId || "")}
+                onChange={(val) => updateFormField("positionId", val)}
+              />
             </div>
 
             {/* Row 5: Join Date & Birth Date */}
@@ -1672,45 +1668,46 @@ export function EmployeeClientPage({
           <EnterpriseFormGrid>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Lokasi Kerja</label>
-            <select
+            <HeroSearchableSelect
+              placeholder="-- Tidak Diubah --"
+              options={[
+                { value: "", label: "-- Tidak Diubah --" },
+                ...filterOptions.locations.map((loc) => ({
+                  value: String(loc.id),
+                  label: loc.name,
+                })),
+              ]}
               value={bulkFormData.workLocationId}
-              onChange={(e) => setBulkFormData({ ...bulkFormData, workLocationId: e.target.value })}
-              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">-- Tidak Diubah --</option>
-              {filterOptions.locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setBulkFormData({ ...bulkFormData, workLocationId: val })}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Manpower</label>
-            <select
+            <HeroSearchableSelect
+              placeholder="-- Tidak Diubah --"
+              options={[
+                { value: "", label: "-- Tidak Diubah --" },
+                { value: "Lokal", label: "Lokal" },
+                { value: "Non Lokal", label: "Non Lokal" },
+              ]}
               value={bulkFormData.manpower}
-              onChange={(e) => setBulkFormData({ ...bulkFormData, manpower: e.target.value })}
-              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">-- Tidak Diubah --</option>
-              <option value="Lokal">Lokal</option>
-              <option value="Non Lokal">Non Lokal</option>
-            </select>
+              onChange={(val) => setBulkFormData({ ...bulkFormData, manpower: val })}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Job Title</label>
-            <select
+            <HeroSearchableSelect
+              placeholder="-- Tidak Diubah --"
+              options={[
+                { value: "", label: "-- Tidak Diubah --" },
+                ...filterOptions.positions.map((pos) => ({
+                  value: String(pos.id),
+                  label: pos.name,
+                })),
+              ]}
               value={bulkFormData.positionId}
-              onChange={(e) => setBulkFormData({ ...bulkFormData, positionId: e.target.value })}
-              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">-- Tidak Diubah --</option>
-              {filterOptions.positions.map((pos) => (
-                <option key={pos.id} value={pos.id}>
-                  {pos.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setBulkFormData({ ...bulkFormData, positionId: val })}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Exp Mine Permit</label>

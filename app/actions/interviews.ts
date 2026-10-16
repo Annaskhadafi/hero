@@ -320,7 +320,7 @@ Tim Human Capital PT Chitra Paratama`;
               body: `Anda ditugaskan mewawancarai ${candidate.fullName} (${vacancyTitle}) pada ${interviewDate} pukul ${interviewTime} WITA.`,
               url: `/dashboard/hc/recruitment/wawancara?interviewId=${interview.id}`,
             }),
-            status: "sent",
+            deliveryStatus: "sent",
           }).returning();
 
           await db.insert(notificationDeliveries).values({

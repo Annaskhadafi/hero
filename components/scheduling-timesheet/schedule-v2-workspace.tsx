@@ -14,6 +14,7 @@ import {
   syncScheduleV2EmployeeAssignmentAction,
 } from '@/app/dashboard/admin-actions'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { HeroSearchableSelect } from '@/components/templates'
 import { EnterpriseActionButtons, type TableRbacAccess } from '@/components/ui/enterprise-table-kit'
 import {
   AlertDialog,
@@ -104,6 +105,73 @@ function isStaffRole(
     return true
   }
   return false
+}
+
+function ScheduleV2FilterItem({
+  filterKey,
+  placeholder,
+  options,
+  width = 'w-44',
+}: {
+  filterKey: string
+  placeholder: string
+  options: { value: string; label: string }[]
+  width?: string
+}) {
+  const [val, setVal] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleChange = (newVal: string) => {
+    setVal(newVal)
+    if (inputRef.current) {
+      inputRef.current.value = newVal
+      inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+  }
+
+  useEffect(() => {
+    const handleReset = () => {
+      setVal('')
+      if (inputRef.current) inputRef.current.value = ''
+    }
+    const handlePreset = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key?: string; value?: string }>
+      if (customEvent.detail?.key !== filterKey) return
+      const nextValue = customEvent.detail.value?.trim() ?? ''
+      setVal(nextValue)
+      if (inputRef.current) {
+        inputRef.current.value = nextValue
+        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+        inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+    window.addEventListener('hero-table-reset-filters', handleReset)
+    window.addEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    return () => {
+      window.removeEventListener('hero-table-reset-filters', handleReset)
+      window.removeEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    }
+  }, [filterKey])
+
+  return (
+    <div className="flex-none relative">
+      <input
+        ref={inputRef}
+        type="hidden"
+        data-table-filter-key={filterKey}
+        value={val}
+        readOnly
+      />
+      <HeroSearchableSelect
+        placeholder={placeholder}
+        options={options}
+        value={val}
+        onChange={handleChange}
+        width={width}
+      />
+    </div>
+  )
 }
 
 function createPrefilledScheduleV2(employees: Employee[], period: string, scheduleType?: string | null) {
@@ -1111,25 +1179,28 @@ export function ScheduleV2Workspace({
         access={access}
         filters={
           <>
-            <select
-              data-table-filter-key="site"
-              className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-            >
-              <option value="">Semua site</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.name}>
-                  {site.name}
-                </option>
-              ))}
-            </select>
-            <select
-              data-table-filter-key="status"
-              className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-            >
-              <option value="">Semua status</option>
-              <option value="active">Aktif</option>
-              <option value="draft">Draft</option>
-            </select>
+            <ScheduleV2FilterItem
+              filterKey="site"
+              placeholder="Semua site"
+              options={[
+                { value: '', label: 'Semua site' },
+                ...sites.map((site) => ({
+                  value: site.name,
+                  label: site.name,
+                })),
+              ]}
+              width="w-44"
+            />
+            <ScheduleV2FilterItem
+              filterKey="status"
+              placeholder="Semua status"
+              options={[
+                { value: '', label: 'Semua status' },
+                { value: 'active', label: 'Aktif' },
+                { value: 'draft', label: 'Draft' },
+              ]}
+              width="w-36"
+            />
             <Input
               type="month"
               data-table-filter-key="period"
@@ -1238,20 +1309,18 @@ export function ScheduleV2Workspace({
           <div className="grid gap-4 py-2">
             <div className="space-y-1.5">
               <Label>Site</Label>
-              <select
+              <HeroSearchableSelect
+                placeholder="Pilih Site"
+                options={sites.map((site) => ({
+                  value: String(site.id),
+                  label: site.name,
+                }))}
                 value={siteId}
-                onChange={(event) => {
-                  setSiteId(event.target.value)
+                onChange={(val) => {
+                  setSiteId(val)
                   resetScheduleImport()
                 }}
-                className="border-border h-10 w-full rounded-lg border bg-white px-3 text-sm"
-              >
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Bulan</Label>
@@ -1712,20 +1781,22 @@ export function ScheduleV2Workspace({
                   ulang.
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <select
-                    aria-label="Pilih user untuk ditambahkan ke site"
-                    value={addEmployeeId}
-                    onChange={(event) => setAddEmployeeId(event.target.value)}
-                    disabled={pending || availableEmployees.length === 0}
-                    className="border-border h-9 min-w-56 rounded-lg border bg-white px-3 text-sm"
-                  >
-                    <option value="">Tambah user ke site...</option>
-                    {availableEmployees.map((employee) => (
-                      <option key={employee.id} value={employee.id}>
-                        {employee.name} · {employee.siteId ? siteById.get(employee.siteId)?.name ?? 'Site lain' : 'Belum ada site'}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="min-w-64">
+                    <HeroSearchableSelect
+                      placeholder="Tambah user ke site..."
+                      options={[
+                        { value: '', label: 'Tambah user ke site...' },
+                        ...availableEmployees.map((employee) => ({
+                          value: String(employee.id),
+                          label: `${employee.name} · ${employee.siteId ? siteById.get(employee.siteId)?.name ?? 'Site lain' : 'Belum ada site'}`,
+                        })),
+                      ]}
+                      value={addEmployeeId}
+                      onChange={(val) => setAddEmployeeId(val)}
+                      disabled={pending || availableEmployees.length === 0}
+                      width="w-full"
+                    />
+                  </div>
                   <Button
                     size="dense"
                     variant="outline"
@@ -1801,55 +1872,43 @@ export function ScheduleV2Workspace({
           <div className="grid gap-4 py-2">
             <div className="space-y-1.5">
               <Label>Lokasi Site</Label>
-              <select
+              <HeroSearchableSelect
+                placeholder="Pilih site"
+                options={sites.map((site) => ({
+                  value: String(site.id),
+                  label: site.name,
+                }))}
                 value={profileSiteId}
-                onChange={(event) => setProfileSiteId(event.target.value)}
+                onChange={(val) => setProfileSiteId(val)}
                 disabled={pending}
-                className="border-border h-10 w-full rounded-lg border bg-white px-3 text-sm"
-              >
-                <option value="" disabled>
-                  Pilih site
-                </option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
+              />
               <p className="text-muted-foreground text-xs">
                 Perubahan site otomatis tersimpan ke User Management dan roster periode ini.
               </p>
             </div>
             <div className="space-y-1.5">
               <Label>Grouping Section</Label>
-              <select
+              <HeroSearchableSelect
+                placeholder="Pilih Section"
+                options={sectionOptions.map((opt) => ({
+                  value: opt,
+                  label: rosterSectionLabel(opt),
+                }))}
                 value={profileSection}
-                onChange={(event) => handleProfileSectionChange(event.target.value)}
-                className="border-border h-10 w-full rounded-lg border bg-white px-3 text-sm"
-              >
-                {sectionOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {rosterSectionLabel(opt)}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => handleProfileSectionChange(val)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Posisi On Site (Grid)</Label>
-              <select
+              <HeroSearchableSelect
+                placeholder="Pilih jabatan"
+                options={positionOptionsForSection(profileSection).map((opt) => ({
+                  value: opt,
+                  label: opt,
+                }))}
                 value={profilePositionOnSite}
-                onChange={(event) => setProfilePositionOnSite(event.target.value)}
-                className="border-border h-10 w-full rounded-lg border bg-white px-3 text-sm"
-              >
-                <option value="" disabled>
-                  Pilih jabatan
-                </option>
-                {positionOptionsForSection(profileSection).map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setProfilePositionOnSite(val)}
+              />
             </div>
             <div className="space-y-3">
               <Label>Kimper (Khusus Operator)</Label>

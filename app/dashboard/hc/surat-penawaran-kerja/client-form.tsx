@@ -13,6 +13,7 @@ import {
 import { getNextLetterNumber, saveLetter } from '@/app/actions/surat'
 import { Printer, Archive } from 'lucide-react'
 import Link from 'next/link'
+import { HeroSearchableSelect } from '@/components/templates'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
 
@@ -290,15 +291,15 @@ export function SuratPenawaranKerjaClient({
 
             <div className="space-y-2">
               <Label>Penandatangan</Label>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <HeroSearchableSelect
                 value={selectedHrSignerId}
-                onChange={(e) => setSelectedHrSignerId(e.target.value)}
-              >
-                {hrSigners.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} — {s.jobTitle}</option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedHrSignerId(val || '')}
+                options={hrSigners.map((s) => ({
+                  value: s.id.toString(),
+                  label: `${s.name} — ${s.jobTitle}`,
+                }))}
+                placeholder="Pilih Penandatangan"
+              />
             </div>
           </div>
 
@@ -314,17 +315,21 @@ export function SuratPenawaranKerjaClient({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Section</Label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={selectedSection} onChange={(e) => setSelectedSection(e.target.value)}>
-                  <option value="">-- Pilih Section --</option>
-                  {[...new Set(sections)].map((s, i) => <option key={`${s}-${i}`} value={s}>{s}</option>)}
-                </select>
+                <HeroSearchableSelect
+                  value={selectedSection}
+                  onChange={(val) => setSelectedSection(val || '')}
+                  options={[...new Set(sections)].map((s) => ({ value: s, label: s }))}
+                  placeholder="-- Pilih Section --"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Department</Label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)}>
-                  <option value="">-- Pilih Department --</option>
-                  {[...new Set(departments)].map((d, i) => <option key={`${d}-${i}`} value={d}>{d}</option>)}
-                </select>
+                <HeroSearchableSelect
+                  value={selectedDepartment}
+                  onChange={(val) => setSelectedDepartment(val || '')}
+                  options={[...new Set(departments)].map((d) => ({ value: d, label: d }))}
+                  placeholder="-- Pilih Department --"
+                />
               </div>
             </div>
 

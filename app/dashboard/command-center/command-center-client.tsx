@@ -42,6 +42,7 @@ import {
   BroadcastDataInput,
 } from "@/app/actions/broadcast";
 import { uploadFile } from "@/app/actions/upload";
+import { HeroSearchableSelect } from "@/components/templates";
 import { cn } from "@/lib/utils";
 
 interface BroadcastRow {
@@ -758,18 +759,19 @@ export function CommandCenterClient({
                 <p className="text-xs text-muted-foreground">Pilih siaran informasi untuk melihat rincian ketertarikan karyawan secara real-time.</p>
               </div>
               <div className="w-full sm:w-[320px]">
-                <select
-                  value={analyticsBroadcastId || 0}
-                  onChange={(e) => handleSelectBroadcastForAnalytics(Number(e.target.value))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <option value="0">-- Pilih Informasi Broadcast --</option>
-                  {broadcastsList.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.title} {b.categoryName ? `[${b.categoryName}]` : ""}
-                    </option>
-                  ))}
-                </select>
+                <HeroSearchableSelect
+                  placeholder="-- Pilih Informasi Broadcast --"
+                  options={[
+                    { value: "0", label: "-- Pilih Informasi Broadcast --" },
+                    ...broadcastsList.map((b) => ({
+                      value: String(b.id),
+                      label: `${b.title}${b.categoryName ? ` [${b.categoryName}]` : ""}`,
+                    })),
+                  ]}
+                  value={String(analyticsBroadcastId || 0)}
+                  onChange={(val) => handleSelectBroadcastForAnalytics(Number(val))}
+                  width="w-full"
+                />
               </div>
             </div>
           </div>
@@ -1026,30 +1028,19 @@ export function CommandCenterClient({
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <Input
-                    placeholder="🔍 Cari/Filter kategori..."
-                    value={categorySearch}
-                    onChange={(e) => setCategorySearch(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <select
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(Number(e.target.value))}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="0">-- Pilih Kategori --</option>
-                    {categoriesList
-                      .filter((c) =>
-                        c.name.toLowerCase().includes(categorySearch.toLowerCase())
-                      )
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                <HeroSearchableSelect
+                  placeholder="-- Pilih Kategori --"
+                  options={[
+                    { value: "0", label: "-- Pilih Kategori --" },
+                    ...categoriesList.map((c) => ({
+                      value: String(c.id),
+                      label: c.name,
+                    })),
+                  ]}
+                  value={String(categoryId)}
+                  onChange={(val) => setCategoryId(Number(val))}
+                  width="w-full"
+                />
               )}
             </div>
 
@@ -1125,18 +1116,19 @@ export function CommandCenterClient({
               <div className="space-y-1.5">
                 <Label className="text-sm font-semibold">Target Audience</Label>
                 {isSuperOrHrAdmin ? (
-                  <select
+                  <HeroSearchableSelect
+                    placeholder="Pilih Target Audience"
+                    options={[
+                      { value: "all", label: "Semua Karyawan" },
+                      { value: "department", label: "Per Departemen" },
+                      { value: "section", label: "Per Section" },
+                    ]}
                     value={targetType}
-                    onChange={(e) => {
-                      setTargetType(e.target.value as any);
+                    onChange={(val) => {
+                      setTargetType(val as any);
                       setTargetId(0);
                     }}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <option value="all">Semua Karyawan</option>
-                    <option value="department">Per Departemen</option>
-                    <option value="section">Per Section</option>
-                  </select>
+                  />
                 ) : (
                   <div className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground items-center justify-between">
                     <span>Per Section</span>
@@ -1155,39 +1147,37 @@ export function CommandCenterClient({
                       Semua Karyawan (Tanpa Filter)
                     </div>
                   ) : (
-                    <select
-                      value={targetId}
-                      onChange={(e) => setTargetId(Number(e.target.value))}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      required
-                    >
-                      <option value="">-- Pilih --</option>
-                      {targetType === "department"
-                        ? metadata.departments.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))
-                        : metadata.sections.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                    </select>
+                    <HeroSearchableSelect
+                      placeholder="-- Pilih --"
+                      options={[
+                        { value: "0", label: "-- Pilih --" },
+                        ...(targetType === "department"
+                          ? metadata.departments.map((d) => ({
+                              value: String(d.id),
+                              label: d.name,
+                            }))
+                          : metadata.sections.map((s) => ({
+                              value: String(s.id),
+                              label: s.name,
+                            }))),
+                      ]}
+                      value={String(targetId || "")}
+                      onChange={(val) => setTargetId(Number(val))}
+                    />
                   )
                 ) : (
-                  <select
-                    value={targetId}
-                    onChange={(e) => setTargetId(Number(e.target.value))}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    required
-                  >
-                    {metadata.sections.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <HeroSearchableSelect
+                    placeholder="-- Pilih Section --"
+                    options={[
+                      { value: "0", label: "-- Pilih --" },
+                      ...metadata.sections.map((s) => ({
+                        value: String(s.id),
+                        label: s.name,
+                      })),
+                    ]}
+                    value={String(targetId || "")}
+                    onChange={(val) => setTargetId(Number(val))}
+                  />
                 )}
               </div>
             </div>
@@ -1353,30 +1343,19 @@ export function CommandCenterClient({
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <Input
-                    placeholder="🔍 Cari/Filter kategori..."
-                    value={categorySearch}
-                    onChange={(e) => setCategorySearch(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <select
-                    value={editCategoryId}
-                    onChange={(e) => setEditCategoryId(Number(e.target.value))}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="0">-- Pilih Kategori --</option>
-                    {categoriesList
-                      .filter((c) =>
-                        c.name.toLowerCase().includes(categorySearch.toLowerCase())
-                      )
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                <HeroSearchableSelect
+                  placeholder="-- Pilih Kategori --"
+                  options={[
+                    { value: "0", label: "-- Pilih Kategori --" },
+                    ...categoriesList.map((c) => ({
+                      value: String(c.id),
+                      label: c.name,
+                    })),
+                  ]}
+                  value={String(editCategoryId)}
+                  onChange={(val) => setEditCategoryId(Number(val))}
+                  width="w-full"
+                />
               )}
             </div>
 
@@ -1452,18 +1431,19 @@ export function CommandCenterClient({
               <div className="space-y-1.5">
                 <Label className="text-sm font-semibold">Target Audience</Label>
                 {isSuperOrHrAdmin ? (
-                  <select
+                  <HeroSearchableSelect
+                    placeholder="Pilih Target Audience"
+                    options={[
+                      { value: "all", label: "Semua Karyawan" },
+                      { value: "department", label: "Per Departemen" },
+                      { value: "section", label: "Per Section" },
+                    ]}
                     value={editTargetType}
-                    onChange={(e) => {
-                      setEditTargetType(e.target.value as any);
+                    onChange={(val) => {
+                      setEditTargetType(val as any);
                       setEditTargetId(0);
                     }}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <option value="all">Semua Karyawan</option>
-                    <option value="department">Per Departemen</option>
-                    <option value="section">Per Section</option>
-                  </select>
+                  />
                 ) : (
                   <div className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground items-center justify-between">
                     <span>Per Section</span>
@@ -1482,39 +1462,37 @@ export function CommandCenterClient({
                       Semua Karyawan (Tanpa Filter)
                     </div>
                   ) : (
-                    <select
-                      value={editTargetId}
-                      onChange={(e) => setEditTargetId(Number(e.target.value))}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      required
-                    >
-                      <option value="">-- Pilih --</option>
-                      {editTargetType === "department"
-                        ? metadata.departments.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))
-                        : metadata.sections.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                    </select>
+                    <HeroSearchableSelect
+                      placeholder="-- Pilih --"
+                      options={[
+                        { value: "0", label: "-- Pilih --" },
+                        ...(editTargetType === "department"
+                          ? metadata.departments.map((d) => ({
+                              value: String(d.id),
+                              label: d.name,
+                            }))
+                          : metadata.sections.map((s) => ({
+                              value: String(s.id),
+                              label: s.name,
+                            }))),
+                      ]}
+                      value={String(editTargetId || "")}
+                      onChange={(val) => setEditTargetId(Number(val))}
+                    />
                   )
                 ) : (
-                  <select
-                    value={editTargetId}
-                    onChange={(e) => setEditTargetId(Number(e.target.value))}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    required
-                  >
-                    {metadata.sections.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  <HeroSearchableSelect
+                    placeholder="-- Pilih Section --"
+                    options={[
+                      { value: "0", label: "-- Pilih --" },
+                      ...metadata.sections.map((s) => ({
+                        value: String(s.id),
+                        label: s.name,
+                      })),
+                    ]}
+                    value={String(editTargetId || "")}
+                    onChange={(val) => setEditTargetId(Number(val))}
+                  />
                 )}
               </div>
             </div>

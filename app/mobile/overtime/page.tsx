@@ -248,6 +248,9 @@ export default async function MobileOvertimePage({
       ptwCount: 0,
       sopWinRequestCount: 0,
       contractReviewCount: 0,
+      rfrCount: 0,
+      trainingRequestCount: 0,
+      maritalStatusCount: 0,
       generalActivityCount: 0,
     },
     historyMetrics: {
@@ -258,6 +261,8 @@ export default async function MobileOvertimePage({
       inReview: 0,
     },
     contractReviewInboxItems: [],
+    rfrInboxItems: [],
+    trainingRequestInboxItems: [],
     dailyActivityInboxItems: [],
     overtimeInboxItems: [],
     ptwInboxItems: [],

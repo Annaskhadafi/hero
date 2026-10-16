@@ -35,6 +35,14 @@ import { GripVertical, Save, X } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
 import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 import { calculateQuotationTotal } from "@/lib/service360-quotation-total"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { HeroSearchableSelect } from "@/components/templates"
 
 const itemSchema = z.object({
   id: z.number(),
@@ -213,6 +221,12 @@ const router = useRouter()
   const initialProjectSiteId =
     siteList?.find((site) => site.name === initialData?.projectName)?.id?.toString() ||
     (initialData?.projectName ? "manual" : "")
+
+  const projectSiteOptions = React.useMemo(() => [
+    { value: "", label: "Select Site Location (Optional)" },
+    ...(siteList || []).map(s => ({ value: String(s.id), label: s.name })),
+    { value: "manual", label: "Manual Input" },
+  ], [siteList])
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuotationFormValues>({
     resolver: zodResolver(quotationSchema),
@@ -948,7 +962,20 @@ const router = useRouter()
                       if (!v) setValue("discountValue", 0)
                     }} />
                     <label className="text-xs leading-tight">Discount</label>
-                    {discountType && <select className="h-8 rounded border px-1 text-xs" value={discountType} onChange={(e) => setValue("discountType", e.target.value as "percent" | "fixed")}><option value="percent">%</option><option value="fixed">Fixed</option></select>}
+                    {discountType && (
+                      <Select
+                        value={discountType}
+                        onValueChange={(val) => setValue("discountType", val as "percent" | "fixed")}
+                      >
+                        <SelectTrigger className="h-8 w-20 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percent">%</SelectItem>
+                          <SelectItem value="fixed">Fixed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                     {discountType && <Input className="h-8 w-24" type="number" min="0" onFocus={(e) => e.target.select()} {...register("discountValue", { valueAsNumber: true })} />}
                   </div>
                   <div className="flex items-center gap-2">
@@ -985,16 +1012,12 @@ const router = useRouter()
 
             <div className="lg:col-span-2">
               <label className="text-sm font-medium block mb-1.5">Project Name (for intro text)</label>
-              <select 
-                {...register("selectedProjectSite")}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 mb-2"
-              >
-                <option value="">Select Site Location (Optional)</option>
-                {siteList?.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-                <option value="manual">Manual Input</option>
-              </select>
+              <HeroSearchableSelect
+                value={watch("selectedProjectSite") || ""}
+                onChange={(val: any) => setValue("selectedProjectSite", val || "")}
+                options={projectSiteOptions}
+                placeholder="Select Site Location (Optional)"
+              />
               {watch("selectedProjectSite") === "manual" && (
                 <Input {...register("projectName")} placeholder="e.g. CK BMB Project" className="mt-2" />
               )}

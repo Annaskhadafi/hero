@@ -125,7 +125,7 @@ export async function getVehicleMetrics() {
   const kirWarning = allVehicles.filter((v) => v.kirAlertStatus === 'warning').length
 
   const serviceDue = allVehicles.filter((v) => v.serviceAlertStatus === 'due').length
-  const serviceWarning = allVehicles.filter((v) => v.serviceAlertStatus === 'warning').length
+  const serviceWarning = 0
 
   return {
     total,
@@ -413,11 +413,11 @@ export async function triggerVehicleReminderCheck() {
 
     await notifyWorkflowBellRecipients({
       recipientEmails,
+      eventType: 'ga_vehicle_reminder',
+      category: 'info',
       title: '🚨 Reminder Surat & Servis Armada Kendaraan GA',
-      message: `Terdapat ${metrics.stnkExpired + metrics.taxExpired + metrics.kirExpired} dokumen armada expired dan ${metrics.stnkWarning + metrics.taxWarning + metrics.kirWarning} unit mendekati jatuh tempo.`,
-      actionUrl: '/dashboard/ga/vehicles',
-      sourceType: 'ga_vehicle_reminder',
-      sourceId: String(Date.now()),
+      body: `Terdapat ${metrics.stnkExpired + metrics.taxExpired + metrics.kirExpired} dokumen armada expired dan ${metrics.stnkWarning + metrics.taxWarning + metrics.kirWarning} unit mendekati jatuh tempo.`,
+      url: '/dashboard/ga/vehicles',
     }).catch(() => {})
   }
 

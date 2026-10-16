@@ -13,6 +13,7 @@ import {
   Users,
   Workflow,
 } from "lucide-react";
+import { HeroKpiCard, HeroKpiTone } from "@/components/templates/hero-kpi-card";
 
 const metricIcons = [
   { match: ["approval", "approved", "pending", "review"], icon: CheckCircle2 },
@@ -29,16 +30,20 @@ const metricIcons = [
   { match: ["late", "overdue", "failed"], icon: AlertTriangle },
 ];
 
-const accents = [
-  "bg-primary/10 text-primary ring-primary/15 group-hover:bg-primary/15",
-  "bg-tertiary-container text-on-tertiary-container ring-tertiary/15 group-hover:bg-tertiary-container/80",
-  "bg-surface-container-low text-primary ring-outline-ghost group-hover:bg-surface-container",
-  "bg-primary-container/10 text-primary-container ring-primary-container/15 group-hover:bg-primary-container/15",
-];
+const tones: HeroKpiTone[] = ['blue', 'emerald', 'amber', 'purple', 'cyan', 'rose'];
 
 function getMetricIcon(label?: string, meta?: string) {
   const source = `${label || ''} ${meta || ''}`.toLowerCase();
   return metricIcons.find((item) => item.match.some((keyword) => source.includes(keyword)))?.icon ?? BarChart3;
+}
+
+function getMetricTone(label?: string, index: number = 0): HeroKpiTone {
+  const l = (label || '').toLowerCase();
+  if (l.includes('reject') || l.includes('overdue') || l.includes('failed') || l.includes('incident') || l.includes('batal')) return 'rose';
+  if (l.includes('pending') || l.includes('menunggu') || l.includes('review') || l.includes('proses')) return 'amber';
+  if (l.includes('approve') || l.includes('selesai') || l.includes('success') || l.includes('hadir') || l.includes('aktif')) return 'emerald';
+  if (l.includes('total') || l.includes('semua') || l.includes('pengguna') || l.includes('karyawan')) return 'blue';
+  return tones[index % tones.length];
 }
 
 export function AdminMetricGrid({
@@ -73,14 +78,14 @@ export function AdminMetricGrid({
       <div className="flex flex-wrap gap-2.5 w-full">
         {safeItems.map((item, index) => {
           const Icon = getMetricIcon(item?.label, item?.meta);
-          const accent = accents[index % accents.length];
+          const tone = getMetricTone(item?.label, index);
 
           return (
             <div
               key={item.label}
               className="group flex flex-1 min-w-[170px] min-h-11 items-center gap-2.5 rounded-[1rem] bg-surface-container-lowest px-3.5 py-2 shadow-[0_8px_20px_rgba(8,32,51,0.05)] ring-1 ring-[rgba(66,71,80,0.08)] transition-all hover:shadow-md"
             >
-              <div className={`grid size-7 shrink-0 place-items-center rounded-xl ring-1 transition ${accent}`}>
+              <div className={`grid size-7 shrink-0 place-items-center rounded-xl ring-1 transition ${tone === 'emerald' ? 'bg-emerald-500/10 text-emerald-600' : tone === 'amber' ? 'bg-amber-500/10 text-amber-600' : tone === 'rose' ? 'bg-rose-500/10 text-rose-600' : 'bg-primary/10 text-primary'}`}>
                 <Icon className="size-3.5" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
@@ -102,31 +107,20 @@ export function AdminMetricGrid({
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
       {safeItems.map((item, index) => {
         const Icon = getMetricIcon(item?.label, item?.meta);
-        const accent = accents[index % accents.length];
+        const tone = getMetricTone(item?.label, index);
 
         return (
-          <div
+          <HeroKpiCard
             key={item.label}
-            className="group surface-module-card flex min-h-[104px] items-start gap-3 rounded-[1.05rem] px-4 py-4 transition duration-200 hover:-translate-y-0.5"
-          >
-            <div className={`grid size-10 shrink-0 place-items-center rounded-xl ring-1 transition ${accent}`}>
-              <Icon className="size-4" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 space-y-1.5">
-              <p className="truncate text-[0.68rem] font-semibold uppercase text-muted-foreground">
-                {item.label}
-              </p>
-              <p className="tabular-nums truncate font-display text-[1.55rem] font-semibold leading-none text-foreground">
-                {item.value}
-              </p>
-              <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                {item.meta}
-              </p>
-            </div>
-          </div>
+            title={item.label}
+            value={item.value}
+            description={item.meta}
+            icon={<Icon className="size-5" />}
+            tone={tone}
+          />
         );
       })}
     </div>

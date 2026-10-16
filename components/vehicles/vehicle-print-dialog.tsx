@@ -184,7 +184,7 @@ export function VehiclePrintDialog({
                       </tr>
                       <tr className="border-b border-slate-100">
                         <td className="py-1 text-slate-500">Merk / Tipe</td>
-                        <td className="py-1 font-semibold">{vehicle.brand || '-'} / {vehicle.vehicleType}</td>
+                        <td className="py-1 font-semibold">{vehicle.vehicleType}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
                         <td className="py-1 text-slate-500">Tahun Pembuatan</td>
@@ -222,7 +222,7 @@ export function VehiclePrintDialog({
                       </tr>
                       <tr className="border-b border-slate-100">
                         <td className="py-1 text-slate-500">Departemen</td>
-                        <td className="py-1 font-semibold">{vehicle.department || '-'}</td>
+                        <td className="py-1 font-semibold">{(vehicle as any).department || 'General Affairs'}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
                         <td className="py-1 text-slate-500">Pemegang / Pengguna</td>
@@ -230,7 +230,7 @@ export function VehiclePrintDialog({
                       </tr>
                       <tr className="border-b border-slate-100">
                         <td className="py-1 text-slate-500">Kontak Pemegang</td>
-                        <td className="py-1">{vehicle.assignedEmployeePhone || '-'}</td>
+                        <td className="py-1">{(vehicle as any).assignedEmployeePhone || '-'}</td>
                       </tr>
                       <tr className="border-b border-slate-100">
                         <td className="py-1 text-slate-500">Odometer Terakhir</td>
@@ -293,7 +293,7 @@ export function VehiclePrintDialog({
                     </div>
                     <div>
                       <p className="text-slate-500 text-[8.5pt]">Biaya Sewa / Bulan</p>
-                      <p className="font-bold text-slate-900">{formatCurrency(vehicle.rentalMonthlyCost)}</p>
+                      <p className="font-bold text-slate-900">{formatCurrency(vehicle.rentalCostMonthly || (vehicle as any).rentalMonthlyCost)}</p>
                     </div>
                     <div>
                       <p className="text-slate-500 text-[8.5pt]">Masa Kontrak Sewa</p>
@@ -316,7 +316,7 @@ export function VehiclePrintDialog({
                 <div className="grid grid-cols-3 gap-4 text-[9pt]">
                   <div>
                     <p className="text-slate-500 text-[8.5pt]">Odometer Saat Ini</p>
-                    <p className="font-bold text-slate-900">{formatNumber(vehicle.currentOdometer)} KM</p>
+                    <p className="font-bold text-slate-900">{formatNumber(odo)} KM</p>
                   </div>
                   <div>
                     <p className="text-slate-500 text-[8.5pt]">Jadwal Servis Berikutnya (KM)</p>
@@ -352,7 +352,7 @@ export function VehiclePrintDialog({
                   <p className="text-slate-500 mb-16">Pemegang Unit,</p>
                   <div className="border-b border-slate-900 mx-6 mb-1"></div>
                   <p className="font-bold text-slate-900 uppercase">
-                    {vehicle.assignedEmployeeName || '( Belum Ditugaskan )'}
+                    {holder}
                   </p>
                   <p className="text-[8pt] text-slate-500">Penanggung Jawab Kendaraan</p>
                 </div>

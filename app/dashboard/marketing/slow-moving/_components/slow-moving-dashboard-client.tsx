@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Line, ComposedChart, Cell, PieChart, Pie, LabelList } from "recharts"
 import { Loader2, TrendingUp, Package, Users, BadgeDollarSign, Sparkles, Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { HeroKpiCard } from "@/components/templates"
 
 const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -230,47 +231,36 @@ export function SlowMovingDashboardClient() {
             )}
 
             {/* KPI Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-900">Total Revenue Slow Moving</CardTitle>
-                        <div className="rounded-full bg-blue-200 p-2"><BadgeDollarSign className="h-4 w-4 text-blue-700" /></div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-blue-950">{formatCurrency(data.summary.totalAmount)}</div>
-                        <p className="text-xs text-blue-700/80 mt-1">Total pendapatan slow moving</p>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-200">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-emerald-900">Total Qty Terjual</CardTitle>
-                        <div className="rounded-full bg-emerald-200 p-2"><Package className="h-4 w-4 text-emerald-700" /></div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-emerald-950">{formatNumber(data.summary.totalQty)} <span className="text-lg font-normal">pcs</span></div>
-                        <p className="text-xs text-emerald-700/80 mt-1">Total kuantitas terjual</p>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-purple-200">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-purple-900">Salesman Terlibat</CardTitle>
-                        <div className="rounded-full bg-purple-200 p-2"><Users className="h-4 w-4 text-purple-700" /></div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-purple-950">{data.topSalesman?.length || 0}</div>
-                        <p className="text-xs text-purple-700/80 mt-1">Membantu penjualan</p>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-amber-900">Pelanggan Aktif</CardTitle>
-                        <div className="rounded-full bg-amber-200 p-2"><TrendingUp className="h-4 w-4 text-amber-700" /></div>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-amber-950">{data.topCustomers?.length || 0}</div>
-                        <p className="text-xs text-amber-700/80 mt-1">Membeli produk slow moving</p>
-                    </CardContent>
-                </Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+                <HeroKpiCard
+                    title="Total Revenue Slow Moving"
+                    value={formatCurrency(data.summary.totalAmount)}
+                    tone="blue"
+                    icon={<BadgeDollarSign className="size-5" />}
+                    description="Total pendapatan slow moving"
+                />
+                <HeroKpiCard
+                    title="Total Qty Terjual"
+                    value={formatNumber(data.summary.totalQty)}
+                    unit="pcs"
+                    tone="emerald"
+                    icon={<Package className="size-5" />}
+                    description="Total kuantitas terjual"
+                />
+                <HeroKpiCard
+                    title="Salesman Terlibat"
+                    value={data.topSalesman?.length || 0}
+                    tone="purple"
+                    icon={<Users className="size-5" />}
+                    description="Membantu penjualan"
+                />
+                <HeroKpiCard
+                    title="Pelanggan Aktif"
+                    value={data.topCustomers?.length || 0}
+                    tone="amber"
+                    icon={<TrendingUp className="size-5" />}
+                    description="Membeli produk slow moving"
+                />
             </div>
 
             {/* Charts Section */}

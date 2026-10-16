@@ -25,6 +25,7 @@ import { InterviewSettingsModal } from "@/components/interview/interview-setting
 import { InterviewFormPdf } from "@/components/interview/interview-form-pdf";
 import { InterviewPdfPreviewDialog } from "@/components/interview/interview-pdf-preview-dialog";
 import { InterviewEvaluationModal } from "@/components/interview/interview-evaluation-modal";
+import { HeroSearchableSelect } from "@/components/templates";
 
 const formatAiRecommendation = (recommendation?: string | null) => {
   const translations: Record<string, string> = {
@@ -1640,12 +1641,15 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   </div>
                   <div className="space-y-2">
                     <Label>Penandatangan</Label>
-                    <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={offeringForm.signatoryName} onChange={e => {
-                      const signer = MCU_SIGNERS.find(s => s.name === e.target.value) || MCU_SIGNERS[0];
-                      setOfferingForm({...offeringForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
-                    }}>
-                      {MCU_SIGNERS.map(s => <option key={s.name} value={s.name}>{s.name} — {s.title}</option>)}
-                    </select>
+                    <HeroSearchableSelect
+                      value={offeringForm.signatoryName}
+                      onChange={(val) => {
+                        const signer = MCU_SIGNERS.find(s => s.name === val) || MCU_SIGNERS[0];
+                        setOfferingForm({...offeringForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl});
+                      }}
+                      options={MCU_SIGNERS.map(s => ({ value: s.name, label: `${s.name} — ${s.title}` }))}
+                      placeholder="Pilih Penandatangan"
+                    />
                   </div>
                 </div>
 
@@ -2402,11 +2406,15 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               </div>
               <div className="space-y-2">
                 <Label>Gender</Label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value})}>
-                  <option value="">-- Select --</option>
-                  <option value="Laki-laki">Laki-laki</option>
-                  <option value="Perempuan">Perempuan</option>
-                </select>
+                <HeroSearchableSelect
+                  value={editForm.gender}
+                  onChange={(val) => setEditForm({...editForm, gender: val || ""})}
+                  options={[
+                    { value: "Laki-laki", label: "Laki-laki" },
+                    { value: "Perempuan", label: "Perempuan" },
+                  ]}
+                  placeholder="-- Select Gender --"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Source</Label>
@@ -2561,23 +2569,22 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label>Clinic <span className="text-destructive">*</span></Label>
-              <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <HeroSearchableSelect
                 value={mcuForm.clinicId}
-                onChange={(e) => {
-                  const clinic = clinics.find(c => c.id === parseInt(e.target.value));
+                onChange={(val) => {
+                  const clinic = clinics.find(c => c.id.toString() === val);
                   setMcuForm({
                     ...mcuForm,
-                    clinicId: e.target.value,
+                    clinicId: val || "",
                     klinikName: clinic?.name || "",
                     klinikEmail: clinic?.email || "",
                     paketMcu: "",
                   });
                   setSelectedPaketOptions(clinic?.paketOptions || []);
                 }}
-              >
-                <option value="">-- Select Clinic --</option>
-                {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+                options={clinics.map(c => ({ value: c.id.toString(), label: c.name }))}
+                placeholder="-- Select Clinic --"
+              />
               {clinics.length === 0 && (
                 <p className="text-xs text-muted-foreground">No clinics registered. <Link href="/dashboard/hc/settings/mcu-clinics" className="text-accent underline">Add clinics first</Link>.</p>
               )}
@@ -2592,13 +2599,12 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
             <div className="space-y-2">
               <Label>MCU Package <span className="text-destructive">*</span></Label>
               {selectedPaketOptions.length > 0 ? (
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                <HeroSearchableSelect
                   value={mcuForm.paketMcu}
-                  onChange={(e) => setMcuForm({...mcuForm, paketMcu: e.target.value})}
-                >
-                  <option value="">-- Select Package --</option>
-                  {selectedPaketOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                  onChange={(val) => setMcuForm({...mcuForm, paketMcu: val || ""})}
+                  options={selectedPaketOptions.map(p => ({ value: p, label: p }))}
+                  placeholder="-- Select Package --"
+                />
               ) : (
                 <Input placeholder="e.g. Paket Executive" value={mcuForm.paketMcu} onChange={(e) => setMcuForm({...mcuForm, paketMcu: e.target.value})} />
               )}
@@ -2611,18 +2617,15 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
 
             <div className="space-y-2">
               <Label>Penandatangan Surat MCU</Label>
-              <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <HeroSearchableSelect
                 value={mcuForm.signatoryName}
-                onChange={(e) => {
-                  const signer = MCU_SIGNERS.find((item) => item.name === e.target.value) || MCU_SIGNERS[0];
+                onChange={(val) => {
+                  const signer = MCU_SIGNERS.find((item) => item.name === val) || MCU_SIGNERS[0];
                   setMcuForm({ ...mcuForm, signatoryName: signer.name, signatoryTitle: signer.title, signatureUrl: signer.signatureUrl });
                 }}
-              >
-                {MCU_SIGNERS.map((signer) => (
-                  <option key={signer.name} value={signer.name}>{signer.name} — {signer.title}</option>
-                ))}
-              </select>
+                options={MCU_SIGNERS.map((signer) => ({ value: signer.name, label: `${signer.name} — ${signer.title}` }))}
+                placeholder="Pilih Penandatangan Surat MCU"
+              />
               <p className="text-xs text-muted-foreground">TTD akan digambar di PDF Surat Pengantar jika file TTD tersedia.</p>
             </div>
           </div>

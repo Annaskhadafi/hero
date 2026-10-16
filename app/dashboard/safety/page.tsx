@@ -3,6 +3,7 @@ import { AlertTriangle, BadgeCheck, Clock, Database, FileWarning, ShieldCheck } 
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { Button } from '@/components/ui/button'
+import { HeroKpiCard } from '@/components/templates'
 import { SafetyDashboardCharts } from '@/components/safety-dashboard/safety-dashboard-charts'
 import { SafetyDashboardFilter } from './safety-filter'
 import { getSafetyDashboardData } from '@/lib/safety-dashboard/queries'
@@ -38,67 +39,64 @@ function SafetyMetricCards({
     nearMiss: number
   }
 }) {
-  const items = [
-    {
-      label: 'Incident YTD',
-      value: formatNumber(kpis.totalIncidentYtd),
-      meta: 'Total event tahun berjalan',
-      Icon: FileWarning,
-      accent: 'bg-primary/12 text-primary ring-primary/15',
-    },
-    {
-      label: 'Fatality',
-      value: formatNumber(kpis.fatality),
-      meta: 'Fatality tahun berjalan',
-      Icon: AlertTriangle,
-      accent: 'bg-rose-100 text-rose-700 ring-rose-200',
-    },
-    {
-      label: 'Safe Man Hours',
-      value: formatNumber(kpis.safeManHours),
-      meta: 'Saldo awal + aktual 2026+',
-      Icon: Clock,
-      accent: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-    },
-    {
-      label: 'Expired Cert.',
-      value: formatNumber(kpis.certificationExpired),
-      meta: 'Sertifikasi perlu follow up',
-      Icon: BadgeCheck,
-      accent: 'bg-tertiary-container text-on-tertiary-container ring-tertiary/15',
-    },
-    {
-      label: 'Near Miss',
-      value: formatNumber(kpis.nearMiss),
-      meta: 'Near miss YTD',
-      Icon: ShieldCheck,
-      accent: 'bg-violet-100 text-violet-700 ring-violet-200',
-    },
-  ]
-
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="surface-module-card flex items-start justify-between rounded-[1.05rem] px-4 py-4"
-        >
-          <div className="min-w-0">
-            <p className="text-muted-foreground text-[0.65rem] font-bold tracking-[0.12em] uppercase">
-              {item.label}
-            </p>
-            <p className="font-display text-foreground mt-1 text-[1.8rem] leading-none font-bold">
-              {item.value}
-            </p>
-            <p className="text-muted-foreground mt-1 truncate text-xs">{item.meta}</p>
-          </div>
-          <div
-            className={`grid size-10 shrink-0 place-items-center rounded-xl ring-1 ${item.accent}`}
-          >
-            <item.Icon className="size-5" aria-hidden="true" />
-          </div>
-        </div>
-      ))}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+      <HeroKpiCard
+        title="Incident YTD"
+        value={formatNumber(kpis.totalIncidentYtd)}
+        unit="event"
+        icon={<FileWarning className="size-5" />}
+        watermarkIcon={<FileWarning className="size-16" />}
+        tone="amber"
+        variant="colorful"
+        description="Total event tahun berjalan"
+      />
+
+      <HeroKpiCard
+        title="Fatality"
+        value={formatNumber(kpis.fatality)}
+        unit="kasus"
+        icon={<AlertTriangle className="size-5" />}
+        watermarkIcon={<AlertTriangle className="size-16" />}
+        tone={kpis.fatality > 0 ? 'rose' : 'emerald'}
+        variant="colorful"
+        badge={kpis.fatality === 0 ? 'Zero Fatality' : 'Critical'}
+        description={kpis.fatality === 0 ? 'Target Zero Fatality tercapai' : 'Fatality tahun berjalan'}
+      />
+
+      <HeroKpiCard
+        title="Safe Man Hours"
+        value={formatNumber(kpis.safeManHours)}
+        unit="jam"
+        icon={<Clock className="size-5" />}
+        watermarkIcon={<Clock className="size-16" />}
+        tone="emerald"
+        variant="colorful"
+        description="Saldo awal + aktual berjalan"
+      />
+
+      <HeroKpiCard
+        title="Expired Cert."
+        value={formatNumber(kpis.certificationExpired)}
+        unit="sertifikat"
+        icon={<BadgeCheck className="size-5" />}
+        watermarkIcon={<BadgeCheck className="size-16" />}
+        tone={kpis.certificationExpired > 0 ? 'rose' : 'blue'}
+        variant="colorful"
+        badge={kpis.certificationExpired > 0 ? 'Perlu Renewal' : undefined}
+        description="Sertifikasi perlu follow up"
+      />
+
+      <HeroKpiCard
+        title="Near Miss"
+        value={formatNumber(kpis.nearMiss)}
+        unit="laporan"
+        icon={<ShieldCheck className="size-5" />}
+        watermarkIcon={<ShieldCheck className="size-16" />}
+        tone="cyan"
+        variant="colorful"
+        description="Laporan near miss YTD"
+      />
     </div>
   )
 }

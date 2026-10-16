@@ -1,7 +1,7 @@
 'use client'
 
 // Universal Centralized Approval Workbench
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import QRCode from 'qrcode'
@@ -139,6 +139,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { HeroSearchableSelect } from '@/components/templates'
 import {
   Table,
   TableBody,
@@ -209,6 +210,75 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
   }
 }
 
+function WorkbenchFilterItem({
+  filterKey,
+  placeholder,
+  options,
+  width = 'w-44',
+}: {
+  filterKey: string
+  placeholder: string
+  options: { value: string; label: string }[]
+  width?: string
+}) {
+  const [val, setVal] = React.useState('')
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleChange = (newVal: string) => {
+    setVal(newVal)
+    if (inputRef.current) {
+      inputRef.current.value = newVal
+      inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+  }
+
+  React.useEffect(() => {
+    const handleReset = () => {
+      setVal('')
+      if (inputRef.current) {
+        inputRef.current.value = ''
+      }
+    }
+    const handlePreset = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key?: string; value?: string }>
+      if (customEvent.detail?.key !== filterKey) return
+      const nextValue = customEvent.detail.value?.trim() ?? ''
+      setVal(nextValue)
+      if (inputRef.current) {
+        inputRef.current.value = nextValue
+        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+        inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+    window.addEventListener('hero-table-reset-filters', handleReset)
+    window.addEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    return () => {
+      window.removeEventListener('hero-table-reset-filters', handleReset)
+      window.removeEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    }
+  }, [filterKey])
+
+  return (
+    <div className="flex-none relative">
+      <input
+        ref={inputRef}
+        type="hidden"
+        data-table-filter-key={filterKey}
+        value={val}
+        readOnly
+      />
+      <HeroSearchableSelect
+        placeholder={placeholder}
+        options={options}
+        value={val}
+        onChange={handleChange}
+        width={width}
+      />
+    </div>
+  )
+}
+
 function ApprovalFilterBar({
   sites,
   priorities,
@@ -218,44 +288,50 @@ function ApprovalFilterBar({
   priorities: string[]
   statusOptions: string[]
 }) {
+  const siteOpts = React.useMemo(
+    () => [
+      { value: '', label: 'Semua site' },
+      ...sites.map((s) => ({ value: s, label: s })),
+    ],
+    [sites]
+  )
+
+  const priorityOpts = React.useMemo(
+    () => [
+      { value: '', label: 'Semua prioritas' },
+      ...priorities.map((p) => ({ value: p, label: p })),
+    ],
+    [priorities]
+  )
+
+  const statusOpts = React.useMemo(
+    () => [
+      { value: '', label: 'Semua status' },
+      ...statusOptions.map((s) => ({ value: s, label: s })),
+    ],
+    [statusOptions]
+  )
+
   return (
     <>
-      <select
-        data-table-filter-key="site"
-        defaultValue=""
-        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-      >
-        <option value="">Semua site</option>
-        {sites.map((site) => (
-          <option key={site} value={site}>
-            {site}
-          </option>
-        ))}
-      </select>
-      <select
-        data-table-filter-key="priority"
-        defaultValue=""
-        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-      >
-        <option value="">Semua prioritas</option>
-        {priorities.map((priority) => (
-          <option key={priority} value={priority}>
-            {priority}
-          </option>
-        ))}
-      </select>
-      <select
-        data-table-filter-key="status"
-        defaultValue=""
-        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-      >
-        <option value="">Semua status</option>
-        {statusOptions.map((status) => (
-          <option key={status} value={status}>
-            {status}
-          </option>
-        ))}
-      </select>
+      <WorkbenchFilterItem
+        filterKey="site"
+        placeholder="Semua site"
+        options={siteOpts}
+        width="w-44"
+      />
+      <WorkbenchFilterItem
+        filterKey="priority"
+        placeholder="Semua prioritas"
+        options={priorityOpts}
+        width="w-40"
+      />
+      <WorkbenchFilterItem
+        filterKey="status"
+        placeholder="Semua status"
+        options={statusOpts}
+        width="w-40"
+      />
     </>
   )
 }
@@ -4699,28 +4775,29 @@ export function InboxTab({
 
                         <div className="space-y-1 text-xs">
                           <label className="text-[11px] font-semibold text-slate-600">Rekomendasi Evaluasi:</label>
-                          <select
+                          <HeroSearchableSelect
+                            placeholder="Pilih Rekomendasi Evaluasi"
+                            options={[
+                              { value: 'contract_extended', label: 'Perpanjangan Masa Kontrak (Contract Extended)' },
+                              { value: 'confirm_permanent', label: 'Pengangkatan Karyawan Tetap (Confirm Permanent)' },
+                              { value: 'terminate_probation', label: 'Pemutusan Masa Percobaan (Terminate Probation)' },
+                              { value: 'contract_ended', label: 'Selesai Kontrak / Tidak Diperpanjang (Contract Ended)' },
+                            ]}
                             value={
                               contractReviewEdits[currentBatchDoc.id]?.recommendation ??
                               rawCr?.recommendation ??
                               'contract_extended'
                             }
-                            onChange={(e) => {
+                            onChange={(val) => {
                               setContractReviewEdits((prev) => ({
                                 ...prev,
                                 [currentBatchDoc.id]: {
                                   ...prev[currentBatchDoc.id],
-                                  recommendation: e.target.value,
+                                  recommendation: val,
                                 },
                               }))
                             }}
-                            className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                          >
-                            <option value="contract_extended">Perpanjangan Masa Kontrak (Contract Extended)</option>
-                            <option value="confirm_permanent">Pengangkatan Karyawan Tetap (Confirm Permanent)</option>
-                            <option value="terminate_probation">Pemutusan Masa Percobaan (Terminate Probation)</option>
-                            <option value="contract_ended">Selesai Kontrak / Tidak Diperpanjang (Contract Ended)</option>
-                          </select>
+                          />
                         </div>
 
                         {(contractReviewEdits[currentBatchDoc.id]?.recommendation ??
@@ -4755,28 +4832,29 @@ export function InboxTab({
                         {((rawCr?.approverRole === 'hr') || (currentBatchDoc as any)?.approverRole === 'hr') && (
                           <div className="space-y-1 text-xs">
                             <label className="text-[11px] font-semibold text-slate-600">Penerbitan Surat (HR):</label>
-                            <select
+                            <HeroSearchableSelect
+                              placeholder="Pilih Penerbitan Surat"
+                              options={[
+                                { value: 'contract_extension', label: 'Surat Perpanjangan Kontrak Kerja' },
+                                { value: 'permanent_confirmation', label: 'Surat Pengangkatan Karyawan Tetap' },
+                                { value: 'unsuccessful_probation', label: 'Surat Pemutusan Hubungan Kerja (Masa Percobaan)' },
+                                { value: 'end_of_contract', label: 'Surat Pemberitahuan Selesai Masa Kontrak' },
+                              ]}
                               value={
                                 contractReviewEdits[currentBatchDoc.id]?.letterIssuance ??
                                 rawCr?.letterIssuance ??
                                 'contract_extension'
                               }
-                              onChange={(e) => {
+                              onChange={(val) => {
                                 setContractReviewEdits((prev) => ({
                                   ...prev,
                                   [currentBatchDoc.id]: {
                                     ...prev[currentBatchDoc.id],
-                                    letterIssuance: e.target.value,
+                                    letterIssuance: val,
                                   },
                                 }))
                               }}
-                              className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                            >
-                              <option value="contract_extension">Surat Perpanjangan Kontrak Kerja</option>
-                              <option value="permanent_confirmation">Surat Pengangkatan Karyawan Tetap</option>
-                              <option value="unsuccessful_probation">Surat Pemutusan Hubungan Kerja (Masa Percobaan)</option>
-                              <option value="end_of_contract">Surat Pemberitahuan Selesai Masa Kontrak</option>
-                            </select>
+                            />
                           </div>
                         )}
                       </div>

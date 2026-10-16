@@ -1,7 +1,10 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition, useMemo } from 'react'
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle2,
   Clock,
   FileText,
@@ -21,6 +24,15 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { HeroSearchableSelect, HeroKpiCard } from '@/components/templates'
 import {
   Dialog,
   DialogContent,
@@ -98,6 +110,37 @@ export default function FlightRouteChangePage() {
   const [requests, setRequests] = useState<FlightRouteRequest[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  // Table sorting state
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDir === 'asc') {
+        setSortDir('desc')
+      } else {
+        setSortField(null)
+        setSortDir('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  const sortedRequests = useMemo(() => {
+    if (!sortField) return requests
+    return [...requests].sort((a, b) => {
+      let aVal = (a as any)[sortField] ?? ''
+      let bVal = (b as any)[sortField] ?? ''
+      aVal = String(aVal).toLowerCase()
+      bVal = String(bVal).toLowerCase()
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [requests, sortField, sortDir])
 
   // Create Modal state
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
@@ -298,59 +341,38 @@ export default function FlightRouteChangePage() {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="surface-module-card border-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Total Permohonan
-            </CardTitle>
-            <FileText className="size-4 text-sky-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalCount}</div>
-            <p className="text-xs text-muted-foreground">Dokumen terdaftar</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Permohonan"
+          value={totalCount}
+          tone="blue"
+          icon={<FileText className="size-5" />}
+          description="Dokumen terdaftar"
+        />
 
-        <Card className="surface-module-card border-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Proses Approval
-            </CardTitle>
-            <Clock className="size-4 text-amber-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{pendingCount}</div>
-            <p className="text-xs text-muted-foreground">Menunggu verifikasi 5-step</p>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Proses Approval"
+          value={pendingCount}
+          tone="amber"
+          icon={<Clock className="size-5" />}
+          description="Menunggu verifikasi 5-step"
+        />
 
-        <Card className="surface-module-card border-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Disetujui Penuh
-            </CardTitle>
-            <CheckCircle2 className="size-4 text-emerald-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">{approvedCount}</div>
-            <p className="text-xs text-muted-foreground">Selesai 5/5 approval</p>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Disetujui Penuh"
+          value={approvedCount}
+          tone="emerald"
+          icon={<CheckCircle2 className="size-5" />}
+          description="Selesai 5/5 approval"
+        />
 
-        <Card className="surface-module-card border-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Ditolak
-            </CardTitle>
-            <XCircle className="size-4 text-rose-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-rose-600">{rejectedCount}</div>
-            <p className="text-xs text-muted-foreground">Membutuhkan revisi</p>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Ditolak"
+          value={rejectedCount}
+          tone="rose"
+          icon={<XCircle className="size-5" />}
+          description="Membutuhkan revisi"
+        />
       </div>
 
       {/* Filter & Action Toolbar */}
@@ -373,16 +395,18 @@ export default function FlightRouteChangePage() {
 
           <div className="flex items-center gap-2">
             <Filter className="size-4 text-muted-foreground" />
-            <select
+            <HeroSearchableSelect
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none"
-            >
-              <option value="all">Semua Status</option>
-              <option value="in_progress">Proses Approval</option>
-              <option value="approved">Disetujui</option>
-              <option value="rejected">Ditolak</option>
-            </select>
+              onChange={(val: string) => setStatusFilter(val)}
+              options={[
+                { value: "all", label: "Semua Status" },
+                { value: "in_progress", label: "Proses Approval" },
+                { value: "approved", label: "Disetujui" },
+                { value: "rejected", label: "Ditolak" },
+              ]}
+              placeholder="Filter Status..."
+              className="h-9 w-[180px] text-xs"
+            />
             <Button variant="outline" size="icon" onClick={loadData} disabled={isPending}>
               <RefreshCw className={`size-4 ${isPending ? 'animate-spin' : ''}`} />
             </Button>
@@ -393,37 +417,115 @@ export default function FlightRouteChangePage() {
       {/* Main Table */}
       <Card className="surface-module-card overflow-hidden border-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-surface-container-low text-xs uppercase tracking-wider text-muted-foreground border-b border-border/40">
-              <tr>
-                <th className="px-4 py-3">No. Permohonan</th>
-                <th className="px-4 py-3">Tanggal</th>
-                <th className="px-4 py-3">Pemohon (SN)</th>
-                <th className="px-4 py-3">Section / Site</th>
-                <th className="px-4 py-3">Lokasi Origin</th>
-                <th className="px-4 py-3">Status Approval</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/30">
-              {requests.length > 0 ? (
-                requests.map((row) => (
-                  <tr key={row.id} className="hover:bg-muted/40 transition-colors">
-                    <td className="px-4 py-3 font-semibold text-sky-700">{row.requestNumber}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.requestDate}</td>
-                    <td className="px-4 py-3">
+          <Table containerClassName="rounded-none border-0 shadow-none" className="text-sm">
+            <TableHeader className="bg-surface-container-low text-xs uppercase tracking-wider text-muted-foreground border-b border-border/40">
+              <TableRow>
+                <TableHead className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('requestNumber')}
+                    className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                  >
+                    <span>No. Permohonan</span>
+                    {sortField === 'requestNumber' ? (
+                      sortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('requestDate')}
+                    className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                  >
+                    <span>Tanggal</span>
+                    {sortField === 'requestDate' ? (
+                      sortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('requestorName')}
+                    className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                  >
+                    <span>Pemohon (SN)</span>
+                    {sortField === 'requestorName' ? (
+                      sortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('sectionName')}
+                    className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                  >
+                    <span>Section / Site</span>
+                    {sortField === 'sectionName' ? (
+                      sortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('originLocation')}
+                    className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                  >
+                    <span>Lokasi Origin</span>
+                    {sortField === 'originLocation' ? (
+                      sortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('status')}
+                    className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                  >
+                    <span>Status Approval</span>
+                    {sortField === 'status' ? (
+                      sortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                    ) : (
+                      <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                    )}
+                  </button>
+                </TableHead>
+                <TableHead className="px-4 py-3 text-right">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y divide-border/30">
+              {sortedRequests.length > 0 ? (
+                sortedRequests.map((row) => (
+                  <TableRow key={row.id} className="hover:bg-muted/40 transition-colors">
+                    <TableCell className="px-4 py-3 font-semibold text-sky-700">{row.requestNumber}</TableCell>
+                    <TableCell className="px-4 py-3 text-muted-foreground">{row.requestDate}</TableCell>
+                    <TableCell className="px-4 py-3">
                       <div className="font-medium">{row.requestorName}</div>
                       <div className="text-xs text-muted-foreground">SN: {row.employeeSn || '-'}</div>
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
                       <div>{row.sectionName}</div>
                       <div className="text-xs text-muted-foreground">{row.siteName}</div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{row.originLocation}</td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-muted-foreground">{row.originLocation}</TableCell>
+                    <TableCell className="px-4 py-3">
                       {getStatusBadge(row.status, row.currentStepOrder)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
+                    </TableCell>
+                    <TableCell className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
                           size="sm"
@@ -453,18 +555,18 @@ export default function FlightRouteChangePage() {
                           <Trash2 className="size-3.5" />
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))
               ) : (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {isPending ? 'Memuat data permohonan...' : 'Belum ada permohonan perubahan rute penerbangan.'}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </Card>
 

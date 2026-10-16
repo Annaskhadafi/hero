@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Bug,
   CheckCheck,
   CheckCircle2,
@@ -30,6 +33,7 @@ import {
   XCircle,
   Building2,
 } from 'lucide-react'
+import { HeroSearchableSelect } from '@/components/templates'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { PtwDocumentModal } from '@/components/ptw-document-modal'
@@ -743,6 +747,37 @@ export function PtwListingClient({
       return true
     })
   }, [rows, searchQuery, selectedTypes, selectedStatuses, selectedRisks, selectedLocations])
+
+  const [ptwSortField, setPtwSortField] = useState<string | null>(null)
+  const [ptwSortDir, setPtwSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handlePtwSort = (field: string) => {
+    if (ptwSortField === field) {
+      if (ptwSortDir === 'asc') setPtwSortDir('desc')
+      else { setPtwSortField(null); setPtwSortDir('asc') }
+    } else {
+      setPtwSortField(field)
+      setPtwSortDir('asc')
+    }
+  }
+
+  const sortedRows = useMemo(() => {
+    if (!ptwSortField) return filteredRows
+    return [...filteredRows].sort((a, b) => {
+      let aVal = (a as any)[ptwSortField] ?? ''
+      let bVal = (b as any)[ptwSortField] ?? ''
+      if (ptwSortField === 'startAt' || ptwSortField === 'endAt' || ptwSortField === 'createdAt') {
+        aVal = aVal ? new Date(aVal).getTime() : 0
+        bVal = bVal ? new Date(bVal).getTime() : 0
+      } else {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+      }
+      if (aVal < bVal) return ptwSortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return ptwSortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredRows, ptwSortField, ptwSortDir])
 
   const employeeOptions = useMemo(() => {
     return employees.map((e) => ({
@@ -1767,30 +1802,55 @@ export function PtwListingClient({
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-9 pl-3.5 py-2.5">
                   <Checkbox
-                    checked={selectedIds.length === filteredRows.length && filteredRows.length > 0}
+                    checked={selectedIds.length === sortedRows.length && sortedRows.length > 0}
                     onCheckedChange={(checked) => {
-                      setSelectedIds(checked ? filteredRows.map((r) => r.id) : [])
+                      setSelectedIds(checked ? sortedRows.map((r) => r.id) : [])
                     }}
                     aria-label="Pilih semua baris"
                   />
                 </TableHead>
-                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 min-w-[140px] max-w-[180px]">PERMIT INFO</TableHead>
-                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 min-w-[150px] max-w-[200px]">TYPE & LOCATION</TableHead>
-                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 whitespace-nowrap">DURATION</TableHead>
-                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 min-w-[160px] max-w-[220px]">PELAKSANA KERJA</TableHead>
-                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 whitespace-nowrap">STATUS</TableHead>
+                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 min-w-[140px] max-w-[180px]">
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-[10.5px] font-bold hover:bg-transparent" onClick={() => handlePtwSort('permitNumber')}>
+                    PERMIT INFO
+                    {ptwSortField === 'permitNumber' ? (ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 min-w-[150px] max-w-[200px]">
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-[10.5px] font-bold hover:bg-transparent" onClick={() => handlePtwSort('permitType')}>
+                    TYPE & LOCATION
+                    {ptwSortField === 'permitType' ? (ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 whitespace-nowrap">
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-[10.5px] font-bold hover:bg-transparent" onClick={() => handlePtwSort('startAt')}>
+                    DURATION
+                    {ptwSortField === 'startAt' ? (ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 min-w-[160px] max-w-[220px]">
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-[10.5px] font-bold hover:bg-transparent" onClick={() => handlePtwSort('applicantName')}>
+                    PELAKSANA KERJA
+                    {ptwSortField === 'applicantName' ? (ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 whitespace-nowrap">
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-[10.5px] font-bold hover:bg-transparent" onClick={() => handlePtwSort('status')}>
+                    STATUS
+                    {ptwSortField === 'status' ? (ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
                 <TableHead className="font-bold text-slate-600 text-[10.5px] uppercase tracking-wider py-2.5 text-right whitespace-nowrap">ACTIONS</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRows.length === 0 ? (
+              {sortedRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="py-8 text-center text-xs text-slate-500">
                     Belum ada data Izin Kerja PTW.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRows.map((row) => {
+                sortedRows.map((row) => {
                   const applicantName = row.applicantName || '—'
                   const initials = applicantName === '—'
                     ? '—'
@@ -2557,16 +2617,17 @@ export function PtwListingClient({
             {/* Field: Risk Level */}
             <div className="space-y-1.5 md:col-span-2">
               <Label className="text-xs font-semibold text-slate-700">Risk level</Label>
-              <select
-                className="w-full h-10 rounded-md border border-slate-200 bg-slate-50/70 px-3 py-1 text-xs shadow-sm font-semibold"
+              <HeroSearchableSelect
                 value={createForm.riskLevel}
-                onChange={(e) => setCreateForm({ ...createForm, riskLevel: e.target.value })}
-              >
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
+                onChange={(val) => setCreateForm({ ...createForm, riskLevel: val || 'Low' })}
+                options={[
+                  { value: 'Low', label: 'Low', badge: 'Low', badgeColor: 'bg-emerald-50 text-emerald-700' },
+                  { value: 'Medium', label: 'Medium', badge: 'Medium', badgeColor: 'bg-amber-50 text-amber-700' },
+                  { value: 'High', label: 'High', badge: 'High', badgeColor: 'bg-rose-50 text-rose-700' },
+                  { value: 'Critical', label: 'Critical', badge: 'Critical', badgeColor: 'bg-purple-50 text-purple-700' },
+                ]}
+                placeholder="Pilih Risk Level"
+              />
             </div>
 
             {/* Field APD Wajib */}

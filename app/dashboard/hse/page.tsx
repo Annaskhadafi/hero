@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { AlertCircle, ClipboardList, Search, ShieldAlert, TriangleAlert } from 'lucide-react'
+import { HeroKpiCard } from '@/components/templates'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { AdminTableCard } from '@/components/admin-table-card'
@@ -47,28 +48,28 @@ function HseMetricCards({
       value: observations.length,
       meta: 'Seluruh temuan lapangan',
       Icon: ClipboardList,
-      accent: 'bg-primary/12 text-primary ring-primary/15',
+      tone: 'blue' as const,
     },
     {
       label: 'Observasi Terbuka',
       value: observations.filter((row) => row.status === 'open').length,
       meta: 'Perlu closure action',
       Icon: AlertCircle,
-      accent: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
+      tone: 'amber' as const,
     },
     {
       label: 'Total Insiden',
       value: incidents.length,
       meta: 'Insiden yang tercatat',
       Icon: ShieldAlert,
-      accent: 'bg-tertiary-container text-on-tertiary-container ring-tertiary/15',
+      tone: 'rose' as const,
     },
     {
       label: 'Insiden Investigasi',
       value: incidents.filter((row) => row.status === 'investigating').length,
       meta: 'Sedang dalam penyelidikan',
       Icon: Search,
-      accent: 'bg-violet-100 text-violet-700 ring-violet-200',
+      tone: 'purple' as const,
     },
     {
       label: 'Temuan Kritis',
@@ -76,32 +77,21 @@ function HseMetricCards({
         .length,
       meta: 'Severity tinggi & kritis',
       Icon: TriangleAlert,
-      accent: 'bg-amber-100 text-amber-700 ring-amber-200',
+      tone: 'rose' as const,
     },
   ]
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
       {items.map((item) => (
-        <div
+        <HeroKpiCard
           key={item.label}
-          className="surface-module-card flex items-start justify-between rounded-[1.05rem] px-4 py-4"
-        >
-          <div className="min-w-0">
-            <p className="text-muted-foreground text-[0.65rem] font-bold tracking-[0.12em] uppercase">
-              {item.label}
-            </p>
-            <p className="font-display text-foreground mt-1 text-[1.8rem] leading-none font-bold">
-              {item.value}
-            </p>
-            <p className="text-muted-foreground mt-1 truncate text-xs">{item.meta}</p>
-          </div>
-          <div
-            className={`grid size-10 shrink-0 place-items-center rounded-xl ring-1 ${item.accent}`}
-          >
-            <item.Icon className="size-5" aria-hidden="true" />
-          </div>
-        </div>
+          title={item.label}
+          value={item.value}
+          description={item.meta}
+          icon={<item.Icon className="size-5" />}
+          tone={item.tone}
+        />
       ))}
     </div>
   )

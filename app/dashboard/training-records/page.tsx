@@ -14,6 +14,7 @@ import { TrainingRecordImportExport } from "@/components/training-record-import-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { HeroKpiCard } from "@/components/templates";
 import { TrainingGroupedTable } from "@/components/training-grouped-table";
 import { getOperationalCrudOptions, getTrainingRecordPageData, getSioCertificationPageData } from "@/lib/hero-admin";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
@@ -362,43 +363,54 @@ export default async function TrainingRecordsPage({
         </TabsContent>
 
         <TabsContent value="dashboard" className="space-y-6 outline-none">
-          {/* Dashboard Quick Stats Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <Award className="size-6 text-emerald-500" />
-                <Badge className="bg-emerald-500/10 text-emerald-600 border-0 hover:bg-emerald-500/10">Aktif</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{validRecordsCount}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Sertifikat Valid & Aktif</p>
-            </Card>
+          {/* Dashboard Quick Stats Grid (HeroKpiCard Standardized) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+            <HeroKpiCard
+              title="Sertifikat Valid"
+              value={validRecordsCount}
+              unit="sertifikat"
+              icon={<Award className="size-5" />}
+              watermarkIcon={<Award className="size-16" />}
+              tone="emerald"
+              variant="colorful"
+              badge="Aktif"
+              description="Sertifikat valid & aktif"
+            />
 
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <AlertTriangle className="size-6 text-amber-500" />
-                <Badge className="bg-amber-500/10 text-amber-600 border-0 hover:bg-amber-500/10">30 Hari</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{expiringSoon}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Segera Expired (Jangka Pendek)</p>
-            </Card>
+            <HeroKpiCard
+              title="Segera Expired"
+              value={expiringSoon}
+              unit="sertifikat"
+              icon={<AlertTriangle className="size-5" />}
+              watermarkIcon={<AlertTriangle className="size-16" />}
+              tone="amber"
+              variant="colorful"
+              badge="30 Hari"
+              description="Segera habis dalam 30 hari"
+            />
 
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <AlertTriangle className="size-6 text-rose-500" />
-                <Badge className="bg-rose-500/10 text-rose-600 border-0 hover:bg-rose-500/10">Expired</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{expiredRecords.length}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Sertifikat Habis Masa Berlaku</p>
-            </Card>
+            <HeroKpiCard
+              title="Habis Masa Berlaku"
+              value={expiredRecords.length}
+              unit="sertifikat"
+              icon={<AlertTriangle className="size-5" />}
+              watermarkIcon={<AlertTriangle className="size-16" />}
+              tone="rose"
+              variant="colorful"
+              badge={expiredRecords.length > 0 ? "Expired" : undefined}
+              description="Sertifikat habis masa berlaku"
+            />
 
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <Layers className="size-6 text-primary" />
-                <Badge className="bg-primary/10 text-primary border-0 hover:bg-primary/10">Total</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{filteredRows.length}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Total Training Record</p>
-            </Card>
+            <HeroKpiCard
+              title="Total Arsip Training"
+              value={filteredRows.length}
+              unit="arsip"
+              icon={<Layers className="size-5" />}
+              watermarkIcon={<Layers className="size-16" />}
+              tone="blue"
+              variant="colorful"
+              description="Total training record terdata"
+            />
           </div>
 
           {/* Sources and Popular Trainings */}
@@ -538,23 +550,61 @@ export default async function TrainingRecordsPage({
         </TabsContent>
 
         <TabsContent value="chitra-learning" className="space-y-6 outline-none">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              { label: "Total Peserta", value: lmsUniqueEmployees, icon: UserCheck, color: "text-blue-600", bg: "bg-blue-50" },
-              { label: "Lulus", value: lmsPassed, icon: CheckCircle2, color: "text-emerald-600", bg: "bg-emerald-50" },
-              { label: "Sedang Berjalan", value: lmsInProgress, icon: Clock3, color: "text-amber-600", bg: "bg-amber-50" },
-              { label: "Belum Lulus", value: lmsFailed, icon: XCircle, color: "text-rose-600", bg: "bg-rose-50" },
-              { label: "Rata-rata Post-test", value: `${lmsAverageScore}%`, icon: GraduationCap, color: "text-violet-600", bg: "bg-violet-50" },
-            ].map(({ label, value, icon: Icon, color, bg }) => (
-              <Card key={label} className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
-                <div className="flex items-center justify-between">
-                  <div className={`rounded-xl p-2.5 ${bg}`}><Icon className={`size-5 ${color}`} /></div>
-                  <span className="text-xs font-medium text-muted-foreground">LMS</span>
-                </div>
-                <p className="mt-4 text-2xl font-bold text-foreground">{value}</p>
-                <p className="mt-1 text-xs font-medium text-muted-foreground">{label}</p>
-              </Card>
-            ))}
+          {/* LMS Metric Cards (HeroKpiCard Standardized) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+            <HeroKpiCard
+              title="Total Peserta"
+              value={lmsUniqueEmployees}
+              unit="peserta"
+              icon={<UserCheck className="size-5 text-white" />}
+              watermarkIcon={<UserCheck className="size-16" />}
+              tone="blue"
+              variant="colorful"
+              description="Total peserta LMS terdaftar"
+            />
+
+            <HeroKpiCard
+              title="Lulus"
+              value={lmsPassed}
+              unit="peserta"
+              icon={<CheckCircle2 className="size-5 text-white" />}
+              watermarkIcon={<CheckCircle2 className="size-16" />}
+              tone="emerald"
+              variant="colorful"
+              description="Peserta lulus sertifikasi"
+            />
+
+            <HeroKpiCard
+              title="Sedang Berjalan"
+              value={lmsInProgress}
+              unit="peserta"
+              icon={<Clock3 className="size-5 text-white" />}
+              watermarkIcon={<Clock3 className="size-16" />}
+              tone="amber"
+              variant="colorful"
+              description="Dalam progres pembelajaran"
+            />
+
+            <HeroKpiCard
+              title="Belum Lulus"
+              value={lmsFailed}
+              unit="peserta"
+              icon={<XCircle className="size-5 text-white" />}
+              watermarkIcon={<XCircle className="size-16" />}
+              tone="rose"
+              variant="colorful"
+              description="Perlu remedial post-test"
+            />
+
+            <HeroKpiCard
+              title="Rata-rata Post-test"
+              value={`${lmsAverageScore}%`}
+              icon={<GraduationCap className="size-5 text-white" />}
+              watermarkIcon={<GraduationCap className="size-16" />}
+              tone="purple"
+              variant="colorful"
+              description="Rata-rata evaluasi post-test"
+            />
           </div>
 
           <div className="grid gap-5 lg:grid-cols-12">

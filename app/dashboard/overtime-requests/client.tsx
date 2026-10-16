@@ -81,6 +81,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { HeroSearchableSelect } from '@/components/templates'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
@@ -4029,37 +4030,43 @@ export function OvertimeListingClient({
                         />
                       </div>
                       <div className="col-span-2">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold shadow-2xs"
+                        <HeroSearchableSelect
+                          options={[
+                            { value: 'DS', label: 'Shift DS (Day)' },
+                            { value: 'NS', label: 'Shift NS (Night)' },
+                            { value: 'ALL', label: 'Shift ALL' },
+                          ]}
                           value={w.shiftCode}
-                          onChange={(e) => updateWorkerRow(idx, 'shiftCode', e.target.value)}
-                        >
-                          <option value="DS">Shift DS (Day)</option>
-                          <option value="NS">Shift NS (Night)</option>
-                          <option value="ALL">Shift ALL</option>
-                        </select>
+                          onChange={(val) => updateWorkerRow(idx, 'shiftCode', String(val))}
+                          placeholder="Shift"
+                          className="w-full text-[11px]"
+                        />
                       </div>
                       <div className="col-span-2">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold shadow-2xs"
+                        <HeroSearchableSelect
+                          options={[
+                            { value: '5:2', label: '5:2' },
+                            { value: '6:1', label: '6:1' },
+                            { value: '10:2', label: '10:2' },
+                          ]}
                           value={w.rosterType}
-                          onChange={(e) => updateWorkerRow(idx, 'rosterType', e.target.value)}
-                        >
-                          <option value="5:2">5:2</option>
-                          <option value="6:1">6:1</option>
-                          <option value="10:2">10:2</option>
-                        </select>
+                          onChange={(val) => updateWorkerRow(idx, 'rosterType', String(val))}
+                          placeholder="Roster"
+                          className="w-full text-[11px]"
+                        />
                       </div>
                       <div className="col-span-2">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold shadow-2xs"
+                        <HeroSearchableSelect
+                          options={[
+                            { value: 'after_mandatory_ot', label: 'After Mandatory OT' },
+                            { value: 'off_day_ot', label: 'Off Day OT' },
+                            { value: 'emergency_callout', label: 'Emergency Callout' },
+                          ]}
                           value={w.category}
-                          onChange={(e) => updateWorkerRow(idx, 'category', e.target.value)}
-                        >
-                          <option value="after_mandatory_ot">After Mandatory OT</option>
-                          <option value="off_day_ot">Off Day OT</option>
-                          <option value="emergency_callout">Emergency Callout</option>
-                        </select>
+                          onChange={(val) => updateWorkerRow(idx, 'category', String(val))}
+                          placeholder="Kategori"
+                          className="w-full text-[11px]"
+                        />
                       </div>
                       <div className="col-span-1 text-center">
                         <Button
@@ -4097,10 +4104,15 @@ export function OvertimeListingClient({
             {/* 1.5. SOURCE MODE SELECTION (SINKRON DENGAN MOBILE & DAILY ACTIVITY) */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
-              <select
+              <HeroSearchableSelect
+                options={[
+                  { value: 'self_input', label: 'Self-input activity (Kamus Aktivitas)' },
+                  { value: 'assigned', label: 'Assigned activity (Penugasan)' },
+                  { value: 'custom', label: 'Custom activity (Bebas / Kustom)' },
+                ]}
                 value={createForm.sourceMode || 'self_input'}
-                onChange={(e) => {
-                  const mode = e.target.value as 'self_input' | 'assigned' | 'custom'
+                onChange={(val) => {
+                  const mode = String(val) as 'self_input' | 'assigned' | 'custom'
                   setCreateForm((p) => ({
                     ...p,
                     sourceMode: mode,
@@ -4138,12 +4150,9 @@ export function OvertimeListingClient({
                           : p.lineItems,
                   }))
                 }}
-                className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="self_input">Self-input activity (Kamus Aktivitas)</option>
-                <option value="assigned">Assigned activity (Penugasan)</option>
-                <option value="custom">Custom activity (Bebas / Kustom)</option>
-              </select>
+                placeholder="Pilih Source Mode"
+                className="w-full text-xs"
+              />
             </div>
 
             {/* 3. B. Line Items (Aktivitas Pekerjaan Lembur) - Adaptive per Source Mode */}

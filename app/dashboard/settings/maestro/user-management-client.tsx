@@ -38,6 +38,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { HeroSearchableSelect, HeroKpiCard } from '@/components/templates'
 import { MultiSelectSearch } from '@/components/ui/multi-select-search'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
@@ -429,67 +430,52 @@ export function MaestroUserManagementClient({
 
   return (
     <div className="space-y-6">
-      {/* 1. KPI Statistics Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Total Pengguna</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-              <Users className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-2xl font-bold tracking-tight text-slate-900">
-              {totalCount}
-            </span>
-            <span className="text-xs text-slate-400">akun</span>
-          </div>
-        </div>
+      {/* 1. KPI Statistics Cards (HeroKpiCard Standardized) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Pengguna"
+          value={totalCount}
+          unit="akun"
+          icon={<Users className="size-5" />}
+          watermarkIcon={<Users className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description="Total akun terdaftar di portal"
+        />
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Pengguna Aktif</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-              <UserCheck className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-2xl font-bold tracking-tight text-emerald-600">
-              {activeCount}
-            </span>
-            <span className="text-xs text-slate-400">bisa login</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Pengguna Aktif"
+          value={activeCount}
+          unit="akun"
+          icon={<UserCheck className="size-5" />}
+          watermarkIcon={<UserCheck className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Akun aktif berhak akses login"
+        />
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Nonaktif</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-              <XCircle className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-2xl font-bold tracking-tight text-slate-600">
-              {inactiveCount}
-            </span>
-            <span className="text-xs text-slate-400">terkunci</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Nonaktif"
+          value={inactiveCount}
+          unit="akun"
+          icon={<XCircle className="size-5" />}
+          watermarkIcon={<XCircle className="size-16" />}
+          tone="slate"
+          variant="colorful"
+          badge={inactiveCount > 0 ? 'Terkunci' : undefined}
+          description="Akun dinonaktifkan sistem"
+        />
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500">Perusahaan</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
-              <Building2 className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-display text-2xl font-bold tracking-tight text-slate-900">
-              {uniqueCompanies}
-            </span>
-            <span className="text-xs text-slate-400">terhubung</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Perusahaan"
+          value={uniqueCompanies}
+          unit="mitra"
+          icon={<Building2 className="size-5" />}
+          watermarkIcon={<Building2 className="size-16" />}
+          tone="purple"
+          variant="colorful"
+          description="Perusahaan mitra terhubung"
+        />
       </div>
 
       {/* 2. Main Table Shell Card */}
@@ -572,31 +558,33 @@ export function MaestroUserManagementClient({
               />
             </div>
 
-            <select
+            <HeroSearchableSelect
+              placeholder="Semua Perusahaan"
+              options={[
+                { value: "all", label: "Semua Perusahaan" },
+                ...customers.map((c) => ({
+                  value: c.name,
+                  label: c.name,
+                })),
+              ]}
               value={customerFilter}
-              onChange={(e) => setCustomerFilter(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="all">Semua Perusahaan</option>
-              {customers.map((c) => (
-                <option key={c.id ?? c.customerCode} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setCustomerFilter(val)}
+              width="w-48"
+            />
 
-            <select
+            <HeroSearchableSelect
+              placeholder="Semua Role"
+              options={[
+                { value: "all", label: "Semua Role" },
+                ...roles.map((r) => ({
+                  value: r.name,
+                  label: r.name,
+                })),
+              ]}
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 shadow-sm focus:border-indigo-500 focus:outline-none"
-            >
-              <option value="all">Semua Role</option>
-              {roles.map((r) => (
-                <option key={r.code} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setRoleFilter(val)}
+              width="w-44"
+            />
           </div>
 
           <div className="flex items-center gap-2">
@@ -883,19 +871,15 @@ export function MaestroUserManagementClient({
                 <Label htmlFor="create-role" className="text-xs font-semibold text-slate-700">
                   Role Akses <span className="text-rose-500">*</span>
                 </Label>
-                <select
-                  id="create-role"
+                <HeroSearchableSelect
+                  placeholder="Pilih Role Akses..."
+                  options={roles.map((r) => ({
+                    value: r.code,
+                    label: r.name,
+                  }))}
                   value={formRoleCode}
-                  onChange={(e) => setFormRoleCode(e.target.value)}
-                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
-                  required
-                >
-                  {roles.map((r) => (
-                    <option key={r.code} value={r.code}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFormRoleCode(val)}
+                />
               </div>
             </div>
 
@@ -1074,19 +1058,15 @@ export function MaestroUserManagementClient({
                 <Label htmlFor="edit-role" className="text-xs font-semibold text-slate-700">
                   Role Akses <span className="text-rose-500">*</span>
                 </Label>
-                <select
-                  id="edit-role"
+                <HeroSearchableSelect
+                  placeholder="Pilih Role Akses..."
+                  options={roles.map((r) => ({
+                    value: r.code,
+                    label: r.name,
+                  }))}
                   value={editRoleCode}
-                  onChange={(e) => setEditRoleCode(e.target.value)}
-                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
-                  required
-                >
-                  {roles.map((r) => (
-                    <option key={r.code} value={r.code}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setEditRoleCode(val)}
+                />
               </div>
             </div>
 

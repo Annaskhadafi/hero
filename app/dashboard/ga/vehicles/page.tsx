@@ -36,7 +36,7 @@ export default async function VehiclesDashboardPage() {
       .orderBy(masterDepartments.name),
   ])
 
-  const canCreate = permission.canCreate || isSuper
+  const canCreate = permission.canEdit || isSuper
   const canEdit = permission.canEdit || isSuper
   const canDelete = permission.canDelete || isSuper
 

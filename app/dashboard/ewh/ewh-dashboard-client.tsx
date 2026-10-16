@@ -94,7 +94,11 @@ import {
   Users,
   Wrench,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
+import { HeroSearchableSelect } from '@/components/templates'
 
 interface EwhRow {
   employeeId: number
@@ -820,6 +824,45 @@ export function EwhDashboardClient({
     })
   }, [employeeAggregates, search, sectionFilter])
 
+  const [empSortField, setEmpSortField] = useState<string>("avgEwh")
+  const [empSortDir, setEmpSortDir] = useState<"asc" | "desc">("desc")
+
+  const handleEmpSort = (field: string) => {
+    if (empSortField === field) {
+      setEmpSortDir(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setEmpSortField(field)
+      setEmpSortDir("asc")
+    }
+  }
+
+  const sortedEmployees = useMemo(() => {
+    return [...filteredEmployees].sort((a, b) => {
+      let aVal = (a as any)[empSortField]
+      let bVal = (b as any)[empSortField]
+      if (empSortField === "workDays" || empSortField === "totalEffectiveMinutes" || empSortField === "totalOvertimeMinutes" || empSortField === "avgEwh") {
+        aVal = Number(aVal || 0)
+        bVal = Number(bVal || 0)
+      } else {
+        aVal = String(aVal || "").toLowerCase()
+        bVal = String(bVal || "").toLowerCase()
+      }
+      if (aVal < bVal) return empSortDir === "asc" ? -1 : 1
+      if (aVal > bVal) return empSortDir === "asc" ? 1 : -1
+      return 0
+    })
+  }, [filteredEmployees, empSortField, empSortDir])
+
+  const siteSelectOptions = useMemo(() => [
+    { value: "ALL", label: "Semua Site" },
+    ...allSites.map((s) => ({ value: String(s.id), label: s.name }))
+  ], [allSites])
+
+  const deptSelectOptions = useMemo(() => [
+    { value: "ALL", label: "Semua Departemen" },
+    ...allDepartments.map((d) => ({ value: String(d.id), label: d.name }))
+  ], [allDepartments])
+
   // Aggregate EWH per Team
   const teamAggregates = useMemo(() => {
     return teams.map((team) => {
@@ -1340,37 +1383,23 @@ export function EwhDashboardClient({
         {/* Global Controls */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           {/* Site Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
-            <MapPin className="size-3.5 text-slate-500" />
-            <select
+          <div className="w-44">
+            <HeroSearchableSelect
               value={siteId === 'ALL' || !siteId ? 'ALL' : String(siteId)}
-              onChange={(e) => handleSiteChange(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-700 outline-hidden cursor-pointer"
-            >
-              <option value="ALL">Semua Site</option>
-              {allSites.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val: any) => handleSiteChange(val || 'ALL')}
+              options={siteSelectOptions}
+              placeholder="Semua Site"
+            />
           </div>
 
           {/* Department Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
-            <Building2 className="size-3.5 text-slate-500" />
-            <select
+          <div className="w-48">
+            <HeroSearchableSelect
               value={departmentId !== null && departmentId !== undefined ? String(departmentId) : 'ALL'}
-              onChange={(e) => handleDepartmentChange(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-700 outline-hidden cursor-pointer"
-            >
-              <option value="ALL">Semua Departemen</option>
-              {allDepartments.map((d) => (
-                <option key={d.id} value={String(d.id)}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val: any) => handleDepartmentChange(val || 'ALL')}
+              options={deptSelectOptions}
+              placeholder="Semua Departemen"
+            />
           </div>
 
           {/* Period Selector */}
@@ -3039,18 +3068,130 @@ export function EwhDashboardClient({
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
                 <tr>
                   <th className="py-2.5 px-3">No</th>
-                  <th className="py-2.5 px-3">Nama Karyawan</th>
-                  <th className="py-2.5 px-3">SN</th>
-                  <th className="py-2.5 px-3">Section</th>
-                  <th className="py-2.5 px-3 text-center">Hari Hadir</th>
-                  <th className="py-2.5 px-3 text-right">Jam Efektif</th>
-                  <th className="py-2.5 px-3 text-right">Jam Lembur</th>
-                  <th className="py-2.5 px-3 text-right">Rata-rata EWH</th>
-                  <th className="py-2.5 px-3 text-center">Kategori</th>
+                  <th className="py-2.5 px-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('employeeName')}
+                    >
+                      Nama Karyawan
+                      {empSortField === 'employeeName' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('employeeSn')}
+                    >
+                      SN
+                      {empSortField === 'employeeSn' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('section')}
+                    >
+                      Section
+                      {empSortField === 'section' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('workDays')}
+                    >
+                      Hari Hadir
+                      {empSortField === 'workDays' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-mr-3 ml-auto h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('totalEffectiveMinutes')}
+                    >
+                      Jam Efektif
+                      {empSortField === 'totalEffectiveMinutes' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-mr-3 ml-auto h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('totalOvertimeMinutes')}
+                    >
+                      Jam Lembur
+                      {empSortField === 'totalOvertimeMinutes' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-mr-3 ml-auto h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('avgEwh')}
+                    >
+                      Rata-rata EWH
+                      {empSortField === 'avgEwh' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs font-bold hover:bg-transparent"
+                      onClick={() => handleEmpSort('ewhClass')}
+                    >
+                      Kategori
+                      {empSortField === 'ewhClass' ? (
+                        empSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredEmployees.map((emp, idx) => (
+                {sortedEmployees.map((emp, idx) => (
                   <tr key={emp.employeeId} className="hover:bg-slate-50/70">
                     <td className="py-2 px-3 text-slate-400">{idx + 1}</td>
                     <td className="py-2 px-3 font-semibold text-slate-900">{emp.employeeName}</td>

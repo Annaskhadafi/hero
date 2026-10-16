@@ -36,6 +36,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { HeroKpiCard } from '@/components/templates'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -302,110 +303,62 @@ export function UtilitiesClientDashboard({
         </div>
       )}
 
-      {/* ── 5 METRIC SUMMARY CARDS (KPIS) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        {/* Card 1: Total Output Utilitas */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Total Output Utilitas
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
-              <Sparkles className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialData.kpis.totalOutput.toLocaleString('id-ID')}
-            </div>
-            <span className="text-[11px] font-semibold text-sky-700 mt-0.5 block">
-              Ban / Satuan Output
-            </span>
-          </div>
-        </div>
+      {/* ── 5 METRIC SUMMARY CARDS (KPIS - HeroKpiCard Standardized) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Output Utilitas"
+          value={initialData.kpis.totalOutput.toLocaleString('id-ID')}
+          unit="ban"
+          icon={<Sparkles className="size-5" />}
+          watermarkIcon={<Sparkles className="size-16" />}
+          tone="cyan"
+          variant="colorful"
+          description="Total output pekerjaan selesai"
+        />
 
-        {/* Card 2: Total Durasi Jam */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Durasi Operasional
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialData.kpis.totalDurationHours}
-              <span className="text-sm font-sans font-bold text-slate-500 ml-1">Jam</span>
-            </div>
-            <span className="text-[11px] font-semibold text-emerald-700 mt-0.5 block">
-              Total Jam Pelaksanaan
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Durasi Operasional"
+          value={initialData.kpis.totalDurationHours}
+          unit="Jam"
+          icon={<Clock className="size-5" />}
+          watermarkIcon={<Clock className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Total jam pelaksanaan kerja"
+        />
 
-        {/* Card 3: Rata-rata Output/Hari */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Rata-rata Output / Hari
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialData.kpis.averageOutputPerDay}
-            </div>
-            <span className="text-[11px] font-semibold text-blue-700 mt-0.5 block">
-              Produktivitas Harian
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Rata-rata Output / Hari"
+          value={initialData.kpis.averageOutputPerDay}
+          unit="output/hari"
+          icon={<TrendingUp className="size-5" />}
+          watermarkIcon={<TrendingUp className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description="Tingkat produktivitas harian"
+        />
 
-        {/* Card 4: Unit Tertangani */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Unit Tertangani
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
-              <Truck className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialData.kpis.unitsHandled}
-              <span className="text-sm font-sans font-bold text-slate-500 ml-1">Unit</span>
-            </div>
-            <span className="text-[11px] font-semibold text-amber-700 mt-0.5 block">
-              Dump Truck &amp; Support
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Unit Tertangani"
+          value={initialData.kpis.unitsHandled}
+          unit="unit"
+          icon={<Truck className="size-5" />}
+          watermarkIcon={<Truck className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          description="Dump truck & support unit"
+        />
 
-        {/* Card 5: Teknisi Aktif */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between col-span-2 lg:col-span-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Teknisi Bertugas
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center border border-violet-100">
-              <Users className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono tracking-tight">
-              {initialData.kpis.techniciansCount}
-              <span className="text-sm font-sans font-bold text-slate-500 ml-1">Orang</span>
-            </div>
-            <span className="text-[11px] font-semibold text-violet-700 mt-0.5 block">
-              Serviceman &amp; Mekanik
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Teknisi Bertugas"
+          value={initialData.kpis.techniciansCount}
+          unit="orang"
+          icon={<Users className="size-5" />}
+          watermarkIcon={<Users className="size-16" />}
+          tone="purple"
+          variant="colorful"
+          description="Serviceman & mekanik aktif"
+        />
       </div>
 
       {/* ── MAIN BAR CHART: UTILITIES SITE (EXCEL REPLICA) ── */}

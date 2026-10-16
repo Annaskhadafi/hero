@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { IconMail, IconPlus, IconTrash, IconSettings, IconHistory, IconExternalLink, IconEye, IconCode } from "@tabler/icons-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { saveHcEmailTemplate, deleteHcEmailTemplate, getHcEmailDeliveryLogs, ensureDefaultTemplates } from "@/app/actions/hc-email-templates";
 import { getAvailablePlaceholders } from "@/lib/hc-email-utils";
 import Link from "next/link";
@@ -22,6 +23,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { HeroSearchableSelect } from "@/components/templates";
 
 const TEMPLATE_TYPES = [
   { value: "interview_invitation", label: "Interview Invitation" },
@@ -73,6 +75,61 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
   }, []);
   const [form, setForm] = useState({ name: "", type: "interview_invitation", subject: "", body: DEFAULT_BODY, format: "html" });
   const [showPreview, setShowPreview] = useState(false);
+
+  const [templateSortField, setTemplateSortField] = useState<string | null>(null);
+  const [templateSortDir, setTemplateSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleTemplateSort = (field: string) => {
+    if (templateSortField === field) {
+      if (templateSortDir === 'asc') setTemplateSortDir('desc');
+      else { setTemplateSortField(null); setTemplateSortDir('asc'); }
+    } else {
+      setTemplateSortField(field);
+      setTemplateSortDir('asc');
+    }
+  };
+
+  const sortedTemplates = useMemo<HcEmailTemplate[]>(() => {
+    if (!templateSortField) return templates;
+    return [...templates].sort((a, b) => {
+      const aVal = String((a as any)[templateSortField] ?? '').toLowerCase();
+      const bVal = String((b as any)[templateSortField] ?? '').toLowerCase();
+      if (aVal < bVal) return templateSortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return templateSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [templates, templateSortField, templateSortDir]);
+
+  const [logSortField, setLogSortField] = useState<string | null>(null);
+  const [logSortDir, setLogSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleLogSort = (field: string) => {
+    if (logSortField === field) {
+      if (logSortDir === 'asc') setLogSortDir('desc');
+      else { setLogSortField(null); setLogSortDir('asc'); }
+    } else {
+      setLogSortField(field);
+      setLogSortDir('asc');
+    }
+  };
+
+  const sortedLogs = useMemo(() => {
+    if (!logSortField) return logs;
+    return [...logs].sort((a, b) => {
+      let aVal = (a as any)[logSortField] ?? '';
+      let bVal = (b as any)[logSortField] ?? '';
+      if (logSortField === 'sentAt' || logSortField === 'createdAt') {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
+      } else {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+      }
+      if (aVal < bVal) return logSortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return logSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [logs, logSortField, logSortDir]);
 
   const openEdit = (t?: HcEmailTemplate) => {
     if (t) {
@@ -144,19 +201,44 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
             <Table>
               <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Format</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleTemplateSort('name')}>
+                    Name
+                    {templateSortField === 'name' ? (templateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleTemplateSort('type')}>
+                    Type
+                    {templateSortField === 'type' ? (templateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleTemplateSort('format')}>
+                    Format
+                    {templateSortField === 'format' ? (templateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleTemplateSort('subject')}>
+                    Subject
+                    {templateSortField === 'subject' ? (templateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleTemplateSort('isActive')}>
+                    Status
+                    {templateSortField === 'isActive' ? (templateSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                  </Button>
+                </TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
               </TableHeader>
               <TableBody>
-                {templates.length === 0 && (
+                {sortedTemplates.length === 0 && (
                   <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">No email templates yet. Create one to get started.</TableCell></TableRow>
                 )}
-                {templates.map(t => (
+                {sortedTemplates.map(t => (
                   <TableRow key={t.id}>
                     <TableCell className="font-medium">{t.name}</TableCell>
                     <TableCell><Badge variant="outline">{TEMPLATE_TYPES.find(tt => tt.value === t.type)?.label || t.type}</Badge></TableCell>
@@ -205,18 +287,43 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>To</TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Sent At</TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleLogSort('toEmail')}>
+                      To
+                      {logSortField === 'toEmail' ? (logSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleLogSort('templateCode')}>
+                      Template
+                      {logSortField === 'templateCode' ? (logSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleLogSort('subject')}>
+                      Subject
+                      {logSortField === 'subject' ? (logSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleLogSort('status')}>
+                      Status
+                      {logSortField === 'status' ? (logSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleLogSort('sentAt')}>
+                      Sent At
+                      {logSortField === 'sentAt' ? (logSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                    </Button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.length === 0 && (
+                {sortedLogs.length === 0 && (
                   <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">No delivery logs yet. Emails sent via HC templates will appear here.</TableCell></TableRow>
                 )}
-                {logs.map(log => (
+                {sortedLogs.map(log => (
                   <TableRow key={log.id}>
                     <TableCell className="font-medium">{log.toEmail}</TableCell>
                     <TableCell><Badge variant="outline" className="text-xs">{log.templateCode}</Badge></TableCell>
@@ -251,18 +358,24 @@ export function HcEmailTemplatesClient({ initialTemplates }: Props) {
               </div>
               <div className="space-y-2">
                 <Label>Type <span className="text-destructive">*</span></Label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-                  {TEMPLATE_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
-                </select>
+                <HeroSearchableSelect
+                  value={form.type}
+                  onChange={(val) => setForm({ ...form, type: val || "interview_invitation" })}
+                  options={TEMPLATE_TYPES.map(tt => ({ value: tt.value, label: tt.label }))}
+                  placeholder="Select Type"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Format <span className="text-destructive">*</span></Label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
-                  <option value="html">HTML (Rich Email)</option>
-                  <option value="plain_text">Plain Text (No HTML)</option>
-                </select>
+                <HeroSearchableSelect
+                  value={form.format}
+                  onChange={(val) => setForm({ ...form, format: val || "html" })}
+                  options={[
+                    { value: "html", label: "HTML (Rich Email)" },
+                    { value: "plain_text", label: "Plain Text (No HTML)" },
+                  ]}
+                  placeholder="Select Format"
+                />
               </div>
             </div>
             <div className="space-y-2">

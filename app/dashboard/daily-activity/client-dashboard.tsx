@@ -5,7 +5,10 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowDownRight,
+  ArrowUp,
+  ArrowUpDown,
   ArrowUpRight,
   BarChart3,
   Bell,
@@ -83,6 +86,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  HeroKpiCard,
+  HeroSearchableSelect,
+  HeroStatusBadge,
+} from '@/components/templates'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { deleteDailyActivityRecordAction } from './actions'
 
 interface ClientDashboardProps {
@@ -238,10 +260,44 @@ export function DailyActivityClientDashboard({
     currentUser,
   ])
 
-  // Pagination states
+  // Pagination & Sorting states
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [unsubmittedPage, setUnsubmittedPage] = useState<number>(1)
   const pageSize = 10
+
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const [unsubmittedSortField, setUnsubmittedSortField] = useState<string | null>(null)
+  const [unsubmittedSortDirection, setUnsubmittedSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else {
+        setSortField(null)
+        setSortDirection('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const handleUnsubmittedSort = (field: string) => {
+    if (unsubmittedSortField === field) {
+      if (unsubmittedSortDirection === 'asc') {
+        setUnsubmittedSortDirection('desc')
+      } else {
+        setUnsubmittedSortField(null)
+        setUnsubmittedSortDirection('asc')
+      }
+    } else {
+      setUnsubmittedSortField(field)
+      setUnsubmittedSortDirection('asc')
+    }
+  }
 
   // Detail Modal state
   const [activeDetailItem, setActiveDetailItem] = useState<{
@@ -594,18 +650,91 @@ export function DailyActivityClientDashboard({
     return list.sort((a, b) => a.localeCompare(b))
   }, [initialData.sectionsList, initialData.employees, initialData.unsubmittedEmployees])
 
+  // Memoized Searchable Select Options
+  const siteOptions = useMemo(
+    () => availableSites.map((s) => ({ value: String(s.id), label: s.name })),
+    [availableSites]
+  )
+
+  const shiftOptions = useMemo(
+    () => [
+      { value: 'Semua Shift', label: 'Semua Shift' },
+      { value: 'Pagi', label: 'Pagi' },
+      { value: 'Siang', label: 'Siang' },
+      { value: 'Malam', label: 'Malam' },
+    ],
+    []
+  )
+
+  const deptOptions = useMemo(
+    () => [
+      { value: 'Semua Tim', label: 'Semua Dept' },
+      ...initialData.departmentsList.map((d) => ({ value: d.name, label: d.name })),
+    ],
+    [initialData.departmentsList]
+  )
+
+  const sectionOptions = useMemo(
+    () => [
+      { value: 'Semua Section', label: 'Semua Section' },
+      ...availableSections.map((sec) => ({ value: sec, label: sec })),
+    ],
+    [availableSections]
+  )
+
+  const employeeStatusOptions = useMemo(
+    () => [
+      { value: 'Semua Status', label: 'Semua Status' },
+      { value: 'Selesai', label: 'Selesai' },
+      { value: 'Berjalan', label: 'Berjalan' },
+      { value: 'Menunggu', label: 'Menunggu' },
+      { value: 'Terlambat', label: 'Terlambat' },
+    ],
+    []
+  )
+
+  // Sorting calculations
+  const sortedEmployees = useMemo(() => {
+    if (!sortField) return filteredEmployees
+    return [...filteredEmployees].sort((a, b) => {
+      let aVal: any = (a as any)[sortField] ?? ''
+      let bVal: any = (b as any)[sortField] ?? ''
+      if (sortField === 'completionRate' || sortField === 'ewh') {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      } else {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+      }
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredEmployees, sortField, sortDirection])
+
+  const sortedUnsubmittedEmployees = useMemo(() => {
+    if (!unsubmittedSortField) return filteredUnsubmittedEmployees
+    return [...filteredUnsubmittedEmployees].sort((a, b) => {
+      const aVal = String((a as any)[unsubmittedSortField] ?? '').toLowerCase()
+      const bVal = String((b as any)[unsubmittedSortField] ?? '').toLowerCase()
+      if (aVal < bVal) return unsubmittedSortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return unsubmittedSortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredUnsubmittedEmployees, unsubmittedSortField, unsubmittedSortDirection])
+
   // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize))
+  const totalPages = Math.max(1, Math.ceil(sortedEmployees.length / pageSize))
   const paginatedEmployees = useMemo(() => {
     const start = (currentPage - 1) * pageSize
-    return filteredEmployees.slice(start, start + pageSize)
-  }, [filteredEmployees, currentPage, pageSize])
+    return sortedEmployees.slice(start, start + pageSize)
+  }, [sortedEmployees, currentPage, pageSize])
 
-  const unsubmittedTotalPages = Math.max(1, Math.ceil(filteredUnsubmittedEmployees.length / pageSize))
+  const unsubmittedTotalPages = Math.max(1, Math.ceil(sortedUnsubmittedEmployees.length / pageSize))
   const paginatedUnsubmittedEmployees = useMemo(() => {
     const start = (unsubmittedPage - 1) * pageSize
-    return filteredUnsubmittedEmployees.slice(start, start + pageSize)
-  }, [filteredUnsubmittedEmployees, unsubmittedPage, pageSize])
+    return sortedUnsubmittedEmployees.slice(start, start + pageSize)
+  }, [sortedUnsubmittedEmployees, unsubmittedPage, pageSize])
 
   // Dynamic activity types from real employee activities
   const dynamicActivityTypes = useMemo(() => {
@@ -946,32 +1075,7 @@ export function DailyActivityClientDashboard({
   // Exact Badge Colors matching the mockup
 
   const renderStatusBadge = (status: EmployeeActivityRow['status']) => {
-    switch (status) {
-      case 'Selesai':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#dcfce7] text-[#15803d]">
-            Selesai
-          </span>
-        )
-      case 'Berjalan':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#dbeafe] text-[#1d4ed8]">
-            Berjalan
-          </span>
-        )
-      case 'Menunggu':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fef3c7] text-[#b45309]">
-            Menunggu
-          </span>
-        )
-      case 'Terlambat':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fee2e2] text-[#b91c1c]">
-            Terlambat
-          </span>
-        )
-    }
+    return <HeroStatusBadge status={status} />
   }
 
   const renderProgressBar = (
@@ -1069,22 +1173,18 @@ export function DailyActivityClientDashboard({
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Site / Lokasi
             </label>
-            <select
-              aria-label="Pilih Site / Lokasi"
+            <HeroSearchableSelect
+              options={siteOptions}
               value={selectedSiteId}
-              onChange={(e) => {
-                setSelectedSiteId(e.target.value)
-                applyFilters({ siteId: e.target.value })
+              onChange={(val) => {
+                const sVal = String(val)
+                setSelectedSiteId(sVal)
+                applyFilters({ siteId: sVal })
               }}
               disabled={isPending}
-              className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer min-h-[33px]"
-            >
-              {availableSites.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Pilih Site / Lokasi"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Periode Operasional (Minggu Berjalan & Date Range) */}
@@ -1095,46 +1195,52 @@ export function DailyActivityClientDashboard({
                 Periode Operasional
               </label>
               <div className="flex items-center gap-1">
-                <button
+                <Button
                   type="button"
+                  variant={isCurrentWeek ? "default" : "outline"}
+                  size="sm"
                   onClick={handleSetCurrentWeek}
                   disabled={isPending}
                   className={cn(
-                    "text-[9px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer",
+                    "h-6 text-[10px] font-bold px-2 py-0 rounded transition-colors cursor-pointer",
                     isCurrentWeek
-                      ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                      ? "bg-blue-600 text-white hover:bg-blue-700 shadow-2xs"
                       : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
                   )}
                   title="Pilih Minggu Berjalan (Senin - Minggu)"
                 >
                   Minggu Ini
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant={isToday ? "default" : "outline"}
+                  size="sm"
                   onClick={handleSetToday}
                   disabled={isPending}
                   className={cn(
-                    "text-[9px] font-bold px-1.5 py-0.5 rounded border transition-colors cursor-pointer",
+                    "h-6 text-[10px] font-bold px-2 py-0 rounded transition-colors cursor-pointer",
                     isToday
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                      ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs"
                       : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
                   )}
                   title="Pilih Hari Ini Saja"
                 >
                   Hari Ini
-                </button>
+                </Button>
               </div>
             </div>
             <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={handlePreviousWeek}
                 disabled={isPending}
-                className="h-[31px] w-7 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                className="h-9 w-8 p-0 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
                 title="1 Minggu Sebelumnya"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
               <input
                 type="date"
                 aria-label="Tanggal Mulai"
@@ -1144,7 +1250,7 @@ export function DailyActivityClientDashboard({
                   applyFilters({ startDate: e.target.value, endDate })
                 }}
                 disabled={isPending}
-                className="w-1/2 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+                className="w-1/2 h-9 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 font-semibold px-0.5">s/d</span>
               <input
@@ -1156,17 +1262,19 @@ export function DailyActivityClientDashboard({
                   applyFilters({ startDate, endDate: e.target.value })
                 }}
                 disabled={isPending}
-                className="w-1/2 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+                className="w-1/2 h-9 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={handleNextWeek}
                 disabled={isPending}
-                className="h-[31px] w-7 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                className="h-9 w-8 p-0 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
                 title="1 Minggu Berikutnya"
               >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
           </div>
 
@@ -1186,7 +1294,7 @@ export function DailyActivityClientDashboard({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters({ employeeName: employeeNameFilter })
                 }}
-                className="h-[33px] pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400 font-normal"
+                className="h-9 pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400 font-normal"
               />
             </div>
           </div>
@@ -1194,21 +1302,18 @@ export function DailyActivityClientDashboard({
           {/* Shift */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Shift</label>
-            <select
-              aria-label="Pilih Shift"
+            <HeroSearchableSelect
+              options={shiftOptions}
               value={selectedShift}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedShift(val)
-                applyFilters({ shift: val })
+              onChange={(val) => {
+                const sVal = String(val)
+                setSelectedShift(sVal)
+                applyFilters({ shift: sVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Shift">Semua Shift</option>
-              <option value="Pagi">Pagi</option>
-              <option value="Siang">Siang</option>
-              <option value="Malam">Malam</option>
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Shift"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Department/Team */}
@@ -1221,23 +1326,18 @@ export function DailyActivityClientDashboard({
                 </span>
               )}
             </label>
-            <select
-              aria-label="Pilih Department atau Tim"
+            <HeroSearchableSelect
+              options={deptOptions}
               value={selectedDept}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedDept(val)
-                applyFilters({ dept: val })
+              onChange={(val) => {
+                const dVal = String(val)
+                setSelectedDept(dVal)
+                applyFilters({ dept: dVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Tim">Semua Dept</option>
-              {initialData.departmentsList.map((d) => (
-                <option key={d.id} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Department"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Section */}
@@ -1250,23 +1350,18 @@ export function DailyActivityClientDashboard({
                 </span>
               )}
             </label>
-            <select
-              aria-label="Pilih Section"
+            <HeroSearchableSelect
+              options={sectionOptions}
               value={selectedSection}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedSection(val)
-                applyFilters({ section: val })
+              onChange={(val) => {
+                const secVal = String(val)
+                setSelectedSection(secVal)
+                applyFilters({ section: secVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Section">Semua Section</option>
-              {availableSections.map((secName) => (
-                <option key={secName} value={secName}>
-                  {secName}
-                </option>
-              ))}
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Section"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Employee Status */}
@@ -1274,22 +1369,18 @@ export function DailyActivityClientDashboard({
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Employee Status
             </label>
-            <select
-              aria-label="Pilih Status Karyawan"
+            <HeroSearchableSelect
+              options={employeeStatusOptions}
               value={selectedEmployeeStatus}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedEmployeeStatus(val)
-                applyFilters({ status: val })
+              onChange={(val) => {
+                const stVal = String(val)
+                setSelectedEmployeeStatus(stVal)
+                applyFilters({ status: stVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Status">Semua Status</option>
-              <option value="Selesai">Selesai</option>
-              <option value="Berjalan">Berjalan</option>
-              <option value="Menunggu">Menunggu</option>
-              <option value="Terlambat">Terlambat</option>
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Status"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Actions: Terapkan Filter & Reset */}
@@ -1298,147 +1389,102 @@ export function DailyActivityClientDashboard({
               size="sm"
               onClick={() => applyFilters()}
               disabled={isPending}
-              className="h-[33px] text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1"
+              className="h-9 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1 cursor-pointer"
             >
               <Filter className="w-3.5 h-3.5" />
               Terapkan
             </Button>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleResetFilters}
               disabled={isPending}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 transition-colors cursor-pointer"
+              className="h-9 text-xs font-semibold text-slate-600 hover:text-slate-900 border-slate-200 px-3 cursor-pointer"
             >
               Reset
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* ── 5 KPI Metric Cards (100% Real Live Data) ── */}
+      {/* ── 5 KPI Metric Cards (Standard HeroKpiCard) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Card 1: Karyawan Aktif */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Karyawan Aktif</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.karyawanAktif.value}
-                </span>
-                <span className="text-xs text-slate-400">
-                  dari {initialData.kpis.karyawanAktif.total} karyawan
-                </span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.karyawanAktif.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Karyawan Aktif"
+          value={initialData.kpis.karyawanAktif.value}
+          unit={`/ ${initialData.kpis.karyawanAktif.total}`}
+          icon={<Users className="size-5" />}
+          tone="blue"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.karyawanAktif.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description={`dari total ${initialData.kpis.karyawanAktif.total} karyawan`}
+        />
 
-        {/* Card 2: Hadir / Check-in */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Hadir / Check-in</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.hadirCheckIn.value}
-                </span>
-                <span className="text-xs text-slate-400">karyawan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.hadirCheckIn.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Hadir / Check-in"
+          value={initialData.kpis.hadirCheckIn.value}
+          unit="karyawan"
+          icon={<CheckCircle2 className="size-5" />}
+          tone="emerald"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.hadirCheckIn.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Presensi hari ini"
+        />
 
-        {/* Card 3: Aktivitas Selesai */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Aktivitas Selesai</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.aktivitasSelesai.value}
-                </span>
-                <span className="text-xs text-slate-400">pekerjaan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Settings className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.aktivitasSelesai.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Aktivitas Selesai"
+          value={initialData.kpis.aktivitasSelesai.value}
+          unit="pekerjaan"
+          icon={<Settings className="size-5" />}
+          tone="cyan"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.aktivitasSelesai.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Pekerjaan tuntas"
+        />
 
-        {/* Card 4: Sedang Berjalan */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Sedang Berjalan</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.sedangBerjalan.value}
-                </span>
-                <span className="text-xs text-slate-400">pekerjaan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.sedangBerjalan.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Sedang Berjalan"
+          value={initialData.kpis.sedangBerjalan.value}
+          unit="pekerjaan"
+          icon={<Clock className="size-5" />}
+          tone="amber"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.sedangBerjalan.change,
+            direction: 'neutral',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Dalam pengerjaan"
+        />
 
-        {/* Card 5: Terlambat / Belum Update */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Terlambat / Belum Update</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.terlambatBelumUpdate.value}
-                </span>
-                <span className="text-xs text-slate-400">karyawan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-rose-600">
-              <ArrowDownRight className="w-3.5 h-3.5" />{' '}
-              {initialData.kpis.terlambatBelumUpdate.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Terlambat / Belum Update"
+          value={initialData.kpis.terlambatBelumUpdate.value}
+          unit="karyawan"
+          icon={<AlertTriangle className="size-5" />}
+          tone="rose"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.terlambatBelumUpdate.change,
+            direction: 'down',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Perlu perhatian"
+        />
       </div>
 
       {/* ── Middle Row: Ringkasan Aktivitas Site & Status Kehadiran Tim ── */}
@@ -1754,7 +1800,7 @@ export function DailyActivityClientDashboard({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters({ q: searchQuery })
                 }}
-                className="h-8 pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400"
+                className="h-9 pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400"
               />
             </div>
 
@@ -1762,9 +1808,9 @@ export function DailyActivityClientDashboard({
               variant="outline"
               size="sm"
               onClick={handleExportExcel}
-              className="h-8 text-xs font-bold text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 gap-1.5 rounded-lg cursor-pointer"
+              className="h-9 text-xs font-bold text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 gap-1.5 rounded-lg cursor-pointer"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
               Export Excel (.xlsx)
             </Button>
 
@@ -1772,9 +1818,9 @@ export function DailyActivityClientDashboard({
               variant="outline"
               size="sm"
               onClick={handleExportCsv}
-              className="h-8 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg"
+              className="h-9 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-4 h-4" />
               Export CSV
             </Button>
 
@@ -1782,19 +1828,19 @@ export function DailyActivityClientDashboard({
               size="sm"
               variant="outline"
               onClick={() => setIsAddActivityModalOpen(true)}
-              className="h-8 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg"
+              className="h-9 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 text-blue-600" />
+              <Plus className="w-4 h-4 text-blue-600" />
               Tambah aktivitas
             </Button>
 
             <Button
               asChild
               size="sm"
-              className="h-8 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 rounded-lg"
+              className="h-9 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 rounded-lg cursor-pointer"
             >
               <Link href="/dashboard/scheduling-timesheet">
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-4 h-4" />
                 Lihat roster
               </Link>
             </Button>
@@ -1864,40 +1910,209 @@ export function DailyActivityClientDashboard({
         {activeTab === 'submitted' && (
           <>
             {/* Table Content */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
-                    <th className="py-3 px-4">Tanggal</th>
-                    <th className="py-3 px-4">Employee ID</th>
-                    <th className="py-3 px-4">Nama Karyawan</th>
-                    <th className="py-3 px-4">Site</th>
-                    <th className="py-3 px-4">Jabatan / Tim</th>
-                    <th className="py-3 px-4">Shift</th>
-                    <th className="py-3 px-4">Jam Presensi</th>
-                    <th className="py-3 px-4">EWH</th>
-                    <th className="py-3 px-4">Aktivitas Utama</th>
-                    <th className="py-3 px-4">Unit / Tire ID</th>
-                    <th className="py-3 px-4">Status Aktivitas</th>
-                    <th className="py-3 px-4 min-w-[130px]">Progres</th>
-                    <th className="py-3 px-4">Update Terakhir</th>
-                    <th className="py-3 px-4 text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {paginatedEmployees.length === 0 ? (
-                    <tr>
-                      <td colSpan={14} className="py-8 text-center text-slate-400">
-                        Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
-                      </td>
-                    </tr>
-                  ) : (
+            {/* Table Content */}
+            <Table containerClassName="rounded-none border-0 border-b border-border/70 shadow-none" className="text-xs">
+              <TableHeader>
+                <TableRow className="bg-slate-50/70 border-b border-slate-200/80 hover:bg-slate-50/70">
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('workDate')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Tanggal</span>
+                      {sortField === 'workDate' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('employeeId')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Employee ID</span>
+                      {sortField === 'employeeId' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('name')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Nama Karyawan</span>
+                      {sortField === 'name' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('siteName')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Site</span>
+                      {sortField === 'siteName' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('jobTitle')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Jabatan / Tim</span>
+                      {sortField === 'jobTitle' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('shift')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Shift</span>
+                      {sortField === 'shift' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('clockIn')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Jam Presensi</span>
+                      {sortField === 'clockIn' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('ewh')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>EWH</span>
+                      {sortField === 'ewh' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('primaryActivity')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Aktivitas Utama</span>
+                      {sortField === 'primaryActivity' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('unitTireId')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Unit / Tire ID</span>
+                      {sortField === 'unitTireId' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('status')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Status Aktivitas</span>
+                      {sortField === 'status' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500 min-w-[130px]">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('completionRate')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Progres</span>
+                      {sortField === 'completionRate' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('lastUpdated')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Update Terakhir</span>
+                      {sortField === 'lastUpdated' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500 text-center">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-slate-100">
+                {paginatedEmployees.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={14} className="py-8 text-center text-slate-400">
+                      Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
+                    </TableCell>
+                  </TableRow>
+                ) : (
                     paginatedEmployees.map((emp, idx) => (
-                      <tr
+                      <TableRow
                         key={`emp-row-${emp.sessionId ?? ''}-${emp.employeeId}-${idx}`}
                         className="hover:bg-slate-50/60 transition-colors"
                       >
-                        <td className="py-3 px-4 whitespace-nowrap">
+                        <TableCell className="py-3 px-4 whitespace-nowrap">
                           <div className="flex flex-col">
                             <span className="font-semibold text-slate-800 text-xs">
                               {emp.workDate || '-'}
@@ -1908,11 +2123,11 @@ export function DailyActivityClientDashboard({
                               </span>
                             )}
                           </div>
-                        </td>
-                        <td className="py-3 px-4 font-mono font-medium text-slate-700">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 font-mono font-medium text-slate-700">
                           {emp.employeeId}
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <div className="flex flex-col items-start gap-1">
                             <button
                               type="button"
@@ -1946,15 +2161,15 @@ export function DailyActivityClientDashboard({
                               </span>
                             ) : null}
                           </div>
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
                             {emp.siteName || initialData.currentSite.name}
                           </span>
-                        </td>
-                        <td className="py-3 px-4 text-slate-600">{emp.jobTitle}</td>
-                        <td className="py-3 px-4 text-slate-600">{emp.shift}</td>
-                        <td className="py-3 px-4 font-mono">
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-slate-600">{emp.jobTitle}</TableCell>
+                        <TableCell className="py-3 px-4 text-slate-600">{emp.shift}</TableCell>
+                        <TableCell className="py-3 px-4 font-mono">
                           <div className="flex flex-col text-[11px] leading-tight gap-0.5">
                             <span className="text-slate-900 font-semibold flex items-center gap-1" title="Jam Masuk / Check-in">
                               <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -1975,8 +2190,8 @@ export function DailyActivityClientDashboard({
                               </span>
                             )}
                           </div>
-                        </td>
-                        <td className="py-3 px-4">
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
                           <div className="flex flex-col gap-0.5">
                             <button
                               type="button"
@@ -2010,145 +2225,145 @@ export function DailyActivityClientDashboard({
                               ) : null}
                             </div>
                           </div>
-                        </td>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-800 flex items-center flex-wrap gap-1">
-                        <span>{emp.primaryActivity}</span>
-                        {emp.tasksCount > 1 && (
-                          <span
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60"
-                            title={`${emp.tasksCount} aktivitas tercatat`}
-                          >
-                            +{emp.tasksCount - 1} lainnya
-                          </span>
-                        )}
-                        {emp.sessionsCount > 1 && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                            {emp.sessionsCount} sesi
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-600">
-                      {emp.allUnits.length > 0 ? (
-                        <div className="flex flex-wrap items-center gap-1">
-                          {emp.allUnits.slice(0, 2).map((unit) => (
-                            <span
-                              key={unit}
-                              className="bg-slate-100 text-slate-800 font-semibold px-1.5 py-0.5 rounded text-[11px] border border-slate-200"
-                            >
-                              {unit}
-                            </span>
-                          ))}
-                          {emp.allUnits.length > 2 && (
-                            <HoverCard openDelay={80} closeDelay={150}>
-                              <HoverCardTrigger asChild>
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center text-[10px] text-blue-700 hover:text-blue-900 font-semibold bg-blue-50 hover:bg-blue-100 border border-blue-200/80 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-2xs"
-                                  title="Arahkan kursor atau klik untuk melihat seluruh unit"
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
+                          <div className="font-medium text-slate-800 flex items-center flex-wrap gap-1">
+                            <span>{emp.primaryActivity}</span>
+                            {emp.tasksCount > 1 && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60"
+                                title={`${emp.tasksCount} aktivitas tercatat`}
+                              >
+                                +{emp.tasksCount - 1} lainnya
+                              </span>
+                            )}
+                            {emp.sessionsCount > 1 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                                {emp.sessionsCount} sesi
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4 font-mono text-slate-600">
+                          {emp.allUnits.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {emp.allUnits.slice(0, 2).map((unit) => (
+                                <span
+                                  key={unit}
+                                  className="bg-slate-100 text-slate-800 font-semibold px-1.5 py-0.5 rounded text-[11px] border border-slate-200"
                                 >
-                                  +{emp.allUnits.length - 2} unit
-                                </button>
-                              </HoverCardTrigger>
-                              <HoverCardContent
-                                className="w-64 p-3 text-xs shadow-xl bg-white border border-slate-200 z-50 rounded-xl"
-                                align="start"
-                                side="top"
-                              >
-                                <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
-                                  <div className="flex items-center gap-1.5">
-                                    <Truck className="w-3.5 h-3.5 text-blue-600" />
-                                    <span className="font-bold text-slate-900 text-xs">
-                                      Semua Unit ({emp.allUnits.length})
-                                    </span>
-                                  </div>
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {emp.employeeId}
-                                  </span>
-                                </div>
-                                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
-                                  {emp.allUnits.map((u, i) => (
-                                    <span
-                                      key={i}
-                                      className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-mono font-semibold text-[11px] border border-slate-200/80"
+                                  {unit}
+                                </span>
+                              ))}
+                              {emp.allUnits.length > 2 && (
+                                <HoverCard openDelay={80} closeDelay={150}>
+                                  <HoverCardTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center text-[10px] text-blue-700 hover:text-blue-900 font-semibold bg-blue-50 hover:bg-blue-100 border border-blue-200/80 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-2xs"
+                                      title="Arahkan kursor atau klik untuk melihat seluruh unit"
                                     >
-                                      {u}
-                                    </span>
-                                  ))}
-                                </div>
-                              </HoverCardContent>
-                            </HoverCard>
+                                      +{emp.allUnits.length - 2} unit
+                                    </button>
+                                  </HoverCardTrigger>
+                                  <HoverCardContent
+                                    className="w-64 p-3 text-xs shadow-xl bg-white border border-slate-200 z-50 rounded-xl"
+                                    align="start"
+                                    side="top"
+                                  >
+                                    <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
+                                      <div className="flex items-center gap-1.5">
+                                        <Truck className="w-3.5 h-3.5 text-blue-600" />
+                                        <span className="font-bold text-slate-900 text-xs">
+                                          Semua Unit ({emp.allUnits.length})
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400 font-mono">
+                                        {emp.employeeId}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                                      {emp.allUnits.map((u, i) => (
+                                        <span
+                                          key={i}
+                                          className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-mono font-semibold text-[11px] border border-slate-200/80"
+                                        >
+                                          {u}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </HoverCardContent>
+                                </HoverCard>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
                           )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">{renderStatusBadge(emp.status)}</td>
-                    <td className="py-3 px-4">{renderProgressBar(emp.progress, emp.status)}</td>
-                    <td className="py-3 px-4 text-slate-500 whitespace-nowrap">{emp.lastUpdate}</td>
-                    <td className="py-3 px-4 text-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-                          >
-                            <MoreVertical className="w-3.5 h-3.5" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="text-xs">
-                          <DropdownMenuItem
-                            onClick={() =>
-                              setActiveDetailItem({
-                                type: 'employee',
-                                employee: emp,
-                              })
-                            }
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                            Lihat Formulir Detail
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExportDetailCsv(emp)}>
-                            <Download className="w-3.5 h-3.5 mr-2 text-emerald-600" />
-                            Ekspor CSV Aktivitas
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleOpenAnalytics(emp)}
-                            className="cursor-pointer"
-                          >
-                            <BarChart3 className="w-3.5 h-3.5 mr-2 text-indigo-600" />
-                            Riwayat &amp; Analitik EWH
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href="/dashboard/overtime-requests">
-                              <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" />
-                              Buat SPL Lembur
-                            </Link>
-                          </DropdownMenuItem>
-                          {currentUser?.isSuperAdmin && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setDeletingEmployee(emp)}
-                                className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer"
+                        </TableCell>
+                        <TableCell className="py-3 px-4">{renderStatusBadge(emp.status)}</TableCell>
+                        <TableCell className="py-3 px-4">{renderProgressBar(emp.progress, emp.status)}</TableCell>
+                        <TableCell className="py-3 px-4 text-slate-500 whitespace-nowrap">{emp.lastUpdate}</TableCell>
+                        <TableCell className="py-3 px-4 text-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer rounded-md"
                               >
-                                <Trash2 className="w-3.5 h-3.5 mr-2 text-rose-600" />
-                                Hapus Aktivitas
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="text-xs">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setActiveDetailItem({
+                                    type: 'employee',
+                                    employee: emp,
+                                  })
+                                }
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                                Lihat Formulir Detail
                               </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+                              <DropdownMenuItem onClick={() => handleExportDetailCsv(emp)}>
+                                <Download className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                                Ekspor CSV Aktivitas
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleOpenAnalytics(emp)}
+                                className="cursor-pointer"
+                              >
+                                <BarChart3 className="w-3.5 h-3.5 mr-2 text-indigo-600" />
+                                Riwayat &amp; Analitik EWH
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href="/dashboard/overtime-requests">
+                                  <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" />
+                                  Buat SPL Lembur
+                                </Link>
+                              </DropdownMenuItem>
+                              {currentUser?.isSuperAdmin && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setDeletingEmployee(emp)}
+                                    className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 mr-2 text-rose-600" />
+                                    Hapus Aktivitas
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
 
-                  </tr>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
 
         {/* Table Pagination */}
         <div className="p-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
@@ -2165,38 +2380,42 @@ export function DailyActivityClientDashboard({
 
           {totalPages > 1 && (
             <div className="flex items-center gap-1 self-center">
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
               >
-                &lt;
-              </button>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .slice(0, 5)
                 .map((page) => (
-                  <button
+                  <Button
                     key={page}
-                    type="button"
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setCurrentPage(page)}
-                    className={`w-7 h-7 flex items-center justify-center rounded border font-semibold ${
+                    className={cn(
+                      "h-8 w-8 p-0 font-semibold text-xs",
                       currentPage === page
-                        ? 'bg-[#1d72f2] text-white border-blue-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                        ? "bg-[#1d72f2] text-white hover:bg-blue-600 border-blue-600"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
                   >
                     {page}
-                  </button>
+                  </Button>
                 ))}
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
               >
-                &gt;
-              </button>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
           )}
         </div>
@@ -2206,130 +2425,232 @@ export function DailyActivityClientDashboard({
     {activeTab === 'unsubmitted' && (
       <>
         {/* Table Content: Belum Mengisi Aktivitas */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
-                <th className="py-3 px-4">Employee ID</th>
-                <th className="py-3 px-4">Nama Karyawan</th>
-                <th className="py-3 px-4">Site</th>
-                <th className="py-3 px-4">Jabatan / Tim</th>
-                <th className="py-3 px-4">Shift Roster</th>
-                <th className="py-3 px-4">Status Kehadiran</th>
-                <th className="py-3 px-4">Status Daily Activity</th>
-                <th className="py-3 px-4">Keterangan</th>
-                <th className="py-3 px-4 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedUnsubmittedEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                      <span className="font-semibold text-slate-800 text-sm">
-                        Tidak ada karyawan bertugas yang belum mengisi!
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        Semua karyawan dengan jadwal kerja aktif telah mengisi daily activity. Karyawan dengan status roster OFF / Libur otomatis dikecualikan.
-                      </span>
+        <Table containerClassName="rounded-none border-0 border-b border-border/70 shadow-none" className="text-xs">
+          <TableHeader>
+            <TableRow className="bg-slate-50/70 border-b border-slate-200/80 hover:bg-slate-50/70">
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('employeeId')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Employee ID</span>
+                  {unsubmittedSortField === 'employeeId' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('name')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Nama Karyawan</span>
+                  {unsubmittedSortField === 'name' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('siteName')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Site</span>
+                  {unsubmittedSortField === 'siteName' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('jobTitle')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Jabatan / Tim</span>
+                  {unsubmittedSortField === 'jobTitle' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('expectedShift')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Shift Roster</span>
+                  {unsubmittedSortField === 'expectedShift' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('attendanceStatus')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Status Kehadiran</span>
+                  {unsubmittedSortField === 'attendanceStatus' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('dailyActivityStatus')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Status Daily Activity</span>
+                  {unsubmittedSortField === 'dailyActivityStatus' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('remarks')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Keterangan</span>
+                  {unsubmittedSortField === 'remarks' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500 text-center">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="divide-y divide-slate-100">
+            {paginatedUnsubmittedEmployees.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} className="py-12 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <CheckCircle2 className="w-5 h-5" />
                     </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedUnsubmittedEmployees.map((emp, idx) => (
-                  <tr
-                    key={`unsubmitted-row-${emp.employeeDbId}-${emp.employeeId}-${idx}`}
-                    className="hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="py-3 px-4 font-mono font-medium text-slate-700">
-                      {emp.employeeId}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="font-semibold text-slate-900">
-                        {emp.name}
+                    <span className="font-semibold text-slate-800 text-sm">
+                      Tidak ada karyawan bertugas yang belum mengisi!
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Semua karyawan dengan jadwal kerja aktif telah mengisi daily activity. Karyawan dengan status roster OFF / Libur otomatis dikecualikan.
+                    </span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginatedUnsubmittedEmployees.map((emp, idx) => (
+                <TableRow
+                  key={`unsubmitted-row-${emp.employeeDbId}-${emp.employeeId}-${idx}`}
+                  className="hover:bg-slate-50/60 transition-colors"
+                >
+                  <TableCell className="py-3 px-4 font-mono font-medium text-slate-700">
+                    {emp.employeeId}
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="font-semibold text-slate-900">
+                      {emp.name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                      {emp.siteName || initialData.currentSite.name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-slate-600">
+                    <div className="font-medium text-slate-800">{emp.jobTitle}</div>
+                    <div className="text-[11px] text-slate-400">
+                      {emp.department}{emp.section ? ` - ${emp.section}` : ''}
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {emp.rosterCode} ({emp.expectedShift})
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 font-mono">
+                    {emp.attendanceStatus === 'Hadir' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                        Hadir ({emp.checkInTime})
                       </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
-                        {emp.siteName || initialData.currentSite.name}
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        Belum Check-In
                       </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="font-medium text-slate-800">{emp.jobTitle}</div>
-                      <div className="text-[11px] text-slate-400">
-                        {emp.department}{emp.section ? ` - ${emp.section}` : ''}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {emp.rosterCode} ({emp.expectedShift})
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-mono">
-                      {emp.attendanceStatus === 'Hadir' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-                          Hadir ({emp.checkInTime})
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          Belum Check-In
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-                        <AlertTriangle className="w-3 h-3 text-rose-600" />
-                        Belum Mengisi
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 text-xs">
-                      <span className="text-[11px] text-slate-600 font-medium">
-                        Jadwal Kerja Aktif ({emp.rosterType || '5:2'})
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setIsAddActivityModalOpen(true)}
-                          className="h-7 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 rounded-md gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Input
-                        </Button>
-                        <Button
-                          asChild
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs text-slate-500 hover:text-slate-800 px-2"
-                        >
-                          <Link href="/dashboard/scheduling-timesheet" title="Lihat jadwal roster lengkap">
-                            <Users className="w-3.5 h-3.5" />
-                          </Link>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleOpenAnalytics(emp)}
-                          className="h-7 text-xs text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2 cursor-pointer"
-                          title="Lihat riwayat & analitik EWH karyawan"
-                        >
-                          <BarChart3 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                      <AlertTriangle className="w-3 h-3 text-rose-600" />
+                      Belum Mengisi
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-slate-500 text-xs">
+                    <span className="text-[11px] text-slate-600 font-medium">
+                      Jadwal Kerja Aktif ({emp.rosterType || '5:2'})
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsAddActivityModalOpen(true)}
+                        className="h-8 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 rounded-md gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Input
+                      </Button>
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-slate-500 hover:text-slate-800 rounded-md"
+                      >
+                        <Link href="/dashboard/scheduling-timesheet" title="Lihat jadwal roster lengkap">
+                          <Users className="w-4 h-4" />
+                        </Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleOpenAnalytics(emp)}
+                        className="h-8 w-8 p-0 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-md"
+                        title="Lihat riwayat & analitik EWH karyawan"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
 
         {/* Unsubmitted Table Pagination */}
         <div className="p-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
@@ -2346,38 +2667,42 @@ export function DailyActivityClientDashboard({
 
           {unsubmittedTotalPages > 1 && (
             <div className="flex items-center gap-1 self-center">
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setUnsubmittedPage((p) => Math.max(1, p - 1))}
                 disabled={unsubmittedPage === 1}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
-                &lt;
-              </button>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
               {Array.from({ length: unsubmittedTotalPages }, (_, i) => i + 1)
                 .slice(0, 5)
                 .map((page) => (
-                  <button
+                  <Button
                     key={page}
-                    type="button"
+                    variant={unsubmittedPage === page ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setUnsubmittedPage(page)}
-                    className={`w-7 h-7 flex items-center justify-center rounded border font-semibold ${
+                    className={cn(
+                      "h-8 w-8 p-0 font-semibold text-xs",
                       unsubmittedPage === page
-                        ? 'bg-[#1d72f2] text-white border-blue-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                        ? "bg-[#1d72f2] text-white hover:bg-blue-600 border-blue-600"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
                   >
                     {page}
-                  </button>
+                  </Button>
                 ))}
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setUnsubmittedPage((p) => Math.min(unsubmittedTotalPages, p + 1))}
                 disabled={unsubmittedPage === unsubmittedTotalPages}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
-                &gt;
-              </button>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
           )}
         </div>
@@ -2444,57 +2769,58 @@ export function DailyActivityClientDashboard({
             </span>
           </div>
 
-          <div className="py-2 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="text-slate-400 font-semibold text-[11px] border-b border-slate-100 pb-2">
-                  <th className="py-2 px-1">Aktivitas</th>
-                  <th className="py-2 px-2">Karyawan / Tim</th>
-                  <th className="py-2 px-2">Alasan</th>
-                  <th className="py-2 px-2">Target Selesai</th>
-                  <th className="py-2 px-1 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
+          <div className="py-2">
+            <Table containerClassName="rounded-none border-0 shadow-none" className="text-xs">
+              <TableHeader>
+                <TableRow className="border-b border-slate-100 hover:bg-transparent">
+                  <TableHead className="py-2 px-1 text-slate-400 font-semibold text-[11px] h-auto">Aktivitas</TableHead>
+                  <TableHead className="py-2 px-2 text-slate-400 font-semibold text-[11px] h-auto">Karyawan / Tim</TableHead>
+                  <TableHead className="py-2 px-2 text-slate-400 font-semibold text-[11px] h-auto">Alasan</TableHead>
+                  <TableHead className="py-2 px-2 text-slate-400 font-semibold text-[11px] h-auto">Target Selesai</TableHead>
+                  <TableHead className="py-2 px-1 text-right text-slate-400 font-semibold text-[11px] h-auto">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-slate-100">
                 {initialData.delayedJobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-6 text-center text-slate-400">
                       Tidak ada pekerjaan tertunda. Semua aktivitas berjalan tepat waktu.
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   initialData.delayedJobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-2.5 px-1 font-semibold text-slate-800">{job.activity}</td>
-                      <td className="py-2.5 px-2">
+                    <TableRow key={job.id} className="hover:bg-slate-50/60 transition-colors">
+                      <TableCell className="py-2.5 px-1 font-semibold text-slate-800">{job.activity}</TableCell>
+                      <TableCell className="py-2.5 px-2">
                         <div className="font-semibold text-slate-900">{job.employeeName}</div>
                         <div className="text-[10px] text-slate-400">{job.jobTitle}</div>
-                      </td>
-                      <td className="py-2.5 px-2 text-slate-600 max-w-[130px] truncate" title={job.reason}>
+                      </TableCell>
+                      <TableCell className="py-2.5 px-2 text-slate-600 max-w-[130px] truncate" title={job.reason}>
                         {job.reason}
-                      </td>
-                      <td className="py-2.5 px-2 font-bold text-amber-600 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell className="py-2.5 px-2 font-bold text-amber-600 whitespace-nowrap">
                         {job.targetCompleted}
-                      </td>
-                      <td className="py-2.5 px-1 text-right">
-                        <button
-                          type="button"
+                      </TableCell>
+                      <TableCell className="py-2.5 px-1 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() =>
                             setActiveDetailItem({
                               type: 'delayed',
                               delayedJob: job,
                             })
                           }
-                          className="font-semibold text-blue-600 hover:text-blue-800 text-xs cursor-pointer"
+                          className="h-7 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 cursor-pointer"
                         >
                           Lihat detail
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           <div className="pt-2 text-right">

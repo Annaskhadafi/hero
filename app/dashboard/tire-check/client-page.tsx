@@ -63,7 +63,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { HeroKpiCard } from '@/components/templates'
 import { Input } from '@/components/ui/input'
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { HeroSearchableSelect, type HeroSearchableSelectOption } from '@/components/templates'
 
 interface TireCheckClientProps {
   initialData?: TireCheckApiResponse
@@ -100,6 +103,34 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
       ? initialData.availablePeriods
       : DEFAULT_PERIODS
   )
+
+  const [sortField, setSortField] = useState<string>('tanggal')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  const siteOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return availableSitesList.map((site) => ({
+      value: site.id,
+      label: site.code === 'ALL'
+        ? `${site.name} – ${site.plant}`
+        : `${site.code} (${site.plant})`,
+    }))
+  }, [availableSitesList])
+
+  const periodOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return availablePeriodsList.map((period) => ({
+      value: period.id,
+      label: period.label,
+    }))
+  }, [availablePeriodsList])
 
   React.useEffect(() => {
     if (!initialData) {
@@ -215,6 +246,21 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
     )
   }, [rekapTable, tableSearch])
 
+  const sortedTable = useMemo(() => {
+    return [...filteredTable].sort((a, b) => {
+      let aVal: any = a[sortField as keyof typeof a]
+      let bVal: any = b[sortField as keyof typeof b]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+      if (typeof aVal === 'number') {
+        return sortDir === 'asc' ? (aVal - (bVal || 0)) : ((bVal || 0) - aVal)
+      }
+      return 0
+    })
+  }, [filteredTable, sortField, sortDir])
+
   // Export CSV
   const handleExportCsv = () => {
     try {
@@ -317,59 +363,29 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
         {/* Left Side: Selectors */}
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           {/* Site Selector */}
-          <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <div className="flex flex-col gap-1 w-full sm:w-80">
             <span className="text-[12px] font-medium text-slate-500">Site</span>
-            <div className="relative inline-block w-full sm:w-80">
-              <div
-                className={`flex items-center gap-2.5 bg-white border border-slate-200/90 rounded-xl px-3.5 py-2.5 shadow-2xs hover:border-slate-300 transition-all ${
-                  isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                }`}
-              >
-                <IconTruck className="size-5 text-amber-500 shrink-0" />
-                <select
-                  value={selectedSiteId}
-                  onChange={(e) => handleSiteChange(e.target.value)}
-                  disabled={isLoading}
-                  className="w-full bg-transparent text-sm font-semibold text-slate-900 focus:outline-hidden cursor-pointer appearance-none pr-6 truncate"
-                >
-                  {availableSitesList.map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {site.code === 'ALL'
-                        ? `${site.name} – ${site.plant}`
-                        : `${site.code} (${site.plant})`}
-                    </option>
-                  ))}
-                </select>
-                <IconChevronDown className="size-4 text-slate-400 absolute right-3 pointer-events-none" />
-              </div>
-            </div>
+            <HeroSearchableSelect
+              value={selectedSiteId}
+              onChange={(val) => val && handleSiteChange(String(val))}
+              options={siteOptions}
+              placeholder="Pilih Site..."
+              disabled={isLoading}
+              className="h-9"
+            />
           </div>
 
           {/* Periode Selector */}
-          <div className="flex flex-col gap-1 w-full sm:w-auto">
+          <div className="flex flex-col gap-1 w-full sm:w-60">
             <span className="text-[12px] font-medium text-slate-500">Periode</span>
-            <div className="relative inline-block w-full sm:w-60">
-              <div
-                className={`flex items-center gap-2.5 bg-white border border-slate-200/90 rounded-xl px-3.5 py-2.5 shadow-2xs hover:border-slate-300 transition-all ${
-                  isLoading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                }`}
-              >
-                <IconCalendar className="size-5 text-blue-600 shrink-0" />
-                <select
-                  value={selectedPeriodId}
-                  onChange={(e) => handlePeriodChange(e.target.value)}
-                  disabled={isLoading}
-                  className="w-full bg-transparent text-sm font-bold text-slate-900 focus:outline-hidden cursor-pointer appearance-none pr-6"
-                >
-                  {availablePeriodsList.map((period) => (
-                    <option key={period.id} value={period.id}>
-                      {period.label}
-                    </option>
-                  ))}
-                </select>
-                <IconChevronDown className="size-4 text-slate-400 absolute right-3 pointer-events-none" />
-              </div>
-            </div>
+            <HeroSearchableSelect
+              value={selectedPeriodId}
+              onChange={(val) => val && handlePeriodChange(String(val))}
+              options={periodOptions}
+              placeholder="Pilih Periode..."
+              disabled={isLoading}
+              className="h-9"
+            />
           </div>
         </div>
 
@@ -409,7 +425,7 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
             size="sm"
             onClick={handleRefresh}
             disabled={isLoading}
-            className="h-10 px-3.5 rounded-xl border-slate-200/90 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs flex items-center gap-1.5 transition-colors"
+            className="h-9 px-3.5 rounded-xl border-slate-200/90 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs flex items-center gap-1.5 transition-colors"
             title="Segarkan data dari server API CTS"
           >
             <IconRefresh
@@ -423,7 +439,7 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
             variant="outline"
             size="sm"
             onClick={() => setIsJsonModalOpen(true)}
-            className="h-10 px-3.5 rounded-xl border-blue-200 text-blue-700 bg-blue-50/70 hover:bg-blue-100 hover:text-blue-800 transition-colors flex items-center gap-1.5 shrink-0 shadow-2xs"
+            className="h-9 px-3.5 rounded-xl border-blue-200 text-blue-700 bg-blue-50/70 hover:bg-blue-100 hover:text-blue-800 transition-colors flex items-center gap-1.5 shrink-0 shadow-2xs"
             title="Lihat Data Live & Endpoint API"
           >
             <IconCode className="size-4 text-blue-600" />
@@ -513,112 +529,61 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
         </div>
       </div>
 
-      {/* 3. FOUR KPI SUMMARY CARDS */}
+      {/* 3. FOUR KPI SUMMARY CARDS (HeroKpiCard Standardized) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Check Hari Ini */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs flex items-center gap-3.5">
-          <div className="size-12 rounded-full bg-blue-100/90 text-blue-600 flex items-center justify-center shrink-0">
-            <IconClipboardText className="size-6 text-blue-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-slate-600">Total Check Hari Terakhir</div>
-            <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
-              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight" suppressHydrationWarning>
-                {formatNumberIndo(kpiSummary.totalCheckToday)}
-              </span>
-              <div className="flex items-center text-[11px] text-emerald-600 font-bold">
-                {kpiSummary.totalCheckGrowthType === 'increase' ? (
-                  <IconArrowUp className="size-3.5 stroke-[3]" />
-                ) : (
-                  <IconArrowDown className="size-3.5 stroke-[3] text-slate-500" />
-                )}
-                <span>{kpiSummary.totalCheckGrowthPct}%</span>
-                <span className="text-slate-400 font-normal ml-1" suppressHydrationWarning>
-                  vs kemarin ({formatNumberIndo(kpiSummary.totalCheckYesterday)})
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Total Check Hari Terakhir"
+          value={formatNumberIndo(kpiSummary.totalCheckToday)}
+          unit="unit"
+          icon={<IconClipboardText className="size-5" />}
+          watermarkIcon={<IconClipboardText className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          trend={{
+            value: `${kpiSummary.totalCheckGrowthPct}%`,
+            direction: kpiSummary.totalCheckGrowthType === 'increase' ? 'up' : 'down',
+            label: `vs kemarin (${formatNumberIndo(kpiSummary.totalCheckYesterday)})`,
+          }}
+          description="Total inspeksi ban terlaksana"
+        />
 
-        {/* Card 2: Low Pressure Hari Ini */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs flex items-center gap-3.5">
-          <div className="size-12 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center shrink-0">
-            <IconAlertTriangleFilled className="size-6 text-rose-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-slate-600">Low Pressure Hari Ini</div>
-            <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
-              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {kpiSummary.lowPressureToday}
-              </span>
-              <div className="flex items-center text-[11px] font-bold">
-                {kpiSummary.lowPressureGrowthPct <= 0 ? (
-                  <span className="text-emerald-600 flex items-center">
-                    <IconArrowDown className="size-3.5 stroke-[3]" />
-                    <span>{Math.abs(kpiSummary.lowPressureGrowthPct)}%</span>
-                  </span>
-                ) : (
-                  <span className="text-rose-600 flex items-center">
-                    <IconArrowUp className="size-3.5 stroke-[3]" />
-                    <span>+{kpiSummary.lowPressureGrowthPct}%</span>
-                  </span>
-                )}
-                <span className="text-slate-400 font-normal ml-1">
-                  vs kemarin ({kpiSummary.lowPressureYesterday})
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Low Pressure Hari Ini"
+          value={kpiSummary.lowPressureToday}
+          unit="ban"
+          icon={<IconAlertTriangleFilled className="size-5" />}
+          watermarkIcon={<IconAlertTriangleFilled className="size-16" />}
+          tone="rose"
+          variant="colorful"
+          trend={{
+            value: `${kpiSummary.lowPressureGrowthPct <= 0 ? Math.abs(kpiSummary.lowPressureGrowthPct) : kpiSummary.lowPressureGrowthPct}%`,
+            direction: kpiSummary.lowPressureGrowthPct <= 0 ? 'down' : 'up',
+            label: `vs kemarin (${kpiSummary.lowPressureYesterday})`,
+          }}
+          badge={kpiSummary.lowPressureToday > 0 ? 'Under Pressure' : undefined}
+          description="Tekanan ban di bawah standar"
+        />
 
-        {/* Card 3: Persentase Low Pressure */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs flex items-center gap-3.5">
-          <div className="size-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-            <IconCircleCheckFilled className="size-6 text-emerald-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-slate-600">Persentase Low Pressure</div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-0.5">
-              {kpiSummary.lowPressurePercentage.toFixed(2)}%
-            </div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Persentase Low Pressure"
+          value={`${kpiSummary.lowPressurePercentage.toFixed(2)}%`}
+          icon={<IconCircleCheckFilled className="size-5" />}
+          watermarkIcon={<IconCircleCheckFilled className="size-16" />}
+          tone={kpiSummary.lowPressurePercentage > 5 ? 'amber' : 'emerald'}
+          variant="colorful"
+          description="Rasio ban kurang angin"
+        />
 
-        {/* Card 4: Total Equipment (Matrik) */}
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs flex items-center gap-3.5">
-          <div className="size-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center shrink-0">
-            <IconDatabase className="size-6 text-purple-600" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-slate-600">Total Equipment (Matrik)</div>
-            <div className="flex items-center justify-between gap-2 mt-0.5">
-              <span className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight" suppressHydrationWarning>
-                {formatNumberIndo(kpiSummary.totalEquipment)}
-              </span>
-              <div className="text-[11px] space-y-0.5 text-right">
-                <div className="flex justify-between gap-2 text-slate-500">
-                  <span>Normal</span>
-                  <span className="font-bold text-slate-800" suppressHydrationWarning>
-                    {formatNumberIndo(kpiSummary.equipmentBreakdown.normal)}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-2 text-slate-500">
-                  <span>Low</span>
-                  <span className="font-bold text-slate-800">
-                    {kpiSummary.equipmentBreakdown.low}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-2 text-slate-500">
-                  <span>Maintenance</span>
-                  <span className="font-bold text-slate-800">
-                    {kpiSummary.equipmentBreakdown.maintenance}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Total Equipment"
+          value={formatNumberIndo(kpiSummary.totalEquipment)}
+          unit="unit"
+          icon={<IconDatabase className="size-5" />}
+          watermarkIcon={<IconDatabase className="size-16" />}
+          tone="purple"
+          variant="colorful"
+          description={`${formatNumberIndo(kpiSummary.equipmentBreakdown.normal)} Normal • ${kpiSummary.equipmentBreakdown.low} Low`}
+        />
       </div>
 
       {/* 4. CHART CARD: TREND LOW PRESSURE (DAILY) */}
@@ -910,18 +875,116 @@ export function TireCheckClientPage({ initialData }: TireCheckClientProps) {
           <table className="w-full text-xs text-left border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-[#f0f6fc] text-slate-700 font-bold border-b border-slate-200 shadow-2xs">
-                <th className="py-3 px-4 text-center w-12 bg-[#f0f6fc]">No</th>
-                <th className="py-3 px-4 bg-[#f0f6fc] min-w-[130px]">Site</th>
-                <th className="py-3 px-4 bg-[#f0f6fc] min-w-[120px]">Tanggal</th>
-                <th className="py-3 px-4 text-center bg-[#f0f6fc]">Total Tire Checked</th>
-                <th className="py-3 px-4 text-center bg-[#f0f6fc]">Low Pressure (Qty)</th>
-                <th className="py-3 px-4 text-center bg-[#f0f6fc]">Target Checked (Qty)</th>
-                <th className="py-3 px-4 text-center bg-[#f0f6fc]">Adjusted (Qty)</th>
+                <th className="py-2.5 px-4 text-center w-12 bg-[#f0f6fc]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs font-bold hover:bg-transparent px-1"
+                    onClick={() => handleSort('no')}
+                  >
+                    No
+                    {sortField === 'no' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-4 bg-[#f0f6fc] min-w-[130px]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-7 text-xs font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('site')}
+                  >
+                    Site
+                    {sortField === 'site' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-4 bg-[#f0f6fc] min-w-[120px]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-7 text-xs font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('tanggal')}
+                  >
+                    Tanggal
+                    {sortField === 'tanggal' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-4 text-center bg-[#f0f6fc]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('totalTireChecked')}
+                  >
+                    Total Tire Checked
+                    {sortField === 'totalTireChecked' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-4 text-center bg-[#f0f6fc]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('lowPressureQty')}
+                  >
+                    Low Pressure (Qty)
+                    {sortField === 'lowPressureQty' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-4 text-center bg-[#f0f6fc]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('targetCheckedQty')}
+                  >
+                    Target Checked (Qty)
+                    {sortField === 'targetCheckedQty' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-4 text-center bg-[#f0f6fc]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('adjustedQty')}
+                  >
+                    Adjusted (Qty)
+                    {sortField === 'adjustedQty' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredTable.length > 0 ? (
-                filteredTable.map((row) => {
+              {sortedTable.length > 0 ? (
+                sortedTable.map((row) => {
                   let lowPressureCellClass = 'bg-emerald-50 text-emerald-700 font-semibold'
                   if (row.lowPressureQty >= 4) {
                     lowPressureCellClass = 'bg-rose-100 text-rose-700 font-bold'

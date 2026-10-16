@@ -40,7 +40,7 @@ export function VehicleServiceDialog({
   const [loading, setLoading] = useState(false)
   const [serviceDate, setServiceDate] = useState(new Date().toISOString().split('T')[0])
   const [serviceType, setServiceType] = useState('Rutin Berkala')
-  const [odometer, setOdometer] = useState(vehicle?.currentOdometer ? String(vehicle.currentOdometer) : '')
+  const [odometer, setOdometer] = useState(vehicle?.lastServiceOdometer ? String(vehicle.lastServiceOdometer) : '')
   const [workshopName, setWorkshopName] = useState('')
   const [cost, setCost] = useState('')
   const [nextServiceOdometer, setNextServiceOdometer] = useState('')
@@ -64,18 +64,14 @@ export function VehicleServiceDialog({
         serviceType,
         odometer: odometer ? Number(odometer) : undefined,
         workshopName: workshopName.trim() || undefined,
-        cost: cost ? Number(cost) : undefined,
-        nextServiceOdometer: nextServiceOdometer ? Number(nextServiceOdometer) : undefined,
-        nextServiceDate: nextServiceDate || undefined,
-        description: description.trim() || undefined,
+        cost: cost ? String(cost) : undefined,
+        description: description.trim() || 'Servis kendaraan',
       })
 
-      if (res.success) {
+      if (res) {
         toast.success('Catatan servis kendaraan berhasil disimpan')
         onOpenChange(false)
         onSuccess()
-      } else {
-        toast.error(res.message || 'Gagal menyimpan catatan servis')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Terjadi kesalahan sistem')
@@ -90,7 +86,7 @@ export function VehicleServiceDialog({
         <DialogHeader className="border-b pb-3">
           <DialogTitle className="flex items-center gap-2 text-base font-bold">
             <Wrench className="w-5 h-5 text-blue-600" />
-            Catat Servis — {vehicle.policeNumber} ({vehicle.brand} {vehicle.vehicleType})
+            Catat Servis — {vehicle.plateNumber} ({vehicle.vehicleType})
           </DialogTitle>
         </DialogHeader>
 

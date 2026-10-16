@@ -46,7 +46,8 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "validate": "npm run format:check && npm run lint && npm run type-check && npm run test"
+    "validate": "npm run format:check && npm run lint && npm run type-check && npm run test",
+    "test:e2e": "e2e run"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1030.0",
@@ -140,6 +141,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.70",
+    "@e2e-dev/web": "^0.12.0",
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
@@ -158,8 +161,10 @@
     "@types/react-signature-canvas": "^1.0.7",
     "@types/three": "^0.165.0",
     "@types/web-push": "^3.6.4",
+    "ai": "^7.0.0",
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.30.0",
+    "e2e": "^0.17.0",
     "eslint": "^9",
     "eslint-config-next": "^16.3.8",
     "jest": "^30.3.0",

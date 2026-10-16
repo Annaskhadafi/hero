@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import { HeroSearchableSelect } from "@/components/templates"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
@@ -229,7 +230,9 @@ export function LeaderboardClient({
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
 
   const [isAwardModalOpen, setIsAwardModalOpen] = useState(false)
+  const [awardCategory, setAwardCategory] = useState("Bonus Kedisiplinan")
   const [isPenaltyModalOpen, setIsPenaltyModalOpen] = useState(false)
+  const [penaltyCode, setPenaltyCode] = useState("TELAT")
   const [isSubmittingAction, setIsSubmittingAction] = useState(false)
 
   // Options for filtering
@@ -706,59 +709,62 @@ export function LeaderboardClient({
 
             {/* Dropdown Filters */}
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <HeroSearchableSelect
+                placeholder="Semua Departemen"
+                options={[
+                  { value: "all", label: "Semua Departemen" },
+                  ...departments
+                    .filter((d) => d !== "all")
+                    .map((dept) => ({
+                      value: dept,
+                      label: dept,
+                    })),
+                ]}
                 value={selectedDept}
-                onChange={(e) => {
-                  setSelectedDept(e.target.value)
+                onChange={(val) => {
+                  setSelectedDept(val)
                   setCurrentPage(1)
                 }}
-                className="h-9 rounded-xl border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="all">Semua Departemen</option>
-                {departments
-                  .filter((d) => d !== "all")
-                  .map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
-                    </option>
-                  ))}
-              </select>
+                width="w-44"
+              />
 
-              <select
+              <HeroSearchableSelect
+                placeholder="Semua Site (Nasional)"
+                options={[
+                  { value: "all", label: "Semua Site (Nasional)" },
+                  ...siteFilterOptions
+                    .filter((s) => s !== "all")
+                    .map((site) => ({
+                      value: site,
+                      label: site,
+                    })),
+                ]}
                 value={selectedSite}
-                onChange={(e) => {
-                  setSelectedSite(e.target.value)
+                onChange={(val) => {
+                  setSelectedSite(val)
                   setCurrentPage(1)
                 }}
-                className="h-9 rounded-xl border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="all">Semua Site (Nasional)</option>
-                {siteFilterOptions
-                  .filter((s) => s !== "all")
-                  .map((site) => (
-                    <option key={site} value={site}>
-                      {site}
-                    </option>
-                  ))}
-              </select>
+                width="w-48"
+              />
 
-              <select
+              <HeroSearchableSelect
+                placeholder="Semua Level"
+                options={[
+                  { value: "all", label: "Semua Level" },
+                  ...levelOptions
+                    .filter((l) => l !== "all")
+                    .map((lvl) => ({
+                      value: lvl,
+                      label: lvl,
+                    })),
+                ]}
                 value={selectedLevel}
-                onChange={(e) => {
-                  setSelectedLevel(e.target.value)
+                onChange={(val) => {
+                  setSelectedLevel(val)
                   setCurrentPage(1)
                 }}
-                className="h-9 rounded-xl border border-input bg-background px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              >
-                <option value="all">Semua Level</option>
-                {levelOptions
-                  .filter((l) => l !== "all")
-                  .map((lvl) => (
-                    <option key={lvl} value={lvl}>
-                      {lvl}
-                    </option>
-                  ))}
-              </select>
+                width="w-36"
+              />
 
               {/* Signal Filter Chips */}
               <div className="flex items-center gap-1 rounded-xl bg-muted/60 p-0.5">
@@ -1502,17 +1508,20 @@ export function LeaderboardClient({
 
             <div className="space-y-1.5">
               <Label className="text-xs">Kategori</Label>
-              <select
-                name="category"
-                defaultValue="Bonus Kedisiplinan"
-                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs"
-              >
-                <option value="Bonus Kedisiplinan">Bonus Kedisiplinan</option>
-                <option value="Penyelesaian Job Cepat">Penyelesaian Job Cepat</option>
-                <option value="Safety Champion">Safety Champion</option>
-                <option value="Inisiatif 5R">Inisiatif 5R</option>
-                <option value="Manual Adjustment">Manual Adjustment HR</option>
-              </select>
+              <input type="hidden" name="category" value={awardCategory} />
+              <HeroSearchableSelect
+                placeholder="Pilih Kategori"
+                options={[
+                  { value: "Bonus Kedisiplinan", label: "Bonus Kedisiplinan" },
+                  { value: "Penyelesaian Job Cepat", label: "Penyelesaian Job Cepat" },
+                  { value: "Safety Champion", label: "Safety Champion" },
+                  { value: "Inisiatif 5R", label: "Inisiatif 5R" },
+                  { value: "Manual Adjustment", label: "Manual Adjustment HR" },
+                ]}
+                value={awardCategory}
+                onChange={(val) => setAwardCategory(val)}
+                width="w-full"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -1583,18 +1592,21 @@ export function LeaderboardClient({
 
             <div className="space-y-1.5">
               <Label className="text-xs">Kode Penalti</Label>
-              <select
-                name="penaltyCode"
-                defaultValue="TELAT"
-                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-xs"
-              >
-                <option value="TELAT">TELAT - Keterlambatan Presensi</option>
-                <option value="ALPA">ALPA - Mangkir Kerja</option>
-                <option value="UNSAFE_ACT">UNSAFE_ACT - Pelanggaran Keselamatan</option>
-                <option value="SP1">SP1 - Surat Peringatan I</option>
-                <option value="SP2">SP2 - Surat Peringatan II</option>
-                <option value="LAINNYA">LAINNYA - Pelanggaran Lain</option>
-              </select>
+              <input type="hidden" name="penaltyCode" value={penaltyCode} />
+              <HeroSearchableSelect
+                placeholder="Pilih Kode Penalti"
+                options={[
+                  { value: "TELAT", label: "TELAT - Keterlambatan Presensi" },
+                  { value: "ALPA", label: "ALPA - Mangkir Kerja" },
+                  { value: "UNSAFE_ACT", label: "UNSAFE_ACT - Pelanggaran Keselamatan" },
+                  { value: "SP1", label: "SP1 - Surat Peringatan I" },
+                  { value: "SP2", label: "SP2 - Surat Peringatan II" },
+                  { value: "LAINNYA", label: "LAINNYA - Pelanggaran Lain" },
+                ]}
+                value={penaltyCode}
+                onChange={(val) => setPenaltyCode(val)}
+                width="w-full"
+              />
             </div>
 
             <div className="space-y-1.5">

@@ -41,6 +41,7 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { HeroSearchableSelect, HeroKpiCard, type HeroSearchableSelectOption } from '@/components/templates'
 import {
   fetchTireScrapPerformance,
   type TireScrapResponse,
@@ -164,6 +165,37 @@ export function TireScrapDashboard({
       reasons: ['All Reasons', ...(distinctReasons.length > 0 ? distinctReasons : raw?.reasons || [])],
     }
   }, [apiData, initialData])
+
+  const siteSelectOptions: HeroSearchableSelectOption[] = React.useMemo(
+    () => filterOptions.sites.map((s) => ({ value: s, label: s })),
+    [filterOptions.sites]
+  )
+  const brandSelectOptions: HeroSearchableSelectOption[] = React.useMemo(
+    () => filterOptions.brands.map((b) => ({ value: b, label: b })),
+    [filterOptions.brands]
+  )
+  const sizeSelectOptions: HeroSearchableSelectOption[] = React.useMemo(
+    () => filterOptions.sizes.map((sz) => ({ value: sz, label: sz })),
+    [filterOptions.sizes]
+  )
+  const patternSelectOptions: HeroSearchableSelectOption[] = React.useMemo(
+    () => filterOptions.patterns.map((p) => ({ value: p, label: p })),
+    [filterOptions.patterns]
+  )
+  const periodSelectOptions: HeroSearchableSelectOption[] = React.useMemo(
+    () => [
+      { value: 'all', label: 'All Time' },
+      { value: '2026', label: 'Year 2026' },
+      { value: '2025', label: 'Year 2025' },
+      { value: '2024', label: 'Year 2024' },
+      { value: '2023', label: 'Year 2023' },
+    ],
+    []
+  )
+  const reasonSelectOptions: HeroSearchableSelectOption[] = React.useMemo(
+    () => filterOptions.reasons.map((r) => ({ value: r, label: r })),
+    [filterOptions.reasons]
+  )
 
   // Refetch function when site changes
   const handleApplyFilter = React.useCallback(
@@ -506,6 +538,26 @@ export function TireScrapDashboard({
     toast.success(`Berhasil mengekspor ${processedRecords.length} data scrap tire!`)
   }
 
+  const renderSortableTh = (label: string, col: keyof TireScrapDetailRecord, extraClass = '') => (
+    <th
+      onClick={() => handleSort(col)}
+      className={`py-3 px-4 cursor-pointer hover:text-slate-950 transition-colors select-none ${extraClass}`}
+    >
+      <span className="inline-flex items-center gap-1 font-bold">
+        {label}
+        {sortColumn === col ? (
+          sortDirection === 'asc' ? (
+            <ArrowUp className="size-3 text-slate-950" />
+          ) : (
+            <ArrowDown className="size-3 text-slate-950" />
+          )
+        ) : (
+          <ArrowUpDown className="size-3 text-slate-400" />
+        )}
+      </span>
+    </th>
+  )
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 pb-16">
       {/* ── Top Bar with Global Search & Status (Hidden in HERO Dashboard shell) ── */}
@@ -645,210 +697,138 @@ export function TireScrapDashboard({
             </div>
 
             {/* Site Filter */}
-            <div className="relative">
+            <div className="min-w-[140px] sm:min-w-[170px]">
               <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 ml-1">Site</span>
-              <select
+              <HeroSearchableSelect
+                options={siteSelectOptions}
                 value={selectedSite}
-                onChange={(e) => {
-                  const val = e.target.value
-                  setSelectedSite(val)
-                  handleApplyFilter({ site: val })
+                onChange={(val) => {
+                  if (val) {
+                    setSelectedSite(val)
+                    handleApplyFilter({ site: val })
+                  }
                 }}
-                className="h-9 max-w-[150px] sm:max-w-[180px] truncate appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                {filterOptions.sites.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-[23px] size-3.5 text-slate-500" />
+                placeholder="Pilih Site..."
+                className="w-full h-9"
+              />
             </div>
 
             {/* Brand Filter */}
-            <div className="relative">
+            <div className="min-w-[130px] sm:min-w-[150px]">
               <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 ml-1">Brand</span>
-              <select
+              <HeroSearchableSelect
+                options={brandSelectOptions}
                 value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value)}
-                className="h-9 max-w-[120px] sm:max-w-[140px] truncate appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                {filterOptions.brands.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-[23px] size-3.5 text-slate-500" />
+                onChange={(val) => setSelectedBrand(val || 'All Brands')}
+                placeholder="Pilih Brand..."
+                className="w-full h-9"
+              />
             </div>
 
             {/* Tire Size Filter */}
-            <div className="relative">
+            <div className="min-w-[130px] sm:min-w-[150px]">
               <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 ml-1">Tire Size</span>
-              <select
+              <HeroSearchableSelect
+                options={sizeSelectOptions}
                 value={selectedSize}
-                onChange={(e) => setSelectedSize(e.target.value)}
-                className="h-9 max-w-[120px] sm:max-w-[130px] truncate appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                {filterOptions.sizes.map((sz) => (
-                  <option key={sz} value={sz}>
-                    {sz}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-[23px] size-3.5 text-slate-500" />
+                onChange={(val) => setSelectedSize(val || 'All Sizes')}
+                placeholder="Pilih Ukuran..."
+                className="w-full h-9"
+              />
             </div>
 
             {/* Pattern Filter */}
-            <div className="relative">
+            <div className="min-w-[130px] sm:min-w-[150px]">
               <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 ml-1">Pattern</span>
-              <select
+              <HeroSearchableSelect
+                options={patternSelectOptions}
                 value={selectedPattern}
-                onChange={(e) => setSelectedPattern(e.target.value)}
-                className="h-9 max-w-[120px] sm:max-w-[140px] truncate appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                {filterOptions.patterns.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-[23px] size-3.5 text-slate-500" />
+                onChange={(val) => setSelectedPattern(val || 'All Patterns')}
+                placeholder="Pilih Pattern..."
+                className="w-full h-9"
+              />
             </div>
 
             {/* Period / Year Filter */}
-            <div className="relative">
+            <div className="min-w-[120px] sm:min-w-[140px]">
               <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 ml-1">Year / Period</span>
-              <select
+              <HeroSearchableSelect
+                options={periodSelectOptions}
                 value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value)}
-                className="h-9 appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                <option value="all">All Time</option>
-                <option value="2026">Year 2026</option>
-                <option value="2025">Year 2025</option>
-                <option value="2024">Year 2024</option>
-                <option value="2023">Year 2023</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-[23px] size-3.5 text-slate-500" />
+                onChange={(val) => setSelectedPeriod(val || 'all')}
+                placeholder="Pilih Periode..."
+                className="w-full h-9"
+              />
             </div>
 
             {/* Scrap Reason Filter */}
-            <div className="relative">
+            <div className="min-w-[140px] sm:min-w-[170px]">
               <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 ml-1">Scrap Reason</span>
-              <select
+              <HeroSearchableSelect
+                options={reasonSelectOptions}
                 value={selectedReason}
-                onChange={(e) => setSelectedReason(e.target.value)}
-                className="h-9 max-w-[140px] sm:max-w-[170px] truncate appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                {filterOptions.reasons.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-[23px] size-3.5 text-slate-500" />
+                onChange={(val) => setSelectedReason(val || 'All Reasons')}
+                placeholder="Pilih Reason..."
+                className="w-full h-9"
+              />
             </div>
           </div>
         </div>
 
-        {/* ── 5 Stat / KPI Scorecards (Row) - REAKTIF MENGIKUTI FILTER ── */}
+        {/* ── 5 Stat / KPI Scorecards (Standard HeroKpiCard) ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
-          {/* Card 1: Total Scrap Tires */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-                <TireIcon className="size-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-600">Total Scrap Tires</p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-2xl font-black text-slate-950">
-                    {formatNumber(summary.total_scrap_tires?.value)}
-                  </span>
-                  <span className="text-xs font-bold text-slate-600">
-                    {summary.total_scrap_tires?.unit || 'units'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium">terfilter dari dataset</p>
-              </div>
-            </div>
-          </div>
+          <HeroKpiCard
+            title="Total Scrap Tires"
+            value={formatNumber(summary.total_scrap_tires?.value)}
+            unit={summary.total_scrap_tires?.unit || 'units'}
+            icon={<TireIcon className="size-5" />}
+            watermarkIcon={<TireIcon className="size-16" />}
+            tone="blue"
+            variant="colorful"
+            description="Terfilter dari dataset aktif"
+          />
 
-          {/* Card 2: Average Tire Life */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-                <Clock className="size-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-600">Average Tire Life</p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-2xl font-black text-slate-950">
-                    {formatNumber(summary.average_tire_life?.value)}
-                  </span>
-                  <span className="text-xs font-bold text-slate-600">
-                    {summary.average_tire_life?.unit || (selectedUnit === 'KM' ? 'km' : 'hrs')}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium">rata-rata aktual</p>
-              </div>
-            </div>
-          </div>
+          <HeroKpiCard
+            title="Average Tire Life"
+            value={formatNumber(summary.average_tire_life?.value)}
+            unit={summary.average_tire_life?.unit || (selectedUnit === 'KM' ? 'km' : 'hrs')}
+            icon={<Clock className="size-5" />}
+            watermarkIcon={<Clock className="size-16" />}
+            tone="emerald"
+            variant="colorful"
+            description="Rata-rata aktual terpakai"
+          />
 
-          {/* Card 3: Life Achievement vs Target */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-                <BarChart3 className="size-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-600">Life Achievement vs Target</p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-2xl font-black text-slate-950">
-                    {summary.life_achievement?.value || 0}%
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium">vs target lifetime</p>
-              </div>
-            </div>
-          </div>
+          <HeroKpiCard
+            title="Life Achievement"
+            value={`${summary.life_achievement?.value || 0}%`}
+            icon={<BarChart3 className="size-5" />}
+            watermarkIcon={<BarChart3 className="size-16" />}
+            tone={(summary.life_achievement?.value || 0) >= 80 ? 'emerald' : 'amber'}
+            variant="colorful"
+            description="vs target lifetime standar"
+          />
 
-          {/* Card 4: Estimated Scrap Loss */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
-                <Coins className="size-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-600">Estimated Scrap Loss</p>
-                <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-xl sm:text-2xl font-black text-slate-950">
-                    {summary.estimated_scrap_loss?.formatted || formatCurrencyIDR(summary.estimated_scrap_loss?.value || 0)}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 font-medium">total kerugian scrap</p>
-              </div>
-            </div>
-          </div>
+          <HeroKpiCard
+            title="Estimated Scrap Loss"
+            value={summary.estimated_scrap_loss?.formatted || formatCurrencyIDR(summary.estimated_scrap_loss?.value || 0)}
+            icon={<Coins className="size-5" />}
+            watermarkIcon={<Coins className="size-16" />}
+            tone="rose"
+            variant="colorful"
+            description="Total kerugian scrap"
+          />
 
-          {/* Card 5: Top Scrap Reason */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-xl bg-rose-50 text-rose-500 border border-rose-200">
-                <AlertTriangle className="size-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-600">Top Scrap Reason</p>
-                <p className="text-base sm:text-lg font-black text-slate-950 mt-0.5 truncate max-w-[150px]" title={summary.top_scrap_reason?.reason}>
-                  {summary.top_scrap_reason?.reason || '-'}
-                </p>
-                <p className="text-xs text-slate-500 font-semibold">
-                  {summary.top_scrap_reason?.count || 0} units ({summary.top_scrap_reason?.percentage || 0}%)
-                </p>
-              </div>
-            </div>
-          </div>
+          <HeroKpiCard
+            title="Top Scrap Reason"
+            value={summary.top_scrap_reason?.reason || '-'}
+            unit={summary.top_scrap_reason?.percentage ? `(${summary.top_scrap_reason.percentage}%)` : undefined}
+            icon={<AlertTriangle className="size-5" />}
+            watermarkIcon={<AlertTriangle className="size-16" />}
+            tone="purple"
+            variant="colorful"
+            description={`${summary.top_scrap_reason?.count || 0} unit dominan scrap`}
+          />
         </div>
 
         {/* ── 4 Analytics Charts (Row) - REAKTIF MENGIKUTI FILTER ── */}
@@ -1119,36 +1099,22 @@ export function TireScrapDashboard({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/70 text-[11px] font-bold text-slate-600">
-                  <th onClick={() => handleSort('brand')} className="py-3 px-4 cursor-pointer hover:text-slate-950">
-                    <span className="inline-flex items-center gap-1">Brand <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th onClick={() => handleSort('tire_size')} className="py-3 px-4 cursor-pointer hover:text-slate-950">
-                    <span className="inline-flex items-center gap-1">Tire Size <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th className="py-3 px-4">Pattern</th>
-                  <th className="py-3 px-4">Unit / Equipment</th>
-                  <th onClick={() => handleSort('site')} className="py-3 px-4 cursor-pointer hover:text-slate-950">
-                    <span className="inline-flex items-center gap-1">Site <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th onClick={() => handleSort('serial_number')} className="py-3 px-4 cursor-pointer hover:text-slate-950">
-                    <span className="inline-flex items-center gap-1">Serial Number <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th className="py-3 px-4 whitespace-nowrap">Install Date</th>
-                  <th onClick={() => handleSort('scrap_date')} className="py-3 px-4 cursor-pointer hover:text-slate-950 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1">Scrap Date <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th onClick={() => handleSort('actual_life')} className="py-3 px-4 cursor-pointer hover:text-slate-950 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1">Actual Life <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th className="py-3 px-4 whitespace-nowrap">Target Life</th>
-                  <th onClick={() => handleSort('achievement')} className="py-3 px-4 cursor-pointer hover:text-slate-950 whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1">Achievement <ArrowUpDown className="size-3 text-slate-400" /></span>
-                  </th>
-                  <th className="py-3 px-4 whitespace-nowrap">Tread Remaining</th>
-                  <th className="py-3 px-4">Scrap Reason</th>
-                  <th className="py-3 px-4">Failure Category</th>
-                  <th className="py-3 px-4">Position</th>
-                  <th className="py-3 px-4 text-center">Status</th>
+                  {renderSortableTh('Brand', 'brand')}
+                  {renderSortableTh('Tire Size', 'tire_size')}
+                  {renderSortableTh('Pattern', 'pattern')}
+                  {renderSortableTh('Unit / Equipment', 'unit_number')}
+                  {renderSortableTh('Site', 'site')}
+                  {renderSortableTh('Serial Number', 'serial_number')}
+                  {renderSortableTh('Install Date', 'install_date', 'whitespace-nowrap')}
+                  {renderSortableTh('Scrap Date', 'scrap_date', 'whitespace-nowrap')}
+                  {renderSortableTh('Actual Life', 'actual_life', 'whitespace-nowrap')}
+                  {renderSortableTh('Target Life', 'target_life', 'whitespace-nowrap')}
+                  {renderSortableTh('Achievement', 'achievement', 'whitespace-nowrap')}
+                  {renderSortableTh('Tread Remaining', 'tread_remaining', 'whitespace-nowrap')}
+                  {renderSortableTh('Scrap Reason', 'scrap_reason')}
+                  {renderSortableTh('Failure Category', 'scrap_category')}
+                  {renderSortableTh('Position', 'position')}
+                  {renderSortableTh('Status', 'status', 'text-center')}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">

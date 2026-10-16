@@ -22,6 +22,9 @@ import {
   Users,
   Wrench,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react"
 import {
   Area,
@@ -59,6 +62,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { HeroKpiCard } from "@/components/templates"
 import { cn } from "@/lib/utils"
 import type { WipRepairRecord, WipRepairWorkOrderDetailRecord } from "@/lib/types/wip-repair"
 import {
@@ -387,62 +391,30 @@ function MetricCard({
   detail,
   icon: Icon,
   tone,
-  sparklineData,
 }: {
   title: string
   value: string
   detail: string
   icon: ComponentType<{ className?: string }>
   tone: "blue" | "green" | "orange" | "violet" | "rose"
-  sparklineData: Array<{ name: string; workOrders: number }>
+  sparklineData?: Array<{ name: string; workOrders: number }>
 }) {
-  const toneClass = {
-    blue: "bg-blue-50 text-blue-600",
-    green: "bg-emerald-50 text-emerald-600",
-    orange: "bg-orange-50 text-orange-600",
-    violet: "bg-violet-50 text-violet-600",
-    rose: "bg-rose-50 text-rose-600",
-  }[tone]
-  const lineColor = {
-    blue: "#2563eb",
-    green: "#10b981",
-    orange: "#f97316",
-    violet: "#8b5cf6",
-    rose: "#ef4444",
-  }[tone]
-  const chartData =
-    sparklineData.length > 1
-      ? sparklineData
-      : sparklineData.length === 1
-        ? [
-            { ...sparklineData[0], name: `${sparklineData[0].name} start` },
-            { ...sparklineData[0], name: `${sparklineData[0].name} end` },
-          ]
-        : [
-            { name: "Start", workOrders: 0 },
-            { name: "End", workOrders: 0 },
-          ]
+  const toneMap: Record<typeof tone, "blue" | "emerald" | "amber" | "purple" | "rose"> = {
+    blue: "blue",
+    green: "emerald",
+    orange: "amber",
+    violet: "purple",
+    rose: "rose",
+  }
 
   return (
-    <Card className="overflow-hidden rounded-lg border-slate-200 bg-white py-0 shadow-sm">
-      <CardContent className="grid h-full gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold text-slate-600">{title}</p>
-            <p className="mt-2 text-2xl font-bold leading-none text-slate-950 tabular-nums">{value}</p>
-          </div>
-          <div className={cn("flex h-11 w-11 items-center justify-center rounded-full", toneClass)}>
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-        <p className="min-h-5 text-xs text-slate-500">{detail}</p>
-        <ChartContainer config={chartConfig} className="!aspect-auto h-12 w-full">
-          <AreaChart data={chartData} margin={{ left: 0, right: 0, top: 4, bottom: 2 }}>
-            <Area type="monotone" dataKey="workOrders" stroke={lineColor} fill={lineColor} fillOpacity={0.12} strokeWidth={2.25} dot={false} isAnimationActive={false} />
-          </AreaChart>
-        </ChartContainer>
-      </CardContent>
-    </Card>
+    <HeroKpiCard
+      title={title}
+      value={value}
+      description={detail}
+      icon={<Icon className="size-5" />}
+      tone={toneMap[tone]}
+    />
   )
 }
 
@@ -459,30 +431,23 @@ function WorkshopStatCard({
   icon: ComponentType<{ className?: string }>
   tone: "blue" | "green" | "orange" | "violet" | "rose" | "slate"
 }) {
-  const toneClass = {
-    blue: "border-blue-200 bg-blue-50 text-blue-700",
-    green: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    orange: "border-amber-200 bg-amber-50 text-amber-700",
-    violet: "border-violet-200 bg-violet-50 text-violet-700",
-    rose: "border-rose-200 bg-rose-50 text-rose-700",
-    slate: "border-slate-200 bg-slate-50 text-slate-700",
-  }[tone]
+  const toneMap: Record<typeof tone, "blue" | "emerald" | "amber" | "purple" | "rose" | "slate"> = {
+    blue: "blue",
+    green: "emerald",
+    orange: "amber",
+    violet: "purple",
+    rose: "rose",
+    slate: "slate",
+  }
 
   return (
-    <Card className={cn("flex h-full flex-col rounded-lg py-0 shadow-sm", toneClass)}>
-      <CardContent className="grid min-h-[132px] flex-1 gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold">{title}</p>
-            <p className="mt-2 text-2xl font-bold leading-none text-slate-950 tabular-nums">{value}</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 shadow-sm">
-            <Icon className="h-5 w-5" />
-          </div>
-        </div>
-        <p className="text-xs leading-5 text-slate-600">{detail}</p>
-      </CardContent>
-    </Card>
+    <HeroKpiCard
+      title={title}
+      value={value}
+      description={detail}
+      icon={<Icon className="size-5" />}
+      tone={toneMap[tone]}
+    />
   )
 }
 
@@ -672,6 +637,38 @@ export function WipRepairDashboardClient({
     () => getWipRepairAgingUnder30Rows(dashboard.workOrderInsights),
     [dashboard.workOrderInsights]
   )
+
+  const [agingSortField, setAgingSortField] = useState<string>("agingDays")
+  const [agingSortDir, setAgingSortDir] = useState<"asc" | "desc">("desc")
+
+  const handleAgingSort = (field: string) => {
+    if (agingSortField === field) {
+      setAgingSortDir(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setAgingSortField(field)
+      setAgingSortDir("asc")
+    }
+  }
+
+  const sortedAgingUnder30Rows = useMemo(() => {
+    return [...agingUnder30Rows].sort((a, b) => {
+      let aVal = (a as any)[agingSortField]
+      let bVal = (b as any)[agingSortField]
+      if (agingSortField === "agingDays") {
+        aVal = Number(aVal ?? 0)
+        bVal = Number(bVal ?? 0)
+      } else if (agingSortField === "receivedDate" || agingSortField === "woDate") {
+        aVal = new Date(aVal || 0).getTime()
+        bVal = new Date(bVal || 0).getTime()
+      } else {
+        aVal = String(aVal || "").toLowerCase()
+        bVal = String(bVal || "").toLowerCase()
+      }
+      if (aVal < bVal) return agingSortDir === "asc" ? -1 : 1
+      if (aVal > bVal) return agingSortDir === "asc" ? 1 : -1
+      return 0
+    })
+  }, [agingUnder30Rows, agingSortField, agingSortDir])
 
   const detailRows = useMemo(() => {
     const workOrderByKey = filteredWorkOrders.reduce<Record<string, WipRepairRecord>>((accumulator, item) => {
@@ -1291,7 +1288,7 @@ export function WipRepairDashboardClient({
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
         <MetricCard title="Total WO Repair" value={formatNumber(dashboard.summary.totalWorkOrders)} detail="Work order pada filter aktif." icon={Wrench} tone="blue" sparklineData={monthTrend} />
         <MetricCard title="Repair In Progress" value={formatNumber(dashboard.summary.progressWorkOrders)} detail={`${formatNumber(progressRate, 1)}% dari WO terfilter.`} icon={Activity} tone="orange" sparklineData={monthTrend} />
         <MetricCard title="Complete" value={formatNumber(dashboard.summary.completeWorkOrders)} detail={`${formatNumber(completionRate, 1)}% sudah selesai.`} icon={BadgeCheck} tone="green" sparklineData={monthTrend} />
@@ -1366,23 +1363,191 @@ export function WipRepairDashboardClient({
           <Table className="min-w-[1280px]">
             <TableHeader className="sticky top-0 z-10 bg-slate-50">
               <TableRow>
-                <TableHead>WO</TableHead>
-                <TableHead>Tire SN</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Jobsite</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Brand</TableHead>
-                <TableHead>Pattern</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Injury</TableHead>
-                <TableHead>Received Date</TableHead>
-                <TableHead>WO Date</TableHead>
-                <TableHead className="text-right">Aging (Hari)</TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("wo")}
+                  >
+                    WO
+                    {agingSortField === "wo" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("tireSn")}
+                  >
+                    Tire SN
+                    {agingSortField === "tireSn" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("customer")}
+                  >
+                    Customer
+                    {agingSortField === "customer" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("site")}
+                  >
+                    Jobsite
+                    {agingSortField === "site" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("size")}
+                  >
+                    Size
+                    {agingSortField === "size" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("brand")}
+                  >
+                    Brand
+                    {agingSortField === "brand" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("pattern")}
+                  >
+                    Pattern
+                    {agingSortField === "pattern" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("status")}
+                  >
+                    Status
+                    {agingSortField === "status" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("injury")}
+                  >
+                    Injury
+                    {agingSortField === "injury" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("receivedDate")}
+                  >
+                    Received Date
+                    {agingSortField === "receivedDate" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("woDate")}
+                  >
+                    WO Date
+                    {agingSortField === "woDate" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
+                <TableHead className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-mr-3 ml-auto h-8 text-xs font-semibold hover:bg-transparent"
+                    onClick={() => handleAgingSort("agingDays")}
+                  >
+                    Aging (Hari)
+                    {agingSortField === "agingDays" ? (
+                      agingSortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {agingUnder30Rows.length > 0 ? (
-                agingUnder30Rows.map((item) => (
+              {sortedAgingUnder30Rows.length > 0 ? (
+                sortedAgingUnder30Rows.map((item) => (
                   <TableRow key={item.insightKey} data-date-value={item.receivedDate}>
                     <TableCell className="font-mono text-xs font-semibold">{item.wo}</TableCell>
                     <TableCell>{item.tireSn}</TableCell>

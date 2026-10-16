@@ -38,6 +38,8 @@ import { MyDayRouteChecklist } from "@/components/my-day/my-day-route-checklist"
 import { MyDayFilterBar } from "@/components/my-day/my-day-filter-bar";
 import { MyDayEmptyState } from "@/components/my-day/my-day-empty-state";
 import { MyDayActivityLogTable } from "@/components/my-day/my-day-activity-log-table";
+import { MyDayAssignmentsTable } from "@/components/my-day/my-day-assignments-table";
+import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableFilterPresets } from "@/components/table-filter-presets";
@@ -88,19 +90,14 @@ function SelectFilter({
   placeholder: string;
   options: string[];
 }) {
+  const cleanLabel = placeholder.replace(/^semua\s+/i, "");
   return (
-    <select
-      data-table-filter-key={filterKey}
-      defaultValue=""
-      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs transition-colors focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-    >
-      <option value="">{placeholder}</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
+    <TableMultiFilter
+      filterKey={filterKey}
+      label={cleanLabel}
+      options={options.map((opt) => ({ value: opt, label: opt }))}
+      widthClassName="w-full sm:w-[170px]"
+    />
   );
 }
 
@@ -520,97 +517,7 @@ export default async function MyDayPage({
                   }
                 >
                   <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
-                    <Table>
-                      <TableHeader className="bg-slate-50 dark:bg-slate-800/60">
-                        <TableRow className="border-b border-slate-200 dark:border-slate-700">
-                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            Activity
-                          </TableHead>
-                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            Status
-                          </TableHead>
-                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            Priority
-                          </TableHead>
-                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            Deadline
-                          </TableHead>
-                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            PIC
-                          </TableHead>
-                          <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                            Mandatory
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {data.assignments.length > 0 ? (
-                          data.assignments.map((assignment) => (
-                            <TableRow
-                              key={assignment.id}
-                              data-date-value={(assignment.deadline ?? assignment.createdAt).toISOString()}
-                              data-filter-status={assignment.statusLabel}
-                              data-filter-priority={assignment.priority}
-                              data-filter-mandatory={assignment.isMandatory ? "yes" : "optional"}
-                              className="border-b border-slate-100 transition-colors hover:bg-slate-50/80 dark:border-slate-800/80 dark:hover:bg-slate-800/50"
-                            >
-                              <TableCell className="align-top py-3.5">
-                                <div className="space-y-1">
-                                  <p className="font-semibold text-slate-900 dark:text-white">
-                                    {(assignment.activityName ?? assignment.customJobName) || "Custom assignment"}
-                                  </p>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                                    {assignment.activityCode ?? "Custom"} • {assignment.category ?? assignment.assignmentType}
-                                  </p>
-                                  <p className="text-xs text-slate-400 dark:text-slate-500">
-                                    {assignment.notes || "Tanpa catatan tambahan."}
-                                  </p>
-                                </div>
-                              </TableCell>
-                              <TableCell className="align-top py-3.5">
-                                <Badge className={`rounded-full px-2.5 py-0.5 text-xs ${statusBadgeClass(assignment.statusLabel)}`}>
-                                  {assignment.statusLabel}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="align-top py-3.5">
-                                <div className="text-xs">
-                                  <p className="font-semibold text-slate-800 dark:text-slate-200">{assignment.priority}</p>
-                                  <p className="text-slate-400 dark:text-slate-500">{assignment.durationLabel}</p>
-                                </div>
-                              </TableCell>
-                              <TableCell className="align-top py-3.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
-                                {assignment.deadline
-                                  ? assignment.deadline.toLocaleString("id-ID", {
-                                      day: "2-digit",
-                                      month: "short",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : "-"}
-                              </TableCell>
-                              <TableCell className="align-top py-3.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                                {assignment.assignedByName}
-                              </TableCell>
-                              <TableCell className="align-top py-3.5">
-                                <Badge variant="outline" className="rounded-md text-[11px] font-medium">
-                                  {assignment.isMandatory ? "Wajib" : "Opsional"}
-                                </Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={6} className="py-8">
-                              <MyDayEmptyState
-                                iconType="jobs"
-                                title="Belum ada antrean tugas"
-                                description="Foreman belum memberikan tugas khusus untuk shift hari ini."
-                              />
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
+                    <MyDayAssignmentsTable assignments={data.assignments} />
                   </div>
                 </MinimalTableShell>
               </CardContent>

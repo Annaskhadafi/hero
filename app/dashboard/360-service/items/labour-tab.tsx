@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import {
   Table,
   TableBody,
@@ -14,6 +14,15 @@ import { Input } from "@/components/ui/input"
 import { updateEmployeeLevel } from "@/app/actions/service360"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { HeroSearchableSelect } from "@/components/templates"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type RateSetting = {
   workLocation: string
@@ -36,23 +45,65 @@ export function LabourTab({ employees, sections, rateSettings }: { employees: Em
   const [filterSite, setFilterSite] = useState("")
   const [filterSection, setFilterSection] = useState("")
   const [customLevels, setCustomLevels] = useState<Record<number, string>>({})
+  const [sortField, setSortField] = useState<string>("name")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
 
   // Get unique sites for the filter dropdowns (sections are provided by props)
   const sites = Array.from(new Set((employees || []).map(e => e.siteName || "Unassigned"))).sort()
 
-  const filteredEmployees = (employees || []).filter(emp => {
-    const siteMatch = filterSite ? (emp.siteName || "Unassigned") === filterSite : true
-    const sectionMatch = filterSection ? (emp.section || "Unassigned") === filterSection : true
-    return siteMatch && sectionMatch
-  })
+  const siteOptions = useMemo(() => [
+    { value: "", label: "All Sites" },
+    ...sites.map(s => ({ value: s, label: s }))
+  ], [sites])
+
+  const sectionOptions = useMemo(() => [
+    { value: "", label: "All Sections..." },
+    ...(sections || []).map(sec => ({ value: sec, label: sec }))
+  ], [sections])
+
+  const filteredEmployees = useMemo(() => {
+    return (employees || []).filter(emp => {
+      const siteMatch = filterSite ? (emp.siteName || "Unassigned") === filterSite : true
+      const sectionMatch = filterSection ? (emp.section || "Unassigned") === filterSection : true
+      return siteMatch && sectionMatch
+    })
+  }, [employees, filterSite, filterSection])
+
+  const sortedEmployees = useMemo(() => {
+    return [...filteredEmployees].sort((a, b) => {
+      let aVal: any = a[sortField as keyof EmployeeLabour]
+      let bVal: any = b[sortField as keyof EmployeeLabour]
+      if (sortField === "price") {
+        aVal = Number(aVal || 0)
+        bVal = Number(bVal || 0)
+      } else {
+        aVal = String(aVal || "").toLowerCase()
+        bVal = String(bVal || "").toLowerCase()
+      }
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1
+      return 0
+    })
+  }, [filteredEmployees, sortField, sortDir])
 
   // Group by site
-  const groupedBySite = filteredEmployees.reduce((acc, emp) => {
-    const site = emp.siteName || "Unassigned"
-    if (!acc[site]) acc[site] = []
-    acc[site].push(emp)
-    return acc
-  }, {} as Record<string, EmployeeLabour[]>)
+  const groupedBySite = useMemo(() => {
+    return sortedEmployees.reduce((acc, emp) => {
+      const site = emp.siteName || "Unassigned"
+      if (!acc[site]) acc[site] = []
+      acc[site].push(emp)
+      return acc
+    }, {} as Record<string, EmployeeLabour[]>)
+  }, [sortedEmployees])
 
   const handleLevelChange = async (employeeId: number, newLevel: string) => {
     if (newLevel === "others") {
@@ -99,32 +150,24 @@ export function LabourTab({ employees, sections, rateSettings }: { employees: Em
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <div className="flex-1 max-w-xs">
           <label className="text-sm font-medium mb-1 block">Filter Site Location</label>
-          <select 
-            value={filterSite} 
-            onChange={e => setFilterSite(e.target.value)}
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          >
-            <option value="">All Sites</option>
-            {sites.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          <HeroSearchableSelect
+            value={filterSite}
+            onChange={(val: any) => setFilterSite(val || "")}
+            options={siteOptions}
+            placeholder="All Sites"
+          />
         </div>
         <div className="flex-1 max-w-xs">
           <label className="text-sm font-medium mb-1 block">Filter Section</label>
-          <select 
-            value={filterSection} 
-            onChange={e => setFilterSection(e.target.value)}
-            className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          >
-            <option value="">All Sections...</option>
-            {(sections || []).map(sec => (
-              <option key={sec} value={sec}>{sec}</option>
-            ))}
-          </select>
+          <HeroSearchableSelect
+            value={filterSection}
+            onChange={(val: any) => setFilterSection(val || "")}
+            options={sectionOptions}
+            placeholder="All Sections..."
+          />
         </div>
       </div>
 
@@ -133,11 +176,67 @@ export function LabourTab({ employees, sections, rateSettings }: { employees: Em
           <TableHeader>
             <TableRow>
               <TableHead>Lokasi / Site</TableHead>
-              <TableHead>Nama Karyawan</TableHead>
-              <TableHead>Section</TableHead>
-              <TableHead>Job Title</TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("name")}
+                >
+                  Nama Karyawan
+                  {sortField === "name" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("section")}
+                >
+                  Section
+                  {sortField === "section" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("jobTitle")}
+                >
+                  Job Title
+                  {sortField === "jobTitle" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
               <TableHead className="w-[300px]">Level Assignment</TableHead>
-              <TableHead className="w-[200px]">Calculated Price</TableHead>
+              <TableHead className="w-[200px]">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("price")}
+                >
+                  Calculated Price
+                  {sortField === "price" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -164,18 +263,22 @@ export function LabourTab({ employees, sections, rateSettings }: { employees: Em
                     <TableCell>{emp.jobTitle || "-"}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-2">
-                        <select
+                        <Select
                           value={isEditingCustom ? "others" : String(emp.level)}
-                          onChange={(e) => handleLevelChange(emp.id, e.target.value)}
-                          className="h-8 rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          onValueChange={(val) => handleLevelChange(emp.id, val)}
                         >
-                          {availableLevels.map(lvl => (
-                            <option key={lvl} value={lvl}>
-                              {lvl === "0" ? "Default" : lvl === "1" ? "Level 1" : lvl === "2" ? "Level 2" : lvl === "3" ? "Level 3" : lvl}
-                            </option>
-                          ))}
-                          <option value="others">Others (Input Manual)</option>
-                        </select>
+                          <SelectTrigger className="h-9 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableLevels.map(lvl => (
+                              <SelectItem key={lvl} value={lvl}>
+                                {lvl === "0" ? "Default" : lvl === "1" ? "Level 1" : lvl === "2" ? "Level 2" : lvl === "3" ? "Level 3" : lvl}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="others">Others (Input Manual)</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {isEditingCustom && (
                           <div className="flex gap-2 items-center">
                             <Input 
@@ -183,9 +286,9 @@ export function LabourTab({ employees, sections, rateSettings }: { employees: Em
                               value={customLevels[emp.id]} 
                               onChange={e => setCustomLevels(prev => ({ ...prev, [emp.id]: e.target.value }))}
                               placeholder="Ketik level..."
-                              className="h-8 text-sm"
+                              className="h-9 text-sm"
                             />
-                            <Button size="sm" onClick={() => handleCustomLevelSave(emp.id)} className="h-8">Save</Button>
+                            <Button size="sm" onClick={() => handleCustomLevelSave(emp.id)} className="h-9">Save</Button>
                           </div>
                         )}
                       </div>

@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { HeroKpiCard } from '@/components/templates'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -203,63 +204,52 @@ export function TrainingRequestsClientPage({
         </div>
       </div>
 
-      {/* Metric Cards Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-white border-slate-200 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Total Pengajuan
-              </p>
-              <h3 className="text-2xl font-black text-slate-900 mt-1">{metrics.total}</h3>
-            </div>
-            <div className="p-3 bg-slate-100 rounded-xl text-slate-700">
-              <FileText className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Metric Cards Grid (HeroKpiCard Standardized) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Pengajuan"
+          value={metrics.total}
+          unit="pengajuan"
+          icon={<FileText className="size-5" />}
+          watermarkIcon={<FileText className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description="Semua berkas pengajuan tercatat"
+        />
 
-        <Card className="bg-white border-blue-200 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">
-                Menunggu Approval Anda
-              </p>
-              <h3 className="text-2xl font-black text-blue-700 mt-1">{metrics.myPending}</h3>
-            </div>
-            <div className="p-3 bg-blue-50 rounded-xl text-blue-600">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Menunggu Review"
+          value={metrics.myPending}
+          unit="berkas"
+          icon={<ShieldCheck className="size-5" />}
+          watermarkIcon={<ShieldCheck className="size-16" />}
+          tone={metrics.myPending > 0 ? 'rose' : 'slate'}
+          variant="colorful"
+          badge={metrics.myPending > 0 ? 'Perlu Review' : undefined}
+          description="Menunggu persetujuan Anda"
+        />
 
-        <Card className="bg-white border-emerald-200 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">
-                Disetujui Penuh
-              </p>
-              <h3 className="text-2xl font-black text-emerald-700 mt-1">{metrics.approved}</h3>
-            </div>
-            <div className="p-3 bg-emerald-50 rounded-xl text-emerald-600">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Disetujui Penuh"
+          value={metrics.approved}
+          unit="pengajuan"
+          icon={<CheckCircle2 className="size-5" />}
+          watermarkIcon={<CheckCircle2 className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Telah disetujui seluruh tingkatan"
+        />
 
-        <Card className="bg-white border-amber-200 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">
-                Sedang Berjalan
-              </p>
-              <h3 className="text-2xl font-black text-amber-700 mt-1">{metrics.inProgress}</h3>
-            </div>
-            <div className="p-3 bg-amber-50 rounded-xl text-amber-600">
-              <Clock className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Sedang Berjalan"
+          value={metrics.inProgress}
+          unit="pelatihan"
+          icon={<Clock className="size-5" />}
+          watermarkIcon={<Clock className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          description="Tahap pelaksanaan training"
+        />
       </div>
 
       {/* Main Table Container */}

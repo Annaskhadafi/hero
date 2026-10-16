@@ -33,7 +33,11 @@ import {
   Wrench,
   X,
   ZoomIn,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
+import { HeroSearchableSelect, HeroKpiCard, type HeroSearchableSelectOption } from '@/components/templates'
 import { toast } from 'sonner'
 
 import type {
@@ -369,18 +373,119 @@ export function MaestroClientActivityDashboard({
     employeeNameFilter,
   ])
 
+  // Sorting states
+  const [sortField, setSortField] = useState<string>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  const sortedEmployees = useMemo(() => {
+    return [...filteredEmployees].sort((a, b) => {
+      let aVal: any = a[sortField as keyof EmployeeActivityRow]
+      let bVal: any = b[sortField as keyof EmployeeActivityRow]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+      if (typeof aVal === 'number') {
+        return sortDir === 'asc' ? (aVal - (bVal || 0)) : ((bVal || 0) - aVal)
+      }
+      return 0
+    })
+  }, [filteredEmployees, sortField, sortDir])
+
+  const [unsubmittedSortField, setUnsubmittedSortField] = useState<string>('name')
+  const [unsubmittedSortDir, setUnsubmittedSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleUnsubmittedSort = (field: string) => {
+    if (unsubmittedSortField === field) {
+      setUnsubmittedSortDir(unsubmittedSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setUnsubmittedSortField(field)
+      setUnsubmittedSortDir('asc')
+    }
+  }
+
+  const sortedUnsubmittedEmployees = useMemo(() => {
+    return [...filteredUnsubmittedEmployees].sort((a, b) => {
+      let aVal: any = a[unsubmittedSortField as keyof UnsubmittedEmployeeRow]
+      let bVal: any = b[unsubmittedSortField as keyof UnsubmittedEmployeeRow]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return unsubmittedSortDir === 'asc' ? cmp : -cmp
+      }
+      if (typeof aVal === 'number') {
+        return unsubmittedSortDir === 'asc' ? (aVal - (bVal || 0)) : ((bVal || 0) - aVal)
+      }
+      return 0
+    })
+  }, [filteredUnsubmittedEmployees, unsubmittedSortField, unsubmittedSortDir])
+
+  // Filter dropdown options memos
+  const siteFilterOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    const list: HeroSearchableSelectOption[] = []
+    if (authorizedSites.length > 1) {
+      list.push({ value: 'all', label: 'Semua Lokasi' })
+    }
+    authorizedSites.forEach((s) => {
+      list.push({ value: String(s.id), label: s.name })
+    })
+    return list
+  }, [authorizedSites])
+
+  const shiftFilterOptions: HeroSearchableSelectOption[] = [
+    { value: 'Semua Shift', label: 'Semua Shift' },
+    { value: 'Pagi', label: 'Pagi (06:00 - 14:00)' },
+    { value: 'Siang', label: 'Siang (14:00 - 22:00)' },
+    { value: 'Malam', label: 'Malam (22:00 - 06:00)' },
+  ]
+
+  const deptFilterOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return [
+      { value: 'Semua Tim', label: 'Semua Dept' },
+      ...(initialData.departmentsList || []).map((d) => ({
+        value: d.name,
+        label: d.name,
+      })),
+    ]
+  }, [initialData.departmentsList])
+
+  const sectionFilterOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return [
+      { value: 'Semua Section', label: 'Semua Section' },
+      ...(initialData.sectionsList || []).map((s) => ({
+        value: s.name,
+        label: s.name,
+      })),
+    ]
+  }, [initialData.sectionsList])
+
+  const employeeStatusFilterOptions: HeroSearchableSelectOption[] = [
+    { value: 'Semua Status', label: 'Semua Status' },
+    { value: 'Selesai', label: 'Selesai' },
+    { value: 'Berjalan', label: 'Berjalan' },
+    { value: 'Menunggu', label: 'Menunggu' },
+  ]
+
   // Pagination slices
-  const totalPages = Math.ceil(filteredEmployees.length / pageSize) || 1
+  const totalPages = Math.ceil(sortedEmployees.length / pageSize) || 1
   const paginatedEmployees = useMemo(() => {
     const start = (currentPage - 1) * pageSize
-    return filteredEmployees.slice(start, start + pageSize)
-  }, [filteredEmployees, currentPage])
+    return sortedEmployees.slice(start, start + pageSize)
+  }, [sortedEmployees, currentPage, pageSize])
 
-  const totalUnsubmittedPages = Math.ceil(filteredUnsubmittedEmployees.length / pageSize) || 1
+  const totalUnsubmittedPages = Math.ceil(sortedUnsubmittedEmployees.length / pageSize) || 1
   const paginatedUnsubmittedEmployees = useMemo(() => {
     const start = (unsubmittedPage - 1) * pageSize
-    return filteredUnsubmittedEmployees.slice(start, start + pageSize)
-  }, [filteredUnsubmittedEmployees, unsubmittedPage])
+    return sortedUnsubmittedEmployees.slice(start, start + pageSize)
+  }, [sortedUnsubmittedEmployees, unsubmittedPage, pageSize])
 
   // Export handlers
   const handleExportCsv = () => {
@@ -735,25 +840,17 @@ export function MaestroClientActivityDashboard({
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Site / Lokasi
             </label>
-            <select
-              aria-label="Pilih Site"
+            <HeroSearchableSelect
               value={selectedSiteId}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedSiteId(val)
-                applyFilters({ siteId: val })
+              onChange={(val) => {
+                const nextVal = val ? String(val) : 'all'
+                setSelectedSiteId(nextVal)
+                applyFilters({ siteId: nextVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer min-h-[33px]"
-            >
-              {authorizedSites.length > 1 && (
-                <option value="all">Semua Lokasi</option>
-              )}
-              {authorizedSites.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              options={siteFilterOptions}
+              placeholder="Pilih Site"
+              className="h-9"
+            />
           </div>
 
           {/* Tanggal Operasional (Day Navigator: Hari Sebelumnya, Date Picker, Hari Berikutnya, Hari Ini) */}
@@ -830,86 +927,65 @@ export function MaestroClientActivityDashboard({
           {/* Shift */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Shift</label>
-            <select
-              aria-label="Pilih Shift"
+            <HeroSearchableSelect
               value={selectedShift}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedShift(val)
-                applyFilters({ shift: val })
+              onChange={(val) => {
+                const nextVal = val ? String(val) : 'Semua Shift'
+                setSelectedShift(nextVal)
+                applyFilters({ shift: nextVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Shift">Semua Shift</option>
-              <option value="Pagi">Pagi (06:00 - 14:00)</option>
-              <option value="Siang">Siang (14:00 - 22:00)</option>
-              <option value="Malam">Malam (22:00 - 06:00)</option>
-            </select>
+              options={shiftFilterOptions}
+              placeholder="Pilih Shift"
+              className="h-9"
+            />
           </div>
 
           {/* Departemen */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Department</label>
-            <select
-              aria-label="Pilih Departemen"
+            <HeroSearchableSelect
               value={selectedDept}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedDept(val)
-                applyFilters({ dept: val })
+              onChange={(val) => {
+                const nextVal = val ? String(val) : 'Semua Tim'
+                setSelectedDept(nextVal)
+                applyFilters({ dept: nextVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Tim">Semua Dept</option>
-              {(initialData.departmentsList || []).map((d) => (
-                <option key={d.id} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              options={deptFilterOptions}
+              placeholder="Pilih Dept"
+              className="h-9"
+            />
           </div>
 
           {/* Section */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Section</label>
-            <select
-              aria-label="Pilih Section"
+            <HeroSearchableSelect
               value={selectedSection}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedSection(val)
-                applyFilters({ section: val })
+              onChange={(val) => {
+                const nextVal = val ? String(val) : 'Semua Section'
+                setSelectedSection(nextVal)
+                applyFilters({ section: nextVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Section">Semua Section</option>
-              {(initialData.sectionsList || []).map((s) => (
-                <option key={s.id} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              options={sectionFilterOptions}
+              placeholder="Pilih Section"
+              className="h-9"
+            />
           </div>
 
           {/* Status */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Employee Status</label>
-            <select
-              aria-label="Pilih Status Karyawan"
+            <HeroSearchableSelect
               value={selectedEmployeeStatus}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedEmployeeStatus(val)
-                applyFilters({ status: val })
+              onChange={(val) => {
+                const nextVal = val ? String(val) : 'Semua Status'
+                setSelectedEmployeeStatus(nextVal)
+                applyFilters({ status: nextVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Status">Semua Status</option>
-              <option value="Selesai">Selesai</option>
-              <option value="Berjalan">Berjalan</option>
-              <option value="Menunggu">Menunggu</option>
-              <option value="Terlambat">Terlambat</option>
-            </select>
+              options={employeeStatusFilterOptions}
+              placeholder="Pilih Status"
+              className="h-9"
+            />
           </div>
 
           {/* Actions: Terapkan Filter & Reset */}
@@ -918,7 +994,7 @@ export function MaestroClientActivityDashboard({
               size="sm"
               onClick={() => applyFilters()}
               disabled={isPending}
-              className="h-[33px] text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1 cursor-pointer"
+              className="h-9 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1 cursor-pointer"
             >
               <Filter className="w-3.5 h-3.5" />
               Terapkan
@@ -935,129 +1011,87 @@ export function MaestroClientActivityDashboard({
         </div>
       </div>
 
-      {/* ── 5 KPI Metric Cards ── */}
+      {/* ── 5 KPI Metric Cards (Standard HeroKpiCard) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Card 1: Karyawan Aktif */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Karyawan Aktif</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {kpis.karyawanAktif.value}
-                </span>
-                <span className="text-xs text-slate-400">
-                  dari {kpis.karyawanAktif.total} karyawan
-                </span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {kpis.karyawanAktif.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Karyawan Aktif"
+          value={kpis.karyawanAktif.value}
+          unit={`/ ${kpis.karyawanAktif.total}`}
+          icon={<Users className="size-5" />}
+          watermarkIcon={<Users className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          trend={{
+            value: kpis.karyawanAktif.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description={`dari total ${kpis.karyawanAktif.total} karyawan`}
+        />
 
-        {/* Card 2: Hadir / Check-in */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Hadir / Check-in</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {kpis.hadirCheckIn.value}
-                </span>
-                <span className="text-xs text-slate-400">karyawan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {kpis.hadirCheckIn.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Hadir / Check-in"
+          value={kpis.hadirCheckIn.value}
+          unit="karyawan"
+          icon={<CheckCircle2 className="size-5" />}
+          watermarkIcon={<CheckCircle2 className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          trend={{
+            value: kpis.hadirCheckIn.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Presensi hari ini"
+        />
 
-        {/* Card 3: Aktivitas Selesai */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Aktivitas Selesai</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {kpis.aktivitasSelesai.value}
-                </span>
-                <span className="text-xs text-slate-400">pekerjaan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Settings className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {kpis.aktivitasSelesai.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Aktivitas Selesai"
+          value={kpis.aktivitasSelesai.value}
+          unit="pekerjaan"
+          icon={<Settings className="size-5" />}
+          watermarkIcon={<Settings className="size-16" />}
+          tone="cyan"
+          variant="colorful"
+          trend={{
+            value: kpis.aktivitasSelesai.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Pekerjaan tuntas"
+        />
 
-        {/* Card 4: Sedang Berjalan */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Sedang Berjalan</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {kpis.sedangBerjalan.value}
-                </span>
-                <span className="text-xs text-slate-400">pekerjaan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {kpis.sedangBerjalan.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Sedang Berjalan"
+          value={kpis.sedangBerjalan.value}
+          unit="pekerjaan"
+          icon={<Clock className="size-5" />}
+          watermarkIcon={<Clock className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          trend={{
+            value: kpis.sedangBerjalan.change,
+            direction: 'neutral',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Dalam pengerjaan"
+        />
 
-        {/* Card 5: Terlambat / Belum Update */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Terlambat / Belum Update</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {kpis.terlambatBelumUpdate.value}
-                </span>
-                <span className="text-xs text-slate-400">karyawan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-rose-600">
-              <ArrowDownRight className="w-3.5 h-3.5" /> {kpis.terlambatBelumUpdate.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Terlambat / Belum Update"
+          value={kpis.terlambatBelumUpdate.value}
+          unit="karyawan"
+          icon={<AlertTriangle className="size-5" />}
+          watermarkIcon={<AlertTriangle className="size-16" />}
+          tone="rose"
+          variant="colorful"
+          trend={{
+            value: kpis.terlambatBelumUpdate.change,
+            direction: 'down',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Perlu perhatian"
+        />
       </div>
 
       {/* ── Middle Row: Ringkasan Aktivitas Site & Status Kehadiran Tim ── */}
@@ -1394,19 +1428,187 @@ export function MaestroClientActivityDashboard({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-semibold">
-                  <th className="py-3 px-4 w-28">Employee ID</th>
-                  <th className="py-3 px-4 min-w-[160px]">Nama Karyawan</th>
-                  <th className="py-3 px-4 min-w-[120px]">Site</th>
-                  <th className="py-3 px-4 min-w-[130px]">Jabatan / Tim</th>
-                  <th className="py-3 px-3 w-16">Shift</th>
-                  <th className="py-3 px-4 min-w-[110px]">Jam Presensi</th>
-                  <th className="py-3 px-3 min-w-[90px]">EWH</th>
-                  <th className="py-3 px-4 min-w-[200px]">Aktivitas Utama</th>
-                  <th className="py-3 px-4 min-w-[110px]">Unit / Tire ID</th>
-                  <th className="py-3 px-4 w-28">Status Aktivitas</th>
-                  <th className="py-3 px-4 min-w-[130px]">Progres</th>
-                  <th className="py-3 px-4 w-24">Update Terakhir</th>
-                  <th className="py-3 px-4 w-20 text-center">Aksi</th>
+                  <th className="py-2.5 px-4 w-28">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('employeeId')}
+                    >
+                      Employee ID
+                      {sortField === 'employeeId' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[160px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('name')}
+                    >
+                      Nama Karyawan
+                      {sortField === 'name' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[120px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('siteName')}
+                    >
+                      Site
+                      {sortField === 'siteName' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[130px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('jobTitle')}
+                    >
+                      Jabatan / Tim
+                      {sortField === 'jobTitle' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 w-16">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('shift')}
+                    >
+                      Shift
+                      {sortField === 'shift' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[110px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('checkInTime')}
+                    >
+                      Jam Presensi
+                      {sortField === 'checkInTime' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 min-w-[90px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('ewhLabel')}
+                    >
+                      EWH
+                      {sortField === 'ewhLabel' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[200px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('primaryActivity')}
+                    >
+                      Aktivitas Utama
+                      {sortField === 'primaryActivity' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[110px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('unitTireId')}
+                    >
+                      Unit / Tire ID
+                      {sortField === 'unitTireId' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 w-28">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('status')}
+                    >
+                      Status
+                      {sortField === 'status' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[130px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('progress')}
+                    >
+                      Progres
+                      {sortField === 'progress' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 w-24">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleSort('lastUpdate')}
+                    >
+                      Update
+                      {sortField === 'lastUpdate' ? (
+                        sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 w-20 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1573,14 +1775,112 @@ export function MaestroClientActivityDashboard({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-semibold">
-                  <th className="py-3 px-4 w-28">Employee ID</th>
-                  <th className="py-3 px-4 min-w-[180px]">Nama Karyawan</th>
-                  <th className="py-3 px-4 min-w-[130px]">Site</th>
-                  <th className="py-3 px-4 min-w-[150px]">Jabatan / Section</th>
-                  <th className="py-3 px-3 w-28">Shift Roster</th>
-                  <th className="py-3 px-4 w-32">Status Presensi</th>
-                  <th className="py-3 px-4 w-28">Jam Presensi</th>
-                  <th className="py-3 px-4 w-32">Status Log</th>
+                  <th className="py-2.5 px-4 w-28">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('employeeId')}
+                    >
+                      Employee ID
+                      {unsubmittedSortField === 'employeeId' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[180px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('name')}
+                    >
+                      Nama Karyawan
+                      {unsubmittedSortField === 'name' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[130px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('siteName')}
+                    >
+                      Site
+                      {unsubmittedSortField === 'siteName' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 min-w-[150px]">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('jobTitle')}
+                    >
+                      Jabatan / Section
+                      {unsubmittedSortField === 'jobTitle' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-3 w-28">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('expectedShift')}
+                    >
+                      Shift Roster
+                      {unsubmittedSortField === 'expectedShift' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 w-32">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('attendanceStatus')}
+                    >
+                      Status Presensi
+                      {unsubmittedSortField === 'attendanceStatus' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 w-28">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-semibold hover:bg-transparent px-2"
+                      onClick={() => handleUnsubmittedSort('checkInTime')}
+                    >
+                      Jam Presensi
+                      {unsubmittedSortField === 'checkInTime' ? (
+                        unsubmittedSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-2.5 px-4 w-32">Status Log</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

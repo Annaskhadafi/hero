@@ -22,7 +22,11 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
+import { HeroSearchableSelect, HeroKpiCard, type HeroSearchableSelectOption } from '@/components/templates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -130,6 +134,100 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
     )
   }, [initialData.jsaList, searchQuery])
 
+  // PTW Sorting
+  const [ptwSortField, setPtwSortField] = useState<string>('permitNumber')
+  const [ptwSortDir, setPtwSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handlePtwSort = (field: string) => {
+    if (ptwSortField === field) {
+      setPtwSortDir(ptwSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setPtwSortField(field)
+      setPtwSortDir('asc')
+    }
+  }
+
+  const sortedPtw = useMemo(() => {
+    return [...filteredPtw].sort((a, b) => {
+      let aVal: any = a[ptwSortField as keyof MaestroPtwItem]
+      let bVal: any = b[ptwSortField as keyof MaestroPtwItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return ptwSortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredPtw, ptwSortField, ptwSortDir])
+
+  // Observation Sorting
+  const [obsSortField, setObsSortField] = useState<string>('title')
+  const [obsSortDir, setObsSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleObsSort = (field: string) => {
+    if (obsSortField === field) {
+      setObsSortDir(obsSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setObsSortField(field)
+      setObsSortDir('asc')
+    }
+  }
+
+  const sortedObs = useMemo(() => {
+    return [...filteredObs].sort((a, b) => {
+      let aVal: any = a[obsSortField as keyof MaestroObservationItem]
+      let bVal: any = b[obsSortField as keyof MaestroObservationItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return obsSortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredObs, obsSortField, obsSortDir])
+
+  // JSA Sorting
+  const [jsaSortField, setJsaSortField] = useState<string>('jsaNumber')
+  const [jsaSortDir, setJsaSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleJsaSort = (field: string) => {
+    if (jsaSortField === field) {
+      setJsaSortDir(jsaSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setJsaSortField(field)
+      setJsaSortDir('asc')
+    }
+  }
+
+  const sortedJsa = useMemo(() => {
+    return [...filteredJsa].sort((a, b) => {
+      let aVal: any = a[jsaSortField as keyof MaestroJsaItem]
+      let bVal: any = b[jsaSortField as keyof MaestroJsaItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return jsaSortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredJsa, jsaSortField, jsaSortDir])
+
+  // Options memos
+  const siteOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return [
+      { value: 'all', label: 'Semua Site' },
+      ...initialData.sitesList.map((st) => ({
+        value: String(st.id),
+        label: st.name,
+      })),
+    ]
+  }, [initialData.sitesList])
+
+  const statusOptions: HeroSearchableSelectOption[] = [
+    { value: 'all', label: 'Semua Status' },
+    { value: 'Approved', label: 'Approved' },
+    { value: 'In Progress', label: 'In Progress' },
+    { value: 'Completed', label: 'Completed' },
+    { value: 'Draft', label: 'Draft' },
+  ]
+
   function handleSiteChange(siteId: string) {
     setSelectedSite(siteId)
     const params = new URLSearchParams(searchParams.toString())
@@ -182,82 +280,64 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
         </div>
       </div>
 
-      {/* 5 Executive Safety Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        {/* 1. Incident YTD */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-amber-500 hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700">Incident YTD</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700 border border-amber-300 font-bold">
-              <FileWarning className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
-              {formatNumber(kpis.totalIncidentYtd)}
-            </span>
-          </div>
-        </div>
+      {/* 5 Executive Safety Metric Cards (HeroKpiCard Standardized) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Incident YTD"
+          value={formatNumber(kpis.totalIncidentYtd)}
+          unit="kejadian"
+          icon={<FileWarning className="size-5" />}
+          watermarkIcon={<FileWarning className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          description="Insiden tercatat tahun berjalan"
+        />
 
-        {/* 2. Fatality */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-rose-500 hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700">Fatality</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-700 border border-rose-300 font-bold">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-rose-700">
-              {formatNumber(kpis.fatality)}
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Fatality"
+          value={formatNumber(kpis.fatality)}
+          unit="kasus"
+          icon={<AlertTriangle className="size-5" />}
+          watermarkIcon={<AlertTriangle className="size-16" />}
+          tone={Number(kpis.fatality) > 0 ? 'rose' : 'emerald'}
+          variant="colorful"
+          badge={Number(kpis.fatality) === 0 ? 'Zero Fatality' : 'Critical'}
+          description={Number(kpis.fatality) === 0 ? 'Target Zero Fatality tercapai' : 'Perlu investigasi darurat'}
+        />
 
-        {/* 3. Safe Man Hours */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-emerald-500 hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700">Safe Man Hours</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 border border-emerald-300 font-bold">
-              <Clock className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-emerald-700">
-              {formatNumber(kpis.safeManHours)}
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Safe Man Hours"
+          value={formatNumber(kpis.safeManHours)}
+          unit="jam"
+          icon={<Clock className="size-5" />}
+          watermarkIcon={<Clock className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Jam kerja selamat akumulatif"
+        />
 
-        {/* 4. Expired Cert */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-blue-500 hover:shadow-sm transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700">Expired Cert.</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700 border border-blue-300 font-bold">
-              <BadgeCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
-              {formatNumber(kpis.certificationExpired)}
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Expired Cert."
+          value={formatNumber(kpis.certificationExpired)}
+          unit="sertifikat"
+          icon={<BadgeCheck className="size-5" />}
+          watermarkIcon={<BadgeCheck className="size-16" />}
+          tone={Number(kpis.certificationExpired) > 0 ? 'rose' : 'blue'}
+          variant="colorful"
+          badge={Number(kpis.certificationExpired) > 0 ? 'Perlu Renewal' : undefined}
+          description="Sertifikasi personil aktif"
+        />
 
-        {/* 5. Near Miss */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-xs hover:border-indigo-500 hover:shadow-sm transition-all flex flex-col justify-between col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black uppercase tracking-wider text-slate-700">Near Miss</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 border border-indigo-300 font-bold">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
-              {formatNumber(kpis.nearMiss)}
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Near Miss"
+          value={formatNumber(kpis.nearMiss)}
+          unit="laporan"
+          icon={<ShieldCheck className="size-5" />}
+          watermarkIcon={<ShieldCheck className="size-16" />}
+          tone="cyan"
+          variant="colorful"
+          description="Laporan nearmiss terdata"
+        />
       </div>
 
       {/* Filter Toolbar & Tab Switcher */}
@@ -329,36 +409,25 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
 
           {/* Site & Search Filters */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="min-w-[170px]">
-              <select
-                aria-label="Pilih Site"
+            <div className="min-w-[180px]">
+              <HeroSearchableSelect
+                options={siteOptions}
                 value={selectedSite}
-                onChange={(e) => handleSiteChange(e.target.value)}
-                className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
-              >
-                <option value="all">Semua Site</option>
-                {initialData.sitesList.map((st) => (
-                  <option key={st.id} value={String(st.id)}>
-                    {st.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => handleSiteChange(val || 'all')}
+                placeholder="Pilih Site..."
+                className="w-full h-9"
+              />
             </div>
 
             {activeTab === 'ptw' && (
-              <div className="min-w-[150px]">
-                <select
-                  aria-label="Filter Status PTW"
+              <div className="min-w-[160px]">
+                <HeroSearchableSelect
+                  options={statusOptions}
                   value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 cursor-pointer transition shadow-2xs"
-                >
-                  <option value="all">Semua Status</option>
-                  <option value="Approved">Approved</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Draft">Draft</option>
-                </select>
+                  onChange={(val) => setSelectedStatus(val || 'all')}
+                  placeholder="Filter Status..."
+                  className="w-full h-9"
+                />
               </div>
             )}
 
@@ -368,7 +437,7 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
                 placeholder="Cari data safety..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-11 rounded-xl bg-white border-2 border-slate-300 pl-9 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 shadow-2xs"
+                className="h-9 rounded-xl bg-white border-2 border-slate-300 pl-9 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 shadow-2xs"
               />
             </div>
           </div>
@@ -389,24 +458,108 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
             <table className="w-full text-left text-xs sm:text-sm text-slate-900">
               <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-3.5 pl-6 pr-4">No. Permit &amp; Pekerjaan</th>
-                  <th className="py-3.5 px-4">Tipe Izin</th>
-                  <th className="py-3.5 px-4">Site / Lokasi</th>
-                  <th className="py-3.5 px-4">Masa Berlaku</th>
-                  <th className="py-3.5 px-4">Tingkat Risiko</th>
-                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 pl-6 pr-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePtwSort('permitNumber')}
+                    >
+                      No. Permit &amp; Pekerjaan
+                      {ptwSortField === 'permitNumber' ? (
+                        ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePtwSort('permitType')}
+                    >
+                      Tipe Izin
+                      {ptwSortField === 'permitType' ? (
+                        ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePtwSort('siteName')}
+                    >
+                      Site / Lokasi
+                      {ptwSortField === 'siteName' ? (
+                        ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePtwSort('startAt')}
+                    >
+                      Masa Berlaku
+                      {ptwSortField === 'startAt' ? (
+                        ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePtwSort('riskLevel')}
+                    >
+                      Tingkat Risiko
+                      {ptwSortField === 'riskLevel' ? (
+                        ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePtwSort('status')}
+                    >
+                      Status
+                      {ptwSortField === 'status' ? (
+                        ptwSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
-                {filteredPtw.length === 0 ? (
+                {sortedPtw.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Izin Kerja (PTW) yang sesuai filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredPtw.map((ptw) => {
+                  sortedPtw.map((ptw) => {
                     const riskStyle = getRiskBadgeStyle(ptw.riskLevel)
                     const statusStyle = getPtwStatusStyle(ptw.status)
 
@@ -483,23 +636,93 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
             <table className="w-full text-left text-xs sm:text-sm text-slate-900">
               <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-3.5 pl-6 pr-4">Judul &amp; Kategori</th>
-                  <th className="py-3.5 px-4">Site / Area</th>
-                  <th className="py-3.5 px-4">Tipe Hazard</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">Tanggal Lapor</th>
+                  <th className="py-3.5 pl-6 pr-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleObsSort('title')}
+                    >
+                      Judul &amp; Kategori
+                      {obsSortField === 'title' ? (
+                        obsSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleObsSort('siteName')}
+                    >
+                      Site / Area
+                      {obsSortField === 'siteName' ? (
+                        obsSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleObsSort('severity')}
+                    >
+                      Tipe Hazard
+                      {obsSortField === 'severity' ? (
+                        obsSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleObsSort('status')}
+                    >
+                      Status
+                      {obsSortField === 'status' ? (
+                        obsSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleObsSort('observedAt')}
+                    >
+                      Tanggal Lapor
+                      {obsSortField === 'observedAt' ? (
+                        obsSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
-                {filteredObs.length === 0 ? (
+                {sortedObs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Observasi Hazard yang sesuai filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredObs.map((obs) => (
+                  sortedObs.map((obs) => (
                     <tr key={obs.id} className="hover:bg-blue-50/60 transition-colors">
                       <td className="py-4 pl-6 pr-4">
                         <p className="font-black text-slate-950 text-sm">{obs.title}</p>
@@ -550,12 +773,12 @@ export function MaestroClientSafety({ initialData, customerUser, currentSiteId }
       {/* Tab 4: JSA List */}
       {activeTab === 'jsa' && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredJsa.length === 0 ? (
+          {sortedJsa.length === 0 ? (
             <div className="col-span-full rounded-2xl border-2 border-slate-300 bg-white p-12 text-center text-sm font-bold text-slate-700 shadow-xs">
               Tidak ada data Job Safety Analysis (JSA) yang sesuai kriteria.
             </div>
           ) : (
-            filteredJsa.map((jsa) => {
+            sortedJsa.map((jsa) => {
               const riskStyle = getRiskBadgeStyle(jsa.riskLevel)
 
               return (

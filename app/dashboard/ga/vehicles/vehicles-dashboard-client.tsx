@@ -22,6 +22,9 @@ import {
   RefreshCw,
   CheckCircle2,
   Calendar,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,6 +47,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { VehicleStatusBadge } from '@/components/vehicles/vehicle-status-badge'
+import { HeroKpiCard } from '@/components/templates'
 import { VehiclePrintDialog } from '@/components/vehicles/vehicle-print-dialog'
 import { VehicleFormDialog } from '@/components/vehicles/vehicle-form-dialog'
 import { VehicleServiceDialog } from '@/components/vehicles/vehicle-service-dialog'
@@ -55,22 +59,37 @@ import {
 } from '@/app/actions/vehicles'
 import { toast } from 'sonner'
 import type { HeroVehicle, HeroVehicleServiceLog } from '@/db/schema/vehicles'
+import type { VehicleComputedRow, DocumentAlertStatus } from '@/lib/vehicle-status'
 
-type VehicleWithStatus = HeroVehicle & {
-  stnkStatus: 'valid' | 'warning' | 'expired'
-  stnkRemainingDays: number | null
-  taxStatus: 'valid' | 'warning' | 'expired'
-  taxRemainingDays: number | null
-  kirStatus: 'valid' | 'warning' | 'expired' | 'none'
-  kirRemainingDays: number | null
-  serviceStatus: 'valid' | 'warning' | 'due' | 'none'
-  serviceRemainingKm: number | null
-  serviceRemainingDays: number | null
-  hasAnyAlert: boolean
+export type VehicleWithStatus = VehicleComputedRow
+
+function toBadgeStatus(status: DocumentAlertStatus): 'valid' | 'warning' | 'expired' | 'none' {
+  if (status === 'safe') return 'valid'
+  if (status === 'warning') return 'warning'
+  if (status === 'expired') return 'expired'
+  return 'none'
+}
+
+function toServiceBadgeStatus(status: 'due' | 'safe' | 'not_recorded'): 'valid' | 'warning' | 'due' | 'none' {
+  if (status === 'safe') return 'valid'
+  if (status === 'due') return 'due'
+  return 'none'
+}
+
+function hasVehicleAlert(v: VehicleComputedRow): boolean {
+  return (
+    v.stnkAlertStatus === 'expired' ||
+    v.stnkAlertStatus === 'warning' ||
+    v.taxAlertStatus === 'expired' ||
+    v.taxAlertStatus === 'warning' ||
+    v.kirAlertStatus === 'expired' ||
+    v.kirAlertStatus === 'warning' ||
+    v.serviceAlertStatus === 'due'
+  )
 }
 
 interface VehiclesDashboardClientProps {
-  initialVehicles: VehicleWithStatus[]
+  initialVehicles: VehicleComputedRow[]
   initialMetrics: {
     total: number
     owned: number
@@ -91,7 +110,7 @@ interface VehiclesDashboardClientProps {
   canCreate: boolean
   canEdit: boolean
   canDelete: boolean
-  currentEmployeeName: string
+  currentEmployeeName?: string
 }
 
 export function VehiclesDashboardClient({
@@ -102,7 +121,7 @@ export function VehiclesDashboardClient({
   canCreate,
   canEdit,
   canDelete,
-  currentEmployeeName,
+  currentEmployeeName = 'User',
 }: VehiclesDashboardClientProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -137,15 +156,14 @@ export function VehiclesDashboardClient({
       // Search
       if (search.trim()) {
         const q = search.toLowerCase()
-        const plate = (v.plateNumber || (v as any).policeNumber || '').toLowerCase()
-        const holder = (v.holderName || (v as any).assignedEmployeeName || '').toLowerCase()
-        const site = (v.siteNameFallback || (v as any).siteName || v.locationName || '').toLowerCase()
+        const plate = (v.plateNumber || '').toLowerCase()
+        const holder = (v.holderName || '').toLowerCase()
+        const site = (v.siteNameFallback || v.locationName || '').toLowerCase()
         const matchPlate = plate.includes(q)
         const matchType = v.vehicleType?.toLowerCase().includes(q)
-        const matchBrand = (v.brand || '').toLowerCase().includes(q)
         const matchHolder = holder.includes(q)
         const matchSite = site.includes(q)
-        if (!matchPlate && !matchType && !matchBrand && !matchHolder && !matchSite) {
+        if (!matchPlate && !matchType && !matchHolder && !matchSite) {
           return false
         }
       }
@@ -163,35 +181,113 @@ export function VehiclesDashboardClient({
 
       // Site
       if (siteFilter !== 'all') {
-        const sName = v.siteNameFallback || (v as any).siteName || v.locationName || ''
+        const sName = v.siteNameFallback || v.locationName || ''
         if (sName !== siteFilter) return false
       }
 
       // Alert Filter
       if (alertFilter === 'alerts') {
-        return v.hasAnyAlert
+        return hasVehicleAlert(v)
       }
       if (alertFilter === 'stnk_expired') {
-        return v.stnkStatus === 'expired'
+        return v.stnkAlertStatus === 'expired'
       }
       if (alertFilter === 'tax_expired') {
-        return v.taxStatus === 'expired'
+        return v.taxAlertStatus === 'expired'
       }
       if (alertFilter === 'kir_expired') {
-        return v.kirStatus === 'expired'
+        return v.kirAlertStatus === 'expired'
       }
       if (alertFilter === 'service_due') {
-        return v.serviceStatus === 'due'
+        return v.serviceAlertStatus === 'due'
       }
 
       return true
     })
   }, [vehicles, search, ownershipFilter, categoryFilter, siteFilter, alertFilter])
 
+  const [sortColumn, setSortColumn] = useState<string>('plateNumber')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (col: string) => {
+    if (sortColumn === col) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColumn(col)
+      setSortDirection('asc')
+    }
+  }
+
+  const sortedRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      let valA: any = ''
+      let valB: any = ''
+
+      switch (sortColumn) {
+        case 'plateNumber':
+          valA = a.plateNumber || ''
+          valB = b.plateNumber || ''
+          break
+        case 'holder':
+          valA = a.holderName || ''
+          valB = b.holderName || ''
+          break
+        case 'stnk':
+          valA = a.stnkDaysRemaining ?? 99999
+          valB = b.stnkDaysRemaining ?? 99999
+          break
+        case 'tax':
+          valA = a.taxDaysRemaining ?? 99999
+          valB = b.taxDaysRemaining ?? 99999
+          break
+        case 'kir':
+          valA = a.kirDaysRemaining ?? 99999
+          valB = b.kirDaysRemaining ?? 99999
+          break
+        case 'odometer':
+          valA = a.lastServiceOdometer ?? 0
+          valB = b.lastServiceOdometer ?? 0
+          break
+        case 'status':
+          valA = a.status || ''
+          valB = b.status || ''
+          break
+        default:
+          return 0
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredRows, sortColumn, sortDirection])
+
+  const renderSortHeader = (label: string, colKey: string) => {
+    const isSorted = sortColumn === colKey
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(colKey)}
+        className="inline-flex items-center gap-1.5 font-bold uppercase hover:text-foreground transition-colors group cursor-pointer"
+      >
+        <span>{label}</span>
+        {isSorted ? (
+          sortDirection === 'asc' ? (
+            <ArrowUp className="size-3 text-blue-600" />
+          ) : (
+            <ArrowDown className="size-3 text-blue-600" />
+          )
+        ) : (
+          <ArrowUpDown className="size-3 opacity-40 group-hover:opacity-100" />
+        )}
+      </button>
+    )
+  }
+
   // TanStack Virtualizer
   const parentRef = useRef<HTMLDivElement>(null)
   const rowVirtualizer = useVirtualizer({
-    count: filteredRows.length,
+    count: sortedRows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 72,
     overscan: 5,
@@ -253,13 +349,13 @@ export function VehiclesDashboardClient({
     try {
       const res = await deleteVehicle(vehicleToDelete.id)
       if (res.success) {
-        toast.success(`Kendaraan ${vehicleToDelete.policeNumber} berhasil dihapus`)
+        toast.success(`Kendaraan ${vehicleToDelete.plateNumber} berhasil dihapus`)
         setVehicles((prev) => prev.filter((item) => item.id !== vehicleToDelete.id))
         setDeleteConfirmOpen(false)
         setVehicleToDelete(null)
         refreshData()
       } else {
-        toast.error(res.message || 'Gagal menghapus kendaraan')
+        toast.error('Gagal menghapus kendaraan')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Terjadi kesalahan sistem')
@@ -272,13 +368,13 @@ export function VehiclesDashboardClient({
   const handleInlineStatusChange = async (vehicleId: number, newStatus: any) => {
     try {
       const res = await updateVehicle(vehicleId, { status: newStatus })
-      if (res.success) {
+      if (res) {
         toast.success('Status kendaraan diperbarui')
         setVehicles((prev) =>
           prev.map((item) => (item.id === vehicleId ? { ...item, status: newStatus } : item))
         )
       } else {
-        toast.error(res.message || 'Gagal memperbarui status')
+        toast.error('Gagal memperbarui status')
       }
     } catch {
       toast.error('Gagal memperbarui status')
@@ -290,9 +386,9 @@ export function VehiclesDashboardClient({
     setReminderChecking(true)
     try {
       const res = await triggerVehicleReminderCheck()
-      if (res.success) {
+      if (res) {
         toast.success(
-          `Pemeriksaan surat selesai: ${res.expiredCount} expired, ${res.warningCount} warning terdeteksi.`
+          `Pemeriksaan surat selesai: ${res.alertsCount} alert terdeteksi.`
         )
         refreshData()
       } else {
@@ -349,23 +445,22 @@ export function VehiclesDashboardClient({
       csvRows.push(
         [
           idx + 1,
-          clean(row.policeNumber),
-          clean(row.brand),
+          clean(row.plateNumber),
           clean(row.vehicleType),
           clean(row.category),
           clean(row.ownership),
           clean(row.rentalVendor || '-'),
-          clean(row.siteName || '-'),
-          clean(row.department || '-'),
-          clean(row.assignedEmployeeName || '-'),
-          clean(row.assignedEmployeePhone || '-'),
+          clean(row.siteNameFallback || row.locationName || '-'),
+          clean(row.locationName || '-'),
+          clean(row.holderName || '-'),
+          clean('-'),
           clean(row.stnkExpiryDate || '-'),
-          clean(row.stnkStatus),
+          clean(row.stnkAlertStatus),
           clean(row.taxExpiryDate || '-'),
-          clean(row.taxStatus),
+          clean(row.taxAlertStatus),
           clean(row.kirExpiryDate || '-'),
-          clean(row.kirStatus),
-          clean(row.currentOdometer || 0),
+          clean(row.kirAlertStatus),
+          clean(row.lastServiceOdometer || 0),
           clean(row.nextServiceOdometer || '-'),
           clean(row.nextServiceDate || '-'),
           clean(row.status),
@@ -441,112 +536,82 @@ export function VehiclesDashboardClient({
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
-        {/* Card 1: Total Armada */}
-        <div className="bg-card border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Total Armada
-            </span>
-            <span className="p-1.5 bg-blue-500/10 text-blue-600 rounded-lg">
-              <Truck className="size-4" />
-            </span>
-          </div>
-          <p className="text-2xl font-black mt-2 text-foreground">{metrics.total}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            <span className="font-bold text-slate-700 dark:text-slate-300">{metrics.owned}</span> Owned &bull;{' '}
-            <span className="font-bold text-amber-600">{metrics.rented}</span> Rented
-          </p>
-        </div>
+      {/* KPI Cards (HeroKpiCard Standardized) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <HeroKpiCard
+          title="Total Armada"
+          value={metrics.total}
+          unit="unit"
+          icon={<Truck className="size-5" />}
+          watermarkIcon={<Truck className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description={`${metrics.owned} Owned • ${metrics.rented} Rented`}
+        />
 
-        {/* Card 2: STNK 5-Tahunan */}
-        <div className="bg-card border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              STNK (5 Thn)
-            </span>
-            <span className={`p-1.5 rounded-lg ${metrics.stnkExpired > 0 ? 'bg-rose-500/10 text-rose-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
-              <ShieldCheck className="size-4" />
-            </span>
-          </div>
-          <p className="text-2xl font-black mt-2 text-rose-600 dark:text-rose-400">
-            {metrics.stnkExpired}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {metrics.stnkWarning > 0 ? (
-              <span className="text-amber-600 font-semibold">{metrics.stnkWarning} H-30 warning</span>
-            ) : (
-              'Semua aman terkelola'
-            )}
-          </p>
-        </div>
+        <HeroKpiCard
+          title="STNK (5 Thn)"
+          value={metrics.stnkExpired}
+          unit="kedaluwarsa"
+          icon={<ShieldCheck className="size-5" />}
+          watermarkIcon={<ShieldCheck className="size-16" />}
+          tone={metrics.stnkExpired > 0 ? 'rose' : 'emerald'}
+          variant="colorful"
+          badge={metrics.stnkExpired > 0 ? 'Perlu Tindakan' : undefined}
+          description={
+            metrics.stnkWarning > 0
+              ? `${metrics.stnkWarning} mendekati jatuh tempo (H-30)`
+              : 'Semua aman terkelola'
+          }
+        />
 
-        {/* Card 3: Pajak 1-Tahunan */}
-        <div className="bg-card border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Pajak PKB (1 Thn)
-            </span>
-            <span className={`p-1.5 rounded-lg ${metrics.taxExpired > 0 ? 'bg-rose-500/10 text-rose-600' : 'bg-amber-500/10 text-amber-600'}`}>
-              <AlertCircle className="size-4" />
-            </span>
-          </div>
-          <p className="text-2xl font-black mt-2 text-rose-600 dark:text-rose-400">
-            {metrics.taxExpired}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {metrics.taxWarning > 0 ? (
-              <span className="text-amber-600 font-semibold">{metrics.taxWarning} mendekati batas</span>
-            ) : (
-              'Pajak aktif tercatat'
-            )}
-          </p>
-        </div>
+        <HeroKpiCard
+          title="Pajak PKB (1 Thn)"
+          value={metrics.taxExpired}
+          unit="kedaluwarsa"
+          icon={<AlertCircle className="size-5" />}
+          watermarkIcon={<AlertCircle className="size-16" />}
+          tone={metrics.taxExpired > 0 ? 'rose' : 'amber'}
+          variant="colorful"
+          badge={metrics.taxExpired > 0 ? 'Perlu Bayar' : undefined}
+          description={
+            metrics.taxWarning > 0
+              ? `${metrics.taxWarning} mendekati batas bayar`
+              : 'Pajak aktif tercatat'
+          }
+        />
 
-        {/* Card 4: Uji Berkala KIR */}
-        <div className="bg-card border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Uji KIR Dishub
-            </span>
-            <span className={`p-1.5 rounded-lg ${metrics.kirExpired > 0 ? 'bg-rose-500/10 text-rose-600' : 'bg-slate-500/10 text-slate-600'}`}>
-              <AlertTriangle className="size-4" />
-            </span>
-          </div>
-          <p className="text-2xl font-black mt-2 text-rose-600 dark:text-rose-400">
-            {metrics.kirExpired}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {metrics.kirWarning > 0 ? (
-              <span className="text-amber-600 font-semibold">{metrics.kirWarning} unit warning</span>
-            ) : (
-              'KIR unit komersial'
-            )}
-          </p>
-        </div>
+        <HeroKpiCard
+          title="Uji KIR Dishub"
+          value={metrics.kirExpired}
+          unit="kedaluwarsa"
+          icon={<AlertTriangle className="size-5" />}
+          watermarkIcon={<AlertTriangle className="size-16" />}
+          tone={metrics.kirExpired > 0 ? 'rose' : 'cyan'}
+          variant="colorful"
+          badge={metrics.kirExpired > 0 ? 'Jatuh Tempo' : undefined}
+          description={
+            metrics.kirWarning > 0
+              ? `${metrics.kirWarning} unit warning`
+              : 'KIR unit komersial aman'
+          }
+        />
 
-        {/* Card 5: Perlu Servis */}
-        <div className="bg-card border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Jadwal Servis
-            </span>
-            <span className={`p-1.5 rounded-lg ${metrics.serviceDue > 0 ? 'bg-rose-500/10 text-rose-600' : 'bg-blue-500/10 text-blue-600'}`}>
-              <Wrench className="size-4" />
-            </span>
-          </div>
-          <p className="text-2xl font-black mt-2 text-blue-600 dark:text-blue-400">
-            {metrics.serviceDue}
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            {metrics.serviceWarning > 0 ? (
-              <span className="text-amber-600 font-semibold">{metrics.serviceWarning} mendekati KM servis</span>
-            ) : (
-              'Perawatan terjadwal'
-            )}
-          </p>
-        </div>
+        <HeroKpiCard
+          title="Jadwal Servis"
+          value={metrics.serviceDue}
+          unit="perlu servis"
+          icon={<Wrench className="size-5" />}
+          watermarkIcon={<Wrench className="size-16" />}
+          tone={metrics.serviceDue > 0 ? 'purple' : 'blue'}
+          variant="colorful"
+          badge={metrics.serviceDue > 0 ? 'Overdue' : undefined}
+          description={
+            metrics.serviceWarning > 0
+              ? `${metrics.serviceWarning} mendekati KM servis`
+              : 'Perawatan terjadwal berkala'
+          }
+        />
       </div>
 
       {/* Filter Bar */}
@@ -594,7 +659,7 @@ export function VehiclesDashboardClient({
               </SelectTrigger>
               <SelectContent className="text-xs">
                 <SelectItem value="all">Semua Site</SelectItem>
-                {Array.from(new Set(vehicles.map((v) => v.siteName).filter(Boolean))).map((s) => (
+                {Array.from(new Set(vehicles.map((v) => v.siteNameFallback || v.locationName).filter(Boolean))).map((s) => (
                   <SelectItem key={s!} value={s!}>
                     {s}
                   </SelectItem>
@@ -647,18 +712,18 @@ export function VehiclesDashboardClient({
             <thead className="bg-muted/80 text-muted-foreground uppercase text-[10px] font-bold sticky top-0 z-10 backdrop-blur-sm border-b">
               <tr>
                 <th className="py-3 px-3 w-10 text-center">No</th>
-                <th className="py-3 px-4 w-44">Plat & Kendaraan</th>
-                <th className="py-3 px-4 w-40">Lokasi & Pemegang</th>
-                <th className="py-3 px-3 w-32">STNK (5 Thn)</th>
-                <th className="py-3 px-3 w-32">Pajak (1 Thn)</th>
-                <th className="py-3 px-3 w-28">Uji KIR</th>
-                <th className="py-3 px-3 w-36">Servis & KM</th>
-                <th className="py-3 px-3 w-32">Status Unit</th>
+                <th className="py-3 px-4 w-44">{renderSortHeader('Plat & Kendaraan', 'plateNumber')}</th>
+                <th className="py-3 px-4 w-40">{renderSortHeader('Lokasi & Pemegang', 'holder')}</th>
+                <th className="py-3 px-3 w-32">{renderSortHeader('STNK (5 Thn)', 'stnk')}</th>
+                <th className="py-3 px-3 w-32">{renderSortHeader('Pajak (1 Thn)', 'tax')}</th>
+                <th className="py-3 px-3 w-28">{renderSortHeader('Uji KIR', 'kir')}</th>
+                <th className="py-3 px-3 w-36">{renderSortHeader('Servis & KM', 'odometer')}</th>
+                <th className="py-3 px-3 w-32">{renderSortHeader('Status Unit', 'status')}</th>
                 <th className="py-3 px-3 w-32 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredRows.length === 0 ? (
+              {sortedRows.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-muted-foreground">
                     <Truck className="size-8 mx-auto mb-2 opacity-30" />
@@ -674,7 +739,7 @@ export function VehiclesDashboardClient({
                     </tr>
                   )}
                   {virtualItems.map((virtualRow) => {
-                    const row = filteredRows[virtualRow.index]
+                    const row = sortedRows[virtualRow.index]
                     const isRented = (row.ownership || '').toLowerCase() === 'rented'
                     const plate = row.plateNumber || (row as any).policeNumber || '-'
                     const holder = row.holderName || (row as any).assignedEmployeeName || 'Pool Kendaraan'
@@ -710,7 +775,7 @@ export function VehiclesDashboardClient({
                             </Badge>
                           </div>
                           <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                            {row.brand} {row.vehicleType}
+                            {row.vehicleType}
                           </p>
                           <p className="text-[10px] text-muted-foreground">
                             {row.category} {year ? `• Thn ${year}` : ''}
@@ -725,16 +790,13 @@ export function VehiclesDashboardClient({
                           <p className="text-[11px] text-muted-foreground truncate max-w-[150px]">
                             {site}
                           </p>
-                          <p className="text-[10px] text-slate-400">
-                            {row.department || '-'}
-                          </p>
                         </td>
 
                         {/* STNK 5 Thn */}
                         <td className="py-3 px-3">
                           <VehicleStatusBadge
-                            status={row.stnkStatus}
-                            remainingDays={row.stnkRemainingDays}
+                            status={toBadgeStatus(row.stnkAlertStatus)}
+                            remainingDays={row.stnkDaysRemaining}
                             dateStr={row.stnkExpiryDate}
                             showDate
                           />
@@ -743,8 +805,8 @@ export function VehiclesDashboardClient({
                         {/* Pajak 1 Thn */}
                         <td className="py-3 px-3">
                           <VehicleStatusBadge
-                            status={row.taxStatus}
-                            remainingDays={row.taxRemainingDays}
+                            status={toBadgeStatus(row.taxAlertStatus)}
+                            remainingDays={row.taxDaysRemaining}
                             dateStr={row.taxExpiryDate}
                             showDate
                           />
@@ -753,8 +815,8 @@ export function VehiclesDashboardClient({
                         {/* Uji KIR */}
                         <td className="py-3 px-3">
                           <VehicleStatusBadge
-                            status={row.kirStatus}
-                            remainingDays={row.kirRemainingDays}
+                            status={toBadgeStatus(row.kirAlertStatus)}
+                            remainingDays={row.kirDaysRemaining}
                             dateStr={row.kirExpiryDate}
                             showDate
                           />
@@ -764,7 +826,7 @@ export function VehiclesDashboardClient({
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-mono text-xs font-semibold text-foreground">
-                              {row.currentOdometer ? `${new Intl.NumberFormat('id-ID').format(row.currentOdometer)} KM` : '-'}
+                              {odo ? `${new Intl.NumberFormat('id-ID').format(odo)} KM` : '-'}
                             </span>
                             {row.nextServiceOdometer ? (
                               <span className="text-[10px] text-muted-foreground">
@@ -772,8 +834,8 @@ export function VehiclesDashboardClient({
                               </span>
                             ) : null}
                             <VehicleStatusBadge
-                              status={row.serviceStatus}
-                              remainingDays={row.serviceRemainingDays}
+                              status={toServiceBadgeStatus(row.serviceAlertStatus)}
+                              remainingDays={row.serviceDaysSince}
                               dateStr={row.nextServiceDate}
                               compact
                             />
@@ -910,8 +972,8 @@ export function VehiclesDashboardClient({
             </AlertDialogTitle>
             <AlertDialogDescription className="text-sm">
               Apakah Anda yakin ingin menghapus data kendaraan{' '}
-              <strong className="text-foreground">{vehicleToDelete?.policeNumber}</strong> (
-              {vehicleToDelete?.brand} {vehicleToDelete?.vehicleType})? Tindakan ini bersifat permanen
+              <strong className="text-foreground">{vehicleToDelete?.plateNumber}</strong> (
+              {vehicleToDelete?.vehicleType})? Tindakan ini bersifat permanen
               dan riwayat servis terkait akan dihapus.
             </AlertDialogDescription>
           </AlertDialogHeader>

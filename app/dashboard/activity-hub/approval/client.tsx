@@ -81,6 +81,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { MultiSelectFilterDropdown } from '@/components/ui/multi-select-filter-dropdown'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { HeroSearchableSelect } from '@/components/templates'
+import {
   Table,
   TableBody,
   TableCell,
@@ -2654,19 +2662,23 @@ async function uploadActivityPhoto(file: File): Promise<string> {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t border-slate-200 text-xs text-slate-600">
           <div className="flex items-center gap-2">
             <span>Baris per halaman:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value))
+            <Select
+              value={String(pageSize)}
+              onValueChange={(val) => {
+                setPageSize(Number(val))
                 setCurrentPage(1)
               }}
-              className="h-7 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 cursor-pointer"
             >
-              <option value={15}>15</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+              <SelectTrigger className="h-7 w-[70px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="15">15</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
             <span className="text-slate-300">|</span>
             <span>
               Menampilkan {filteredRows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredRows.length)} dari {filteredRows.length} data
@@ -3883,43 +3895,44 @@ async function uploadActivityPhoto(file: File): Promise<string> {
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Shift Kerja</Label>
-                  <select
-                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold"
+                  <HeroSearchableSelect
                     value={createForm.shiftCode}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, shiftCode: e.target.value }))}
-                  >
-                    <option value="ALL">ALL (Semua Shift)</option>
-                    <option value="Shift 1">Shift 1</option>
-                    <option value="Shift 2">Shift 2</option>
-                    <option value="Day">Day Shift</option>
-                    <option value="Night">Night Shift</option>
-                  </select>
+                    onChange={(val) => setCreateForm((p) => ({ ...p, shiftCode: String(val) }))}
+                    options={[
+                      { value: 'ALL', label: 'ALL (Semua Shift)' },
+                      { value: 'Shift 1', label: 'Shift 1' },
+                      { value: 'Shift 2', label: 'Shift 2' },
+                      { value: 'Day', label: 'Day Shift' },
+                      { value: 'Night', label: 'Night Shift' },
+                    ]}
+                    placeholder="Pilih Shift Kerja"
+                    className="w-full text-xs"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Site / Lokasi</Label>
-                  <select
-                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold"
+                  <HeroSearchableSelect
                     value={createForm.siteId}
-                    onChange={(e) => {
-                      const st = sites.find((s) => String(s.id) === e.target.value)
+                    onChange={(val) => {
+                      const sVal = String(val)
+                      const st = sites.find((s) => String(s.id) === sVal)
                       const pjoLeader = st?.headEmployeeId ? employees.find((emp) => emp.id === st.headEmployeeId) : null
                       setCreateForm((p) => ({
                         ...p,
-                        siteId: e.target.value,
+                        siteId: sVal,
                         siteName: st?.name || p.siteName,
                         leaderEmployeeId: pjoLeader ? String(pjoLeader.id) : p.leaderEmployeeId,
                         leaderName: pjoLeader?.name || p.leaderName,
                       }))
                     }}
-                  >
-                    <option value="">Pilih Site / Lokasi...</option>
-                    {sites.map((st) => (
-                      <option key={st.id} value={String(st.id)}>
-                        {st.name} ({st.code || 'SITE'})
-                      </option>
-                    ))}
-                  </select>
+                    options={sites.map((st) => ({
+                      value: String(st.id),
+                      label: `${st.name} (${st.code || 'SITE'})`,
+                    }))}
+                    placeholder="Pilih Site / Lokasi..."
+                    className="w-full text-xs"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
@@ -4072,15 +4085,17 @@ async function uploadActivityPhoto(file: File): Promise<string> {
             {/* 1.5. SOURCE MODE SELECTION (SINKRON DENGAN MOBILE) */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
-              <select
+              <HeroSearchableSelect
                 value={createForm.sourceMode || 'self_input'}
-                onChange={(e) => setCreateForm((p) => ({ ...p, sourceMode: e.target.value as 'self_input' | 'assigned' | 'custom' }))}
-                className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="self_input">Self-input activity</option>
-                <option value="assigned">Assigned activity</option>
-                <option value="custom">Custom activity</option>
-              </select>
+                onChange={(val) => setCreateForm((p) => ({ ...p, sourceMode: String(val) as 'self_input' | 'assigned' | 'custom' }))}
+                options={[
+                  { value: 'self_input', label: 'Self-input activity' },
+                  { value: 'assigned', label: 'Assigned activity' },
+                  { value: 'custom', label: 'Custom activity' },
+                ]}
+                placeholder="Pilih Source Mode"
+                className="w-full text-xs"
+              />
             </div>
 
             {/* CONDITIONAL RENDER: ASSIGNED ACTIVITY MODE */}
@@ -4093,15 +4108,16 @@ async function uploadActivityPhoto(file: File): Promise<string> {
 
                 <div className="space-y-1">
                   <Label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">ASSIGNMENT *</Label>
-                  <select
+                  <HeroSearchableSelect
                     value={createForm.assignmentId || ''}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, assignmentId: e.target.value }))}
-                    className="w-full h-9 rounded-md border border-slate-200 bg-white px-3 py-1 text-xs shadow-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Pilih assignment</option>
-                    <option value="1">ASG-001 • Perbaikan Tire Unit HD-785 (Andana Gustafianto)</option>
-                    <option value="2">ASG-002 • Mounting OTR Wheel Workshop Site Pekanbaru (Rizal Mahendra)</option>
-                  </select>
+                    onChange={(val) => setCreateForm((p) => ({ ...p, assignmentId: String(val) }))}
+                    options={[
+                      { value: '1', label: 'ASG-001 • Perbaikan Tire Unit HD-785 (Andana Gustafianto)' },
+                      { value: '2', label: 'ASG-002 • Mounting OTR Wheel Workshop Site Pekanbaru (Rizal Mahendra)' },
+                    ]}
+                    placeholder="Pilih assignment"
+                    className="w-full text-xs"
+                  />
                   <p className="text-[11px] text-slate-500">Pilih assignment yang sedang dikerjakan.</p>
                 </div>
 

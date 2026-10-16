@@ -29,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import { HeroKpiCard } from '@/components/templates';
 import {
   Table,
   TableBody,
@@ -807,55 +808,38 @@ export function JobcardDesktopClient({
       </div>
 
       {/* KPI Stats Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-slate-200/80 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Jobcard Terbit</p>
-              <h3 className="text-2xl font-black font-mono text-[#082033] mt-1">{jobcards.length}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700">
-              <FileText className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Jobcard Terbit"
+          value={jobcards.length}
+          tone="blue"
+          icon={<FileText className="size-5" />}
+          description="Total jobcard diterbitkan"
+        />
 
-        <Card className="border-slate-200/80 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Siap Input Jobcard</p>
-              <h3 className="text-2xl font-black font-mono text-cyan-700 mt-1">{inputReadyFormItems.length}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-700">
-              <FileSignature className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Siap Input Jobcard"
+          value={inputReadyFormItems.length}
+          tone="cyan"
+          icon={<FileSignature className="size-5" />}
+          description="Siap proses penulisan jobcard"
+        />
 
-        <Card className="border-slate-200/80 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Waiting WO# KPC</p>
-              <h3 className="text-2xl font-black font-mono text-amber-700 mt-1">{heroKpcWaitingWo.length}</h3>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
-              <Clock className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Waiting WO# KPC"
+          value={heroKpcWaitingWo.length}
+          tone="amber"
+          icon={<Clock className="size-5" />}
+          description="Menunggu penerbitan nomor WO KPC"
+        />
 
-        <Card className="border-slate-200/80 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Customer Active</p>
-              <h3 className="text-sm font-black text-[#082033] mt-1 truncate">PT Kaltim Prima Coal</h3>
-              <p className="text-[11px] text-slate-400">Workshop Sangatta</p>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
-              <Building2 className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+        <HeroKpiCard
+          title="Customer Active"
+          value="PT Kaltim Prima Coal"
+          tone="emerald"
+          icon={<Building2 className="size-5" />}
+          description="Workshop Sangatta"
+        />
       </div>
 
       {/* Main Tab Controls & Search */}

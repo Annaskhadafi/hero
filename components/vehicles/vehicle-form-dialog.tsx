@@ -73,33 +73,33 @@ export function VehicleFormDialog({
 
   useEffect(() => {
     if (vehicleToEdit) {
-      setPoliceNumber(vehicleToEdit.policeNumber || '')
+      setPoliceNumber(vehicleToEdit.plateNumber || (vehicleToEdit as any).policeNumber || '')
       setVehicleType(vehicleToEdit.vehicleType || '')
-      setBrand(vehicleToEdit.brand || '')
+      setBrand((vehicleToEdit as any).brand || '')
       setCategory(vehicleToEdit.category || 'Passenger')
-      setOwnership(vehicleToEdit.ownership || 'Owned')
+      setOwnership(vehicleToEdit.ownership?.toLowerCase() === 'rented' ? 'Rented' : 'Owned')
       setRentalVendor(vehicleToEdit.rentalVendor || '')
-      setRentalMonthlyCost(vehicleToEdit.rentalMonthlyCost ? String(vehicleToEdit.rentalMonthlyCost) : '')
+      setRentalMonthlyCost(vehicleToEdit.rentalCostMonthly ? String(vehicleToEdit.rentalCostMonthly) : ((vehicleToEdit as any).rentalMonthlyCost ? String((vehicleToEdit as any).rentalMonthlyCost) : ''))
       setRentalStartDate(vehicleToEdit.rentalStartDate || '')
       setRentalEndDate(vehicleToEdit.rentalEndDate || '')
 
-      setChassisNumber(vehicleToEdit.chassisNumber || '')
+      setChassisNumber(vehicleToEdit.vinNumber || (vehicleToEdit as any).chassisNumber || '')
       setEngineNumber(vehicleToEdit.engineNumber || '')
       setColor(vehicleToEdit.color || '')
-      setYear(vehicleToEdit.year ? String(vehicleToEdit.year) : '')
+      setYear(vehicleToEdit.manufactureYear ? String(vehicleToEdit.manufactureYear) : ((vehicleToEdit as any).year ? String((vehicleToEdit as any).year) : ''))
 
       setStnkExpiryDate(vehicleToEdit.stnkExpiryDate || '')
       setTaxExpiryDate(vehicleToEdit.taxExpiryDate || '')
       setKirExpiryDate(vehicleToEdit.kirExpiryDate || '')
 
-      setCurrentOdometer(vehicleToEdit.currentOdometer ? String(vehicleToEdit.currentOdometer) : '')
+      setCurrentOdometer(vehicleToEdit.lastServiceOdometer ? String(vehicleToEdit.lastServiceOdometer) : ((vehicleToEdit as any).currentOdometer ? String((vehicleToEdit as any).currentOdometer) : ''))
       setNextServiceOdometer(vehicleToEdit.nextServiceOdometer ? String(vehicleToEdit.nextServiceOdometer) : '')
       setNextServiceDate(vehicleToEdit.nextServiceDate || '')
 
-      setSiteName(vehicleToEdit.siteName || '')
-      setDepartment(vehicleToEdit.department || '')
-      setAssignedEmployeeName(vehicleToEdit.assignedEmployeeName || '')
-      setAssignedEmployeePhone(vehicleToEdit.assignedEmployeePhone || '')
+      setSiteName(vehicleToEdit.locationName || (vehicleToEdit as any).siteName || '')
+      setDepartment((vehicleToEdit as any).department || '')
+      setAssignedEmployeeName(vehicleToEdit.holderName || (vehicleToEdit as any).assignedEmployeeName || '')
+      setAssignedEmployeePhone((vehicleToEdit as any).assignedEmployeePhone || '')
       setStatus(vehicleToEdit.status || 'Active')
       setNotes(vehicleToEdit.notes || '')
     } else {
@@ -150,30 +150,27 @@ export function VehicleFormDialog({
     setLoading(true)
     try {
       const payload = {
-        policeNumber: policeNumber.trim().toUpperCase(),
-        vehicleType: vehicleType.trim(),
-        brand: brand.trim() || undefined,
-        category: category as any,
-        ownership,
-        rentalVendor: ownership === 'Rented' ? rentalVendor.trim() || undefined : undefined,
-        rentalMonthlyCost: ownership === 'Rented' && rentalMonthlyCost ? Number(rentalMonthlyCost) : undefined,
-        rentalStartDate: ownership === 'Rented' ? rentalStartDate || undefined : undefined,
-        rentalEndDate: ownership === 'Rented' ? rentalEndDate || undefined : undefined,
-        chassisNumber: chassisNumber.trim() || undefined,
+        plateNumber: policeNumber.trim().toUpperCase(),
+        vehicleType: brand.trim() ? `${brand.trim()} ${vehicleType.trim()}` : vehicleType.trim(),
+        category,
+        manufactureYear: year ? Number(year) : new Date().getFullYear(),
+        vinNumber: chassisNumber.trim() || undefined,
         engineNumber: engineNumber.trim() || undefined,
         color: color.trim() || undefined,
-        year: year ? Number(year) : undefined,
+        ownership: (ownership.toLowerCase() === 'rented' ? 'rented' : 'owned') as 'owned' | 'rented',
+        rentalVendor: ownership === 'Rented' ? rentalVendor.trim() || undefined : undefined,
+        rentalCostMonthly: ownership === 'Rented' && rentalMonthlyCost ? String(rentalMonthlyCost) : undefined,
+        rentalStartDate: ownership === 'Rented' ? rentalStartDate || undefined : undefined,
+        rentalEndDate: ownership === 'Rented' ? rentalEndDate || undefined : undefined,
         stnkExpiryDate: stnkExpiryDate || undefined,
         taxExpiryDate: taxExpiryDate || undefined,
         kirExpiryDate: kirExpiryDate || undefined,
-        currentOdometer: currentOdometer ? Number(currentOdometer) : undefined,
+        lastServiceOdometer: currentOdometer ? Number(currentOdometer) : undefined,
         nextServiceOdometer: nextServiceOdometer ? Number(nextServiceOdometer) : undefined,
         nextServiceDate: nextServiceDate || undefined,
-        siteName: siteName.trim() || undefined,
-        department: department.trim() || undefined,
-        assignedEmployeeName: assignedEmployeeName.trim() || undefined,
-        assignedEmployeePhone: assignedEmployeePhone.trim() || undefined,
-        status: status as any,
+        locationName: siteName.trim() || undefined,
+        holderName: assignedEmployeeName.trim() || undefined,
+        status: status.toLowerCase() || 'active',
         notes: notes.trim() || undefined,
       }
 
@@ -184,12 +181,10 @@ export function VehicleFormDialog({
         res = await createVehicle(payload)
       }
 
-      if (res.success) {
+      if (res) {
         toast.success(isEditing ? 'Data kendaraan berhasil diperbarui' : 'Kendaraan baru berhasil didaftarkan')
         onOpenChange(false)
         onSuccess()
-      } else {
-        toast.error(res.message || 'Gagal menyimpan data kendaraan')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Terjadi kesalahan sistem')
@@ -204,7 +199,7 @@ export function VehicleFormDialog({
         <DialogHeader className="border-b pb-3">
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Car className="w-5 h-5 text-blue-600" />
-            {isEditing ? `Edit Kendaraan — ${vehicleToEdit?.policeNumber}` : 'Tambah Kendaraan Baru'}
+            {isEditing ? `Edit Kendaraan — ${vehicleToEdit?.plateNumber || (vehicleToEdit as any)?.policeNumber}` : 'Tambah Kendaraan Baru'}
           </DialogTitle>
         </DialogHeader>
 

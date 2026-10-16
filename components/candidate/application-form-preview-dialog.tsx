@@ -17,8 +17,10 @@ import { toast } from "sonner";
 interface ApplicationFormPreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  entry: any;
+  entry?: any;
   testTitle?: string;
+  candidateId?: any;
+  candidateName?: any;
 }
 
 export function ApplicationFormPreviewDialog({
@@ -26,11 +28,12 @@ export function ApplicationFormPreviewDialog({
   onOpenChange,
   entry,
   testTitle,
+  candidateName: candidateNameProp,
 }: ApplicationFormPreviewDialogProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const printContainerRef = useRef<HTMLDivElement>(null);
 
-  const candidateName = entry?.candidate?.fullName || entry?.candidate?.name || "Kandidat";
+  const candidateName = candidateNameProp || entry?.candidate?.fullName || entry?.candidate?.name || "Kandidat";
 
   const handlePrint = () => {
     window.print();

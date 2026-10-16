@@ -14,6 +14,7 @@ import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/
 import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
+import { HeroSearchableSelect } from '@/components/templates'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
 
@@ -317,18 +318,15 @@ export function SuratKeteranganClient({
             </div>
             <div>
               <Label className="mb-2 block">HR Penandatangan</Label>
-              <select
-                className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
+              <HeroSearchableSelect
                 value={selectedHrSignerId}
-                onChange={(e) => setSelectedHrSignerId(e.target.value)}
-              >
-                <option value="">-- Pilih HR GA --</option>
-                {hrSigners.map((signer) => (
-                  <option key={signer.id} value={signer.id}>
-                    {signer.name} - {signer.jobTitle}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedHrSignerId(val || '')}
+                options={hrSigners.map((signer) => ({
+                  value: signer.id.toString(),
+                  label: `${signer.name} - ${signer.jobTitle}`,
+                }))}
+                placeholder="-- Pilih HR GA --"
+              />
             </div>
 
             <div>

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useTransition } from "react"
+import React, { useState, useTransition, useMemo } from "react"
 import {
   Store,
   Sparkles,
@@ -16,12 +16,24 @@ import {
   Calendar,
   Gift,
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { HeroSearchableSelect } from "@/components/templates"
 import {
   Dialog,
   DialogContent,
@@ -90,15 +102,55 @@ export function RewardStoreTab({
   // Admin Item Create/Edit Modal
   const [isItemModalOpen, setIsItemModalOpen] = useState(false)
   const [editingItem, setEditingItem] = useState<Partial<RewardItemData> | null>(null)
+  const [itemCategory, setItemCategory] = useState<string>("merchandise")
+  const [itemTierEligibility, setItemTierEligibility] = useState<string>("all")
   const [itemImageUrl, setItemImageUrl] = useState("")
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [selectedSiteIds, setSelectedSiteIds] = useState<number[]>([])
   const [selectedDepartmentIds, setSelectedDepartmentIds] = useState<number[]>([])
   const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([])
 
+  // Redemptions Table Sorting State
+  const [redemptionSortField, setRedemptionSortField] = useState<string | null>(null)
+  const [redemptionSortDir, setRedemptionSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleRedemptionSort = (field: string) => {
+    if (redemptionSortField === field) {
+      if (redemptionSortDir === 'asc') {
+        setRedemptionSortDir('desc')
+      } else {
+        setRedemptionSortField(null)
+        setRedemptionSortDir('asc')
+      }
+    } else {
+      setRedemptionSortField(field)
+      setRedemptionSortDir('asc')
+    }
+  }
+
+  const sortedRedemptions = useMemo(() => {
+    if (!redemptionSortField) return allRedemptions
+    return [...allRedemptions].sort((a, b) => {
+      let aVal = (a as any)[redemptionSortField] ?? ''
+      let bVal = (b as any)[redemptionSortField] ?? ''
+      if (redemptionSortField === 'pointsSpent') {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      } else {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+      }
+      if (aVal < bVal) return redemptionSortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return redemptionSortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [allRedemptions, redemptionSortField, redemptionSortDir])
+
   // Sync itemImageUrl & conditions when editingItem changes or modal opens
   const openItemModal = (item?: Partial<RewardItemData> | null) => {
     setEditingItem(item || null)
+    setItemCategory(item?.category || "merchandise")
+    setItemTierEligibility(item?.tierEligibility || "all")
     setItemImageUrl(item?.imageUrl || "")
     setSelectedSiteIds(item?.eligibleSiteIds || [])
     setSelectedDepartmentIds(item?.eligibleDepartmentIds || [])
@@ -438,16 +490,18 @@ export function RewardStoreTab({
 
             <div className="ml-auto flex items-center gap-1.5">
               <span className="text-xs font-medium text-muted-foreground">Tier:</span>
-              <select
+              <HeroSearchableSelect
                 value={filterTier}
-                onChange={(e) => setFilterTier(e.target.value)}
-                className="h-8 rounded-lg border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none"
-              >
-                <option value="all">Semua Akses Tier</option>
-                <option value="all_tier">Bebas Ditukar (All Staff)</option>
-                <option value="exclusive">Eksklusif (Top Performer)</option>
-                <option value="year_end">Event Akhir Tahun (Year-End)</option>
-              </select>
+                onChange={(val) => setFilterTier(val)}
+                options={[
+                  { value: "all", label: "Semua Akses Tier" },
+                  { value: "all_tier", label: "Bebas Ditukar (All Staff)" },
+                  { value: "exclusive", label: "Eksklusif (Top Performer)" },
+                  { value: "year_end", label: "Event Akhir Tahun (Year-End)" },
+                ]}
+                placeholder="Pilih Tier..."
+                className="h-8 w-[190px] text-xs"
+              />
             </div>
           </div>
 
@@ -734,33 +788,124 @@ export function RewardStoreTab({
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-border/60">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-border/60 bg-muted/40 font-medium text-muted-foreground">
-                  <tr>
-                    <th className="p-3">No. Klaim</th>
-                    <th className="p-3">Karyawan</th>
-                    <th className="p-3">Site</th>
-                    <th className="p-3">Hadiah</th>
-                    <th className="p-3">Poin</th>
-                    <th className="p-3">Status Klaim</th>
-                    <th className="p-3">Logistik Site</th>
-                    <th className="p-3 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {allRedemptions.map((r) => (
-                    <tr key={`adm-red-${r.id}`} className="hover:bg-muted/20">
-                      <td className="p-3 font-mono font-semibold text-primary">{r.redemptionNumber}</td>
-                      <td className="p-3">
+              <Table containerClassName="rounded-none border-0 shadow-none" className="text-xs">
+                <TableHeader>
+                  <TableRow className="border-b border-border/60 bg-muted/40 hover:bg-muted/40">
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('redemptionNumber')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>No. Klaim</span>
+                        {redemptionSortField === 'redemptionNumber' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('employeeName')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>Karyawan</span>
+                        {redemptionSortField === 'employeeName' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('siteName')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>Site</span>
+                        {redemptionSortField === 'siteName' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('rewardItemName')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>Hadiah</span>
+                        {redemptionSortField === 'rewardItemName' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('pointsSpent')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>Poin</span>
+                        {redemptionSortField === 'pointsSpent' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('status')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>Status Klaim</span>
+                        {redemptionSortField === 'status' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3">
+                      <button
+                        type="button"
+                        onClick={() => handleRedemptionSort('deliveryStatus')}
+                        className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                      >
+                        <span>Logistik Site</span>
+                        {redemptionSortField === 'deliveryStatus' ? (
+                          redemptionSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="p-3 text-right">Aksi</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-border/40">
+                  {sortedRedemptions.map((r) => (
+                    <TableRow key={`adm-red-${r.id}`} className="hover:bg-muted/20">
+                      <TableCell className="p-3 font-mono font-semibold text-primary">{r.redemptionNumber}</TableCell>
+                      <TableCell className="p-3">
                         <p className="font-semibold text-foreground">{r.employeeName}</p>
                         <p className="text-[10px] text-muted-foreground">{r.employeeSn || "-"}</p>
-                      </td>
-                      <td className="p-3">{r.siteName || "Head Office"}</td>
-                      <td className="p-3 font-medium">{r.rewardItemName}</td>
-                      <td className="p-3 font-bold text-amber-600 dark:text-amber-400">
+                      </TableCell>
+                      <TableCell className="p-3">{r.siteName || "Head Office"}</TableCell>
+                      <TableCell className="p-3 font-medium">{r.rewardItemName}</TableCell>
+                      <TableCell className="p-3 font-bold text-amber-600 dark:text-amber-400">
                         {r.pointsSpent} Pts
-                      </td>
-                      <td className="p-3">
+                      </TableCell>
+                      <TableCell className="p-3">
                         <Badge
                           variant="outline"
                           className={
@@ -775,9 +920,9 @@ export function RewardStoreTab({
                         >
                           {r.status}
                         </Badge>
-                      </td>
-                      <td className="p-3 capitalize">{r.deliveryStatus.replace(/_/g, " ")}</td>
-                      <td className="p-3 text-right space-x-1.5">
+                      </TableCell>
+                      <TableCell className="p-3 capitalize">{r.deliveryStatus.replace(/_/g, " ")}</TableCell>
+                      <TableCell className="p-3 text-right space-x-1.5">
                         {r.status === "pending" && (
                           <Button
                             size="sm"
@@ -805,18 +950,18 @@ export function RewardStoreTab({
                         >
                           Logistik
                         </Button>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                  {allRedemptions.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  {sortedRedemptions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="p-8 text-center text-muted-foreground">
                         Belum ada data transaksi penukaran hadiah.
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           </div>
         </div>
@@ -997,16 +1142,18 @@ export function RewardStoreTab({
           <div className="space-y-3 py-2 text-xs">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Status Pengiriman:</Label>
-              <select
+              <HeroSearchableSelect
                 value={logisticsStatus}
-                onChange={(e) => setLogisticsStatus(e.target.value as any)}
-                className="w-full h-9 rounded-xl border border-input bg-background px-3 text-xs"
-              >
-                <option value="pending">Pending Persiapan</option>
-                <option value="shipped_to_site">Sedang Dikirim ke Site (In Transit)</option>
-                <option value="ready_at_site">Sudah Tiba di Site (Siap Diambil)</option>
-                <option value="received">Sudah Diterima oleh Karyawan (Selesai)</option>
-              </select>
+                onChange={(val) => setLogisticsStatus(val as any)}
+                options={[
+                  { value: "pending", label: "Pending Persiapan" },
+                  { value: "shipped_to_site", label: "Sedang Dikirim ke Site (In Transit)" },
+                  { value: "ready_at_site", label: "Sudah Tiba di Site (Siap Diambil)" },
+                  { value: "received", label: "Sudah Diterima oleh Karyawan (Selesai)" },
+                ]}
+                placeholder="Pilih Status..."
+                className="h-9 w-full text-xs"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -1064,17 +1211,20 @@ export function RewardStoreTab({
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Kategori</Label>
-                <select
-                  name="category"
-                  defaultValue={editingItem?.category || "merchandise"}
-                  className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs"
-                >
-                  <option value="merchandise">Merchandise</option>
-                  <option value="voucher">Voucher</option>
-                  <option value="apparel">Apparel / Pakaian</option>
-                  <option value="electronics">Elektronik</option>
-                  <option value="special">Paket Spesial</option>
-                </select>
+                <input type="hidden" name="category" value={itemCategory} />
+                <HeroSearchableSelect
+                  value={itemCategory}
+                  onChange={(val) => setItemCategory(val)}
+                  options={[
+                    { value: "merchandise", label: "Merchandise" },
+                    { value: "voucher", label: "Voucher" },
+                    { value: "apparel", label: "Apparel / Pakaian" },
+                    { value: "electronics", label: "Elektronik" },
+                    { value: "special", label: "Paket Spesial" },
+                  ]}
+                  placeholder="Pilih Kategori..."
+                  className="h-8 w-full text-xs"
+                />
               </div>
 
               <div className="col-span-2 space-y-1">
@@ -1121,15 +1271,18 @@ export function RewardStoreTab({
                 {/* Tier Ranking */}
                 <div className="space-y-1">
                   <Label className="text-xs">Akses Tier Ranking</Label>
-                  <select
-                    name="tierEligibility"
-                    defaultValue={editingItem?.tierEligibility || "all"}
-                    className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs"
-                  >
-                    <option value="all">Semua Karyawan (Umum)</option>
-                    <option value="top_10">Top 10 Saja</option>
-                    <option value="top_site">Juara Site Saja</option>
-                  </select>
+                  <input type="hidden" name="tierEligibility" value={itemTierEligibility} />
+                  <HeroSearchableSelect
+                    value={itemTierEligibility}
+                    onChange={(val) => setItemTierEligibility(val)}
+                    options={[
+                      { value: "all", label: "Semua Karyawan (Umum)" },
+                      { value: "top_10", label: "Top 10 Saja" },
+                      { value: "top_site", label: "Juara Site Saja" },
+                    ]}
+                    placeholder="Pilih Akses Tier..."
+                    className="h-8 w-full text-xs"
+                  />
                 </div>
 
                 {/* Target Site Selection */}

@@ -11,6 +11,9 @@ import {
   MapPinned,
   ShieldCheck,
   XCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -283,6 +286,49 @@ export function MyDayActivityLogTable({
   const [selectedActivity, setSelectedActivity] =
     React.useState<MyDayDetailActivity | null>(null);
 
+  const [sortField, setSortField] = React.useState<string>("startTime");
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedActivities = React.useMemo(() => {
+    return [...activities].sort((a, b) => {
+      let aVal: any = a[sortField as keyof typeof a];
+      let bVal: any = b[sortField as keyof typeof b];
+
+      if (sortField === "title") {
+        aVal = a.title || "";
+        bVal = b.title || "";
+      } else if (sortField === "status") {
+        aVal = a.statusLabel || a.status || "";
+        bVal = b.statusLabel || b.status || "";
+      } else if (sortField === "startTime") {
+        const aTime = a.startTime ? new Date(a.startTime).getTime() : 0;
+        const bTime = b.startTime ? new Date(b.startTime).getTime() : 0;
+        return sortDir === "asc" ? aTime - bTime : bTime - aTime;
+      } else if (sortField === "points") {
+        aVal = a.pointsNet ?? a.pointsAwarded ?? 0;
+        bVal = b.pointsNet ?? b.pointsAwarded ?? 0;
+      }
+
+      if (typeof aVal === "string") {
+        const cmp = aVal.localeCompare(bVal || "");
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      if (typeof aVal === "number") {
+        return sortDir === "asc" ? aVal - (bVal || 0) : (bVal || 0) - aVal;
+      }
+      return 0;
+    });
+  }, [activities, sortField, sortDir]);
+
   return (
     <>
       <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
@@ -290,22 +336,70 @@ export function MyDayActivityLogTable({
           <TableHeader className="bg-slate-50 dark:bg-slate-800/60">
             <TableRow className="border-b border-slate-200 dark:border-slate-700">
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Activity
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-7 text-xs font-bold hover:bg-transparent px-2"
+                  onClick={() => handleSort("title")}
+                >
+                  Activity
+                  {sortField === "title" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
               </TableHead>
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Status
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-7 text-xs font-bold hover:bg-transparent px-2"
+                  onClick={() => handleSort("status")}
+                >
+                  Status
+                  {sortField === "status" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
               </TableHead>
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300 min-w-[200px]">
                 Proses Approval
               </TableHead>
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Durasi &amp; Waktu
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-7 text-xs font-bold hover:bg-transparent px-2"
+                  onClick={() => handleSort("startTime")}
+                >
+                  Durasi &amp; Waktu
+                  {sortField === "startTime" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
               </TableHead>
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
                 Submission &amp; GPS
               </TableHead>
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Poin Net
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-7 text-xs font-bold hover:bg-transparent px-2"
+                  onClick={() => handleSort("points")}
+                >
+                  Poin Net
+                  {sortField === "points" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
               </TableHead>
               <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-600 dark:text-slate-300 text-right pr-4">
                 Aksi
@@ -313,8 +407,8 @@ export function MyDayActivityLogTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {activities.length > 0 ? (
-              activities.map((activity) => {
+            {sortedActivities.length > 0 ? (
+              sortedActivities.map((activity) => {
                 const startTimeStr = formatSafeTime(activity.startTime);
                 const endTimeStr = formatSafeTime(activity.endTime);
                 const dateIso = formatSafeIso(activity.startTime);

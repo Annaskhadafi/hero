@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation"
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Bell,
   Bug,
   Check,
@@ -56,6 +59,7 @@ import { Label } from "@/components/ui/label"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { MultiSelectFilterDropdown } from "@/components/ui/multi-select-filter-dropdown"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { HeroSearchableSelect } from "@/components/templates"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -313,7 +317,49 @@ export function ContractReviewClientPage({
       ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch))
     })
   }, [employees, reviewSearch, reviewSectionFilters, rows])
-  const visibleReviewRows = filteredReviewRows.slice(0, visibleReviewCount)
+
+  const [reviewSortField, setReviewSortField] = useState<string | null>(null)
+  const [reviewSortDir, setReviewSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleReviewSort = (field: string) => {
+    if (reviewSortField === field) {
+      if (reviewSortDir === 'asc') {
+        setReviewSortDir('desc')
+      } else {
+        setReviewSortField(null)
+        setReviewSortDir('asc')
+      }
+    } else {
+      setReviewSortField(field)
+      setReviewSortDir('asc')
+    }
+  }
+
+  const sortedReviewRows = useMemo(() => {
+    if (!reviewSortField) return filteredReviewRows
+    return [...filteredReviewRows].sort((a, b) => {
+      let aVal = (a as any)[reviewSortField] ?? ''
+      let bVal = (b as any)[reviewSortField] ?? ''
+      if (reviewSortField === 'employeeNameStr') {
+        const empA = employees.find((e: any) => e.id === a.employeeId)
+        const empB = employees.find((e: any) => e.id === b.employeeId)
+        aVal = empA?.name || a.employeeNameStr || ''
+        bVal = empB?.name || b.employeeNameStr || ''
+      } else if (reviewSortField === 'section') {
+        const empA = employees.find((e: any) => e.id === a.employeeId)
+        const empB = employees.find((e: any) => e.id === b.employeeId)
+        aVal = empA?.section || ''
+        bVal = empB?.section || ''
+      }
+      aVal = String(aVal).toLowerCase()
+      bVal = String(bVal).toLowerCase()
+      if (aVal < bVal) return reviewSortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return reviewSortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredReviewRows, reviewSortField, reviewSortDir, employees])
+
+  const visibleReviewRows = sortedReviewRows.slice(0, visibleReviewCount)
   const allReviewsSelected = filteredReviewRows.length > 0 && filteredReviewRows.every((row) => selectedReviewIds.includes(row.id))
   const toggleSelectReview = (id: number) => {
     setSelectedReviewIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id])
@@ -412,6 +458,41 @@ export function ContractReviewClientPage({
       return true
     })
   }, [monitoringEmployees, monitoringSearch, urgencyFilter, reviewStatusFilter])
+
+  const [expiringSortField, setExpiringSortField] = useState<string | null>(null)
+  const [expiringSortDir, setExpiringSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleExpiringSort = (field: string) => {
+    if (expiringSortField === field) {
+      if (expiringSortDir === 'asc') {
+        setExpiringSortDir('desc')
+      } else {
+        setExpiringSortField(null)
+        setExpiringSortDir('asc')
+      }
+    } else {
+      setExpiringSortField(field)
+      setExpiringSortDir('asc')
+    }
+  }
+
+  const sortedExpiringEmployees = useMemo(() => {
+    if (!expiringSortField) return filteredExpiringEmployees
+    return [...filteredExpiringEmployees].sort((a, b) => {
+      let aVal = (a as any)[expiringSortField] ?? ''
+      let bVal = (b as any)[expiringSortField] ?? ''
+      if (expiringSortField === 'daysLeft') {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      } else {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+      }
+      if (aVal < bVal) return expiringSortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return expiringSortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredExpiringEmployees, expiringSortField, expiringSortDir])
 
   // Checkbox helpers
   const allFilteredSelected =
@@ -531,13 +612,104 @@ export function ContractReviewClientPage({
                   <TableHead className="w-10">
                     <Checkbox checked={allReviewsSelected} onCheckedChange={toggleSelectAllReviews} aria-label="Pilih semua review" />
                   </TableHead>
-                  <TableHead>Tgl Review</TableHead>
-                  <TableHead>Karyawan</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Pembuat / Leader</TableHead>
-                  <TableHead>Jenis Review</TableHead>
-                  <TableHead>Rekomendasi</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('todayDate')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Tgl Review</span>
+                      {reviewSortField === 'todayDate' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('employeeNameStr')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Karyawan</span>
+                      {reviewSortField === 'employeeNameStr' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('section')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Section</span>
+                      {reviewSortField === 'section' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('leaderName')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Pembuat / Leader</span>
+                      {reviewSortField === 'leaderName' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('reviewType')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Jenis Review</span>
+                      {reviewSortField === 'reviewType' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('recommendation')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Rekomendasi</span>
+                      {reviewSortField === 'recommendation' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('status')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Status</span>
+                      {reviewSortField === 'status' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                   <TableHead>Step Approval Sampai Dimana</TableHead>
                 </TableRow>
@@ -810,17 +982,18 @@ export function ContractReviewClientPage({
 
               {/* Review Status Filter */}
               <div className="flex items-center gap-1">
-                <select
-                  aria-label="Filter status review kontrak"
+                <HeroSearchableSelect
                   value={reviewStatusFilter}
-                  onChange={(e) => setReviewStatusFilter(e.target.value)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="all">Semua Status Review</option>
-                  <option value="none">Belum Ada Review</option>
-                  <option value="in_progress">Review In Progress</option>
-                  <option value="completed">Review Selesai</option>
-                </select>
+                  onChange={(val: string) => setReviewStatusFilter(val)}
+                  options={[
+                    { value: "all", label: "Semua Status Review" },
+                    { value: "none", label: "Belum Ada Review" },
+                    { value: "in_progress", label: "Review In Progress" },
+                    { value: "completed", label: "Review Selesai" },
+                  ]}
+                  placeholder="Status Review..."
+                  className="h-8 w-[190px] text-xs"
+                />
               </div>
             </div>
 
@@ -897,17 +1070,95 @@ export function ContractReviewClientPage({
                       aria-label="Pilih semua karyawan"
                     />
                   </TableHead>
-                  <TableHead>Karyawan</TableHead>
-                  <TableHead>Departemen / Section</TableHead>
-                  <TableHead>Site</TableHead>
-                  <TableHead>Masa Kontrak</TableHead>
-                  <TableHead>Sisa Waktu</TableHead>
-                  <TableHead>Status Review</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('name')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Karyawan</span>
+                      {expiringSortField === 'name' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('department')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Departemen / Section</span>
+                      {expiringSortField === 'department' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('siteName')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Site</span>
+                      {expiringSortField === 'siteName' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('contractEnd')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Masa Kontrak</span>
+                      {expiringSortField === 'contractEnd' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('daysLeft')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Sisa Waktu</span>
+                      {expiringSortField === 'daysLeft' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('urgency')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Status Review</span>
+                      {expiringSortField === 'urgency' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExpiringEmployees.length === 0 && (
+                {sortedExpiringEmployees.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
                       <div className="flex flex-col items-center justify-center space-y-2">
@@ -918,7 +1169,7 @@ export function ContractReviewClientPage({
                     </TableCell>
                   </TableRow>
                 )}
-                {filteredExpiringEmployees.map((emp) => {
+                {sortedExpiringEmployees.map((emp) => {
                   const isOverdue = emp.daysLeft < 0
                   const isCritical = emp.daysLeft >= 0 && emp.daysLeft <= 30
                   const isSelected = selectedEmployeeIds.includes(emp.id)

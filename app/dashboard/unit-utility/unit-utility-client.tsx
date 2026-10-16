@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
+import { HeroKpiCard } from '@/components/templates'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -154,52 +155,51 @@ export function UnitUtilityClient({ rows, activityGroupingSummary, siteId, dateS
 
         {/* TAB 1: UTILISASI UNIT */}
         <TabsContent value="utility" className="mt-4 flex flex-col gap-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
-                  <Wrench className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total Unit Aktif</p>
-                  <p className="text-2xl font-bold">{summary.totalUnits}</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
-                  <Clock className="h-5 w-5 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Avg Utilitas</p>
-                  <p className="text-2xl font-bold">{summary.avgUtility.toFixed(1)}%</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100">
-                  <AlertTriangle className="h-5 w-5 text-red-600" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Ada Breakdown</p>
-                  <p className="text-2xl font-bold text-red-600">{summary.breakdownCount}</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
-                  <Users className="h-5 w-5 text-slate-500" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Unit Idle (0%)</p>
-                  <p className="text-2xl font-bold text-slate-500">{summary.idleCount}</p>
-                </div>
-              </div>
-            </Card>
+          {/* Summary Cards (HeroKpiCard Standardized) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+            <HeroKpiCard
+              title="Total Unit Aktif"
+              value={summary.totalUnits}
+              unit="unit"
+              icon={<Wrench className="size-5" />}
+              watermarkIcon={<Wrench className="size-16" />}
+              tone="blue"
+              variant="colorful"
+              description="Unit aktif dioperasikan"
+            />
+
+            <HeroKpiCard
+              title="Avg Utilitas"
+              value={`${summary.avgUtility.toFixed(1)}%`}
+              icon={<Clock className="size-5" />}
+              watermarkIcon={<Clock className="size-16" />}
+              tone="emerald"
+              variant="colorful"
+              description="Rata-rata utilisasi harian"
+            />
+
+            <HeroKpiCard
+              title="Ada Breakdown"
+              value={summary.breakdownCount}
+              unit="unit"
+              icon={<AlertTriangle className="size-5" />}
+              watermarkIcon={<AlertTriangle className="size-16" />}
+              tone={summary.breakdownCount > 0 ? 'rose' : 'slate'}
+              variant="colorful"
+              badge={summary.breakdownCount > 0 ? 'Perlu Servis' : undefined}
+              description="Unit mengalami breakdown"
+            />
+
+            <HeroKpiCard
+              title="Unit Idle (0%)"
+              value={summary.idleCount}
+              unit="unit"
+              icon={<Users className="size-5" />}
+              watermarkIcon={<Users className="size-16" />}
+              tone="amber"
+              variant="colorful"
+              description="Unit siap pakai tanpa aktivitas"
+            />
           </div>
 
           {/* Search Filter */}

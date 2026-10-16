@@ -17,7 +17,10 @@ import {
   IconTargetArrow,
   IconInfoCircle,
   IconEye,
+  IconShieldCheck,
+  IconAward,
 } from '@tabler/icons-react'
+import { HeroKpiCard } from '@/components/templates'
 import { RawTireCheckItem, TireCheckSummaryPeriodType, TireCheckTireSize } from './types'
 import {
   calculateSiteSummaryDataset,
@@ -31,6 +34,14 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 
 interface TireCheckSummaryTabProps {
   rawItems: RawTireCheckItem[]
@@ -204,6 +215,33 @@ export function TireCheckSummaryTab({ rawItems, onRefresh }: TireCheckSummaryTab
     )
   }, [datasetConsolidation.sites, tableSearch])
 
+  const [sortField, setSortField] = useState<string>('siteCode')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  const sortedMatrixSites = useMemo(() => {
+    return [...filteredMatrixSites].sort((a, b) => {
+      let aVal: any = a[sortField as keyof typeof a]
+      let bVal: any = b[sortField as keyof typeof b]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+      if (typeof aVal === 'number') {
+        return sortDir === 'asc' ? (aVal - (bVal || 0)) : ((bVal || 0) - aVal)
+      }
+      return 0
+    })
+  }, [filteredMatrixSites, sortField, sortDir])
+
   return (
     <div className="space-y-6" ref={printRef}>
       {/* ─── 1. TOP CONTROLS & FILTER BAR ─── */}
@@ -315,62 +353,82 @@ export function TireCheckSummaryTab({ rawItems, onRefresh }: TireCheckSummaryTab
 
             {periodType === 'monthly' && (
               <div className="flex items-center gap-2">
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                <Select
+                  value={String(selectedYear)}
+                  onValueChange={(val) => setSelectedYear(Number(val))}
                 >
-                  <option value={2026}>2026</option>
-                  <option value={2025}>2025</option>
-                  <option value={2024}>2024</option>
-                </select>
-                <select
+                  <SelectTrigger className="w-24 h-9 bg-slate-50 border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2026">2026</SelectItem>
+                    <SelectItem value="2025">2025</SelectItem>
+                    <SelectItem value="2024">2024</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
                   value={monthRange}
-                  onChange={(e) => setMonthRange(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden cursor-pointer"
+                  onValueChange={(val) => setMonthRange(val as any)}
                 >
-                  <option value="sem1">Semester 1 (Jan – Jun)</option>
-                  <option value="sem2">Semester 2 (Jul – Des)</option>
-                  <option value="full">1 Tahun Penuh (Jan – Des)</option>
-                </select>
+                  <SelectTrigger className="w-full h-9 bg-slate-50 border-slate-200 rounded-xl text-xs font-semibold text-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sem1">Semester 1 (Jan – Jun)</SelectItem>
+                    <SelectItem value="sem2">Semester 2 (Jul – Des)</SelectItem>
+                    <SelectItem value="full">1 Tahun Penuh (Jan – Des)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
             {periodType === 'quarterly' && (
               <div className="flex items-center gap-2">
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                <Select
+                  value={String(selectedYear)}
+                  onValueChange={(val) => setSelectedYear(Number(val))}
                 >
-                  <option value={2026}>2026</option>
-                  <option value={2025}>2025</option>
-                  <option value={2024}>2024</option>
-                </select>
-                <select
+                  <SelectTrigger className="w-24 h-9 bg-slate-50 border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2026">2026</SelectItem>
+                    <SelectItem value="2025">2025</SelectItem>
+                    <SelectItem value="2024">2024</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
                   value={selectedQuarter}
-                  onChange={(e) => setSelectedQuarter(e.target.value as any)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-800 focus:outline-hidden cursor-pointer"
+                  onValueChange={(val) => setSelectedQuarter(val as any)}
                 >
-                  <option value="ALL">Semua Kuartal (Q1 – Q4)</option>
-                  <option value="Q1">Q1 (Jan – Mar)</option>
-                  <option value="Q2">Q2 (Apr – Jun)</option>
-                  <option value="Q3">Q3 (Jul – Sep)</option>
-                  <option value="Q4">Q4 (Okt – Des)</option>
-                </select>
+                  <SelectTrigger className="w-full h-9 bg-slate-50 border-slate-200 rounded-xl text-xs font-semibold text-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Semua Kuartal (Q1 – Q4)</SelectItem>
+                    <SelectItem value="Q1">Q1 (Jan – Mar)</SelectItem>
+                    <SelectItem value="Q2">Q2 (Apr – Jun)</SelectItem>
+                    <SelectItem value="Q3">Q3 (Jul – Sep)</SelectItem>
+                    <SelectItem value="Q4">Q4 (Okt – Des)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
             {periodType === 'yearly' && (
               <div className="flex items-center gap-2">
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                <Select
+                  value={String(selectedYear)}
+                  onValueChange={(val) => setSelectedYear(Number(val))}
                 >
-                  <option value={2026}>Tahun 2026 (vs 2025 & 2024)</option>
-                  <option value={2025}>Tahun 2025 (vs 2024 & 2023)</option>
-                </select>
+                  <SelectTrigger className="w-full h-9 bg-slate-50 border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2026">Tahun 2026 (vs 2025 & 2024)</SelectItem>
+                    <SelectItem value="2025">Tahun 2025 (vs 2024 & 2023)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
 
@@ -398,16 +456,20 @@ export function TireCheckSummaryTab({ rawItems, onRefresh }: TireCheckSummaryTab
               <span>Tampilan Ukuran Ban</span>
               <span className="text-[10px] text-blue-600 font-medium">Sesuai Report</span>
             </label>
-            <select
+            <Select
               value={tireSize}
-              onChange={(e) => setTireSize(e.target.value as any)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+              onValueChange={(val) => setTireSize(val as any)}
             >
-              <option value="all_stacked">Semua Ukuran (24.00R35 & 27.00R49 Bersusun)</option>
-              <option value="24.00R35">24.00R35 Saja (Haul Truck 100T)</option>
-              <option value="27.00R49">27.00R49 Saja (Haul Truck 150T)</option>
-              <option value="consolidation">Konsolidasi Total Armada Site</option>
-            </select>
+              <SelectTrigger className="w-full h-9 bg-slate-50 border-slate-200 rounded-xl text-xs font-bold text-slate-800">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all_stacked">Semua Ukuran (24.00R35 & 27.00R49 Bersusun)</SelectItem>
+                <SelectItem value="24.00R35">24.00R35 Saja (Haul Truck 100T)</SelectItem>
+                <SelectItem value="27.00R49">27.00R49 Saja (Haul Truck 150T)</SelectItem>
+                <SelectItem value="consolidation">Konsolidasi Total Armada Site</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* 3. Target Low Pressure (%) Benchmark */}
@@ -467,78 +529,40 @@ export function TireCheckSummaryTab({ rawItems, onRefresh }: TireCheckSummaryTab
 
       {/* ─── 2. EXECUTIVE KPI CARDS ─── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print:grid-cols-4">
-        {/* KPI 1 */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
-          <span className="text-xs text-slate-500 font-semibold block">Rata-rata Pressure Checked</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">
-              {executiveKpis.overallCheckPct}%
-            </span>
-            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold">
-              Target 100%
-            </Badge>
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">
-            {formatNumberIndo(executiveKpis.totalChecked)} dari {formatNumberIndo(executiveKpis.totalTarget)} ban
-          </span>
-        </div>
+        <HeroKpiCard
+          title="Rata-rata Pressure Checked"
+          value={`${executiveKpis.overallCheckPct}%`}
+          badge="Target 100%"
+          tone="emerald"
+          icon={<IconCircleCheckFilled className="size-5" />}
+          description={`${formatNumberIndo(executiveKpis.totalChecked)} dari ${formatNumberIndo(executiveKpis.totalTarget)} ban`}
+        />
 
-        {/* KPI 2 */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
-          <span className="text-xs text-slate-500 font-semibold block">Rata-rata Low Pressure</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span
-              className={`text-2xl font-black tracking-tight ${
-                executiveKpis.overallLowPct <= targetLowPressurePct
-                  ? 'text-emerald-600'
-                  : 'text-amber-600'
-              }`}
-            >
-              {executiveKpis.overallLowPct}%
-            </span>
-            <Badge
-              className={`text-[10px] font-bold ${
-                executiveKpis.overallLowPct <= targetLowPressurePct
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-50 text-amber-700 border-amber-200'
-              }`}
-            >
-              Benchmark &lt; {targetLowPressurePct}%
-            </Badge>
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">
-            Total {formatNumberIndo(executiveKpis.totalLow)} kejadian low pressure
-          </span>
-        </div>
+        <HeroKpiCard
+          title="Rata-rata Low Pressure"
+          value={`${executiveKpis.overallLowPct}%`}
+          badge={`Benchmark < ${targetLowPressurePct}%`}
+          tone={executiveKpis.overallLowPct <= targetLowPressurePct ? 'emerald' : 'amber'}
+          icon={<IconAlertTriangleFilled className="size-5" />}
+          description={`Total ${formatNumberIndo(executiveKpis.totalLow)} kejadian low pressure`}
+        />
 
-        {/* KPI 3 */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
-          <span className="text-xs text-slate-500 font-semibold block">Site Performa Terbaik</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-black text-blue-600 tracking-tight truncate">
-              {executiveKpis.bestSiteName}
-            </span>
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">
-            Low rate terendah: {executiveKpis.bestSiteLowRate.toFixed(2)}%
-          </span>
-        </div>
+        <HeroKpiCard
+          title="Site Performa Terbaik"
+          value={executiveKpis.bestSiteName}
+          tone="blue"
+          icon={<IconAward className="size-5" />}
+          description={`Low rate terendah: ${executiveKpis.bestSiteLowRate.toFixed(2)}%`}
+        />
 
-        {/* KPI 4 */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs">
-          <span className="text-xs text-slate-500 font-semibold block">Kepatuhan Target Site</span>
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-black text-slate-900 tracking-tight">
-              {executiveKpis.achievedSites}/{executiveKpis.totalSites}
-            </span>
-            <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] font-bold">
-              Site Lolos
-            </Badge>
-          </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">
-            Kepatuhan di bawah benchmark {targetLowPressurePct}%
-          </span>
-        </div>
+        <HeroKpiCard
+          title="Kepatuhan Target Site"
+          value={`${executiveKpis.achievedSites}/${executiveKpis.totalSites}`}
+          badge="Site Lolos"
+          tone="purple"
+          icon={<IconShieldCheck className="size-5" />}
+          description={`Kepatuhan di bawah benchmark ${targetLowPressurePct}%`}
+        />
       </div>
 
       {/* ─── 3. COMPARISON CHARTS (SESUAI PERSIS SCREENSHOT REFERENSI) ─── */}
@@ -848,18 +872,102 @@ export function TireCheckSummaryTab({ rawItems, onRefresh }: TireCheckSummaryTab
           <table className="w-full text-xs text-left border-collapse">
             <thead>
               <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
-                <th className="py-3 px-4">Nama Site / Project</th>
-                <th className="py-3 px-3 text-right">Target Ban</th>
-                <th className="py-3 px-3 text-right">Realisasi Check</th>
-                <th className="py-3 px-3 text-right">Pressure Checked (%)</th>
-                <th className="py-3 px-3 text-right">Ban Low Pressure</th>
-                <th className="py-3 px-3 text-right">Avg Low Rate (%)</th>
-                <th className="py-3 px-3 text-center">Benchmark Target</th>
-                <th className="py-3 px-4 text-center">Status Kepatuhan</th>
+                <th className="py-2.5 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-7 text-[11px] font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('siteCode')}
+                  >
+                    Nama Site / Project
+                    {sortField === 'siteCode' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('totalTarget')}
+                  >
+                    Target Ban
+                    {sortField === 'totalTarget' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('totalChecked')}
+                  >
+                    Realisasi Check
+                    {sortField === 'totalChecked' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('avgCheckedPct')}
+                  >
+                    Pressure Checked (%)
+                    {sortField === 'avgCheckedPct' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('totalLowPressure')}
+                  >
+                    Ban Low Pressure
+                    {sortField === 'totalLowPressure' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[11px] font-bold hover:bg-transparent px-2"
+                    onClick={() => handleSort('avgLowPressurePct')}
+                  >
+                    Avg Low Rate (%)
+                    {sortField === 'avgLowPressurePct' ? (
+                      sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-2.5 px-3 text-center">Benchmark Target</th>
+                <th className="py-2.5 px-4 text-center">Status Kepatuhan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredMatrixSites.map((site) => {
+              {sortedMatrixSites.map((site) => {
                 const isUnderTarget = site.avgLowPressurePct <= targetLowPressurePct
                 return (
                   <tr key={site.siteCode} className="hover:bg-slate-50/80 transition-colors">

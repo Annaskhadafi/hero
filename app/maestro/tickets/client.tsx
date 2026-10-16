@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { HeroKpiCard } from '@/components/templates'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -233,20 +234,41 @@ export function MaestroTicketsClient({ initialTickets, categories, sites }: Prop
         </Button>
       </div>
 
-      {/* Metrics Row */}
+      {/* Metrics Row (HeroKpiCard Standardized) */}
       <div className="grid grid-cols-1 gap-3.5 sm:gap-4 sm:grid-cols-3">
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <p className="text-xs font-black text-slate-700 uppercase tracking-wider">Total Tiket Masuk</p>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-slate-950 font-display">{totalCount}</p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <p className="text-xs font-black text-amber-800 uppercase tracking-wider">Sedang Ditangani</p>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-amber-700 font-display">{activeCount}</p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <p className="text-xs font-black text-emerald-800 uppercase tracking-wider">Selesai (Resolved)</p>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-emerald-700 font-display">{resolvedCount}</p>
-        </div>
+        <HeroKpiCard
+          title="Total Tiket Masuk"
+          value={totalCount}
+          unit="tiket"
+          icon={<Headphones className="size-5" />}
+          watermarkIcon={<Headphones className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description="Akumulasi laporan & konsultasi"
+        />
+
+        <HeroKpiCard
+          title="Sedang Ditangani"
+          value={activeCount}
+          unit="tiket"
+          icon={<Clock className="size-5" />}
+          watermarkIcon={<Clock className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          badge={activeCount > 0 ? 'Aktif' : undefined}
+          description="Dalam proses penanganan tim / AI"
+        />
+
+        <HeroKpiCard
+          title="Selesai (Resolved)"
+          value={resolvedCount}
+          unit="tiket"
+          icon={<CheckCircle2 className="size-5" />}
+          watermarkIcon={<CheckCircle2 className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Tiket terselesaikan tuntas"
+        />
       </div>
 
       {/* Search & Filter Bar */}

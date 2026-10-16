@@ -16,6 +16,7 @@ import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
 import { Textarea } from '@/components/ui/textarea'
+import { HeroSearchableSelect } from '@/components/templates'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
 
@@ -396,18 +397,19 @@ export function SuratPerubahanStatusClient({
                 </div>
                 <div>
                   <Label className="text-xs text-slate-500 mb-2 block">Atasan Langsung</Label>
-                  <select 
+                  <HeroSearchableSelect 
                     value={atasan}
-                    onChange={e => setAtasan(e.target.value)}
-                    className="border-input bg-white text-sm h-10 w-full rounded-md border px-3"
-                  >
-                    <option value="Leader">Leader</option>
-                    <option value="Sub Leader">Sub Leader</option>
-                    <option value="Supervisor">Supervisor</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Group Leader">Group Leader</option>
-                    <option value="Site Manager">Site Manager</option>
-                  </select>
+                    onChange={(val) => setAtasan(val || 'Leader')}
+                    options={[
+                      { value: 'Leader', label: 'Leader' },
+                      { value: 'Sub Leader', label: 'Sub Leader' },
+                      { value: 'Supervisor', label: 'Supervisor' },
+                      { value: 'Manager', label: 'Manager' },
+                      { value: 'Group Leader', label: 'Group Leader' },
+                      { value: 'Site Manager', label: 'Site Manager' },
+                    ]}
+                    placeholder="Pilih Atasan"
+                  />
                 </div>
               </div>
             </div>
@@ -447,18 +449,15 @@ export function SuratPerubahanStatusClient({
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold uppercase text-slate-500">Penandatangan</Label>
-              <select
-                className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
+              <HeroSearchableSelect
                 value={selectedHrSignerId}
-                onChange={(e) => setSelectedHrSignerId(e.target.value)}
-              >
-                <option value="">-- Pilih Penandatangan --</option>
-                {hrSigners.map((signer) => (
-                  <option key={signer.id} value={signer.id}>
-                    {signer.name} ({signer.jobTitle})
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedHrSignerId(val || '')}
+                options={hrSigners.map((signer) => ({
+                  value: signer.id.toString(),
+                  label: `${signer.name} (${signer.jobTitle})`,
+                }))}
+                placeholder="-- Pilih Penandatangan --"
+              />
               
               {selectedHrSigner && (
                 <div className="mt-2 text-xs">

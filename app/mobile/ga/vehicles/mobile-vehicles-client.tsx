@@ -32,22 +32,37 @@ import { VehicleStatusBadge } from '@/components/vehicles/vehicle-status-badge'
 import { VehiclePrintDialog } from '@/components/vehicles/vehicle-print-dialog'
 import { getVehicleById } from '@/app/actions/vehicles'
 import type { HeroVehicle, HeroVehicleServiceLog } from '@/db/schema/vehicles'
+import type { VehicleComputedRow, DocumentAlertStatus } from '@/lib/vehicle-status'
 
-type VehicleWithStatus = HeroVehicle & {
-  stnkStatus: 'valid' | 'warning' | 'expired'
-  stnkRemainingDays: number | null
-  taxStatus: 'valid' | 'warning' | 'expired'
-  taxRemainingDays: number | null
-  kirStatus: 'valid' | 'warning' | 'expired' | 'none'
-  kirRemainingDays: number | null
-  serviceStatus: 'valid' | 'warning' | 'due' | 'none'
-  serviceRemainingKm: number | null
-  serviceRemainingDays: number | null
-  hasAnyAlert: boolean
+export type VehicleWithStatus = VehicleComputedRow
+
+function toBadgeStatus(status: DocumentAlertStatus): 'valid' | 'warning' | 'expired' | 'none' {
+  if (status === 'safe') return 'valid'
+  if (status === 'warning') return 'warning'
+  if (status === 'expired') return 'expired'
+  return 'none'
+}
+
+function toServiceBadgeStatus(status: 'due' | 'safe' | 'not_recorded'): 'valid' | 'warning' | 'due' | 'none' {
+  if (status === 'safe') return 'valid'
+  if (status === 'due') return 'due'
+  return 'none'
+}
+
+function hasVehicleAlert(v: VehicleComputedRow): boolean {
+  return (
+    v.stnkAlertStatus === 'expired' ||
+    v.stnkAlertStatus === 'warning' ||
+    v.taxAlertStatus === 'expired' ||
+    v.taxAlertStatus === 'warning' ||
+    v.kirAlertStatus === 'expired' ||
+    v.kirAlertStatus === 'warning' ||
+    v.serviceAlertStatus === 'due'
+  )
 }
 
 interface MobileVehiclesClientProps {
-  vehicles: VehicleWithStatus[]
+  vehicles: VehicleComputedRow[]
   canManage: boolean
 }
 
@@ -59,7 +74,7 @@ export function MobileVehiclesClient({
   const [activeTab, setActiveTab] = useState<'all' | 'alert' | 'owned' | 'rented' | 'truck'>('all')
 
   // Selected vehicle for bottom sheet detail
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleWithStatus | null>(null)
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleComputedRow | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
 
   // Print dialog
@@ -71,22 +86,21 @@ export function MobileVehiclesClient({
       // Search
       if (search.trim()) {
         const q = search.toLowerCase()
-        const plate = (v.plateNumber || (v as any).policeNumber || '').toLowerCase()
-        const holder = (v.holderName || (v as any).assignedEmployeeName || '').toLowerCase()
-        const site = (v.siteNameFallback || (v as any).siteName || v.locationName || '').toLowerCase()
+        const plate = (v.plateNumber || '').toLowerCase()
+        const holder = (v.holderName || '').toLowerCase()
+        const site = (v.siteNameFallback || v.locationName || '').toLowerCase()
         const matchPlate = plate.includes(q)
         const matchType = v.vehicleType?.toLowerCase().includes(q)
-        const matchBrand = (v.brand || '').toLowerCase().includes(q)
         const matchHolder = holder.includes(q)
         const matchSite = site.includes(q)
-        if (!matchPlate && !matchType && !matchBrand && !matchHolder && !matchSite) {
+        if (!matchPlate && !matchType && !matchHolder && !matchSite) {
           return false
         }
       }
 
       // Tab filter
       if (activeTab === 'alert') {
-        return v.hasAnyAlert
+        return hasVehicleAlert(v)
       }
       if (activeTab === 'owned') {
         return (v.ownership || '').toLowerCase() === 'owned'
@@ -165,7 +179,7 @@ export function MobileVehiclesClient({
           }`}
         >
           <AlertTriangle className="size-3" />
-          Ada Alert ({vehicles.filter((v) => v.hasAnyAlert).length})
+          Ada Alert ({vehicles.filter(hasVehicleAlert).length})
         </button>
         <button
           onClick={() => setActiveTab('owned')}
@@ -221,10 +235,10 @@ export function MobileVehiclesClient({
                 className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm active:scale-[0.99] transition-transform cursor-pointer relative overflow-hidden"
               >
                 {/* Left Accent Bar if alert */}
-                {v.hasAnyAlert && (
+                {hasVehicleAlert(v) && (
                   <div
                     className={`absolute left-0 top-0 bottom-0 w-1 ${
-                      v.stnkStatus === 'expired' || v.taxStatus === 'expired' || v.kirStatus === 'expired'
+                      v.stnkAlertStatus === 'expired' || v.taxAlertStatus === 'expired' || v.kirAlertStatus === 'expired'
                         ? 'bg-rose-500'
                         : 'bg-amber-500'
                     }`}
@@ -263,7 +277,7 @@ export function MobileVehiclesClient({
 
                 {/* Second Row: Vehicle Model & Category */}
                 <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">
-                  {v.brand} {v.vehicleType}
+                  {v.vehicleType}
                 </p>
 
                 {/* Third Row: Holder & Site */}
@@ -282,20 +296,20 @@ export function MobileVehiclesClient({
                 <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 text-[10px]">
                   <div>
                     <span className="text-muted-foreground block text-[9px] font-medium uppercase">STNK 5 Thn</span>
-                    <VehicleStatusBadge status={v.stnkStatus} remainingDays={v.stnkRemainingDays} compact />
+                    <VehicleStatusBadge status={toBadgeStatus(v.stnkAlertStatus)} remainingDays={v.stnkDaysRemaining} compact />
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[9px] font-medium uppercase">Pajak 1 Thn</span>
-                    <VehicleStatusBadge status={v.taxStatus} remainingDays={v.taxRemainingDays} compact />
+                    <VehicleStatusBadge status={toBadgeStatus(v.taxAlertStatus)} remainingDays={v.taxDaysRemaining} compact />
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[9px] font-medium uppercase">
                       {v.kirExpiryDate ? 'KIR Dishub' : 'Servis'}
                     </span>
                     {v.kirExpiryDate ? (
-                      <VehicleStatusBadge status={v.kirStatus} remainingDays={v.kirRemainingDays} compact />
+                      <VehicleStatusBadge status={toBadgeStatus(v.kirAlertStatus)} remainingDays={v.kirDaysRemaining} compact />
                     ) : (
-                      <VehicleStatusBadge status={v.serviceStatus} remainingDays={v.serviceRemainingDays} compact />
+                      <VehicleStatusBadge status={toServiceBadgeStatus(v.serviceAlertStatus)} remainingDays={v.serviceDaysSince} compact />
                     )}
                   </div>
                 </div>
@@ -313,21 +327,21 @@ export function MobileVehiclesClient({
               <SheetHeader className="text-left border-b pb-3">
                 <div className="flex items-center justify-between">
                   <span className="font-mono font-black text-lg text-foreground">
-                    {selectedVehicle.policeNumber}
+                    {selectedVehicle.plateNumber}
                   </span>
                   <Badge
                     variant="outline"
                     className={
-                      selectedVehicle.ownership === 'Rented'
+                      selectedVehicle.ownership?.toLowerCase() === 'rented'
                         ? 'bg-amber-500/10 text-amber-700 border-amber-300 font-bold'
                         : 'bg-blue-500/10 text-blue-700 border-blue-300 font-bold'
                     }
                   >
-                    {selectedVehicle.ownership}
+                    {selectedVehicle.ownership?.toLowerCase() === 'rented' ? 'Rented' : 'Owned'}
                   </Badge>
                 </div>
                 <SheetTitle className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                  {selectedVehicle.brand} {selectedVehicle.vehicleType} ({selectedVehicle.category})
+                  {selectedVehicle.vehicleType} ({selectedVehicle.category})
                 </SheetTitle>
               </SheetHeader>
 
@@ -344,8 +358,8 @@ export function MobileVehiclesClient({
                     <p className="font-bold mt-0.5">{formatDate(selectedVehicle.stnkExpiryDate)}</p>
                     <div className="mt-1">
                       <VehicleStatusBadge
-                        status={selectedVehicle.stnkStatus}
-                        remainingDays={selectedVehicle.stnkRemainingDays}
+                        status={toBadgeStatus(selectedVehicle.stnkAlertStatus)}
+                        remainingDays={selectedVehicle.stnkDaysRemaining}
                       />
                     </div>
                   </div>
@@ -355,8 +369,8 @@ export function MobileVehiclesClient({
                     <p className="font-bold mt-0.5">{formatDate(selectedVehicle.taxExpiryDate)}</p>
                     <div className="mt-1">
                       <VehicleStatusBadge
-                        status={selectedVehicle.taxStatus}
-                        remainingDays={selectedVehicle.taxRemainingDays}
+                        status={toBadgeStatus(selectedVehicle.taxAlertStatus)}
+                        remainingDays={selectedVehicle.taxDaysRemaining}
                       />
                     </div>
                   </div>
@@ -367,8 +381,8 @@ export function MobileVehiclesClient({
                       <p className="font-bold mt-0.5">{formatDate(selectedVehicle.kirExpiryDate)}</p>
                       <div className="mt-1">
                         <VehicleStatusBadge
-                          status={selectedVehicle.kirStatus}
-                          remainingDays={selectedVehicle.kirRemainingDays}
+                          status={toBadgeStatus(selectedVehicle.kirAlertStatus)}
+                          remainingDays={selectedVehicle.kirDaysRemaining}
                         />
                       </div>
                     </div>
@@ -380,25 +394,25 @@ export function MobileVehiclesClient({
               <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-700 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Pemegang Unit</span>
-                  <span className="font-bold">{selectedVehicle.assignedEmployeeName || 'Pool'}</span>
+                  <span className="font-bold">{selectedVehicle.holderName || 'Pool'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Lokasi / Site</span>
-                  <span className="font-semibold">{selectedVehicle.siteName || '-'}</span>
+                  <span className="font-semibold">{selectedVehicle.siteNameFallback || selectedVehicle.locationName || '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Departemen</span>
-                  <span>{selectedVehicle.department || '-'}</span>
+                  <span className="text-muted-foreground">Tahun Pembuatan</span>
+                  <span>{selectedVehicle.manufactureYear || '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Odometer Saat Ini</span>
+                  <span className="text-muted-foreground">Odometer Terakhir</span>
                   <span className="font-mono font-bold">
-                    {selectedVehicle.currentOdometer
-                      ? `${new Intl.NumberFormat('id-ID').format(selectedVehicle.currentOdometer)} KM`
+                    {selectedVehicle.lastServiceOdometer
+                      ? `${new Intl.NumberFormat('id-ID').format(selectedVehicle.lastServiceOdometer)} KM`
                       : '-'}
                   </span>
                 </div>
-                {selectedVehicle.ownership === 'Rented' && (
+                {selectedVehicle.ownership?.toLowerCase() === 'rented' && (
                   <>
                     <div className="flex justify-between border-t pt-1.5">
                       <span className="text-muted-foreground">Vendor Rental</span>
@@ -421,20 +435,10 @@ export function MobileVehiclesClient({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-1">
-                {selectedVehicle.assignedEmployeePhone && (
-                  <a
-                    href={`tel:${selectedVehicle.assignedEmployeePhone}`}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-sm"
-                  >
-                    <Phone className="size-4" />
-                    Hubungi Pemegang
-                  </a>
-                )}
-
                 <Button
                   variant="outline"
                   onClick={() => handleOpenPrint(selectedVehicle)}
-                  className="flex-1 text-xs font-semibold h-10 gap-1.5 rounded-xl"
+                  className="w-full text-xs font-semibold h-10 gap-1.5 rounded-xl"
                 >
                   <Printer className="size-4 text-blue-600" />
                   Lihat Dokumen A4

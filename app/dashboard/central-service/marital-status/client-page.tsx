@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { HeroKpiCard } from '@/components/templates';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -329,54 +330,35 @@ export function MaritalStatusDashboardClient({
       {mainTab === 'requests' && (
         <div className="space-y-6">
           {/* Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-l-4 border-l-blue-600 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">Total Permohonan</p>
-              <h3 className="text-2xl font-bold mt-1 text-gray-900">{requests.length}</h3>
-            </div>
-            <div className="p-3 bg-blue-50 rounded-full text-blue-600">
-              <FileText className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-amber-500 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">Menunggu Approval</p>
-              <h3 className="text-2xl font-bold mt-1 text-amber-900">{pendingCount}</h3>
-            </div>
-            <div className="p-3 bg-amber-50 rounded-full text-amber-600">
-              <Clock className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-emerald-600 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">Disetujui (Approved)</p>
-              <h3 className="text-2xl font-bold mt-1 text-emerald-900">{approvedCount}</h3>
-            </div>
-            <div className="p-3 bg-emerald-50 rounded-full text-emerald-600">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-rose-600 shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium">Ditolak (Rejected)</p>
-              <h3 className="text-2xl font-bold mt-1 text-rose-900">{rejectedCount}</h3>
-            </div>
-            <div className="p-3 bg-rose-50 rounded-full text-rose-600">
-              <XCircle className="w-5 h-5" />
-            </div>
-          </CardContent>
-        </Card>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Permohonan"
+          value={requests.length}
+          tone="blue"
+          icon={<FileText className="size-5" />}
+          description="Total dokumen permohonan status"
+        />
+        <HeroKpiCard
+          title="Menunggu Approval"
+          value={pendingCount}
+          tone="amber"
+          icon={<Clock className="size-5" />}
+          description="Menunggu persetujuan HC & atasan"
+        />
+        <HeroKpiCard
+          title="Disetujui (Approved)"
+          value={approvedCount}
+          tone="emerald"
+          icon={<CheckCircle2 className="size-5" />}
+          description="Permohonan berhasil disetujui"
+        />
+        <HeroKpiCard
+          title="Ditolak (Rejected)"
+          value={rejectedCount}
+          tone="rose"
+          icon={<XCircle className="size-5" />}
+          description="Permohonan memerlukan revisi"
+        />
       </div>
 
       {/* Main Table Card */}

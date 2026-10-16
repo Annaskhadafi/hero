@@ -1,16 +1,30 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { updateItem } from "@/app/actions/service360"
 import { Edit } from "lucide-react"
+import { HeroSearchableSelect } from "@/components/templates"
+
+const CATEGORY_OPTIONS = [
+  { value: "Rental", label: "Rental" },
+  { value: "Tools", label: "Tools" },
+  { value: "Accessories", label: "Accessories" },
+  { value: "Consumable Parts", label: "Consumable Parts" },
+]
 
 export function EditItemDialog({ item, siteList }: { item: any, siteList: any[] }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState(item.category || "")
+  const [selectedSiteId, setSelectedSiteId] = useState(item.siteId ? String(item.siteId) : "")
+
+  const siteOptions = useMemo(() => [
+    { value: "", label: "No specific site" },
+    ...siteList.map(s => ({ value: String(s.id), label: s.name }))
+  ], [siteList])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -40,7 +54,7 @@ export function EditItemDialog({ item, siteList }: { item: any, siteList: any[] 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="icon" className="h-8 w-8 text-primary" title="Edit">
+        <Button variant="outline" size="icon" className="h-9 w-9 text-primary" title="Edit">
           <Edit className="h-4 w-4" />
         </Button>
       </DialogTrigger>
@@ -52,29 +66,28 @@ export function EditItemDialog({ item, siteList }: { item: any, siteList: any[] 
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div>
             <label className="text-sm font-medium">Category</label>
-            <select 
-              name="category" 
-              required 
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1.5"
-            >
-              <option value="">Select Category</option>
-              <option value="Rental">Rental</option>
-              <option value="Tools">Tools</option>
-              <option value="Accessories">Accessories</option>
-              <option value="Consumable Parts">Consumable Parts</option>
-            </select>
+            <input type="hidden" name="category" value={selectedCategory} />
+            <div className="mt-1.5">
+              <HeroSearchableSelect
+                value={selectedCategory}
+                onChange={(val: any) => setSelectedCategory(val || "")}
+                options={CATEGORY_OPTIONS}
+                placeholder="Select Category"
+              />
+            </div>
           </div>
 
           <div>
             <label className="text-sm font-medium">Site (Optional)</label>
-            <select name="siteId" defaultValue={item.siteId || ""} className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1.5">
-              <option value="">No specific site</option>
-              {siteList.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            <input type="hidden" name="siteId" value={selectedSiteId} />
+            <div className="mt-1.5">
+              <HeroSearchableSelect
+                value={selectedSiteId}
+                onChange={(val: any) => setSelectedSiteId(val || "")}
+                options={siteOptions}
+                placeholder="Select Site"
+              />
+            </div>
           </div>
           <div>
             <label className="text-sm font-medium">Name</label>
@@ -84,7 +97,7 @@ export function EditItemDialog({ item, siteList }: { item: any, siteList: any[] 
             <label className="text-sm font-medium">Price</label>
             <Input name="price" type="number" step="0.01" required defaultValue={Math.floor(Number(item.price))} placeholder="0.00" className="mt-1.5" />
           </div>
-          <Button type="submit" className="w-full mt-4" disabled={loading}>
+          <Button type="submit" className="w-full mt-4 h-9" disabled={loading}>
             {loading ? "Saving..." : "Save Changes"}
           </Button>
         </form>

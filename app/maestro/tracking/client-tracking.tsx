@@ -25,7 +25,11 @@ import {
   Truck,
   User,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
+import { HeroSearchableSelect, HeroKpiCard, type HeroSearchableSelectOption } from '@/components/templates'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -144,6 +148,113 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
     )
   }, [initialData.vhsList, searchQuery])
 
+  const trackingStatusOptions: HeroSearchableSelectOption[] = [
+    { value: 'all', label: 'Semua Status' },
+    { value: 'delivered', label: 'Delivered / Selesai' },
+    { value: 'sent', label: 'Sent / Dikirim' },
+    { value: 'draft', label: 'Draft / Proses' },
+  ]
+
+  // Manifest Sorting
+  const [manifestSortField, setManifestSortField] = useState<string>('manifestNumber')
+  const [manifestSortDir, setManifestSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleManifestSort = (field: string) => {
+    if (manifestSortField === field) {
+      setManifestSortDir(manifestSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setManifestSortField(field)
+      setManifestSortDir('asc')
+    }
+  }
+
+  const sortedManifests = useMemo(() => {
+    return [...filteredManifests].sort((a, b) => {
+      let aVal: any = a[manifestSortField as keyof MaestroCargoManifestItem]
+      let bVal: any = b[manifestSortField as keyof MaestroCargoManifestItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return manifestSortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredManifests, manifestSortField, manifestSortDir])
+
+  // PO Sorting
+  const [poSortField, setPoSortField] = useState<string>('customerPo')
+  const [poSortDir, setPoSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handlePoSort = (field: string) => {
+    if (poSortField === field) {
+      setPoSortDir(poSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setPoSortField(field)
+      setPoSortDir('asc')
+    }
+  }
+
+  const sortedPo = useMemo(() => {
+    return [...filteredPo].sort((a, b) => {
+      let aVal: any = a[poSortField as keyof MaestroPoItem]
+      let bVal: any = b[poSortField as keyof MaestroPoItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return poSortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredPo, poSortField, poSortDir])
+
+  // Deliveries Sorting
+  const [deliverySortField, setDeliverySortField] = useState<string>('deliveryNumber')
+  const [deliverySortDir, setDeliverySortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleDeliverySort = (field: string) => {
+    if (deliverySortField === field) {
+      setDeliverySortDir(deliverySortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setDeliverySortField(field)
+      setDeliverySortDir('asc')
+    }
+  }
+
+  const sortedDeliveries = useMemo(() => {
+    return [...filteredDeliveries].sort((a, b) => {
+      let aVal: any = a[deliverySortField as keyof MaestroDeliveryItem]
+      let bVal: any = b[deliverySortField as keyof MaestroDeliveryItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return deliverySortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredDeliveries, deliverySortField, deliverySortDir])
+
+  // VHS Sorting
+  const [vhsSortField, setVhsSortField] = useState<string>('vhsNo')
+  const [vhsSortDir, setVhsSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleVhsSort = (field: string) => {
+    if (vhsSortField === field) {
+      setVhsSortDir(vhsSortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setVhsSortField(field)
+      setVhsSortDir('asc')
+    }
+  }
+
+  const sortedVhs = useMemo(() => {
+    return [...filteredVhs].sort((a, b) => {
+      let aVal: any = a[vhsSortField as keyof MaestroVhsUsageItem]
+      let bVal: any = b[vhsSortField as keyof MaestroVhsUsageItem]
+      if (typeof aVal === 'string') {
+        const cmp = aVal.localeCompare(bVal || '')
+        return vhsSortDir === 'asc' ? cmp : -cmp
+      }
+      return 0
+    })
+  }, [filteredVhs, vhsSortField, vhsSortDir])
+
   return (
     <div className="mx-auto w-full max-w-[1720px] px-4 pt-6 sm:px-6 lg:px-8 xl:px-12 space-y-6 text-slate-950 pb-20">
       {/* Top Header */}
@@ -182,68 +293,51 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
         </div>
       </div>
 
-      {/* 4 KPI Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        {/* 1. Total Cargo Manifest */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Cargo Manifest</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-900 border border-blue-300 font-black">
-              <Truck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
-              {initialData.kpis.totalManifest}
-            </span>
-          </div>
-        </div>
+      {/* 4 KPI Summary Cards (HeroKpiCard Standardized) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Cargo Manifest"
+          value={initialData.kpis.totalManifest}
+          unit="manifest"
+          icon={<Truck className="size-5" />}
+          watermarkIcon={<Truck className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description="Total manifest pengiriman"
+        />
 
-        {/* 2. Pengiriman Dalam Perjalanan */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Dalam Perjalanan</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-900 border border-amber-300 font-black">
-              <Package className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
-              {initialData.kpis.sentManifest || initialData.kpis.inTransitDeliveries}
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Dalam Perjalanan"
+          value={initialData.kpis.sentManifest || initialData.kpis.inTransitDeliveries}
+          unit="kargo"
+          icon={<Package className="size-5" />}
+          watermarkIcon={<Package className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          description="Sedang proses logistik ekspedisi"
+        />
 
-        {/* 3. Pengiriman Diterima */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Sampai di Site</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 font-black">
-              <PackageCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-display text-2xl sm:text-3xl font-black text-emerald-700">
-              {initialData.kpis.deliveredManifest || initialData.kpis.receivedDeliveries}
-            </span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Sampai di Site"
+          value={initialData.kpis.deliveredManifest || initialData.kpis.receivedDeliveries}
+          unit="kargo"
+          icon={<PackageCheck className="size-5" />}
+          watermarkIcon={<PackageCheck className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Barang diterima lengkap di site"
+        />
 
-        {/* 4. Total Purchase Orders */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border-2 border-slate-300 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-slate-700 uppercase tracking-wider">Total Purchase Order</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-900 border border-indigo-300 font-black">
-              <FileCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="font-display text-2xl sm:text-3xl font-black text-slate-950">
-              {initialData.kpis.totalPo}
-            </span>
-            <span className="text-xs font-bold text-slate-600">PO</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Total Purchase Order"
+          value={initialData.kpis.totalPo}
+          unit="PO"
+          icon={<FileCheck className="size-5" />}
+          watermarkIcon={<FileCheck className="size-16" />}
+          tone="purple"
+          variant="colorful"
+          description="Nomor pesanan aktif customer"
+        />
       </div>
 
       {/* Filter Toolbar & Tab Switcher */}
@@ -318,18 +412,14 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
 
           {/* Search & Status Filters */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="min-w-[160px]">
-              <select
-                aria-label="Filter Status"
+            <div className="min-w-[180px]">
+              <HeroSearchableSelect
+                options={trackingStatusOptions}
                 value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="w-full h-11 text-xs sm:text-sm font-bold bg-white border-2 border-slate-300 rounded-xl px-3 py-2 text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer transition shadow-sm"
-              >
-                <option value="all">Semua Status</option>
-                <option value="delivered">Delivered / Selesai</option>
-                <option value="sent">Sent / Dikirim</option>
-                <option value="draft">Draft / Proses</option>
-              </select>
+                onChange={(val) => setSelectedStatus(val || 'all')}
+                placeholder="Filter Status..."
+                className="w-full h-9"
+              />
             </div>
 
             <div className="relative min-w-[240px] flex-1 sm:flex-initial">
@@ -338,7 +428,7 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
                 placeholder="Cari manifest, no. PO, tujuan..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-11 rounded-xl bg-white border-2 border-slate-300 pl-9 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
+                className="h-9 rounded-xl bg-white border-2 border-slate-300 pl-9 pr-3 text-xs sm:text-sm font-bold text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
               />
             </div>
           </div>
@@ -353,24 +443,94 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
               <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
                   <th className="py-3.5 pl-5 pr-2 w-10"></th>
-                  <th className="py-3.5 px-4">No. Manifest</th>
-                  <th className="py-3.5 px-4">Tanggal</th>
-                  <th className="py-3.5 px-4">Site / Tujuan</th>
-                  <th className="py-3.5 px-4">Transport / Ekspedisi</th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleManifestSort('manifestNumber')}
+                    >
+                      No. Manifest
+                      {manifestSortField === 'manifestNumber' ? (
+                        manifestSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleManifestSort('date')}
+                    >
+                      Tanggal
+                      {manifestSortField === 'date' ? (
+                        manifestSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleManifestSort('siteName')}
+                    >
+                      Site / Tujuan
+                      {manifestSortField === 'siteName' ? (
+                        manifestSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleManifestSort('transportVia')}
+                    >
+                      Transport / Ekspedisi
+                      {manifestSortField === 'transportVia' ? (
+                        manifestSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 px-4">Items / Qty</th>
-                  <th className="py-3.5 px-4">Status</th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleManifestSort('status')}
+                    >
+                      Status
+                      {manifestSortField === 'status' ? (
+                        manifestSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
-                {filteredManifests.length === 0 ? (
+                {sortedManifests.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Cargo Manifest yang sesuai filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredManifests.map((manifest) => {
+                  sortedManifests.map((manifest) => {
                     const isExpanded = expandedManifestRows.has(manifest.id)
                     const statusStyle = getManifestStatusStyle(manifest.status)
                     const totalQty = manifest.items.reduce((s, it) => s + it.qty, 0)
@@ -480,23 +640,79 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
             <table className="w-full text-left text-xs sm:text-sm text-slate-900">
               <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-3.5 pl-6 pr-4">No. PO Pelanggan</th>
-                  <th className="py-3.5 px-4">Tanggal Order</th>
-                  <th className="py-3.5 px-4">Kategori / Tujuan</th>
+                  <th className="py-3.5 pl-6 pr-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePoSort('customerPo')}
+                    >
+                      No. PO Pelanggan
+                      {poSortField === 'customerPo' ? (
+                        poSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePoSort('salesDate')}
+                    >
+                      Tanggal Order
+                      {poSortField === 'salesDate' ? (
+                        poSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePoSort('tripDestination')}
+                    >
+                      Kategori / Tujuan
+                      {poSortField === 'tripDestination' ? (
+                        poSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 px-4">Jumlah Item / Qty</th>
-                  <th className="py-3.5 px-4">Status Pengiriman</th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handlePoSort('status')}
+                    >
+                      Status Pengiriman
+                      {poSortField === 'status' ? (
+                        poSortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
-                {filteredPo.length === 0 ? (
+                {sortedPo.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Purchase Order yang sesuai filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredPo.map((po) => {
+                  sortedPo.map((po) => {
                     const statusStyle = getPoStatusStyle(po.status)
 
                     return (
@@ -560,23 +776,93 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
             <table className="w-full text-left text-xs sm:text-sm text-slate-900">
               <thead className="bg-slate-200/90 text-xs font-black uppercase tracking-wider text-slate-950 border-b-2 border-slate-300">
                 <tr>
-                  <th className="py-3.5 pl-6 pr-4">No. DO SAP / Surat Jalan</th>
-                  <th className="py-3.5 px-4">Ref. PO Pelanggan</th>
-                  <th className="py-3.5 px-4">Jadwal Kirim</th>
-                  <th className="py-3.5 px-4">Ekspedisi / Driver</th>
-                  <th className="py-3.5 px-4">Status Pengiriman</th>
+                  <th className="py-3.5 pl-6 pr-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleDeliverySort('deliveryNumber')}
+                    >
+                      No. DO SAP / Surat Jalan
+                      {deliverySortField === 'deliveryNumber' ? (
+                        deliverySortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleDeliverySort('customerPo')}
+                    >
+                      Ref. PO Pelanggan
+                      {deliverySortField === 'customerPo' ? (
+                        deliverySortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleDeliverySort('scheduledDate')}
+                    >
+                      Jadwal Kirim
+                      {deliverySortField === 'scheduledDate' ? (
+                        deliverySortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleDeliverySort('driverName')}
+                    >
+                      Ekspedisi / Driver
+                      {deliverySortField === 'driverName' ? (
+                        deliverySortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
+                  <th className="py-3.5 px-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-7 text-xs font-black hover:bg-transparent px-2 uppercase tracking-wider"
+                      onClick={() => handleDeliverySort('status')}
+                    >
+                      Status Pengiriman
+                      {deliverySortField === 'status' ? (
+                        deliverySortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                      )}
+                    </Button>
+                  </th>
                   <th className="py-3.5 pl-4 pr-6 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
-                {filteredDeliveries.length === 0 ? (
+                {sortedDeliveries.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-16 text-center text-sm font-bold text-slate-700">
                       Tidak ada data Surat Jalan / DO yang sesuai filter.
                     </td>
                   </tr>
                 ) : (
-                  filteredDeliveries.map((del) => {
+                  sortedDeliveries.map((del) => {
                     const statusStyle = getDeliveryStatusStyle(del.status)
 
                     return (
@@ -636,12 +922,12 @@ export function MaestroClientTracking({ initialData, customerUser }: Props) {
       {/* Tab 4: VHS */}
       {activeTab === 'vhs' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredVhs.length === 0 ? (
+          {sortedVhs.length === 0 ? (
             <div className="col-span-full rounded-2xl border-2 border-slate-300 bg-white p-12 text-center text-sm font-bold text-slate-700 shadow-sm">
               Tidak ada data catatan konsinyasi eVHS yang tersedia.
             </div>
           ) : (
-            filteredVhs.map((vhs) => (
+            sortedVhs.map((vhs) => (
               <div
                 key={vhs.id}
                 className="rounded-2xl border-2 border-slate-300 bg-white p-5 shadow-sm hover:border-slate-400 transition-all flex flex-col justify-between"

@@ -15,6 +15,7 @@ import { getNextLetterNumber, saveHrSignature, saveLetter } from '@/app/actions/
 import { formatJabatan } from '@/app/dashboard/hc/surat/utils'
 import { Archive, Printer } from 'lucide-react'
 import Link from 'next/link'
+import { HeroSearchableSelect } from '@/components/templates'
 
 const LETTERHEAD_BACKGROUND_URL = '/ChitraParatama_Stationery_Letterhead_jkt.jpg'
 const ALASAN_KELUAR_OPTIONS = ['Contract Complete', 'Resign']
@@ -356,15 +357,16 @@ export function SuratPengalamanKerjaClient({
               <div className="space-y-4 mt-2">
                 <div>
                   <Label className="text-xs text-slate-500 mb-2 block">Panggilan</Label>
-                  <select 
+                  <HeroSearchableSelect 
                     value={panggilan}
-                    onChange={e => setPanggilan(e.target.value)}
-                    className="border-input bg-white text-sm h-10 w-full rounded-md border px-3"
-                  >
-                    <option value="Mr.">Mr.</option>
-                    <option value="Ms.">Ms.</option>
-                    <option value="Mrs.">Mrs.</option>
-                  </select>
+                    onChange={(val) => setPanggilan(val || 'Mr.')}
+                    options={[
+                      { value: 'Mr.', label: 'Mr.' },
+                      { value: 'Ms.', label: 'Ms.' },
+                      { value: 'Mrs.', label: 'Mrs.' },
+                    ]}
+                    placeholder="Pilih Panggilan"
+                  />
                 </div>
                 <div>
                   <Label className="text-xs text-slate-500 mb-2 block">Tanggal Mulai (Eng)</Label>
@@ -405,18 +407,15 @@ export function SuratPengalamanKerjaClient({
 
             <div className="space-y-4 border-t border-slate-100 pt-4">
               <Label className="text-xs font-semibold uppercase text-slate-500">Penandatangan</Label>
-              <select
-                className="border-input bg-background h-10 w-full rounded-lg border px-3 text-sm"
+              <HeroSearchableSelect
                 value={selectedHrSignerId}
-                onChange={(e) => setSelectedHrSignerId(e.target.value)}
-              >
-                <option value="">-- Pilih HR GA --</option>
-                {hrSigners.map((signer) => (
-                  <option key={signer.id} value={signer.id}>
-                    {signer.name} - {signer.jobTitle}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedHrSignerId(val || '')}
+                options={hrSigners.map((signer) => ({
+                  value: signer.id.toString(),
+                  label: `${signer.name} - ${signer.jobTitle}`,
+                }))}
+                placeholder="-- Pilih HR GA --"
+              />
 
               {selectedHrSigner && (
                 <div className="mt-2 text-xs">

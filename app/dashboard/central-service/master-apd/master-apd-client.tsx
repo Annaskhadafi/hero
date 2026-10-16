@@ -14,10 +14,20 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -99,6 +109,38 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
       return matchSearch && matchCategory && matchStatus;
     });
   }, [initialItems, search, categoryFilter, statusFilter]);
+
+  const [sortField, setSortField] = useState<string>("name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sortedItems = useMemo(() => {
+    return [...filteredItems].sort((a, b) => {
+      let aVal = (a as any)[sortField];
+      let bVal = (b as any)[sortField];
+      if (sortField === "minStock") {
+        aVal = Number(aVal || 0);
+        bVal = Number(bVal || 0);
+      } else if (sortField === "status") {
+        aVal = a.isActive ? 1 : 0;
+        bVal = b.isActive ? 1 : 0;
+      } else {
+        aVal = String(aVal || "").toLowerCase();
+        bVal = String(bVal || "").toLowerCase();
+      }
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredItems, sortField, sortDir]);
 
   // Metrics
   const metrics = useMemo(() => {
@@ -337,17 +379,87 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
           <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
             <thead className="bg-slate-50/80 dark:bg-slate-950/40 text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800 uppercase tracking-wider text-[10px]">
               <tr>
-                <th className="py-3 px-4">Kode & Nama APD</th>
-                <th className="py-3 px-4">Kategori</th>
-                <th className="py-3 px-4">Satuan</th>
+                <th className="py-3 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
+                    onClick={() => handleSort("name")}
+                  >
+                    Kode & Nama APD
+                    {sortField === "name" ? (
+                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-3 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
+                    onClick={() => handleSort("category")}
+                  >
+                    Kategori
+                    {sortField === "category" ? (
+                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-3 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
+                    onClick={() => handleSort("unit")}
+                  >
+                    Satuan
+                    {sortField === "unit" ? (
+                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
                 <th className="py-3 px-4">Opsi Ukuran</th>
-                <th className="py-3 px-4">Min. Stock</th>
-                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
+                    onClick={() => handleSort("minStock")}
+                  >
+                    Min. Stock
+                    {sortField === "minStock" ? (
+                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
+                <th className="py-3 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
+                    onClick={() => handleSort("status")}
+                  >
+                    Status
+                    {sortField === "status" ? (
+                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                    )}
+                  </Button>
+                </th>
                 <th className="py-3 px-4 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredItems.length === 0 ? (
+              {sortedItems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
@@ -362,7 +474,7 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => (
+                sortedItems.map((item) => (
                   <tr
                     key={item.id}
                     className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
@@ -507,15 +619,16 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
                   Kategori
                 </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full h-9 px-3 rounded-md text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="APD">APD</option>
-                  <option value="Tools">Tools</option>
-                  <option value="Material">Material</option>
-                </select>
+                <Select value={category} onValueChange={(val) => setCategory(val)}>
+                  <SelectTrigger className="w-full h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="APD">APD</SelectItem>
+                    <SelectItem value="Tools">Tools</SelectItem>
+                    <SelectItem value="Material">Material</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -536,18 +649,19 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
                   Satuan (Unit)
                 </label>
-                <select
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  className="w-full h-9 px-3 rounded-md text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="Pcs">Pcs</option>
-                  <option value="Pasang">Pasang</option>
-                  <option value="Set">Set</option>
-                  <option value="Box">Box</option>
-                  <option value="Roll">Roll</option>
-                  <option value="Unit">Unit</option>
-                </select>
+                <Select value={unit} onValueChange={(val) => setUnit(val)}>
+                  <SelectTrigger className="w-full h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Pcs">Pcs</SelectItem>
+                    <SelectItem value="Pasang">Pasang</SelectItem>
+                    <SelectItem value="Set">Set</SelectItem>
+                    <SelectItem value="Box">Box</SelectItem>
+                    <SelectItem value="Roll">Roll</SelectItem>
+                    <SelectItem value="Unit">Unit</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>

@@ -20,6 +20,7 @@ import {
 import { getAttendancePageData, submitAttendance } from "@/app/actions/attendance";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { HeroSearchableSelect } from "@/components/templates";
 
 type AttendanceEmployee = {
   id: number;
@@ -710,56 +711,47 @@ export default function AttendancePage() {
                 </div>
 
                 <div className="mt-4 grid gap-3">
-                  <label className="grid gap-1.5">
+                  <div className="grid gap-1.5">
                     <span className="text-xs font-semibold uppercase text-slate-500">Shift / Roster</span>
-                    <select
+                    <HeroSearchableSelect
+                      placeholder={shiftOptions.length === 0 ? "Shift belum tersedia" : "Pilih Shift..."}
+                      options={shiftOptions.map((shift) => ({
+                        value: shift.value,
+                        label: `${shift.label} - ${shift.window}`,
+                      }))}
                       value={selectedShift}
-                      onChange={(event) => setSelectedShift(event.target.value)}
+                      onChange={(val) => setSelectedShift(val)}
                       disabled={shiftOptions.length === 0}
-                      className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                      {shiftOptions.map((shift) => (
-                        <option key={shift.value} value={shift.value}>
-                          {shift.label} - {shift.window}
-                        </option>
-                      ))}
-                      {shiftOptions.length === 0 ? (
-                        <option value="">Shift belum tersedia</option>
-                      ) : null}
-                    </select>
+                    />
                     <span className="text-xs text-slate-500">{currentShift.helper}</span>
-                  </label>
+                  </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1.5">
+                    <div className="grid gap-1.5">
                       <span className="text-xs font-semibold uppercase text-slate-500">Lokasi Kerja</span>
-                      <select
+                      <HeroSearchableSelect
+                        placeholder="Pilih Lokasi Kerja..."
+                        options={workModeOptions.map((mode) => ({
+                          value: mode,
+                          label: mode,
+                        }))}
                         value={workMode}
-                        onChange={(event) => setWorkMode(event.target.value as typeof workMode)}
-                        className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
-                      >
-                        {workModeOptions.map((mode) => (
-                          <option key={mode} value={mode}>
-                            {mode}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        onChange={(val) => setWorkMode(val as typeof workMode)}
+                      />
+                    </div>
 
-                    <label className="grid gap-1.5">
+                    <div className="grid gap-1.5">
                       <span className="text-xs font-semibold uppercase text-slate-500">Kondisi</span>
-                      <select
+                      <HeroSearchableSelect
+                        placeholder="Pilih Kondisi..."
+                        options={attendanceContextOptions.map((option) => ({
+                          value: option.value,
+                          label: option.label,
+                        }))}
                         value={attendanceContext}
-                        onChange={(event) => setAttendanceContext(event.target.value as typeof attendanceContext)}
-                        className="h-11 rounded-lg border border-[rgba(66,71,80,0.14)] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-primary/20"
-                      >
-                        {attendanceContextOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                        onChange={(val) => setAttendanceContext(val as typeof attendanceContext)}
+                      />
+                    </div>
                   </div>
 
                   {attendanceContext === "overtime" ? (

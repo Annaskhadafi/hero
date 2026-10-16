@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { format } from "date-fns"
@@ -190,18 +191,22 @@ export function TireInspectionCreateClient({ basePath = "/dashboard/hse/tire-ins
                     </div>
                     <div className="grid grid-cols-2 gap-3 md:col-span-4 md:grid-cols-2">
                       <div>
-                        <select 
-                          className="h-11 w-full rounded-xl border bg-background p-2 text-sm"
+                        <Select 
                           value={item.answer ? "YA" : "TIDAK"}
-                          onChange={e => {
+                          onValueChange={val => {
                             const newCheck = [...checklists];
-                            newCheck[globalIdx].answer = e.target.value === "YA";
+                            newCheck[globalIdx].answer = val === "YA";
                             setChecklists(newCheck);
                           }}
                         >
-                          <option value="YA">YA</option>
-                          <option value="TIDAK">TIDAK (TDK)</option>
-                        </select>
+                          <SelectTrigger className="h-11 w-full rounded-xl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="YA">YA</SelectItem>
+                            <SelectItem value="TIDAK">TIDAK (TDK)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div>
                         <Input 

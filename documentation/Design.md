@@ -177,10 +177,12 @@ The current codebase applies this system through:
 
 Desktop dashboard pages must reuse the shared CRUD and table building blocks instead of creating new standalone shells.
 
+0. Unified Templates (MANDATORY DEFAULT):
+   Import from `@/components/templates` (`HeroDataTable`, `HeroSearchableSelect`, `HeroFormField`, `HeroInput`, `HeroDatePicker`, `HeroFormDialog`, `HeroKpiCard`, `HeroStatusBadge`, etc.) as the primary unified template standard across HERO Desktop.
 1. Page shell:
    Use `components/admin-page-shell.tsx` for desktop admin/dashboard page framing.
 2. Table shell:
-   Use `components/ui/minimal-table-shell.tsx` directly, or use wrappers built on top of it such as `components/admin-table-card.tsx` or `components/admin/admin-data-table-shell.tsx`.
+   Use `components/templates` (`HeroDataTable`) or `components/ui/minimal-table-shell.tsx` directly.
 3. Table primitive:
    Use the shared `components/ui/table.tsx` primitives inside the shell.
 4. Import flow:

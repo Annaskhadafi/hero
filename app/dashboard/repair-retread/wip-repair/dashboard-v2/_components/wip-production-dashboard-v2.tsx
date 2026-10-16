@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import type { WipRepairRecord, WipRepairWorkOrderDetailRecord } from "@/lib/types/wip-repair"
 import { buildWipRepairProductionData } from "@/lib/wip-repair-dashboard"
+import { HeroSearchableSelect } from "@/components/templates"
 
 type Props = {
   data: WipRepairRecord[]
@@ -108,6 +109,13 @@ export function WipProductionDashboardV2({ data, workOrderDetails }: Props) {
   const siteChartWidth = Math.max(920, production.ytdBySite.length * 92)
   const monthName = periodLabel(period)
 
+  const periodSelectOptions = useMemo(() => {
+    return periodOptions.map((item) => ({
+      value: item,
+      label: periodLabel(item),
+    }))
+  }, [periodOptions])
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -115,16 +123,17 @@ export function WipProductionDashboardV2({ data, workOrderDetails }: Props) {
           <h1 className="font-[Manrope] text-2xl font-bold tracking-tight text-slate-950">WIP Dashboard V2</h1>
           <p className="mt-1 text-sm text-slate-500">Production repair berdasarkan output tahap Finishing/Painting dengan nama site yang sudah digabungkan.</p>
         </div>
-        <label className="grid w-full gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:w-auto">
-          Periode MTD
-          <select
-            value={period}
-            onChange={(event) => setPeriod(event.target.value)}
-            className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium normal-case text-slate-800 shadow-sm sm:h-10 sm:min-w-52"
-          >
-            {periodOptions.map((item) => <option key={item} value={item}>{periodLabel(item)}</option>)}
-          </select>
-        </label>
+        <div className="grid w-full gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:w-auto">
+          <span>Periode MTD</span>
+          <div className="w-full sm:min-w-52 normal-case font-normal">
+            <HeroSearchableSelect
+              value={period}
+              onChange={(val: any) => val && setPeriod(val)}
+              options={periodSelectOptions}
+              placeholder="Pilih Periode..."
+            />
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -444,7 +444,7 @@ export async function createAtkRequest(payload: {
       await notifyWorkflowBellRecipients({
         recipientEmails,
         eventType: 'atk_request_submitted',
-        category: 'workflow',
+        category: 'approval_requests',
         title: 'Pengajuan ATK Baru',
         body: `${currentEmployee.name} mengajukan ${itemsToInsert.length} item ATK (${requestNumber}).`,
         url: `/dashboard/ga/atk?highlight=${newRequest.id}`,
@@ -544,7 +544,7 @@ export async function updateAtkRequestStatus(
       await notifyWorkflowBellRecipients({
         recipientEmails: [requester.email],
         eventType: 'atk_request_status_updated',
-        category: 'workflow',
+        category: 'info',
         title: `Status ATK: ${label}`,
         body: `Pengajuan ATK Anda (${existing[0].requestNumber}) kini berstatus: ${label}. ${payload.reviewerNote ? `Catatan: ${payload.reviewerNote}` : ''}`,
         url: `/mobile/atk/${id}`,

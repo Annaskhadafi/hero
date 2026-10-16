@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -124,12 +124,23 @@ export function MaritalStatusFormDialog({
     }
   }, [submissionMode, activeEmployee]);
 
+  const approverEmployees = useMemo(
+    () =>
+      approverOptions.map((a) => ({
+        id: a.id,
+        name: a.name,
+        role: a.jobTitle || a.role || a.departmentName || undefined,
+        employeeSn: a.employeeSn,
+      })),
+    [approverOptions]
+  );
+
   // Load existing profile signature if available
   useEffect(() => {
     if (open && !signatureUrl) {
       getUserSignatureAction().then((res) => {
-        if (res.success && res.signatureUrl) {
-          setSignatureUrl(res.signatureUrl);
+        if (res.success && res.signatureDataUrl) {
+          setSignatureUrl(res.signatureDataUrl);
         }
       });
     }
@@ -222,7 +233,7 @@ export function MaritalStatusFormDialog({
 
       const res = await submitMaritalStatusRequestAction(payload);
       if (res.success) {
-        toast.success(`Pengajuan status ${res.data?.requestNumber || ''} berhasil dibuat!`);
+        toast.success(`Pengajuan status ${res.requestNumber || ''} berhasil dibuat!`);
         onOpenChange(false);
         // Reset state
         setReason('');
@@ -542,11 +553,11 @@ export function MaritalStatusFormDialog({
                   Level 1: Pemeriksa / HR Site <span className="text-rose-500">*</span>
                 </Label>
                 <SearchableEmployeeSelect
-                  options={approverOptions}
+                  employees={approverEmployees}
                   value={approver1Id}
-                  onChange={setApprover1Id}
+                  onValueChange={setApprover1Id}
+                  showLabel={false}
                   placeholder="Pilih Pemeriksa L1"
-                  className="mt-1"
                 />
               </div>
 
@@ -556,11 +567,11 @@ export function MaritalStatusFormDialog({
                   Level 2: Atasan Langsung <span className="text-rose-500">*</span>
                 </Label>
                 <SearchableEmployeeSelect
-                  options={approverOptions}
+                  employees={approverEmployees}
                   value={approver2Id}
-                  onChange={setApprover2Id}
+                  onValueChange={setApprover2Id}
+                  showLabel={false}
                   placeholder="Pilih Atasan L2"
-                  className="mt-1"
                 />
               </div>
 
@@ -570,11 +581,11 @@ export function MaritalStatusFormDialog({
                   Level 3: Central Service / HC (Opsional)
                 </Label>
                 <SearchableEmployeeSelect
-                  options={approverOptions}
+                  employees={approverEmployees}
                   value={approver3Id}
-                  onChange={setApprover3Id}
+                  onValueChange={setApprover3Id}
+                  showLabel={false}
                   placeholder="Pilih HC / CS L3"
-                  className="mt-1"
                 />
               </div>
             </div>
@@ -586,9 +597,9 @@ export function MaritalStatusFormDialog({
               Tanda Tangan Pemohon <span className="text-rose-500">*</span>
             </Label>
             <SignaturePad
-              value={signatureUrl}
-              onChange={setSignatureUrl}
-              title="Tanda Tangan Pemohon"
+              defaultDataUrl={signatureUrl}
+              onDataUrlChange={(url) => setSignatureUrl(url || '')}
+              label="Tanda Tangan Pemohon"
               className="border rounded-md bg-white"
             />
           </div>

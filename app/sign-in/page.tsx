@@ -291,7 +291,7 @@ function SignInContent() {
                             </Alert>
                         ) : null}
 
-                        <form onSubmit={handleSubmit} className={styles.form}>
+                        <form onSubmit={handleSubmit} method="post" action="#" className={styles.form}>
                             <div className={styles.field}>
                                 <Label htmlFor="email">Email atau SN karyawan</Label>
                                 <div className={styles.inputWrap}>

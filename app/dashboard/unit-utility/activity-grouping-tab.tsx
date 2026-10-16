@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { Card } from '@/components/ui/card'
+import { HeroKpiCard } from '@/components/templates'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -101,55 +102,51 @@ export function ActivityGroupingTab({ summary, dateStr }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card className="p-4 bg-card/60 backdrop-blur-sm border shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Layers className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Grup Aktivitas</p>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{overall.totalGroups}</p>
-            </div>
-          </div>
-        </Card>
+      {/* KPI Summary Cards (HeroKpiCard Standardized) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Grup Aktivitas"
+          value={overall.totalGroups}
+          unit="kategori"
+          icon={<Layers className="size-5" />}
+          watermarkIcon={<Layers className="size-16" />}
+          tone="blue"
+          variant="colorful"
+          description="Pengelompokan jenis aktivitas"
+        />
 
-        <Card className="p-4 bg-card/60 backdrop-blur-sm border shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <CircleDot className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Ban (Tires)</p>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{overall.totalTireCount}</p>
-            </div>
-          </div>
-        </Card>
+        <HeroKpiCard
+          title="Total Ban (Tires)"
+          value={overall.totalTireCount}
+          unit="ban"
+          icon={<CircleDot className="size-5" />}
+          watermarkIcon={<CircleDot className="size-16" />}
+          tone="emerald"
+          variant="colorful"
+          description="Akumulasi ban tertangani"
+        />
 
-        <Card className="p-4 bg-card/60 backdrop-blur-sm border shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <Truck className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Unit Terlibat</p>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{overall.totalUnitCount}</p>
-            </div>
-          </div>
-        </Card>
+        <HeroKpiCard
+          title="Total Unit Terlibat"
+          value={overall.totalUnitCount}
+          unit="unit"
+          icon={<Truck className="size-5" />}
+          watermarkIcon={<Truck className="size-16" />}
+          tone="amber"
+          variant="colorful"
+          description="Total unit operasional"
+        />
 
-        <Card className="p-4 bg-card/60 backdrop-blur-sm border shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400">
-              <ListChecks className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Total Input Aktivitas</p>
-              <p className="text-2xl font-bold tracking-tight text-foreground">{overall.totalItems}</p>
-            </div>
-          </div>
-        </Card>
+        <HeroKpiCard
+          title="Total Input Aktivitas"
+          value={overall.totalItems}
+          unit="log"
+          icon={<ListChecks className="size-5" />}
+          watermarkIcon={<ListChecks className="size-16" />}
+          tone="purple"
+          variant="colorful"
+          description="Catatan aktivitas harian"
+        />
       </div>
 
       {/* Control Bar: Metric Toggle Switch */}
