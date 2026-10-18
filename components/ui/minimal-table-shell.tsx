@@ -175,8 +175,10 @@ export async function exportRowsToFile({
       for (const row of rows) {
         const val = row[colIdx]
         if (val != null) {
-          const len = String(val).length
-          if (len > maxLen) maxLen = len
+          const lines = String(val).split('\n')
+          for (const line of lines) {
+            if (line.length > maxLen) maxLen = line.length
+          }
         }
       }
       return { wch: Math.min(Math.max(maxLen + 3, 10), 65) }
@@ -515,10 +517,37 @@ export function MinimalTableShell({
   const exportVisibleTable = React.useCallback(() => {
     const snapshot = getTableSnapshot()
     if (!snapshot) return
+    const root = shellRef.current
+    const table = root?.querySelector('table')
+    const thElements = table ? Array.from(table.querySelectorAll('thead th')) : []
+
+    const exportColumnIndices: number[] = []
+    const exportHeaders: string[] = []
+
+    snapshot.headerCells.forEach((header, idx) => {
+      const th = thElements[idx] as HTMLElement | undefined
+      const isIgnored = th?.dataset.exportIgnore === 'true' || /^(action|aksi)$/i.test(header.trim())
+      if (!isIgnored) {
+        exportColumnIndices.push(idx)
+        exportHeaders.push(header)
+      }
+    })
+
     const rows = snapshot.dataRows
       .filter((row) => row.dataset.filterMatch === 'true')
-      .map((row) => Array.from(row.cells).map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? ''))
-    exportRowsToFile({ columns: snapshot.headerCells, rows, fileName: fileName ?? label })
+      .map((row) => {
+        const cells = Array.from(row.cells)
+        return exportColumnIndices.map((colIdx) => {
+          const cell = cells[colIdx]
+          if (!cell) return ''
+          if (cell.dataset.exportValue !== undefined) {
+            return cell.dataset.exportValue
+          }
+          return cell.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+        })
+      })
+
+    exportRowsToFile({ columns: exportHeaders, rows, fileName: fileName ?? label })
   }, [fileName, getTableSnapshot, label])
 
   const totalPages = Math.max(1, Math.ceil(Math.max(filteredCount, 1) / pageSize))

@@ -309,3 +309,6 @@ export * from './vehicles'
 
 // Compensation & Benefit (HRGA)
 export * from './compensation'
+
+// User Management & Personalization
+export { userPinnedServices } from './user-management'

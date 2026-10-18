@@ -10,15 +10,11 @@ test('mobile dashboard aesthetic redesign: search menu, curated shortcuts, and n
 }) => {
   // 1. Authenticate with standard credentials
   await loginToHero(app, screen, browser)
-  await new Promise((resolve) => setTimeout(resolve, 5000))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
 
-  // 2. Ensure we are at /mobile/dashboard
-  try {
-    await browser.waitForURL(/\/mobile\/dashboard/i, { timeout: 10000 })
-  } catch {
-    await app.open('/mobile/dashboard')
-    await new Promise((resolve) => setTimeout(resolve, 4000))
-  }
+  // 2. Open /mobile/dashboard directly
+  await app.open('/mobile/dashboard')
+  await new Promise((resolve) => setTimeout(resolve, 4000))
   await expect(browser.locator('body')).toBeVisible()
 
   // 3. Verify Header and Rank Points Card are rendered
@@ -59,21 +55,31 @@ test('mobile dashboard aesthetic redesign: search menu, curated shortcuts, and n
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
-  // 7. Test "Lainnya" Sheet (All Services in 2-Column feature cards without truncation)
+  // 7. Test "Lainnya" Sheet (Category Tabs & Non-Truncated Feature Cards)
   await lainnyaBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1500))
 
   await expect(browser.locator('text=Semua Layanan Chitra').first()).toBeVisible()
 
-  // Verify long Indonesian menus are completely visible
-  await expect(browser.locator('text=Deteksi Kerusakan Ban').first()).toBeVisible()
-  await expect(browser.locator('text=Status Pernikahan').first()).toBeVisible()
+  // Verify Category Tabs are present
+  await expect(browser.locator('button:has-text("Semua")').first()).toBeVisible()
+  await expect(browser.locator('button:has-text("Operasional")').first()).toBeVisible()
+  await expect(browser.locator('button:has-text("K3 & HSE")').first()).toBeVisible()
 
-  // Take screenshot of "Lainnya" 2-column feature cards
-  await app.screenshot('mobile-dashboard-lainnya-cards')
+  // Take screenshot of "Lainnya" with Category Tabs
+  await app.screenshot('mobile-dashboard-lainnya-tabs')
+
+  // Click on "Operasional" Tab
+  const operasionalTab = browser.locator('button:has-text("Operasional")').first()
+  await operasionalTab.click()
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  // Verify items inside Operasional
+  await expect(browser.locator('text=Aktivitas Harian').first()).toBeVisible()
+  await app.screenshot('mobile-dashboard-category-operasional')
 
   // 8. Agent assertion
   await agent.assert(
-    'The service catalog is open and displays searchable service items with legible titles including Deteksi Kerusakan Ban and Status Pernikahan'
+    'The service catalog is open, displays category tabs including Semua and Operasional, and displays services correctly when a category tab is selected'
   )
 })

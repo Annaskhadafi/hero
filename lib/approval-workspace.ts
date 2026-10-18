@@ -3720,6 +3720,10 @@ export async function getApprovalCenterData(
         overtimeId?: number | string | null
         documentId?: number | string | null
         workers?: any[] | null
+        workersListText?: string | null
+        workersHoursText?: string | null
+        totalOvertimeHours?: number | null
+        durationPerMpLabel?: string | null
         steps: Array<{
           approvalId: number | string
           approverName: string
@@ -3845,6 +3849,8 @@ export async function getApprovalCenterData(
                 splNumber: overtimeCommandLetters.splNumber,
                 title: overtimeCommandLetters.title,
                 workDate: overtimeCommandLetters.workDate,
+                plannedStartAt: overtimeCommandLetters.plannedStartAt,
+                plannedEndAt: overtimeCommandLetters.plannedEndAt,
                 status: overtimeCommandLetters.status,
                 createdAt: overtimeCommandLetters.createdAt,
                 updatedAt: overtimeCommandLetters.updatedAt,
@@ -4005,8 +4011,10 @@ export async function getApprovalCenterData(
               .select({
                 splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
                 employeeId: overtimeCommandLetterParticipants.employeeId,
+                employeeSn: employees.employeeSn,
                 employeeName: employees.name,
                 employeeEmail: employees.email,
+                overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
               })
               .from(overtimeCommandLetterParticipants)
               .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id)),
@@ -4370,8 +4378,45 @@ export async function getApprovalCenterData(
       ? 'Disetujui secara lengkap'
       : 'Dalam proses review'
 
-    const participants = otParticipantsBySplId.get(ot.id) || []
-    const otherParticipantNames = participants
+    const plannedStart = ot.plannedStartAt ? new Date(ot.plannedStartAt).getTime() : 0
+    const plannedEnd = ot.plannedEndAt ? new Date(ot.plannedEndAt).getTime() : 0
+    const defaultDurationHours =
+      plannedStart && plannedEnd && plannedEnd > plannedStart
+        ? Math.round(((plannedEnd - plannedStart) / (1000 * 60 * 60)) * 10) / 10
+        : 0
+
+    const rawParticipants = otParticipantsBySplId.get(ot.id) || []
+    const detailedParticipants = rawParticipants.map((p) => {
+      const hours =
+        p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0
+          ? Math.round((p.overtimeCreditMinutes / 60) * 10) / 10
+          : defaultDurationHours
+      return {
+        employeeId: p.employeeId,
+        employeeSn: p.employeeSn,
+        employeeName: p.employeeName,
+        employeeEmail: p.employeeEmail,
+        hours,
+        hoursFormatted: `${hours} Jam`,
+      }
+    })
+
+    const totalOvertimeHours = detailedParticipants.reduce((sum, p) => sum + (p.hours || 0), 0)
+    const workersListText =
+      detailedParticipants.length > 0
+        ? detailedParticipants
+            .map((p, idx) => `${idx + 1}. ${p.employeeSn ? `[${p.employeeSn}] ` : ''}${p.employeeName || 'Karyawan'}`)
+            .join('\n')
+        : '-'
+    const workersHoursText =
+      detailedParticipants.length > 0
+        ? detailedParticipants
+            .map((p, idx) => `${idx + 1}. ${p.employeeName || 'Karyawan'}: ${p.hours} Jam`)
+            .join('\n') + `\n(Total: ${totalOvertimeHours} Jam)`
+        : '-'
+    const durationPerMpLabel = defaultDurationHours > 0 ? `${defaultDurationHours} Jam / MP` : '-'
+
+    const otherParticipantNames = detailedParticipants
       .filter((p) => p.employeeName && p.employeeName.toLowerCase().trim() !== (ot.requesterName || '').toLowerCase().trim())
       .map((p) => p.employeeName!)
 
@@ -4399,7 +4444,7 @@ export async function getApprovalCenterData(
         teamPartner: otherParticipantNames.length > 0 ? otherParticipantNames.join(', ') : null,
       })
     } else if (isUserParticipant) {
-      const myP = participants.find(
+      const myP = detailedParticipants.find(
         (p) =>
           p.employeeId === currentEmployee?.id ||
           (normalizedEmail && normalizeMatchValue(p.employeeEmail) === normalizedEmail) ||
@@ -4457,7 +4502,11 @@ export async function getApprovalCenterData(
         teamPartner: target.teamPartner,
         employeeName: target.employeeName,
         employeeId: target.employeeId,
-        workers: participants,
+        workers: detailedParticipants,
+        workersListText,
+        workersHoursText,
+        totalOvertimeHours,
+        durationPerMpLabel,
         steps: splSteps.map((st) => ({
           approvalId: st.id,
           approverName: st.approverName || 'Approver',

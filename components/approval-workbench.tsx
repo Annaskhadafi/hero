@@ -6809,7 +6809,9 @@ export function HistoryTab({
                   <TableHead>Status</TableHead>
                   <TableHead>Posisi Terakhir</TableHead>
                   <TableHead>Workflow</TableHead>
-                  <TableHead className="text-center">Aksi</TableHead>
+                  <TableHead>Daftar Manpower (MP)</TableHead>
+                  <TableHead>Total Jam SPL / MP</TableHead>
+                  <TableHead className="text-center" data-export-ignore="true">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -6858,7 +6860,48 @@ export function HistoryTab({
                           </p>
                         </div>
                       </TableCell>
-                      <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
+                      <TableCell
+                        className="align-top"
+                        data-export-value={item.workersListText || item.employeeName || '-'}
+                      >
+                        {item.activityType === 'Surat Lembur (SPL)' ? (
+                          <div className="space-y-1 text-xs min-w-[170px] max-w-[240px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                {item.workers?.length || 0} MP
+                              </span>
+                            </div>
+                            <p
+                              className="text-foreground text-[12px] leading-snug line-clamp-2"
+                              title={item.workersListText || ''}
+                            >
+                              {item.workers && item.workers.length > 0
+                                ? item.workers.map((w: any) => w.employeeName).join(', ')
+                                : '-'}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-foreground text-xs">{item.employeeName || '-'}</span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="align-top"
+                        data-export-value={item.workersHoursText || '-'}
+                      >
+                        {item.activityType === 'Surat Lembur (SPL)' ? (
+                          <div className="space-y-1 text-xs min-w-[130px]">
+                            <p className="font-semibold text-foreground text-[12px]">
+                              {item.durationPerMpLabel || '-'}
+                            </p>
+                            <p className="text-muted-foreground text-[11px]">
+                              Total: {item.totalOvertimeHours || 0} Jam
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="align-top" data-export-ignore="true" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           {/* Tombol Unduh */}
                           <Button

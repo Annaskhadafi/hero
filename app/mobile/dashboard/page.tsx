@@ -23,6 +23,7 @@ import { getDailyActivityEmployeeData } from "@/lib/daily-activity";
 import { getSidebarDataForUser } from "@/lib/hero-admin";
 import { buildMobileAllowedLinks, getMobileUrlForDesktopUrl } from "@/lib/mobile-access";
 import { getMobileHc } from "@/lib/mobile-data";
+import { getUserPinnedServices } from "@/app/actions/user-pinned-services";
 import { cn } from "@/lib/utils";
 
 function getGreeting() {
@@ -128,19 +129,22 @@ export default async function MobileDashboardPage() {
   let approvalData: Awaited<ReturnType<typeof getApprovalCenterData>> | null = null;
   let sidebarData: Awaited<ReturnType<typeof getSidebarDataForUser>> | null = null;
   let wellnessData: Awaited<ReturnType<typeof getMobileHc>> | null = null;
+  let pinnedTitles: string[] | null = null;
 
   try {
-    const [dataRes, approvalRes, sidebarRes, wellnessRes] = await Promise.allSettled([
+    const [dataRes, approvalRes, sidebarRes, wellnessRes, pinnedRes] = await Promise.allSettled([
       getDailyActivityEmployeeData(session.user.email, { ensureSeed: false, limit: 10 }),
       getApprovalCenterData(session.user.email, { skipHistory: true }),
       getSidebarDataForUser(session.user.email),
       getMobileHc(session.user.email),
+      getUserPinnedServices(session.user.email),
     ]);
 
     if (dataRes.status === "fulfilled") data = dataRes.value;
     if (approvalRes.status === "fulfilled") approvalData = approvalRes.value;
     if (sidebarRes.status === "fulfilled") sidebarData = sidebarRes.value;
     if (wellnessRes.status === "fulfilled") wellnessData = wellnessRes.value;
+    if (pinnedRes.status === "fulfilled") pinnedTitles = pinnedRes.value;
   } catch (err) {
     console.error("[mobile/dashboard] data fetch failed:", err);
   }
@@ -239,7 +243,13 @@ export default async function MobileDashboardPage() {
 
 
 
-      <MobileDashboardServices isHR={isHR} sidebarItems={sidebarItems} allowedLinks={allowedLinks} />
+      <MobileDashboardServices 
+        isHR={isHR} 
+        sidebarItems={sidebarItems} 
+        allowedLinks={allowedLinks} 
+        userEmail={session.user.email}
+        initialPinnedTitles={pinnedTitles}
+      />
 
       <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] border border-slate-100/80 border-l-4 border-l-[#f4b183]">
         <div className="flex items-center justify-between gap-3">
