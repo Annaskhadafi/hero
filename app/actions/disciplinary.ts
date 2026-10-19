@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, count, desc, eq, gte, ilike, inArray, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { db } from '@/db'
@@ -170,9 +170,73 @@ function disciplinaryValues(data: DisciplinaryActionInput) {
   }
 }
 
+let schemaEnsured = false
+export async function ensureDisciplinarySchema() {
+  if (schemaEnsured) return
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS hero_hc_violation_categories (
+        id SERIAL PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        severity TEXT NOT NULL DEFAULT 'minor',
+        default_sp_level INTEGER NOT NULL DEFAULT 1,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS hero_hc_disciplinary_actions (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER NOT NULL REFERENCES hero_employees(id) ON DELETE CASCADE,
+        violation_category_id INTEGER REFERENCES hero_hc_violation_categories(id) ON DELETE SET NULL,
+        sp_level INTEGER NOT NULL DEFAULT 1,
+        letter_number TEXT NOT NULL DEFAULT '',
+        violation_date DATE NOT NULL,
+        violation_description TEXT NOT NULL DEFAULT '',
+        action_taken TEXT NOT NULL DEFAULT '',
+        effective_date DATE NOT NULL,
+        expiry_date DATE,
+        issued_by TEXT NOT NULL DEFAULT '',
+        issuer_department TEXT NOT NULL DEFAULT '',
+        issuer_signature TEXT NOT NULL DEFAULT '',
+        use_letterhead BOOLEAN NOT NULL DEFAULT false,
+        notes TEXT NOT NULL DEFAULT '',
+        attachment_url TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+
+      ALTER TABLE hero_hc_disciplinary_actions ADD COLUMN IF NOT EXISTS issuer_department TEXT NOT NULL DEFAULT '';
+      ALTER TABLE hero_hc_disciplinary_actions ADD COLUMN IF NOT EXISTS issuer_signature TEXT NOT NULL DEFAULT '';
+      ALTER TABLE hero_hc_disciplinary_actions ADD COLUMN IF NOT EXISTS use_letterhead BOOLEAN NOT NULL DEFAULT false;
+
+      INSERT INTO hero_hc_violation_categories (code, name, description, severity, default_sp_level, is_active)
+      VALUES 
+        ('DISC-01', 'Keterlambatan Masuk Kerja Berulang', 'Keterlambatan hadir melebihi batas toleransi tanpa izin resmi.', 'minor', 1, true),
+        ('DISC-02', 'Mangkir / Tidak Masuk Kerja Tanpa Keterangan', 'Tidak masuk kerja tanpa pemberitahuan atau surat keterangan dokter sah.', 'moderate', 1, true),
+        ('DISC-03', 'Pelanggaran SOP & Prosedur Keselamatan Kerja', 'Tidak mematuhi SOP operasional atau tata tertib keselamatan K3/HSE.', 'major', 2, true),
+        ('DISC-04', 'Pengabaian Perintah Kerja Atasan / Insubordinasi', 'Menolak instruksi kerja sah yang diberikan atasan atau manajemen.', 'major', 2, true),
+        ('DISC-05', 'Tindakan Indisipliner Berat / Kode Etik', 'Pelanggaran berat terhadap peraturan perusahaan dan integritas bisnis.', 'critical', 3, true)
+      ON CONFLICT (code) DO NOTHING;
+    `)
+    schemaEnsured = true
+  } catch (err) {
+    console.error('[disciplinary] Schema ensure error:', err)
+  }
+}
+
 export async function getViolationCategories() {
   await requireDisciplinaryPermission('view')
-  return db.select().from(hcViolationCategories).orderBy(asc(hcViolationCategories.code))
+  await ensureDisciplinarySchema()
+  try {
+    return await db.select().from(hcViolationCategories).orderBy(asc(hcViolationCategories.code))
+  } catch (err) {
+    console.error('[disciplinary] Error getViolationCategories:', err)
+    return []
+  }
 }
 
 export async function createViolationCategory(data: ViolationCategoryInput) {
@@ -221,74 +285,80 @@ function buildSearchClause(search: string) {
 
 export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
   const access = await requireDisciplinaryPermission('view')
-  const scope = buildDisciplinaryWhere(filters)
-  const scopeClauses = scope ? [scope] : []
-  if (!hasGlobalDataAccess(access.permission)) {
-    scopeClauses.push(
-      access.permission.dataScope === 'own'
-        ? eq(hcDisciplinaryActions.employeeId, access.employee.id)
-        : eq(employees.siteId, access.employee.siteId)
-    )
-  }
-  const rows = await db
-    .select({
-      id: hcDisciplinaryActions.id,
-      employeeId: hcDisciplinaryActions.employeeId,
-      categoryId: hcDisciplinaryActions.violationCategoryId,
-      spLevel: hcDisciplinaryActions.spLevel,
-      letterNumber: hcDisciplinaryActions.letterNumber,
-      violationDate: hcDisciplinaryActions.violationDate,
-      description: hcDisciplinaryActions.violationDescription,
-      actionTaken: hcDisciplinaryActions.actionTaken,
-      effectiveDate: hcDisciplinaryActions.effectiveDate,
-      expiryDate: hcDisciplinaryActions.expiryDate,
-      issuedBy: hcDisciplinaryActions.issuedBy,
-      issuerDepartment: hcDisciplinaryActions.issuerDepartment,
-      issuerSignature: hcDisciplinaryActions.issuerSignature,
-      useLetterhead: hcDisciplinaryActions.useLetterhead,
-      notes: hcDisciplinaryActions.notes,
-      status: hcDisciplinaryActions.status,
-      attachmentUrl: hcDisciplinaryActions.attachmentUrl,
-      createdAt: hcDisciplinaryActions.createdAt,
-      employeeName: employees.name,
-      employeeSn: employees.employeeSn,
-      jobTitle: employees.jobTitle,
-      siteName: sites.name,
-      department: masterDepartments.name,
-      position: hrPositions.rankName,
-      categoryCode: hcViolationCategories.code,
-      categoryName: hcViolationCategories.name,
-      severity: hcViolationCategories.severity,
-    })
-    .from(hcDisciplinaryActions)
-    .leftJoin(employees, eq(hcDisciplinaryActions.employeeId, employees.id))
-    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
-    .leftJoin(
-      hcViolationCategories,
-      eq(hcDisciplinaryActions.violationCategoryId, hcViolationCategories.id)
-    )
-    .where(scopeClauses.length ? and(...scopeClauses) : undefined)
-    .orderBy(desc(hcDisciplinaryActions.violationDate))
+  await ensureDisciplinarySchema()
+  try {
+    const scope = buildDisciplinaryWhere(filters)
+    const scopeClauses = scope ? [scope] : []
+    if (!hasGlobalDataAccess(access.permission)) {
+      scopeClauses.push(
+        access.permission.dataScope === 'own'
+          ? eq(hcDisciplinaryActions.employeeId, access.employee.id)
+          : eq(employees.siteId, access.employee.siteId)
+      )
+    }
+    const rows = await db
+      .select({
+        id: hcDisciplinaryActions.id,
+        employeeId: hcDisciplinaryActions.employeeId,
+        categoryId: hcDisciplinaryActions.violationCategoryId,
+        spLevel: hcDisciplinaryActions.spLevel,
+        letterNumber: hcDisciplinaryActions.letterNumber,
+        violationDate: hcDisciplinaryActions.violationDate,
+        description: hcDisciplinaryActions.violationDescription,
+        actionTaken: hcDisciplinaryActions.actionTaken,
+        effectiveDate: hcDisciplinaryActions.effectiveDate,
+        expiryDate: hcDisciplinaryActions.expiryDate,
+        issuedBy: hcDisciplinaryActions.issuedBy,
+        issuerDepartment: hcDisciplinaryActions.issuerDepartment,
+        issuerSignature: hcDisciplinaryActions.issuerSignature,
+        useLetterhead: hcDisciplinaryActions.useLetterhead,
+        notes: hcDisciplinaryActions.notes,
+        status: hcDisciplinaryActions.status,
+        attachmentUrl: hcDisciplinaryActions.attachmentUrl,
+        createdAt: hcDisciplinaryActions.createdAt,
+        employeeName: employees.name,
+        employeeSn: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+        siteName: sites.name,
+        department: masterDepartments.name,
+        position: hrPositions.rankName,
+        categoryCode: hcViolationCategories.code,
+        categoryName: hcViolationCategories.name,
+        severity: hcViolationCategories.severity,
+      })
+      .from(hcDisciplinaryActions)
+      .leftJoin(employees, eq(hcDisciplinaryActions.employeeId, employees.id))
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .leftJoin(
+        hcViolationCategories,
+        eq(hcDisciplinaryActions.violationCategoryId, hcViolationCategories.id)
+      )
+      .where(scopeClauses.length ? and(...scopeClauses) : undefined)
+      .orderBy(desc(hcDisciplinaryActions.violationDate))
 
-  return rows.map((row) => ({
-    ...row,
-    spLevel:
-      row.spLevel === 0
-        ? 'Teguran'
-        : row.spLevel === 1
-        ? 'SP1'
-        : row.spLevel === 2
-        ? 'SP2'
-        : row.spLevel === 3
-        ? 'SP3'
-        : row.spLevel === 4
-        ? 'Skorsing'
-        : row.spLevel === 5
-        ? 'Termination'
-        : `SP${row.spLevel}`,
-  }))
+    return rows.map((row) => ({
+      ...row,
+      spLevel:
+        row.spLevel === 0
+          ? 'Teguran'
+          : row.spLevel === 1
+          ? 'SP1'
+          : row.spLevel === 2
+          ? 'SP2'
+          : row.spLevel === 3
+          ? 'SP3'
+          : row.spLevel === 4
+          ? 'Skorsing'
+          : row.spLevel === 5
+          ? 'Termination'
+          : `SP${row.spLevel}`,
+    }))
+  } catch (err) {
+    console.error('[disciplinary] Error getDisciplinaryActions:', err)
+    return []
+  }
 }
 
 export async function getDisciplinaryById(id: IdInput) {
@@ -545,22 +615,40 @@ export async function deleteDisciplinaryAction(id: IdInput) {
 }
 
 export async function getDisciplinaryStats() {
-  const records = await getDisciplinaryActions()
-  const today = new Date()
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-  return {
-    totalCases: records.length,
-    activeSp: records.filter((record) => isActiveRecord(record.status, record.expiryDate)).length,
-    expired: records.filter((record) => isExpiredRecord(record.status, record.expiryDate)).length,
-    thisMonth: records.filter((record) => new Date(record.violationDate) >= monthStart).length,
-    byLevel: {
-      Teguran: records.filter((record) => record.spLevel === 'Teguran').length,
-      SP1: records.filter((record) => record.spLevel === 'SP1').length,
-      SP2: records.filter((record) => record.spLevel === 'SP2').length,
-      SP3: records.filter((record) => record.spLevel === 'SP3').length,
-      Skorsing: records.filter((record) => record.spLevel === 'Skorsing').length,
-      Termination: records.filter((record) => record.spLevel === 'Termination').length,
-    },
+  try {
+    const records = await getDisciplinaryActions()
+    const today = new Date()
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    return {
+      totalCases: records.length,
+      activeSp: records.filter((record) => isActiveRecord(record.status, record.expiryDate)).length,
+      expired: records.filter((record) => isExpiredRecord(record.status, record.expiryDate)).length,
+      thisMonth: records.filter((record) => new Date(record.violationDate) >= monthStart).length,
+      byLevel: {
+        Teguran: records.filter((record) => record.spLevel === 'Teguran').length,
+        SP1: records.filter((record) => record.spLevel === 'SP1').length,
+        SP2: records.filter((record) => record.spLevel === 'SP2').length,
+        SP3: records.filter((record) => record.spLevel === 'SP3').length,
+        Skorsing: records.filter((record) => record.spLevel === 'Skorsing').length,
+        Termination: records.filter((record) => record.spLevel === 'Termination').length,
+      },
+    }
+  } catch (err) {
+    console.error('[disciplinary] Error getDisciplinaryStats:', err)
+    return {
+      totalCases: 0,
+      activeSp: 0,
+      expired: 0,
+      thisMonth: 0,
+      byLevel: {
+        Teguran: 0,
+        SP1: 0,
+        SP2: 0,
+        SP3: 0,
+        Skorsing: 0,
+        Termination: 0,
+      },
+    }
   }
 }
 
@@ -578,31 +666,37 @@ function isExpiredRecord(status: string, expiryDate: string | Date | null) {
 }
 
 export async function getActiveEmployees() {
-  const access = await requireDisciplinaryPermission('view')
-  const conditions = [eq(employees.isActive, true)]
-  if (!hasGlobalDataAccess(access.permission)) {
-    conditions.push(
-      access.permission.dataScope === 'own'
-        ? eq(employees.id, access.employee.id)
-        : eq(employees.siteId, access.employee.siteId)
-    )
+  await requireDisciplinaryPermission('view')
+  try {
+    const access = await requireDisciplinaryPermission('view')
+    const conditions = [eq(employees.isActive, true)]
+    if (!hasGlobalDataAccess(access.permission)) {
+      conditions.push(
+        access.permission.dataScope === 'own'
+          ? eq(employees.id, access.employee.id)
+          : eq(employees.siteId, access.employee.siteId)
+      )
+    }
+    return await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        department: masterDepartments.name,
+        position: hrPositions.rankName,
+        jobTitle: employees.jobTitle,
+        siteName: sites.name,
+      })
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(and(...conditions))
+      .orderBy(asc(employees.name))
+  } catch (err) {
+    console.error('[disciplinary] Error getActiveEmployees:', err)
+    return []
   }
-  return db
-    .select({
-      id: employees.id,
-      name: employees.name,
-      employeeSn: employees.employeeSn,
-      department: masterDepartments.name,
-      position: hrPositions.rankName,
-      jobTitle: employees.jobTitle,
-      siteName: sites.name,
-    })
-    .from(employees)
-    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
-    .leftJoin(sites, eq(employees.siteId, sites.id))
-    .where(and(...conditions))
-    .orderBy(asc(employees.name))
 }
 
 export async function getDisciplinaryCount() {
