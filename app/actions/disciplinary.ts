@@ -10,9 +10,11 @@ import {
   masterDepartments,
   employees,
   hrPositions,
+  sites,
 } from '@/db/schema/hero'
 import { getHrEmployeeContactById } from '@/lib/workflow-email'
 import { buildHumanCapitalEmail, sendHumanCapitalEmail } from '@/lib/human-capital-email'
+import { generateDisciplinaryLetterPdf } from '@/lib/disciplinary-letter-pdf'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getCurrentMenuPermission, hasGlobalDataAccess } from '@/lib/hero-access'
 
@@ -81,8 +83,20 @@ export type DisciplinaryActionInput = {
   effectiveDate: string | Date
   expiryDate?: string | Date | null
   issuedBy?: string
+  issuerDepartment?: string
+  issuerSignature?: string
+  useLetterhead?: boolean
   notes?: string
   status?: string
+}
+
+export async function getNextDisciplinaryLetterNumber(): Promise<string> {
+  const currentYear = new Date().getFullYear()
+  const [res] = await db
+    .select({ count: count() })
+    .from(hcDisciplinaryActions)
+  const nextNum = (Number(res?.count) || 0) + 1
+  return `CP/HC-DISC/${currentYear}/${String(nextNum).padStart(4, '0')}`
 }
 
 function toId(value: IdInput) {
@@ -110,12 +124,25 @@ function normalizeText(value?: string | null) {
   return value?.trim() ?? ''
 }
 
+function parseSpLevel(levelInput: string | number | undefined | null): number {
+  if (levelInput === undefined || levelInput === null) return 1
+  const str = String(levelInput).trim().toLowerCase()
+  if (str === 'teguran' || str === '0' || str === 'sp0' || str.includes('lisan') || str.includes('pembinaan')) return 0
+  if (str === 'sp1' || str === '1') return 1
+  if (str === 'sp2' || str === '2') return 2
+  if (str === 'sp3' || str === '3' || str.includes('terakhir')) return 3
+  if (str === 'skorsing' || str === '4') return 4
+  if (str === 'termination' || str === 'phk' || str === '5') return 5
+  const match = str.replace(/\D/g, '')
+  return match !== '' ? Number(match) : 1
+}
+
 function categoryValues(data: ViolationCategoryInput) {
   return {
     code: normalizeText(data.code).toUpperCase(),
     name: normalizeText(data.name),
     severity: normalizeText(data.severity) || 'Medium',
-    defaultSpLevel: Number(data.defaultSpLevel?.replace(/\D/g, '')) || 1,
+    defaultSpLevel: parseSpLevel(data.defaultSpLevel),
     description: normalizeText(data.description),
     isActive: data.isActive ?? true,
     updatedAt: new Date(),
@@ -126,7 +153,7 @@ function disciplinaryValues(data: DisciplinaryActionInput) {
   return {
     employeeId: toId(data.employeeId),
     violationCategoryId: toId(data.categoryId),
-    spLevel: Number(String(data.spLevel).replace(/\D/g, '')) || 1,
+    spLevel: parseSpLevel(data.spLevel),
     letterNumber: normalizeText(data.letterNumber),
     violationDate: toDateString(data.violationDate),
     violationDescription: normalizeText(data.description),
@@ -134,6 +161,9 @@ function disciplinaryValues(data: DisciplinaryActionInput) {
     effectiveDate: toDateString(data.effectiveDate),
     expiryDate: data.expiryDate ? toDateString(data.expiryDate) : null,
     issuedBy: normalizeText(data.issuedBy),
+    issuerDepartment: normalizeText(data.issuerDepartment),
+    issuerSignature: data.issuerSignature || '',
+    useLetterhead: Boolean(data.useLetterhead),
     notes: normalizeText(data.notes),
     status: normalizeText(data.status) || 'active',
     updatedAt: new Date(),
@@ -213,11 +243,17 @@ export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
       effectiveDate: hcDisciplinaryActions.effectiveDate,
       expiryDate: hcDisciplinaryActions.expiryDate,
       issuedBy: hcDisciplinaryActions.issuedBy,
+      issuerDepartment: hcDisciplinaryActions.issuerDepartment,
+      issuerSignature: hcDisciplinaryActions.issuerSignature,
+      useLetterhead: hcDisciplinaryActions.useLetterhead,
       notes: hcDisciplinaryActions.notes,
       status: hcDisciplinaryActions.status,
+      attachmentUrl: hcDisciplinaryActions.attachmentUrl,
       createdAt: hcDisciplinaryActions.createdAt,
       employeeName: employees.name,
       employeeSn: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      siteName: sites.name,
       department: masterDepartments.name,
       position: hrPositions.rankName,
       categoryCode: hcViolationCategories.code,
@@ -228,6 +264,7 @@ export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
     .leftJoin(employees, eq(hcDisciplinaryActions.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .leftJoin(
       hcViolationCategories,
       eq(hcDisciplinaryActions.violationCategoryId, hcViolationCategories.id)
@@ -235,7 +272,23 @@ export async function getDisciplinaryActions(filters?: DisciplinaryFilters) {
     .where(scopeClauses.length ? and(...scopeClauses) : undefined)
     .orderBy(desc(hcDisciplinaryActions.violationDate))
 
-  return rows.map((row) => ({ ...row, spLevel: `SP${row.spLevel}` }))
+  return rows.map((row) => ({
+    ...row,
+    spLevel:
+      row.spLevel === 0
+        ? 'Teguran'
+        : row.spLevel === 1
+        ? 'SP1'
+        : row.spLevel === 2
+        ? 'SP2'
+        : row.spLevel === 3
+        ? 'SP3'
+        : row.spLevel === 4
+        ? 'Skorsing'
+        : row.spLevel === 5
+        ? 'Termination'
+        : `SP${row.spLevel}`,
+  }))
 }
 
 export async function getDisciplinaryById(id: IdInput) {
@@ -249,30 +302,139 @@ export async function getDisciplinaryById(id: IdInput) {
 }
 
 export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
-  await assertDisciplinaryEmployeeScope(toId(data.employeeId), 'edit')
+  const access = await assertDisciplinaryEmployeeScope(toId(data.employeeId), 'edit')
+  
+  // Ambil langsung tanda tangan, nama, dan departemen dari akun yang membuat surat
+  let resolvedIssuerSignature = data.issuerSignature?.trim() || ''
+  let resolvedIssuedBy = data.issuedBy?.trim() || ''
+  let resolvedIssuerDept = data.issuerDepartment?.trim() || ''
+
+  if (access.employee.id) {
+    const [curEmp] = await db
+      .select({
+        signatureDataUrl: employees.signatureDataUrl,
+        name: employees.name,
+        deptName: masterDepartments.name,
+      })
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .where(eq(employees.id, access.employee.id))
+      .limit(1)
+    if (!resolvedIssuerSignature && curEmp?.signatureDataUrl) {
+      resolvedIssuerSignature = curEmp.signatureDataUrl
+    }
+    if (!resolvedIssuedBy && curEmp?.name) {
+      resolvedIssuedBy = curEmp.name
+    }
+    if (!resolvedIssuerDept) {
+      resolvedIssuerDept = curEmp?.deptName || 'Human Capital'
+    }
+  }
+
+  const valuesToInsert = disciplinaryValues({
+    ...data,
+    issuerSignature: resolvedIssuerSignature,
+    issuedBy: resolvedIssuedBy || data.issuedBy || access.employee.name || 'Human Capital Dept',
+    issuerDepartment: resolvedIssuerDept || 'Human Capital',
+  })
+
   const [created] = await db
     .insert(hcDisciplinaryActions)
-    .values(disciplinaryValues(data))
+    .values(valuesToInsert)
     .returning()
-  const employee = await getHrEmployeeContactById(created.employeeId)
+  const [employeeDetails] = await db
+    .select({
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      position: hrPositions.rankName,
+      jobTitle: employees.jobTitle,
+      department: masterDepartments.name,
+      siteName: sites.name,
+    })
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(eq(employees.id, created.employeeId))
+    .limit(1)
+
   const [category] = created.violationCategoryId
     ? await db
-        .select({ name: hcViolationCategories.name, severity: hcViolationCategories.severity })
+        .select({
+          code: hcViolationCategories.code,
+          name: hcViolationCategories.name,
+          severity: hcViolationCategories.severity,
+        })
         .from(hcViolationCategories)
         .where(eq(hcViolationCategories.id, created.violationCategoryId))
         .limit(1)
     : []
 
+  const levelName =
+    created.spLevel === 0
+      ? 'Teguran'
+      : created.spLevel === 1
+      ? 'SP1'
+      : created.spLevel === 2
+      ? 'SP2'
+      : created.spLevel === 3
+      ? 'SP3'
+      : created.spLevel === 4
+      ? 'Skorsing'
+      : created.spLevel === 5
+      ? 'Termination'
+      : `SP${created.spLevel}`
+
+  // Generate official PDF letter
+  let pdfAttachment: any = null
+  const empName = employeeDetails?.name || 'Karyawan'
+  const empEmail = employeeDetails?.email || null
+
+  try {
+    const pdfBuffer = await generateDisciplinaryLetterPdf({
+      letterNumber: created.letterNumber || `CP/HC-DISC/${new Date().getFullYear()}/${String(created.id).padStart(4, '0')}`,
+      spLevel: levelName,
+      employeeName: empName,
+      employeeSn: employeeDetails?.employeeSn || '',
+      position: employeeDetails?.position || employeeDetails?.jobTitle || '',
+      department: employeeDetails?.department || '',
+      siteName: employeeDetails?.siteName || 'Head Office',
+      categoryName: category?.name || '-',
+      categoryCode: category?.code || 'DISC',
+      severity: category?.severity || 'Medium',
+      violationDate: created.violationDate,
+      effectiveDate: created.effectiveDate,
+      expiryDate: created.expiryDate,
+      description: created.violationDescription,
+      actionTaken: created.actionTaken,
+      issuedBy: created.issuedBy || 'Human Capital Dept',
+      issuerDepartment: created.issuerDepartment || resolvedIssuerDept || 'Human Capital',
+      issuerSignature: created.issuerSignature || null,
+      useLetterhead: Boolean(created.useLetterhead),
+    })
+
+    const safeNum = (created.letterNumber || 'SURAT-SANKSI').replace(/[^a-zA-Z0-9_-]/g, '_')
+    pdfAttachment = {
+      filename: `${safeNum}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf',
+    }
+  } catch (pdfErr) {
+    console.error('Gagal membuat PDF surat sanksi:', pdfErr)
+  }
+
   const emailContent = buildHumanCapitalEmail({
-    title: 'Tindakan disipliner baru',
-    intro: 'Tindakan disipliner baru telah dibuat di modul Human Capital.',
+    title: `Penerbitan Surat Sanksi Disiplin (${levelName})`,
+    intro: `Surat tindakan sanksi disiplin telah diterbitkan untuk Saudara/i ${empName}. Berkas surat resmi dalam format PDF terlampir dalam email ini.`,
     details: [
-      `Karyawan: ${employee.name}`,
-      `Kategori: ${category?.name || '-'}`,
-      `Severity: ${category?.severity || '-'}`,
-      `SP Level: SP${created.spLevel}`,
+      `Karyawan: ${empName} (SN: ${employeeDetails?.employeeSn || '-'})`,
+      `Kategori: [${category?.code || 'DISC'}] ${category?.name || '-'}`,
+      `Tingkat Sanksi: ${levelName}`,
+      `Nomor Surat: ${created.letterNumber || '-'}`,
+      `Tanggal Efektif: ${created.effectiveDate}`,
+      created.expiryDate ? `Berlaku Hingga: ${created.expiryDate}` : null,
       `Status: ${created.status}`,
-      created.letterNumber ? `No surat: ${created.letterNumber}` : null,
     ],
   })
 
@@ -280,17 +442,18 @@ export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
     templateCode: 'hc_disciplinary_created',
     templateName: 'HC Disciplinary Created',
     variables: {
-      employeeName: employee.name,
+      employeeName: empName,
       categoryName: category?.name || '-',
       severity: category?.severity || '-',
-      spLevel: `SP${created.spLevel}`,
+      spLevel: levelName,
       status: created.status,
       letterNumber: created.letterNumber || '-',
     },
-    extraTo: employee.email ? [employee.email] : [],
-    fallbackSubject: `Tindakan disipliner baru: ${employee.name}`,
+    extraTo: empEmail ? [empEmail] : [],
+    fallbackSubject: `Surat Tindakan Disiplin (${levelName}): ${empName}`,
     fallbackHtml: emailContent.html,
     fallbackText: emailContent.text,
+    attachments: pdfAttachment ? [pdfAttachment] : undefined,
   })
 
   revalidatePath(DISCIPLINARY_PATH)
@@ -386,13 +549,16 @@ export async function getDisciplinaryStats() {
   const today = new Date()
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
   return {
+    totalCases: records.length,
     activeSp: records.filter((record) => isActiveRecord(record.status, record.expiryDate)).length,
     expired: records.filter((record) => isExpiredRecord(record.status, record.expiryDate)).length,
     thisMonth: records.filter((record) => new Date(record.violationDate) >= monthStart).length,
     byLevel: {
+      Teguran: records.filter((record) => record.spLevel === 'Teguran').length,
       SP1: records.filter((record) => record.spLevel === 'SP1').length,
       SP2: records.filter((record) => record.spLevel === 'SP2').length,
       SP3: records.filter((record) => record.spLevel === 'SP3').length,
+      Skorsing: records.filter((record) => record.spLevel === 'Skorsing').length,
       Termination: records.filter((record) => record.spLevel === 'Termination').length,
     },
   }
@@ -428,10 +594,13 @@ export async function getActiveEmployees() {
       employeeSn: employees.employeeSn,
       department: masterDepartments.name,
       position: hrPositions.rankName,
+      jobTitle: employees.jobTitle,
+      siteName: sites.name,
     })
     .from(employees)
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
     .where(and(...conditions))
     .orderBy(asc(employees.name))
 }
@@ -466,17 +635,49 @@ export async function getRecentDisciplinaryActions(days = 30) {
 }
 
 function normalizeAction(record: typeof hcDisciplinaryActions.$inferSelect) {
+  const lvl = record.spLevel
+  const spLevel =
+    lvl === 0
+      ? 'Teguran'
+      : lvl === 1
+      ? 'SP1'
+      : lvl === 2
+      ? 'SP2'
+      : lvl === 3
+      ? 'SP3'
+      : lvl === 4
+      ? 'Skorsing'
+      : lvl === 5
+      ? 'Termination'
+      : `SP${lvl}`
+
   return {
     ...record,
     categoryId: record.violationCategoryId,
-    spLevel: `SP${record.spLevel}`,
+    spLevel,
     description: record.violationDescription,
   }
 }
 
 function normalizeCategory(record: typeof hcViolationCategories.$inferSelect) {
+  const lvl = record.defaultSpLevel
+  const defaultSpLevel =
+    lvl === 0
+      ? 'Teguran'
+      : lvl === 1
+      ? 'SP1'
+      : lvl === 2
+      ? 'SP2'
+      : lvl === 3
+      ? 'SP3'
+      : lvl === 4
+      ? 'Skorsing'
+      : lvl === 5
+      ? 'Termination'
+      : `SP${lvl}`
+
   return {
     ...record,
-    defaultSpLevel: `SP${record.defaultSpLevel}`,
+    defaultSpLevel,
   }
 }

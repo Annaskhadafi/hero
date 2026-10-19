@@ -86,6 +86,7 @@ export async function sendHumanCapitalEmail(input: {
   variables?: Record<string, string | number | boolean | Date | null | undefined>
   extraTo?: string | string[] | null
   extraCc?: string | string[] | null
+  attachments?: any[]
 }) {
   const recipients = await resolveHumanCapitalRecipients({
     extraTo: input.extraTo,
@@ -106,6 +107,7 @@ export async function sendHumanCapitalEmail(input: {
     fallbackSubject: input.fallbackSubject,
     fallbackHtml: input.fallbackHtml,
     fallbackText: input.fallbackText,
+    attachments: input.attachments,
   })
 }
 

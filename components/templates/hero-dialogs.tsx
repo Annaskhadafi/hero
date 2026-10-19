@@ -67,8 +67,8 @@ export function HeroFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn('p-6', maxClass)}>
-        <DialogHeader>
+      <DialogContent className={cn('p-6 overflow-hidden flex flex-col max-h-[90vh]', maxClass)}>
+        <DialogHeader className="shrink-0">
           <DialogTitle className="text-base font-bold text-slate-900">{title}</DialogTitle>
           {description && (
             <DialogDescription className="text-xs text-slate-500">
@@ -77,12 +77,12 @@ export function HeroFormDialog({
           )}
         </DialogHeader>
 
-        <form onSubmit={onSubmit}>
-          <div className="max-h-[65vh] space-y-4 overflow-y-auto py-3 pr-1">
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="max-h-[68vh] flex-1 space-y-4 overflow-y-auto py-3 pr-2">
             {children}
           </div>
 
-          <DialogFooter className="mt-4 gap-2 border-t pt-3">
+          <DialogFooter className="mt-4 shrink-0 gap-2 border-t pt-3">
             <Button
               type="button"
               variant="outline"
@@ -219,8 +219,8 @@ export function HeroDetailModal({
 }: HeroDetailModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl p-6 sm:max-w-5xl">
-        <DialogHeader className="border-b pb-4">
+      <DialogContent className="max-w-4xl p-6 sm:max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+        <DialogHeader className="border-b pb-4 shrink-0">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2.5">
@@ -252,11 +252,11 @@ export function HeroDetailModal({
           </div>
         </DialogHeader>
 
-        <div className="max-h-[70vh] overflow-y-auto py-4 pr-1">
+        <div className="flex-1 min-h-0 overflow-y-auto py-4 pr-1">
           {children}
         </div>
 
-        <DialogFooter className="border-t pt-3">
+        <DialogFooter className="border-t pt-3 shrink-0">
           <Button
             type="button"
             variant="outline"

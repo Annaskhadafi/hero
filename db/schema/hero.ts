@@ -3688,6 +3688,9 @@ export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
   effectiveDate: date('effective_date').notNull(),
   expiryDate: date('expiry_date'), // SP expiry (e.g., SP1 valid 6 months)
   issuedBy: text('issued_by').notNull().default(''),
+  issuerDepartment: text('issuer_department').notNull().default(''),
+  issuerSignature: text('issuer_signature').notNull().default(''),
+  useLetterhead: boolean('use_letterhead').notNull().default(false),
   notes: text('notes').notNull().default(''),
   attachmentUrl: text('attachment_url').notNull().default(''),
   status: text('status').notNull().default('active'), // active, expired, escalated, revoked
