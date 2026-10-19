@@ -412,11 +412,19 @@ async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
 }
 
 function queuedPhotoToFile(payload: QueuedFilePayload): File {
-  const match = payload.dataUrl.match(/^data:(.+);base64,(.+)$/)
+  if (!payload?.dataUrl || typeof payload.dataUrl !== 'string') {
+    throw new Error('Payload foto draft kosong. Silakan lampirkan foto ulang.')
+  }
+  const match = payload.dataUrl.match(/^data:(.+?);base64,([\s\S]+)$/)
   if (!match) throw new Error('Payload foto draft tidak valid.')
-  const binary = atob(match[2])
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
-  return new File([bytes], payload.name, { type: payload.type || match[1] })
+  try {
+    const cleanBase64 = match[2].replace(/\s/g, '')
+    const binary = atob(cleanBase64)
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    return new File([bytes], payload.name || 'evidence.webp', { type: payload.type || match[1] })
+  } catch {
+    throw new Error('Payload foto draft tidak valid.')
+  }
 }
 
 async function prepareEvidence(
@@ -425,8 +433,21 @@ async function prepareEvidence(
   restored?: QueuedFilePayload | null,
   existingPreviewUrls?: string[]
 ) {
-  // If we already have valid uploaded preview URLs (from background upload), reuse them immediately
-  const validExistingUrls = (existingPreviewUrls || []).filter(
+  const restoredAny = restored as any
+  const candidateUrls = [
+    ...(existingPreviewUrls || []),
+    restoredAny?.url,
+    restoredAny?.previewUrl,
+    typeof restoredAny?.dataUrl === 'string' &&
+    (restoredAny.dataUrl.startsWith('/api/') || restoredAny.dataUrl.startsWith('http'))
+      ? restoredAny.dataUrl
+      : null,
+    typeof restoredAny === 'string' && (restoredAny.startsWith('/api/') || restoredAny.startsWith('http'))
+      ? restoredAny
+      : null,
+  ].filter(Boolean) as string[]
+
+  const validExistingUrls = candidateUrls.filter(
     (url) => typeof url === 'string' && (url.startsWith('/api/') || url.startsWith('http')) && !url.startsWith('blob:')
   )
   if (validExistingUrls.length > 0) {
@@ -437,10 +458,20 @@ async function prepareEvidence(
   if (selectedFiles.length > 0) {
     return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
   }
+
   if (restored) {
-    return { payloads: [], urls: [await uploadActivityPhoto(queuedPhotoToFile(restored))] }
+    const dUrl = (restored as any)?.dataUrl
+    if (typeof dUrl === 'string' && dUrl.startsWith('data:')) {
+      try {
+        return { payloads: [], urls: [await uploadActivityPhoto(queuedPhotoToFile(restored))] }
+      } catch (err) {
+        console.warn('[prepareEvidence] Skip invalid/stripped draft photo:', err)
+      }
+    }
+    return { payloads: [restored], urls: [] }
   }
-  return { payloads: restored ? [restored] : [], urls: [] }
+
+  return { payloads: [], urls: [] }
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -3251,7 +3282,7 @@ export function MobileDailyActivityForm({
     gpsValid: boundary.gpsValid,
     boundaryStatus: boundary.status,
     boundaryMessage: boundary.message,
-    photo: queuedPhotoPayloads[0] ?? restoredPhotoPayload ?? null,
+    photo: queuedPhotoPayloads[0] ?? null,
     photos: queuedPhotoPayloads.length > 0 ? queuedPhotoPayloads : (restoredPhotoPayload ? [restoredPhotoPayload] : []),
     photoUrls: photoPreviewUrls.filter((url) => typeof url === 'string' && (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:'))),
     photoName,
@@ -3454,6 +3485,13 @@ export function MobileDailyActivityForm({
         return 'Waktu selesai harus setelah waktu mulai.'
       }
 
+      if (selectedAssignment?.requiresPhoto) {
+        const hasPhoto = photoFiles.length > 0 || photoFile || photoPreviewUrls.length > 0 || restoredPhotoPayload
+        if (!hasPhoto) {
+          return 'Foto bukti penugasan wajib dilampirkan. Silakan lampirkan foto dari kamera atau galeri.'
+        }
+      }
+
       return ''
     }
 
@@ -3503,6 +3541,13 @@ export function MobileDailyActivityForm({
 
       if (!revisionSessionId && library.requiresLocationGps && (!geo.latitude || !geo.longitude)) {
         return `Validasi GPS wajib aktif untuk aktivitas "${library.activityCode} - ${library.activityName}".`
+      }
+
+      if (library.requiresPhoto) {
+        const hasPhoto = (entry.photoFiles && entry.photoFiles.length > 0) || entry.photoFile || (entry.previewUrls && entry.previewUrls.length > 0) || entry.restoredPhotoPayload
+        if (!hasPhoto) {
+          return `Foto bukti wajib dilampirkan untuk "${library.activityCode} - ${library.activityName}". Silakan lampirkan foto dari kamera atau galeri.`
+        }
       }
 
       if (entry.startTime && entry.endTime) {
@@ -3965,6 +4010,48 @@ export function MobileDailyActivityForm({
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleClearCurrentDraft = async () => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus draft ini dan mereset formulir?')) {
+      return
+    }
+    isDeletedRef.current = true
+    if (serverAutosaveTimerRef.current) {
+      clearTimeout(serverAutosaveTimerRef.current)
+      serverAutosaveTimerRef.current = null
+    }
+
+    const draftSessionIdToDelete =
+      serverDraftSessionId ||
+      (initialDraft?.serverDraftSessionId ? Number(initialDraft.serverDraftSessionId) : null) ||
+      (activeDraftKey?.startsWith('hero:draft:activity:server-')
+        ? Number(activeDraftKey.replace('hero:draft:activity:server-', ''))
+        : null)
+
+    if (draftSessionIdToDelete) {
+      deleteServerActivityDraftAction(draftSessionIdToDelete).catch((err) => {
+        console.warn('[handleClearCurrentDraft] deleteServerActivityDraftAction error:', err)
+      })
+    }
+
+    if (activeDraftKey) removeActivityDraft(activeDraftKey)
+    if (initialDraftKey && initialDraftKey !== activeDraftKey) {
+      removeActivityDraft(initialDraftKey)
+    }
+    if (queuedDraftKey && queuedDraftKey !== activeDraftKey) {
+      removeActivityDraft(queuedDraftKey)
+    }
+    if (draftSessionIdToDelete) {
+      removeActivityDraft(`hero:draft:activity:server-${draftSessionIdToDelete}`)
+    }
+    try {
+      window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+    } catch {}
+    window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT, { detail: { deletedKey: activeDraftKey } }))
+
+    toast.success('Draft berhasil dibersihkan.')
+    window.location.replace('/mobile/activity')
   }
 
   return (
@@ -5196,6 +5283,17 @@ export function MobileDailyActivityForm({
                   Muat Ulang Halaman (Refresh)
                 </button>
               ) : null}
+
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 pt-2 border-t border-red-200/80">
+                <button
+                  type="button"
+                  onClick={handleClearCurrentDraft}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-3 py-1.5 text-xs font-bold text-red-700 shadow-sm hover:bg-red-100 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Trash2 className="size-3.5 text-red-600" />
+                  Hapus / Reset Draft Ini
+                </button>
+              </div>
             </div>
             <button
               type="button"

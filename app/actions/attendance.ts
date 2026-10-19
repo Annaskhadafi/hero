@@ -983,7 +983,7 @@ export async function getAttendancePermissionApproverCandidates() {
     if (fEmp) fallbackEmp = fEmp
   }
 
-  // 3. Query active colleagues / leaders
+  // 3. Query all active colleagues / leaders without arbitrary limit
   const activeStaff = await db
     .select({
       id: employees.id,
@@ -995,7 +995,6 @@ export async function getAttendancePermissionApproverCandidates() {
     .from(employees)
     .where(and(eq(employees.isActive, true), ne(employees.id, employee.id)))
     .orderBy(asc(employees.name))
-    .limit(300)
 
   const candidateMap = new Map<string, { value: string; label: string }>()
 
@@ -1013,10 +1012,15 @@ export async function getAttendancePermissionApproverCandidates() {
     })
   }
 
-  activeStaff.forEach((st) => {
+  // Prioritize same-site colleagues first, then cross-site
+  const sameSiteStaff = activeStaff.filter((st) => st.siteId != null && st.siteId === employee.siteId)
+  const otherStaff = activeStaff.filter((st) => st.siteId == null || st.siteId !== employee.siteId)
+  const sortedStaff = [...sameSiteStaff, ...otherStaff]
+
+  sortedStaff.forEach((st) => {
     const val = String(st.id)
     if (!candidateMap.has(val)) {
-      const isSameSite = st.siteId === employee.siteId
+      const isSameSite = st.siteId != null && st.siteId === employee.siteId
       const titleSuffix = st.jobTitle ? ` (${st.jobTitle})` : ''
       const siteSuffix = isSameSite ? '' : ' • Cross-Site'
       candidateMap.set(val, {
