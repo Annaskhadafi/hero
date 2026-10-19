@@ -5281,6 +5281,7 @@ export async function getDailyActivityApprovalByToken(token: string) {
         workDate: dailyActivitySessions.workDate,
         shiftCode: dailyActivitySessions.shiftCode,
         status: dailyActivitySessions.status,
+        summaryRemark: dailyActivitySessions.summaryRemark,
         submittedAt: dailyActivitySessions.submittedAt,
         approvedAt: dailyActivitySessions.approvedAt,
         employeeId: dailyActivitySessions.employeeId,
@@ -5303,33 +5304,72 @@ export async function getDailyActivityApprovalByToken(token: string) {
       return { success: false as const, error: 'Session tidak ditemukan.' }
     }
 
-    const allApprovals = await db
-      .select()
-      .from(dailyActivityApprovals)
-      .where(eq(dailyActivityApprovals.sessionId, approval.sessionId))
-      .orderBy(asc(dailyActivityApprovals.stepOrder))
-
-    const itemRows = await db
-      .select({
-        id: dailyActivitySessionItems.id,
-        snapshotLabel: dailyActivitySessionItems.snapshotLabel,
-        snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
-        unitNumber: dailyActivitySessionItems.unitNumber,
-        remark: dailyActivitySessionItems.remark,
-        startedAt: dailyActivitySessionItems.startedAt,
-        endedAt: dailyActivitySessionItems.endedAt,
-        actualPoints: dailyActivitySessionItems.actualPoints,
-        isChecked: dailyActivitySessionItems.isChecked,
-        sortOrder: dailyActivitySessionItems.sortOrder,
-      })
-      .from(dailyActivitySessionItems)
-      .where(
-        and(
-          eq(dailyActivitySessionItems.sessionId, approval.sessionId),
-          eq(dailyActivitySessionItems.isChecked, true)
+    const [allApprovals, itemRows, itemTeamMemberRows, sessionTeamRows] = await Promise.all([
+      db
+        .select()
+        .from(dailyActivityApprovals)
+        .where(eq(dailyActivityApprovals.sessionId, approval.sessionId))
+        .orderBy(asc(dailyActivityApprovals.stepOrder)),
+      db
+        .select({
+          id: dailyActivitySessionItems.id,
+          snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+          snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+          snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+          unitNumber: dailyActivitySessionItems.unitNumber,
+          remark: dailyActivitySessionItems.remark,
+          startedAt: dailyActivitySessionItems.startedAt,
+          endedAt: dailyActivitySessionItems.endedAt,
+          actualPoints: dailyActivitySessionItems.actualPoints,
+          isChecked: dailyActivitySessionItems.isChecked,
+          sortOrder: dailyActivitySessionItems.sortOrder,
+        })
+        .from(dailyActivitySessionItems)
+        .where(
+          and(
+            eq(dailyActivitySessionItems.sessionId, approval.sessionId),
+            eq(dailyActivitySessionItems.isChecked, true)
+          )
         )
-      )
-      .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id))
+        .orderBy(asc(dailyActivitySessionItems.sortOrder), asc(dailyActivitySessionItems.id)),
+      db
+        .select({
+          itemId: dailyActivitySessionItemTeamMembers.itemId,
+          employeeId: employees.id,
+          name: employees.name,
+        })
+        .from(dailyActivitySessionItemTeamMembers)
+        .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+        .innerJoin(
+          dailyActivitySessionItems,
+          eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+        )
+        .where(eq(dailyActivitySessionItems.sessionId, approval.sessionId)),
+      db
+        .select({
+          employeeId: employees.id,
+          name: employees.name,
+        })
+        .from(dailyActivitySessionTeamMembers)
+        .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+        .where(eq(dailyActivitySessionTeamMembers.sessionId, approval.sessionId)),
+    ])
+
+    const itemTeamMap = new Map<number, string[]>()
+    if (Array.isArray(itemTeamMemberRows)) {
+      itemTeamMemberRows.forEach((r) => {
+        const list = itemTeamMap.get(r.itemId) || []
+        list.push(r.name)
+        itemTeamMap.set(r.itemId, list)
+      })
+    }
+
+    const allSessionTeamNames = Array.from(
+      new Set([
+        ...sessionTeamRows.map((t) => t.name),
+        ...itemTeamMemberRows.map((t) => t.name),
+      ])
+    )
 
     const sessionItems = itemRows.map((item) => {
       const startDate = item.startedAt ? new Date(item.startedAt) : null
@@ -5340,6 +5380,22 @@ export async function getDailyActivityApprovalByToken(token: string) {
           : 0
       const hours = Math.floor(durationMinutes / 60)
       const mins = durationMinutes % 60
+
+      let parsedPayload: any = {}
+      try {
+        if (item.snapshotPayload) parsedPayload = JSON.parse(item.snapshotPayload)
+      } catch {}
+
+      const dbTeam = itemTeamMap.get(item.id) || []
+      const payloadTeam = Array.isArray(parsedPayload?.itemTeamMembers)
+        ? parsedPayload.itemTeamMembers.map((m: any) => m.name || m.employeeName).filter(Boolean)
+        : parsedPayload?.itemTeamMembersSummary
+        ? String(parsedPayload.itemTeamMembersSummary).split(',').map((s: string) => s.trim()).filter(Boolean)
+        : []
+
+      const combinedTeam = Array.from(new Set([...dbTeam, ...payloadTeam]))
+      const itemTeamMembersSummary = combinedTeam.length > 0 ? combinedTeam.join(', ') : '-'
+
       return {
         id: item.id,
         label: item.snapshotLabel || '',
@@ -5349,8 +5405,14 @@ export async function getDailyActivityApprovalByToken(token: string) {
         duration: durationMinutes > 0 ? (hours > 0 ? `${hours}j ${mins}m` : `${mins}m`) : '-',
         points: Number(item.actualPoints) || 0,
         sortOrder: item.sortOrder || 0,
+        itemTeamMembersSummary,
       }
     })
+
+    const rawTeamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+    const teamMembersSummary = allSessionTeamNames.length > 0
+      ? allSessionTeamNames.join(', ')
+      : (rawTeamMatch ? rawTeamMatch[1].trim() : null)
 
     const itemCount = sessionItems.length
     const totalPoints = sessionItems.reduce((sum, i) => sum + i.points, 0)
@@ -5418,6 +5480,8 @@ export async function getDailyActivityApprovalByToken(token: string) {
           approvedAt: header.approvedAt,
           employeeId: header.employeeId,
           siteId: header.siteId,
+          summaryRemark: header.summaryRemark,
+          teamMembersSummary,
         },
         employee: {
           id: header.employeeId,
@@ -7631,7 +7695,13 @@ export async function createDailyActivitySessionAction(input: {
             ? (it as any).itemTeamMemberIds.map(Number)
             : []
           const itemMembers: any[] = Array.isArray((it as any).itemTeamMembers) ? (it as any).itemTeamMembers : []
-          const itemTeamSummary = itemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
+          let itemTeamSummary = itemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
+          if (!itemTeamSummary && itemMemberIds.length > 0) {
+            itemTeamSummary = itemMemberIds
+              .map((id) => allEmps.find((e) => e.id === id)?.name)
+              .filter(Boolean)
+              .join(', ')
+          }
 
           return {
             sessionId: created.id,

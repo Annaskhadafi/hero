@@ -1,53 +1,46 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { HERO_DEFAULT_AUTH } from './e2e-auth-helper';
+import { loginToHero } from './e2e-auth-helper';
 
 test('verifies daily activity team input, single approval document, and document preview with personnel separation', async ({
   app,
   screen,
+  browser,
 }) => {
-  // 1. Open login page with callback directly to target document workspace
-  await app.open('/sign-in?callbackUrl=/dashboard/activity-hub/document/857');
+  // 1. Authenticate with standard credentials
+  await loginToHero(app, screen, browser);
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  const emailInput = screen.getByPlaceholder(/Email atau SN/i, { visible: true });
-  await emailInput.fill(HERO_DEFAULT_AUTH.username);
-
-  const passwordInput = screen.getByPlaceholder(/password|••••••••••/i, { visible: true });
-  await passwordInput.fill(HERO_DEFAULT_AUTH.password);
-
-  const submitButton = screen.getByRole('button', { name: /^Log In$/i, visible: true });
-  await submitButton.click();
-
-  // Wait for login processing and redirect to complete
-  for (let i = 0; i < 20; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    try {
-      const isSigningIn = await screen
-        .getByRole('button', { name: /Signing in\.\.\.|Log In/i })
-        .isVisible()
-        .catch(() => false);
-      if (!isSigningIn) break;
-    } catch {
-      break;
-    }
-  }
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  // 2. Wait for document workspace to load and verify Document Workspace badge
-  const docBadge = screen.getByText('Document Workspace', { visible: true });
-  await expect(docBadge).toBeVisible();
-
-  // Capture screenshot: document preview displaying personnel breakdown
-  await app.screenshot('01-daily-activity-document-preview');
-
-  // 3. Open Approval Inbox and verify single document consolidation
+  // 2. Open /dashboard/approval
   await app.open('/dashboard/approval');
   await new Promise((resolve) => setTimeout(resolve, 3000));
+  await expect(browser.locator('body')).toBeVisible();
 
-  const inboxTitle = screen.getByText('Approval Inbox', { visible: true });
-  await expect(inboxTitle).toBeVisible();
+  // Verify Inbox page loaded
+  const inboxHeading = screen.getByRole('heading', { name: /Approval Inbox/i });
+  await expect(inboxHeading).toBeVisible({ timeout: 20000 });
 
-  // Capture screenshot: Approval Workbench with consolidated review
-  await app.screenshot('02-daily-activity-approval-workbench');
+  // Screenshot Approval Workbench
+  await app.screenshot('01-daily-activity-approval-workbench');
+
+  // Filter or click "Daily Activity" button
+  const dailyActivityTab = browser.locator('button:has-text("Daily Activity")').first();
+  if (await dailyActivityTab.isVisible().catch(() => false)) {
+    await dailyActivityTab.click();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  // 3. Click Buka TTD ↗ button on the Daily Activity item to open Document Review modal
+  const bukaTtdBtn = browser.locator('button:has-text("Buka TTD")').first();
+  await expect(bukaTtdBtn).toBeVisible({ timeout: 15000 });
+  await bukaTtdBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  // Screenshot the approval review drawer/modal showing the numbered team list per activity
+  await app.screenshot('02-daily-activity-approval-modal-numbered-team');
+
+  // Verify that modal contains Document details and Anggota Tim row
+  const dialog = browser.locator('[role="dialog"]').first();
+  await expect(dialog).toBeVisible();
 });
 

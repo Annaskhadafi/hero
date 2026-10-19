@@ -2415,22 +2415,50 @@ async function getDailyActivityInboxItems(
 
   const sessionIds = Array.from(new Set(filtered.map((r) => r.sessionId)))
 
-  const allItems = sessionIds.length > 0
-    ? await db
-        .select({
-          id: dailyActivitySessionItems.id,
-          sessionId: dailyActivitySessionItems.sessionId,
-          snapshotLabel: dailyActivitySessionItems.snapshotLabel,
-          unitNumber: dailyActivitySessionItems.unitNumber,
-          remark: dailyActivitySessionItems.remark,
-          actualPoints: dailyActivitySessionItems.actualPoints,
-          startedAt: dailyActivitySessionItems.startedAt,
-          endedAt: dailyActivitySessionItems.endedAt,
-        })
-        .from(dailyActivitySessionItems)
-        .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
-        .orderBy(asc(dailyActivitySessionItems.id))
-    : []
+  const [allItems, allItemTeamMemberRows] = await Promise.all([
+    sessionIds.length > 0
+      ? db
+          .select({
+            id: dailyActivitySessionItems.id,
+            sessionId: dailyActivitySessionItems.sessionId,
+            snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+            snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+            unitNumber: dailyActivitySessionItems.unitNumber,
+            remark: dailyActivitySessionItems.remark,
+            actualPoints: dailyActivitySessionItems.actualPoints,
+            startedAt: dailyActivitySessionItems.startedAt,
+            endedAt: dailyActivitySessionItems.endedAt,
+          })
+          .from(dailyActivitySessionItems)
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+          .orderBy(asc(dailyActivitySessionItems.id))
+      : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            itemId: dailyActivitySessionItemTeamMembers.itemId,
+            employeeId: employees.id,
+            name: employees.name,
+          })
+          .from(dailyActivitySessionItemTeamMembers)
+          .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+          .innerJoin(
+            dailyActivitySessionItems,
+            eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+          )
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+      : Promise.resolve([]),
+  ])
+
+  const itemTeamMap = new Map<number, string[]>()
+  if (Array.isArray(allItemTeamMemberRows)) {
+    for (const r of allItemTeamMemberRows) {
+      const list = itemTeamMap.get(r.itemId) || []
+      list.push(r.name)
+      itemTeamMap.set(r.itemId, list)
+    }
+  }
 
   const itemsMap = new Map<number, any[]>()
   for (const it of allItems) {
@@ -2441,13 +2469,31 @@ async function getDailyActivityInboxItems(
       if (diffMs > 0) mins = Math.round(diffMs / 60000)
     }
     const durationStr = `${Math.floor(mins / 60)}j ${mins % 60}m`
+
+    let parsedPayload: any = {}
+    try {
+      if (it.snapshotPayload) parsedPayload = JSON.parse(it.snapshotPayload)
+    } catch {}
+
+    const dbTeam = itemTeamMap.get(it.id) || []
+    const payloadTeam = Array.isArray(parsedPayload?.itemTeamMembers)
+      ? parsedPayload.itemTeamMembers.map((m: any) => m.name || m.employeeName).filter(Boolean)
+      : parsedPayload?.itemTeamMembersSummary
+      ? String(parsedPayload.itemTeamMembersSummary).split(',').map((s: string) => s.trim()).filter(Boolean)
+      : []
+
+    const combinedTeam = Array.from(new Set([...dbTeam, ...payloadTeam]))
+    const itemTeamMembersSummary = combinedTeam.length > 0 ? combinedTeam.join(', ') : '-'
+
     list.push({
       id: it.id,
       label: it.snapshotLabel || 'Aktivitas Operasional',
+      group: it.snapshotGroupName || '',
       unitNumber: it.unitNumber || '-',
       duration: durationStr,
       points: Number(it.actualPoints) || 0,
       remark: it.remark || '-',
+      itemTeamMembersSummary,
     })
     itemsMap.set(it.sessionId, list)
   }
@@ -2492,6 +2538,10 @@ async function getDailyActivityInboxItems(
         const teamMatch = (row.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
         return teamMatch ? teamMatch[1].trim() : null
       })(),
+      itemTeamNumberedList: items.map((it, idx) => ({
+        number: idx + 1,
+        teamSummary: it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-' ? it.itemTeamMembersSummary : '-',
+      })),
       shiftCode: row.shiftCode,
       sessionStatus: row.sessionStatus || 'submitted',
       workDate,

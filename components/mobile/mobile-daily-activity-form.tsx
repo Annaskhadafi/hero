@@ -5796,12 +5796,40 @@ export function MobileDailyActivityForm({
                             <td className="font-bold bg-slate-100 text-slate-900">Dept / Section</td>
                             <td className="text-slate-900">{[employee?.department || initialSessionData?.employee?.department, employee?.section || initialSessionData?.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                           </tr>
-                          {teamSummary ? (
-                            <tr>
-                              <td className="font-bold bg-slate-100 text-slate-900">Anggota Tim</td>
-                              <td colSpan={3} className="text-slate-900 font-normal">{teamSummary}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const items = previewItemsList || []
+                            const hasItemTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-')
+
+                            if (!hasItemTeams && !teamSummary && items.length === 0) return null
+
+                            return (
+                              <tr>
+                                <td className="font-bold bg-slate-100 text-slate-900 align-top py-1.5">Anggota Tim</td>
+                                <td colSpan={3} className="text-slate-900 font-normal py-1.5">
+                                  {items.length > 0 ? (
+                                    <div className="space-y-1">
+                                      {items.map((it: any, idx: number) => {
+                                        const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
+                                        const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
+                                          ? it.itemTeamMembersSummary
+                                          : (hasAnyItemSpecific ? '-' : (teamSummary || '-'));
+                                        return (
+                                          <div key={it.id || idx} className="text-[7.5pt] flex items-start gap-1.5 leading-snug">
+                                            <span className="font-bold text-slate-900 shrink-0">{idx + 1}.</span>
+                                            <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-slate-900 font-medium'}>
+                                              {itemTeam}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-900">{teamSummary || '-'}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })()}
                           {(() => {
                             const cleanNotes = (notes || '')
                               .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')

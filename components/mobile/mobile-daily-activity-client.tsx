@@ -1054,12 +1054,41 @@ export function MobileDailyActivityClient({
                             <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
                             <td className="text-black">{[selectedReviewDoc.employee?.department, selectedReviewDoc.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                           </tr>
-                          {selectedReviewDoc.teamMembersSummary ? (
-                            <tr>
-                              <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
-                              <td colSpan={3} className="text-black font-normal">{selectedReviewDoc.teamMembersSummary}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const items = selectedReviewDoc.items || []
+                            const hasItemTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-')
+                            const rawSessionTeam = selectedReviewDoc.teamMembersSummary || (selectedReviewDoc.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
+
+                            if (!hasItemTeams && !rawSessionTeam && items.length === 0) return null
+
+                            return (
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
+                                <td colSpan={3} className="text-black font-normal py-1.5">
+                                  {items.length > 0 ? (
+                                    <div className="space-y-1">
+                                      {items.map((it: any, idx: number) => {
+                                        const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
+                                        const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
+                                          ? it.itemTeamMembersSummary
+                                          : (hasAnyItemSpecific ? '-' : (rawSessionTeam || '-'));
+                                        return (
+                                          <div key={it.id || idx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                            <span className="font-bold text-slate-900 shrink-0">{idx + 1}.</span>
+                                            <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-slate-900 font-medium'}>
+                                              {itemTeam}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <span className="text-black">{rawSessionTeam || '-'}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })()}
                           {(() => {
                             const cleanNotes = (selectedReviewDoc.notes || selectedReviewDoc.summaryRemark || '')
                               .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')

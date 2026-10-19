@@ -3028,12 +3028,41 @@ export function InboxTab({
                                 <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
                                 <td className="text-black">{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                               </tr>
-                              {((currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]) ? (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
-                                  <td colSpan={3} className="text-black font-normal">{(currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]}</td>
-                                </tr>
-                              ) : null}
+                              {(() => {
+                                const items = (currentBatchDoc.rawDaily as any)?.items || (currentBatchDoc.rawDaily as any)?.sessionItems || (currentBatchDoc as any)?.items || []
+                                const rawSessionTeam = (currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
+                                const hasTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-') || Boolean(rawSessionTeam)
+
+                                if (!hasTeams && items.length === 0) return null
+
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
+                                    <td colSpan={3} className="text-black font-normal py-1.5">
+                                      {items.length > 0 ? (
+                                        <div className="space-y-1">
+                                          {items.map((it: any, idx: number) => {
+                                            const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
+                                            const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
+                                              ? it.itemTeamMembersSummary
+                                              : (hasAnyItemSpecific ? '-' : (rawSessionTeam || '-'));
+                                            return (
+                                              <div key={it.id || idx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                                <span className="font-bold text-slate-900 shrink-0">{idx + 1}.</span>
+                                                <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-slate-900 font-medium'}>
+                                                  {itemTeam}
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <span className="text-black">{rawSessionTeam || '-'}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })()}
                             </tbody>
                           </table>
 
@@ -3067,7 +3096,12 @@ export function InboxTab({
                                                   {it.snapshotGroupName || it.group}
                                                 </span>
                                               ) : null}
-                                              {it.label || it.snapshotLabel || 'Aktivitas'}
+                                              <span className="font-medium text-slate-900">{it.label || it.snapshotLabel || 'Aktivitas'}</span>
+                                              {it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-' ? (
+                                                <div className="mt-0.5 text-[7pt] text-slate-600 font-normal">
+                                                  <span className="font-semibold text-slate-800">Tim:</span> {it.itemTeamMembersSummary}
+                                                </div>
+                                              ) : null}
                                             </td>
                                             <td className="text-center align-middle">{it.duration || '-'}</td>
                                             <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>

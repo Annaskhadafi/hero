@@ -330,8 +330,50 @@ function drawDocumentHeader(
     boxY -= rowH;
   }
 
-  // Optional Row: Anggota Tim
-  if (data.teamMembersSummary) {
+  // Numbered Row: Anggota Tim per Activity
+  const hasAnyItemTeam = data.items?.some(
+    (item) => item.itemTeamMembersSummary && item.itemTeamMembersSummary !== "-"
+  );
+  const hasSessionTeam = Boolean(data.teamMembersSummary);
+
+  if (data.items && data.items.length > 0 && (hasAnyItemTeam || hasSessionTeam)) {
+    const itemLines: string[] = [];
+    for (const [idx, item] of data.items.entries()) {
+      const specific = item.itemTeamMembersSummary && item.itemTeamMembersSummary !== "-" ? item.itemTeamMembersSummary : null;
+      const itemTeam = specific || (hasAnyItemTeam ? "-" : (data.teamMembersSummary || "-"));
+      itemLines.push(`${idx + 1}. ${itemTeam}`);
+    }
+
+    const teamRowH = Math.max(rowH, itemLines.length * 11 + 6);
+    page.drawRectangle({
+      x: startX,
+      y: boxY - teamRowH,
+      width: boxWidth,
+      height: teamRowH,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0.6,
+    });
+    page.drawText("Anggota Tim:", {
+      x: startX + 6,
+      y: boxY - 11,
+      size: 7.5,
+      font: boldFont,
+      color: rgb(0, 0, 0),
+    });
+
+    let currentTeamY = boxY - 11;
+    for (const line of itemLines) {
+      page.drawText(line.slice(0, 95), {
+        x: startX + 70,
+        y: currentTeamY,
+        size: 7,
+        font: regularFont,
+        color: rgb(0, 0, 0),
+      });
+      currentTeamY -= 10.5;
+    }
+    boxY -= teamRowH;
+  } else if (data.teamMembersSummary) {
     page.drawRectangle({
       x: startX,
       y: boxY - rowH,

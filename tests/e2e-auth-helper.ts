@@ -54,19 +54,29 @@ export async function loginToHero(
     const emailInput = screen.getByPlaceholder(/Email atau SN/i, { visible: true });
     await emailInput.fill(username);
   } catch {
-    if (browser?.locator) {
-      const emailInput = browser.locator('#email, input[name="username"]').first();
+    try {
+      const emailInput = screen.getByRole('textbox', { name: /Email atau SN/i });
       await emailInput.fill(username);
+    } catch {
+      if (browser?.locator) {
+        const emailInput = browser.locator('#email, input[name="username"]').first();
+        await emailInput.fill(username);
+      }
     }
   }
 
   try {
-    const passwordInput = screen.getByPlaceholder(/password|••••••••••/i, { visible: true });
+    const passwordInput = screen.getByRole('textbox', { name: /Kata sandi|password/i });
     await passwordInput.fill(password);
   } catch {
-    if (browser?.locator) {
-      const passwordInput = browser.locator('#password, input[name="password"]').first();
+    try {
+      const passwordInput = screen.getByPlaceholder(/password|••••••••••/i, { visible: true });
       await passwordInput.fill(password);
+    } catch {
+      if (browser?.locator) {
+        const passwordInput = browser.locator('#password, input[name="password"]').first();
+        await passwordInput.fill(password);
+      }
     }
   }
 

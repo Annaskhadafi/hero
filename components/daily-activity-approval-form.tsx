@@ -1059,13 +1059,40 @@ export function DailyActivityApprovalForm({
             <td>Site: <strong>{profileForm.siteName || '—'}</strong></td>
             <td>Customer: <strong>{profileForm.customerName || 'Default Customer'}</strong></td>
           </tr>
-          {currentTeamMembersSummary ? (
-            <tr>
-              <td colSpan={2}>
-                Anggota Tim: <span className="text-black font-normal">{currentTeamMembersSummary}</span>
-              </td>
-            </tr>
-          ) : null}
+          {(() => {
+            const items = itemsList || []
+            const hasItemTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-')
+
+            if (!hasItemTeams && !currentTeamMembersSummary && items.length === 0) return null
+
+            return (
+              <tr>
+                <td colSpan={2} className="py-1.5">
+                  <div className="font-bold text-black mb-1">Anggota Tim:</div>
+                  {items.length > 0 ? (
+                    <div className="space-y-1 pl-1">
+                      {items.map((it: any, idx: number) => {
+                        const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
+                        const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
+                          ? it.itemTeamMembersSummary
+                          : (hasAnyItemSpecific ? '-' : (currentTeamMembersSummary || '-'));
+                        return (
+                          <div key={it.id || idx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                            <span className="font-bold text-black shrink-0">{idx + 1}.</span>
+                            <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-black font-medium'}>
+                              {itemTeam}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-black font-normal">{currentTeamMembersSummary || '-'}</span>
+                  )}
+                </td>
+              </tr>
+            )
+          })()}
         </tbody>
       </table>
 
