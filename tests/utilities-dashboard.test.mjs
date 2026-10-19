@@ -25,6 +25,8 @@ test('Utilities Dashboard Architecture and Contracts', () => {
   assert.match(libSource, /activityBars/)
   assert.match(libSource, /dailyTrends/)
   assert.match(libSource, /dateMatrix/)
+  assert.match(libSource, /approvedCondition/)
+  assert.match(libSource, /lower\(\$\{dailyActivitySessions\.status\}\) in \('approved'/)
   assert.match(libSource, /technicianMatrix/)
   assert.match(libSource, /unitMatrix/)
 
@@ -46,6 +48,7 @@ test('Utilities Dashboard Architecture and Contracts', () => {
   // 5. Client UI verification
   const clientSource = read('app/dashboard/utilities/client.tsx')
   assert.match(clientSource, /Dashboard Utilities Site/)
+  assert.match(clientSource, /Approved Only/)
   assert.match(clientSource, /ResponsiveContainer/)
   assert.match(clientSource, /BarChart/)
   assert.match(clientSource, /AreaChart/)

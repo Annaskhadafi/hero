@@ -314,8 +314,18 @@ export async function getUtilitiesDashboardData(
   }
 
   // 3. Query Sessions in the target Site & Date Range
+  // Hanya hitung aktivitas yang sudah approved (status Approved/completed/selesai atau approvedAt is not null dan bukan draft/rejected/submitted)
+  const approvedCondition = or(
+    sql`lower(${dailyActivitySessions.status}) in ('approved', 'completed', 'closed', 'selesai')`,
+    and(
+      sql`${dailyActivitySessions.approvedAt} is not null`,
+      sql`lower(${dailyActivitySessions.status}) not in ('draft', 'rejected', 'reverted', 'needs_revision', 'submitted')`
+    )
+  )
+
   const sessionConds = [
     isNull(dailyActivitySessions.deletedAt),
+    approvedCondition,
     sql`date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate}`,
     sql`date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate}`,
   ]
@@ -365,6 +375,7 @@ export async function getUtilitiesDashboardData(
       .where(
         and(
           isNull(dailyActivitySessions.deletedAt),
+          approvedCondition,
           eq(dailyActivitySessions.siteId, currentSite.id)
         )
       )
@@ -383,6 +394,7 @@ export async function getUtilitiesDashboardData(
 
       const fallbackConds = [
         isNull(dailyActivitySessions.deletedAt),
+        approvedCondition,
         sql`date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate}`,
         sql`date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate}`,
         eq(dailyActivitySessions.siteId, currentSite.id),
