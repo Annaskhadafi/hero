@@ -47,12 +47,12 @@ function dataUrlToFile(dataUrl: string, filename = 'signature.png'): File | null
   }
 }
 
-function getCroppedCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
+function getCroppedCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement | null {
   const ctx = canvas.getContext('2d')
-  if (!ctx) return canvas
+  if (!ctx) return null
 
   const { width, height } = canvas
-  if (width === 0 || height === 0) return canvas
+  if (width === 0 || height === 0) return null
 
   try {
     const imgData = ctx.getImageData(0, 0, width, height)
@@ -81,7 +81,7 @@ function getCroppedCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
       }
     }
 
-    if (!found || maxX < minX || maxY < minY) return canvas
+    if (!found || maxX < minX || maxY < minY) return null
 
     const padding = 12
     minX = Math.max(0, minX - padding)
@@ -101,7 +101,7 @@ function getCroppedCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
       return cropped
     }
   } catch {}
-  return canvas
+  return null
 }
 
 export function SignaturePad({
@@ -314,25 +314,32 @@ export function SignaturePad({
     setIsDrawing(false)
 
     const canvas = canvasRef.current
-    if (canvas && (hasSignature || hasDrawnRef.current)) {
-      setHasSignature(true)
+    if (canvas && hasDrawnRef.current) {
       const croppedCanvas = getCroppedCanvas(canvas)
-      const dataUrl = croppedCanvas.toDataURL('image/png')
-      setCurrentDataUrl(dataUrl)
-      onDataUrlChange?.(dataUrl)
+      if (croppedCanvas) {
+        setHasSignature(true)
+        const dataUrl = croppedCanvas.toDataURL('image/png')
+        setCurrentDataUrl(dataUrl)
+        onDataUrlChange?.(dataUrl)
 
-      croppedCanvas.toBlob((blob) => {
-        if (blob) {
-          let file: File
-          try {
-            file = new File([blob], 'signature.png', { type: 'image/png' })
-          } catch {
-            file = blob as any
-            ;(file as any).name = 'signature.png'
+        croppedCanvas.toBlob((blob) => {
+          if (blob) {
+            let file: File
+            try {
+              file = new File([blob], 'signature.png', { type: 'image/png' })
+            } catch {
+              file = blob as any
+              ;(file as any).name = 'signature.png'
+            }
+            onSignatureChange?.(file)
           }
-          onSignatureChange?.(file)
-        }
-      }, 'image/png')
+        }, 'image/png')
+      } else {
+        setHasSignature(false)
+        setCurrentDataUrl(null)
+        onDataUrlChange?.(null)
+        onSignatureChange?.(null)
+      }
     }
   }
 
@@ -410,7 +417,8 @@ export function SignaturePad({
         setHasSignature(true)
 
         const croppedCanvas = getCroppedCanvas(canvas)
-        const croppedUrl = croppedCanvas.toDataURL('image/png')
+        const targetCanvas = croppedCanvas || canvas
+        const croppedUrl = targetCanvas.toDataURL('image/png')
         setCurrentDataUrl(croppedUrl)
         onDataUrlChange?.(croppedUrl)
 

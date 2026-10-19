@@ -4,6 +4,7 @@ import React, { useState, useTransition } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -56,6 +57,7 @@ export function TrainingRequestApprovalDialog({
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null)
   const [remarks, setRemarks] = useState('')
   const [activeTab, setActiveTab] = useState<'form' | 'details'>('form')
+  const [mobileTab, setMobileTab] = useState<'action' | 'pdf'>('action')
 
   const activeApproval = currentApproval || approvals.find((a) => a.stepOrder === request.currentStepOrder) || approvals[0]
   const isApproved = activeApproval?.status === 'approved'
@@ -114,26 +116,26 @@ export function TrainingRequestApprovalDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-7xl max-h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100">
+      <DialogContent className="w-full max-w-full sm:max-w-7xl h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100 sm:rounded-2xl rounded-none">
         {/* Header */}
-        <DialogHeader className="p-4 bg-white border-b flex flex-row items-center justify-between no-print">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 text-blue-700 rounded-lg">
-              <ShieldCheck className="w-5 h-5 text-[#003461]" />
+        <DialogHeader className="p-3 sm:p-4 bg-white border-b flex flex-row items-center justify-between no-print shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 sm:p-2 bg-blue-50 text-blue-700 rounded-lg shrink-0">
+              <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-[#003461]" />
             </div>
             <div>
-              <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>Persetujuan Pengajuan Training</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+              <DialogTitle className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                <span>Persetujuan Training</span>
+                <span className="text-[11px] px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold font-mono">
                   {request?.requestNumber}
                 </span>
-                <Badge variant="outline" className="text-[11px] bg-slate-50">
+                <Badge variant="outline" className="text-[10px] sm:text-[11px] bg-slate-50">
                   {activeApproval?.roleLabel || `Step ${request?.currentStepOrder}`}
                 </Badge>
               </DialogTitle>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {request?.trainingTitle} &bull; Pemohon: {request?.requesterName} ({request?.department})
-              </p>
+              <DialogDescription className="text-[11px] sm:text-xs text-slate-500 mt-0.5 line-clamp-1">
+                {request?.trainingTitle} &bull; Pemohon: {request?.requesterName}
+              </DialogDescription>
             </div>
           </div>
 
@@ -142,7 +144,7 @@ export function TrainingRequestApprovalDialog({
               variant="outline"
               size="sm"
               onClick={() => window.print()}
-              className="gap-1.5 text-xs text-slate-700"
+              className="gap-1.5 text-xs text-slate-700 hidden sm:inline-flex"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Cetak / PDF</span>
@@ -150,11 +152,46 @@ export function TrainingRequestApprovalDialog({
           </div>
         </DialogHeader>
 
+        {/* Mobile Tab Switcher (Visible only below lg) */}
+        <div className="lg:hidden flex items-center bg-slate-100 p-1.5 border-b shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={() => setMobileTab('action')}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5',
+              mobileTab === 'action'
+                ? 'bg-white text-[#003461] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            )}
+          >
+            <ShieldCheck className="size-3.5" />
+            <span>Persetujuan & Tanda Tangan</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('pdf')}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5',
+              mobileTab === 'pdf'
+                ? 'bg-white text-[#003461] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            )}
+          >
+            <FileText className="size-3.5" />
+            <span>Pratinjau PDF ISO</span>
+          </button>
+        </div>
+
         {/* Content Split: Left PDF Document, Right Approval Action Panel */}
         <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
           {/* Left Document View (8 cols) */}
-          <div className="lg:col-span-8 overflow-y-auto p-4 sm:p-6 bg-slate-100 flex justify-center border-r border-slate-200">
-            <div className="w-full max-w-[800px]">
+          <div
+            className={cn(
+              'lg:col-span-8 overflow-y-auto p-2 sm:p-6 bg-slate-100 flex justify-center border-r border-slate-200',
+              mobileTab === 'action' ? 'hidden lg:flex' : 'flex'
+            )}
+          >
+            <div className="w-full max-w-[800px] overflow-x-auto">
               <TrainingRequestFormPdf
                 request={request}
                 approvals={approvals}
@@ -165,7 +202,39 @@ export function TrainingRequestApprovalDialog({
           </div>
 
           {/* Right Action Panel (4 cols) */}
-          <div className="lg:col-span-4 bg-white flex flex-col overflow-y-auto p-5 space-y-5">
+          <div
+            className={cn(
+              'lg:col-span-4 bg-white flex flex-col overflow-y-auto p-4 sm:p-5 space-y-4 sm:space-y-5',
+              mobileTab === 'pdf' ? 'hidden lg:flex' : 'flex'
+            )}
+          >
+            {/* Mobile Training Info Card */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+              <div className="font-bold text-slate-800 text-sm">{request?.trainingTitle}</div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                <div>
+                  <span className="text-slate-400 block">Penyelenggara:</span>
+                  <span className="font-semibold text-slate-800">{request?.providerName || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Kategori:</span>
+                  <span className="font-semibold text-slate-800">{request?.trainingCategory || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Pemohon:</span>
+                  <span className="font-semibold text-slate-800">{request?.requesterName || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Estimasi Biaya:</span>
+                  <span className="font-bold text-blue-700">
+                    {request?.costTotal
+                      ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(request.costTotal)
+                      : 'Rp 0'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* Progress Stepper */}
             <div>
               <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-1.5">

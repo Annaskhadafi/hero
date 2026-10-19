@@ -41,6 +41,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
     if (mobileContractReviewPath !== dashboardPath) {
       redirect(mobileContractReviewPath)
     }
+
+    const mobileTrainingPengajuanPath = dashboardPath.replace(
+      /^\/dashboard\/training\/pengajuan(?=\/|$)/,
+      '/mobile/training/pengajuan',
+    )
+    if (mobileTrainingPengajuanPath !== dashboardPath) {
+      redirect(mobileTrainingPengajuanPath)
+    }
+
     redirect('/mobile')
   }
 

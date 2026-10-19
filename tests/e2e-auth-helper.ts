@@ -1,5 +1,5 @@
 export const HERO_TEST_CREDENTIALS = {
-  username: process.env.HERO_E2E_USERNAME ?? 'mochamad.khadafi@chitraparatama.co.id',
+  username: process.env.HERO_E2E_USERNAME ?? '71261',
   password: process.env.HERO_E2E_PASSWORD ?? 'Chitra#71261',
 };
 
@@ -22,11 +22,11 @@ export async function loginToHero(app: any, screen: any, browser: any, redirectU
   }
   
   await emailInput.click();
-  await emailInput.fill('71261');
+  await emailInput.fill(HERO_TEST_CREDENTIALS.username);
   for (let i = 0; i < 5; i++) {
-    if ((await emailInput.inputValue()) === '71261') break;
+    if ((await emailInput.inputValue()) === HERO_TEST_CREDENTIALS.username) break;
     await new Promise((resolve) => setTimeout(resolve, 500));
-    await emailInput.fill('71261');
+    await emailInput.fill(HERO_TEST_CREDENTIALS.username);
   }
   await new Promise((resolve) => setTimeout(resolve, 500));
 

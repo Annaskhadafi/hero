@@ -4,6 +4,7 @@ import React, { useState, useEffect, useTransition } from 'react'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -21,6 +22,11 @@ import {
   type TrainingEmployeeOption,
   type ApproverStepInput,
 } from '@/app/actions/training-requests'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   Plus,
   Trash2,
@@ -40,18 +46,26 @@ import {
   ArrowRight,
   ShieldCheck,
   FileCheck,
+  Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { HeroSearchableSelect, type HeroSearchableSelectOption } from '@/components/templates'
 
 interface TrainingRequestFormDialogProps {
   onSuccess?: () => void
   trigger?: React.ReactNode
+  currentEmployeeId?: number | null
+  currentEmployeeName?: string
+  currentEmail?: string
 }
 
 export function TrainingRequestFormDialog({
   onSuccess,
   trigger,
+  currentEmployeeId,
+  currentEmployeeName,
+  currentEmail,
 }: TrainingRequestFormDialogProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -150,6 +164,91 @@ export function TrainingRequestFormDialog({
         .finally(() => setIsLoadingEmployees(false))
     }
   }, [open, employeesList.length])
+
+  // Pre-formatted options for HeroSearchableSelect
+  const employeeSelectOptions = React.useMemo<HeroSearchableSelectOption[]>(() => {
+    return employeesList.map((emp) => ({
+      value: String(emp.id),
+      label: emp.name,
+      description: `${emp.position || 'Staff'} • ${emp.department || '-'} • ${emp.workLocation || '-'}`,
+      badge: emp.employeeSn ? `SN: ${emp.employeeSn}` : undefined,
+    }))
+  }, [employeesList])
+
+  // Automatically configure Step 1 (Pemohon) to use the current logged-in employee on open
+  useEffect(() => {
+    if (!open) return
+
+    let currentEmp: TrainingEmployeeOption | undefined
+    if (currentEmployeeId) {
+      currentEmp = employeesList.find((e) => e.id === currentEmployeeId)
+    }
+    if (!currentEmp && currentEmail) {
+      currentEmp = employeesList.find((e) => e.email?.toLowerCase() === currentEmail.toLowerCase())
+    }
+    if (!currentEmp && currentEmployeeName) {
+      currentEmp = employeesList.find((e) => e.name.toLowerCase() === currentEmployeeName.toLowerCase())
+    }
+
+    setApprovers((prev) => {
+      const updated = [...prev]
+
+      // Step 1: Auto-assign logged in user if not set or matching current user
+      if (!updated[0].approverEmployeeId || updated[0].approverEmployeeId === currentEmployeeId) {
+        if (currentEmp) {
+          updated[0] = {
+            ...updated[0],
+            approverEmployeeId: currentEmp.id,
+            approverName: currentEmp.name,
+            approverEmail: currentEmp.email || currentEmail || '',
+            approverTitle: currentEmp.position || 'Pemohon',
+          }
+        } else if (currentEmployeeName || currentEmail) {
+          updated[0] = {
+            ...updated[0],
+            approverEmployeeId: currentEmployeeId || null,
+            approverName: currentEmployeeName || updated[0].approverName || 'Pemohon',
+            approverEmail: currentEmail || updated[0].approverEmail || '',
+            approverTitle: updated[0].approverTitle || 'Pemohon',
+          }
+        }
+      }
+
+      // Step 2: Auto-suggest HR Training Staff if not yet chosen
+      if (!updated[1].approverEmployeeId && employeesList.length > 0) {
+        const hrStaff = employeesList.find((e) => e.id === 1064 || e.name.toLowerCase().includes('adila'))
+        if (hrStaff) {
+          updated[1] = {
+            ...updated[1],
+            approverEmployeeId: hrStaff.id,
+            approverName: hrStaff.name,
+            approverEmail: hrStaff.email || '',
+            approverTitle: hrStaff.position || 'HR Training Specialist',
+          }
+        }
+      }
+
+      return updated
+    })
+  }, [open, employeesList, currentEmployeeId, currentEmployeeName, currentEmail])
+
+  const handleSelectApproverEmployeeId = (idx: number, empIdStr: string) => {
+    const empId = Number(empIdStr)
+    const emp = employeesList.find((e) => e.id === empId)
+    if (!emp) return
+
+    setApprovers((prev) => {
+      const arr = [...prev]
+      arr[idx] = {
+        ...arr[idx],
+        approverEmployeeId: emp.id,
+        approverName: emp.name,
+        approverEmail: emp.email || '',
+        approverTitle: emp.position || arr[idx].roleLabel || 'Pejabat Terkait',
+      }
+      return arr
+    })
+  }
 
   // Auto-fill fields based on selected employees
   const handleToggleEmployee = (emp: TrainingEmployeeOption) => {
@@ -332,9 +431,9 @@ export function TrainingRequestFormDialog({
         )}
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
+      <DialogContent className="w-full max-w-full sm:max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[92vh] flex flex-col p-0 overflow-hidden sm:rounded-2xl rounded-none">
         {/* Header */}
-        <DialogHeader className="p-5 bg-gradient-to-r from-[#003461] to-[#004f8a] text-white border-b">
+        <DialogHeader className="p-4 sm:p-5 bg-gradient-to-r from-[#003461] to-[#004f8a] text-white border-b shrink-0">
           <div className="flex items-center justify-between pr-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -345,18 +444,18 @@ export function TrainingRequestFormDialog({
                   Rev. 00
                 </span>
               </div>
-              <DialogTitle className="text-xl font-bold tracking-tight text-white">
+              <DialogTitle className="text-lg sm:text-xl font-bold tracking-tight text-white">
                 Pengajuan Pendaftaran Training / Seminar / Lokakarya
               </DialogTitle>
-              <p className="text-xs text-white/80 mt-0.5">
+              <DialogDescription className="text-xs text-white/80 mt-0.5">
                 Lengkapi rincian formulir pendaftaran, peserta, dan konfigurasi persetujuan berjenjang.
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         {/* Form Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 space-y-4 sm:space-y-6 bg-slate-50">
           {/* SECTION 1: DATA PESERTA */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
@@ -428,67 +527,116 @@ export function TrainingRequestFormDialog({
                   </div>
                 )}
 
-                {/* Search & Dropdown Picker */}
-                <div className="relative">
-                  <Input
-                    placeholder="Cari nama karyawan, jabatan, departemen, atau NIK..."
-                    value={employeeSearch}
-                    onChange={(e) => {
-                      setEmployeeSearch(e.target.value)
-                      setIsEmployeeDropdownOpen(true)
-                    }}
-                    onFocus={() => setIsEmployeeDropdownOpen(true)}
-                    className="text-xs bg-white"
-                  />
+                {/* Search & Popover Picker (Portal + Collision-aware flip) */}
+                <Popover open={isEmployeeDropdownOpen} onOpenChange={setIsEmployeeDropdownOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center justify-between w-full h-10 px-3 border border-slate-300 rounded-lg bg-white text-xs text-slate-700 cursor-pointer hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003461]/20 transition-all text-left"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <Search className="size-4 text-slate-400 shrink-0" />
+                        <span className={selectedEmployees.length > 0 ? 'font-medium text-slate-900' : 'text-slate-400'}>
+                          {selectedEmployees.length > 0
+                            ? `${selectedEmployees.length} karyawan terpilih (klik untuk tambah/ubah)`
+                            : 'Cari & pilih nama karyawan, jabatan, departemen, atau SN...'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0 text-slate-400">
+                        <ChevronDown className={cn('size-4 transition-transform duration-200', isEmployeeDropdownOpen && 'rotate-180')} />
+                      </div>
+                    </button>
+                  </PopoverTrigger>
 
-                  {isEmployeeDropdownOpen && (
-                    <div className="absolute z-20 top-full left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg">
-                      <div className="p-1.5 flex justify-between items-center bg-slate-50 border-b text-[11px] text-slate-500">
-                        <span>Pilih nama karyawan ({filteredEmployees.length} tersedia):</span>
+                  <PopoverContent
+                    align="start"
+                    side="bottom"
+                    sideOffset={4}
+                    avoidCollisions={true}
+                    className="w-[calc(100vw-3rem)] sm:w-[480px] p-0 shadow-2xl rounded-xl border border-slate-200 bg-white z-[100]"
+                  >
+                    {/* Search Input Header */}
+                    <div className="p-3 border-b bg-slate-50 flex items-center gap-2">
+                      <Search className="size-4 text-slate-400 shrink-0" />
+                      <Input
+                        placeholder="Ketik nama, jabatan, departemen, atau SN..."
+                        value={employeeSearch}
+                        onChange={(e) => setEmployeeSearch(e.target.value)}
+                        className="h-8 text-xs bg-white border-slate-300"
+                        autoFocus
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsEmployeeDropdownOpen(false)}
+                        className="h-8 px-2.5 text-xs text-slate-600 hover:text-slate-900 font-semibold shrink-0"
+                      >
+                        Selesai
+                      </Button>
+                    </div>
+
+                    <div className="p-2 border-b bg-slate-100/60 flex items-center justify-between text-[11px] text-slate-500">
+                      <span>{filteredEmployees.length} karyawan tersedia ({selectedEmployees.length} terpilih)</span>
+                      {selectedEmployees.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => setIsEmployeeDropdownOpen(false)}
-                          className="text-xs font-semibold hover:text-slate-800"
+                          onClick={() => setSelectedEmployees([])}
+                          className="text-[11px] font-semibold text-rose-600 hover:text-rose-800"
                         >
-                          Tutup
+                          Hapus Semua
                         </button>
-                      </div>
+                      )}
+                    </div>
 
+                    {/* Scrollable list */}
+                    <div className="max-h-60 overflow-y-auto p-1 divide-y divide-slate-100">
                       {isLoadingEmployees ? (
                         <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                          <Loader2 className="w-4 h-4 animate-spin" /> Memuat data karyawan...
+                          <Loader2 className="size-4 animate-spin" /> Memuat data karyawan...
                         </div>
                       ) : filteredEmployees.length === 0 ? (
                         <div className="p-4 text-center text-xs text-slate-400">
                           Tidak ditemukan karyawan yang cocok.
                         </div>
                       ) : (
-                        filteredEmployees.slice(0, 30).map((emp) => {
+                        filteredEmployees.slice(0, 60).map((emp) => {
                           const isSelected = selectedEmployees.some((e) => e.id === emp.id)
                           return (
-                            <button
+                            <div
                               key={emp.id}
-                              type="button"
                               onClick={() => handleToggleEmployee(emp)}
                               className={cn(
-                                'w-full text-left p-2.5 hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between text-xs',
-                                isSelected && 'bg-blue-50/60 font-semibold text-blue-900'
+                                'p-2.5 rounded-lg hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs transition-colors',
+                                isSelected && 'bg-blue-50/70 text-blue-900 font-semibold'
                               )}
                             >
                               <div>
-                                <div className="font-semibold text-slate-800">{emp.name}</div>
-                                <div className="text-[11px] text-slate-500">
+                                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                                  <span>{emp.name}</span>
+                                  {emp.employeeSn && (
+                                    <span className="text-[10px] text-slate-400 font-mono font-normal">({emp.employeeSn})</span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5 font-normal">
                                   {emp.position || '-'} &bull; {emp.department || '-'} &bull; {emp.workLocation || '-'}
                                 </div>
                               </div>
-                              {isSelected && <Check className="w-4 h-4 text-blue-600" />}
-                            </button>
+                              <div
+                                className={cn(
+                                  'size-5 rounded border flex items-center justify-center shrink-0 ml-2 transition-colors',
+                                  isSelected ? 'bg-[#003461] border-[#003461] text-white' : 'border-slate-300 bg-white'
+                                )}
+                              >
+                                {isSelected && <Check className="size-3.5 stroke-[3]" />}
+                              </div>
+                            </div>
                           )
                         })
                       )}
                     </div>
-                  )}
-                </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             ) : (
               <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs text-amber-800">
@@ -577,7 +725,7 @@ export function TrainingRequestFormDialog({
                   >
                     <option value="External">External (Penyelenggara Luar)</option>
                     <option value="In-house">In-house (Trainer Diundang ke Kantor/Site)</option>
-                    <option value="Internal">Internal HERO</option>
+                    <option value="Internal">Internal Perusahaan</option>
                     <option value="Online">Online / Webinar</option>
                   </select>
                 </div>
@@ -825,7 +973,7 @@ export function TrainingRequestFormDialog({
             </div>
           </div>
 
-          {/* SECTION 6: MULTI-TIER APPROVAL FLOW (CUSTOMIZABLE) */}
+          {/* SECTION 6: MULTI-TIER APPROVAL FLOW (HERO ACCOUNT SELECTION) */}
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div className="flex items-center gap-2 text-[#003461]">
@@ -840,53 +988,72 @@ export function TrainingRequestFormDialog({
             </div>
 
             <p className="text-xs text-slate-500">
-              Tentukan siapa saja yang wajib mengetahui, memverifikasi, dan menyetujui formulir ini. Anda dapat mengubah nama, email, jabatan, atau memilih langsung dari User Management.
+              Tentukan karyawan pemohon dan pejabat penyetujui untuk setiap tahapan persetujuan. Nama lengkap, SN, email, dan jabatan otomatis terhubung ke sistem.
             </p>
 
             <div className="space-y-3">
               {approvers.map((appr, idx) => (
                 <div
                   key={idx}
-                  className="p-3 bg-slate-50 border rounded-lg space-y-2 text-xs"
+                  className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5 text-xs"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-[#003461] text-white flex items-center justify-center text-[10px]">
+                      <span className="w-5 h-5 rounded-full bg-[#003461] text-white flex items-center justify-center text-[10px] font-bold">
                         {appr.stepOrder}
                       </span>
                       {appr.roleLabel}
                     </span>
+                    {idx === 0 && (
+                      <span className="text-[10px] text-blue-700 bg-blue-100 font-semibold px-2 py-0.5 rounded-full">
+                        Otomatis Pengisi Form (Bisa Dirubah)
+                      </span>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                    <div>
-                      <Label className="text-[10px] text-slate-500">Nama Pejabat / Approver</Label>
-                      <Input
-                        value={appr.approverName}
-                        onChange={(e) => handleUpdateApprover(idx, 'approverName', e.target.value)}
-                        placeholder="Nama Lengkap"
-                        className="text-xs h-8 bg-white mt-0.5"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-slate-500">Email Notifikasi</Label>
-                      <Input
-                        value={appr.approverEmail}
-                        onChange={(e) => handleUpdateApprover(idx, 'approverEmail', e.target.value)}
-                        placeholder="email@chitraparatama.co.id"
-                        className="text-xs h-8 bg-white mt-0.5"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-slate-500">Jabatan / Role</Label>
-                      <Input
-                        value={appr.approverTitle}
-                        onChange={(e) => handleUpdateApprover(idx, 'approverTitle', e.target.value)}
-                        placeholder="Jabatan"
-                        className="text-xs h-8 bg-white mt-0.5"
-                      />
-                    </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] font-semibold text-slate-700 flex items-center justify-between">
+                      <span>{idx === 0 ? 'Karyawan Pemohon' : 'Pejabat Penyetujui'}</span>
+                      {appr.approverEmployeeId ? (
+                        <span className="text-[10px] text-emerald-600 font-medium">✓ Karyawan Terpilih</span>
+                      ) : (
+                        <span className="text-[10px] text-amber-600 font-medium">Belum Dipilih</span>
+                      )}
+                    </Label>
+
+                    <HeroSearchableSelect
+                      placeholder={`Cari nama, SN, atau jabatan untuk ${appr.roleLabel}...`}
+                      options={employeeSelectOptions}
+                      value={appr.approverEmployeeId ? String(appr.approverEmployeeId) : ''}
+                      onChange={(val) => handleSelectApproverEmployeeId(idx, val)}
+                      disabled={isLoadingEmployees}
+                      className="bg-white"
+                    />
                   </div>
+
+                  {/* Summary preview info of selected employee */}
+                  {appr.approverName && (
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 text-[11px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-full bg-blue-50 text-blue-800 font-bold flex items-center justify-center text-[10px] border border-blue-200 shrink-0">
+                          {appr.approverName.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 truncate leading-tight">
+                            {appr.approverName}
+                          </p>
+                          <p className="text-[10px] text-slate-500 truncate leading-tight mt-0.5">
+                            {appr.approverTitle || 'Pejabat'} &bull; {appr.approverEmail || 'Email belum terdaftar'}
+                          </p>
+                        </div>
+                      </div>
+                      {appr.approverEmployeeId && (
+                        <Badge variant="outline" className="text-[9.5px] bg-slate-50 text-slate-600 shrink-0">
+                          ID: {appr.approverEmployeeId}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -915,7 +1082,7 @@ export function TrainingRequestFormDialog({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 bg-white border-t flex items-center justify-between">
+        <div className="p-3.5 sm:p-4 bg-white border-t flex items-center justify-between shrink-0 gap-2">
           <Button
             type="button"
             variant="outline"

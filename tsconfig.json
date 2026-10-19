@@ -51,6 +51,7 @@
     "check_cols*",
     "check-cols*",
     "add_column*",
-    "**/*.old.tsx"
+    "**/*.old.tsx",
+    "e2e.config.ts"
   ]
 }

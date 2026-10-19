@@ -200,7 +200,12 @@ export function TrainingRequestsClientPage({
             <span>Segarkan</span>
           </Button>
 
-          <TrainingRequestFormDialog onSuccess={() => router.refresh()} />
+          <TrainingRequestFormDialog
+            onSuccess={() => router.refresh()}
+            currentEmployeeId={currentEmployeeId}
+            currentEmployeeName={currentEmployeeName}
+            currentEmail={currentEmail}
+          />
         </div>
       </div>
 

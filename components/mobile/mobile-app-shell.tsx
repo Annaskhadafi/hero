@@ -139,6 +139,7 @@ export function MobileAppShell({
     { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature, resource: 'service360_service_form' },
     { type: 'link', label: 'ChitraLearning LMS', href: '/mobile/chitralearning', icon: BookOpen, resource: 'chitralearning_lms_workspace' },
     { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert, resource: 'hc_training_enhanced' },
+    { type: 'link', label: 'Pengajuan Training', href: '/mobile/training/pengajuan', icon: FileText, resource: 'training_pengajuan' },
     { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell, resource: 'hc_mcu_wellness' },
     { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
     { type: 'link', label: 'Toko Hadiah Poin', href: '/mobile/reward-store', icon: Store, resource: 'point_setting' },
