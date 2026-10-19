@@ -494,40 +494,44 @@ export async function createDisciplinaryAction(data: DisciplinaryActionInput) {
     console.error('Gagal membuat PDF surat sanksi:', pdfErr)
   }
 
-  const emailContent = buildHumanCapitalEmail({
-    title: `Penerbitan Surat Sanksi Disiplin (${levelName})`,
-    intro: `Surat tindakan sanksi disiplin telah diterbitkan untuk Saudara/i ${empName}. Berkas surat resmi dalam format PDF terlampir dalam email ini.`,
-    details: [
-      `Karyawan: ${empName} (SN: ${employeeDetails?.employeeSn || '-'})`,
-      `Kategori: [${category?.code || 'DISC'}] ${category?.name || '-'}`,
-      `Tingkat Sanksi: ${levelName}`,
-      `Nomor Surat: ${created.letterNumber || '-'}`,
-      `Tanggal Efektif: ${created.effectiveDate}`,
-      created.expiryDate ? `Berlaku Hingga: ${created.expiryDate}` : null,
-      `Status: ${created.status}`,
-    ],
-  })
+  try {
+    const emailContent = buildHumanCapitalEmail({
+      title: `Penerbitan Surat Sanksi Disiplin (${levelName})`,
+      intro: `Surat tindakan sanksi disiplin telah diterbitkan untuk Saudara/i ${empName}. Berkas surat resmi dalam format PDF terlampir dalam email ini.`,
+      details: [
+        `Karyawan: ${empName} (SN: ${employeeDetails?.employeeSn || '-'})`,
+        `Kategori: [${category?.code || 'DISC'}] ${category?.name || '-'}`,
+        `Tingkat Sanksi: ${levelName}`,
+        `Nomor Surat: ${created.letterNumber || '-'}`,
+        `Tanggal Efektif: ${created.effectiveDate}`,
+        created.expiryDate ? `Berlaku Hingga: ${created.expiryDate}` : null,
+        `Status: ${created.status}`,
+      ],
+    })
 
-  await sendHumanCapitalEmail({
-    templateCode: 'hc_disciplinary_created',
-    templateName: 'HC Disciplinary Created',
-    variables: {
-      employeeName: empName,
-      categoryName: category?.name || '-',
-      severity: category?.severity || '-',
-      spLevel: levelName,
-      status: created.status,
-      letterNumber: created.letterNumber || '-',
-    },
-    extraTo: empEmail ? [empEmail] : [],
-    fallbackSubject: `Surat Tindakan Disiplin (${levelName}): ${empName}`,
-    fallbackHtml: emailContent.html,
-    fallbackText: emailContent.text,
-    attachments: pdfAttachment ? [pdfAttachment] : undefined,
-  })
+    await sendHumanCapitalEmail({
+      templateCode: 'hc_disciplinary_created',
+      templateName: 'HC Disciplinary Created',
+      variables: {
+        employeeName: empName,
+        categoryName: category?.name || '-',
+        severity: category?.severity || '-',
+        spLevel: levelName,
+        status: created.status,
+        letterNumber: created.letterNumber || '-',
+      },
+      extraTo: empEmail ? [empEmail] : [],
+      fallbackSubject: `Surat Tindakan Disiplin (${levelName}): ${empName}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+      attachments: pdfAttachment ? [pdfAttachment] : undefined,
+    })
+  } catch (emailErr) {
+    console.error('[disciplinary] Gagal mengirim email notifikasi sanksi:', emailErr)
+  }
 
   revalidatePath(DISCIPLINARY_PATH)
-  return normalizeAction(created)
+  return JSON.parse(JSON.stringify(normalizeAction(created)))
 }
 
 export async function updateDisciplinaryAction(id: IdInput, data: DisciplinaryActionInput) {
@@ -545,7 +549,7 @@ export async function updateDisciplinaryAction(id: IdInput, data: DisciplinaryAc
     .where(eq(hcDisciplinaryActions.id, toId(id)))
     .returning()
   revalidatePath(DISCIPLINARY_PATH)
-  return normalizeAction(updated)
+  return JSON.parse(JSON.stringify(normalizeAction(updated)))
 }
 
 export async function updateDisciplinaryStatus(id: IdInput, status: string) {
@@ -582,23 +586,27 @@ export async function updateDisciplinaryStatus(id: IdInput, status: string) {
     ],
   })
 
-  await sendHumanCapitalEmail({
-    templateCode: 'hc_disciplinary_status_update',
-    templateName: 'HC Disciplinary Status Update',
-    variables: {
-      employeeName: employee.name,
-      categoryName: category?.name || '-',
-      spLevel: `SP${updated.spLevel}`,
-      status: updated.status,
-    },
-    extraTo: employee.email ? [employee.email] : [],
-    fallbackSubject: `Update disipliner: ${employee.name}`,
-    fallbackHtml: emailContent.html,
-    fallbackText: emailContent.text,
-  })
+  try {
+    await sendHumanCapitalEmail({
+      templateCode: 'hc_disciplinary_status_update',
+      templateName: 'HC Disciplinary Status Update',
+      variables: {
+        employeeName: employee.name,
+        categoryName: category?.name || '-',
+        spLevel: `SP${updated.spLevel}`,
+        status: updated.status,
+      },
+      extraTo: employee.email ? [employee.email] : [],
+      fallbackSubject: `Update disipliner: ${employee.name}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    })
+  } catch (emailErr) {
+    console.error('[disciplinary] Gagal mengirim email status update:', emailErr)
+  }
 
   revalidatePath(DISCIPLINARY_PATH)
-  return normalizeAction(updated)
+  return JSON.parse(JSON.stringify(normalizeAction(updated)))
 }
 
 export async function deleteDisciplinaryAction(id: IdInput) {

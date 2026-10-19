@@ -240,7 +240,7 @@ export function DisciplinaryClientPage({
   });
 
   // Open Create/Edit Action
-  const handleOpenActionDialog = async (record?: ActionRow) => {
+  const handleOpenActionDialog = (record?: ActionRow) => {
     if (record) {
       setEditingAction(record);
       setActionForm({
@@ -263,27 +263,9 @@ export function DisciplinaryClientPage({
     } else {
       setEditingAction(null);
       const today = new Date().toISOString().slice(0, 10);
-      let autoLetterNo = `CP/HC-DISC/${new Date().getFullYear()}/${String(
+      const autoLetterNo = `CP/HC-DISC/${new Date().getFullYear()}/${String(
         actionRows.length + 1
       ).padStart(4, "0")}`;
-      let defaultSig = "";
-      let defaultIssuer = "Human Capital Dept";
-
-      try {
-        const [generated, sigResult] = await Promise.all([
-          getNextDisciplinaryLetterNumber().catch(() => null),
-          getUserSignatureAction().catch(() => null),
-        ]);
-        if (generated) autoLetterNo = generated;
-        if (sigResult?.signatureDataUrl) {
-          defaultSig = sigResult.signatureDataUrl;
-        }
-        if (sigResult?.employeeName) {
-          defaultIssuer = sigResult.employeeName;
-        }
-      } catch {
-        // fallback
-      }
 
       setActionForm({
         employeeId: employees[0] ? String(employees[0].id) : "",
@@ -295,13 +277,26 @@ export function DisciplinaryClientPage({
         actionTaken: "Pemberian Surat Peringatan & Konseling Tatap Muka",
         effectiveDate: today,
         expiryDate: calculateDefaultExpiry(today),
-        issuedBy: defaultIssuer,
-        issuerSignature: defaultSig,
+        issuedBy: "Human Capital Dept",
+        issuerSignature: "",
         useLetterhead: false,
         notes: "",
         status: "active",
       });
       setActionDialogOpen(true);
+
+      // Asynchronously fetch auto letter number and default signature in background
+      Promise.all([
+        getNextDisciplinaryLetterNumber().catch(() => null),
+        getUserSignatureAction().catch(() => null),
+      ]).then(([generated, sigResult]) => {
+        setActionForm((prev) => ({
+          ...prev,
+          letterNumber: generated || prev.letterNumber,
+          issuerSignature: sigResult?.signatureDataUrl || prev.issuerSignature,
+          issuedBy: sigResult?.employeeName || prev.issuedBy,
+        }));
+      }).catch(() => {});
     }
   };
 
@@ -668,6 +663,16 @@ export function DisciplinaryClientPage({
     }));
   };
 
+  const handleSignatureChange = React.useCallback((dataUrl: string | null) => {
+    setActionForm((prev) => {
+      if (prev.issuerSignature === (dataUrl || "")) return prev;
+      return {
+        ...prev,
+        issuerSignature: dataUrl || "",
+      };
+    });
+  }, []);
+
   return (
     <AdminPageShell>
       {/* Workspace Banner */}
@@ -770,9 +775,10 @@ export function DisciplinaryClientPage({
             {activeTab === "actions" && (
               <Button
                 type="button"
+                data-testid="btn-open-disciplinary-dialog"
                 variant="default"
                 size="dense"
-                onClick={() => handleOpenActionDialog()}
+                onClick={() => setActionDialogOpen(true)}
                 className="h-9 gap-1.5 font-semibold bg-blue-700 hover:bg-blue-800 text-white shadow-xs"
               >
                 <Plus className="size-4" />
@@ -1152,12 +1158,7 @@ export function DisciplinaryClientPage({
                 autoUseProfileSignature
                 allowSaveToProfile
                 defaultDataUrl={actionForm.issuerSignature || null}
-                onDataUrlChange={(dataUrl) => {
-                  setActionForm((prev) => ({
-                    ...prev,
-                    issuerSignature: dataUrl || "",
-                  }));
-                }}
+                onDataUrlChange={handleSignatureChange}
                 height={120}
               />
             </HeroFormField>

@@ -36,58 +36,29 @@ export async function loginToHero(
   await app.open(openUrl);
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
-  // Check if browser fixture is available and already on dashboard
+  // Wait for login form to load
   if (browser?.locator) {
-    const emailLocator = browser.locator('#email, input[name="username"], input[placeholder*="SN"]').first();
-    const isVisible = await emailLocator.isVisible().catch(() => false);
-    if (!isVisible) {
-      const isNowVisible = await emailLocator.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false);
-      if (!isNowVisible) {
-        // Already authenticated
-        return;
-      }
-    }
+    const emailLocator = browser.locator('#email, input[name="username"]').first();
+    await emailLocator.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
   }
 
-  // Fill credentials via screen fixture if available, otherwise browser locator
-  try {
-    const emailInput = screen.getByPlaceholder(/Email atau SN/i, { visible: true });
+  // Fill credentials
+  if (browser?.locator) {
+    const emailInput = browser.locator('#email, input[name="username"]').first();
+    const passwordInput = browser.locator('#password, input[name="password"]').first();
+    const submitBtn = browser.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first();
+
     await emailInput.fill(username);
-  } catch {
-    try {
-      const emailInput = screen.getByRole('textbox', { name: /Email atau SN/i });
-      await emailInput.fill(username);
-    } catch {
-      if (browser?.locator) {
-        const emailInput = browser.locator('#email, input[name="username"]').first();
-        await emailInput.fill(username);
-      }
-    }
-  }
-
-  try {
-    const passwordInput = screen.getByRole('textbox', { name: /Kata sandi|password/i });
     await passwordInput.fill(password);
-  } catch {
-    try {
-      const passwordInput = screen.getByPlaceholder(/password|••••••••••/i, { visible: true });
-      await passwordInput.fill(password);
-    } catch {
-      if (browser?.locator) {
-        const passwordInput = browser.locator('#password, input[name="password"]').first();
-        await passwordInput.fill(password);
-      }
-    }
-  }
+    await submitBtn.click();
+  } else {
+    const emailInput = screen.getByPlaceholder(/Email atau SN/i);
+    const passwordInput = screen.getByPlaceholder(/kata sandi/i);
+    const submitButton = screen.getByRole('button', { name: /Masuk ke HERO/i });
 
-  // Click submit button
-  try {
-    const submitButton = screen.getByRole('button', { name: /^Log In|Masuk ke HERO$/i, visible: true });
+    await emailInput.fill(username);
+    await passwordInput.fill(password);
     await submitButton.click();
-  } catch {
-    if (browser?.locator) {
-      await browser.locator('button[type="submit"], button:has-text("Masuk ke HERO"), button:has-text("Log In")').first().click();
-    }
   }
 
   // Wait for login processing and redirect
