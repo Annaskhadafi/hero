@@ -6,7 +6,11 @@ import {
   hcFlightRouteChangeRequests,
 } from '@/db/schema/hero'
 import { asc, eq } from 'drizzle-orm'
+import { generateFlightRoutePdf } from '@/lib/flight-route-pdf'
 import { resolveUploadUrl } from '@/lib/s3-storage'
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 function formatDateIndonesian(dateStr: string | null | undefined): string {
   if (!dateStr) return '-'
@@ -66,26 +70,30 @@ export async function GET(
       .where(eq(hcFlightRouteChangeApprovals.requestId, requestId))
       .orderBy(asc(hcFlightRouteChangeApprovals.stepOrder))
 
-    const appMap = new Map(approvals.map((a) => [a.stepOrder, a]))
+    const isDownload = request.nextUrl.searchParams.get('download') === '1'
+    const format = request.nextUrl.searchParams.get('format')
 
-    const step1 = appMap.get(1) // Applicant
-    const step2 = appMap.get(2) // PJO
-    const step3 = appMap.get(3) // SPV
-    const step4 = appMap.get(4) // HR GA
-    const step5 = appMap.get(5) // Manager
+    // Optional HTML view if explicitly requested with ?format=html
+    if (format === 'html') {
+      const appMap = new Map(approvals.map((a) => [a.stepOrder, a]))
+      const step1 = appMap.get(1)
+      const step2 = appMap.get(2)
+      const step3 = appMap.get(3)
+      const step4 = appMap.get(4)
+      const step5 = appMap.get(5)
 
-    const renderSignature = (step?: typeof step1) => {
-      if (step?.status === 'approved' && step.signatureDataUrl) {
-        const url = resolveUploadUrl(step.signatureDataUrl)
-        return `<div style="height: 60px; display: flex; align-items: center; justify-content: center;"><img src="${url}" style="max-height: 54px; max-width: 140px; object-fit: contain;" /></div>`
+      const renderSignature = (step?: typeof step1) => {
+        if (step?.status === 'approved' && step.signatureDataUrl) {
+          const url = resolveUploadUrl(step.signatureDataUrl)
+          return `<div style="height: 60px; display: flex; align-items: center; justify-content: center;"><img src="${url}" style="max-height: 54px; max-width: 140px; object-fit: contain;" /></div>`
+        }
+        if (step?.status === 'approved') {
+          return `<div style="height: 60px; display: flex; align-items: center; justify-content: center; color: #166534; font-weight: bold; font-size: 11px; border: 1px dashed #bbf7d0; border-radius: 4px; background: #f0fdf4; padding: 4px;">✔ SIGNED<br/><span style="font-size: 9px; font-weight: normal; color: #15803d;">${step.signedAt ? formatDateIndonesian(step.signedAt.toISOString()) : ''}</span></div>`
+        }
+        return `<div style="height: 60px;"></div>`
       }
-      if (step?.status === 'approved') {
-        return `<div style="height: 60px; display: flex; align-items: center; justify-content: center; color: #166534; font-weight: bold; font-size: 11px; border: 1px dashed #bbf7d0; border-radius: 4px; background: #f0fdf4; padding: 4px;">✔ SIGNED<br/><span style="font-size: 9px; font-weight: normal; color: #15803d;">${step.signedAt ? formatDateIndonesian(step.signedAt.toISOString()) : ''}</span></div>`
-      }
-      return `<div style="height: 60px;"></div>`
-    }
 
-    const html = `<!DOCTYPE html>
+      const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
@@ -147,7 +155,6 @@ export async function GET(
       font-weight: bold;
       font-size: 10pt;
     }
-    .items-table th:nth-child(1) { background-color: #222; }
     .clause-text {
       text-align: justify;
       margin: 15px 0;
@@ -199,9 +206,9 @@ export async function GET(
 <body>
 
 <div class="no-print" style="background: #f1f5f9; padding: 12px; text-align: center; border-b: 1px solid #cbd5e1; margin-bottom: 15px;">
-  <button onclick="window.print()" style="background: #0284c7; color: white; border: none; padding: 8px 20px; font-weight: bold; border-radius: 6px; cursor: pointer;">
-    🖨️ Cetak Dokumen / Print PDF
-  </button>
+  <a href="?download=1" style="background: #0284c7; color: white; border: none; padding: 8px 20px; font-weight: bold; border-radius: 6px; text-decoration: none; display: inline-block;">
+    📥 Unduh Dokumen PDF
+  </a>
 </div>
 
 <div class="container">
@@ -281,9 +288,7 @@ export async function GET(
     ${req.originLocation}, ${formatDateIndonesian(req.requestDate)}
   </div>
 
-  <!-- 5 Signatures Layout Grid -->
   <table class="sig-grid">
-    <!-- Top Row: Step 1 (Applicant), Step 2 (PJO), Step 3 (Supervisor) -->
     <tr>
       <td>
         <div class="sig-box">
@@ -310,7 +315,6 @@ export async function GET(
         </div>
       </td>
     </tr>
-    <!-- Bottom Row: Step 4 (HR GA Leader), Step 5 (Manager) -->
     <tr style="height: 20px;"></tr>
     <tr>
       <td>
@@ -341,9 +345,52 @@ export async function GET(
 </body>
 </html>`
 
-    return new NextResponse(html, {
+      return new NextResponse(html, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+        },
+      })
+    }
+
+    // Standard & Default: Generate pure binary PDF via pdf-lib
+    const pdfBytes = await generateFlightRoutePdf({
+      requestNumber: req.requestNumber,
+      requestDate: req.requestDate,
+      originLocation: req.originLocation,
+      pohLocation: req.pohLocation,
+      requestorName: req.requestorName,
+      employeeSn: req.employeeSn,
+      jobTitle: req.jobTitle,
+      sectionName: req.sectionName,
+      siteName: req.siteName,
+      items: items.map((it) => ({
+        flightDate: it.flightDate,
+        flightRoute: it.flightRoute,
+        remark: it.remark,
+      })),
+      approvals: approvals.map((a) => ({
+        stepOrder: a.stepOrder,
+        stepKey: a.stepKey,
+        roleLabel: a.roleLabel,
+        approverTitle: a.approverTitle,
+        approverName: a.approverName,
+        status: a.status,
+        signatureDataUrl: a.signatureDataUrl,
+        signedAt: a.signedAt,
+      })),
+    })
+
+    const disposition = isDownload ? 'attachment' : 'inline'
+    const fileName = `Permohonan_Perubahan_Rute_Penerbangan_${req.requestNumber}.pdf`
+
+    return new NextResponse(new Uint8Array(pdfBytes), {
+      status: 200,
       headers: {
-        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `${disposition}; filename="${fileName}"`,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        Pragma: 'no-cache',
+        Expires: '0',
       },
     })
   } catch (error) {

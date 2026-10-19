@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Download,
+  ExternalLink,
   FileText,
   Plus,
   Printer,
@@ -97,6 +99,7 @@ export default function MobileFlightRouteChangePage() {
   const [details, setDetails] = useState<DetailsData | null>(null)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [approvalNotes, setApprovalNotes] = useState('')
+  const [reviewActiveTab, setReviewActiveTab] = useState<'detail' | 'preview'>('detail')
 
   const loadData = () => {
     startTransition(async () => {
@@ -113,8 +116,9 @@ export default function MobileFlightRouteChangePage() {
     loadData()
   }, [statusFilter])
 
-  const loadDetails = async (id: number) => {
+  const loadDetails = async (id: number, initialTab: 'detail' | 'preview' = 'detail') => {
     setSelectedId(id)
+    setReviewActiveTab(initialTab)
     setDetailsLoading(true)
     const res = await getFlightRouteChangeDetailsAction(id)
     setDetailsLoading(false)
@@ -359,82 +363,161 @@ export default function MobileFlightRouteChangePage() {
 
       {/* Review Sheet */}
       <Sheet open={Boolean(selectedId)} onOpenChange={(open) => !open && setSelectedId(null)}>
-        <SheetContent side="bottom" className="h-[90vh] rounded-t-2xl p-4 overflow-y-auto">
-          <SheetHeader>
+        <SheetContent side="bottom" className="h-[92vh] rounded-t-2xl p-4 overflow-y-auto">
+          <SheetHeader className="border-b pb-2">
             <SheetTitle className="text-sm">Detail & Approval Surat</SheetTitle>
             <SheetDescription className="text-xs">
               {details?.requestNumber} — {details?.status.toUpperCase()}
             </SheetDescription>
+
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setReviewActiveTab('detail')}
+                className={`pb-1.5 px-2 text-xs font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-1 ${
+                  reviewActiveTab === 'detail'
+                    ? 'border-sky-600 text-sky-700'
+                    : 'border-transparent text-muted-foreground'
+                }`}
+              >
+                <UserCheck className="size-3.5" />
+                Data & Approval
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewActiveTab('preview')}
+                className={`pb-1.5 px-2 text-xs font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-1 ${
+                  reviewActiveTab === 'preview'
+                    ? 'border-sky-600 text-sky-700'
+                    : 'border-transparent text-muted-foreground'
+                }`}
+              >
+                <FileText className="size-3.5" />
+                Pratinjau PDF
+              </button>
+            </div>
           </SheetHeader>
 
           {detailsLoading ? (
             <div className="py-12 text-center text-xs text-muted-foreground">Memuat detail...</div>
           ) : details ? (
-            <div className="space-y-4 py-3 text-xs">
-              {/* Info Box */}
-              <div className="rounded-lg border p-3 bg-slate-50 space-y-1">
-                <div className="font-bold text-slate-900">{details.requestorName} ({details.employeeSn})</div>
-                <div className="text-[11px] text-slate-600">{details.jobTitle} — {details.sectionName} ({details.siteName})</div>
-                <div className="text-[11px] text-slate-500 pt-1">POH: {details.pohLocation} | Date: {details.requestDate}</div>
-              </div>
-
-              {/* Rute Items */}
-              <div>
-                <h4 className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Rute Penerbangan</h4>
-                <div className="space-y-1.5">
-                  {details.items.map((it, idx) => (
-                    <div key={idx} className="flex items-center justify-between rounded-md border p-2 bg-white">
-                      <div>
-                        <div className="font-bold text-sky-800">#{idx + 1} {it.flightRoute}</div>
-                        <div className="text-[10px] text-slate-500">{it.remark}</div>
-                      </div>
-                      <div className="text-right text-[11px] text-slate-600">{it.flightDate}</div>
-                    </div>
-                  ))}
+            reviewActiveTab === 'preview' ? (
+              /* Mobile PDF Preview Tab */
+              <div className="py-3 space-y-2">
+                <div className="flex items-center justify-between bg-slate-50 border p-2 rounded-lg text-xs">
+                  <span className="text-slate-600 font-medium text-[11px]">
+                    Pratinjau surat resmi & tanda tangan.
+                  </span>
+                  <a
+                    href={`/api/hc/flight-route-change/${details.id}/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button size="sm" variant="outline" className="h-7 text-xs font-semibold gap-1 bg-white">
+                      <ExternalLink className="size-3 text-slate-500" />
+                      Tab Baru
+                    </Button>
+                  </a>
+                </div>
+                <div className="h-[520px] w-full rounded-xl border border-slate-200 overflow-hidden bg-white shadow-inner">
+                  <iframe
+                    src={`/api/hc/flight-route-change/${details.id}/pdf`}
+                    className="w-full h-full border-0"
+                    title="Pratinjau PDF Surat"
+                  />
                 </div>
               </div>
-
-              {/* 5-Step Status */}
-              <div>
-                <h4 className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Progress 5 Approval Step</h4>
-                <div className="space-y-1.5">
-                  {details.approvals.map((step) => (
-                    <div key={step.id} className="flex items-center justify-between rounded-md border p-2 bg-white text-[11px]">
-                      <div>
-                        <div className="font-semibold">Step {step.stepOrder}: {step.roleLabel}</div>
-                        <div className="text-[10px] text-slate-500">{step.approverName || step.approverTitle}</div>
-                      </div>
-                      <Badge variant={step.status === 'approved' ? 'default' : step.status === 'rejected' ? 'destructive' : 'outline'} className="text-[9px]">
-                        {step.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                  ))}
+            ) : (
+              /* Mobile Detail Tab */
+              <div className="space-y-4 py-3 text-xs">
+                {/* Info Box */}
+                <div className="rounded-lg border p-3 bg-slate-50 space-y-1">
+                  <div className="font-bold text-slate-900">{details.requestorName} ({details.employeeSn})</div>
+                  <div className="text-[11px] text-slate-600">{details.jobTitle} — {details.sectionName} ({details.siteName})</div>
+                  <div className="text-[11px] text-slate-500 pt-1">POH: {details.pohLocation} | Date: {details.requestDate}</div>
                 </div>
-              </div>
 
-              {/* Approval Actions */}
-              {details.status === 'in_progress' && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
-                  <div className="font-bold text-[11px] text-amber-950">Aksi Approval Step {details.currentStepOrder}/5</div>
-                  <Textarea placeholder="Catatan approval / revisi..." value={approvalNotes} onChange={(e) => setApprovalNotes(e.target.value)} rows={2} className="text-xs bg-white" />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => handleApproveStep(details.currentStepOrder)} disabled={isPending} className="flex-1 bg-emerald-600 text-white text-xs">
-                      Setujui Step {details.currentStepOrder}
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleRejectStep(details.currentStepOrder)} disabled={isPending} className="text-xs">
-                      Tolak
-                    </Button>
+                {/* Rute Items */}
+                <div>
+                  <h4 className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Rute Penerbangan</h4>
+                  <div className="space-y-1.5">
+                    {details.items.map((it, idx) => (
+                      <div key={idx} className="flex items-center justify-between rounded-md border p-2 bg-white">
+                        <div>
+                          <div className="font-bold text-sky-800">#{idx + 1} {it.flightRoute}</div>
+                          <div className="text-[10px] text-slate-500">{it.remark}</div>
+                        </div>
+                        <div className="text-right text-[11px] text-slate-600">{it.flightDate}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )}
 
-              <a href={`/api/hc/flight-route-change/${details.id}/pdf`} target="_blank" rel="noreferrer">
-                <Button variant="outline" className="w-full gap-2 text-xs mt-2">
-                  <Printer className="size-4" />
-                  Cetak PDF Dokumen Resmi
-                </Button>
-              </a>
-            </div>
+                {/* 5-Step Status */}
+                <div>
+                  <h4 className="font-bold text-[11px] uppercase tracking-wider text-muted-foreground mb-1.5">Progress 5 Approval Step</h4>
+                  <div className="space-y-1.5">
+                    {details.approvals.map((step) => (
+                      <div key={step.id} className="flex items-center justify-between rounded-md border p-2 bg-white text-[11px]">
+                        <div>
+                          <div className="font-semibold">Step {step.stepOrder}: {step.roleLabel}</div>
+                          <div className="text-[10px] text-slate-500">{step.approverName || step.approverTitle}</div>
+                        </div>
+                        <Badge variant={step.status === 'approved' ? 'default' : step.status === 'rejected' ? 'destructive' : 'outline'} className="text-[9px]">
+                          {step.status.toUpperCase()}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Approval Actions */}
+                {details.status === 'in_progress' && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                    <div className="font-bold text-[11px] text-amber-950">Aksi Approval Step {details.currentStepOrder}/5</div>
+                    <Textarea placeholder="Catatan approval / revisi..." value={approvalNotes} onChange={(e) => setApprovalNotes(e.target.value)} rows={2} className="text-xs bg-white" />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleApproveStep(details.currentStepOrder)} disabled={isPending} className="flex-1 bg-emerald-600 text-white text-xs">
+                        Setujui Step {details.currentStepOrder}
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleRejectStep(details.currentStepOrder)} disabled={isPending} className="text-xs">
+                        Tolak
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    onClick={() => setReviewActiveTab('preview')}
+                    className="flex-1 bg-sky-600 hover:bg-sky-700 text-white gap-1.5 text-xs h-9"
+                  >
+                    <FileText className="size-3.5" />
+                    Buka Pratinjau PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      toast.info('Mengunduh dokumen PDF...', { id: 'm-pdf-dl' })
+                      const link = document.createElement('a')
+                      link.href = `/api/hc/flight-route-change/${details.id}/pdf?download=1`
+                      link.download = `Permohonan_Perubahan_Rute_Penerbangan_${details.requestNumber}.pdf`
+                      document.body.appendChild(link)
+                      link.click()
+                      link.remove()
+                      setTimeout(() => {
+                        toast.success('PDF berhasil diunduh!', { id: 'm-pdf-dl' })
+                      }, 500)
+                    }}
+                    className="gap-1.5 text-xs h-9 text-slate-700 hover:text-sky-700 border-slate-300"
+                  >
+                    <Download className="size-3.5" />
+                    Cetak / Unduh PDF
+                  </Button>
+                </div>
+              </div>
+            )
           ) : null}
         </SheetContent>
       </Sheet>

@@ -22,8 +22,25 @@ export type FlightRouteItemInput = {
   remark?: string
 }
 
+export type FlightRouteApproverStepInput = {
+  stepOrder: number
+  stepKey: string
+  roleLabel: string
+  approverTitle: string
+  approverName: string
+  approverEmployeeId?: number | null
+  approverEmail?: string
+}
+
 export type CreateFlightRouteChangeInput = {
   employeeId?: number
+  employeeSn?: string
+  requestorName?: string
+  jobTitle?: string
+  sectionName?: string
+  departmentName?: string
+  siteId?: number
+  siteName?: string
   requestDate?: string
   originLocation?: string
   pohLocation?: string
@@ -31,11 +48,49 @@ export type CreateFlightRouteChangeInput = {
   notes?: string
   signatureDataUrl?: string
   items: FlightRouteItemInput[]
+  approverSteps?: FlightRouteApproverStepInput[]
   approverSelection?: {
     pjoEmployeeId?: number
     supervisorEmployeeId?: number
     hrGaLeaderEmployeeId?: number
     managerEmployeeId?: number
+  }
+}
+
+export async function getFlightRouteEmployeesListAction() {
+  try {
+    const rows = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+        siteId: employees.siteId,
+        siteName: sites.name,
+        sectionId: employees.sectionId,
+        sectionName: masterSections.name,
+        departmentId: employees.departmentId,
+        departmentName: masterDepartments.name,
+        email: employees.email,
+        directManagerId: employees.directManagerId,
+      })
+      .from(employees)
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .where(eq(employees.employmentStatus, 'ACTIVE'))
+      .orderBy(asc(employees.name))
+
+    const actor = await getActorEmployee()
+
+    return {
+      ok: true,
+      data: rows,
+      actorEmployeeId: actor?.id || null,
+    }
+  } catch (error) {
+    console.error('[getFlightRouteEmployeesListAction] Error:', error)
+    return { ok: false, error: 'Gagal memuat daftar karyawan.' }
   }
 }
 
@@ -130,21 +185,30 @@ export async function createFlightRouteChangeAction(input: CreateFlightRouteChan
     const todayStr = new Date().toISOString().slice(0, 10)
     const requestDate = input.requestDate || todayStr
 
+    const requestorName = input.requestorName?.trim() || emp.name
+    const employeeSn = input.employeeSn?.trim() || emp.employeeSn || ''
+    const jobTitle = input.jobTitle?.trim() || emp.jobTitle || 'Serviceman'
+    const sectionName = input.sectionName?.trim() || emp.sectionName || 'Service Operation'
+    const departmentName = input.departmentName?.trim() || emp.departmentName || 'Service Operation'
+    const siteName = input.siteName?.trim() || emp.siteName || 'CK-KIM'
+    const originLocation = input.originLocation?.trim() || 'Jambi'
+    const pohLocation = input.pohLocation?.trim() || 'Balikpapan'
+
     const [createdReq] = await db
       .insert(hcFlightRouteChangeRequests)
       .values({
         requestNumber,
         employeeId: emp.id,
-        employeeSn: emp.employeeSn || '',
-        requestorName: emp.name,
-        jobTitle: emp.jobTitle || 'Serviceman',
-        sectionName: emp.sectionName || 'Service Operation',
-        departmentName: emp.departmentName || 'Service Operation',
-        siteId: emp.siteId,
-        siteName: emp.siteName || 'CK-KIM',
-        originLocation: input.originLocation || 'Jambi',
+        employeeSn,
+        requestorName,
+        jobTitle,
+        sectionName,
+        departmentName,
+        siteId: input.siteId || emp.siteId,
+        siteName,
+        originLocation,
         requestDate,
-        pohLocation: input.pohLocation || 'Balikpapan',
+        pohLocation,
         clauseAccepted: input.clauseAccepted !== false,
         currentStepOrder: 2, // Step 1 is applicant, auto-signed upon submission
         status: 'in_progress',
@@ -164,125 +228,140 @@ export async function createFlightRouteChangeAction(input: CreateFlightRouteChan
     }))
     await db.insert(hcFlightRouteChangeItems).values(itemValues)
 
-    // Resolve Approvers for 5 steps
-    // Step 1: Applicant (Pemohon)
-    // Step 2: PJO (Mengetahui - PJO)
-    // Step 3: Supervisor (Mengetahui - Service Operation / Section SPV)
-    // Step 4: HR GA Leader (Mengetahui - HR GA Leader)
-    // Step 5: Manager (Menyetujui - Central Services Manager)
-
-    const pjoId = input.approverSelection?.pjoEmployeeId || null
-    const spvId = input.approverSelection?.supervisorEmployeeId || emp.directManagerId || null
-    const hrId = input.approverSelection?.hrGaLeaderEmployeeId || null
-    const mgrId = input.approverSelection?.managerEmployeeId || null
-
-    // Fetch approver names
-    const allApproverIds = [emp.id, pjoId, spvId, hrId, mgrId].filter(
-      (id): id is number => id != null
-    )
-    const approverRows = allApproverIds.length
-      ? await db
-          .select({
-            id: employees.id,
-            name: employees.name,
-            email: employees.email,
-            jobTitle: employees.jobTitle,
-          })
-          .from(employees)
-          .where(inArray(employees.id, allApproverIds))
-      : []
-
-    const empMap = new Map(approverRows.map((r) => [r.id, r]))
     const now = new Date()
+    let approvalSteps: any[] = []
 
-    const approvalSteps = [
-      {
-        requestId,
-        stepOrder: 1,
-        stepKey: 'applicant',
-        roleLabel: 'Diajukan Oleh',
-        approverTitle: emp.jobTitle || 'Pemohon',
-        approverEmployeeId: emp.id,
-        approverName: emp.name,
-        approverEmail: actor?.email || '',
-        status: 'approved',
-        signatureDataUrl: input.signatureDataUrl || null,
-        remarks: 'Permohonan diajukan.',
-        signedAt: now,
-      },
-      {
-        requestId,
-        stepOrder: 2,
-        stepKey: 'pjo',
-        roleLabel: 'Mengetahui',
-        approverTitle: empMap.get(pjoId!)?.jobTitle || 'PJO Leader',
-        approverEmployeeId: pjoId,
-        approverName: empMap.get(pjoId!)?.name || 'PJO Leader',
-        approverEmail: empMap.get(pjoId!)?.email || '',
-        status: 'pending',
-        signatureDataUrl: null,
-        remarks: '',
-        signedAt: null,
-      },
-      {
-        requestId,
-        stepOrder: 3,
-        stepKey: 'supervisor',
-        roleLabel: 'Mengetahui',
-        approverTitle: empMap.get(spvId!)?.jobTitle || 'Service Operation SPV',
-        approverEmployeeId: spvId,
-        approverName: empMap.get(spvId!)?.name || 'Supervisor',
-        approverEmail: empMap.get(spvId!)?.email || '',
-        status: 'waiting',
-        signatureDataUrl: null,
-        remarks: '',
-        signedAt: null,
-      },
-      {
-        requestId,
-        stepOrder: 4,
-        stepKey: 'hr_ga_leader',
-        roleLabel: 'Mengetahui',
-        approverTitle: empMap.get(hrId!)?.jobTitle || 'HR GA Leader',
-        approverEmployeeId: hrId,
-        approverName: empMap.get(hrId!)?.name || 'HR GA Leader',
-        approverEmail: empMap.get(hrId!)?.email || '',
-        status: 'waiting',
-        signatureDataUrl: null,
-        remarks: '',
-        signedAt: null,
-      },
-      {
-        requestId,
-        stepOrder: 5,
-        stepKey: 'manager',
-        roleLabel: 'Menyetujui',
-        approverTitle: empMap.get(mgrId!)?.jobTitle || 'Central Services Manager',
-        approverEmployeeId: mgrId,
-        approverName: empMap.get(mgrId!)?.name || 'Manager',
-        approverEmail: empMap.get(mgrId!)?.email || '',
-        status: 'waiting',
-        signatureDataUrl: null,
-        remarks: '',
-        signedAt: null,
-      },
-    ]
+    if (input.approverSteps && input.approverSteps.length > 0) {
+      // Use user-configured or customized 5-step approver matrix
+      approvalSteps = input.approverSteps.map((step) => {
+        const isApplicant = step.stepOrder === 1
+        const isStep2 = step.stepOrder === 2
+        return {
+          requestId,
+          stepOrder: step.stepOrder,
+          stepKey: step.stepKey || (isApplicant ? 'applicant' : step.stepOrder === 2 ? 'pjo' : step.stepOrder === 3 ? 'supervisor' : step.stepOrder === 4 ? 'hr_ga_leader' : 'manager'),
+          roleLabel: step.roleLabel || (isApplicant ? 'Diajukan Oleh' : step.stepOrder === 5 ? 'Menyetujui' : 'Mengetahui'),
+          approverTitle: step.approverTitle || (isApplicant ? jobTitle : 'Approver'),
+          approverEmployeeId: isApplicant ? emp.id : (step.approverEmployeeId || null),
+          approverName: isApplicant ? requestorName : (step.approverName || '-'),
+          approverEmail: isApplicant ? (actor?.email || '') : (step.approverEmail || ''),
+          status: isApplicant ? 'approved' : isStep2 ? 'pending' : 'waiting',
+          signatureDataUrl: isApplicant ? (input.signatureDataUrl || null) : null,
+          remarks: isApplicant ? 'Permohonan diajukan.' : '',
+          signedAt: isApplicant ? now : null,
+        }
+      })
+    } else {
+      // Standard default 5 steps
+      const pjoId = input.approverSelection?.pjoEmployeeId || null
+      const spvId = input.approverSelection?.supervisorEmployeeId || emp.directManagerId || null
+      const hrId = input.approverSelection?.hrGaLeaderEmployeeId || null
+      const mgrId = input.approverSelection?.managerEmployeeId || null
+
+      const allApproverIds = [emp.id, pjoId, spvId, hrId, mgrId].filter(
+        (id): id is number => id != null
+      )
+      const approverRows = allApproverIds.length
+        ? await db
+            .select({
+              id: employees.id,
+              name: employees.name,
+              email: employees.email,
+              jobTitle: employees.jobTitle,
+            })
+            .from(employees)
+            .where(inArray(employees.id, allApproverIds))
+        : []
+
+      const empMap = new Map(approverRows.map((r) => [r.id, r]))
+
+      approvalSteps = [
+        {
+          requestId,
+          stepOrder: 1,
+          stepKey: 'applicant',
+          roleLabel: 'Diajukan Oleh',
+          approverTitle: jobTitle,
+          approverEmployeeId: emp.id,
+          approverName: requestorName,
+          approverEmail: actor?.email || '',
+          status: 'approved',
+          signatureDataUrl: input.signatureDataUrl || null,
+          remarks: 'Permohonan diajukan.',
+          signedAt: now,
+        },
+        {
+          requestId,
+          stepOrder: 2,
+          stepKey: 'pjo',
+          roleLabel: 'Mengetahui',
+          approverTitle: empMap.get(pjoId!)?.jobTitle || 'PJO Leader',
+          approverEmployeeId: pjoId,
+          approverName: empMap.get(pjoId!)?.name || 'PJO Leader',
+          approverEmail: empMap.get(pjoId!)?.email || '',
+          status: 'pending',
+          signatureDataUrl: null,
+          remarks: '',
+          signedAt: null,
+        },
+        {
+          requestId,
+          stepOrder: 3,
+          stepKey: 'supervisor',
+          roleLabel: 'Mengetahui',
+          approverTitle: empMap.get(spvId!)?.jobTitle || 'Service Operation SPV',
+          approverEmployeeId: spvId,
+          approverName: empMap.get(spvId!)?.name || 'Supervisor',
+          approverEmail: empMap.get(spvId!)?.email || '',
+          status: 'waiting',
+          signatureDataUrl: null,
+          remarks: '',
+          signedAt: null,
+        },
+        {
+          requestId,
+          stepOrder: 4,
+          stepKey: 'hr_ga_leader',
+          roleLabel: 'Mengetahui',
+          approverTitle: empMap.get(hrId!)?.jobTitle || 'HR GA Leader',
+          approverEmployeeId: hrId,
+          approverName: empMap.get(hrId!)?.name || 'HR GA Leader',
+          approverEmail: empMap.get(hrId!)?.email || '',
+          status: 'waiting',
+          signatureDataUrl: null,
+          remarks: '',
+          signedAt: null,
+        },
+        {
+          requestId,
+          stepOrder: 5,
+          stepKey: 'manager',
+          roleLabel: 'Menyetujui',
+          approverTitle: empMap.get(mgrId!)?.jobTitle || 'Central Services Manager',
+          approverEmployeeId: mgrId,
+          approverName: empMap.get(mgrId!)?.name || 'Manager',
+          approverEmail: empMap.get(mgrId!)?.email || '',
+          status: 'waiting',
+          signatureDataUrl: null,
+          remarks: '',
+          signedAt: null,
+        },
+      ]
+    }
 
     await db.insert(hcFlightRouteChangeApprovals).values(approvalSteps)
 
     // Notify Step 2 Approver (PJO)
-    if (pjoId) {
-      const pjoEmail = empMap.get(pjoId)?.email
-      if (pjoEmail) {
-        void notifyWorkflowBellRecipients({
-          recipientEmails: [pjoEmail],
-          eventType: 'flight_route_change',
-          category: 'approval_requests',
-          title: 'Permohonan Perubahan Rute Penerbangan',
-          body: `${emp.name} mengajukan perubahan rute penerbangan (${requestNumber}). Membutuhkan persetujuan Anda.`,
-          url: `/dashboard/hc/flight-route-change?id=${requestId}`,
-        })
-      }
+    const step2Entry = approvalSteps.find((s) => s.stepOrder === 2)
+    if (step2Entry?.approverEmail) {
+      void notifyWorkflowBellRecipients({
+        recipientEmails: [step2Entry.approverEmail],
+        eventType: 'flight_route_change',
+        category: 'approval_requests',
+        title: 'Permohonan Perubahan Rute Penerbangan',
+        body: `${requestorName} mengajukan perubahan rute penerbangan (${requestNumber}). Membutuhkan persetujuan Anda.`,
+        url: `/dashboard/hc/flight-route-change?id=${requestId}`,
+      })
     }
 
     revalidatePath('/dashboard/hc/flight-route-change')
