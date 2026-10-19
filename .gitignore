@@ -90,10 +90,15 @@ backup-*.json
 .freebuff/
 test-results/
 playwright-report/
+/.e2e/
+.e2e*
+.env.e2e*
 
 
 /tmp/
-/public/uploads/cache/
+/public/uploads/*
+!/public/uploads/upload/
+!/public/uploads/**/.gitkeep
 
 # root scratch / test scripts
 test-*.ts

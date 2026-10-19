@@ -195,6 +195,20 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
     } catch (err: any) {
       attempt++
       const errStr = String(err?.message || err?.cause?.message || err || "").toLowerCase()
+      const isStaleAction =
+        errStr.includes("was not found on the server") ||
+        errStr.includes("failed-to-find-server-action")
+      if (isStaleAction) {
+        if (typeof window !== "undefined") {
+          toast.info("Sistem HERO telah diperbarui di server. Memuat ulang halaman untuk menyinkronkan...", {
+            duration: 3000,
+          })
+          setTimeout(() => {
+            window.location.reload()
+          }, 1200)
+        }
+        throw err
+      }
       const isNetworkError =
         errStr.includes("network error") ||
         errStr.includes("failed to fetch") ||
@@ -1640,6 +1654,20 @@ export function InboxTab({
     } catch (e: any) {
       console.error(e)
       const errStr = String(e?.message || e || '').toLowerCase()
+      const isStaleAction =
+        errStr.includes('was not found on the server') ||
+        errStr.includes('failed-to-find-server-action')
+      if (isStaleAction) {
+        toast.info('Sistem HERO telah diperbarui di server (versi aplikasi baru). Memuat ulang halaman untuk menyinkronkan...', {
+          duration: 3000,
+        })
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            window.location.reload()
+          }, 1200)
+        }
+        return
+      }
       const isNetErr = errStr.includes('network') || errStr.includes('failed to fetch') || errStr.includes('econnreset')
       toast.error(isNetErr ? 'Koneksi terputus sementara (Network Error). Silakan klik ulang tombol persetujuan.' : (e.message || 'Terjadi kesalahan saat memproses approval.'))
     } finally {
@@ -1862,6 +1890,21 @@ export function InboxTab({
       }
     } catch (e: any) {
       console.error(e)
+      const errStr = String(e?.message || e || '').toLowerCase()
+      const isStaleAction =
+        errStr.includes('was not found on the server') ||
+        errStr.includes('failed-to-find-server-action')
+      if (isStaleAction) {
+        toast.info('Sistem HERO telah diperbarui di server (versi aplikasi baru). Memuat ulang halaman untuk menyinkronkan...', {
+          duration: 3000,
+        })
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            window.location.reload()
+          }, 1200)
+        }
+        return
+      }
       toast.error(e.message || 'Terjadi kesalahan saat memproses aksi massal.')
     } finally {
       setIsBatchActionRunning(false)

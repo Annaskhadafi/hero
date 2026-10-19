@@ -1125,13 +1125,31 @@ export async function awardSessionPointsToTeam(sessionId: number, tx: any = db) 
       pointsToAward = sumPoints > 0 ? sumPoints : 10
     }
 
-    // 2. Fetch team members
-    const teamRows = await tx
-      .select({ employeeId: dailyActivitySessionTeamMembers.employeeId })
-      .from(dailyActivitySessionTeamMembers)
-      .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId))
+    // 2. Fetch team members (both session-level and item-level)
+    const [teamRows, itemTeamRows] = await Promise.all([
+      tx
+        .select({ employeeId: dailyActivitySessionTeamMembers.employeeId })
+        .from(dailyActivitySessionTeamMembers)
+        .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId)),
+      tx
+        .select({ employeeId: dailyActivitySessionItemTeamMembers.employeeId })
+        .from(dailyActivitySessionItemTeamMembers)
+        .innerJoin(
+          dailyActivitySessionItems,
+          eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+        )
+        .where(eq(dailyActivitySessionItems.sessionId, sessionId)),
+    ])
 
-    const allRecipientIds = Array.from(new Set([session.employeeId, ...teamRows.map((r: any) => r.employeeId)]))
+    const allRecipientIds = Array.from(
+      new Set(
+        [
+          session.employeeId,
+          ...teamRows.map((r: any) => r.employeeId),
+          ...itemTeamRows.map((r: any) => r.employeeId),
+        ].filter((id) => id && !isNaN(id))
+      )
+    )
     const now = new Date()
 
     for (const recipientId of allRecipientIds) {
@@ -7349,11 +7367,16 @@ export async function createDailyActivitySessionAction(input: {
       targetEmpId = context.id
     }
 
+    const itemLevelTeamIds = (input.items || []).flatMap((it: any) =>
+      Array.isArray(it?.itemTeamMemberIds) ? it.itemTeamMemberIds.map(Number) : []
+    )
+
     const teamMemberIds = Array.from(
       new Set(
-        (input.teamMemberEmployeeIds || [])
-          .map((id) => Number(id))
-          .filter((id) => id && !isNaN(id) && id !== targetEmpId)
+        [
+          ...(input.teamMemberEmployeeIds || []).map((id) => Number(id)),
+          ...itemLevelTeamIds,
+        ].filter((id) => id && !isNaN(id) && id > 0 && id !== targetEmpId)
       )
     )
     const allEmployeeIds = [targetEmpId, ...teamMemberIds]
@@ -8138,13 +8161,22 @@ export async function saveActivityDraftToServerAction(input: {
           }
         }
 
-        if (input.teamMemberEmployeeIds !== undefined) {
-          await db.delete(dailyActivitySessionTeamMembers).where(eq(dailyActivitySessionTeamMembers.sessionId, existing.id))
-          if (input.teamMemberEmployeeIds.length > 0) {
-            await db.insert(dailyActivitySessionTeamMembers).values(
-              input.teamMemberEmployeeIds.map((mId) => ({ sessionId: existing.id, employeeId: mId }))
-            ).onConflictDoNothing()
-          }
+        const draftItemTeamIds = rawItemsInput.flatMap((it: any) =>
+          Array.isArray(it?.itemTeamMemberIds) ? it.itemTeamMemberIds.map(Number) : []
+        )
+        const combinedDraftTeamIds = Array.from(
+          new Set(
+            [
+              ...(input.teamMemberEmployeeIds || []).map((id) => Number(id)),
+              ...draftItemTeamIds,
+            ].filter((id) => id && !isNaN(id) && id > 0 && id !== targetEmpId)
+          )
+        )
+        await db.delete(dailyActivitySessionTeamMembers).where(eq(dailyActivitySessionTeamMembers.sessionId, existing.id))
+        if (combinedDraftTeamIds.length > 0) {
+          await db.insert(dailyActivitySessionTeamMembers).values(
+            combinedDraftTeamIds.map((mId) => ({ sessionId: existing.id, employeeId: mId }))
+          ).onConflictDoNothing()
         }
 
         return { success: true, sessionId: existing.id }
@@ -8175,13 +8207,23 @@ export async function saveActivityDraftToServerAction(input: {
       })
       .returning()
 
-    if (input.teamMemberEmployeeIds && input.teamMemberEmployeeIds.length > 0) {
+    const rawItemsInputNew = input.items ?? []
+    const draftNewItemTeamIds = rawItemsInputNew.flatMap((it: any) =>
+      Array.isArray(it?.itemTeamMemberIds) ? it.itemTeamMemberIds.map(Number) : []
+    )
+    const combinedNewTeamIds = Array.from(
+      new Set(
+        [
+          ...(input.teamMemberEmployeeIds || []).map((id) => Number(id)),
+          ...draftNewItemTeamIds,
+        ].filter((id) => id && !isNaN(id) && id > 0 && id !== targetEmpId)
+      )
+    )
+    if (combinedNewTeamIds.length > 0) {
       await db.insert(dailyActivitySessionTeamMembers).values(
-        input.teamMemberEmployeeIds.map((mId) => ({ sessionId: created.id, employeeId: mId }))
+        combinedNewTeamIds.map((mId) => ({ sessionId: created.id, employeeId: mId }))
       ).onConflictDoNothing()
     }
-
-    const rawItemsInputNew = input.items ?? []
     const itemsToInsertNew = rawItemsInputNew
       .filter((it) => it.label?.trim())
       .map((it: any, idx) => {

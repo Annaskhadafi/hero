@@ -7,6 +7,7 @@ import {
   dailyActivitySessions,
   dailyActivitySessionItems,
   dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   employees,
   masterDepartments,
   masterPositions,
@@ -779,7 +780,7 @@ export async function getDailyActivityDashboardData(
 
   // 3. Fetch real child items and team members for these sessions
   const sessionIds = effectiveSessions.map((s) => s.id)
-  const [rawItems, rawTeamMembers] = await Promise.all([
+  const [rawItems, rawSessionTeamMembers, rawItemTeamMembers] = await Promise.all([
     sessionIds.length > 0
       ? db
           .select({
@@ -818,13 +819,87 @@ export async function getDailyActivityDashboardData(
           .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
           .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds))
       : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            itemId: dailyActivitySessionItemTeamMembers.itemId,
+            sessionId: dailyActivitySessionItems.sessionId,
+            employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+            employeeSn: employees.employeeSn,
+            name: employees.name,
+            jobTitle: employees.jobTitle,
+            empDept: employees.department,
+            empSection: employees.section,
+            deptName: masterDepartments.name,
+            sectionName: masterSections.name,
+            siteId: employees.siteId,
+          })
+          .from(dailyActivitySessionItemTeamMembers)
+          .innerJoin(
+            dailyActivitySessionItems,
+            eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+          )
+          .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+      : Promise.resolve([]),
   ])
+
+  // Combine and deduplicate team members across session level and item level
+  const teamMemberKeyMap = new Map<string, (typeof rawSessionTeamMembers)[number]>()
+  for (const tm of rawSessionTeamMembers) {
+    teamMemberKeyMap.set(`${tm.sessionId}_${tm.employeeId}`, tm)
+  }
+  for (const itm of rawItemTeamMembers) {
+    const key = `${itm.sessionId}_${itm.employeeId}`
+    if (!teamMemberKeyMap.has(key)) {
+      teamMemberKeyMap.set(key, {
+        sessionId: itm.sessionId,
+        employeeId: itm.employeeId,
+        employeeSn: itm.employeeSn,
+        name: itm.name,
+        jobTitle: itm.jobTitle,
+        empDept: itm.empDept,
+        empSection: itm.empSection,
+        deptName: itm.deptName,
+        sectionName: itm.sectionName,
+        siteId: itm.siteId,
+      })
+    }
+  }
+  const rawTeamMembers = Array.from(teamMemberKeyMap.values())
+
+  // Build item-to-assigned-employees set for granular task filtering
+  const itemTeamMemberMap = new Map<number, Set<number>>()
+  for (const r of rawItemTeamMembers) {
+    const set = itemTeamMemberMap.get(r.itemId) || new Set<number>()
+    set.add(r.employeeId)
+    itemTeamMemberMap.set(r.itemId, set)
+  }
 
   const itemsBySessionId = new Map<number, typeof rawItems>()
   for (const item of rawItems) {
     const list = itemsBySessionId.get(item.sessionId) || []
     list.push(item)
     itemsBySessionId.set(item.sessionId, list)
+
+    // Also populate itemTeamMemberMap from snapshotPayload if present
+    if (item.snapshotPayload) {
+      try {
+        const payload = JSON.parse(item.snapshotPayload)
+        const pIds = Array.isArray(payload?.itemTeamMemberIds)
+          ? payload.itemTeamMemberIds.map(Number)
+          : []
+        if (pIds.length > 0) {
+          const set = itemTeamMemberMap.get(item.id) || new Set<number>()
+          pIds.forEach((pid: number) => {
+            if (pid && !isNaN(pid)) set.add(pid)
+          })
+          itemTeamMemberMap.set(item.id, set)
+        }
+      } catch {}
+    }
   }
 
   // 3b. Fetch real activities from hero_activities (for self-input / direct activities)
@@ -1348,6 +1423,14 @@ export async function getDailyActivityDashboardData(
 
       if (sessionChildItems.length > 0) {
         for (const item of sessionChildItems) {
+          // If this employee is a team member, filter out items that were specifically assigned to other members
+          if (s.isTeamMember) {
+            const assignedSet = itemTeamMemberMap.get(item.id)
+            if (assignedSet && assignedSet.size > 0 && !assignedSet.has(s.employeeId)) {
+              continue
+            }
+          }
+
           const { photoUrl, photos } = extractPhotosFromPayload(item.snapshotPayload)
           let parsedPayload: any = {}
           try {

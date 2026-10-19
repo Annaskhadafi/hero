@@ -81,7 +81,7 @@ export async function GET(
     }
 
     const tableStartY = drawDocumentHeader(page, data, boldFont, regularFont, pageIndex + 1, totalPages);
-    const tableEndY = await drawWorkTable(page, pdfDoc, pageRows, tableStartY, boldFont, regularFont);
+    const tableEndY = await drawWorkTable(page, pdfDoc, pageRows, tableStartY, boldFont, regularFont, data.employee.name);
 
     if (pageIndex === rowPages.length - 1) {
       drawApprovalStepsTable(page, data, tableEndY, boldFont, regularFont);
@@ -440,10 +440,14 @@ async function drawWorkTable(
     remark?: string | null;
     snapshotLabel?: string | null;
     unitNumber?: string | null;
+    itemPersonnelList?: string[];
+    itemPersonnelSummary?: string | null;
+    itemTeamMembersSummary?: string | null;
   }>,
   startY: number,
   boldFont: PDFFont,
   regularFont: PDFFont,
+  defaultEmployeeName?: string,
 ): Promise<number> {
   const startX = 36;
   const tableWidth = 523.28;
@@ -460,13 +464,14 @@ async function drawWorkTable(
 
   const currentY = startY - 12;
 
-  // Columns: # (24), Aktivitas (220), Durasi (60), Poin (45), Catatan (174.28)
+  // Columns: # (20), Aktivitas & Unit (165), Personil / Tim (135), Waktu & Durasi (80), Poin (35), Catatan (88.28)
   const columns = [
-    { title: "#", width: 24, align: "center" as const },
-    { title: "Aktivitas", width: 220, align: "left" as const },
-    { title: "Durasi", width: 60, align: "center" as const },
-    { title: "Poin", width: 45, align: "center" as const },
-    { title: "Catatan", width: 174.28, align: "left" as const },
+    { title: "#", width: 20, align: "center" as const },
+    { title: "Aktivitas & Unit", width: 165, align: "left" as const },
+    { title: "Personil / Tim", width: 135, align: "left" as const },
+    { title: "Waktu & Durasi", width: 80, align: "center" as const },
+    { title: "Poin", width: 35, align: "center" as const },
+    { title: "Catatan", width: 88.28, align: "left" as const },
   ];
 
   page.drawRectangle({
@@ -483,13 +488,13 @@ async function drawWorkTable(
   for (const col of columns) {
     const textX =
       col.align === "center"
-        ? colX + (col.width - boldFont.widthOfTextAtSize(col.title, 8)) / 2
-        : colX + 6;
+        ? colX + (col.width - boldFont.widthOfTextAtSize(col.title, 7.5)) / 2
+        : colX + 5;
 
     page.drawText(col.title, {
       x: textX,
       y: currentY - 12,
-      size: 8,
+      size: 7.5,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
@@ -497,9 +502,61 @@ async function drawWorkTable(
   }
 
   let rowTopY = currentY - headerHeight;
-  const rowHeight = 26;
 
   for (const [rowIndex, item] of rows.entries()) {
+    // 1. Prepare Aktivitas & Unit text
+    const groupName = ((item as any).snapshotGroupName || (item as any).group || '').trim();
+    const baseLabel = item.snapshotLabel || item.workSummary || "-";
+    const labelWithGroup = groupName && !baseLabel.includes(`[${groupName}]`) ? `[${groupName}] ${baseLabel}` : baseLabel;
+    const actLines = splitText(labelWithGroup, 34);
+
+    const details: string[] = [];
+    if (item.unitNumber && item.unitNumber !== '-' && !labelWithGroup.includes(item.unitNumber)) {
+      details.push(`Unit: ${item.unitNumber}`);
+    }
+    if ((item as any).tireCount && Number((item as any).tireCount) > 0) {
+      details.push(`${(item as any).tireCount} Tire`);
+    }
+    if ((item as any).materialUsed) {
+      details.push(`Mat: ${(item as any).materialUsed}`);
+    }
+    const detailText = details.join(' • ');
+    const detailLines = detailText ? splitText(detailText, 36) : [];
+
+    // 2. Prepare Personil / Tim text
+    let personnelList: string[] = [];
+    if (Array.isArray(item.itemPersonnelList) && item.itemPersonnelList.length > 0) {
+      personnelList = item.itemPersonnelList;
+    } else if (item.itemPersonnelSummary) {
+      personnelList = item.itemPersonnelSummary.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if ((item as any).itemTeamMembersSummary) {
+      const teamNames = (item as any).itemTeamMembersSummary.split(',').map((s: string) => s.trim()).filter(Boolean);
+      personnelList = defaultEmployeeName
+        ? [`${defaultEmployeeName} (PIC)`, ...teamNames.filter((n: string) => n.toLowerCase() !== defaultEmployeeName.toLowerCase())]
+        : teamNames;
+    } else if (defaultEmployeeName) {
+      personnelList = [`${defaultEmployeeName} (Mandiri)`];
+    } else {
+      personnelList = ["-"];
+    }
+
+    const personLines: { text: string; isPic: boolean }[] = [];
+    for (const p of personnelList) {
+      const isPic = p.includes('(PIC)');
+      const lines = splitText(p, 26);
+      lines.forEach((l) => personLines.push({ text: l, isPic }));
+    }
+
+    // 3. Prepare Catatan text
+    let rawRemark = (item.remark?.trim() || (item as any).remarks?.trim() || "-");
+    rawRemark = rawRemark.replace(/\s*\[Tim:\s*[^\]]+\]/gi, '').trim() || '-';
+    const remarkLines = splitText(rawRemark, 18);
+
+    // Dynamic rowHeight calculation
+    const totalActLines = actLines.length + detailLines.length;
+    const maxLines = Math.max(totalActLines, personLines.length, remarkLines.length, 2);
+    const rowHeight = Math.max(28, maxLines * 10 + 6);
+
     page.drawRectangle({
       x: startX,
       y: rowTopY - rowHeight,
@@ -515,29 +572,19 @@ async function drawWorkTable(
     // Col 0: #
     const numText = String(rowIndex + 1);
     page.drawText(numText, {
-      x: cellX + (columns[0].width - regularFont.widthOfTextAtSize(numText, 8)) / 2,
-      y: rowTopY - rowHeight / 2 - 3,
-      size: 8,
+      x: cellX + (columns[0].width - regularFont.widthOfTextAtSize(numText, 7.5)) / 2,
+      y: rowTopY - 12,
+      size: 7.5,
       font: regularFont,
       color: rgb(0, 0, 0),
     });
     cellX += columns[0].width;
 
-    // Col 1: Aktivitas
-    const groupName = ((item as any).snapshotGroupName || (item as any).group || '').trim()
-    const details = []
-    if (item.unitNumber && item.unitNumber !== '-' && !item.snapshotLabel?.includes(item.unitNumber)) details.push(item.unitNumber)
-    if ((item as any).tireCount && Number((item as any).tireCount) > 0) details.push(`${(item as any).tireCount} Tire`)
-    if ((item as any).materialUsed) details.push(`Mat: ${(item as any).materialUsed}`)
-    if ((item as any).itemTeamMembersSummary) details.push(`Tim: ${(item as any).itemTeamMembersSummary}`)
-    const baseLabel = item.snapshotLabel || item.workSummary || "-"
-    const labelWithGroup = groupName && !baseLabel.includes(`[${groupName}]`) ? `[${groupName}] ${baseLabel}` : baseLabel
-    const actLabel = [labelWithGroup, details.join(" • ")].filter(Boolean).join(" - ");
-    const activityLines = splitText(actLabel, 38);
+    // Col 1: Aktivitas & Unit
     let actY = rowTopY - 11;
-    for (const line of activityLines.slice(0, 2)) {
+    for (const line of actLines) {
       page.drawText(line, {
-        x: cellX + 6,
+        x: cellX + 5,
         y: actY,
         size: 7.5,
         font: regularFont,
@@ -545,49 +592,75 @@ async function drawWorkTable(
       });
       actY -= 9;
     }
+    for (const line of detailLines) {
+      page.drawText(line, {
+        x: cellX + 5,
+        y: actY,
+        size: 6.5,
+        font: regularFont,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+      actY -= 8.5;
+    }
     cellX += columns[1].width;
 
-    // Col 2: Durasi
-    const durText = item.durationLabel && item.durationLabel !== "-" ? item.durationLabel : `${item.startLabel} - ${item.endLabel}`;
-    page.drawText(durText, {
-      x: cellX + (columns[2].width - regularFont.widthOfTextAtSize(durText, 7.5)) / 2,
-      y: rowTopY - rowHeight / 2 - 3,
-      size: 7.5,
+    // Col 2: Personil / Tim
+    let personY = rowTopY - 11;
+    for (const pline of personLines) {
+      page.drawText(pline.text, {
+        x: cellX + 5,
+        y: personY,
+        size: 7,
+        font: pline.isPic ? boldFont : regularFont,
+        color: pline.isPic ? rgb(0.05, 0.2, 0.35) : rgb(0.2, 0.2, 0.2),
+      });
+      personY -= 9;
+    }
+    cellX += columns[2].width;
+
+    // Col 3: Waktu & Durasi
+    const timeText = item.startLabel && item.endLabel && item.startLabel !== '-' ? `${item.startLabel} - ${item.endLabel}` : '-';
+    const durText = item.durationLabel && item.durationLabel !== '-' ? `(${item.durationLabel})` : '';
+    page.drawText(timeText, {
+      x: cellX + (columns[3].width - regularFont.widthOfTextAtSize(timeText, 7)) / 2,
+      y: rowTopY - (durText ? 10 : 14),
+      size: 7,
       font: regularFont,
       color: rgb(0, 0, 0),
     });
-    cellX += columns[2].width;
+    if (durText) {
+      page.drawText(durText, {
+        x: cellX + (columns[3].width - regularFont.widthOfTextAtSize(durText, 6.5)) / 2,
+        y: rowTopY - 20,
+        size: 6.5,
+        font: regularFont,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+    }
+    cellX += columns[3].width;
 
-    // Col 3: Poin
+    // Col 4: Poin
     const pointsText = String(item.actualPoints || 0);
     page.drawText(pointsText, {
-      x: cellX + (columns[3].width - boldFont.widthOfTextAtSize(pointsText, 8)) / 2,
-      y: rowTopY - rowHeight / 2 - 3,
-      size: 8,
+      x: cellX + (columns[4].width - boldFont.widthOfTextAtSize(pointsText, 7.5)) / 2,
+      y: rowTopY - 12,
+      size: 7.5,
       font: boldFont,
       color: rgb(0, 0, 0),
     });
-    cellX += columns[3].width;
+    cellX += columns[4].width;
 
-    // Col 4: Catatan
-    let remarkText = (item.remark?.trim() || (item as any).remarks?.trim() || item.workSummary?.match(/Remark:\s*([^,\-]+)/i)?.[1]?.trim() || "-");
-    if (item.unitNumber && item.unitNumber !== '-' && !remarkText.includes(item.unitNumber)) {
-      remarkText = remarkText === '-' ? `Unit: ${item.unitNumber}` : `[Unit: ${item.unitNumber}] ${remarkText}`;
-    }
-    if ((item as any).itemTeamMembersSummary && !remarkText.includes((item as any).itemTeamMembersSummary)) {
-      remarkText = remarkText === '-' ? `[Tim: ${(item as any).itemTeamMembersSummary}]` : `[Tim: ${(item as any).itemTeamMembersSummary}] ${remarkText}`;
-    }
-    const remarkLines = splitText(remarkText, 30);
+    // Col 5: Catatan
     let remY = rowTopY - 11;
-    for (const line of remarkLines.slice(0, 2)) {
+    for (const line of remarkLines) {
       page.drawText(line, {
-        x: cellX + 6,
+        x: cellX + 5,
         y: remY,
-        size: 7,
+        size: 6.5,
         font: regularFont,
-        color: rgb(0.25, 0.25, 0.25),
+        color: rgb(0.3, 0.3, 0.3),
       });
-      remY -= 9;
+      remY -= 8.5;
     }
 
     rowTopY -= rowHeight;

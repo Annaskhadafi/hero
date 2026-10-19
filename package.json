@@ -13,6 +13,7 @@
     "format:check": "prettier --check \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
     "type-check": "node --max-old-space-size=8192 ./node_modules/typescript/bin/tsc --noEmit",
     "test": "jest --forceExit --runInBand",
+    "test:e2e": "e2e run",
     "test:playwright": "playwright test",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -141,7 +142,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@ai-sdk/openai-compatible": "^3.0.70",
+    "@ai-sdk/openai": "^4.0.96",
+    "@ai-sdk/openai-compatible": "^3.0.71",
     "@e2e-dev/web": "^0.12.0",
     "@eslint/eslintrc": "^3",
     "@playwright/test": "^1.61.1",
@@ -161,7 +163,7 @@
     "@types/react-signature-canvas": "^1.0.7",
     "@types/three": "^0.165.0",
     "@types/web-push": "^3.6.4",
-    "ai": "^7.0.0",
+    "ai": "^7.0.143",
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.30.0",
     "e2e": "^0.17.0",

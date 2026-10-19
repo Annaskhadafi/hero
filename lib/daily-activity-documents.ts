@@ -265,12 +265,24 @@ export async function getDailyActivitySessionDocumentData(
       const combinedItemTeam = Array.from(new Set([...dbItemTeam, ...payloadItemTeam]))
       const itemTeamMembersSummary = combinedItemTeam.length > 0 ? combinedItemTeam.join(', ') : null
 
+      const requesterName = header.employeeName || 'Karyawan'
+      const otherTeamNames = combinedItemTeam.filter(
+        (name) => name && name.trim().toLowerCase() !== requesterName.trim().toLowerCase()
+      )
+      const itemPersonnelList: string[] =
+        otherTeamNames.length > 0
+          ? [`${requesterName} (PIC)`, ...otherTeamNames]
+          : [`${requesterName} (Mandiri)`]
+      const itemPersonnelSummary = itemPersonnelList.join(', ')
+
       return {
         ...item,
         photoUrl,
         tireCount,
         materialUsed,
         itemTeamMembersSummary,
+        itemPersonnelList,
+        itemPersonnelSummary,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
         dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),

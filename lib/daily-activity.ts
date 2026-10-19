@@ -2570,16 +2570,40 @@ export async function getDailyActivityEmployeeData(
           .orderBy(asc(dailyActivityApprovals.stepOrder))
       : Promise.resolve([]),
     sessionIds.length > 0
-      ? db
-          .select({
-            sessionId: dailyActivitySessionTeamMembers.sessionId,
-            employeeId: dailyActivitySessionTeamMembers.employeeId,
-            employeeName: employees.name,
-            jobTitle: employees.jobTitle,
-          })
-          .from(dailyActivitySessionTeamMembers)
-          .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
-          .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds))
+      ? Promise.all([
+          db
+            .select({
+              sessionId: dailyActivitySessionTeamMembers.sessionId,
+              employeeId: dailyActivitySessionTeamMembers.employeeId,
+              employeeName: employees.name,
+              jobTitle: employees.jobTitle,
+            })
+            .from(dailyActivitySessionTeamMembers)
+            .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+            .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds)),
+          db
+            .select({
+              sessionId: dailyActivitySessionItems.sessionId,
+              employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+              employeeName: employees.name,
+              jobTitle: employees.jobTitle,
+            })
+            .from(dailyActivitySessionItemTeamMembers)
+            .innerJoin(
+              dailyActivitySessionItems,
+              eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+            )
+            .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+            .where(inArray(dailyActivitySessionItems.sessionId, sessionIds)),
+        ]).then(([sTeam, iTeam]) => {
+          const map = new Map<string, (typeof sTeam)[number]>()
+          for (const t of sTeam) map.set(`${t.sessionId}_${t.employeeId}`, t)
+          for (const t of iTeam) {
+            const key = `${t.sessionId}_${t.employeeId}`
+            if (!map.has(key)) map.set(key, t)
+          }
+          return Array.from(map.values())
+        })
       : Promise.resolve([]),
   ])
 

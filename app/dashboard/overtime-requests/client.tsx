@@ -1917,6 +1917,22 @@ export function OvertimeListingClient({
     setIsBatchReviewOpen(true)
   }
 
+  const handleCatchActionError = (err: any, fallbackMessage = 'Terjadi kesalahan sistem.') => {
+    const errStr = String(err?.message || err || '').toLowerCase()
+    if (errStr.includes('was not found on the server') || errStr.includes('failed-to-find-server-action')) {
+      toast.info('Sistem HERO telah diperbarui di server (versi aplikasi baru). Memuat ulang halaman untuk menyinkronkan...', {
+        duration: 3000,
+      })
+      if (typeof window !== 'undefined') {
+        setTimeout(() => {
+          window.location.reload()
+        }, 1200)
+      }
+      return
+    }
+    toast.error(err.message || fallbackMessage)
+  }
+
   const handleSingleApproveCurrent = async () => {
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
@@ -1947,7 +1963,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal menyetujui dokumen SPL.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat menyetujui dokumen SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -1981,7 +1997,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal mengembalikan dokumen SPL.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat mengembalikan dokumen SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -2015,7 +2031,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal menolak dokumen SPL.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat menolak dokumen SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -2038,7 +2054,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal melakukan approve all.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat approve all SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
