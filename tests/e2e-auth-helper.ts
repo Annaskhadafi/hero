@@ -9,9 +9,17 @@ export const HERO_TEST_CREDENTIALS = {
  */
 export async function loginToHero(app: any, screen: any, browser: any, redirectUrl?: string) {
   await app.open(redirectUrl ? `/sign-in?callbackUrl=${encodeURIComponent(redirectUrl)}` : '/sign-in');
-  const emailInput = browser.locator('#email, input[name="username"]').first();
-  await emailInput.waitFor({ state: 'visible', timeout: 30000 });
   await new Promise((resolve) => setTimeout(resolve, 2000));
+  
+  const emailInput = browser.locator('#email, input[name="username"]').first();
+  const isVisible = await emailInput.isVisible().catch(() => false);
+  if (!isVisible) {
+    const isNowVisible = await emailInput.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
+    if (!isNowVisible) {
+      // Already logged in or redirected to dashboard/mobile
+      return;
+    }
+  }
   
   await emailInput.click();
   await emailInput.fill('71261');

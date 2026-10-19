@@ -4,8 +4,6 @@ import { getServerSession } from "@/lib/auth-session"
 import { join } from "path"
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
 import { createHash } from "crypto"
-// @ts-ignore
-import heicDecode from "heic-decode"
 import sharp from "sharp"
 
 export const dynamic = "force-dynamic"
@@ -84,6 +82,8 @@ async function prepareResponseBuffer(
 
   if (isHeic) {
     try {
+      // @ts-ignore
+      const { default: heicDecode } = await import("heic-decode")
       const { width, height, data } = await heicDecode({ buffer })
       let pipeline = sharp(Buffer.from(data), {
         raw: { width, height, channels: 4 },

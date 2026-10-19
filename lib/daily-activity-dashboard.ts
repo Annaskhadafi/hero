@@ -596,7 +596,11 @@ export async function getDailyActivityDashboardData(
   let effectiveEndDate: string
   let singleDate = ''
 
-  if (requestedDate) {
+  if (requestedStart && requestedEnd && requestedStart !== requestedEnd) {
+    effectiveStartDate = requestedStart
+    effectiveEndDate = requestedEnd
+    singleDate = ''
+  } else if (requestedDate) {
     singleDate = requestedDate
     effectiveStartDate = requestedDate
     effectiveEndDate = requestedDate
@@ -622,15 +626,15 @@ export async function getDailyActivityDashboardData(
 
   if (effectiveStartDate && effectiveEndDate) {
     sessionConditions.push(
-      sql`(date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate} and date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate})`
+      sql`(${dailyActivitySessions.workDate} >= ${effectiveStartDate + ' 00:00:00'}::timestamp and ${dailyActivitySessions.workDate} <= ${effectiveEndDate + ' 23:59:59'}::timestamp)`
     )
   } else if (effectiveStartDate) {
     sessionConditions.push(
-      sql`date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate}`
+      sql`${dailyActivitySessions.workDate} >= ${effectiveStartDate + ' 00:00:00'}::timestamp`
     )
   } else if (effectiveEndDate) {
     sessionConditions.push(
-      sql`date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate}`
+      sql`${dailyActivitySessions.workDate} <= ${effectiveEndDate + ' 23:59:59'}::timestamp`
     )
   }
 
@@ -904,14 +908,16 @@ export async function getDailyActivityDashboardData(
   const attendanceConditions = []
   if (effectiveStartDate && effectiveEndDate) {
     attendanceConditions.push(
-      sql`date(${attendanceRecords.eventTime}) >= ${effectiveStartDate} and date(${attendanceRecords.eventTime}) <= ${effectiveEndDate}`
+      sql`${attendanceRecords.eventTime} >= ${effectiveStartDate + ' 00:00:00'}::timestamp and ${attendanceRecords.eventTime} <= ${effectiveEndDate + ' 23:59:59'}::timestamp`
     )
   } else if (effectiveStartDate) {
-    attendanceConditions.push(sql`date(${attendanceRecords.eventTime}) >= ${effectiveStartDate}`)
+    attendanceConditions.push(sql`${attendanceRecords.eventTime} >= ${effectiveStartDate + ' 00:00:00'}::timestamp`)
   } else if (effectiveEndDate) {
-    attendanceConditions.push(sql`date(${attendanceRecords.eventTime}) <= ${effectiveEndDate}`)
+    attendanceConditions.push(sql`${attendanceRecords.eventTime} <= ${effectiveEndDate + ' 23:59:59'}::timestamp`)
   } else {
-    attendanceConditions.push(sql`date(${attendanceRecords.eventTime}) = ${targetDateStr}`)
+    attendanceConditions.push(
+      sql`${attendanceRecords.eventTime} >= ${targetDateStr + ' 00:00:00'}::timestamp and ${attendanceRecords.eventTime} <= ${targetDateStr + ' 23:59:59'}::timestamp`
+    )
   }
 
   if (currentSite.id !== 0) {

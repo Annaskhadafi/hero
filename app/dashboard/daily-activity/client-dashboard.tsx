@@ -1245,11 +1245,10 @@ export function DailyActivityClientDashboard({
                 type="date"
                 aria-label="Tanggal Mulai"
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value)
-                  applyFilters({ startDate: e.target.value, endDate })
+                onChange={(e) => setStartDate(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyFilters({ startDate: e.currentTarget.value, endDate })
                 }}
-                disabled={isPending}
                 className="w-1/2 h-9 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 font-semibold px-0.5">s/d</span>
@@ -1257,11 +1256,10 @@ export function DailyActivityClientDashboard({
                 type="date"
                 aria-label="Tanggal Selesai"
                 value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value)
-                  applyFilters({ startDate, endDate: e.target.value })
+                onChange={(e) => setEndDate(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyFilters({ startDate, endDate: e.currentTarget.value })
                 }}
-                disabled={isPending}
                 className="w-1/2 h-9 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
               />
               <Button
@@ -1387,12 +1385,16 @@ export function DailyActivityClientDashboard({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => applyFilters()}
+              onClick={() => applyFilters({ startDate, endDate })}
               disabled={isPending}
               className="h-9 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1 cursor-pointer"
             >
-              <Filter className="w-3.5 h-3.5" />
-              Terapkan
+              {isPending ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Filter className="w-3.5 h-3.5" />
+              )}
+              {isPending ? 'Memuat...' : 'Terapkan'}
             </Button>
             <Button
               type="button"

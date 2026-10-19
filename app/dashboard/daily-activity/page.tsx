@@ -8,6 +8,9 @@ import { canAccessDailyActivityMonitoring, isSuperAdminRole } from '@/lib/hero-a
 import { getDailyActivityDashboardData } from '@/lib/daily-activity-dashboard'
 import { DailyActivityClientDashboard } from './client-dashboard'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export const metadata: Metadata = {
   title: 'Daily Activity - Monitoring PJO & Head | HERO',
   description: 'Monitoring aktivitas harian seluruh karyawan site khusus PJO, Head Section, Head Department, dan Manajemen',
