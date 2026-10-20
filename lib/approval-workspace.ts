@@ -1,3 +1,4 @@
+import { calculatePayrollOvertimeValue } from '@/lib/timesheet-scheduling'
 import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { repairFormWo } from '@/db/schema/form-wo'
@@ -4064,6 +4065,7 @@ export async function getApprovalCenterData(
                 employeeSn: employees.employeeSn,
                 employeeName: employees.name,
                 employeeEmail: employees.email,
+                rosterType: overtimeCommandLetterParticipants.rosterType,
                 overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
               })
               .from(overtimeCommandLetterParticipants)
@@ -4452,10 +4454,16 @@ export async function getApprovalCenterData(
 
     const rawParticipants = otParticipantsBySplId.get(ot.id) || []
     const detailedParticipants = rawParticipants.map((p) => {
-      const hours =
-        p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0
-          ? Math.round((p.overtimeCreditMinutes / 60) * 10) / 10
-          : defaultDurationHours
+      let hours = 0
+      if (p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0) {
+        hours = Math.round((p.overtimeCreditMinutes / 60) * 10) / 10
+      } else {
+        // Jika durasi melebihi 8 jam (jam kerja shift), ambil selisih lemburnya
+        let actualOtHours = defaultDurationHours > 8 ? Math.max(1, defaultDurationHours - 8) : defaultDurationHours
+        const empRoster = p.rosterType || '5:2'
+        const isOffDay = ot.workDate && [0, 6].includes(new Date(ot.workDate).getDay())
+        hours = calculatePayrollOvertimeValue(empRoster, isOffDay ? 'off' : 'work', actualOtHours)
+      }
       return {
         employeeId: p.employeeId,
         employeeSn: p.employeeSn,
@@ -4479,7 +4487,8 @@ export async function getApprovalCenterData(
             .map((p, idx) => `${idx + 1}. ${p.employeeName || 'Karyawan'}: ${p.hours} Jam`)
             .join('\n') + `\n(Total: ${totalOvertimeHours} Jam)`
         : '-'
-    const durationPerMpLabel = defaultDurationHours > 0 ? `${defaultDurationHours} Jam / MP` : '-'
+    const effectiveMpDuration = detailedParticipants.length > 0 && detailedParticipants[0].hours > 0 ? detailedParticipants[0].hours : defaultDurationHours
+    const durationPerMpLabel = effectiveMpDuration > 0 ? `${effectiveMpDuration} Jam / MP` : '-'
 
     const otherParticipantNames = detailedParticipants
       .filter((p) => p.employeeName && p.employeeName.toLowerCase().trim() !== (ot.requesterName || '').toLowerCase().trim())
