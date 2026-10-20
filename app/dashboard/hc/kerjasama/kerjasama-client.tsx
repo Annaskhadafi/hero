@@ -1066,7 +1066,7 @@ export function KerjasamaClient({
       title: 'Lokasi Kota',
       options: [
         { label: 'Semua Kota', value: 'ALL' },
-        ...initialMetrics.rsLocations.map((loc) => ({ label: loc, value: loc })),
+        ...(initialMetrics?.rsLocations || []).map((loc) => ({ label: loc, value: loc })),
       ],
     },
   ]
@@ -1096,7 +1096,7 @@ export function KerjasamaClient({
       title: 'Lokasi Kota',
       options: [
         { label: 'Semua Kota', value: 'ALL' },
-        ...initialMetrics.sekolahLocations.map((loc) => ({ label: loc, value: loc })),
+        ...(initialMetrics?.sekolahLocations || []).map((loc) => ({ label: loc, value: loc })),
       ],
     },
   ]
@@ -1117,7 +1117,7 @@ export function KerjasamaClient({
       title: 'Asal Sekolah',
       options: [
         { label: 'Semua Sekolah', value: 'ALL' },
-        ...initialMetrics.pklInstitutions.map((inst) => ({ label: inst, value: inst })),
+        ...(initialMetrics?.pklInstitutions || []).map((inst) => ({ label: inst, value: inst })),
       ],
     },
   ]

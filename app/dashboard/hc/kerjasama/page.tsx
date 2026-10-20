@@ -23,11 +23,20 @@ export default async function KerjasamaPage() {
   const isSuper = isSuperAdminRole(currentEmployee.accessRole)
 
   const [rsRes, sekolahRes, pklRes, metricsRes, employeesRes] = await Promise.all([
-    getKerjasamaRsList(),
-    getKerjasamaSekolahList(),
-    getPklStudentsList(),
-    getKerjasamaMetrics(),
-    getActiveEmployeesForMentor(),
+    getKerjasamaRsList().catch(() => ({ success: false, data: [] })),
+    getKerjasamaSekolahList().catch(() => ({ success: false, data: [] })),
+    getPklStudentsList().catch(() => ({ success: false, data: [] })),
+    getKerjasamaMetrics().catch(() => ({
+      success: false,
+      rsMetrics: { total: 0, active: 0, expiringSoon: 0, expired: 0, noPartnership: 0 },
+      sekolahMetrics: { total: 0, active: 0, expiringSoon: 0, expired: 0, noPartnership: 0 },
+      pklMetrics: { total: 0, active: 0, completed: 0, upcoming: 0 },
+      rsLocations: [],
+      sekolahLocations: [],
+      sekolahTypes: [],
+      pklInstitutions: [],
+    })),
+    getActiveEmployeesForMentor().catch(() => ({ success: false, data: [] })),
   ])
 
   const canManage = permission.canEdit || permission.canDelete || isSuper
@@ -35,19 +44,19 @@ export default async function KerjasamaPage() {
   return (
     <div className="flex-1 p-4 md:p-6 w-full space-y-6">
       <KerjasamaClient
-        initialRsList={rsRes.data || []}
-        initialSekolahList={sekolahRes.data || []}
-        initialPklList={pklRes.data || []}
+        initialRsList={rsRes?.data || []}
+        initialSekolahList={sekolahRes?.data || []}
+        initialPklList={pklRes?.data || []}
         initialMetrics={{
-          rsMetrics: metricsRes.rsMetrics,
-          sekolahMetrics: metricsRes.sekolahMetrics,
-          pklMetrics: metricsRes.pklMetrics,
-          rsLocations: metricsRes.rsLocations || [],
-          sekolahLocations: metricsRes.sekolahLocations || [],
-          sekolahTypes: metricsRes.sekolahTypes || [],
-          pklInstitutions: metricsRes.pklInstitutions || [],
+          rsMetrics: metricsRes?.rsMetrics || { total: 0, active: 0, expiringSoon: 0, expired: 0, noPartnership: 0 },
+          sekolahMetrics: metricsRes?.sekolahMetrics || { total: 0, active: 0, expiringSoon: 0, expired: 0, noPartnership: 0 },
+          pklMetrics: metricsRes?.pklMetrics || { total: 0, active: 0, completed: 0, upcoming: 0 },
+          rsLocations: metricsRes?.rsLocations || [],
+          sekolahLocations: metricsRes?.sekolahLocations || [],
+          sekolahTypes: metricsRes?.sekolahTypes || [],
+          pklInstitutions: metricsRes?.pklInstitutions || [],
         }}
-        employees={employeesRes.data || []}
+        employees={employeesRes?.data || []}
         canManage={canManage}
       />
     </div>
