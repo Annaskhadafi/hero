@@ -1,5 +1,7 @@
 'use client'
 
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
+
 import { useState, useTransition, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -43,6 +45,7 @@ import {
 } from '@/app/dashboard/activity-hub/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
@@ -330,13 +333,26 @@ export function DailyActivityApprovalForm({
     siteName: data.site.name || '',
     customerName: sanitizedInitialCustomer,
   })
+  const initialDbTeamIds = useMemo(() => {
+    if (Array.isArray((data as any).teamMembers) && (data as any).teamMembers.length > 0) {
+      return (data as any).teamMembers.map((m: any) => Number(m.employeeId || m.id)).filter(Boolean)
+    }
+    if (Array.isArray((data as any).teamMemberEmployeeIds) && (data as any).teamMemberEmployeeIds.length > 0) {
+      return (data as any).teamMemberEmployeeIds.map(Number).filter(Boolean)
+    }
+    return []
+  }, [data])
+
   const initialTeamMatch = (data.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
   const initialTeamNames = useMemo(
     () => (initialTeamMatch ? initialTeamMatch[1].split(',').map((s) => s.trim()) : []),
     [data.summaryRemark]
   )
-  const [isTeamLog, setIsTeamLog] = useState<boolean>(() => initialTeamNames.length > 0)
+  const [isTeamLog, setIsTeamLog] = useState<boolean>(() => initialDbTeamIds.length > 0 || initialTeamNames.length > 0)
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>(() => {
+    if (initialDbTeamIds.length > 0) {
+      return initialDbTeamIds
+    }
     if (initialTeamNames.length > 0) {
       const ids: number[] = []
       initialTeamNames.forEach((name) => {
@@ -656,15 +672,13 @@ export function DailyActivityApprovalForm({
 
   const handleItemPhotoUpload = async (index: number, file: File | null) => {
     if (!file) return
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 10MB')
-      return
-    }
 
     setUploadingItemIdx(index)
     try {
+      // Compress image client-side to prevent network and payload bottlenecks
+      const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressedFile)
       formData.append('uploadTarget', 'daily_activity')
       const res = await uploadFile(formData)
       if (res.success && (res.readableUrl || res.url)) {
@@ -672,24 +686,29 @@ export function DailyActivityApprovalForm({
         handleUpdateItem(index, 'photoUrl', finalUrl)
         toast.success('Foto bukti pekerjaan berhasil diunggah!')
       } else {
-        // Fallback to local base64 reader
+        // Fallback to local base64 reader with compressed file
         const reader = new FileReader()
         reader.onload = () => {
           const base64Url = reader.result as string
           handleUpdateItem(index, 'photoUrl', base64Url)
           toast.success('Foto bukti pekerjaan berhasil disimpan!')
         }
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(compressedFile)
       }
     } catch (err) {
       console.error('Error uploading photo:', err)
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64Url = reader.result as string
-        handleUpdateItem(index, 'photoUrl', base64Url)
-        toast.success('Foto bukti pekerjaan berhasil disimpan!')
+      try {
+        const fallbackCompressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          handleUpdateItem(index, 'photoUrl', base64Url)
+          toast.success('Foto bukti pekerjaan berhasil disimpan!')
+        }
+        reader.readAsDataURL(fallbackCompressed)
+      } catch {
+        toast.error('Gagal mengunggah atau memproses foto')
       }
-      reader.readAsDataURL(file)
     } finally {
       setUploadingItemIdx(null)
     }
@@ -1042,13 +1061,32 @@ export function DailyActivityApprovalForm({
             <td>Site: <strong>{profileForm.siteName || '—'}</strong></td>
             <td>Customer: <strong>{profileForm.customerName || 'Default Customer'}</strong></td>
           </tr>
-          {currentTeamMembersSummary ? (
-            <tr>
-              <td colSpan={2}>
-                Anggota Tim: <span className="text-black font-normal">{currentTeamMembersSummary}</span>
-              </td>
-            </tr>
-          ) : null}
+          {(() => {
+            const items = itemsList || []
+            const teamResult = formatActivityTeamGroups(items, currentTeamMembersSummary)
+
+            if (!teamResult.hasTeams) return null
+
+            return (
+              <tr>
+                <td colSpan={2} className="py-1.5">
+                  <div className="font-bold text-black mb-1">Anggota Tim:</div>
+                  {teamResult.isSingleTeam ? (
+                    <span className="text-black font-normal">{teamResult.singleTeamText}</span>
+                  ) : (
+                    <div className="space-y-1 pl-1">
+                      {teamResult.groups.map((grp, gIdx) => (
+                        <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                          <span className="font-bold text-black shrink-0">{grp.prefixLabel}</span>
+                          <span className="text-black font-medium">{grp.teamMembers}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            )
+          })()}
         </tbody>
       </table>
 
@@ -1073,11 +1111,12 @@ export function DailyActivityApprovalForm({
                 <td className="text-center align-middle">{idx + 1}</td>
                 <td className="align-middle">
                   <div className="font-semibold">{item.label}</div>
-                  {(item.unitNumber || item.tireCount != null || item.materialUsed) && (
+                  {(item.unitNumber || item.tireCount != null || item.materialUsed || (item as any).itemTeamMembersSummary) && (
                     <div className="text-[7pt] text-slate-600 flex flex-wrap gap-x-2 mt-0.5">
                       {item.unitNumber ? <span>Unit: <strong>{item.unitNumber}</strong></span> : null}
                       {item.tireCount != null ? <span>Tire: <strong>{item.tireCount}</strong></span> : null}
                       {item.materialUsed ? <span>Mat: <strong>{item.materialUsed}</strong></span> : null}
+                      {(item as any).itemTeamMembersSummary ? <span>Tim: <strong className="text-blue-700">{(item as any).itemTeamMembersSummary}</strong></span> : null}
                     </div>
                   )}
                 </td>
@@ -1541,7 +1580,7 @@ export function DailyActivityApprovalForm({
                   <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 size-3.5 text-slate-400" />
                     <Input
-                      placeholder="Cari nama atau NIK..."
+                      placeholder="Cari nama atau SN..."
                       value={teamMemberSearchQuery}
                       onChange={(e) => setTeamMemberSearchQuery(e.target.value)}
                       className="h-8 pl-8 text-xs bg-white"
@@ -2096,7 +2135,7 @@ export function DailyActivityApprovalForm({
                           {(itemPreset?.requiresTireCount || item.tireCount != null) ? (
                             <div className="space-y-1">
                               <Label className="text-xs font-semibold text-slate-700">
-                                Jumlah Tire {itemPreset?.requiresTireCount ? '*' : ''}
+                                Jumlah Pcs / Qty {itemPreset?.requiresTireCount ? '*' : ''}
                               </Label>
                               <Input
                                 type="number"

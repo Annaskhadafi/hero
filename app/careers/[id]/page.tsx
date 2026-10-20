@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { ArrowLeft, UploadCloud, Plus, Trash2, CalendarDays, MapPin } from "lucide-react";
 import Link from "next/link";
 import { format } from "date-fns";
+import { isKarirHost } from "@/lib/karir-config";
 
 export default function CareerApplicationPage() {
   const params = useParams();
@@ -26,6 +27,13 @@ export default function CareerApplicationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [isExpired, setIsExpired] = useState(false);
   const [submitTimeout, setSubmitTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isKarir, setIsKarir] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsKarir(isKarirHost(window.location.host));
+    }
+  }, []);
   
   // -- Form State --
   const [fullName, setFullName] = useState("");
@@ -185,7 +193,7 @@ export default function CareerApplicationPage() {
 
       clearTimeout(timeout);
       toast.success("Aplikasi berhasil dikirim!");
-      router.push("/careers/success");
+      router.push(isKarir ? "/success" : "/careers/success");
     } catch (e: any) {
       clearTimeout(timeout);
       console.error("Create candidate error:", e);
@@ -208,7 +216,7 @@ export default function CareerApplicationPage() {
           </CardHeader>
           <CardContent>
             <Button asChild variant="outline">
-              <Link href="/careers">Lihat Lowongan Lain</Link>
+              <Link href={isKarir ? "/" : "/careers"}>Lihat Lowongan Lain</Link>
             </Button>
           </CardContent>
         </Card>
@@ -222,7 +230,7 @@ export default function CareerApplicationPage() {
     <div className="min-h-screen bg-muted/10 py-12 px-4 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl space-y-8">
         <div>
-          <Link href="/careers" className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground">
+          <Link href={isKarir ? "/" : "/careers"} className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Kembali ke Daftar Lowongan
           </Link>

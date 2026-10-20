@@ -31,6 +31,23 @@ export async function getCurrentEmployee() {
   return null
 }
 
+export async function getCurrentEmployeeByEmail(email?: string | null) {
+  if (!email) return null
+  const cleanEmail = email.trim().toLowerCase()
+  const [employee] = await db
+    .select()
+    .from(employees)
+    .where(
+      or(
+        eq(employees.email, email),
+        eq(employees.email, cleanEmail),
+        sql`LOWER(TRIM(${employees.email})) = ${cleanEmail}`
+      )
+    )
+    .limit(1)
+  return employee ?? null
+}
+
 export async function getCurrentEmployeeAccessRole(): Promise<string> {
   const emp = await getCurrentEmployee()
   return emp?.accessRole ?? ''

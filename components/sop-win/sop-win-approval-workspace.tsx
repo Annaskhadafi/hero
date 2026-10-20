@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import * as XLSX from "xlsx";
 import {
   Search,
   CheckCircle2,
@@ -769,13 +768,14 @@ export function SopWinApprovalWorkspace({
   };
 
   // Export Selected or All Rows to Excel (XLSX)
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const targetRows = selectedIds.length > 0 ? selectedBatchRows : filteredRequests;
     if (targetRows.length === 0) {
       toast.error("Tidak ada data untuk diexport.");
       return;
     }
 
+    const XLSX = await import("xlsx");
     const dataToExport = targetRows.map((r, idx) => ({
       No: idx + 1,
       "No. Request": r.requestNumber,

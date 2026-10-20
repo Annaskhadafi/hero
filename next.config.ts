@@ -1,8 +1,26 @@
 import type { NextConfig } from 'next'
 
+const cspHeader = `
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com data:;
+  img-src 'self' data: blob: https://is3.cloudhost.id https://*.ytimg.com https://i.ytimg.com https://*.googleusercontent.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.openstreetmap.org https://*.chitraparatama.com;
+  media-src 'self' blob: data: https://is3.cloudhost.id https://*.googlevideo.com https://*.youtube.com https://*.chitraparatama.com;
+  connect-src 'self' https://is3.cloudhost.id https://vision.chitraparatama.com https://*.chitraparatama.com https://*.youtube.com https://*.googlevideo.com https://*.google.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org wss: ws:;
+  frame-src 'self' blob: data: https: http:;
+  child-src 'self' blob: https: http:;
+  worker-src 'self' blob:;
+  frame-ancestors 'self' https://*.chitraparatama.com https://*.chitraparatama.co.id;
+  form-action 'self';
+  base-uri 'self';
+  object-src 'self' blob: data:;
+`.replace(/\s{2,}/g, ' ').trim()
+
 const nextConfig: NextConfig = {
   output: 'standalone',
   productionBrowserSourceMaps: false,
+  poweredByHeader: false,
   turbopack: {
     root: process.cwd(),
   },
@@ -21,6 +39,11 @@ const nextConfig: NextConfig = {
     ],
   },
   images: {
+    localPatterns: [
+      { pathname: '/**', search: '' },
+      { pathname: '/logo-hero.png', search: '?v=hero-cat-20261012' },
+      { pathname: '/icon-192.png', search: '?v=hero-cat-20261012' },
+    ],
     remotePatterns: [
       {
         protocol: 'https',
@@ -29,15 +52,98 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
-  serverExternalPackages: ['face-api.js'],
+  serverExternalPackages: ['face-api.js', 'pptxgenjs', 'libheif-js', 'heic-decode'],
   experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      '@tabler/icons-react',
+      'date-fns',
+      'recharts',
+    ],
     serverActions: {
       bodySizeLimit: '25mb',
+      allowedOrigins: [
+        'karir.chitraparatama.com',
+        'karir.localhost:3000',
+        'karir.localhost',
+        'maestro.chitraparatama.com',
+        'maestro.localhost:3000',
+        'form.chitraparatama.com',
+        'form.localhost:3000',
+        'hero.chitraparatama.com',
+        'localhost:3000',
+      ],
+      // Increase timeout: DAR submit involves photo uploads + DB writes + email — default 5s is too short on mobile
+      // Next.js 15 uses `serverActions.timeoutSeconds` — ponytail: upgrade when stable
     },
-    cpus: 3,
+    cpus: 1,
   },
   async headers() {
     return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'X-DNS-Prefetch-Control',
+            value: 'on',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload',
+          },
+          {
+            key: 'X-Content-Type-Options',
+            value: 'nosniff',
+          },
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self), microphone=(self), geolocation=(self), browsing-topics=()',
+          },
+          {
+            key: 'Content-Security-Policy',
+            value: cspHeader,
+          },
+        ],
+      },
+      {
+        source: '/manifest.webmanifest',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, must-revalidate',
+          },
+        ],
+      },
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, must-revalidate',
+          },
+        ],
+      },
+      {
+        source: '/pwa/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
       {
         source: '/models/:path*',
         headers: [
@@ -248,6 +354,20 @@ const nextConfig: NextConfig = {
       canvas: false,
       encoding: false,
       fs: false,
+      https: false,
+      http: false,
+      ...(!isServer && {
+        dns: false,
+        net: false,
+        tls: false,
+        pg: false,
+        'pg-native': false,
+        'node:fs': false,
+        'node:https': false,
+        'node:http': false,
+        'node:path': false,
+        'node:os': false,
+      }),
     }
     return config
   },

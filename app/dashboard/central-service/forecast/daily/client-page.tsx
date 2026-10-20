@@ -11,6 +11,7 @@ import {
 } from '@/app/actions/central-service-forecast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { HeroKpiCard } from '@/components/templates'
 import {
   Dialog,
   DialogContent,
@@ -735,95 +736,42 @@ export function DailyClientPage({
         </div>
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Forecast
-            </CardTitle>
-            <TrendingUp className="text-muted-foreground h-6 w-6" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span>{formatCurrency(totalForecast)}</span>
-              <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className="text-blue-600">
-                $
-                {(totalForecast / (Number(globalRate) || 15000)).toLocaleString('en-US', {
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Document Completed
-            </CardTitle>
-            <Banknote className="h-6 w-6 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-                <span className="text-green-600">{formatCurrency(totalActual)}</span>
-                <span className="text-muted-foreground text-xl font-light">|</span>
-                <span className="text-emerald-600">
-                  $
-                  {(totalActual / (Number(globalRate) || 15000)).toLocaleString('en-US', {
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              {totalForecast > 0 && (
-                <div className="flex flex-col items-end">
-                  <div className="text-muted-foreground mb-1 flex items-center gap-1 text-[10px] font-semibold tracking-wider uppercase">
-                    <Trophy className="h-3 w-3 text-blue-500" />
-                    Achiev.
-                  </div>
-                  <div className="rounded-md border border-blue-200 bg-blue-100 px-2 py-1 text-sm font-bold text-blue-700">
-                    {((totalActual / totalForecast) * 100).toFixed(2)}%
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">Revenue SAP</CardTitle>
-            <TableProperties className="h-6 w-6 text-sky-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span className="text-sky-700">{formatCurrency(sapTotalIdr)}</span>
-              <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className="text-blue-600">{fmtUsd(sapTotalUsd)}</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Sisa (Remaining)
-            </CardTitle>
-            <Wallet className="h-6 w-6 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span className={totalRemaining < 0 ? 'text-emerald-600' : 'text-orange-600'}>
-                {formatSisaCurrency(totalRemaining)}
-              </span>
-              <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className={totalRemaining < 0 ? 'text-emerald-600' : 'text-amber-600'}>
-                {totalRemaining < 0 ? '+' : ''}$
-                {(Math.abs(totalRemaining) / (Number(globalRate) || 15000)).toLocaleString('en-US', {
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Forecast"
+          value={formatCurrency(totalForecast)}
+          tone="blue"
+          icon={<TrendingUp className="size-5" />}
+          description={`≈ $${(totalForecast / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+            maximumFractionDigits: 2,
+          })} USD`}
+        />
+        <HeroKpiCard
+          title="Document Completed"
+          value={formatCurrency(totalActual)}
+          badge={totalForecast > 0 ? `${((totalActual / totalForecast) * 100).toFixed(2)}% Achiev.` : undefined}
+          tone="emerald"
+          icon={<Banknote className="size-5" />}
+          description={`≈ $${(totalActual / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+            maximumFractionDigits: 2,
+          })} USD`}
+        />
+        <HeroKpiCard
+          title="Revenue SAP"
+          value={formatCurrency(sapTotalIdr)}
+          tone="cyan"
+          icon={<TableProperties className="size-5" />}
+          description={`≈ ${fmtUsd(sapTotalUsd)}`}
+        />
+        <HeroKpiCard
+          title="Total Sisa (Remaining)"
+          value={formatSisaCurrency(totalRemaining)}
+          tone={totalRemaining < 0 ? 'emerald' : 'amber'}
+          icon={<Wallet className="size-5" />}
+          description={`≈ ${totalRemaining < 0 ? '+' : ''}$${(Math.abs(totalRemaining) / (Number(globalRate) || 15000)).toLocaleString('en-US', {
+            maximumFractionDigits: 2,
+          })} USD`}
+        />
       </div>
 
       <div className="bg-muted/30 flex w-fit gap-1 rounded-md border p-1">

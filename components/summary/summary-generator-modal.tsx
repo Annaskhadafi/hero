@@ -29,10 +29,14 @@ import {
   getAvailableEmployeesForSummaryAction,
   generateSummaryAction,
 } from '@/app/dashboard/summary/actions';
+import { getMasterApdListAction } from '@/app/actions/master-apd-actions';
 import {
   SAFETY_SHOES_COL,
   QTY_ONLY_COLUMNS,
   APD_ITEM_COLUMNS,
+  getDefaultApdSummaryDateRange,
+  getPreviousApdSummaryDateRange,
+  getCalendarMonthApdSummaryDateRange,
   type PendingSummaryRequest,
   type PendingSummaryRequestItem,
   type ManualSummaryEntry,
@@ -70,7 +74,7 @@ const COMMON_APD_ITEMS = [
   'Safety Glasses',
   'Safety Goggles',
   'Sarung Tangan Ansel',
-  'Kaos Tangan Dotting',
+  'Sarung Tangan Dotting',
   'Masker',
   'Ear Plug',
   'Padlock Merah',
@@ -81,6 +85,7 @@ const COMMON_APD_ITEMS = [
   'Dalaman Helm',
   'Tali Kacamata',
   'Chin Strap',
+  'Face Shield Helmet',
 ];
 
 export function SummaryGeneratorModal({
@@ -99,37 +104,37 @@ export function SummaryGeneratorModal({
   const [shoeSizeMap, setShoeSizeMap] = useState<Record<number, string>>({});
   const [globalRemarks, setGlobalRemarks] = useState('');
 
+  // Date Range state for APD summary cut-off
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [activePreset, setActivePreset] = useState<'active_cutoff' | 'prev_cutoff' | 'calendar_month' | 'all'>('active_cutoff');
+
   // Manual employee entry states
   const [isAddManualOpen, setIsAddManualOpen] = useState(false);
   const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [empSearch, setEmpSearch] = useState('');
+  const [apdSearch, setApdSearch] = useState('');
   const [selectedManualEmp, setSelectedManualEmp] = useState<AvailableEmployee | null>(null);
   const [manualSelectedItems, setManualSelectedItems] = useState<ManualSummaryItem[]>([
     { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
   ]);
   const [manualShoeSize, setManualShoeSize] = useState('');
   const [manualRemarks, setManualRemarks] = useState('');
+  const [masterApdItems, setMasterApdItems] = useState<string[]>(COMMON_APD_ITEMS);
 
-  // Fetch pending requests when modal opens
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let isMounted = true;
+  const loadRequests = (start?: string, end?: string) => {
     setLoading(true);
-    setIsAddManualOpen(false);
-    setSelectedManualEmp(null);
-
-    getPendingRequestsAction(section.id, section.targetSite)
+    getPendingRequestsAction(section.id, section.targetSite, {
+      startDate: start || undefined,
+      endDate: end || undefined,
+    })
       .then((res) => {
-        if (!isMounted) return;
         if (res.success && res.requests) {
           setRequests(res.requests);
-          // Default: select all
           const allIds = new Set(res.requests.map((r) => r.requestId));
           setSelectedIds(allIds);
 
-          // Initialize maps
           const initRemarks: Record<number, string> = {};
           const initSize: Record<number, string> = {};
 
@@ -145,18 +150,68 @@ export function SummaryGeneratorModal({
         }
       })
       .catch((err) => {
-        if (isMounted) {
-          toast.error(err.message || 'Terjadi kesalahan sistem');
-        }
+        toast.error(err.message || 'Terjadi kesalahan sistem');
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        setLoading(false);
       });
+  };
 
-    return () => {
-      isMounted = false;
-    };
+  // Fetch pending requests and master APD items when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    getMasterApdListAction('APD', true).then((res) => {
+      if (res.success && res.data && res.data.length > 0) {
+        setMasterApdItems(res.data.map((i) => i.name));
+      }
+    });
+
+    const defaultRange = getDefaultApdSummaryDateRange();
+    setStartDate(defaultRange.startDate);
+    setEndDate(defaultRange.endDate);
+    setActivePreset('active_cutoff');
+    setIsAddManualOpen(false);
+    setSelectedManualEmp(null);
+
+    loadRequests(defaultRange.startDate, defaultRange.endDate);
   }, [isOpen, section.id, section.targetSite]);
+
+  const handleStartDateChange = (val: string) => {
+    setStartDate(val);
+    setActivePreset('all');
+    loadRequests(val, endDate);
+  };
+
+  const handleEndDateChange = (val: string) => {
+    setEndDate(val);
+    setActivePreset('all');
+    loadRequests(startDate, val);
+  };
+
+  const applyPreset = (preset: 'active_cutoff' | 'prev_cutoff' | 'calendar_month' | 'all') => {
+    setActivePreset(preset);
+    if (preset === 'active_cutoff') {
+      const range = getDefaultApdSummaryDateRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      loadRequests(range.startDate, range.endDate);
+    } else if (preset === 'prev_cutoff') {
+      const range = getPreviousApdSummaryDateRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      loadRequests(range.startDate, range.endDate);
+    } else if (preset === 'calendar_month') {
+      const range = getCalendarMonthApdSummaryDateRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      loadRequests(range.startDate, range.endDate);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+      loadRequests('', '');
+    }
+  };
 
   // Load available employees when manual form is toggled
   const handleOpenManualForm = async () => {
@@ -294,17 +349,24 @@ export function SummaryGeneratorModal({
     toast.info('Baris manual dihapus');
   };
 
-  // Filtered requests by search
+  // Filtered requests by search and sorted by site then employee name
   const filteredRequests = useMemo(() => {
-    if (!search.trim()) return requests;
-    const lower = search.toLowerCase();
-    return requests.filter(
-      (r) =>
-        r.employeeName.toLowerCase().includes(lower) ||
-        r.employeeSn.toLowerCase().includes(lower) ||
-        r.requestNumber.toLowerCase().includes(lower) ||
-        r.siteName.toLowerCase().includes(lower)
-    );
+    let result = requests;
+    if (search.trim()) {
+      const lower = search.toLowerCase();
+      result = requests.filter(
+        (r) =>
+          r.employeeName.toLowerCase().includes(lower) ||
+          r.employeeSn.toLowerCase().includes(lower) ||
+          r.requestNumber.toLowerCase().includes(lower) ||
+          r.siteName.toLowerCase().includes(lower)
+      );
+    }
+    return [...result].sort((a, b) => {
+      const siteCmp = (a.siteName || '').localeCompare(b.siteName || '', 'id-ID', { sensitivity: 'base' });
+      if (siteCmp !== 0) return siteCmp;
+      return (a.employeeName || '').localeCompare(b.employeeName || '', 'id-ID', { sensitivity: 'base' });
+    });
   }, [requests, search]);
 
   // Filtered available employees for manual addition
@@ -320,6 +382,14 @@ export function SummaryGeneratorModal({
       )
       .slice(0, 50);
   }, [availableEmployees, empSearch]);
+
+  // Filtered APD items for manual addition
+  const filteredApdItems = useMemo(() => {
+    const itemsList = masterApdItems.length > 0 ? masterApdItems : COMMON_APD_ITEMS;
+    if (!apdSearch.trim()) return itemsList;
+    const lower = apdSearch.toLowerCase();
+    return itemsList.filter((item) => item.toLowerCase().includes(lower));
+  }, [apdSearch, masterApdItems]);
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredRequests.length) {
@@ -409,6 +479,8 @@ export function SummaryGeneratorModal({
         selectedRequests: regularSelectedPayload,
         manualEntries: manualEntriesPayload,
         defaultRemarks: globalRemarks,
+        periodStart: startDate || null,
+        periodEnd: endDate || null,
       });
 
       if (res.success && 'summaryId' in res && res.summaryId) {
@@ -463,6 +535,89 @@ export function SummaryGeneratorModal({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Date Range & Preset Filter Bar */}
+        <div className="px-6 py-2.5 bg-slate-50/90 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              Periode Pengajuan:
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="h-8 text-xs w-36 px-2 bg-white dark:bg-slate-900"
+              />
+              <span className="text-slate-400 font-medium">s/d</span>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => handleEndDateChange(e.target.value)}
+                className="h-8 text-xs w-36 px-2 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <span className="text-[11px] text-slate-500 hidden sm:inline">
+              (Filter tgl request APD karyawan)
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyPreset('active_cutoff')}
+              className={`h-7 px-2.5 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'active_cutoff'
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Tgl 6 s/d 6 Aktif
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyPreset('prev_cutoff')}
+              className={`h-7 px-2.5 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'prev_cutoff'
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Tgl 6 s/d 6 Lalu
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyPreset('calendar_month')}
+              className={`h-7 px-2.5 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'calendar_month'
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Bulan Ini
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => applyPreset('all')}
+              className={`h-7 px-2 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'all'
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Semua
+            </Button>
+          </div>
         </div>
 
         {/* Filter & Action Toolbar */}
@@ -609,28 +764,58 @@ export function SummaryGeneratorModal({
                 {/* 2. Pilih Item APD & Ukuran Sepatu */}
                 <div className="space-y-2.5">
                   <div>
-                    <label className="font-bold text-slate-700 dark:text-slate-200 block mb-1">
-                      Pilih Item APD
-                    </label>
-                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50/40 dark:bg-slate-950/30">
-                      {COMMON_APD_ITEMS.map((item) => {
-                        const isSelected = manualSelectedItems.some((i) => i.itemType === item);
-                        return (
-                          <button
-                            key={item}
-                            type="button"
-                            onClick={() => handleToggleItem(item)}
-                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
-                              isSelected
-                                ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
-                            }`}
-                          >
-                            {isSelected ? '✓ ' : '+ '}
-                            {item}
-                          </button>
-                        );
-                      })}
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-700 dark:text-slate-200 block text-xs">
+                        Pilih Item APD
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {manualSelectedItems.length} item dipilih
+                      </span>
+                    </div>
+                    <div className="relative mb-1.5">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <Input
+                        value={apdSearch}
+                        onChange={(e) => setApdSearch(e.target.value)}
+                        placeholder="Cari item APD..."
+                        className="pl-8 h-8 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto p-1.5 border border-slate-200 dark:border-slate-800 rounded-md bg-slate-50/40 dark:bg-slate-950/30">
+                      {filteredApdItems.length === 0 && !apdSearch.trim() ? (
+                        <div className="p-2 text-center text-slate-400 text-[11px] w-full">Tidak ada item APD</div>
+                      ) : (
+                        filteredApdItems.map((item) => {
+                          const isSelected = manualSelectedItems.some((i) => i.itemType === item);
+                          return (
+                            <button
+                              key={item}
+                              type="button"
+                              onClick={() => handleToggleItem(item)}
+                              className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                                  : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-emerald-400'
+                              }`}
+                            >
+                              {isSelected ? '✓ ' : '+ '}
+                              {item}
+                            </button>
+                          );
+                        })
+                      )}
+                      {apdSearch.trim() && !filteredApdItems.some((i) => i.toLowerCase() === apdSearch.trim().toLowerCase()) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleToggleItem(apdSearch.trim());
+                            setApdSearch('');
+                          }}
+                          className="px-2 py-1 rounded text-[11px] font-bold border border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
+                        >
+                          + Tambah &quot;{apdSearch.trim()}&quot;
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -812,7 +997,13 @@ export function SummaryGeneratorModal({
                             )}
                           </div>
                           <div className="text-[11px] font-mono text-slate-500">{req.employeeSn}</div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{req.requestNumber}</div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span>{req.requestNumber}</span>
+                            <span>&bull;</span>
+                            <span className="text-slate-600 dark:text-slate-300 font-sans font-medium">
+                              {req.requestDate ? new Date(req.requestDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-3 px-3">
                           <Badge variant="outline" className="text-[10px] font-medium bg-slate-50 dark:bg-slate-800">
@@ -849,10 +1040,11 @@ export function SummaryGeneratorModal({
                         <td className="py-3 px-3">
                           <Input
                             value={remarksMap[req.requestId] ?? ''}
+                            maxLength={150}
                             onChange={(e) =>
                               setRemarksMap((prev) => ({ ...prev, [req.requestId]: e.target.value }))
                             }
-                            placeholder="Tulis keterangan untuk karyawan ini..."
+                            placeholder="Tulis keterangan (maks. 150 karakter)..."
                             className="h-8 text-xs px-2.5 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 focus:border-blue-500"
                           />
                         </td>

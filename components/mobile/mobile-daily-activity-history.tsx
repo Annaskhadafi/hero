@@ -5,24 +5,19 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   Clock3,
+  Copy,
   FileCheck2,
   FileText,
   Pencil,
   RotateCcw,
   Search,
-  Trash2,
   User,
+  Users,
   Wrench,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  ACTIVITY_DRAFTS_CHANGED_EVENT,
-  getActivityDraftIndex,
-  removeActivityDraft,
-  type ActivityDraftIndexEntry,
-} from '@/lib/offline-sync'
 
 export type MobileDarHistoryItem = {
   id: number
@@ -44,6 +39,10 @@ export type MobileDarHistoryItem = {
   isAuthor?: boolean
   isApprover?: boolean
   isTeamMember?: boolean
+  isTeamActivity?: boolean
+  teamMemberCount?: number
+  teamNameList?: string | null
+  representedByName?: string | null
   items?: Array<{
     id: number
     snapshotLabel: string | null
@@ -110,21 +109,15 @@ function statusLabel(status: string) {
 export function MobileDailyActivityHistory({
   activities,
   onOpenReview,
+  onCloneActivity,
 }: {
   activities: MobileDarHistoryItem[]
   onOpenReview?: (sessionId: number) => void
+  onCloneActivity?: (sessionId: number) => void
 }) {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [visible, setVisible] = useState(8)
-  const [drafts, setDrafts] = useState<ActivityDraftIndexEntry[]>([])
-
-  useEffect(() => {
-    const refreshDrafts = () => setDrafts(getActivityDraftIndex())
-    refreshDrafts()
-    window.addEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, refreshDrafts)
-    return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, refreshDrafts)
-  }, [])
 
   const stats = useMemo(() => {
     const total = activities.length
@@ -151,7 +144,6 @@ export function MobileDailyActivityHistory({
         if (statusFilter === 'approved' && !['approved', 'completed', 'closed'].includes(st)) return false
         if (statusFilter === 'returned' && !['returned', 'reverted', 'needs_revision'].includes(st)) return false
         if (statusFilter === 'rejected' && st !== 'rejected') return false
-        if (statusFilter === 'draft' && st !== 'draft') return false
       }
 
       if (!needle) return true
@@ -166,53 +158,6 @@ export function MobileDailyActivityHistory({
 
   return (
     <div className="space-y-4">
-      {drafts.length > 0 ? (
-        <section className="space-y-2 rounded-2xl border border-sky-100 bg-sky-50/60 p-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">
-                Draft Tersimpan di Perangkat
-              </p>
-              <p className="text-xs font-semibold text-slate-600">Bisa dilanjutkan dan diedit kembali.</p>
-            </div>
-            <Badge className="border-0 bg-sky-100 text-sky-800">{drafts.length}</Badge>
-          </div>
-          <div className="space-y-2">
-            {drafts.map((draft) => (
-              <div key={draft.key} className="flex items-center gap-2 rounded-xl border border-sky-100 bg-white p-3">
-                <Link
-                  href={`/mobile/activity?tab=apply&draft=${encodeURIComponent(draft.key)}`}
-                  className="min-w-0 flex-1"
-                >
-                  <p className="truncate text-sm font-extrabold text-slate-900">{draft.title}</p>
-                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                    {draft.workDate || 'Tanggal belum diisi'} • {draft.itemCount} item • Diperbarui{' '}
-                    {new Date(draft.updatedAt).toLocaleString('id-ID', {
-                      day: '2-digit',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                  <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-extrabold text-sky-700">
-                    <Pencil className="size-3" /> Edit Draft
-                  </span>
-                </Link>
-                <button
-                  type="button"
-                  aria-label={`Hapus draft ${draft.title}`}
-                  className="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
-                  onClick={() => {
-                    if (window.confirm(`Hapus draft “${draft.title}”?`)) removeActivityDraft(draft.key)
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {/* ── Ringkasan Metrik (Persis SPL Mobile) ── */}
       <div className="grid grid-cols-4 gap-2">
@@ -265,7 +210,8 @@ export function MobileDailyActivityHistory({
         const sessionId = activity.sessionId || activity.id
         const sessionCode = activity.sessionCode || activity.activityCode || `DAS-${activity.id}`
         const st = (activity.status || '').toLowerCase()
-        const isRevisable = ['returned', 'reverted', 'needs_revision', 'draft'].includes(st)
+        const isDraft = st === 'draft'
+        const isRevisable = ['returned', 'reverted', 'needs_revision'].includes(st)
 
         return (
           <details
@@ -287,7 +233,11 @@ export function MobileDailyActivityHistory({
                     </Badge>
                   ) : activity.isTeamMember ? (
                     <Badge className="border-0 bg-purple-100 text-purple-900 text-[9px] font-bold px-1.5 py-0.5">
-                      Anggota Tim
+                      Tim • Diwakilkan {activity.representedByName || activity.employeeName}
+                    </Badge>
+                  ) : activity.isTeamActivity ? (
+                    <Badge className="border-0 bg-indigo-100 text-indigo-900 text-[9px] font-bold px-1.5 py-0.5">
+                      Tim ({activity.teamMemberCount || 'Banyak'} Anggota)
                     </Badge>
                   ) : null}
                 </div>
@@ -301,6 +251,11 @@ export function MobileDailyActivityHistory({
                   <div className="flex items-center gap-1 font-semibold text-slate-700">
                     <User className="size-3.5 text-slate-400 shrink-0" />
                     <span>{activity.employeeName || 'Staff'}</span>
+                    {activity.isTeamMember && (
+                      <span className="text-[10px] text-purple-700 font-semibold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
+                        Mewakili Anda
+                      </span>
+                    )}
                   </div>
                   <span>•</span>
                   <span>{activity.itemCount ?? activity.items?.length ?? 1} Item Pekerjaan</span>
@@ -318,6 +273,31 @@ export function MobileDailyActivityHistory({
                 <li className="flex items-center gap-2">
                   <Clock3 className="size-4 text-slate-400 shrink-0" /> Status: {statusLabel(activity.status)}
                 </li>
+                {activity.isTeamActivity && (
+                  <li className="flex items-start gap-2 text-indigo-900 font-semibold bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-100">
+                    <Users className="size-4 shrink-0 mt-0.5 text-indigo-600" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-[11px]">
+                          Aktivitas Tim ({activity.teamMemberCount ? `${activity.teamMemberCount} Anggota` : 'Bersama'})
+                        </span>
+                        {activity.isTeamMember && (
+                          <Badge className="border-0 bg-purple-200 text-purple-900 text-[8px] font-bold px-1 py-0">
+                            Diwakilkan
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-700 mt-0.5 font-normal leading-tight">
+                        {activity.teamNameList || activity.employeeName}
+                      </p>
+                      {activity.isTeamMember && (
+                        <p className="text-[10px] text-purple-700 font-medium mt-1">
+                          ✓ Laporan ini disubmit oleh {activity.representedByName || activity.employeeName} atas nama tim. Poin (+{activity.pointsNet ?? 0}) dan riwayat otomatis tercatat di profil Anda.
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                )}
                 {['submitted', 'pending', 'pending approval'].includes(st) ? (
                   <li className="flex items-center gap-2 text-amber-700 font-bold">
                     <FileCheck2 className="size-4 shrink-0" /> Menunggu Approval:{' '}
@@ -355,9 +335,29 @@ export function MobileDailyActivityHistory({
                 </div>
               )}
 
-              {/* Tombol Aksi (Persis SPL Mobile) */}
+              {/* Tombol Aksi */}
               <div className="pt-1">
-                {isRevisable ? (
+                {isDraft ? (
+                  <div className="space-y-2">
+                    <Button
+                      asChild
+                      className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
+                    >
+                      <Link href={`/mobile/activity?tab=apply&edit=${sessionId}`}>
+                        <Pencil className="size-4 mr-1.5" /> Lanjutkan Pengisian DAR
+                      </Link>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => onOpenReview?.(sessionId)}
+                      className="w-full h-11 rounded-2xl border-slate-300 font-bold text-xs bg-white text-slate-700 shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <FileText className="size-4" />
+                      <span>Lihat &amp; Unduh Dokumen PDF</span>
+                    </Button>
+                  </div>
+                ) : isRevisable ? (
                   <div className="space-y-2">
                     <Button
                       asChild
@@ -378,14 +378,24 @@ export function MobileDailyActivityHistory({
                     </Button>
                   </div>
                 ) : (
-                  <Button
-                    type="button"
-                    onClick={() => onOpenReview?.(sessionId)}
-                    className="w-full h-12 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <FileText className="size-4" />
-                    <span>LIHAT &amp; UNDUH DOKUMEN PDF</span>
-                  </Button>
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      onClick={() => onCloneActivity?.(sessionId)}
+                      className="w-full h-11 rounded-2xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 font-extrabold text-xs shadow-2xs cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Copy className="size-4 text-sky-600" />
+                      <span>BUAT ULANG AKTIVITAS INI (DUPLIKAT)</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => onOpenReview?.(sessionId)}
+                      className="w-full h-12 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <FileText className="size-4" />
+                      <span>LIHAT &amp; UNDUH DOKUMEN PDF</span>
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>

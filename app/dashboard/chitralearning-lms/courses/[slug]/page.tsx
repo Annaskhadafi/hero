@@ -307,6 +307,8 @@ export default async function LmsCourseDetailPage({ params }: { params: Promise<
             isAdmin={isAdmin}
             isEnrolled={isEnrolled}
             approvalStatus={enrollmentRecord?.approvalStatus}
+            enrollmentStatus={enrollmentRecord?.status}
+            cooldownUntil={enrollmentRecord?.cooldownUntil}
             progress={progress}
             estimatedMinutes={course.estimatedMinutes > 0 ? course.estimatedMinutes : totalDuration}
             lessonCount={totalLessons}

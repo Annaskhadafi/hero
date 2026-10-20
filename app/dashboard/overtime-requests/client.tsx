@@ -5,16 +5,25 @@ import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   Bug,
+  Camera,
+  Check,
   CheckCheck,
   CheckCircle2,
   CheckSquare,
+  ChevronRight,
+  Clock,
   Download,
   Eye,
   FileCheck,
   FileDown,
+  FileEdit,
   FilePenLine,
   FileSpreadsheet,
   FileText,
+  ImagePlus,
+  Layers,
+  ListFilter,
+  Loader2,
   PenTool,
   Plus,
   Printer,
@@ -28,10 +37,19 @@ import {
   UserPlus,
   X,
   XCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
+import { uploadFile } from '@/app/actions/upload'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { formatPhotoDisplayUrl } from '@/lib/photo-url'
+import { compressImageFile } from '@/lib/client-image-compression'
+import type { RouteFolder } from '@/lib/daily-activity'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
+import QRCode from 'qrcode'
+import { generateOvertimeRecordPdf, generateSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
@@ -63,6 +81,8 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { HeroSearchableSelect } from '@/components/templates'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
@@ -89,6 +109,42 @@ import {
   type EmployeeHierarchyInfo,
 } from '@/lib/overtime-hierarchy'
 
+export type OvertimeActivityLibraryItem = {
+  id: number
+  activityCode: string
+  activityName: string
+  category?: string | null
+  basePoints?: number | string | null
+  slaHours?: number | string | null
+  requiresEquipmentNo?: boolean | null
+}
+
+export type OvertimeCreateLineItem = {
+  lineLabel: string
+  code?: string
+  name?: string
+  unitNumber?: string
+  materialUsed?: string
+  tireCount?: number
+  startTime?: string
+  endTime?: string
+  duration?: string
+  points?: number
+  targetUnit?: string
+  estimatedMinutes?: number
+  plannedPoints?: number
+  remark?: string
+  photoUrl?: string | null
+  photos?: string[]
+  libraryActivityId?: number
+  requiresEquipmentNo?: boolean
+  requiresDuration?: boolean
+  requiresLocationGps?: boolean
+  requiresTireCount?: boolean
+  requiresMaterialUsed?: boolean
+  requiresPhoto?: boolean
+}
+
 export type OvertimeListingRow = {
   id: number
   splNumber: string
@@ -102,6 +158,8 @@ export type OvertimeListingRow = {
   requesterDepartment: string
   requestNotes?: string | null
   workerCount: number
+  teamRole?: 'Pemohon' | 'Anggota Tim'
+  teamMembersSummary?: string
   participants?: Array<{
     employeeName: string
     shiftCode: string
@@ -113,6 +171,17 @@ export type OvertimeListingRow = {
     targetUnit?: string | null
     estimatedMinutes: number
     plannedPoints: number
+    code?: string
+    name?: string
+    unitNumber?: string | null
+    tireCount?: number | null
+    materialUsed?: string | null
+    startTime?: string | null
+    endTime?: string | null
+    duration?: string | null
+    remark?: string | null
+    photoUrl?: string | null
+    photos?: string[]
   }>
   approvals: Array<{
     stepOrder: number
@@ -149,6 +218,426 @@ function formatTime(value: Date | string | null | undefined) {
   if (isNaN(d.getTime())) return ''
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
+
+function calculateSplDurationHours(row: OvertimeListingRow): number {
+  if (row.plannedStartAt && row.plannedEndAt) {
+    const startObj = new Date(row.plannedStartAt)
+    const endObj = new Date(row.plannedEndAt)
+    if (!isNaN(startObj.getTime()) && !isNaN(endObj.getTime())) {
+      let startMin = startObj.getHours() * 60 + startObj.getMinutes()
+      let endMin = endObj.getHours() * 60 + endObj.getMinutes()
+      if (endMin <= startMin) {
+        endMin += 1440 // Handles overnight shift crossing midnight (e.g. 14:00 to 02:00)
+      }
+      const durationMin = endMin - startMin
+      if (durationMin > 0 && durationMin <= 1440) {
+        return Math.round((durationMin / 60) * 10) / 10
+      }
+    }
+  }
+  if (row.lineItems && row.lineItems.length > 0) {
+    const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
+    if (mins > 0) return Math.round((mins / 60) * 10) / 10
+  }
+  return 0
+}
+
+function formatMonthYearLabel(monthStr: string): string {
+  if (!monthStr) return 'Semua Periode'
+  const [yearStr, monthNumStr] = monthStr.split('-')
+  const year = parseInt(yearStr, 10)
+  const monthNum = parseInt(monthNumStr, 10)
+  if (isNaN(year) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) return monthStr
+  const monthNames = [
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
+  ]
+  return `${monthNames[monthNum - 1]} ${year}`
+}
+
+function getIndonesianDayName(dateValue: Date | string): string {
+  const d = dateValue instanceof Date ? dateValue : new Date(dateValue)
+  if (isNaN(d.getTime())) return '—'
+  const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+  return dayNames[d.getDay()]
+}
+
+function resolveSiteLogoUrl(siteName?: string, customLogoUrl?: string): string | undefined {
+  if (customLogoUrl && customLogoUrl.trim()) return resolveUploadUrl(customLogoUrl.trim())
+  if (!siteName) return undefined
+  const s = siteName.toLowerCase()
+  if (s.includes('kpc') || s.includes('sangatta') || s.includes('bengalon') || s.includes('kutai timur')) {
+    return '/images/logo-kpc.png'
+  }
+  if (s.includes('ck') || s.includes('cipta kridatama')) {
+    return '/brand/cipta-kridatama-logo.png'
+  }
+  return undefined
+}
+
+function buildOvertimeRecordMonthlyDays(
+  summaryRows: OvertimeListingRow[],
+  periodStr: string
+): AttendanceDayData[] {
+  const [yearStr, monthStr] = (periodStr || '').split('-')
+  const year = parseInt(yearStr, 10) || new Date().getFullYear()
+  const month = parseInt(monthStr, 10) || (new Date().getMonth() + 1)
+  const daysInMonth = new Date(year, month, 0).getDate()
+
+  const days: AttendanceDayData[] = []
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateObj = new Date(year, month - 1, d)
+    const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj)
+    const isSunday = dayName === 'Sunday'
+    const isSaturday = dayName === 'Saturday'
+    const isWeekend = isSunday || isSaturday
+
+    const matchingRows = (summaryRows || []).filter((r) => {
+      if (!r || !r.workDate) return false
+      const wd = r.workDate instanceof Date ? r.workDate : new Date(r.workDate)
+      return wd.getFullYear() === year && wd.getMonth() + 1 === month && wd.getDate() === d
+    })
+
+    if (matchingRows.length > 0) {
+      const primaryRow = matchingRows[0]
+      const durHours = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
+
+      const startStr = primaryRow.plannedStartAt ? formatTime(primaryRow.plannedStartAt).replace(':', '.') : '17.00'
+      const endStr = primaryRow.plannedEndAt ? formatTime(primaryRow.plannedEndAt).replace(':', '.') : '21.00'
+
+      const taskSummaries = Array.from(
+        new Set(
+          matchingRows.map((r) => {
+            const uniqueLineItems = Array.from(
+              new Map((r.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
+            )
+            return uniqueLineItems.length
+              ? uniqueLineItems.map((l) => `${l.name || l.lineLabel || l.code || ''}${l.unitNumber ? ` (Unit: ${l.unitNumber})` : ''}`).join(', ')
+              : r.title || 'Penugasan Lembur'
+          })
+        )
+      ).join('\n')
+
+      days.push({
+        day: d,
+        dayName,
+        status: 'present',
+        clockIn: startStr,
+        clockOut: endStr,
+        scheduleCode: 'DS',
+        isHoliday: isWeekend,
+        overtime: {
+          totalHours: durHours,
+          intervals: [{ start: startStr, end: endStr } as any],
+        } as any,
+        configuredOvertimeIntervals: [{ start: startStr, end: endStr } as any],
+        splNumber: primaryRow.splNumber,
+        splTitle: taskSummaries,
+      })
+    } else {
+      days.push({
+        day: d,
+        dayName,
+        status: isWeekend ? 'off' : 'empty',
+        clockIn: '',
+        clockOut: '',
+        scheduleCode: isWeekend ? 'OFF' : 'DS',
+        isHoliday: isWeekend,
+      })
+    }
+  }
+
+  return days
+}
+
+function renderSummarySplPdfHtml(
+  summaryRows: OvertimeListingRow[],
+  filterInfo: {
+    employeeName: string
+    employeeSn?: string
+    department?: string
+    section?: string
+    siteName?: string
+    siteLogoUrl?: string
+    periodLabel: string
+    totalHours: number
+    totalCount: number
+    leaderName?: string
+    pjoName?: string
+    hcName?: string
+  }
+): string {
+  const ROWS_PER_PAGE = 14
+  const totalRows = summaryRows.length
+  const siteLogoUrl = resolveSiteLogoUrl(filterInfo.siteName, filterInfo.siteLogoUrl)
+
+  const pageChunks: OvertimeListingRow[][] = []
+  if (totalRows === 0) {
+    pageChunks.push([])
+  } else {
+    for (let i = 0; i < totalRows; i += ROWS_PER_PAGE) {
+      pageChunks.push(summaryRows.slice(i, i + ROWS_PER_PAGE))
+    }
+  }
+
+  const totalPages = pageChunks.length
+
+  const pagesHtml = pageChunks
+    .map((chunk, pageIndex) => {
+      const isFirstPage = pageIndex === 0
+      const isLastPage = pageIndex === totalPages - 1
+
+      const rowsHtml = chunk
+        .map((row) => {
+          const dateStr = formatDate(row.workDate)
+          const dayNameStr = getIndonesianDayName(row.workDate)
+          const isWeekend = dayNameStr === 'Minggu' || dayNameStr === 'Sabtu'
+
+          const startTime = row.plannedStartAt ? formatTime(row.plannedStartAt) : '—'
+          const endTime = row.plannedEndAt ? formatTime(row.plannedEndAt) : '—'
+          const durationHours = calculateSplDurationHours(row)
+
+          const uniqueLineItems = Array.from(
+            new Map((row.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
+          )
+
+          const lineItemsSummary = uniqueLineItems.length
+            ? uniqueLineItems
+                .map(
+                  (l) =>
+                    `• ${l.name || l.lineLabel || l.code || 'Aktivitas'}${
+                      l.unitNumber ? ` (Unit: ${l.unitNumber})` : ''
+                    }${l.tireCount ? ` [${l.tireCount} pcs/qty]` : ''}`
+                )
+                .join('<br/>')
+            : row.title || 'Penugasan Lembur'
+
+          const taskContent = lineItemsSummary
+
+          const rowBgStyle = isWeekend ? 'background-color: #fef2f2;' : 'background-color: #ffffff;'
+          const textRedStyle = isWeekend ? 'color: #dc2626; font-weight: bold;' : ''
+
+          return `
+            <tr style="${rowBgStyle}">
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; ${textRedStyle}">${dateStr}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; ${textRedStyle}">${dayNameStr}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${startTime}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${endTime}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8.5pt; vertical-align: middle; font-weight: bold; color: #0369a1;">${durationHours} Jam</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; font-size: 7.5pt; vertical-align: top; line-height: 1.3;">${taskContent}</td>
+            </tr>
+          `
+        })
+        .join('')
+
+      const headerHtml = isFirstPage
+        ? `
+          <!-- Header Kop Matching Official Attendance / Overtime Record Standard -->
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 8px;">
+            <div style="width: 130px; text-align: left;">
+              <img src="/cp_logo-removebg-preview.png" style="height: 48px; max-width: 120px; object-fit: contain;" />
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="font-weight: 800; font-size: 13pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000;">PT. CHITRA PARATAMA</div>
+              <div style="font-weight: 700; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 2px;">SUMMARY SPL</div>
+              <div style="font-weight: 600; font-size: 7.5pt; color: #334155; margin-top: 2px; letter-spacing: 0.5px;">HUMAN CAPITAL • PAYABLE SITE ALLOWANCE</div>
+            </div>
+            <div style="width: 130px; text-align: right;">
+              ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 48px; max-width: 120px; object-fit: contain;" />` : '<div style="width: 120px;"></div>'}
+            </div>
+          </div>
+
+          <!-- Employee Metadata Grid Matching Official Payble Site Allowance Standard -->
+          <div style="margin-bottom: 12px; font-size: 8.5pt; color: #000;">
+            <table style="border-collapse: collapse; width: 100%;">
+              <tr>
+                <td style="width: 140px; font-weight: bold; padding: 2px 0;">MONTH / BULAN</td>
+                <td style="width: 12px; text-align: center;">:</td>
+                <td style="font-weight: bold;">${filterInfo.periodLabel}</td>
+                <td style="text-align: right; font-weight: bold;">SN: ${filterInfo.employeeSn || '—'}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold; padding: 2px 0;">Name of Employee</td>
+                <td style="text-align: center;">:</td>
+                <td colSpan="2" style="font-weight: bold;">${filterInfo.employeeName}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold; padding: 2px 0;">Department</td>
+                <td style="text-align: center;">:</td>
+                <td colSpan="2">${filterInfo.department || '—'}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold; padding: 2px 0;">Section</td>
+                <td style="text-align: center;">:</td>
+                <td colSpan="2">${filterInfo.section || '—'}</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold; padding: 2px 0;">Site / Lokasi</td>
+                <td style="text-align: center;">:</td>
+                <td colSpan="2">${filterInfo.siteName || 'All Sites'}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="text-align: center; font-weight: 800; font-size: 10pt; text-transform: uppercase; margin-bottom: 8px; color: #000; letter-spacing: 0.5px;">
+            PAYABLE SITE ALLOWANCE / REKAP LEMBUR
+          </div>
+        `
+        : `
+          <div style="text-align: center; margin-bottom: 10px; border-bottom: 1.5px solid #000; padding-bottom: 6px;">
+            <div style="font-size: 11pt; font-weight: 800; color: #000; letter-spacing: 0.5px;">PT. CHITRA PARATAMA</div>
+            <div style="font-size: 9pt; font-weight: 700; color: #334155; margin-top: 1px;">SURAT PERINTAH LEMBUR — Lanjutan (Halaman ${pageIndex + 1} dari ${totalPages})</div>
+            <div style="font-size: 7.5pt; color: #475569; margin-top: 2px;">Karyawan: <strong>${filterInfo.employeeName}</strong> • Periode: <strong>${filterInfo.periodLabel}</strong></div>
+          </div>
+        `
+
+      const footerNotice = !isLastPage
+        ? `<div style="text-align: right; font-size: 7.5pt; color: #64748b; margin-top: 8px; font-style: italic;">Halaman ${pageIndex + 1} dari ${totalPages} (Berlanjut ke Halaman ${pageIndex + 2}...)</div>`
+        : ''
+
+      const totalRowHtml = isLastPage
+        ? `
+          <tr style="background: #dcfce7; font-weight: bold; font-size: 8.5pt;">
+            <td colspan="4" style="border: 1px solid #16a34a; padding: 6px; text-align: right; color: #15803d;">Total Amount / Jam Lembur:</td>
+            <td style="border: 1px solid #16a34a; padding: 6px; text-align: center; color: #15803d; font-size: 9.5pt; font-weight: 800;">${filterInfo.totalHours} Jam</td>
+            <td style="border: 1px solid #16a34a; padding: 6px; text-align: left; color: #166534; font-size: 7.5pt;">(${filterInfo.totalCount} Dokumen Pengajuan SPL)</td>
+          </tr>
+        `
+        : ''
+
+      const signatureSectionHtml = isLastPage
+        ? `
+          <!-- 4-Column Signature Table Matching Official Overtime Record Standard -->
+          <table style="width: 100%; border-collapse: collapse; margin-top: 28px; page-break-inside: avoid;">
+            <tr>
+              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
+                Dibuat oleh :
+                <div style="height: 44px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                  ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'Karyawan'}
+                </div>
+              </td>
+              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
+                Approved by :
+                <div style="height: 44px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                  ${filterInfo.leaderName || 'Supervisor / Leader'}
+                </div>
+              </td>
+              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
+                Approved by :
+                <div style="height: 44px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                  ${filterInfo.pjoName || 'PJO / Manager'}
+                </div>
+              </td>
+              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
+                Diketahui oleh :
+                <div style="height: 44px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                  ${filterInfo.hcName || 'HC / Admin'}
+                </div>
+              </td>
+            </tr>
+          </table>
+          <div style="text-align: right; font-size: 7.5pt; color: #64748b; margin-top: 10px;">Halaman ${pageIndex + 1} dari ${totalPages}</div>
+        `
+        : ''
+
+      return `
+        <div class="pdf-page">
+          ${headerHtml}
+
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 8%;" rowspan="2">Date</th>
+                <th style="width: 12%;" rowspan="2">Day</th>
+                <th style="width: 20%;" colspan="2">Jam Lembur</th>
+                <th style="width: 12%;" rowspan="2">Total Lembur</th>
+                <th style="width: 48%;" rowspan="2">Remarks / Yang Dikerjakan</th>
+              </tr>
+              <tr>
+                <th style="width: 10%;">Mulai</th>
+                <th style="width: 10%;">Selesai</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                rowsHtml ||
+                `<tr><td colspan="6" style="text-align: center; padding: 16px; color: #64748b; font-style: italic;">Tidak ada dokumen SPL pada periode ini.</td></tr>`
+              }
+              ${totalRowHtml}
+            </tbody>
+          </table>
+
+          ${footerNotice}
+          ${signatureSectionHtml}
+        </div>
+      `
+    })
+    .join('')
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Summary SPL - ${filterInfo.employeeName}</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+          color: #0f172a;
+          margin: 0;
+          padding: 20px;
+          background: #f1f5f9;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        .pdf-page {
+          width: 210mm;
+          min-height: 297mm;
+          padding-top: 15mm;
+          padding-bottom: 20mm;
+          padding-left: 15mm;
+          padding-right: 15mm;
+          background-color: #ffffff;
+          box-sizing: border-box;
+          margin-bottom: 20px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+          position: relative;
+        }
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        .data-table th { background: #f8fafc; color: #000; font-size: 8pt; font-weight: bold; padding: 5px; text-align: center; border: 1px solid #1e293b; }
+        @media print {
+          body { background: white; padding: 0; }
+          .pdf-page { box-shadow: none; margin-bottom: 0; page-break-after: always; }
+        }
+      </style>
+    </head>
+    <body>
+      ${pagesHtml}
+    </body>
+    </html>
+  `
+}
+
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -190,6 +679,8 @@ function ApprovalProgressBadge({ approvals }: { approvals: OvertimeListingRow['a
 export function OvertimeListingClient({
   rows: propRows,
   employees = [],
+  activityLibraries = [],
+  routeFolders = [],
   initialSettings,
   currentEmployeeId,
   currentEmployeeEmail = null,
@@ -198,6 +689,8 @@ export function OvertimeListingClient({
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
+  activityLibraries?: OvertimeActivityLibraryItem[]
+  routeFolders?: RouteFolder[]
   initialSettings?: OvertimeWorkflowSettings
   currentEmployeeId?: number | null
   currentEmployeeEmail?: string | null
@@ -291,7 +784,37 @@ export function OvertimeListingClient({
   // Create modal
   const [createOpen, setCreateOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
-  const [createForm, setCreateForm] = useState({
+  const [createForm, setCreateForm] = useState<{
+    title: string
+    workDate: string
+    plannedStartDate: string
+    plannedStartTime: string
+    plannedEndDate: string
+    plannedEndTime: string
+    requesterEmployeeId: string
+    requesterName: string
+    requesterDepartment: string
+    requestNotes: string
+    executionNotes: string
+    leaderEmployeeId: string
+    leaderName: string
+    superiorEmployeeId: string
+    superiorName: string
+    managerEmployeeId: string
+    managerName: string
+    photoUrl: string
+    sourceMode?: 'self_input' | 'assigned' | 'custom'
+    assignmentId?: string
+    customDescription?: string
+    workers: Array<{
+      employeeId: string
+      employeeName: string
+      shiftCode: string
+      rosterType: string
+      category: string
+    }>
+    lineItems: OvertimeCreateLineItem[]
+  }>({
     title: '',
     workDate: new Date().toISOString().split('T')[0],
     plannedStartDate: new Date().toISOString().split('T')[0],
@@ -309,13 +832,23 @@ export function OvertimeListingClient({
     superiorName: '',
     managerEmployeeId: '',
     managerName: '',
+    photoUrl: '',
+    sourceMode: 'self_input',
+    assignmentId: '',
+    customDescription: '',
     workers: [
       { employeeId: '', employeeName: '', shiftCode: 'DS', rosterType: '5:2', category: 'after_mandatory_ot' },
     ],
-    lineItems: [
-      { lineLabel: 'Overtime Penanganan & Perbaikan Unit Workshop', targetUnit: '1 Unit', estimatedMinutes: 120, plannedPoints: 10 },
-    ],
+    lineItems: [],
   })
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+
+  // Determines if the current user can manually override the planned points for activities
+  const canEditPoints = isAdmin || (() => {
+    const currentEmp = employees.find((e) => e.id === currentEmployeeId)
+    const jobTitle = (currentEmp?.position || currentEmp?.rank || '').toLowerCase()
+    return ['leader', 'supervisor', 'section head', 'pjo', 'manager', 'foreman', 'kepala'].some(role => jobTitle.includes(role))
+  })()
 
   const employeeOptions = useMemo(() => {
     return employees.map((emp) => ({
@@ -323,6 +856,358 @@ export function OvertimeListingClient({
       label: `${emp.name} — ${emp.position || emp.department || 'Employee'} (${emp.employeeId || emp.id})`,
     }))
   }, [employees])
+
+  // Floating Window: Kamus Aktivitas route picker dialog
+  const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [expandedPickerGroups, setExpandedPickerGroups] = useState<Set<string>>(new Set())
+
+  const normalizedPickerSearch = useMemo(() => {
+    return (pickerSearch || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  }, [pickerSearch])
+
+  const availableLibraryMap = useMemo(() => {
+    const map = new Map<string, OvertimeActivityLibraryItem>()
+    for (const p of activityLibraries || []) {
+      map.set(String(p.id), p)
+      if (p.activityCode) map.set(p.activityCode.toLowerCase(), p)
+      if (p.activityName) map.set(p.activityName.toLowerCase(), p)
+    }
+    return map
+  }, [activityLibraries])
+
+  const groupedLibraryIdSet = useMemo(() => {
+    const set = new Set<string>()
+    for (const folder of routeFolders || []) {
+      const folderCode = (folder.routeCode || '').trim().toLowerCase()
+      const folderName = (folder.routeName || '').trim().toLowerCase()
+
+      for (const lib of availableLibraryMap.values()) {
+        const libCode = (lib.activityCode || '').trim().toLowerCase()
+        const libName = (lib.activityName || '').trim().toLowerCase()
+
+        if (
+          (libCode && (folderCode === `grp-${libCode}` || folderCode === libCode)) ||
+          (libName && (folderName === `group: ${libName}` || folderName === libName))
+        ) {
+          set.add(String(lib.id))
+        }
+      }
+
+      for (const group of folder.groups || []) {
+        const groupKey = ((group as any).groupKey || '').trim().toLowerCase()
+        const groupName = (group.groupName || '').trim().toLowerCase()
+
+        for (const lib of availableLibraryMap.values()) {
+          const libCode = (lib.activityCode || '').trim().toLowerCase()
+          const libName = (lib.activityName || '').trim().toLowerCase()
+
+          if (
+            (libCode && (groupKey === `grp-${libCode}` || groupKey === libCode)) ||
+            (libName && (groupName === `group: ${libName}` || groupName === libName))
+          ) {
+            set.add(String(lib.id))
+          }
+        }
+
+        for (const item of group.items || []) {
+          if (item.libraryActivityId != null) {
+            set.add(String(item.libraryActivityId))
+          }
+        }
+      }
+    }
+    return set
+  }, [routeFolders, availableLibraryMap])
+
+  const matchingRouteFolders = useMemo(() => {
+    return (routeFolders || [])
+      .map((route) => {
+        const matchingGroups = (route.groups || [])
+          .map((group) => {
+            const matchingItems = (group.items || [])
+              .map((i) => {
+                if (i.libraryActivityId != null) {
+                  const lib = availableLibraryMap.get(String(i.libraryActivityId))
+                  if (lib) {
+                    const isTire = (i.itemLabel || lib.activityName || '').toLowerCase().includes('tire') || (i.itemLabel || lib.activityName || '').toLowerCase().includes('ban')
+                    return {
+                      id: lib.id,
+                      code: i.itemCode || lib.activityCode,
+                      name: i.itemLabel || lib.activityName,
+                      basePoints: i.pointOverride != null ? i.pointOverride : (lib.basePoints ? Number(lib.basePoints) : 10),
+                      category: lib.category || 'Route Activity',
+                      requiresEquipmentNo: i.requiresUnit != null ? i.requiresUnit : Boolean(lib.requiresEquipmentNo),
+                      requiresDuration: i.requiresTime != null ? i.requiresTime : true,
+                      requiresPhoto: i.requiresPhoto != null ? i.requiresPhoto : false,
+                      requiresTireCount: isTire,
+                      requiresMaterialUsed: false,
+                    }
+                  }
+                }
+                const isTire = (i.itemLabel || '').toLowerCase().includes('tire') || (i.itemLabel || '').toLowerCase().includes('ban')
+                return {
+                  id: -(i.id || Math.abs((i.itemCode || i.itemLabel || 'item').split('').reduce((acc, c) => ((acc << 5) - acc) + c.charCodeAt(0), 0))),
+                  code: i.itemCode || 'CUSTOM',
+                  name: i.itemLabel || 'Aktivitas Route',
+                  basePoints: i.pointOverride ?? 10,
+                  category: 'Route Activity',
+                  requiresEquipmentNo: i.requiresUnit ?? false,
+                  requiresDuration: i.requiresTime ?? true,
+                  requiresPhoto: i.requiresPhoto ?? false,
+                  requiresTireCount: isTire,
+                  requiresMaterialUsed: false,
+                }
+              })
+              .filter((lib) => {
+                if (!normalizedPickerSearch) return true
+                const nCode = (lib.code || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                const nName = (lib.name || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+                return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+              })
+            return { ...group, matchingItems }
+          })
+          .filter((group) => (normalizedPickerSearch ? group.matchingItems.length > 0 : true))
+
+        return { ...route, matchingGroups }
+      })
+      .filter((route) => route.matchingGroups.length > 0)
+  }, [routeFolders, availableLibraryMap, normalizedPickerSearch])
+
+  const standaloneLibraries = useMemo(() => {
+    const presets = activityLibraries || []
+    return presets
+      .filter((p) => !groupedLibraryIdSet.has(String(p.id)))
+      .filter((p) => {
+        if (!normalizedPickerSearch) return true
+        const nCode = (p.activityCode || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        const nName = (p.activityName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+        return nCode.includes(normalizedPickerSearch) || nName.includes(normalizedPickerSearch)
+      })
+      .sort((a, b) => (Number(b.basePoints) || 0) - (Number(a.basePoints) || 0))
+  }, [activityLibraries, groupedLibraryIdSet, normalizedPickerSearch])
+
+  const totalVisibleLibraryCount = useMemo(() => {
+    const groupCount = (matchingRouteFolders || []).reduce(
+      (sum, r) => sum + (r?.matchingGroups || []).reduce((gSum, g) => gSum + (g?.matchingItems?.length || 0), 0),
+      0
+    )
+    return groupCount + (standaloneLibraries || []).length
+  }, [matchingRouteFolders, standaloneLibraries])
+
+  const [isUploadingLinePhoto, setIsUploadingLinePhoto] = useState<Record<number | string, boolean>>({})
+
+  const toggleGroupItems = (items: Array<{ id: number; name: string; code?: string; basePoints?: number | string | null; requiresEquipmentNo?: boolean; requiresDuration?: boolean; requiresTireCount?: boolean; requiresMaterialUsed?: boolean; requiresPhoto?: boolean }>) => {
+    const isAllSelected = items.every((sub) =>
+      (createForm.lineItems || []).some(
+        (i) => i.lineLabel === sub.name || (sub.code && i.lineLabel.includes(sub.code)) || i.lineLabel.includes(sub.name)
+      )
+    )
+
+    if (isAllSelected) {
+      setCreateForm((p) => ({
+        ...p,
+        lineItems: p.lineItems.filter(
+          (i) => !items.some((sub) => i.lineLabel === sub.name || (sub.code && i.lineLabel.includes(sub.code)) || i.lineLabel.includes(sub.name))
+        ),
+      }))
+    } else {
+      const missing = items.filter(
+        (sub) => !(createForm.lineItems || []).some(
+          (i) => i.lineLabel === sub.name || (sub.code && i.lineLabel.includes(sub.code)) || i.lineLabel.includes(sub.name)
+        )
+      )
+      setCreateForm((p) => ({
+        ...p,
+        lineItems: [
+          ...p.lineItems,
+          ...missing.map((sub) => ({
+            lineLabel: `${sub.code ? `${sub.code} - ` : ''}${sub.name}`,
+            code: sub.code,
+            name: sub.name,
+            unitNumber: '',
+            materialUsed: '',
+            tireCount: sub.requiresTireCount ? 1 : 0,
+            startTime: p.plannedStartTime || '17:00',
+            endTime: p.plannedEndTime || '21:00',
+            duration: '120m',
+            points: Number(sub.basePoints) || 10,
+            targetUnit: '1 Job',
+            estimatedMinutes: 120,
+            plannedPoints: Number(sub.basePoints) || 10,
+            remark: '',
+            photoUrl: null,
+            photos: [],
+            libraryActivityId: sub.id > 0 ? sub.id : undefined,
+            requiresEquipmentNo: sub.requiresEquipmentNo ?? false,
+            requiresDuration: sub.requiresDuration ?? true,
+            requiresTireCount: sub.requiresTireCount ?? false,
+            requiresMaterialUsed: sub.requiresMaterialUsed ?? false,
+            requiresPhoto: sub.requiresPhoto ?? false,
+          })),
+        ],
+      }))
+    }
+  }
+
+  const toggleLineItem = (name: string, code?: string, basePoints?: number | string | null, meta?: Partial<{ requiresEquipmentNo: boolean; requiresDuration: boolean; requiresTireCount: boolean; requiresMaterialUsed: boolean; requiresPhoto: boolean }>) => {
+    setCreateForm((p) => {
+      const existingIdx = p.lineItems.findIndex(
+        (i) => i.lineLabel === name || (code && i.lineLabel.includes(code)) || i.lineLabel.includes(name)
+      )
+      if (existingIdx >= 0) {
+        return {
+          ...p,
+          lineItems: p.lineItems.filter((_, idx) => idx !== existingIdx),
+        }
+      }
+      const isTire = meta?.requiresTireCount ?? ((name || '').toLowerCase().includes('tire') || (name || '').toLowerCase().includes('ban'))
+      return {
+        ...p,
+        lineItems: [
+          ...p.lineItems,
+          {
+            lineLabel: `${code ? `${code} - ` : ''}${name}`,
+            code,
+            name,
+            unitNumber: '',
+            materialUsed: '',
+            tireCount: isTire ? 1 : 0,
+            startTime: p.plannedStartTime || '17:00',
+            endTime: p.plannedEndTime || '21:00',
+            duration: '120m',
+            points: Number(basePoints) || 10,
+            targetUnit: '1 Job',
+            estimatedMinutes: 120,
+            plannedPoints: Number(basePoints) || 10,
+            remark: '',
+            photoUrl: null,
+            photos: [],
+            requiresEquipmentNo: meta?.requiresEquipmentNo ?? false,
+            requiresDuration: meta?.requiresDuration ?? true,
+            requiresTireCount: isTire,
+            requiresMaterialUsed: meta?.requiresMaterialUsed ?? false,
+            requiresPhoto: meta?.requiresPhoto ?? false,
+          },
+        ],
+      }
+    })
+  }
+
+  const updateLineItemRow = (idx: number, field: string, val: any) => {
+    setCreateForm((p) => {
+      const next = [...p.lineItems]
+      if (next[idx]) {
+        next[idx] = { ...next[idx], [field]: val }
+      }
+      return { ...p, lineItems: next }
+    })
+  }
+
+  const handleLinePhotoUpload = async (targetIdx: number, file?: File) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('File harus berupa gambar (JPG, PNG, WebP)')
+      return
+    }
+
+    setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: true }))
+    try {
+      // Compress image client-side to keep upload speed lightning fast even on low-end phones
+      const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
+      const formData = new FormData()
+      formData.append('file', compressedFile)
+      formData.append('uploadTarget', 'activity-photos')
+      const res = await uploadFile(formData)
+      if (res.success && (res.readableUrl || res.url)) {
+        const finalUrl = res.readableUrl || res.url
+        updateLineItemRow(targetIdx, 'photoUrl', finalUrl)
+        updateLineItemRow(targetIdx, 'photos', [finalUrl])
+        toast.success('Foto evidence berhasil diunggah')
+      } else {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          updateLineItemRow(targetIdx, 'photoUrl', base64Url)
+          updateLineItemRow(targetIdx, 'photos', [base64Url])
+          toast.success('Foto evidence tersimpan')
+        }
+        reader.readAsDataURL(compressedFile)
+      }
+    } catch {
+      try {
+        const fallbackCompressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          updateLineItemRow(targetIdx, 'photoUrl', base64Url)
+          updateLineItemRow(targetIdx, 'photos', [base64Url])
+          toast.success('Foto evidence tersimpan')
+        }
+        reader.readAsDataURL(fallbackCompressed)
+      } catch {
+        toast.error('Gagal mengunggah foto evidence')
+      }
+    } finally {
+      setIsUploadingLinePhoto((prev) => ({ ...prev, [targetIdx]: false }))
+    }
+  }
+
+  const removeLineItemRow = (idx: number) => {
+    setCreateForm((p) => ({
+      ...p,
+      lineItems: p.lineItems.filter((_, i) => i !== idx),
+    }))
+  }
+
+  const addCustomLineItemRow = () => {
+    setCreateForm((p) => ({
+      ...p,
+      lineItems: [
+        ...p.lineItems,
+        {
+          lineLabel: '',
+          name: '',
+          targetUnit: '1 Unit',
+          estimatedMinutes: 120,
+          plannedPoints: 10,
+          startTime: p.plannedStartTime || '17:00',
+          endTime: p.plannedEndTime || '21:00',
+          duration: '120m',
+          points: 10,
+          remark: '',
+        },
+      ],
+    }))
+  }
+
+  const addAssignedLineItemRow = () => {
+    setCreateForm((p) => ({
+      ...p,
+      lineItems: [
+        ...p.lineItems,
+        {
+          lineLabel: '',
+          name: '',
+          targetUnit: '1 Unit',
+          estimatedMinutes: 120,
+          plannedPoints: 10,
+          startTime: p.plannedStartTime || '17:00',
+          endTime: p.plannedEndTime || '21:00',
+          duration: '120m',
+          points: 10,
+          remark: '',
+        },
+      ],
+    }))
+  }
+
+  const activitySelectOptions = useMemo(() => {
+    return (activityLibraries || []).map((lib) => ({
+      value: `${lib.activityCode ? `${lib.activityCode} - ` : ''}${lib.activityName}`,
+      label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}`,
+    }))
+  }, [activityLibraries])
 
   const addWorkerRow = () => {
     setCreateForm((p) => ({
@@ -392,34 +1277,6 @@ export function OvertimeListingClient({
     })
   }
 
-  const addLineItemRow = () => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: [...p.lineItems, { lineLabel: '', targetUnit: '', estimatedMinutes: 60, plannedPoints: 5 }],
-    }))
-  }
-
-  const removeLineItemRow = (idx: number) => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: p.lineItems.filter((_, i) => i !== idx),
-    }))
-  }
-
-  const updateLineItemRow = (idx: number, field: string, val: any) => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: p.lineItems.map((item, i) => (i === idx ? { ...item, [field]: val } : item)),
-    }))
-  }
-
-  const addPresetLineItem = (lineLabel: string, targetUnit = '1 Unit', estimatedMinutes = 120, plannedPoints = 10) => {
-    setCreateForm((p) => ({
-      ...p,
-      lineItems: [...p.lineItems, { lineLabel, targetUnit, estimatedMinutes, plannedPoints }],
-    }))
-  }
-
   // Import modal
   const [importOpen, setImportOpen] = useState(false)
 
@@ -448,7 +1305,8 @@ export function OvertimeListingClient({
     })
   }, [])
 
-  // Filters State (as seen in Direktori Pengguna / User Management)
+  // Filters & Tabs State
+  const [activeTab, setActiveTab] = useState<'all' | 'submitted' | 'approved' | 'draft' | 'rejected'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
@@ -468,21 +1326,192 @@ export function OvertimeListingClient({
   const statusFilterOptions = ['Approved', 'Submitted', 'Draft', 'Rejected']
   const workerCountFilterOptions = ['1 - 3 Orang', '4 - 10 Orang', '> 10 Orang']
 
+  const [summaryEmployeeId, setSummaryEmployeeId] = useState<string>('ALL')
+  const [summaryMonth, setSummaryMonth] = useState<string>('')
+  const [isGeneratingSummaryPdf, setIsGeneratingSummaryPdf] = useState<boolean>(false)
+  const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState<boolean>(false)
+  const [summaryPreviewZoom, setSummaryPreviewZoom] = useState<number>(1.0)
+  const [summaryPdfPreviewUrl, setSummaryPdfPreviewUrl] = useState<string | null>(null)
+
   const hasActiveFilters =
+    activeTab !== 'all' ||
+    summaryEmployeeId !== 'ALL' ||
+    Boolean(summaryMonth) ||
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedStatuses.length > 0 ||
     selectedWorkerCounts.length > 0
 
   const handleResetFilters = () => {
+    setActiveTab('all')
+    setSummaryEmployeeId('ALL')
+    setSummaryMonth('')
     setSearchQuery('')
     setSelectedDepartments([])
     setSelectedStatuses([])
     setSelectedWorkerCounts([])
   }
 
+  const isManagementOrAdmin = useMemo(() => {
+    if (isAdmin) return true
+    if (!currentEmployeeId && !currentEmployeeName) return true
+    const currentEmp = employees?.find((e) => e.id === currentEmployeeId)
+    const jobTitle = (currentEmp?.position || (currentEmp as any)?.rank || '').toLowerCase()
+    return ['leader', 'supervisor', 'section head', 'pjo', 'manager', 'foreman', 'kepala', 'admin', 'hc', 'hr'].some((role) => jobTitle.includes(role))
+  }, [isAdmin, currentEmployeeId, currentEmployeeName, employees])
+
+  const isUserInRow = (row: OvertimeListingRow): boolean => {
+    if (isManagementOrAdmin) return true
+    if (!currentEmployeeId && !currentEmployeeName) return true
+
+    const empIdNum = currentEmployeeId ? Number(currentEmployeeId) : null
+    const empNameLower = (currentEmployeeName || '').trim().toLowerCase()
+
+    if (empIdNum && row.requestedByEmployeeId && Number(row.requestedByEmployeeId) === empIdNum) {
+      return true
+    }
+    if (empNameLower && (row.requesterName || '').trim().toLowerCase() === empNameLower) {
+      return true
+    }
+
+    if (Array.isArray(row.participants)) {
+      const isPart = row.participants.some((p) => {
+        if (!p) return false
+        const pName = (p.employeeName || '').trim().toLowerCase()
+        return Boolean(empNameLower && pName === empNameLower)
+      })
+      if (isPart) return true
+    }
+
+    if (Array.isArray((row as any).workers)) {
+      const isWork = (row as any).workers.some((w: any) => {
+        if (!w) return false
+        const wId = w.employeeId ? Number(w.employeeId) : null
+        const wName = (w.employeeName || '').trim().toLowerCase()
+        if (empIdNum && wId && wId === empIdNum) return true
+        if (empNameLower && wName && wName === empNameLower) return true
+        return false
+      })
+      if (isWork) return true
+    }
+
+    return false
+  }
+
+  const summaryEmployeeOptions = useMemo(() => {
+    if (!isManagementOrAdmin && (currentEmployeeId || currentEmployeeName)) {
+      const myId = String(currentEmployeeId || currentEmployeeName)
+      const myName = currentEmployeeName || `Karyawan #${currentEmployeeId}`
+      return [
+        {
+          value: myId,
+          label: myName,
+        },
+      ]
+    }
+
+    const map = new Map<string, { id: string; name: string; dept?: string }>()
+    map.set('ALL', { id: 'ALL', name: 'Semua Karyawan' })
+
+    if (Array.isArray(employees)) {
+      employees.forEach((emp) => {
+        if (!emp) return
+        const key = String(emp.id || emp.name || '')
+        if (key && emp.name) {
+          map.set(key, {
+            id: String(emp.id ?? key),
+            name: String(emp.name),
+            dept: emp.department || emp.section || undefined,
+          })
+        }
+      })
+    }
+
+    if (Array.isArray(rows)) {
+      rows.forEach((row) => {
+        if (!row) return
+        if (row.requestedByEmployeeId && !map.has(String(row.requestedByEmployeeId))) {
+          map.set(String(row.requestedByEmployeeId), {
+            id: String(row.requestedByEmployeeId),
+            name: row.requesterName || `Karyawan #${row.requestedByEmployeeId}`,
+            dept: row.requesterDepartment,
+          })
+        }
+        if (row.requesterName && !map.has(row.requesterName)) {
+          map.set(row.requesterName, {
+            id: row.requesterName,
+            name: row.requesterName,
+            dept: row.requesterDepartment,
+          })
+        }
+        if (Array.isArray(row.participants)) {
+          row.participants.forEach((p) => {
+            if (p && p.employeeName && !map.has(p.employeeName)) {
+              map.set(p.employeeName, {
+                id: p.employeeName,
+                name: p.employeeName,
+              })
+            }
+          })
+        }
+      })
+    }
+
+    return Array.from(map.values()).map((emp) => ({
+      value: emp.id,
+      label: emp.id === 'ALL' ? 'Semua Karyawan' : (emp.dept ? `${emp.name || ''} (${emp.dept})` : emp.name || emp.id),
+    }))
+  }, [employees, rows, isManagementOrAdmin, currentEmployeeId, currentEmployeeName])
+
   const filteredRows = useMemo(() => {
+    if (!Array.isArray(rows)) return []
     return rows.filter((row) => {
+      if (!row) return false
+
+      // 0. Non-management scope guard: Regular staff can only view & download their own SPLs
+      if (!isManagementOrAdmin && (currentEmployeeId || currentEmployeeName)) {
+        if (!isUserInRow(row)) return false
+      }
+
+      const rowStatus = (row.status || '').toLowerCase()
+
+      if (activeTab !== 'all') {
+        if (activeTab === 'submitted' && rowStatus !== 'submitted') return false
+        if (activeTab === 'approved' && rowStatus !== 'approved') return false
+        if (activeTab === 'draft' && rowStatus !== 'draft') return false
+        if (activeTab === 'rejected' && rowStatus !== 'rejected' && rowStatus !== 'cancelled') return false
+      }
+
+      // 1. Employee Filter (Strictly match row created for the selected employee)
+      if (summaryEmployeeId && summaryEmployeeId !== 'ALL') {
+        const selectedEmp = summaryEmployeeOptions?.find((e) => e.value === summaryEmployeeId)
+        const empNameOnly = selectedEmp && selectedEmp.label
+          ? (selectedEmp.label || '').split(' (')[0].trim().toLowerCase()
+          : String(summaryEmployeeId || '').toLowerCase()
+
+        const rowReqName = (row.requesterName || '').toLowerCase().trim()
+        const isNameMatch = rowReqName === empNameOnly || rowReqName.includes(empNameOnly) || empNameOnly.includes(rowReqName)
+
+        if (!isNameMatch) {
+          return false
+        }
+      }
+
+      // 2. Month Filter ("YYYY-MM")
+      if (summaryMonth) {
+        if (!row.workDate) return false
+        const d = row.workDate instanceof Date ? row.workDate : new Date(row.workDate)
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const rowMonthStr = `${year}-${month}`
+          if (rowMonthStr !== summaryMonth) {
+            return false
+          }
+        }
+      }
+
+      // 3. Keyword Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         const matchSearch =
@@ -491,27 +1520,35 @@ export function OvertimeListingClient({
           (row.title || '').toLowerCase().includes(q) ||
           (row.requesterDepartment || '').toLowerCase().includes(q) ||
           (row.requestNotes || '').toLowerCase().includes(q) ||
-          ((row as any).workers || row.participants || []).some((w: any) => (w.employeeName || '').toLowerCase().includes(q))
+          ((row as any).workers || row.participants || []).some((w: any) => (w.employeeName || '').toLowerCase().includes(q)) ||
+          (row.lineItems || []).some(
+            (l) =>
+              (l?.name || '').toLowerCase().includes(q) ||
+              (l?.lineLabel || '').toLowerCase().includes(q) ||
+              (l?.unitNumber || '').toLowerCase().includes(q)
+          )
         if (!matchSearch) return false
       }
 
+      // 4. Department Filter
       if (selectedDepartments.length > 0) {
         if (!selectedDepartments.includes(row.requesterDepartment || '')) return false
       }
 
+      // 5. Status Filter
       if (selectedStatuses.length > 0) {
-        const rowStatus = (row.status || '').toLowerCase()
         const match = selectedStatuses.some((status) => {
           const s = status.toLowerCase()
           if (s.includes('approved')) return rowStatus === 'approved'
           if (s.includes('submitted')) return rowStatus === 'submitted'
           if (s.includes('draft')) return rowStatus === 'draft'
-          if (s.includes('rejected')) return rowStatus === 'rejected'
+          if (s.includes('rejected')) return rowStatus === 'rejected' || rowStatus === 'cancelled'
           return rowStatus === s
         })
         if (!match) return false
       }
 
+      // 6. Worker Count Filter
       if (selectedWorkerCounts.length > 0) {
         const count = row.workerCount || 0
         const match = selectedWorkerCounts.some((range) => {
@@ -525,7 +1562,284 @@ export function OvertimeListingClient({
 
       return true
     })
-  }, [rows, searchQuery, selectedDepartments, selectedStatuses, selectedWorkerCounts])
+  }, [rows, activeTab, summaryEmployeeId, summaryMonth, searchQuery, selectedDepartments, selectedStatuses, selectedWorkerCounts, summaryEmployeeOptions])
+
+  const summaryFilteredRows = useMemo(() => {
+    if (summaryEmployeeId && summaryEmployeeId !== 'ALL') {
+      const seen = new Set<number>()
+      return filteredRows.filter((r) => {
+        if (seen.has(r.id)) return false
+        seen.add(r.id)
+        return true
+      })
+    }
+
+    const seen = new Set<number>()
+    const sorted = [...filteredRows].sort((a, b) => {
+      if (a.teamRole === 'Pemohon' && b.teamRole !== 'Pemohon') return -1
+      if (a.teamRole !== 'Pemohon' && b.teamRole === 'Pemohon') return 1
+      return 0
+    })
+
+    return sorted.filter((r) => {
+      if (seen.has(r.id)) return false
+      seen.add(r.id)
+      return true
+    })
+  }, [filteredRows, summaryEmployeeId])
+
+  const summaryStats = useMemo(() => {
+    let totalHours = 0
+    let approvedCount = 0
+    let submittedCount = 0
+    let draftCount = 0
+    let rejectedCount = 0
+
+    summaryFilteredRows.forEach((row) => {
+      totalHours += calculateSplDurationHours(row)
+      const st = (row.status || '').toLowerCase()
+      if (st === 'approved') approvedCount++
+      else if (st === 'submitted') submittedCount++
+      else if (st === 'draft') draftCount++
+      else if (st === 'rejected' || st === 'cancelled') rejectedCount++
+    })
+
+    return {
+      totalCount: summaryFilteredRows.length,
+      totalHours: Math.round(totalHours * 10) / 10,
+      approvedCount,
+      submittedCount,
+      draftCount,
+      rejectedCount,
+    }
+  }, [summaryFilteredRows])
+
+  const summaryPreviewHtmlContent = useMemo(() => {
+    if (!summaryFilteredRows || summaryFilteredRows.length === 0) return ''
+    const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+    const employeeName =
+      selectedEmpObj && selectedEmpObj.value !== 'ALL'
+        ? selectedEmpObj.label.split(' (')[0]
+        : 'Semua Karyawan'
+    const department = selectedEmpObj?.label.includes('(')
+      ? selectedEmpObj.label.split('(')[1].replace(')', '')
+      : undefined
+
+    const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
+    const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
+    const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
+    const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+
+    const firstRow = summaryFilteredRows[0]
+    const leaderName = firstRow?.approvals?.find((a) => a.stepOrder === 1 || (a.stepLabel || '').toLowerCase().includes('leader') || (a.stepLabel || '').toLowerCase().includes('spv'))?.approverName
+    const pjoName = firstRow?.approvals?.find((a) => a.stepOrder === 2 || (a.stepLabel || '').toLowerCase().includes('manager') || (a.stepLabel || '').toLowerCase().includes('pjo'))?.approverName
+    const hcName = firstRow?.approvals?.find((a) => a.stepOrder === 3 || (a.stepLabel || '').toLowerCase().includes('hc') || (a.stepLabel || '').toLowerCase().includes('hr'))?.approverName
+
+    return renderSummarySplPdfHtml(summaryFilteredRows, {
+      employeeName,
+      employeeSn,
+      department,
+      section,
+      siteName,
+      periodLabel: formatMonthYearLabel(summaryMonth),
+      totalHours: summaryStats.totalHours,
+      totalCount: summaryStats.totalCount,
+      leaderName,
+      pjoName,
+      hcName,
+    })
+  }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees])
+
+  const handleOpenSummaryPreview = async () => {
+    if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
+      toast.error('Silakan pilih karyawan terlebih dahulu untuk melihat preview PDF Summary SPL.')
+      return
+    }
+
+    if (summaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL untuk ditampilkan.')
+      return
+    }
+
+    try {
+      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+      const employeeName =
+        selectedEmpObj && selectedEmpObj.value !== 'ALL'
+          ? selectedEmpObj.label.split(' (')[0]
+          : 'Semua Karyawan'
+      const deptName =
+        selectedEmpObj && selectedEmpObj.label.includes('(')
+          ? selectedEmpObj.label.split('(')[1].replace(')', '')
+          : 'Central Services'
+
+      const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
+      const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
+      const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
+      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+      const siteLogoUrl = resolveSiteLogoUrl(siteName)
+
+      const firstRow = summaryFilteredRows[0]
+      const leaderName = firstRow?.approvals?.find((a) => a.stepOrder === 1 || (a.stepLabel || '').toLowerCase().includes('leader') || (a.stepLabel || '').toLowerCase().includes('spv'))?.approverName
+      const pjoName = firstRow?.approvals?.find((a) => a.stepOrder === 2 || (a.stepLabel || '').toLowerCase().includes('manager') || (a.stepLabel || '').toLowerCase().includes('pjo'))?.approverName
+      const hcName = firstRow?.approvals?.find((a) => a.stepOrder === 3 || (a.stepLabel || '').toLowerCase().includes('hc') || (a.stepLabel || '').toLowerCase().includes('hr'))?.approverName
+
+      const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
+
+      const pdfBytes = await generateSummarySplPdf({
+        documentTitle: 'SUMMARY SPL',
+        period: summaryMonth || '2026-10',
+        employeeName,
+        employeeSn,
+        department: deptName,
+        section,
+        siteName,
+        signatures: {
+          preparedBy: employeeName,
+          pjoLeader: leaderName || 'Supervisor',
+          approvedBy: pjoName || hcName || 'Branch Manager / Factory Manager',
+          hrName: hcName || 'Branch Manager / Factory Manager',
+          logoUrl: siteLogoUrl,
+        },
+        days: daysData,
+        isNonStaff: true,
+        showTotalOvertime: true,
+      })
+
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+      if (summaryPdfPreviewUrl) {
+        URL.revokeObjectURL(summaryPdfPreviewUrl)
+      }
+      const url = URL.createObjectURL(blob)
+      setSummaryPdfPreviewUrl(url)
+      setSummaryPreviewZoom(1.0)
+      setIsSummaryPreviewOpen(true)
+    } catch (err) {
+      console.error('Preview error:', err)
+      toast.error('Gagal memuat preview Summary SPL.')
+    }
+  }
+
+  const handleResetSummaryFilters = () => {
+    setSummaryEmployeeId('ALL')
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    setSummaryMonth(`${year}-${month}`)
+  }
+
+  const handleDownloadSummaryPdf = async () => {
+    if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
+      toast.error('Silakan pilih karyawan terlebih dahulu untuk mengunduh PDF Summary SPL.')
+      return
+    }
+
+    if (summaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL untuk dibuatkan PDF.')
+      return
+    }
+
+    setIsGeneratingSummaryPdf(true)
+    const toastId = 'download-summary-pdf'
+    toast.loading('Menyiapkan dokumen PDF Summary SPL...', { id: toastId })
+
+    try {
+      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+      const employeeName =
+        selectedEmpObj && selectedEmpObj.value !== 'ALL'
+          ? selectedEmpObj.label.split(' (')[0]
+          : 'Semua Karyawan'
+      const deptName =
+        selectedEmpObj && selectedEmpObj.label.includes('(')
+          ? selectedEmpObj.label.split('(')[1].replace(')', '')
+          : 'Central Services'
+
+      const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
+      const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
+      const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
+      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+
+      const siteLogoUrl = resolveSiteLogoUrl(siteName)
+
+      const firstRow = summaryFilteredRows[0]
+      const leaderName = firstRow?.approvals?.find((a) => a.stepOrder === 1 || (a.stepLabel || '').toLowerCase().includes('leader') || (a.stepLabel || '').toLowerCase().includes('spv'))?.approverName
+      const pjoName = firstRow?.approvals?.find((a) => a.stepOrder === 2 || (a.stepLabel || '').toLowerCase().includes('manager') || (a.stepLabel || '').toLowerCase().includes('pjo'))?.approverName
+      const hcName = firstRow?.approvals?.find((a) => a.stepOrder === 3 || (a.stepLabel || '').toLowerCase().includes('hc') || (a.stepLabel || '').toLowerCase().includes('hr'))?.approverName
+
+      const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
+
+      const pdfBytes = await generateSummarySplPdf({
+        documentTitle: 'SUMMARY SPL',
+        period: summaryMonth || '2026-10',
+        employeeName,
+        employeeSn,
+        department: deptName,
+        section,
+        siteName,
+        signatures: {
+          preparedBy: employeeName,
+          pjoLeader: leaderName || 'Supervisor',
+          approvedBy: pjoName || hcName || 'Branch Manager / Factory Manager',
+          hrName: hcName || 'Branch Manager / Factory Manager',
+          logoUrl: siteLogoUrl,
+        },
+        days: daysData,
+        isNonStaff: true,
+        showTotalOvertime: true,
+      })
+
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+      const cleanEmp = employeeName.replace(/[^a-zA-Z0-9]/g, '_')
+      const fileName = `Summary_SPL_${cleanEmp}_${summaryMonth || 'Semua'}.pdf`
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success('Dokumen PDF Overtime Record berhasil diunduh!', { id: toastId })
+    } catch (err: any) {
+      console.error('Error generating summary PDF:', err)
+      toast.error('Gagal mengunduh PDF Overtime Record.', { id: toastId })
+    } finally {
+      setIsGeneratingSummaryPdf(false)
+    }
+  }
+
+  const handleExportSummaryExcel = async () => {
+    if (summaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL untuk diekspor ke Excel.')
+      return
+    }
+
+    const data = summaryFilteredRows.map((row, idx) => ({
+      No: idx + 1,
+      Tanggal: formatDate(row.workDate),
+      'No. SPL': row.splNumber,
+      'Pemohon / Karyawan': row.requesterName,
+      Departemen: row.requesterDepartment || '—',
+      'Jam Mulai': row.plannedStartAt ? formatTime(row.plannedStartAt) : '—',
+      'Jam Selesai': row.plannedEndAt ? formatTime(row.plannedEndAt) : '—',
+      'Total Durasi (Jam)': calculateSplDurationHours(row),
+      'Keperluan / Pekerjaan': row.title || 'Overtime Command',
+      Status: row.status,
+      Catatan: row.requestNotes || '—',
+    }))
+
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Summary SPL')
+    const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+    const empName = selectedEmpObj ? selectedEmpObj.label.split(' (')[0].replace(/[^a-zA-Z0-9]/g, '_') : 'Semua'
+    XLSX.writeFile(wb, `Summary_SPL_${empName}_${summaryMonth || 'Semua'}.xlsx`)
+    toast.success('File Excel Summary SPL berhasil diunduh!')
+  }
+
+
 
   const approvedRows = rows.filter(
     (r) =>
@@ -603,6 +1917,22 @@ export function OvertimeListingClient({
     setIsBatchReviewOpen(true)
   }
 
+  const handleCatchActionError = (err: any, fallbackMessage = 'Terjadi kesalahan sistem.') => {
+    const errStr = String(err?.message || err || '').toLowerCase()
+    if (errStr.includes('was not found on the server') || errStr.includes('failed-to-find-server-action')) {
+      toast.info('Sistem HERO telah diperbarui di server (versi aplikasi baru). Memuat ulang halaman untuk menyinkronkan...', {
+        duration: 3000,
+      })
+      if (typeof window !== 'undefined') {
+        setTimeout(() => {
+          window.location.reload()
+        }, 1200)
+      }
+      return
+    }
+    toast.error(err.message || fallbackMessage)
+  }
+
   const handleSingleApproveCurrent = async () => {
     if (!currentBatchDoc) return
     setIsBatchActionRunning(true)
@@ -633,7 +1963,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal menyetujui dokumen SPL.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat menyetujui dokumen SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -667,7 +1997,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal mengembalikan dokumen SPL.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat mengembalikan dokumen SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -701,7 +2031,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal menolak dokumen SPL.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat menolak dokumen SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -724,7 +2054,7 @@ export function OvertimeListingClient({
         toast.error(res.error || 'Gagal melakukan approve all.')
       }
     } catch (err: any) {
-      toast.error(err.message || 'Terjadi kesalahan sistem.')
+      handleCatchActionError(err, 'Terjadi kesalahan saat approve all SPL.')
     } finally {
       setIsBatchActionRunning(false)
     }
@@ -785,6 +2115,213 @@ export function OvertimeListingClient({
     }
   }
 
+  function renderSplHtmlTemplate(row: OvertimeListingRow, qrImgHtml: string) {
+    const requesterApproval = (row.approvals || []).find((a) => a.stepOrder === 1)
+    const leaderApproval = (row.approvals || []).find((a) => a.stepOrder === 2 || a.stepOrder === 3)
+    const isLeaderApproved = leaderApproval?.status === 'approved'
+
+    const participantsListHtml = row.participants && row.participants.length > 0
+      ? row.participants.map((p, idx) => `
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${idx + 1}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${p.employeeName}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${p.shiftCode || 'DS'}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${p.rosterType || '5:2'}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-size: 7.5pt;">${(p.category || 'after_mandatory_ot').replace(/_/g, ' ')}</td>
+          </tr>
+        `).join('')
+      : `
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${row.requesterName}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">DS</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">5:2</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; text-transform: capitalize; font-size: 7.5pt;">After Mandatory OT</td>
+          </tr>
+        `
+
+    const lineItemsListHtml = row.lineItems && row.lineItems.length > 0
+      ? row.lineItems.map((item, idx) => {
+          const actName = item.name || item.lineLabel || row.title
+          const actCode = item.code ? `<strong>[${item.code}]</strong> ` : ''
+          const tireMat = [
+            item.tireCount ? `${item.tireCount} Ban` : null,
+            item.materialUsed ? item.materialUsed : null,
+          ].filter(Boolean).join(' • ') || '—'
+          const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+          const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+          return `
+            <tr>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${idx + 1}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: left;">
+                <div style="font-weight: 600;">${actCode}${actName}</div>
+              </td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${item.unitNumber || item.targetUnit || '—'}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${timeStr}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">${tireMat}</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">${item.plannedPoints || 0} pts</td>
+              <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-size: 7pt;">
+                ${hasPhoto ? '<span style="color: #059669; font-weight: bold;">📷 Ada Foto</span>' : '<span style="color: #94a3b8;">—</span>'}
+                ${item.remark ? `<div style="color: #475569; font-size: 6.5pt; margin-top: 1px;">${item.remark}</div>` : ''}
+              </td>
+            </tr>
+          `
+        }).join('')
+      : `
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: 500;">${row.title}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">60 m</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">10 pts</td>
+            <td style="border: 1px solid black; padding: 3px 5px; text-align: center; color: #94a3b8; font-size: 7pt;">—</td>
+          </tr>
+        `
+
+    const siteName = (row as any).siteName || (row as any).site || row.requesterDepartment || ''
+    const siteLogoUrl = resolveSiteLogoUrl(siteName)
+
+    return `
+      <!-- Header Kop Matching Official Attendance / Overtime Record Standard -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 8px;">
+        <div style="width: 130px; text-align: left;">
+          <img src="/cp_logo-removebg-preview.png" style="height: 48px; max-width: 120px; object-fit: contain;" />
+        </div>
+        <div style="flex: 1; text-align: center;">
+          <div style="font-weight: 800; font-size: 13pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000;">PT. CHITRA PARATAMA</div>
+          <div style="font-weight: 700; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 2px;">SURAT PERINTAH LEMBUR (SPL)</div>
+          <div style="font-weight: 600; font-size: 7.5pt; color: #334155; margin-top: 2px; letter-spacing: 0.5px;">HUMAN CAPITAL</div>
+        </div>
+        <div style="width: 130px; text-align: right;">
+          ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 48px; max-width: 120px; object-fit: contain;" />` : '<div style="width: 120px;"></div>'}
+        </div>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
+        <tbody>
+          <tr><td colspan="4" style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Details & Request Profile</td></tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">SPL Number</td>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-family: monospace; font-weight: bold;">${row.splNumber}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">Work Date</td>
+            <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold;">${formatDate(row.workDate)}</td>
+          </tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Title / Keperluan</td>
+            <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.title || 'Overtime Command'}</td>
+          </tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Requester Name</td>
+            <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterName || '—'}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Department</td>
+            <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterDepartment || 'Central Services'}</td>
+          </tr>
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
+            <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
+          </tr>
+          ${(() => {
+            const cleaned = (row.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+            if (!cleaned) return ''
+            return `
+              <tr>
+                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Request Notes</td>
+                <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${cleaned}</td>
+              </tr>
+            `
+          })()}
+          <tr>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Total Pekerja</td>
+            <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.workerCount} Orang</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">A. Workers (${row.workerCount} Orang)</div>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; text-align: center;">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold;">
+            <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
+            <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 42%;">Name</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Shift</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Roster</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${participantsListHtml}
+        </tbody>
+      </table>
+
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Line Items (Aktivitas Pekerjaan)</div>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold; text-align: center;">
+            <th style="border: 1px solid black; padding: 3px 5px; width: 6%;">#</th>
+            <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 34%;">Activity</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Target / Unit</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Waktu</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 12%;">Tire / Material</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">Poin</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 10%;">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lineItemsListHtml}
+        </tbody>
+      </table>
+
+      <div style="font-weight: bold; margin-bottom: 0.25rem;">C. Signatories & Approval Steps</div>
+      <table style="width: 100%; border-collapse: collapse; text-align: center;">
+        <thead>
+          <tr style="background: #f8fafc; font-weight: bold;">
+            <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Pemohon (Serviceman)</th>
+            <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / PJO (Site Lead)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+              <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 6px;">
+                ${requesterApproval?.signatureDataUrl ? `<img src="${requesterApproval.signatureDataUrl}" style="height: 32px; max-width: 120px; object-fit: contain; display: block; margin: 0 auto 2px;" />` : ''}
+                <div>Tanda Tangan Sah</div>
+              </div>
+              <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                <p style="font-weight: bold; font-size: 8pt; margin: 0;">${requesterApproval?.approverName || row.requesterName}</p>
+                <p style="font-size: 7pt; color: #64748b; margin: 0;">${requesterApproval?.signedAt ? new Date(requesterApproval.signedAt).toLocaleDateString('id-ID') : formatDate(row.workDate)}</p>
+              </div>
+            </td>
+            <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
+              <div style="font-size: 7.5pt; color: ${isLeaderApproved ? '#059669' : '#94a3b8'}; font-weight: bold; margin-bottom: 6px;">
+                ${leaderApproval?.signatureDataUrl ? `<img src="${leaderApproval.signatureDataUrl}" style="height: 32px; max-width: 120px; object-fit: contain; display: block; margin: 0 auto 2px;" />` : ''}
+                <div>${isLeaderApproved ? 'Tanda Tangan Sah' : '<span style="font-style: italic;">Menunggu Persetujuan</span>'}</div>
+              </div>
+              <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
+                <p style="font-weight: bold; font-size: 8pt; margin: 0;">${leaderApproval?.approverName || 'Leader / PJO Site'}</p>
+                <p style="font-size: 7pt; color: #64748b; margin: 0;">${leaderApproval?.signedAt ? new Date(leaderApproval.signedAt).toLocaleDateString('id-ID') : '—'}</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px;">
+        <div style="font-size: 6.5pt; color: #64748b;">
+          * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+          ${qrImgHtml}
+          <div style="text-align: right; font-size: 7pt; color: #64748b; font-family: monospace;">
+            F.HC.SPL.001.01 • PT Chitra Paratama
+          </div>
+        </div>
+      </div>
+    `
+  }
+
   const handleDownloadSplPdf = async (row: OvertimeListingRow) => {
     setIsDownloadingPdf(true)
     toast.loading('Menyiapkan file PDF...', { id: 'spl-pdf-dl' })
@@ -795,115 +2332,21 @@ export function OvertimeListingClient({
       if (targetEl) {
         await downloadElementAsPdf(targetEl, `SPL_${row.splNumber.replace(/[\/\\]/g, '_')}.pdf`)
       } else {
-        const contentHtml = `
-          <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px;">SURAT PERINTAH LEMBUR (SPL)</h1>
-          <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin-bottom: 12px;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
+        const origin = typeof window !== 'undefined' ? window.location.origin : ''
+        const evidenceUrl = `${origin}/overtime-evidence/${row.id}`
+        let qrImgHtml = ''
+        try {
+          const qrDataUrl = await QRCode.toDataURL(evidenceUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+          qrImgHtml = `
+            <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block;">
+              <img src="${qrDataUrl}" width="54" height="54" style="display: block; margin: 0 auto;" alt="QR Evidence" />
+            </a>
+          `
+        } catch (e) {
+          console.error('QR code generation error:', e)
+        }
 
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-            <tbody>
-              <tr><td colspan="4" style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Details & Request Profile</td></tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">SPL Number</td>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-family: monospace; font-weight: bold;">${row.splNumber}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">Work Date</td>
-                <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold;">${formatDate(row.workDate)}</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Title / Keperluan</td>
-                <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.title || 'Overtime Command'}</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Requester Name</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterName || '—'}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Department</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterDepartment || 'Central Services'}</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
-                <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
-              </tr>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Total Pekerja</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.workerCount} Orang</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">A. Workers (${row.workerCount} Orang)</div>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; text-align: center;">
-            <thead>
-              <tr style="background: #f8fafc; font-weight: bold;">
-                <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-                <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 42%;">Name</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Shift</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Roster</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Category</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px;">1</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${row.requesterName}</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">DS</td>
-                <td style="border: 1px solid black; padding: 3px 5px;">5:2</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-transform: capitalize; font-size: 7.5pt;">After Mandatory OT</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Line Items (Aktivitas Pekerjaan)</div>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-            <thead>
-              <tr style="background: #f8fafc; font-weight: bold; text-align: center;">
-                <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-                <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 40%;">Activity</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 18%;">Target</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 14%;">Minutes</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Points</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
-                <td style="border: 1px solid black; padding: 3px 5px; font-weight: 500;">${row.title}</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">60 m</td>
-                <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">10 pts</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="font-weight: bold; margin-bottom: 0.25rem;">C. Signatories & Approval Steps</div>
-          <table style="width: 100%; border-collapse: collapse; text-align: center;">
-            <thead>
-              <tr style="background: #f8fafc; font-weight: bold;">
-                <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / Supervisor</th>
-                <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Superior / Section Head</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                ${row.approvals.map((a) => `
-                  <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
-                    <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
-                      ${a.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
-                    </div>
-                    <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
-                      <p style="font-weight: bold; font-size: 8pt;">${a.approverName || '—'}</p>
-                      <p style="font-size: 7pt; color: #64748b;">${a.signedAt ? new Date(a.signedAt).toLocaleDateString('id-ID') : '—'}</p>
-                    </div>
-                  </td>
-                `).join('')}
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">
-            F.HC.SPL.001.01 • PT Chitra Paratama
-          </div>
-        `
+        const contentHtml = renderSplHtmlTemplate(row, qrImgHtml)
         await downloadHtmlAsPdf(contentHtml, `SPL_${row.splNumber.replace(/[\/\\]/g, '_')}.pdf`)
       }
       toast.success('PDF berhasil diunduh!', { id: 'spl-pdf-dl' })
@@ -915,7 +2358,7 @@ export function OvertimeListingClient({
     }
   }
 
-  const handleDownloadSelectedExcel = () => {
+  const handleDownloadSelectedExcel = async () => {
     if (selectedIds.length === 0) return
     const selectedRows = filteredRows.filter((r) => selectedIds.includes(r.id))
     if (selectedRows.length === 0) return
@@ -935,6 +2378,7 @@ export function OvertimeListingClient({
       'Tanggal Dibuat': (row as any).createdAt ? formatTimestamp((row as any).createdAt) : '—',
     }))
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'SPL Terpilih')
@@ -951,115 +2395,21 @@ export function OvertimeListingClient({
       const blob = await generateElementAsPdfBlob(targetEl)
       return { name: fileName, blob }
     } else {
-      const contentHtml = `
-        <h1 class="text-center font-bold" style="font-size: 11pt; margin-bottom: 2px;">SURAT PERINTAH LEMBUR (SPL)</h1>
-        <p class="text-center font-bold" style="font-size: 8pt; color: #475569; margin-bottom: 12px;">PT CHITRAPARATAMA • HUMAN CAPITAL</p>
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const evidenceUrl = `${origin}/overtime-evidence/${row.id}`
+      let qrImgHtml = ''
+      try {
+        const qrDataUrl = await QRCode.toDataURL(evidenceUrl, { margin: 1, width: 140, errorCorrectionLevel: 'M' })
+        qrImgHtml = `
+          <a href="${evidenceUrl}" target="_blank" style="text-decoration: none; color: inherit; display: inline-block;">
+            <img src="${qrDataUrl}" width="54" height="54" style="display: block; margin: 0 auto;" alt="QR Evidence" />
+          </a>
+        `
+      } catch (e) {
+        console.error('QR code generation error:', e)
+      }
 
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-          <tbody>
-            <tr><td colspan="4" style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Details & Request Profile</td></tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">SPL Number</td>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-family: monospace; font-weight: bold;">${row.splNumber}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold; background: #f8fafc;">Work Date</td>
-              <td style="border: 1px solid black; padding: 3px 5px; width: 25%; font-weight: bold;">${formatDate(row.workDate)}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Title / Keperluan</td>
-              <td colspan="3" style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.title || 'Overtime Command'}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Requester Name</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterName || '—'}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Department</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">${row.requesterDepartment || 'Central Services'}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Planned Schedule</td>
-              <td colspan="3" style="border: 1px solid black; padding: 3px 5px;">${formatDate(row.workDate)} (${formatTime(row.plannedStartAt)} s.d. ${formatTime(row.plannedEndAt)})</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Status Dokumen</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; text-transform: uppercase; color: #065f46;">${row.status}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold; background: #f8fafc;">Total Pekerja</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: bold;">${row.workerCount} Orang</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">A. Workers (${row.workerCount} Orang)</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem; text-align: center;">
-          <thead>
-            <tr style="background: #f8fafc; font-weight: bold;">
-              <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-              <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 42%;">Name</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Shift</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 15%;">Roster</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Category</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px;">1</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: left; font-weight: bold;">${row.requesterName}</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">DS</td>
-              <td style="border: 1px solid black; padding: 3px 5px;">5:2</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-transform: capitalize; font-size: 7.5pt;">After Mandatory OT</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">B. Line Items (Aktivitas Pekerjaan)</div>
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
-          <thead>
-            <tr style="background: #f8fafc; font-weight: bold; text-align: center;">
-              <th style="border: 1px solid black; padding: 3px 5px; width: 8%;">#</th>
-              <th style="border: 1px solid black; padding: 3px 5px; text-align: left; width: 40%;">Activity</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 18%;">Target</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 14%;">Minutes</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 20%;">Points</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">1</td>
-              <td style="border: 1px solid black; padding: 3px 5px; font-weight: 500;">${row.title}</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">—</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center;">60 m</td>
-              <td style="border: 1px solid black; padding: 3px 5px; text-align: center; font-weight: bold;">10 pts</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="font-weight: bold; margin-bottom: 0.25rem;">C. Signatories & Approval Steps</div>
-        <table style="width: 100%; border-collapse: collapse; text-align: center;">
-          <thead>
-            <tr style="background: #f8fafc; font-weight: bold;">
-              <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Leader / Supervisor</th>
-              <th style="border: 1px solid black; padding: 3px 5px; width: 50%;">Superior / Section Head</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              ${(row.approvals || []).map((a) => `
-                <td style="border: 1px solid black; height: 60px; vertical-align: bottom; padding: 4px;">
-                  <div style="font-size: 7.5pt; color: #059669; font-weight: bold; margin-bottom: 8px;">
-                    ${a.status === 'approved' ? 'Tanda Tangan Sah' : '<span style="color: #94a3b8; font-style: italic;">Menunggu TTD</span>'}
-                  </div>
-                  <div style="border-top: 1px solid #cbd5e1; padding-top: 2px;">
-                    <p style="font-weight: bold; font-size: 8pt;">${a.approverName || '—'}</p>
-                    <p style="font-size: 7pt; color: #64748b;">${a.signedAt ? new Date(a.signedAt).toLocaleDateString('id-ID') : '—'}</p>
-                  </div>
-                </td>
-              `).join('')}
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">
-          F.HC.SPL.001.01 • PT Chitra Paratama
-        </div>
-      `
+      const contentHtml = renderSplHtmlTemplate(row, qrImgHtml)
       const blob = await generateHtmlAsPdfBlob(contentHtml)
       return { name: fileName, blob }
     }
@@ -1149,16 +2499,44 @@ export function OvertimeListingClient({
       return
     }
 
+    // Validasi field wajib per aktivitas (equipment, tire count, material jika diperlukan)
+    for (let i = 0; i < validLineItems.length; i++) {
+      const item = validLineItems[i]
+      if (item.requiresEquipmentNo && !item.unitNumber?.trim()) {
+        toast.error(`No. Equipment / Unit wajib diisi untuk aktivitas #${i + 1}`)
+        return
+      }
+      if (item.requiresTireCount && (!item.tireCount || item.tireCount < 1)) {
+        toast.error(`Jumlah Pcs / Qty wajib diisi minimal 1 untuk aktivitas #${i + 1}`)
+        return
+      }
+      if (item.requiresMaterialUsed && !item.materialUsed?.trim()) {
+        toast.error(`Material Used wajib diisi untuk aktivitas #${i + 1}`)
+        return
+      }
+    }
+
     setIsCreating(true)
     try {
-      const startDateTime = new Date(`${createForm.plannedStartDate}T${createForm.plannedStartTime}:00`)
-      const endDateTime = new Date(`${createForm.plannedEndDate}T${createForm.plannedEndTime}:00`)
+      const baseDate = createForm.workDate || new Date().toISOString().split('T')[0]
+      const cleanStartTime = createForm.plannedStartTime?.trim() || '17:00'
+      const cleanEndTime = createForm.plannedEndTime?.trim() || '20:00'
+      let effectiveEndDate = baseDate
+      if (cleanEndTime < cleanStartTime) {
+        const nextDay = new Date(`${baseDate}T00:00:00`)
+        nextDay.setDate(nextDay.getDate() + 1)
+        effectiveEndDate = nextDay.toISOString().split('T')[0]
+      }
+      const startDateTime = new Date(`${baseDate}T${cleanStartTime}:00`)
+      const endDateTime = new Date(`${effectiveEndDate}T${cleanEndTime}:00`)
+      const firstPhoto = validLineItems.find((i) => i.photoUrl || (i.photos && i.photos.length > 0))?.photoUrl || createForm.photoUrl || undefined
 
       const res = await createOvertimeCommandLetterAction({
         title: createForm.title,
         workDate: createForm.workDate,
         plannedStartAt: startDateTime,
         plannedEndAt: endDateTime,
+        photoUrl: firstPhoto,
         requestedByEmployeeId: createForm.requesterEmployeeId ? Number(createForm.requesterEmployeeId) : undefined,
         requestNotes: createForm.requestNotes,
         executionNotes: createForm.executionNotes,
@@ -1169,7 +2547,26 @@ export function OvertimeListingClient({
           category: w.category,
         })),
         workerEmployeeIds: validWorkers.map((w) => Number(w.employeeId)),
-        lineItems: validLineItems,
+        // ponytail: upgrade-path → extract OvertimeCreateLineItemInput shared type
+        lineItems: (validLineItems.map((item) => ({
+          lineLabel: item.lineLabel,
+          code: item.code,
+          name: item.name || item.lineLabel,
+          unitNumber: item.unitNumber || item.targetUnit || undefined,
+          tireCount: item.tireCount,
+          materialUsed: item.materialUsed,
+          startTime: item.startTime || createForm.plannedStartTime || '17:00',
+          endTime: item.endTime || createForm.plannedEndTime || '21:00',
+          duration: item.duration || (item.estimatedMinutes ? `${item.estimatedMinutes}m` : undefined),
+          targetUnit: item.unitNumber || item.targetUnit || '1 Unit',
+          estimatedMinutes: item.estimatedMinutes || 60,
+          plannedPoints: item.plannedPoints || item.points || 10,
+          points: item.points || item.plannedPoints || 10,
+          lineDescription: item.remark || undefined,
+          remark: item.remark,
+          photoUrl: item.photoUrl,
+          photos: item.photos || (item.photoUrl ? [item.photoUrl] : []),
+        })) as any[]),
         leaderEmployeeId: createForm.leaderEmployeeId ? Number(createForm.leaderEmployeeId) : undefined,
         leaderName: createForm.leaderName || undefined,
         superiorEmployeeId: createForm.superiorEmployeeId ? Number(createForm.superiorEmployeeId) : undefined,
@@ -1239,15 +2636,11 @@ export function OvertimeListingClient({
   }
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Overtime"
-      title="Overtime Requests Approval"
-      description="Pusat approval dan pengelolaan Surat Perintah Lembur (SPL) karyawan dengan verifikasi tanda tangan digital bertingkat."
-    >
+    <AdminPageShell>
       <HcWorkspaceBanner
         badge="SURAT PERINTAH LEMBUR"
         title="Overtime Approval & Review"
-        description="Review pengajuan lembur tim, tanda tangani digital secara sequential (Leader -> Section Head -> Manager), dan kelola penugasan lembur operasional."
+        description="Review pengajuan lembur tim, tanda tangani digital secara berjenjang (Leader -> PJO / Site Lead), dan kelola penugasan lembur operasional."
         metrics={[
           { label: 'Total Pengajuan', value: rows.length },
           { label: 'Menunggu Review', value: rows.filter((r) => r.status.toLowerCase() === 'submitted').length },
@@ -1255,6 +2648,113 @@ export function OvertimeListingClient({
           { label: 'Draft', value: rows.filter((r) => r.status.toLowerCase() === 'draft').length },
         ]}
       />
+
+      {/* Dedicated Card: Rekapitulasi & Export Summary SPL (PDF Standard) */}
+      <div className="mb-5 rounded-[1.1rem] bg-white p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)] dark:bg-slate-900">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+              <FileSpreadsheet className="size-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                Rekapitulasi & Export Summary SPL (PDF Standard)
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 px-2 py-0.5 text-[10px] font-bold border-0">
+                  {summaryStats.totalCount} SPL • {summaryStats.totalHours} Jam
+                </Badge>
+              </h3>
+              <p className="text-xs text-slate-500">
+                Filter rekapitulasi lembur karyawan per periode bulan untuk diunduh sebagai dokumen PDF resmi (Payble Site Allowance) atau Excel.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenSummaryPreview}
+              disabled={filteredRows.length === 0 || summaryEmployeeId === 'ALL'}
+              title={summaryEmployeeId === 'ALL' ? 'Pilih karyawan terlebih dahulu untuk melihat preview PDF' : ''}
+              className={cn(
+                "h-9 gap-2 rounded-xl text-white text-xs font-semibold px-4 shadow-xs cursor-pointer",
+                summaryEmployeeId === 'ALL'
+                  ? "bg-slate-400 opacity-60 cursor-not-allowed"
+                  : "bg-emerald-600 hover:bg-emerald-700"
+              )}
+            >
+              <Eye className="size-4" />
+              Preview & Unduh Summary SPL (PDF)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleExportSummaryExcel}
+              disabled={filteredRows.length === 0}
+              className="h-9 gap-2 rounded-xl border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 cursor-pointer"
+            >
+              <FileSpreadsheet className="size-4 text-emerald-600" />
+              Ekspor Excel
+            </Button>
+          </div>
+        </div>
+
+        {/* Filter Controls Grid inside Dedicated Card */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* 1. Nama Karyawan */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Nama Karyawan
+            </Label>
+            <SearchableSelect
+              label="Karyawan"
+              options={summaryEmployeeOptions}
+              value={summaryEmployeeId}
+              onValueChange={setSummaryEmployeeId}
+              placeholder="Pilih Karyawan..."
+              widthClassName="w-full h-9 rounded-xl border-slate-200 text-xs shadow-xs"
+            />
+          </div>
+
+          {/* 2. Bulan & Tahun */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Periode Bulan & Tahun
+            </Label>
+            <Input
+              type="month"
+              value={summaryMonth}
+              onChange={(e) => setSummaryMonth(e.target.value)}
+              className="h-9 rounded-xl border-slate-200 text-xs shadow-xs bg-white dark:bg-slate-950"
+            />
+          </div>
+
+          {/* Active Summary Filter Status & Reset */}
+          <div className="space-y-1 flex flex-col justify-end">
+            {hasActiveFilters ? (
+              <div className="flex items-center justify-between h-9 rounded-xl bg-slate-50 px-3 border border-slate-200/80 dark:bg-slate-800/50 dark:border-slate-800">
+                <span className="text-[11px] text-slate-600 truncate dark:text-slate-400">
+                  Total Terfilter: <strong className="text-slate-900 dark:text-white">{filteredRows.length} Dokumen SPL</strong>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetFilters}
+                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2"
+                >
+                  <RotateCcw className="size-3 mr-1" /> Reset
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center h-9 text-[11px] text-slate-400 italic px-1">
+                * Menampilkan seluruh data SPL. Pilih Karyawan / Bulan untuk menyaring rekapitulasi.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       <MinimalTableShell
         label="surat perintah lembur"
@@ -1311,18 +2811,18 @@ export function OvertimeListingClient({
         showImport={false}
         showExport={false}
         primaryAction={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setSettingsOpen(true)}>
-              <Settings className="size-4 mr-1.5" /> SETTINGS
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)} className="h-9 rounded-xl text-xs font-semibold">
+              <Settings className="size-3.5 mr-1" /> SETTINGS
             </Button>
-            <Button variant="secondary" onClick={handleGenerateTest} disabled={isGeneratingTest}>
-              <Bug className="size-4 mr-1.5" /> {isGeneratingTest ? 'Generating...' : 'TEST APPROVAL'}
+            <Button variant="secondary" size="sm" onClick={handleGenerateTest} disabled={isGeneratingTest} className="h-9 rounded-xl text-xs font-semibold">
+              <Bug className="size-3.5 mr-1" /> {isGeneratingTest ? 'Generating...' : 'TEST APPROVAL'}
             </Button>
-            <Button variant="outline" onClick={handleSendReminders} disabled={isSendingReminders}>
-              <Send className="size-4 mr-1.5" /> {isSendingReminders ? 'Sending reminders...' : 'SEND REMINDERS'}
+            <Button variant="outline" size="sm" onClick={handleSendReminders} disabled={isSendingReminders} className="h-9 rounded-xl text-xs font-semibold">
+              <Send className="size-3.5 mr-1" /> {isSendingReminders ? 'Sending...' : 'REMINDERS'}
             </Button>
-            <Button onClick={() => setCreateOpen(true)} className={hcPrimaryActionClassName}>
-              <Plus className="size-4 mr-1.5" /> TAMBAH SPL
+            <Button onClick={() => setCreateOpen(true)} className={cn(hcPrimaryActionClassName, 'h-9 rounded-xl text-xs font-semibold')}>
+              <Plus className="size-3.5 mr-1" /> TAMBAH SPL
             </Button>
           </div>
         }
@@ -1421,11 +2921,11 @@ export function OvertimeListingClient({
                 </TableCell>
               </TableRow>
             ) : (
-              filteredRows.map((row) => {
+              filteredRows.map((row, idx) => {
                 const isSelected = selectedIds.includes(row.id)
                 return (
                   <TableRow
-                    key={row.id}
+                    key={`${row.id}-${idx}`}
                     className={cn(
                       'hover:bg-slate-50/80 transition-colors cursor-pointer',
                       isSelected && 'bg-indigo-50/40 hover:bg-indigo-50/60'
@@ -1445,7 +2945,25 @@ export function OvertimeListingClient({
                       </button>
                     </TableCell>
                     <TableCell className="font-medium">
-                      {row.requesterName || row.splNumber || '-'}
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-slate-900">{row.requesterName || row.splNumber || '-'}</span>
+                          {row.teamRole === 'Anggota Tim' ? (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                              Anggota Tim
+                            </span>
+                          ) : row.teamMembersSummary ? (
+                            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Pemohon
+                            </span>
+                          ) : null}
+                        </div>
+                        {row.teamMembersSummary ? (
+                          <div className="text-[10px] text-slate-400 italic leading-tight">
+                            Tim: {row.teamMembersSummary}
+                          </div>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="capitalize">
                       <div className="font-medium text-slate-900">{row.title || 'Overtime Command'}</div>
@@ -1548,6 +3066,7 @@ export function OvertimeListingClient({
         </Table>
       </MinimalTableShell>
 
+
       {/* ── BATCH MULTI-DOCUMENT PREVIEW & APPROVAL MODAL (SPL) ── */}
       <Dialog open={isBatchReviewOpen && Boolean(currentBatchDoc)} onOpenChange={(open) => !open && setIsBatchReviewOpen(false)}>
         <DialogContent className="max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl" showCloseButton={false}>
@@ -1643,8 +3162,10 @@ export function OvertimeListingClient({
                     }}
                   >
                     {/* Header Document */}
-                    <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
-                    <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                    <div className="text-center mb-3">
+                      <h1 className="text-center font-bold text-[11.5pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
+                      <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                    </div>
 
                     {/* Section 1: Details */}
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
@@ -1674,12 +3195,16 @@ export function OvertimeListingClient({
                             {formatDate(currentBatchDoc.workDate)} ({formatTime(currentBatchDoc.plannedStartAt)} s.d. {formatTime(currentBatchDoc.plannedEndAt)})
                           </td>
                         </tr>
-                        {currentBatchDoc.requestNotes && (
-                          <tr>
-                            <td className="font-bold bg-slate-50">Request Notes</td>
-                            <td colSpan={3}>{currentBatchDoc.requestNotes}</td>
-                          </tr>
-                        )}
+                        {(() => {
+                          const cleaned = (currentBatchDoc.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                          if (!cleaned) return null
+                          return (
+                            <tr>
+                              <td className="font-bold bg-slate-50">Request Notes</td>
+                              <td colSpan={3}>{cleaned}</td>
+                            </tr>
+                          )
+                        })()}
                       </tbody>
                     </table>
 
@@ -1719,27 +3244,53 @@ export function OvertimeListingClient({
                     <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
                       <thead>
                         <tr className="bg-slate-50 text-center font-bold">
-                          <th className="w-[8%]">#</th>
-                          <th className="text-left w-[40%]">Activity</th>
-                          <th className="w-[18%]">Target</th>
-                          <th className="w-[14%]">Minutes</th>
-                          <th className="w-[20%]">Points</th>
+                          <th className="w-[6%]">#</th>
+                          <th className="text-left w-[34%]">Activity</th>
+                          <th className="w-[15%]">Target / Unit</th>
+                          <th className="w-[15%]">Waktu</th>
+                          <th className="w-[12%]">Tire / Material</th>
+                          <th className="w-[8%]">Poin</th>
+                          <th className="w-[10%]">Evidence</th>
                         </tr>
                       </thead>
                       <tbody>
                         {currentBatchDoc.lineItems && currentBatchDoc.lineItems.length > 0 ? (
-                          currentBatchDoc.lineItems.map((item, idx) => (
-                            <tr key={idx}>
-                              <td className="text-center">{idx + 1}</td>
-                              <td className="font-medium">{item.lineLabel}</td>
-                              <td className="text-center">{item.targetUnit || '—'}</td>
-                              <td className="text-center">{item.estimatedMinutes} m</td>
-                              <td className="text-center font-bold">{item.plannedPoints} pts</td>
-                            </tr>
-                          ))
+                          currentBatchDoc.lineItems.map((item, idx) => {
+                            const actName = item.name || item.lineLabel || currentBatchDoc.title
+                            const actCode = item.code ? `[${item.code}] ` : ''
+                            const tireMat = [
+                              item.tireCount ? `${item.tireCount} Ban` : null,
+                              item.materialUsed ? item.materialUsed : null,
+                            ].filter(Boolean).join(' • ') || '—'
+                            const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                            const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                            return (
+                              <tr key={idx}>
+                                <td className="text-center">{idx + 1}</td>
+                                <td className="font-medium text-left">
+                                  {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                                  {actName}
+                                </td>
+                                <td className="text-center">{item.unitNumber || item.targetUnit || '—'}</td>
+                                <td className="text-center">{timeStr}</td>
+                                <td className="text-center">{tireMat}</td>
+                                <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
+                                <td className="text-center text-[7pt]">
+                                  {hasPhoto ? (
+                                    <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                  ) : (
+                                    <span className="text-slate-400">—</span>
+                                  )}
+                                  {item.remark && (
+                                    <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })
                         ) : (
                           <tr>
-                            <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
+                            <td colSpan={7} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                           </tr>
                         )}
                       </tbody>
@@ -1761,13 +3312,13 @@ export function OvertimeListingClient({
                       <tbody>
                         {(() => {
                           const activeStep = currentBatchDoc.approvals.find(a => a.status === 'pending') || currentBatchDoc.approvals[0]
-                          return currentBatchDoc.approvals.map((step) => {
+                          return currentBatchDoc.approvals.map((step, idx) => {
                             const isCurrentActiveStep = step.status === 'pending' && step.stepOrder === activeStep?.stepOrder
                             const liveRemark = isCurrentActiveStep && currentBatchDoc && approvalRemarks[currentBatchDoc.id]
                               ? approvalRemarks[currentBatchDoc.id]
                               : step.remarks || '—'
                             return (
-                              <tr key={step.stepOrder}>
+                              <tr key={`batch-step-${step.stepOrder}-${idx}`}>
                                 <td>{step.stepOrder}</td>
                                 <td className="text-left">{step.stepLabel}</td>
                                 <td className="text-left">{step.approverName || '-'}</td>
@@ -1781,9 +3332,9 @@ export function OvertimeListingClient({
                       </tbody>
                     </table>
 
-                    {/* Section 5: Signatories */}
+                    {/* Section 5: Signatories (2-Grid Pemohon & Leader/PJO) */}
                     <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4 text-center">
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-4 text-center">
                       {/* 1. Serviceman / Karyawan */}
                       {(() => {
                         const step1 = currentBatchDoc.approvals.find(a => a.stepOrder === 1)
@@ -1815,15 +3366,15 @@ export function OvertimeListingClient({
                         )
                       })()}
 
-                      {/* 2. Leader / Pengawas */}
+                      {/* 2. Leader / PJO */}
                       {(() => {
-                        const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2)
+                        const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2 || a.stepOrder === 3)
                         const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
                         const sigUrl2 = step2?.signatureDataUrl
 
                         return (
                           <div className="flex flex-col items-center text-center">
-                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
                             <div className="h-16 w-full flex items-center justify-center my-1">
                               {sigUrl2 ? (
                                 <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
@@ -1836,50 +3387,28 @@ export function OvertimeListingClient({
                               )}
                             </div>
                             <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                              {step2?.approverName || 'Leader / Supervisor'}
+                              {step2?.approverName || 'Leader / PJO Site'}
                             </div>
-                            <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / Supervisor'}</div>
+                            <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / PJO Site'}</div>
                             <div className="text-[6.5pt] text-slate-400 mt-0.5">
                               {step2?.signedAt ? `Waktu TTD: ${formatTimestamp(step2.signedAt)}` : '—'}
                             </div>
                           </div>
                         )
                       })()}
-
-                      {/* 3. Section Head */}
-                      {(() => {
-                        const step3 = currentBatchDoc.approvals.find(a => a.stepOrder === 3)
-                        const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
-                        const sigUrl3 = step3?.signatureDataUrl
-
-                        return (
-                          <div className="flex flex-col items-center text-center">
-                            <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
-                            <div className="h-16 w-full flex items-center justify-center my-1">
-                              {sigUrl3 ? (
-                                <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                              ) : isApproved3 ? (
-                                <div className="flex flex-col items-center justify-center text-center">
-                                  <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                              )}
-                            </div>
-                            <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                              {step3?.approverName || 'Section Head'}
-                            </div>
-                            <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'Section Head'}</div>
-                            <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                              {step3?.signedAt ? `Waktu TTD: ${formatTimestamp(step3.signedAt)}` : '—'}
-                            </div>
-                          </div>
-                        )
-                      })()}
                     </div>
 
-                    <div className="text-right text-[7pt] text-gray-500 mt-2">
-                      F.HC.SPL.001.01 • PT Chitra Paratama
+                    {/* Bottom Info & Evidence QR Code */}
+                    <div className="flex items-end justify-between mt-3 pt-1">
+                      <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                        * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <SplEvidenceQrBox splId={currentBatchDoc.id} splNumber={currentBatchDoc.splNumber} />
+                        <div className="text-right text-[7pt] text-gray-500 font-mono mt-0.5">
+                          F.HC.SPL.001.01 • PT Chitra Paratama
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2071,8 +3600,10 @@ export function OvertimeListingClient({
                   }}
                 >
                   {/* Header Document */}
-                  <h1 className="text-center font-bold text-[11pt] mb-1 uppercase">SURAT PERINTAH LEMBUR (SPL)</h1>
-                  <p className="text-center font-semibold text-[8pt] text-slate-700 mb-3">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                  <div className="text-center mb-3">
+                    <h1 className="text-center font-bold text-[11.5pt] mb-1 uppercase tracking-wide">SURAT PERINTAH LEMBUR (SPL)</h1>
+                    <p className="text-center font-semibold text-[8pt] text-slate-700">PT CHITRA PARATAMA • HUMAN CAPITAL</p>
+                  </div>
 
                   {/* Section 1: Details */}
                   <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8.5pt]">
@@ -2102,12 +3633,16 @@ export function OvertimeListingClient({
                           {formatDate(previewSplTarget.workDate)} ({formatTime(previewSplTarget.plannedStartAt)} s.d. {formatTime(previewSplTarget.plannedEndAt)})
                         </td>
                       </tr>
-                      {previewSplTarget.requestNotes && (
-                        <tr>
-                          <td className="font-bold bg-slate-50">Request Notes</td>
-                          <td colSpan={3}>{previewSplTarget.requestNotes}</td>
-                        </tr>
-                      )}
+                      {(() => {
+                        const cleaned = (previewSplTarget.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                        if (!cleaned) return null
+                        return (
+                          <tr>
+                            <td className="font-bold bg-slate-50">Request Notes</td>
+                            <td colSpan={3}>{cleaned}</td>
+                          </tr>
+                        )
+                      })()}
                     </tbody>
                   </table>
 
@@ -2147,27 +3682,53 @@ export function OvertimeListingClient({
                   <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
                     <thead>
                       <tr className="bg-slate-50 text-center font-bold">
-                        <th className="w-[8%]">#</th>
-                        <th className="text-left w-[40%]">Activity</th>
-                        <th className="w-[18%]">Target</th>
-                        <th className="w-[14%]">Minutes</th>
-                        <th className="w-[20%]">Points</th>
+                        <th className="w-[6%]">#</th>
+                        <th className="text-left w-[34%]">Activity</th>
+                        <th className="w-[15%]">Target / Unit</th>
+                        <th className="w-[15%]">Waktu</th>
+                        <th className="w-[12%]">Tire / Material</th>
+                        <th className="w-[8%]">Poin</th>
+                        <th className="w-[10%]">Evidence</th>
                       </tr>
                     </thead>
                     <tbody>
                       {previewSplTarget.lineItems && previewSplTarget.lineItems.length > 0 ? (
-                        previewSplTarget.lineItems.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="text-center">{idx + 1}</td>
-                            <td className="font-medium">{item.lineLabel}</td>
-                            <td className="text-center">{item.targetUnit || '—'}</td>
-                            <td className="text-center">{item.estimatedMinutes} m</td>
-                            <td className="text-center font-bold">{item.plannedPoints} pts</td>
-                          </tr>
-                        ))
+                        previewSplTarget.lineItems.map((item, idx) => {
+                          const actName = item.name || item.lineLabel || previewSplTarget.title
+                          const actCode = item.code ? `[${item.code}] ` : ''
+                          const tireMat = [
+                            item.tireCount ? `${item.tireCount} Ban` : null,
+                            item.materialUsed ? item.materialUsed : null,
+                          ].filter(Boolean).join(' • ') || '—'
+                          const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                          const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                          return (
+                            <tr key={idx}>
+                              <td className="text-center">{idx + 1}</td>
+                              <td className="font-medium text-left">
+                                {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                                {actName}
+                              </td>
+                              <td className="text-center">{item.unitNumber || item.targetUnit || '—'}</td>
+                              <td className="text-center">{timeStr}</td>
+                              <td className="text-center">{tireMat}</td>
+                              <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
+                              <td className="text-center text-[7pt]">
+                                {hasPhoto ? (
+                                  <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                                {item.remark && (
+                                  <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })
                       ) : (
                         <tr>
-                          <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
+                          <td colSpan={7} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                         </tr>
                       )}
                     </tbody>
@@ -2187,8 +3748,8 @@ export function OvertimeListingClient({
                       </tr>
                     </thead>
                     <tbody>
-                      {previewSplTarget.approvals.map((step) => (
-                        <tr key={step.stepOrder}>
+                      {previewSplTarget.approvals.map((step, idx) => (
+                        <tr key={`preview-step-${step.stepOrder}-${idx}`}>
                           <td>{step.stepOrder}</td>
                           <td className="text-left">{step.stepLabel}</td>
                           <td className="text-left">{step.approverName || '-'}</td>
@@ -2200,9 +3761,9 @@ export function OvertimeListingClient({
                     </tbody>
                   </table>
 
-                  {/* Section 5: Signatories (Persis Form Edit 3-Grid 1 Baris) */}
+                  {/* Section 5: Signatories (2-Grid Pemohon & Leader/PJO) */}
                   <div className="font-bold mb-3">Signatories</div>
-                  <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4">
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-4">
                     {/* 1. Serviceman / Karyawan */}
                     <div>
                       <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
@@ -2211,49 +3772,123 @@ export function OvertimeListingClient({
                           <img src={previewSplTarget.approvals.find(a => a.stepOrder === 1)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
                         )}
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
+                      <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
                         {previewSplTarget.approvals.find(a => a.stepOrder === 1)?.approverName || createForm.requesterName || previewSplTarget.requesterName}
                       </div>
                       <div className="text-[7pt]">Serviceman / Pemohon</div>
                     </div>
 
-                    {/* 2. Leader / Pengawas */}
+                    {/* 2. Leader / PJO */}
                     <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Leader / Supervisor Signature</div>
+                      <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
                       <div className="h-16 flex items-end">
-                        {previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl && (
-                          <img src={previewSplTarget.approvals.find(a => a.stepOrder === 2)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
+                        {(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl) && (
+                          <img src={(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl)!} alt="TTD" className="h-14 object-contain" />
                         )}
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {createForm.leaderName || previewSplTarget.approvals.find(a => a.stepOrder === 2)?.approverName || 'Leader / Pengawas'}
+                      <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
+                        {previewSplTarget.approvals.find(a => a.stepOrder === 2)?.approverName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || createForm.leaderName || createForm.superiorName || 'Leader / PJO Site'}
                       </div>
-                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 2)?.stepLabel || 'Leader / Pengawas'}</div>
+                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 2)?.stepLabel || 'Leader / PJO'}</div>
                     </div>
+                  </div>
 
-                    {/* 3. Section Head */}
-                    <div>
-                      <div className="text-[7pt] text-gray-500 mb-1">Section Head Signature</div>
-                      <div className="h-16 flex items-end">
-                        {previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl && (
-                          <img src={previewSplTarget.approvals.find(a => a.stepOrder === 3)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                  {/* Bottom Info & Evidence QR Code */}
+                  <div className="flex items-end justify-between mt-3 pt-1">
+                    <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                      * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <SplEvidenceQrBox splId={previewSplTarget.id} splNumber={previewSplTarget.splNumber} />
+                      <div className="text-right text-[7pt] text-gray-500 font-mono mt-0.5">
+                        F.HC.SPL.001.01 • PT Chitra Paratama
                       </div>
-                      <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>
-                        {createForm.superiorName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || 'Section Head'}
-                      </div>
-                      <div className="text-[7pt]">{previewSplTarget.approvals.find(a => a.stepOrder === 3)?.stepLabel || 'Section Head'}</div>
                     </div>
-
-                    </div>
-
-                  <div className="text-right text-[7pt] text-gray-500 mt-2">
-                    F.HC.SPL.001.01 • PT Chitra Paratama
                   </div>
                 </div>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Preview Modal for Summary SPL */}
+      <Dialog open={isSummaryPreviewOpen} onOpenChange={(open) => {
+        setIsSummaryPreviewOpen(open)
+        if (!open && summaryPdfPreviewUrl) {
+          URL.revokeObjectURL(summaryPdfPreviewUrl)
+          setSummaryPdfPreviewUrl(null)
+        }
+      }}>
+        <DialogContent
+          className="max-w-[96vw] w-[96vw] h-[95vh] sm:max-w-[96vw] flex flex-col p-0 overflow-hidden bg-[#2d3238] border-slate-700 shadow-2xl rounded-2xl"
+          showCloseButton={false}
+        >
+          {/* Top Viewer Toolbar */}
+          <div className="bg-[#1e232a] px-4 py-2.5 flex items-center justify-between border-b border-slate-700/80 select-none text-white">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm">📄</span>
+              <span className="font-semibold text-xs text-slate-100 truncate">
+                Preview Summary SPL (A4) • {formatMonthYearLabel(summaryMonth)} ({summaryStats.totalCount} Dokumen, {summaryStats.totalHours} Jam)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-8 text-xs rounded-xl font-bold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm cursor-pointer px-4"
+                disabled={isGeneratingSummaryPdf}
+                onClick={handleDownloadSummaryPdf}
+              >
+                {isGeneratingSummaryPdf ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                Unduh PDF
+              </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSummaryPreviewOpen(false)
+                  if (summaryPdfPreviewUrl) {
+                    URL.revokeObjectURL(summaryPdfPreviewUrl)
+                    setSummaryPdfPreviewUrl(null)
+                  }
+                }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Preview Sheet Canvas Area */}
+          <div className="flex-1 overflow-hidden bg-[#383d47] p-2 flex justify-center items-center">
+            {summaryPdfPreviewUrl ? (
+              <iframe
+                title="Overtime Record PDF Preview"
+                src={summaryPdfPreviewUrl}
+                className="w-full h-full border-0 rounded-lg shadow-2xl bg-white"
+              />
+            ) : (
+              <div
+                className="bg-white shadow-2xl rounded-xs transition-transform duration-200 origin-top"
+                style={{
+                  transform: `scale(${summaryPreviewZoom})`,
+                  width: '210mm',
+                  minHeight: '297mm',
+                }}
+              >
+                <iframe
+                  title="Summary SPL Preview"
+                  srcDoc={summaryPreviewHtmlContent}
+                  className="w-full h-full min-h-[297mm] border-0"
+                  style={{ width: '100%', minHeight: '297mm' }}
+                />
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -2341,39 +3976,23 @@ export function OvertimeListingClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Jadwal Mulai (Planned Start) *</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      type="date"
-                      value={createForm.plannedStartDate}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedStartDate: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-3/5"
-                    />
-                    <Input
-                      type="time"
-                      value={createForm.plannedStartTime}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedStartTime: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-2/5"
-                    />
-                  </div>
+                  <Label className="text-xs font-semibold text-slate-700">Jam Mulai (Planned Start) *</Label>
+                  <Input
+                    type="time"
+                    value={createForm.plannedStartTime}
+                    onChange={(e) => setCreateForm({ ...createForm, plannedStartTime: e.target.value })}
+                    className="bg-white border-slate-200 h-9 text-xs font-semibold w-full"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Jadwal Selesai (Planned End) *</Label>
-                  <div className="flex gap-1.5">
-                    <Input
-                      type="date"
-                      value={createForm.plannedEndDate}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedEndDate: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-3/5"
-                    />
-                    <Input
-                      type="time"
-                      value={createForm.plannedEndTime}
-                      onChange={(e) => setCreateForm({ ...createForm, plannedEndTime: e.target.value })}
-                      className="bg-white border-slate-200 h-9 text-xs w-2/5"
-                    />
-                  </div>
+                  <Label className="text-xs font-semibold text-slate-700">Jam Selesai (Planned End) *</Label>
+                  <Input
+                    type="time"
+                    value={createForm.plannedEndTime}
+                    onChange={(e) => setCreateForm({ ...createForm, plannedEndTime: e.target.value })}
+                    className="bg-white border-slate-200 h-9 text-xs font-semibold w-full"
+                  />
                 </div>
 
                 <div className="space-y-1.5 md:col-span-2">
@@ -2427,37 +4046,43 @@ export function OvertimeListingClient({
                         />
                       </div>
                       <div className="col-span-2">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold shadow-2xs"
+                        <HeroSearchableSelect
+                          options={[
+                            { value: 'DS', label: 'Shift DS (Day)' },
+                            { value: 'NS', label: 'Shift NS (Night)' },
+                            { value: 'ALL', label: 'Shift ALL' },
+                          ]}
                           value={w.shiftCode}
-                          onChange={(e) => updateWorkerRow(idx, 'shiftCode', e.target.value)}
-                        >
-                          <option value="DS">Shift DS (Day)</option>
-                          <option value="NS">Shift NS (Night)</option>
-                          <option value="ALL">Shift ALL</option>
-                        </select>
+                          onChange={(val) => updateWorkerRow(idx, 'shiftCode', String(val))}
+                          placeholder="Shift"
+                          className="w-full text-[11px]"
+                        />
                       </div>
                       <div className="col-span-2">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold shadow-2xs"
+                        <HeroSearchableSelect
+                          options={[
+                            { value: '5:2', label: '5:2' },
+                            { value: '6:1', label: '6:1' },
+                            { value: '10:2', label: '10:2' },
+                          ]}
                           value={w.rosterType}
-                          onChange={(e) => updateWorkerRow(idx, 'rosterType', e.target.value)}
-                        >
-                          <option value="5:2">5:2</option>
-                          <option value="6:1">6:1</option>
-                          <option value="10:2">10:2</option>
-                        </select>
+                          onChange={(val) => updateWorkerRow(idx, 'rosterType', String(val))}
+                          placeholder="Roster"
+                          className="w-full text-[11px]"
+                        />
                       </div>
                       <div className="col-span-2">
-                        <select
-                          className="w-full h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold shadow-2xs"
+                        <HeroSearchableSelect
+                          options={[
+                            { value: 'after_mandatory_ot', label: 'After Mandatory OT' },
+                            { value: 'off_day_ot', label: 'Off Day OT' },
+                            { value: 'emergency_callout', label: 'Emergency Callout' },
+                          ]}
                           value={w.category}
-                          onChange={(e) => updateWorkerRow(idx, 'category', e.target.value)}
-                        >
-                          <option value="after_mandatory_ot">After Mandatory OT</option>
-                          <option value="off_day_ot">Off Day OT</option>
-                          <option value="emergency_callout">Emergency Callout</option>
-                        </select>
+                          onChange={(val) => updateWorkerRow(idx, 'category', String(val))}
+                          placeholder="Kategori"
+                          className="w-full text-[11px]"
+                        />
                       </div>
                       <div className="col-span-1 text-center">
                         <Button
@@ -2492,101 +4117,773 @@ export function OvertimeListingClient({
               </div>
             </div>
 
-            {/* 3. B. Line Items (Aktivitas Pekerjaan) */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+            {/* 1.5. SOURCE MODE SELECTION (SINKRON DENGAN MOBILE & DAILY ACTIVITY) */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Source Mode *</Label>
+              <HeroSearchableSelect
+                options={[
+                  { value: 'self_input', label: 'Self-input activity (Kamus Aktivitas)' },
+                  { value: 'assigned', label: 'Assigned activity (Penugasan)' },
+                  { value: 'custom', label: 'Custom activity (Bebas / Kustom)' },
+                ]}
+                value={createForm.sourceMode || 'self_input'}
+                onChange={(val) => {
+                  const mode = String(val) as 'self_input' | 'assigned' | 'custom'
+                  setCreateForm((p) => ({
+                    ...p,
+                    sourceMode: mode,
+                    lineItems:
+                      mode === 'custom' && p.lineItems.length === 0
+                        ? [
+                            {
+                              lineLabel: '',
+                              name: '',
+                              targetUnit: '1 Unit',
+                              estimatedMinutes: 120,
+                              plannedPoints: 10,
+                              startTime: p.plannedStartTime || '17:00',
+                              endTime: p.plannedEndTime || '21:00',
+                              duration: '120m',
+                              points: 10,
+                              remark: '',
+                            },
+                          ]
+                        : mode === 'assigned' && p.lineItems.length === 0
+                          ? [
+                              {
+                                lineLabel: '',
+                                name: '',
+                                targetUnit: '1 Unit',
+                                estimatedMinutes: 120,
+                                plannedPoints: 10,
+                                startTime: p.plannedStartTime || '17:00',
+                                endTime: p.plannedEndTime || '21:00',
+                                duration: '120m',
+                                points: 10,
+                                remark: '',
+                              },
+                            ]
+                          : p.lineItems,
+                  }))
+                }}
+                placeholder="Pilih Source Mode"
+                className="w-full text-xs"
+              />
+            </div>
+
+            {/* 3. B. Line Items (Aktivitas Pekerjaan Lembur) - Adaptive per Source Mode */}
+            {createForm.sourceMode === 'custom' ? (
+              /* ── CUSTOM ACTIVITY MODE ── */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                  <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-amber-500"></span>
+                    B. Line Items (Aktivitas Kustom / Bebas)
+                  </span>
+                  <Badge variant="secondary" className="text-[11px] font-semibold bg-amber-50 text-amber-700 border-amber-200">
+                    {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Aktivitas Kustom
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {createForm.lineItems.map((item, idx) => (
+                    <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs relative">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">Aktivitas Kustom #{idx + 1}</span>
+                        {createForm.lineItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLineItemRow(idx)}
+                            className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                            title="Hapus baris"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">
+                          Uraian Aktivitas Pekerjaan Lembur <span className="text-rose-500">*</span>
+                        </Label>
+                        <Input
+                          placeholder="Contoh: Overtime Fabrikasi Bracket & Welding Workshop..."
+                          value={item.lineLabel}
+                          onChange={(e) => {
+                            updateLineItemRow(idx, 'lineLabel', e.target.value)
+                            updateLineItemRow(idx, 'name', e.target.value)
+                          }}
+                          className="h-8 text-xs bg-slate-50/50 border-slate-200 font-medium"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Target / Unit</Label>
+                          <Input
+                            placeholder="Contoh: 1 Unit HD / 2 Pcs"
+                            value={item.targetUnit || ''}
+                            onChange={(e) => {
+                              updateLineItemRow(idx, 'targetUnit', e.target.value)
+                              updateLineItemRow(idx, 'unitNumber', e.target.value)
+                            }}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Durasi (Mnt)</Label>
+                          <Input
+                            type="number"
+                            min={15}
+                            value={item.estimatedMinutes || 120}
+                            onChange={(e) => updateLineItemRow(idx, 'estimatedMinutes', Number(e.target.value))}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-semibold text-center"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">
+                            Poin
+                            {!canEditPoints && <span className="ml-1 text-slate-400 text-[9px] font-normal">(otomatis)</span>}
+                          </Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.plannedPoints || 10}
+                            onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
+                            className={cn("h-8 text-xs font-bold text-center", !canEditPoints ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-slate-50/50 border-slate-200")}
+                            readOnly={!canEditPoints}
+                            title={!canEditPoints ? 'Poin hanya dapat diubah oleh Leader/Supervisor/PJO/Admin.' : undefined}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.startTime || createForm.plannedStartTime || '17:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'startTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.endTime || createForm.plannedEndTime || '21:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Photo Evidence Box */}
+                      <div className={cn(
+                        "rounded-lg border p-2.5 space-y-2 bg-white",
+                        !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-rose-200 bg-rose-50/10" : "border-slate-200"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold text-[10px]">* (Wajib Diunggah)</span>
+                          </span>
+                          {item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0) ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                              Foto Terunggah
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                              Wajib Diunggah
+                            </Badge>
+                          )}
+                        </div>
+
+                        {item.photoUrl ? (
+                          <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                            <img
+                              src={formatPhotoDisplayUrl(item.photoUrl, 400)}
+                              alt={`Evidence #${idx + 1}`}
+                              className="size-20 object-cover rounded-md border border-slate-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateLineItemRow(idx, 'photoUrl', '')
+                                updateLineItemRow(idx, 'photos', [])
+                              }}
+                              className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                              title="Hapus foto"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <Camera className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <ImagePlus className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">Keterangan / Catatan Tambahan</Label>
+                        <Input
+                          placeholder="Instruksi khusus, lokasi unit, atau catatan hasil kerja..."
+                          value={item.remark || ''}
+                          onChange={(e) => updateLineItemRow(idx, 'remark', e.target.value)}
+                          className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addCustomLineItemRow}
+                    className="w-full h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
+                  >
+                    <Plus className="size-3.5 text-slate-500" /> + Tambah Baris Aktivitas Kustom
+                  </Button>
+                </div>
+              </div>
+            ) : createForm.sourceMode === 'assigned' ? (
+              /* ── ASSIGNED ACTIVITY MODE ── */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                  <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-blue-600"></span>
+                    B. Line Items (Penugasan Aktivitas Lembur)
+                  </span>
+                  <Badge variant="secondary" className="text-[11px] font-semibold bg-blue-50 text-blue-700 border-blue-200">
+                    {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Penugasan Terpilih
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {createForm.lineItems.map((item, idx) => (
+                    <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs relative">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700">Penugasan #{idx + 1}</span>
+                        {createForm.lineItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLineItemRow(idx)}
+                            className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                            title="Hapus baris"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">
+                          Pilih Aktivitas Penugasan <span className="text-rose-500">*</span>
+                        </Label>
+                        <SearchableSelect
+                          label="Aktivitas"
+                          placeholder="PILIH DARI DAFTAR AKTIVITAS / JOB..."
+                          value={item.lineLabel}
+                          onValueChange={(val) => {
+                            const lib = activityLibraries.find(
+                              (l) => `${l.activityCode ? `${l.activityCode} - ` : ''}${l.activityName}` === val || l.activityName === val || (l.activityCode && val.includes(l.activityCode))
+                            )
+                            updateLineItemRow(idx, 'lineLabel', val)
+                            updateLineItemRow(idx, 'name', lib?.activityName || val)
+                            if (lib?.activityCode) updateLineItemRow(idx, 'code', lib.activityCode)
+                            if (lib?.basePoints) {
+                              updateLineItemRow(idx, 'plannedPoints', Number(lib.basePoints))
+                              updateLineItemRow(idx, 'points', Number(lib.basePoints))
+                            }
+                          }}
+                          options={activitySelectOptions}
+                          allowCustom={true}
+                          widthClassName="w-full"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Target Unit / Equipment</Label>
+                          <Input
+                            placeholder="e.g. Unit HD-785"
+                            value={item.targetUnit || ''}
+                            onChange={(e) => {
+                              updateLineItemRow(idx, 'targetUnit', e.target.value)
+                              updateLineItemRow(idx, 'unitNumber', e.target.value)
+                            }}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Durasi (Mnt)</Label>
+                          <Input
+                            type="number"
+                            min={15}
+                            value={item.estimatedMinutes || 120}
+                            onChange={(e) => updateLineItemRow(idx, 'estimatedMinutes', Number(e.target.value))}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 font-semibold text-center"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">
+                            Poin
+                            {!canEditPoints && <span className="ml-1 text-slate-400 text-[9px] font-normal">(otomatis)</span>}
+                          </Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={item.plannedPoints || 10}
+                            onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
+                            className={cn("h-8 text-xs font-bold text-center", !canEditPoints ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-slate-50/50 border-slate-200")}
+                            readOnly={!canEditPoints}
+                            title={!canEditPoints ? 'Poin hanya dapat diubah oleh Leader/Supervisor/PJO/Admin.' : undefined}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.startTime || createForm.plannedStartTime || '17:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'startTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                          <Input
+                            type="time"
+                            value={item.endTime || createForm.plannedEndTime || '21:00'}
+                            onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
+                            className="h-8 text-xs bg-slate-50/50 border-slate-200 text-center font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Photo Evidence Box */}
+                      <div className={cn(
+                        "rounded-lg border p-2.5 space-y-2 bg-white",
+                        !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-rose-200 bg-rose-50/10" : "border-slate-200"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                            <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold text-[10px]">* (Wajib Diunggah)</span>
+                          </span>
+                          {item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0) ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                              Foto Terunggah
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                              Wajib Diunggah
+                            </Badge>
+                          )}
+                        </div>
+
+                        {item.photoUrl ? (
+                          <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                            <img
+                              src={formatPhotoDisplayUrl(item.photoUrl, 400)}
+                              alt={`Evidence #${idx + 1}`}
+                              className="size-20 object-cover rounded-md border border-slate-300"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateLineItemRow(idx, 'photoUrl', '')
+                                updateLineItemRow(idx, 'photos', [])
+                              }}
+                              className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                              title="Hapus foto"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <Camera className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <label className={cn(
+                              "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                              isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                            )}>
+                              <ImagePlus className="size-3.5 text-slate-600" />
+                              {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingLinePhoto[idx]}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) handleLinePhotoUpload(idx, file)
+                                  e.target.value = ''
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs font-semibold text-slate-700">Keterangan SPK / Instruksi Leader</Label>
+                        <Input
+                          placeholder="Nomor SPK / instruksi penugasan kerja..."
+                          value={item.remark || ''}
+                          onChange={(e) => updateLineItemRow(idx, 'remark', e.target.value)}
+                          className="h-8 text-xs bg-slate-50/50 border-slate-200"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addAssignedLineItemRow}
+                    className="w-full h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
+                  >
+                    <Plus className="size-3.5 text-slate-500" /> + Tambah Penugasan Aktivitas
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* ── SELF-INPUT (KAMUS AKTIVITAS) MODE ── */
+              <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
                 <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                   <span className="size-2 rounded-full bg-emerald-600"></span>
                   B. Line Items (Aktivitas Pekerjaan Lembur)
                 </span>
                 <Badge variant="secondary" className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200">
-                  {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Aktivitas • {createForm.lineItems.reduce((s, i) => s + (Number(i.estimatedMinutes) || 0), 0)} Menit
+                  {createForm.lineItems.filter((i) => i.lineLabel.trim()).length} Aktivitas Terpilih
                 </Badge>
               </div>
 
-
-
-              {/* Line Items Table */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                <div className="grid grid-cols-12 gap-2 bg-slate-100/80 px-3 py-2 text-[11px] font-bold text-slate-700 border-b border-slate-200">
-                  <div className="col-span-1 text-center">#</div>
-                  <div className="col-span-5">Uraian Aktivitas Pekerjaan *</div>
-                  <div className="col-span-2">Target / Unit</div>
-                  <div className="col-span-2 text-center">Durasi (Menit)</div>
-                  <div className="col-span-1 text-center">Poin</div>
-                  <div className="col-span-1 text-center">Aksi</div>
+              {/* LIBRARY ACTIVITY & GROUP KAMUS AKTIVITAS TRIGGER BOX */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    LIBRARY ACTIVITY &amp; GROUP KAMUS AKTIVITAS
+                  </span>
+                  <span className="rounded-full bg-slate-100 border border-slate-200 px-2.5 py-0.5 text-[10px] font-extrabold text-slate-700 uppercase tracking-wider">
+                    {createForm.lineItems.filter((i) => i?.lineLabel?.trim()).length} DIPILIH
+                  </span>
                 </div>
 
-                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                  {createForm.lineItems.map((item, idx) => (
-                    <div key={idx} className="grid grid-cols-12 gap-2 px-3 py-2 items-center hover:bg-slate-50/50">
-                      <div className="col-span-1 text-center font-bold text-slate-500 text-[11px]">
-                        {idx + 1}
-                      </div>
-                      <div className="col-span-5">
-                        <Input
-                          placeholder="Nama aktivitas pekerjaan..."
-                          value={item.lineLabel}
-                          onChange={(e) => updateLineItemRow(idx, 'lineLabel', e.target.value)}
-                          className="h-8 text-xs border-slate-200"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Input
-                          placeholder="e.g. 2 Unit HD"
-                          value={item.targetUnit}
-                          onChange={(e) => updateLineItemRow(idx, 'targetUnit', e.target.value)}
-                          className="h-8 text-xs border-slate-200"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <Input
-                          type="number"
-                          value={item.estimatedMinutes}
-                          onChange={(e) => updateLineItemRow(idx, 'estimatedMinutes', Number(e.target.value))}
-                          className="h-8 text-xs text-center border-slate-200 font-semibold"
-                        />
-                      </div>
-                      <div className="col-span-1">
-                        <Input
-                          type="number"
-                          value={item.plannedPoints}
-                          onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
-                          className="h-8 text-xs text-center border-slate-200 font-bold"
-                        />
-                      </div>
-                      <div className="col-span-1 text-center">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md"
-                          onClick={() => removeLineItemRow(idx)}
-                          disabled={createForm.lineItems.length <= 1}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setPickerSearch('')
+                      setIsPickerModalOpen(true)
+                    }}
+                    className="h-9 text-xs font-bold gap-2 bg-[#003f78] hover:bg-[#002f5a] text-white rounded-xl shadow-xs px-4 transition-all"
+                  >
+                    <ListFilter className="size-4 text-blue-200" />
+                    Buka Kamus Aktivitas (Route Group Tree)
+                  </Button>
+                </div>
+              </div>
+
+              {/* SELECTED LIBRARY CHECKLIST CARDS */}
+              {createForm.lineItems.filter((i) => i?.lineLabel?.trim()).length > 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">SELECTED LIBRARY CHECKLIST</span>
+                      <h5 className="text-xs font-bold text-slate-800">
+                        {createForm.lineItems.filter((i) => i?.lineLabel?.trim()).length} activity siap diisi
+                      </h5>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setPickerSearch('')
+                        setIsPickerModalOpen(true)
+                      }}
+                      className="h-8 text-xs font-semibold gap-1.5 bg-[#003f78] hover:bg-[#002f5a] text-white shadow-xs rounded-lg px-3.5 transition-all"
+                    >
+                      <Layers className="size-3.5 text-blue-200" />
+                      + Tambah Dari Kamus
+                    </Button>
+                  </div>
 
-              <div className="flex justify-between items-center pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addLineItemRow}
-                  className="h-8 text-xs font-semibold gap-1.5 border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-white"
-                >
-                  <Plus className="size-3.5 text-slate-500" /> Tambah Baris Aktivitas
-                </Button>
-                <p className="text-[11px] text-slate-400">
-                  Item aktivitas lembur tercantum di dokumen resmi SPL & dievaluasi saat approval.
-                </p>
-              </div>
+                  <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                    {createForm.lineItems
+                      .filter((i) => i?.lineLabel?.trim())
+                      .map((item, idx) => {
+                        const requirementBadges = [
+                          item.requiresDuration !== false ? 'DURATION' : null,
+                          item.requiresTireCount ? 'TIRE' : null,
+                          item.requiresEquipmentNo ? 'EQUIPMENT' : null,
+                          item.requiresMaterialUsed ? 'MATERIAL' : null,
+                          'PHOTO (WAJIB)',
+                        ].filter(Boolean)
+
+                        const codeLabel = item.code || (item.lineLabel.includes(' - ') ? item.lineLabel.split(' - ')[0] : 'SVC')
+                        const nameLabel = item.name || (item.lineLabel.includes(' - ') ? item.lineLabel.split(' - ')[1] : item.lineLabel)
+
+                        return (
+                          <div key={idx} className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2.5 relative">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <p className="text-xs font-bold font-mono text-slate-500">
+                                  #{idx + 1} • {codeLabel}
+                                </p>
+                                <h6 className="text-xs font-bold text-slate-800">{nameLabel}</h6>
+                                {requirementBadges.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 pt-1">
+                                    {requirementBadges.map((badge, bIdx) => (
+                                      <span
+                                        key={bIdx}
+                                        className="rounded-md bg-white border border-slate-200 px-1.5 py-0.5 text-[8.5px] font-bold text-[#003f78] uppercase tracking-wider"
+                                      >
+                                        {badge}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeLineItemRow(idx)}
+                                className="size-6 flex items-center justify-center rounded-full bg-slate-100 hover:bg-rose-100 hover:text-rose-600 text-slate-500 transition-colors text-xs font-bold"
+                                title="Hapus activity"
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </div>
+
+                            {item.requiresEquipmentNo ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">No. Equipment / Unit <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  placeholder="Contoh: DT-451 / BAY-03..."
+                                  value={item.unitNumber || ''}
+                                  onChange={(e) => updateLineItemRow(idx, 'unitNumber', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Mulai <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="time"
+                                  value={item.startTime || createForm.plannedStartTime || '17:00'}
+                                  onChange={(e) => updateLineItemRow(idx, 'startTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Selesai <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="time"
+                                  value={item.endTime || createForm.plannedEndTime || '21:00'}
+                                  onChange={(e) => updateLineItemRow(idx, 'endTime', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200 text-center font-mono"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">
+                                  Poin
+                                  {!canEditPoints && <span className="ml-1 text-slate-400 text-[9px] font-normal">(otomatis)</span>}
+                                </Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={item.plannedPoints || 10}
+                                  onChange={(e) => updateLineItemRow(idx, 'plannedPoints', Number(e.target.value))}
+                                  className={cn("h-8 text-xs bg-white border-slate-200 font-bold text-center", !canEditPoints && "bg-slate-50 text-slate-500")}
+                                  readOnly={!canEditPoints}
+                                  title={!canEditPoints ? 'Poin mengikuti kamus aktivitas. Hanya Leader/PJO/Admin yang dapat mengubah.' : 'Nilai poin untuk aktivitas ini'}
+                                />
+                              </div>
+                            </div>
+
+                            {item.requiresTireCount ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Jumlah Pcs / Qty <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={item.tireCount ?? 1}
+                                  onChange={(e) => updateLineItemRow(idx, 'tireCount', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
+                            {item.requiresMaterialUsed ? (
+                              <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Material Used <span className="text-red-500 font-bold">*</span></Label>
+                                <Input
+                                  placeholder="Material / tools dipakai..."
+                                  value={item.materialUsed || ''}
+                                  onChange={(e) => updateLineItemRow(idx, 'materialUsed', e.target.value)}
+                                  className="h-8 text-xs bg-white border-slate-200"
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className={cn(
+                              "rounded-lg border p-2.5 space-y-2 bg-white",
+                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-rose-200 bg-rose-50/10" : "border-slate-200"
+                            )}>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-rose-500 font-bold text-[10px]">* (Wajib Diunggah)</span>
+                                </span>
+                                {item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0) ? (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
+                                    Foto Terunggah
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-semibold">
+                                    Wajib Diunggah
+                                  </Badge>
+                                )}
+                              </div>
+
+                              {item.photoUrl ? (
+                                <div className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50">
+                                  <img
+                                    src={formatPhotoDisplayUrl(item.photoUrl, 400)}
+                                    alt={`Evidence #${idx + 1}`}
+                                    className="size-20 object-cover rounded-md border border-slate-300"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateLineItemRow(idx, 'photoUrl', '')
+                                      updateLineItemRow(idx, 'photos', [])
+                                    }}
+                                    className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-1 shadow-sm hover:bg-rose-700 transition-colors"
+                                    title="Hapus foto"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                                    isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                                  )}>
+                                    <Camera className="size-3.5 text-slate-600" />
+                                    {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      capture="environment"
+                                      disabled={isUploadingLinePhoto[idx]}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleLinePhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                  <label className={cn(
+                                    "cursor-pointer inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors",
+                                    isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                                  )}>
+                                    <ImagePlus className="size-3.5 text-slate-600" />
+                                    {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      disabled={isUploadingLinePhoto[idx]}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0]
+                                        if (file) handleLinePhotoUpload(idx, file)
+                                        e.target.value = ''
+                                      }}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold text-slate-700">Catatan Item</Label>
+                              <Input
+                                placeholder="Hasil kerja, temuan, atau catatan lembur..."
+                                value={item.remark || ''}
+                                onChange={(e) => updateLineItemRow(idx, 'remark', e.target.value)}
+                                className="h-8 text-xs bg-white border-slate-200"
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              ) : null}
             </div>
+            )}
+
+
 
             {/* 4. C. Signatories & Verification Matrix (Approval) */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-3">
@@ -2595,49 +4892,29 @@ export function OvertimeListingClient({
                   <span className="size-2 rounded-full bg-amber-600"></span>
                   C. Signatories & Verification Matrix (Penandatangan Approval SPL)
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">2-Tier Verification</span>
+                <span className="text-[11px] font-mono text-slate-400">1-Tier Approver (Leader / PJO)</span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Leader / Supervisor</Label>
-                  <SearchableSelect
-                    label="Leader"
-                    placeholder="PILIH LEADER..."
-                    value={createForm.leaderEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        leaderEmployeeId: val,
-                        leaderName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 1 (Leader Lapangan / Pengawas)</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Superior / Section Head</Label>
-                  <SearchableSelect
-                    label="Section Head"
-                    placeholder="PILIH SECTION HEAD..."
-                    value={createForm.superiorEmployeeId}
-                    onValueChange={(val) => {
-                      const emp = employees.find((e) => String(e.id) === val)
-                      setCreateForm((p) => ({
-                        ...p,
-                        superiorEmployeeId: val,
-                        superiorName: emp?.name || '',
-                      }))
-                    }}
-                    options={employeeOptions}
-                    widthClassName="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400">Verifikasi tahap 2 (Kepala Seksi Operasional)</p>
-                </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Leader / PJO (Site Lead / Pengawas)</Label>
+                <SearchableSelect
+                  label="Leader / PJO"
+                  placeholder="PILIH LEADER / PJO..."
+                  value={createForm.leaderEmployeeId || createForm.superiorEmployeeId}
+                  onValueChange={(val) => {
+                    const emp = employees.find((e) => String(e.id) === val)
+                    setCreateForm((p) => ({
+                      ...p,
+                      leaderEmployeeId: val,
+                      leaderName: emp?.name || '',
+                      superiorEmployeeId: val,
+                      superiorName: emp?.name || '',
+                    }))
+                  }}
+                  options={employeeOptions}
+                  widthClassName="w-full"
+                />
+                <p className="text-[10px] text-slate-400">Verifikasi & persetujuan SPL langsung (Pemohon &rarr; Leader / PJO &rarr; Selesai)</p>
               </div>
             </div>
           </div>
@@ -2650,6 +4927,262 @@ export function OvertimeListingClient({
               {isCreating ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* FLOATING WINDOW: PILIH KAMUS AKTIVITAS (PARITY WITH DAILY ACTIVITY ROUTE GROUPS) */}
+      <Dialog open={isPickerModalOpen} onOpenChange={setIsPickerModalOpen}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          {/* Header Dark Minimalist */}
+          <div className="bg-[#003f78] px-5 py-3.5 text-white flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-base font-bold text-white">Pilih Kamus Aktivitas Lembur</DialogTitle>
+              <p className="text-xs text-blue-100 mt-0.5">Pilih aktivitas berdasarkan route group &amp; aktivitas mandiri</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPickerModalOpen(false)}
+              className="text-blue-200 hover:text-white p-1 rounded-md transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            {/* Search Bar */}
+            <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 flex items-center gap-2 border border-slate-200 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition">
+              <Search className="size-4 text-slate-400" />
+              <input
+                type="text"
+                value={pickerSearch}
+                onChange={(e) => setPickerSearch(e.target.value)}
+                placeholder="Cari kode atau nama activity..."
+                className="w-full bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+              />
+              {pickerSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setPickerSearch('')}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="size-3.5" />
+                </button>
+              ) : null}
+            </div>
+
+            {/* Status Count Bar */}
+            <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2 text-xs font-bold text-slate-600 border border-slate-200/80">
+              <span>{totalVisibleLibraryCount} library tampil</span>
+              <span>{(createForm.lineItems || []).filter((i) => i?.lineLabel?.trim()).length} dipilih</span>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="max-h-[380px] overflow-y-auto space-y-3 pr-1">
+              {/* 1. Dynamic Route Groups & Folders Accordion */}
+              {matchingRouteFolders.map((route) => {
+                const isRouteExpanded = expandedPickerGroups.has(route.routeName) || Boolean(pickerSearch)
+                return (
+                  <div key={route.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpandedPickerGroups((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(route.routeName)) next.delete(route.routeName)
+                          else next.add(route.routeName)
+                          return next
+                        })
+                      }}
+                      className="w-full flex items-center justify-between bg-slate-50/90 hover:bg-slate-100/90 px-3.5 py-2.5 text-left font-bold text-slate-800 text-xs transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Layers className="size-4 text-[#003f78] shrink-0" />
+                        <span className="truncate">{route.routeName}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                          {(route?.matchingGroups || []).reduce((acc, g) => acc + (g?.matchingItems?.length || 0), 0)} Activity
+                        </span>
+                        <ChevronRight className={`size-4 transition-transform text-slate-500 ${isRouteExpanded ? 'rotate-90' : ''}`} />
+                      </div>
+                    </button>
+
+                    {isRouteExpanded && (
+                      <div className="p-2 space-y-2.5 bg-slate-50/40 border-t border-slate-100">
+                        {route.matchingGroups.map((group) => {
+                          const isAllGroupSelected =
+                            group.matchingItems.length > 0 &&
+                            group.matchingItems.every((sub) =>
+                              (createForm.lineItems || []).some(
+                                (i) => i?.lineLabel === sub.name || (sub.code && i?.lineLabel?.includes(sub.code)) || i?.lineLabel?.includes(sub.name)
+                              )
+                            )
+                          const selectedInGroupCount = group.matchingItems.filter((sub) =>
+                            (createForm.lineItems || []).some(
+                              (i) => i?.lineLabel === sub.name || (sub.code && i?.lineLabel?.includes(sub.code)) || i?.lineLabel?.includes(sub.name)
+                            )
+                          ).length
+
+                          return (
+                            <div key={group.id} className="space-y-1.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+                              <div className="flex w-full items-center justify-between px-1 text-left text-xs font-bold text-slate-700">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <span className="truncate">{group.groupName}</span>
+                                  {group.matchingItems.length > 0 && (
+                                    <span className="text-[10px] font-bold text-[#003f78] bg-[#eaf4fb] px-1.5 py-0.5 rounded-full shrink-0">
+                                      {selectedInGroupCount}/{group.matchingItems.length}
+                                    </span>
+                                  )}
+                                </div>
+                                {group.matchingItems.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      toggleGroupItems(group.matchingItems)
+                                    }}
+                                    className={
+                                      isAllGroupSelected
+                                        ? 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 active:scale-95 transition shrink-0'
+                                        : 'text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-lg bg-[#003f78] text-white hover:bg-[#002f5a] active:scale-95 transition shadow-xs shrink-0'
+                                    }
+                                  >
+                                    {isAllGroupSelected ? 'Hapus Semua' : 'Pilih Group (Semua)'}
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="space-y-1.5 pt-1">
+                                {group.matchingItems.map((sub) => {
+                                  const isSelected = (createForm.lineItems || []).some(
+                                    (i) => i?.lineLabel === sub.name || (sub.code && i?.lineLabel?.includes(sub.code)) || i?.lineLabel?.includes(sub.name)
+                                  )
+
+                                  return (
+                                    <div
+                                      key={sub.id}
+                                      onClick={() => {
+                                        toggleLineItem(sub.name, sub.code, sub.basePoints, sub)
+                                      }}
+                                      className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                                        isSelected
+                                          ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                                          : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                                        <div className="flex items-center gap-2">
+                                          <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                            {sub.code}
+                                          </span>
+                                        </div>
+                                        <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                                          {sub.name}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                                          isSelected
+                                            ? 'bg-white text-[#003f78]'
+                                            : 'bg-white border border-slate-200 text-slate-400'
+                                        }`}
+                                      >
+                                        {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {/* 2. Standalone / Aktivitas Mandiri Section */}
+              {standaloneLibraries.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {standaloneLibraries.map((item) => {
+                      const isSelected = (createForm.lineItems || []).some(
+                        (i) => i?.lineLabel === item.activityName || (item.activityCode && i?.lineLabel?.includes(item.activityCode)) || i?.lineLabel?.includes(item.activityName)
+                      )
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => {
+                            toggleLineItem(item.activityName, item.activityCode, item.basePoints, {
+                              requiresEquipmentNo: Boolean(item.requiresEquipmentNo),
+                              requiresDuration: true,
+                              requiresTireCount: (item.activityName || '').toLowerCase().includes('tire') || (item.activityName || '').toLowerCase().includes('ban'),
+                              requiresMaterialUsed: false,
+                              requiresPhoto: false,
+                            })
+                          }}
+                          className={`flex items-center justify-between rounded-xl p-3 cursor-pointer transition border ${
+                            isSelected
+                              ? 'bg-[#003f78] text-white border-[#003f78] shadow-sm'
+                              : 'bg-white text-slate-800 border-slate-200/90 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[11px] font-black tracking-wider uppercase ${isSelected ? 'text-white' : 'text-[#003f78]'}`}>
+                                {item.activityCode}
+                              </span>
+                              {item.category ? (
+                                <span className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold ${
+                                  isSelected ? 'bg-white/20 text-white' : 'bg-[#eaf4fb] text-[#003f78]'
+                                }`}>
+                                  {item.category}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className={`text-xs font-semibold truncate ${isSelected ? 'text-blue-100' : 'text-slate-800'}`}>
+                              {item.activityName}
+                            </p>
+                          </div>
+                          <span
+                            className={`size-6 shrink-0 flex items-center justify-center rounded-full transition ${
+                              isSelected
+                                ? 'bg-white text-[#003f78]'
+                                : 'bg-white border border-slate-200 text-slate-400'
+                            }`}
+                          >
+                            {isSelected ? <Check className="size-3.5 stroke-[3]" /> : <ListFilter className="size-3.5" />}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {totalVisibleLibraryCount === 0 && (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-xs font-semibold text-slate-500">
+                  Tidak ada kamus aktivitas yang cocok dengan pencarian &quot;{pickerSearch}&quot;.
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Submit Button */}
+            <Button
+              type="button"
+              onClick={() => setIsPickerModalOpen(false)}
+              className="h-10 w-full rounded-xl bg-[#003f78] hover:bg-[#00315c] text-white font-bold text-xs shadow-xs mt-2"
+            >
+              PAKAI {(createForm.lineItems || []).filter((i) => i?.lineLabel?.trim()).length} AKTIVITAS
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -3043,8 +5576,8 @@ export function OvertimeListingClient({
               </div>
             ) : (
               <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                {approvedRows.map((row) => (
-                  <div key={row.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
+                {approvedRows.map((row, idx) => (
+                  <div key={`approved-row-${row.id}-${idx}`} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
                     <div className="min-w-0 flex-1 pr-4">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-slate-900">{row.splNumber}</span>

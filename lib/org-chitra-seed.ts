@@ -1,4 +1,4 @@
-﻿/**
+/**
  * PT Chitra Paratama Organizational Structure Seed
  * Effective: 1 January 2026
  * Source: Org. Chart Chitra Paratama Jan 2026.pdf
@@ -141,7 +141,7 @@ const EMPLOYEE_SEEDS: EmpSeed[] = [
   ["Sofyan Darmawan",         "sofyan.darmawan@chitraparatama.co.id",    "SUPPLY",   "EXIM Compliance & Principal",    "Staff EXIM",                  "Staff",          3],
   ["Abdul Rajab",             "abdul.rajab@chitraparatama.co.id",        "SUPPLY",   "Procurement",                    "Coordinator Procurement",     "Staff",          3],
   ["Sigit Ratriawan",         "sigit.ratriawan@chitraparatama.co.id",    "SUPPLY",   "Inventory",                      "Leader Inventory",            "Staff",          3],
-  ["Sugeng Wasiat",           "sugeng.wasiat2@chitraparatama.co.id",     "SUPPLY",   "Billing",                        "Coordinator Billing",         "Staff",          3], // Concurrent with HSE
+  ["Andika Ferdiansyah",      "andika.ferdiansyah@chitraparatama.co.id", "SUPPLY",   "Billing",                        "Billing",                     "Staff",          3],
   ["Maulani",                 "maulani@chitraparatama.co.id",            "SUPPLY",   "Warehouse & Distribution",       "Coordinator Warehouse",       "Staff",          3],
   ["Karmiyanto",              "karmiyanto@chitraparatama.co.id",         "SUPPLY",   "Warehouse & Distribution",       "Leader Warehouse",            "Staff",          3],
 
@@ -222,7 +222,7 @@ const ORG_NODES: NodeDef[] = [
   ["EXIM Operations",       "EXIM Compliance & Principal", "Logistic Management","Nico Saputra"],
   ["Procurement",           "Procurement",                 "Logistic Management","Abdul Rajab"],
   ["Inventory",             "Inventory",                   "Logistic Management","Sigit Ratriawan"],
-  ["Billing",               "Billing",                     "Logistic Management","Sugeng Wasiat"],
+  ["Billing",               "Billing",                     "Logistic Management","Andika Ferdiansyah"],
   ["Warehouse & Dist.",     "Warehouse & Distribution",    "Logistic Management","Maulani"],
 
   ["Office Strategic Mgmt", "Office Strategic Management", "General Manager",   "Asep Firdaus"],

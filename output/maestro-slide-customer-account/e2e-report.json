@@ -1,0 +1,1345 @@
+{
+  "schemaVersion": "report-1",
+  "run": {
+    "id": "01a152f8-c67e-7e61-98d9-f126ad6c5b7a",
+    "specVersion": "0.1",
+    "runner": {
+      "name": "e2e",
+      "version": "0.17.0"
+    },
+    "status": "passed",
+    "exitCode": 0,
+    "startedAt": "2026-10-19T07:03:18.940Z",
+    "finishedAt": "2026-10-19T07:03:50.354Z",
+    "project": {
+      "id": "hero",
+      "configDigest": "d91e15b2e5978f71184d9d028c50ee7b9939223d3a7c5a8b39e8cc6a6a60beb8"
+    },
+    "environment": {
+      "ci": false,
+      "trustNoticeShown": false,
+      "os": "win32 10.0.26200",
+      "arch": "x64",
+      "runtime": "node v22.14.0"
+    },
+    "vcs": {
+      "commit": "f498eded342069ba0116c561050e751c095402c3",
+      "branch": "main",
+      "dirty": true
+    },
+    "targets": [
+      {
+        "id": "web",
+        "index": 0,
+        "platform": "web",
+        "baseOrigin": "http://maestro.localhost:3000",
+        "environment": "test",
+        "engine": {
+          "name": "web",
+          "version": "0.12.0",
+          "spiVersion": 1
+        },
+        "capabilities": [
+          "actions",
+          "artifacts",
+          "browser",
+          "keyboard",
+          "location",
+          "observation",
+          "pointer",
+          "state"
+        ],
+        "artifactCapabilities": [
+          "screenshot",
+          "trace",
+          "video"
+        ],
+        "stateCapability": true
+      }
+    ],
+    "serialGroups": [],
+    "results": [
+      {
+        "id": "f320b915ad9cc28f5694391f3c200751715606d645cc2f8c29cdd7f448ad6338",
+        "testId": "tests/customer-survey-form-studio.e2e.ts::verify%20customer%20survey%202026%20in%20form%20studio%20and%20public%20form%20view",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verify customer survey 2026 in form studio and public form view"
+        ],
+        "file": "tests/customer-survey-form-studio.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\customer-survey-form-studio.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "ed57c3915723cd7210ffc616f82312a186e89f1c5937cbc6ba192933431b8ca7",
+        "testId": "tests/daily-activity-team.e2e.ts::verifies%20daily%20activity%20team%20input%2C%20single%20approval%20document%2C%20and%20document%20preview%20with%20personnel%20separation",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verifies daily activity team input, single approval document, and document preview with personnel separation"
+        ],
+        "file": "tests/daily-activity-team.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\daily-activity-team.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "85089b658c8ca69edf26d14b605e4e2f641a6a99010bd106fafc394df719af7c",
+        "testId": "tests/example.e2e.ts::login%20to%20HERO%20with%20standard%20credentials%20and%20verify%20dashboard",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "login to HERO with standard credentials and verify dashboard"
+        ],
+        "file": "tests/example.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\example.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "c96381faa656b8aca8e4abc099bd64e1a9554559d8e8995af35ac2523531eac9",
+        "testId": "tests/ga-vehicles-sorting.e2e.ts::GA%20Vehicles%20table%20sorting%20and%20dashboard%20verification",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "GA Vehicles table sorting and dashboard verification"
+        ],
+        "file": "tests/ga-vehicles-sorting.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\ga-vehicles-sorting.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "e428151883a2bfe0563bb2580ebb1bd2c1a3db1f528c83792c2cc9f5064c95d5",
+        "testId": "tests/hse-osm-print.e2e.ts::verify%20HSE%20OSM%20print%20A4%20layout%2C%20multi-page%20pagination%2C%20and%20intact%20photo%20attachments",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verify HSE OSM print A4 layout, multi-page pagination, and intact photo attachments"
+        ],
+        "file": "tests/hse-osm-print.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\hse-osm-print.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "c0ef6f5a92f8492b290246ded78784553a21e83174b8ffbfb58870542133ea3a",
+        "testId": "tests/maestro-slide-capture.e2e.ts::MAESTRO%20actual%20customer%20login",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "MAESTRO actual customer login"
+        ],
+        "file": "tests/maestro-slide-capture.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\maestro-slide-capture.e2e.ts",
+          "line": 4,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": true,
+        "status": "passed",
+        "attempts": [
+          {
+            "id": "01a152f8-ce1c-7e69-87b9-80031634c45b",
+            "index": 0,
+            "status": "passed",
+            "startedAt": "2026-10-19T07:03:19.836Z",
+            "durationMs": 9285,
+            "artifacts": [
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:artifact:0",
+                "kind": "trace",
+                "mediaType": "application/zip",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20actual_20customer_20login-61a87429/default/attempt-0/trace/trace.zip",
+                "size": 414924,
+                "sha256": "13c7568852533b69090f27f270729a7e821fa9f13a8c0de3da9d582e41e22a23"
+              }
+            ],
+            "secondaryErrors": [],
+            "cleanup": "complete",
+            "steps": [
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:0",
+                "index": 0,
+                "kind": "resource",
+                "api": "browser.setViewport",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:20.011Z",
+                "durationMs": 1,
+                "events": [],
+                "artifacts": [],
+                "viewport": {
+                  "width": 2240,
+                  "height": 1260,
+                  "scale": 1
+                },
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:1",
+                "index": 1,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/login?callbackUrl=%2Ftickets",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:20.012Z",
+                "durationMs": 762,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:2",
+                "index": 2,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByLabel(\"Email\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:20.776Z",
+                "durationMs": 103,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:3",
+                "index": 3,
+                "kind": "locator",
+                "api": "locator.fill",
+                "label": "getByLabel(\"Email\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:20.879Z",
+                "durationMs": 72,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:4",
+                "index": 4,
+                "kind": "locator",
+                "api": "locator.fill",
+                "label": "getByLabel(\"Kata Sandi\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:20.952Z",
+                "durationMs": 28,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:5",
+                "index": 5,
+                "kind": "locator",
+                "api": "locator.click",
+                "label": "getByRole(\"button\", name: \"Masuk ke MAESTRO\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:20.981Z",
+                "durationMs": 84,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-ce1c-7e69-87b9-80031634c45b:6",
+                "index": 6,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"heading\", name: \"Helpdesk & Problem Ticketing\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:21.065Z",
+                "durationMs": 4855,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "8305a00b82d47e562b0e68dcdc3e88770eed7197197c7b7db97629769145f4fd",
+        "testId": "tests/maestro-slide-capture.e2e.ts::MAESTRO%20feature%20screenshots%20for%20presentation",
+        "kind": "test",
+        "declarationIndex": 1,
+        "titlePath": [
+          "MAESTRO feature screenshots for presentation"
+        ],
+        "file": "tests/maestro-slide-capture.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\maestro-slide-capture.e2e.ts",
+          "line": 14,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": true,
+        "status": "passed",
+        "attempts": [
+          {
+            "id": "01a152f8-f262-7ddc-be8a-93bccee6d555",
+            "index": 0,
+            "status": "passed",
+            "startedAt": "2026-10-19T07:03:29.122Z",
+            "durationMs": 20980,
+            "artifacts": [
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:0",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:6"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/001-maestro-02-customer-support.png",
+                "size": 298140,
+                "sha256": "0fdec184c8399ca7ab5d496ed793ff370186577b2dc91b1ed4ded1a45d04856c"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:1",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:12"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/002-maestro-08-ticket-form.png",
+                "size": 309822,
+                "sha256": "7d1d91884b9d25b66def13a8bfb8db473befc053d02941e02daefbdeed37dfee"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:2",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:17"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/003-maestro-03-daily-activity.png",
+                "size": 478096,
+                "sha256": "7ebd30de905ca4dc2d54e39094b9f745e3a51611ea74b4c02cbd25b28970f398"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:3",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:21"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/004-maestro-04-safety-ptw.png",
+                "size": 314241,
+                "sha256": "3cc01a9d04eabfd04864a7233510691d450c5fb8246a44bd691609a3bf262d35"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:4",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:26"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/005-maestro-05-tire-scrap.png",
+                "size": 492776,
+                "sha256": "3822e2a5b6c2f3946b418ece422193a80b7ba9da188ee743b9a7909ce6ab92f6"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:5",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:30"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/006-maestro-06-tire-check.png",
+                "size": 723285,
+                "sha256": "247573851a3850eff5ea9319f2c7d67ba99e74b61e169180c799655bbb2cd9a2"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:6",
+                "kind": "screenshot",
+                "mediaType": "image/png",
+                "redaction": "complete",
+                "producer": {
+                  "kind": "step",
+                  "stepId": "01a152f8-f262-7ddc-be8a-93bccee6d555:34"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/screenshots/007-maestro-07-po-cargo-tracking.png",
+                "size": 422047,
+                "sha256": "3ad2e5e8d8d9cde34020425c62165d5d8e6729aee4aee6f188a0f62010a20595"
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:7",
+                "kind": "trace",
+                "mediaType": "application/zip",
+                "redaction": "not-required",
+                "producer": {
+                  "kind": "attempt"
+                },
+                "path": "web/tests_maestro-slide-capture.e2e.ts__MAESTRO_20feature_20screenshots_20for_20presentation-c422f701/default/attempt-0/trace/trace.zip",
+                "size": 8838338,
+                "sha256": "81a6198a7dd78304cccd39de557fdaf0e15f4b06b165bc0e3e97c1dd07243815"
+              }
+            ],
+            "secondaryErrors": [],
+            "cleanup": "complete",
+            "steps": [
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:0",
+                "index": 0,
+                "kind": "resource",
+                "api": "browser.setViewport",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:29.145Z",
+                "durationMs": 0,
+                "events": [],
+                "artifacts": [],
+                "viewport": {
+                  "width": 2240,
+                  "height": 1260,
+                  "scale": 1
+                },
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:1",
+                "index": 1,
+                "kind": "resource",
+                "api": "browser.setCookies",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:29.146Z",
+                "durationMs": 24,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:2",
+                "index": 2,
+                "kind": "resource",
+                "api": "browser.setCookies",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:29.170Z",
+                "durationMs": 2,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:3",
+                "index": 3,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/tickets",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:29.174Z",
+                "durationMs": 1087,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:4",
+                "index": 4,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"heading\", name: \"Helpdesk & Problem Ticketing\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:30.261Z",
+                "durationMs": 144,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:5",
+                "index": 5,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:30.406Z",
+                "durationMs": 17,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:6",
+                "index": 6,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-02-customer-support",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:30.423Z",
+                "durationMs": 478,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:0"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:7",
+                "index": 7,
+                "kind": "locator",
+                "api": "locator.click",
+                "label": "getByRole(\"button\", name: \"Buat Tiket Baru\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:30.902Z",
+                "durationMs": 406,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:8",
+                "index": 8,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"dialog\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:31.309Z",
+                "durationMs": 15,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:9",
+                "index": 9,
+                "kind": "locator",
+                "api": "locator.fill",
+                "label": "getByPlaceholder(\"Misal: Kerusakan sidewall ban unit DT-014 di Pit B\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:31.324Z",
+                "durationMs": 68,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:10",
+                "index": 10,
+                "kind": "locator",
+                "api": "locator.fill",
+                "label": "getByPlaceholder(\"Tuliskan kronologi, nomor seri ban/unit, lokasi spesifik, atau informasi penting lainnya...\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:31.394Z",
+                "durationMs": 75,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:11",
+                "index": 11,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:31.469Z",
+                "durationMs": 10,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:12",
+                "index": 12,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-08-ticket-form",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:31.480Z",
+                "durationMs": 995,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:1"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:13",
+                "index": 13,
+                "kind": "resource",
+                "api": "browser.keyboard.press",
+                "label": "Escape",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:32.477Z",
+                "durationMs": 102,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:14",
+                "index": 14,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/activity",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:32.579Z",
+                "durationMs": 1945,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:15",
+                "index": 15,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"heading\", name: \"Monitoring Daily Activity Seluruh Karyawan\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:34.524Z",
+                "durationMs": 97,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:16",
+                "index": 16,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:34.621Z",
+                "durationMs": 100,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:17",
+                "index": 17,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-03-daily-activity",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:34.722Z",
+                "durationMs": 544,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:2"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:18",
+                "index": 18,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/safety",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:35.267Z",
+                "durationMs": 2207,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:19",
+                "index": 19,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"heading\", name: \"Safety Management & PTW\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:37.475Z",
+                "durationMs": 143,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:20",
+                "index": 20,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:37.619Z",
+                "durationMs": 24,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:21",
+                "index": 21,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-04-safety-ptw",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:37.643Z",
+                "durationMs": 1249,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:3"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:22",
+                "index": 22,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/scrap",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:38.894Z",
+                "durationMs": 1674,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:23",
+                "index": 23,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"heading\", name: \"Tire Scrap Performance\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:40.568Z",
+                "durationMs": 115,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:24",
+                "index": 24,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:40.684Z",
+                "durationMs": 28,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:25",
+                "index": 25,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "locator(\".recharts-sector\").first()",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:40.712Z",
+                "durationMs": 2031,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:26",
+                "index": 26,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-05-tire-scrap",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:42.744Z",
+                "durationMs": 571,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:4"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:27",
+                "index": 27,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/tire-check",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:43.316Z",
+                "durationMs": 1478,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:28",
+                "index": 28,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "locator(\"text=Total Tire Checked\").first()",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:44.796Z",
+                "durationMs": 199,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:29",
+                "index": 29,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:44.995Z",
+                "durationMs": 27,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:30",
+                "index": 30,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-06-tire-check",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:45.024Z",
+                "durationMs": 804,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:5"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:31",
+                "index": 31,
+                "kind": "app",
+                "api": "app.open",
+                "label": "/tracking",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:45.828Z",
+                "durationMs": 2033,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:32",
+                "index": 32,
+                "kind": "assertion",
+                "api": "expect.toBeVisible",
+                "label": "getByRole(\"heading\", name: \"PO & Cargo Tracking\")",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:47.862Z",
+                "durationMs": 118,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:33",
+                "index": 33,
+                "kind": "resource",
+                "api": "browser.evaluate",
+                "label": "",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:47.980Z",
+                "durationMs": 157,
+                "events": [],
+                "artifacts": [],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              },
+              {
+                "id": "01a152f8-f262-7ddc-be8a-93bccee6d555:34",
+                "index": 34,
+                "kind": "app",
+                "api": "app.screenshot",
+                "label": "maestro-07-po-cargo-tracking",
+                "status": "passed",
+                "startedAt": "2026-10-19T07:03:48.138Z",
+                "durationMs": 597,
+                "events": [],
+                "artifacts": [
+                  "01a152f8-f262-7ddc-be8a-93bccee6d555:artifact:6"
+                ],
+                "source": {
+                  "file": "unknown",
+                  "line": 1,
+                  "column": 1
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "4313be247a837f0332e674f99473c3e92dca4117a5080af2d77789beb1ab42e2",
+        "testId": "tests/mobile-dashboard-redesign.e2e.ts::mobile%20dashboard%20aesthetic%20redesign%3A%20search%20menu%2C%20curated%20shortcuts%2C%20and%20non-truncated%20lainnya%20catalog",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "mobile dashboard aesthetic redesign: search menu, curated shortcuts, and non-truncated lainnya catalog"
+        ],
+        "file": "tests/mobile-dashboard-redesign.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\mobile-dashboard-redesign.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "c5a2b2fbafd1889eb20c97ea85434d83a3809555b552452054d791eedbf8b347",
+        "testId": "tests/mobile-osm-site-dropdown.e2e.ts::verify%20operational%20site%20dropdown%20list%20in%20mobile%20OSM%20wizard",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verify operational site dropdown list in mobile OSM wizard"
+        ],
+        "file": "tests/mobile-osm-site-dropdown.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\mobile-osm-site-dropdown.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "dcc0e61df445b959f9cc347a51e5b595552fdde8db3185aa2b20dd0fb105c3c4",
+        "testId": "tests/remediasi-mobile-timesheet.e2e.ts::verify%20timesheet%20attendance%2C%20permission%20approver%20search%2C%20and%20daily%20activity%20form",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verify timesheet attendance, permission approver search, and daily activity form"
+        ],
+        "file": "tests/remediasi-mobile-timesheet.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\remediasi-mobile-timesheet.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "7f922b9cc0f8ebd0cf8c26331d76197400a9eb01370f74588bf0f2772fef0f6a",
+        "testId": "tests/safety-map.e2e.ts::verify%20safety%20map%20moved%20from%20monthly%20summary%20to%20safety%20dashboard",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verify safety map moved from monthly summary to safety dashboard"
+        ],
+        "file": "tests/safety-map.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\safety-map.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "009b6f4b1af39404907400a2f3b852ff13dadde833e95b313386cff4f07ca7a8",
+        "testId": "tests/smoke.e2e.ts::opens%20sign-in%20page%20and%20verifies%20branding%20elements",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "opens sign-in page and verifies branding elements"
+        ],
+        "file": "tests/smoke.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\smoke.e2e.ts",
+          "line": 4,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "9a367d5871efd4fe9651796a3de08d936ff42978ba23af5d4006877a69e20d57",
+        "testId": "tests/spl-approval-excel-export.e2e.ts::Riwayat%20Approval%20SPL%3A%20verify%20Daftar%20Manpower%20%28MP%29%20and%20Total%20Jam%20SPL%20%2F%20MP%20columns%20in%20table%20and%20Excel%20export",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "Riwayat Approval SPL: verify Daftar Manpower (MP) and Total Jam SPL / MP columns in table and Excel export"
+        ],
+        "file": "tests/spl-approval-excel-export.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\spl-approval-excel-export.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      },
+      {
+        "id": "b293c237021f0b697d7571a7adbec6e37f8d943cf4ab1916af16d118a5d6dbc5",
+        "testId": "tests/training-requests.e2e.ts::verify%20training%20request%20full-width%2C%20mobile%20view%2C%20and%20approver%20selection",
+        "kind": "test",
+        "declarationIndex": 0,
+        "titlePath": [
+          "verify training request full-width, mobile view, and approver selection"
+        ],
+        "file": "tests/training-requests.e2e.ts",
+        "source": {
+          "file": "PROJECT\\HERO\\tests\\training-requests.e2e.ts",
+          "line": 5,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "tags": [],
+        "selected": false,
+        "status": "skipped",
+        "skip": {
+          "cause": "filtered",
+          "reason": "file not selected by a positional argument"
+        },
+        "attempts": []
+      }
+    ],
+    "errors": [],
+    "summary": {
+      "discovered": 14,
+      "selected": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "interrupted": 0,
+      "flaky": 0,
+      "skipped": 0
+    },
+    "limits": {
+      "maxAgentContextBytes": 16384,
+      "maxLedgerBytes": 8192,
+      "maxObservationBytes": 262144,
+      "maxEventsPerStep": 1000,
+      "maxModelTokensPerCall": 64000
+    },
+    "usage": {
+      "discoveredResults": 14,
+      "maxAgentContextBytes": 0,
+      "maxLedgerBytes": 0,
+      "maxObservationBytes": 0,
+      "artifactBytes": 12291669,
+      "downloads": 0,
+      "events": 0,
+      "modelTokens": 0,
+      "maxModelCallsInStep": 0,
+      "maxActionStepsInStep": 0
+    }
+  }
+}

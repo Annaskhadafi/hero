@@ -5,8 +5,8 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
-import { jsPDF } from "jspdf"
-import html2canvas from "html2canvas-pro"
+// jsPDF loaded dynamically on click
+// html2canvas loaded dynamically on click
 import { Download, Loader2, Grid, FileText } from "lucide-react"
 import { toggleQuotationOption } from "@/app/actions/service360"
 import { toast } from "sonner"
@@ -209,6 +209,11 @@ export function PrintButton({
         setIsGenerating(false)
         return
       }
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
 
       const pdf = new jsPDF({
         orientation: 'portrait',

@@ -1,5 +1,3 @@
-import * as xlsx from "xlsx"
-
 import type { HiradcEntryRow } from "@/lib/hiradc/queries"
 
 const EXPORT_HEADERS = [
@@ -24,7 +22,7 @@ const EXPORT_HEADERS = [
   "Pengendalian Tambahan",
 ]
 
-export function exportHiradcToExcel(entries: HiradcEntryRow[], fileName = "HIRADC-export.xlsx") {
+export async function exportHiradcToExcel(entries: HiradcEntryRow[], fileName = "HIRADC-export.xlsx") {
   const rows = entries.map((e) => [
     e.department,
     e.location,
@@ -47,6 +45,7 @@ export function exportHiradcToExcel(entries: HiradcEntryRow[], fileName = "HIRAD
     e.additionalControl,
   ])
 
+  const xlsx = await import("xlsx")
   const worksheet = xlsx.utils.aoa_to_sheet([EXPORT_HEADERS, ...rows])
   const workbook = xlsx.utils.book_new()
   xlsx.utils.book_append_sheet(workbook, worksheet, "HIRADC")

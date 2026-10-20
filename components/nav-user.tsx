@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { signOut } from "@/lib/auth-client"
+import { SidebarModeQuickToggle } from "@/components/sidebar-mode-switcher";
 import {
   IconCreditCard,
   IconDotsVertical,
@@ -145,6 +146,10 @@ export function NavUser({
                 Tagihan
               </DropdownMenuItem>
             </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <div className="px-1 py-1">
+              <SidebarModeQuickToggle />
+            </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
               <IconLogout />

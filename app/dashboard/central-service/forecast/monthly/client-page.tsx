@@ -37,7 +37,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Save, Lock, Trash2, Edit, X, Search, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Save, Lock, Trash2, Edit, X, Search, ChevronDown, ChevronRight, TrendingUp, RefreshCw, Wrench, Clock, Activity } from 'lucide-react'
+import { HeroKpiCard } from '@/components/templates'
 import { toast } from 'sonner'
 import { bulkImportForecastItems } from '@/app/actions/central-service-forecast'
 import { ImportExportButtons } from './import-export-buttons'
@@ -427,59 +428,42 @@ export function MonthlyClientPage({
       </div>
 
       {selectedPeriodId && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                O/S Prev Month
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-600">
-                {formatCurrency(totalOsPrevMonth)}
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                Total Repair
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalRepair)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                Total Retread
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalRetread)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                Total Service
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(totalService)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-muted-foreground text-sm font-medium">
-                Total Forecast
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-primary text-2xl font-bold">{formatCurrency(grandTotalIdr)}</div>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+          <HeroKpiCard
+            title="O/S Prev Month"
+            value={formatCurrency(totalOsPrevMonth)}
+            tone="amber"
+            icon={<Clock className="size-5" />}
+            description="Outstanding bulan sebelumnya"
+          />
+          <HeroKpiCard
+            title="Total Repair"
+            value={formatCurrency(totalRepair)}
+            tone="cyan"
+            icon={<Wrench className="size-5" />}
+            description="Estimasi perbaikan tire"
+          />
+          <HeroKpiCard
+            title="Total Retread"
+            value={formatCurrency(totalRetread)}
+            tone="purple"
+            icon={<RefreshCw className="size-5" />}
+            description="Estimasi vulkanisir / retread"
+          />
+          <HeroKpiCard
+            title="Total Service"
+            value={formatCurrency(totalService)}
+            tone="emerald"
+            icon={<Activity className="size-5" />}
+            description="Estimasi jasa & servis"
+          />
+          <HeroKpiCard
+            title="Total Forecast"
+            value={formatCurrency(grandTotalIdr)}
+            tone="blue"
+            icon={<TrendingUp className="size-5" />}
+            description="Total keseluruhan forecast bulanan"
+          />
         </div>
       )}
 

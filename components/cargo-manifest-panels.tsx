@@ -468,19 +468,23 @@ function ManifestFormFields({
         </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Category Section
-          <Combobox
-            options={sections.map((s) => `${s.id}:${s.name}`)}
-            value={sectionId ? `${sectionId}:${sectionName}` : ''}
-            onChange={(value) => {
-              const [id, ...nameParts] = value.split(':')
-              const name = nameParts.join(':')
-              setSectionId(id)
-              setSectionName(name)
+          <select
+            className="border-input bg-background h-9 rounded-lg border px-3 text-sm"
+            value={sectionId}
+            onChange={(e) => {
+              const val = e.target.value
+              setSectionId(val)
+              const sec = sections.find((s) => s.id.toString() === val)
+              if (sec) setSectionName(sec.name)
             }}
-            placeholder="Pilih section..."
-            emptyText="Section tidak ditemukan"
-            allowCustom={false}
-          />
+          >
+            <option value="">Pilih Section...</option>
+            {sections.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
         </Label>
       </div>
       <ItemRowEditor items={items} onChange={onItemsChange} />

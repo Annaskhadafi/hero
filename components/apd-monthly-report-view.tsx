@@ -1,11 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
-import * as XLSX from "xlsx";
 import {
   Calendar,
   ChevronLeft,
@@ -136,7 +135,8 @@ export function ApdMonthlyReportView({
     router.push(`${path}?${params.toString()}`);
   }
 
-  function handleExportExcel() {
+  async function handleExportExcel() {
+    const XLSX = await import("xlsx");
     const wb = XLSX.utils.book_new();
 
     // Sheet 1: Detail Transaksi

@@ -2,8 +2,9 @@ import { redirect } from 'next/navigation'
 import { CheckCheck, History, PlusCircle } from 'lucide-react'
 
 import { db } from '@/db'
-import { employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
-import { asc, eq } from 'drizzle-orm'
+import { activityLibraries, employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
+import { and, asc, eq } from 'drizzle-orm'
+import { libraryDeptMatches, librarySectionMatches, librarySiteMatches } from '@/lib/daily-activity'
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 import { MobileOvertimeRequestForm } from '@/components/mobile/mobile-overtime-request-form'
 import { MobileSplHistory, type MobileSplHistoryRow } from '@/components/mobile/mobile-spl-history'
@@ -69,7 +70,7 @@ export default async function MobileOvertimePage({
   )
   if (!data) return null
 
-  const [approvals, activeEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
+  const [approvals, activeEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries] = await Promise.all([
     safeQuery(
       () => getApprovalCenterData(session.user.email, { categoryFilter: 'OVERTIME', skipHistory: true }),
       null,
@@ -121,6 +122,31 @@ export default async function MobileOvertimePage({
       [],
       'sites'
     ),
+    safeQuery(
+      () =>
+        db
+          .select({
+            id: activityLibraries.id,
+            activityCode: activityLibraries.activityCode,
+            activityName: activityLibraries.activityName,
+            category: activityLibraries.category,
+            basePoints: activityLibraries.basePoints,
+            slaHours: activityLibraries.slaHours,
+            requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+          })
+          .from(activityLibraries)
+          .where(
+            and(
+              eq(activityLibraries.isActive, true),
+              librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, data.lead?.siteId),
+              libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, data.lead?.departmentId),
+              librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, data.lead?.sectionId)
+            )
+          )
+          .orderBy(asc(activityLibraries.activityName)),
+      [],
+      'activityLibraries'
+    ),
   ])
 
   const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]))
@@ -154,18 +180,61 @@ export default async function MobileOvertimePage({
 
   const targetSplId = editSplId || parentSplId
   const initialSplData = targetSplId ? await safeQuery(() => getOvertimeApprovalData(targetSplId), null, "getOvertimeApprovalData") : null
-  const historyRows: MobileSplHistoryRow[] = data.splDocuments.map((document) => ({
-    id: document.id,
-    splNumber: document.splNumber,
-    title: document.title,
-    workDate: document.workDate.toISOString(),
-    status: document.status.toLowerCase(),
-    origin: document.origin,
-    pendingApproverName: document.pendingApproverName,
-    workerNames: document.workers.map((worker) => worker.employeeName),
-    progressPercent: document.progressPercent,
-    lineCount: document.lineCount,
-  }))
+  const historyRows: MobileSplHistoryRow[] = []
+  for (const document of data.splDocuments) {
+    const docAny = document as any
+    const workers = document.workers || []
+    const otherWorkerNames = workers
+      .filter((w) => w.employeeName && w.employeeName.toLowerCase().trim() !== (docAny.requesterName || '').toLowerCase().trim())
+      .map((w) => w.employeeName)
+
+    // 1. Primary / Submitter Row
+    historyRows.push({
+      id: document.id,
+      splNumber: document.splNumber,
+      title: document.title,
+      workDate: document.workDate.toISOString(),
+      status: document.status.toLowerCase(),
+      origin: document.origin,
+      pendingApproverName: document.pendingApproverName,
+      workerNames: workers.map((worker) => worker.employeeName),
+      progressPercent: document.progressPercent,
+      lineCount: document.lineCount,
+      teamRole: otherWorkerNames.length > 0 ? 'Pemohon' : undefined,
+      teamMembersSummary: otherWorkerNames.length > 0 ? otherWorkerNames.join(', ') : undefined,
+      requesterName: docAny.requesterName || 'Pemohon',
+      participantName: docAny.requesterName || undefined,
+    })
+
+    // 2. Team Member Participant Rows (e.g. Sanudin)
+    for (const w of workers) {
+      if (!w.employeeName || w.employeeName.toLowerCase().trim() === (docAny.requesterName || '').toLowerCase().trim()) {
+        continue
+      }
+      const partnerNames = [
+        docAny.requesterName,
+        ...workers.filter((other) => other.employeeName !== w.employeeName && other.employeeName !== docAny.requesterName).map((o) => o.employeeName)
+      ].filter(Boolean).join(', ')
+
+      historyRows.push({
+        id: document.id,
+        splNumber: document.splNumber,
+        title: document.title,
+        workDate: document.workDate.toISOString(),
+        status: document.status.toLowerCase(),
+        origin: document.origin,
+        pendingApproverName: document.pendingApproverName,
+        workerNames: workers.map((worker) => worker.employeeName),
+        progressPercent: document.progressPercent,
+        lineCount: document.lineCount,
+        teamRole: 'Anggota Tim',
+        teamMembersSummary: partnerNames || undefined,
+        requesterName: docAny.requesterName || 'Pemohon',
+        participantName: w.employeeName,
+        employeeId: w.employeeId ? Number(w.employeeId) : undefined,
+      })
+    }
+  }
 
   const safeApprovals = approvals ?? {
     currentUserName: session.user.name || session.user.email,
@@ -179,6 +248,9 @@ export default async function MobileOvertimePage({
       ptwCount: 0,
       sopWinRequestCount: 0,
       contractReviewCount: 0,
+      rfrCount: 0,
+      trainingRequestCount: 0,
+      maritalStatusCount: 0,
       generalActivityCount: 0,
     },
     historyMetrics: {
@@ -189,6 +261,8 @@ export default async function MobileOvertimePage({
       inReview: 0,
     },
     contractReviewInboxItems: [],
+    rfrInboxItems: [],
+    trainingRequestInboxItems: [],
     dailyActivityInboxItems: [],
     overtimeInboxItems: [],
     ptwInboxItems: [],
@@ -312,6 +386,7 @@ export default async function MobileOvertimePage({
                 <div className="mt-4">
                   <MobileOvertimeRequestForm
                     employees={sanitizedEmployees}
+                    activityLibraries={rawActivityLibraries || []}
                     currentEmployee={{
                       id: data.lead.id,
                       name: data.lead.name,

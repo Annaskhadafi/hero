@@ -13,6 +13,11 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
     const hashIdx = trimmed.indexOf("#");
     if (hashIdx !== -1) trimmed = trimmed.substring(0, hashIdx);
 
+    // Bundled HERO branding is served from public, not the activity upload proxy.
+    if (/^\/(?:Hero(?:%20| )Logo\/|(?:logo-hero|icon-(?:192|512|maskable-512)|apple-touch-icon|favicon-(?:16x16|32x32))\.png$)/i.test(trimmed)) {
+      return null;
+    }
+
     const cleanPath = trimmed.replace(/^\/+/, "");
 
     // 1. Direct prefix matches
@@ -38,9 +43,15 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
       "face-attendance/",
       "face-attendance-v2/",
       "contract-review-attachment/",
+      "hrga-kerjasama/",
+      "ga-house-rental/",
       "public-career-cv/",
       "cer/",
       "cer-attachments/",
+      "hse-osm/",
+      "reward-store/",
+      "training-requests/",
+      "marital-status/",
     ];
     for (const prefix of prefixes) {
       if (cleanPath.startsWith(prefix)) {
@@ -58,7 +69,7 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
 
     // 3. Regex match for known prefixes in full URLs
     const match = trimmed.match(
-      /(?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|cer|cer-attachments)\/[a-zA-Z0-9\-._~%!$&'()*+,;=:@]+/i
+      /(?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|cer|cer-attachments|hse-osm|reward-store|training-requests|marital-status|ga-house-rental|hrga-kerjasama)\/[a-zA-Z0-9\-._~%!$&'()*+,;=:@]+/i
     );
     if (match) {
       return match[0];
@@ -71,9 +82,25 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
         // Remove bucket name prefix (e.g. "onechitra/upload/uuid.jpg" -> "upload/uuid.jpg")
         const withoutBucket = parts.replace(/^[^/]+\//, "");
         if (withoutBucket) {
+          if (!withoutBucket.includes("/") && /\.(jpe?g|png|webp|gif|heic|heif|pdf)$/i.test(withoutBucket)) {
+            return `activity-photos/${withoutBucket}`;
+          }
           return withoutBucket;
         }
       }
+    }
+
+    // 5. Bare filename fallback (e.g. "3bb38fec-fdc7-4527-a837-71ff30420286.jpg")
+    // When saved without prefix or protocol, default to activity-photos/ so it resolves to /api/uploads/activity-photos/...
+    // instead of being requested relative to current page and failing with net::ERR_BLOCKED_BY_ORB
+    if (!cleanPath.includes("/") && /\.(jpe?g|png|webp|gif|heic|heif|pdf)$/i.test(cleanPath)) {
+      return `activity-photos/${cleanPath}`;
+    }
+
+    // 6. Route-relative stray image URLs (e.g. "dashboard/daily-activity/uuid.jpg")
+    const strayMatch = cleanPath.match(/([a-zA-Z0-9_\-]+\.(?:jpe?g|png|webp|gif|heic|heif))$/i);
+    if (strayMatch && !cleanPath.startsWith("api/")) {
+      return `activity-photos/${strayMatch[1]}`;
     }
 
     return null;
@@ -116,6 +143,10 @@ export function resolveUploadUrl(
 ): string {
   if (!url) return "";
   let trimmed = url.trim();
+
+  if (trimmed.startsWith("data:") || trimmed.startsWith("blob:")) {
+    return trimmed;
+  }
 
   // Strip known hosts (localhost, 127.0.0.1, hero.chitraparatama.com, or configured BETTER_AUTH_URL host)
   // to ensure relative path resolution works on whatever host the user is currently accessing!

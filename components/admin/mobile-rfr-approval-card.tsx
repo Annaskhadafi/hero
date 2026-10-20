@@ -268,6 +268,7 @@ export function MobileRfrApprovalCard({ item }: { item: RfrInboxItem }) {
           label="Tanda Tangan Digital Pemeriksa"
           defaultDataUrl={liveSignatureUrl}
           onDataUrlChange={setLiveSignatureUrl}
+          autoUseProfileSignature={false}
           height={140}
         />
       </div>

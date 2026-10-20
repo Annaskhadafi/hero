@@ -21,7 +21,7 @@ async function FormWoContent() {
     }),
     getFormWoStats().catch((err) => {
       console.error('[FormWoContent:stats] Error:', err)
-      return { total: 0, pending: 0, diproses: 0, approved: 0, rejected: 0 }
+      return { total: 0, draft: 0, pending: 0, diproses: 0, approved: 0, rejected: 0 }
     }),
     getMasterDataCaiList().catch((err) => {
       console.error('[FormWoContent:masterCai] Error:', err)
@@ -71,7 +71,7 @@ async function FormWoContent() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Total Form WO yang sudah diajukan.
+              Total Form WO yang diajukan{stats.draft > 0 ? ` (${stats.draft} draft disimpan)` : ''}.
             </p>
           </CardContent>
         </Card>

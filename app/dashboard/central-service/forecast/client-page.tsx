@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { RefreshCw, Save, TrendingUp, Banknote, Wallet, Trophy } from 'lucide-react'
+import { HeroKpiCard } from '@/components/templates'
 import {
   getRealtimeExchangeRate,
   updatePeriodExchangeRate,
@@ -269,77 +270,42 @@ export function DashboardClientPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Forecast
-            </CardTitle>
-            <TrendingUp className="text-muted-foreground h-6 w-6" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span>{formatCurrency(kpi.totalForecast)}</span>
-              <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className="text-blue-600">
-                $
-                {(
-                  kpi.totalForecast / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)
-                ).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">
-              Total Actual
-            </CardTitle>
-            <Banknote className="h-6 w-6 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span className="text-green-600">{formatCurrency(kpi.totalActuals)}</span>
-              <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className="text-emerald-600">
-                $
-                {(
-                  kpi.totalActuals / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)
-                ).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">Sisa Target</CardTitle>
-            <Wallet className="h-6 w-6 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap items-center gap-2 text-2xl font-bold">
-              <span className="text-orange-600">
-                {formatCurrency(Math.max(0, kpi.totalForecast - kpi.totalActuals))}
-              </span>
-              <span className="text-muted-foreground text-xl font-light">|</span>
-              <span className="text-amber-600">
-                $
-                {(
-                  Math.max(0, kpi.totalForecast - kpi.totalActuals) /
-                  (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)
-                ).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-muted-foreground text-sm font-medium">Achievement</CardTitle>
-            <Trophy className="h-6 w-6 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{kpi.achievement.toFixed(1)}%</div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <HeroKpiCard
+          title="Total Forecast"
+          value={formatCurrency(kpi.totalForecast)}
+          tone="blue"
+          icon={<TrendingUp className="size-5" />}
+          description={`≈ $${(
+            kpi.totalForecast / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)
+          ).toLocaleString('en-US', { maximumFractionDigits: 2 })} USD`}
+        />
+        <HeroKpiCard
+          title="Total Actual"
+          value={formatCurrency(kpi.totalActuals)}
+          tone="emerald"
+          icon={<Banknote className="size-5" />}
+          description={`≈ $${(
+            kpi.totalActuals / (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)
+          ).toLocaleString('en-US', { maximumFractionDigits: 2 })} USD`}
+        />
+        <HeroKpiCard
+          title="Sisa Target"
+          value={formatCurrency(Math.max(0, kpi.totalForecast - kpi.totalActuals))}
+          tone="amber"
+          icon={<Wallet className="size-5" />}
+          description={`≈ $${(
+            Math.max(0, kpi.totalForecast - kpi.totalActuals) /
+            (Number(selectedPeriod?.exchangeRateIdrToUsd) || 15000)
+          ).toLocaleString('en-US', { maximumFractionDigits: 2 })} USD`}
+        />
+        <HeroKpiCard
+          title="Achievement"
+          value={`${kpi.achievement.toFixed(1)}%`}
+          tone="purple"
+          icon={<Trophy className="size-5" />}
+          description="Pencapaian target terhadap forecast"
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

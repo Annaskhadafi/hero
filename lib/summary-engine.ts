@@ -1,5 +1,6 @@
 import { db } from '@/db';
 import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments, approvalMatrices, approvalMatrixSteps, orgChartNodes, employeeAssets } from '@/db/schema/hero';
+import { masterApd } from '@/db/schema/apd';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '@/db/schema/apd-summary';
 import { eq, and, asc, desc, sql, inArray, ilike } from 'drizzle-orm';
 import { sendWorkflowEmail, getAppUrl } from '@/lib/workflow-email';
@@ -36,7 +37,25 @@ export async function ensureSummarySchema() {
   try {
     await db.execute(sql`
       ALTER TABLE hero_apd_summary_items
-      ADD COLUMN IF NOT EXISTS remarks text NOT NULL DEFAULT ''
+      ADD COLUMN IF NOT EXISTS remarks text NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS master_apd_id integer;
+    `);
+    await db.execute(sql`
+      ALTER TABLE hero_apd_request_items
+      ADD COLUMN IF NOT EXISTS master_apd_id integer;
+    `);
+    await db.execute(sql`
+      ALTER TABLE hero_apd_summaries
+      ADD COLUMN IF NOT EXISTS period_start timestamp,
+      ADD COLUMN IF NOT EXISTS period_end timestamp;
+    `);
+    await db.execute(sql`
+      UPDATE hero_apd_summary_items
+      SET remarks = request_type
+      WHERE item_name = 'Safety Shoes Size'
+        AND request_type NOT IN ('baru', 'pergantian')
+        AND request_type IS NOT NULL
+        AND request_type != '';
     `);
     summarySchemaChecked = true;
   } catch (err) {
@@ -74,9 +93,10 @@ const ITEM_NAME_MAP: Record<string, string> = {
   'Kaos Tangan Ansel': 'Sarung Tangan Ansel',
   'Hand Glove (Kabel)': 'Sarung Tangan Ansel',
   'Hand Glove (Cable)': 'Sarung Tangan Ansel',
-  'Kaos Tangan Dotting': 'Kaos Tangan Dotting',
-  'Hand Glove (Knit)': 'Kaos Tangan Dotting',
-  'Hand Glove (Cotton)': 'Kaos Tangan Dotting',
+  'Sarung Tangan Dotting': 'Sarung Tangan Dotting',
+  'Kaos Tangan Dotting': 'Sarung Tangan Dotting',
+  'Hand Glove (Knit)': 'Sarung Tangan Dotting',
+  'Hand Glove (Cotton)': 'Sarung Tangan Dotting',
   // Lockout / Tagout & Tools
   'Padlock Merah': 'Padlock Merah',
   'Padlock Kuning': 'Padlock Kuning',
@@ -137,6 +157,8 @@ export async function getSectionsWithApprovedRequests() {
     createdAt: apdSummaries.createdAt,
     updatedAt: apdSummaries.updatedAt,
     approvedAt: apdSummaries.approvedAt,
+    periodStart: apdSummaries.periodStart,
+    periodEnd: apdSummaries.periodEnd,
     itemCount: sql<number>`count(${apdSummaryItems.id})::int`,
     distinctRequests: sql<number>`count(distinct ${apdSummaryItems.apdRequestId})::int`,
   }).from(apdSummaries)
@@ -164,6 +186,8 @@ export async function getSectionsWithApprovedRequests() {
     summaryStatus: string | null;
     summaryId: number | null;
     summaryNumber: string | null;
+    periodStart?: Date | null;
+    periodEnd?: Date | null;
     latestActivityAt: Date | null;
   }> = [];
 
@@ -196,14 +220,17 @@ export async function getSectionsWithApprovedRequests() {
       summaryStatus: sum.status,
       summaryId: sum.id,
       summaryNumber: sum.summaryNumber,
+      periodStart: sum.periodStart,
+      periodEnd: sum.periodEnd,
       latestActivityAt,
     });
   }
 
   // 3. Find UNASSIGNED approved requests (ready to be generated into a new summary)
+  const effectiveSectionCol = sql<number>`COALESCE(${apdRequests.targetSectionId}, ${employees.sectionId})`;
   const unassignedReqs = await db.select({
     requestId: apdRequests.id,
-    sectionId: employees.sectionId,
+    sectionId: effectiveSectionCol,
     siteName: sites.name,
     latestReqAt: sql<Date | null>`MAX(COALESCE(${apdRequests.updatedAt}, ${apdRequests.createdAt}))`,
     updatedAt: apdRequests.updatedAt,
@@ -216,7 +243,7 @@ export async function getSectionsWithApprovedRequests() {
       sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
       sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`
     ))
-    .groupBy(apdRequests.id, employees.sectionId, sites.name, apdRequests.updatedAt, apdRequests.createdAt);
+    .groupBy(apdRequests.id, apdRequests.targetSectionId, employees.sectionId, sites.name, apdRequests.updatedAt, apdRequests.createdAt);
 
   const pendingRequests = unassignedReqs.filter(r => !assignedRequestIds.has(r.requestId));
 
@@ -297,7 +324,7 @@ export async function getSectionsWithApprovedRequests() {
   });
 }
 
-export async function getPendingRequestsForSection(sectionId: number, targetSite: string): Promise<PendingSummaryRequest[]> {
+export async function getPendingRequestsForSection(sectionId: number, targetSite: string, dateRange?: { startDate?: string; endDate?: string }): Promise<PendingSummaryRequest[]> {
   await ensureSummarySchema();
 
   const isValeQuery = targetSite === 'VALE' 
@@ -306,9 +333,10 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 
   // Check if this is Service Operation (sections 33/34)
   const isServiceCombined = sectionId === 33 || sectionId === 34;
+  const effectiveSec = sql<number>`COALESCE(${apdRequests.targetSectionId}, ${employees.sectionId})`;
   const sectionFilter = isServiceCombined
-    ? inArray(employees.sectionId, [33, 34])
-    : eq(employees.sectionId, sectionId);
+    ? inArray(effectiveSec, [33, 34])
+    : eq(effectiveSec, sectionId);
 
   // Get active summary items to avoid duplicates
   const activeSummaryRows = await db.select({
@@ -318,6 +346,24 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved']));
 
   const assignedRequestIds = new Set(activeSummaryRows.map(r => r.apdRequestId).filter(Boolean));
+
+  const pendingConditions = [
+    sectionFilter,
+    inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
+    sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
+    sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
+    isValeQuery,
+  ];
+
+  if (dateRange?.startDate) {
+    const start = new Date(`${dateRange.startDate}T00:00:00.000Z`);
+    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) >= ${start}`);
+  }
+
+  if (dateRange?.endDate) {
+    const end = new Date(`${dateRange.endDate}T23:59:59.999Z`);
+    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
+  }
 
   const approvedRequests = await db.select({
     requestId: apdRequests.id,
@@ -335,13 +381,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(
-      sectionFilter,
-      inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-      sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-      sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
-      isValeQuery
-    ))
+    .where(and(...pendingConditions))
     .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   const results: PendingSummaryRequest[] = [];
@@ -409,6 +449,12 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     });
   }
 
+  results.sort((a, b) => {
+    const siteCmp = (a.siteName || '').localeCompare(b.siteName || '', 'id-ID', { sensitivity: 'base' });
+    if (siteCmp !== 0) return siteCmp;
+    return (a.employeeName || '').localeCompare(b.employeeName || '', 'id-ID', { sensitivity: 'base' });
+  });
+
   return results;
 }
 
@@ -420,6 +466,8 @@ export type GenerateSummaryOptions = {
   }>;
   manualEntries?: ManualSummaryEntry[];
   defaultRemarks?: string;
+  periodStart?: string | Date | null;
+  periodEnd?: string | Date | null;
 };
 
 export async function generateSummary(
@@ -435,9 +483,10 @@ export async function generateSummary(
     : sql`NOT (${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`;
 
   const isServiceCombined = sectionId === 33 || sectionId === 34;
+  const effectiveSecGen = sql<number>`COALESCE(${apdRequests.targetSectionId}, ${employees.sectionId})`;
   const sectionFilter = isServiceCombined
-    ? inArray(employees.sectionId, [33, 34])
-    : eq(employees.sectionId, sectionId);
+    ? inArray(effectiveSecGen, [33, 34])
+    : eq(effectiveSecGen, sectionId);
 
   let approvedRequests = await db.select({
     requestId: apdRequests.id,
@@ -466,6 +515,12 @@ export async function generateSummary(
   } else if (options?.selectedRequests && options.selectedRequests.length === 0) {
     approvedRequests = [];
   }
+
+  approvedRequests.sort((a, b) => {
+    const siteCmp = (a.siteName || '').localeCompare(b.siteName || '', 'id-ID', { sensitivity: 'base' });
+    if (siteCmp !== 0) return siteCmp;
+    return (a.employeeName || '').localeCompare(b.employeeName || '', 'id-ID', { sensitivity: 'base' });
+  });
 
   const manualEntries = options?.manualEntries || [];
 
@@ -524,6 +579,11 @@ export async function generateSummary(
       let shoeSize = customOpt?.safetyShoesSize?.trim() || '';
 
       if (!shoeSize) {
+        const shoeItem = items.find(i => i.itemType.toLowerCase().includes('sepatu') || i.itemType.toLowerCase().includes('shoes'));
+        if (shoeItem?.notes) shoeSize = shoeItem.notes;
+      }
+
+      if (!shoeSize) {
         const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
           .where(and(
             eq(employeeAssets.employeeId, req.employeeId),
@@ -542,7 +602,7 @@ export async function generateSummary(
           itemName: 'Safety Shoes Size',
           quantity: 0,
           requestType: shoeSize,
-          remarks: employeeRemarks || shoeSize,
+          remarks: shoeSize,
         });
       }
     }
@@ -632,7 +692,7 @@ export async function generateSummary(
           itemName: 'Safety Shoes Size',
           quantity: 0,
           requestType: shoeSize,
-          remarks: employeeRemarks || shoeSize,
+          remarks: shoeSize,
         });
       }
     }
@@ -646,7 +706,13 @@ export async function generateSummary(
   const savedSectionId = isServiceCombined ? 33 : sectionId;
 
   const [summary] = await db.insert(apdSummaries).values({
-    summaryNumber, sectionId: savedSectionId, targetSite, status: 'draft', generatedByEmployeeId,
+    summaryNumber,
+    sectionId: savedSectionId,
+    targetSite,
+    status: 'draft',
+    generatedByEmployeeId,
+    periodStart: options?.periodStart ? new Date(options.periodStart) : null,
+    periodEnd: options?.periodEnd ? new Date(options.periodEnd) : null,
   }).returning();
 
   for (const item of summaryItems) {
@@ -676,6 +742,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     employeeName: employees.name,
     employeeSn: employees.employeeSn,
     sectionId: employees.sectionId,
+    targetSectionId: apdRequests.targetSectionId,
     siteId: sites.id,
     siteName: sites.name,
   }).from(apdRequests)
@@ -715,8 +782,9 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
   // 3. Determine targetSite & canonical sectionId
   const isVale = req.siteName.toLowerCase().includes('vale') || req.siteName.toUpperCase() === 'VALE';
   const targetSite = isVale ? 'VALE' : 'GABUNGAN';
-  const isServiceCombined = req.sectionId === 33 || req.sectionId === 34;
-  const sectionId = isServiceCombined ? 33 : (req.sectionId || 33);
+  const effectiveSecId = req.targetSectionId || req.sectionId;
+  const isServiceCombined = effectiveSecId === 33 || effectiveSecId === 34;
+  const sectionId = isServiceCombined ? 33 : (effectiveSecId || 33);
 
   // 4. Fetch request items
   const items = await db.select().from(apdRequestItems)
@@ -727,6 +795,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
   }
 
   let hasSafetyShoes = false;
+  let safetyShoesSizeFromItems = '';
   const summaryRows: Array<{
     apdRequestId: number;
     employeeId: number;
@@ -743,6 +812,9 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
     if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu') || item.itemType.toLowerCase().includes('shoes')) {
       hasSafetyShoes = true;
+      if (item.notes) {
+        safetyShoesSizeFromItems = item.notes;
+      }
     }
     summaryRows.push({
       apdRequestId: req.requestId,
@@ -759,17 +831,19 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
 
   // Handle Safety Shoes Size
   if (hasSafetyShoes) {
-    let shoeSize = '';
-    const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
-      .where(and(
-        eq(employeeAssets.employeeId, req.employeeId),
-        ilike(employeeAssets.itemName, '%sepatu%')
-      ))
-      .orderBy(desc(employeeAssets.assignedAt))
-      .limit(1);
+    let shoeSize = safetyShoesSizeFromItems;
+    if (!shoeSize) {
+      const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
+        .where(and(
+          eq(employeeAssets.employeeId, req.employeeId),
+          ilike(employeeAssets.itemName, '%sepatu%')
+        ))
+        .orderBy(desc(employeeAssets.assignedAt))
+        .limit(1);
 
-    if (asset?.size) {
-      shoeSize = asset.size;
+      if (asset?.size) {
+        shoeSize = asset.size;
+      }
     }
 
     if (shoeSize) {
@@ -782,7 +856,7 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
         itemName: 'Safety Shoes Size',
         quantity: 0,
         requestType: shoeSize,
-        remarks: req.notes || shoeSize,
+        remarks: shoeSize,
       });
     }
   }
@@ -890,7 +964,7 @@ export async function deleteSummaryDraft(summaryId: number) {
   return { success: true };
 }
 
-export async function resolveSummaryApprovers(sectionId: number) {
+export async function resolveSummaryApprovers(sectionId: number, targetSite?: string | null, itemSiteNames?: string[]) {
   const [targetSection] = await db.select({
     id: masterSections.id,
     name: masterSections.name,
@@ -902,6 +976,14 @@ export async function resolveSummaryApprovers(sectionId: number) {
     sectionId === 33 ||
     sectionId === 34 ||
     (targetSection?.name && targetSection.name.toLowerCase().includes('service operation'));
+
+  const isHseSection =
+    sectionId === 15 ||
+    (targetSection?.name && (
+      targetSection.name.toLowerCase().includes('hse') ||
+      targetSection.name.toLowerCase().includes('health') ||
+      targetSection.name.toLowerCase().includes('safety')
+    ));
 
   let level1Approvers: Array<{ id: number; name: string; email: string; jobTitle: string; sectionName: string }> = [];
   let level2Approver: { id: number; name: string; email: string; jobTitle: string; departmentName: string } | null = null;
@@ -975,6 +1057,61 @@ export async function resolveSummaryApprovers(sectionId: number) {
         email: empDept.email || '',
         jobTitle: empDept.jobTitle || 'Department Head',
         departmentName: dept2?.name || 'Central Services',
+      };
+    }
+  } else if (isHseSection) {
+    // Single source of truth for HSE Summary APD:
+    // - CK (apapun) dan Sangatta (apapun) -> Saipudin (#1164, HSE Leader)
+    // - Others -> Andi Safari (#1104, HSE Coordinator)
+    const siteLower = (targetSite || '').toLowerCase().trim();
+    const hasCkOrSangattaInItems = (itemSiteNames || []).some(s => {
+      const l = (s || '').toLowerCase();
+      return l.includes('ck') || l.includes('sangatta');
+    });
+    const isCkOrSangatta = siteLower.includes('ck') || siteLower.includes('sangatta') || hasCkOrSangattaInItems;
+
+    const targetHseEmpId = isCkOrSangatta ? 1164 : 1104; // 1164 = Saipudin, 1104 = Andi Safari
+
+    const [hseEmp] = await db.select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+    }).from(employees).where(and(eq(employees.id, targetHseEmpId), eq(employees.isActive, true))).limit(1);
+
+    if (hseEmp) {
+      level1Approvers.push({
+        id: hseEmp.id,
+        name: hseEmp.name,
+        email: hseEmp.email || '',
+        jobTitle: hseEmp.jobTitle || (isCkOrSangatta ? 'HSE Leader' : 'HSE Coordinator'),
+        sectionName: 'HSE',
+      });
+    }
+
+    // Level 2 (Department Head of Human Capital / HSE)
+    const [deptHC] = await db.select({
+      headEmployeeId: masterDepartments.headEmployeeId,
+      name: masterDepartments.name,
+    }).from(masterDepartments)
+      .where(targetSection?.departmentId ? eq(masterDepartments.id, targetSection.departmentId) : ilike(masterDepartments.name, '%human%'))
+      .limit(1);
+
+    const deptHeadId = deptHC?.headEmployeeId || 972;
+    const [empDept] = await db.select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      jobTitle: employees.jobTitle,
+    }).from(employees).where(and(eq(employees.id, deptHeadId), eq(employees.isActive, true))).limit(1);
+
+    if (empDept) {
+      level2Approver = {
+        id: empDept.id,
+        name: empDept.name,
+        email: empDept.email || '',
+        jobTitle: empDept.jobTitle || 'Department Head',
+        departmentName: deptHC?.name || 'Human Capital',
       };
     }
   } else {
@@ -1093,7 +1230,12 @@ export async function submitSummary(summaryId: number, signatureUrl: string) {
   await db.delete(apdSummaryApprovals).where(eq(apdSummaryApprovals.summaryId, summaryId));
   await db.delete(heroApprovals).where(eq(heroApprovals.apdSummaryId, summaryId));
 
-  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId);
+  const items = await db.select({ siteName: apdSummaryItems.siteName })
+    .from(apdSummaryItems)
+    .where(eq(apdSummaryItems.summaryId, summaryId));
+  const itemSiteNames = Array.from(new Set(items.map(i => i.siteName).filter(Boolean)));
+
+  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId, summary.targetSite, itemSiteNames);
 
   // 3. Insert Level 1 approver rows into apdSummaryApprovals & heroApprovals
   for (const approver of level1Approvers) {
@@ -1388,6 +1530,8 @@ export async function getSummaryDetails(summaryId: number) {
     status: apdSummaries.status,
     generatedAt: apdSummaries.generatedAt,
     approvedAt: apdSummaries.approvedAt,
+    periodStart: apdSummaries.periodStart,
+    periodEnd: apdSummaries.periodEnd,
     generatedByEmployeeId: apdSummaries.generatedByEmployeeId,
     submitterSignatureUrl: apdSummaries.submitterSignatureUrl,
     sectionName: masterSections.name,
@@ -1406,7 +1550,27 @@ export async function getSummaryDetails(summaryId: number) {
 
   const items = await db.select().from(apdSummaryItems)
     .where(eq(apdSummaryItems.summaryId, summaryId))
-    .orderBy(asc(apdSummaryItems.employeeName));
+    .orderBy(asc(apdSummaryItems.siteName), asc(apdSummaryItems.employeeName));
+
+  const masterCatalog = await db.select().from(masterApd).where(eq(masterApd.isActive, true)).orderBy(asc(masterApd.code));
+  const masterById = new Map(masterCatalog.map(m => [m.id, m]));
+  const masterByName = new Map(masterCatalog.map(m => [m.name.toLowerCase(), m]));
+
+  const normalizedItems = items.map((item) => {
+    let currentName = item.itemName;
+    if (item.masterApdId && masterById.has(item.masterApdId)) {
+      currentName = masterById.get(item.masterApdId)!.name;
+    } else {
+      const canonical = mapItemToColumn(item.itemName);
+      if (canonical && masterByName.has(canonical.toLowerCase())) {
+        currentName = masterByName.get(canonical.toLowerCase())!.name;
+      }
+    }
+    return {
+      ...item,
+      itemName: currentName,
+    };
+  });
 
   const actualApprovals = await db.select({
     id: apdSummaryApprovals.id,
@@ -1426,7 +1590,8 @@ export async function getSummaryDetails(summaryId: number) {
     .orderBy(asc(apdSummaryApprovals.level), asc(apdSummaryApprovals.id));
 
   // Resolve expected approvers so names & job titles are always populated even if not yet reviewed
-  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId);
+  const itemSiteNames = Array.from(new Set(items.map(i => i.siteName).filter(Boolean)));
+  const { level1Approvers, level2Approver } = await resolveSummaryApprovers(summary.sectionId, summary.targetSite, itemSiteNames);
 
   const enrichedApprovals: Array<{
     id: number;
@@ -1523,7 +1688,8 @@ export async function getSummaryDetails(summaryId: number) {
     generatedByName: summary.generatedByName || 'Staff',
     generatedByJobTitle: summary.generatedByJobTitle || '',
     departmentName: department?.name || '',
-    items,
+    items: normalizedItems,
+    masterCatalog: masterCatalog.map((m) => ({ name: m.name, hasSize: m.hasSize, isQtyOnly: m.isQtyOnly })),
     approvals: enrichedApprovals.length > 0 ? enrichedApprovals : actualApprovals,
   };
 }

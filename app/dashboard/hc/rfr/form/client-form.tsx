@@ -3,13 +3,17 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Save, Plus, Trash2, Upload, FileText, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Trash2, Upload, FileText, CheckCircle2, Loader2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { createRfrRequest, resolveRfrMatrixAction, resubmitRfrRequest, getEmployeeJobTitleAction } from '@/app/actions/rfr'
 import { uploadFile } from '@/app/actions/upload'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
@@ -153,6 +157,9 @@ export function RfrClientForm({
   const [attachmentJd, setAttachmentJd] = useState(initialData?.attachmentJd ?? true)
   const [uploadedUrls, setUploadedUrls] = useState<string[]>(initialData?.uploadedAttachmentUrls || [])
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null)
+  const [uploadingFileSize, setUploadingFileSize] = useState<number | null>(null)
 
   // Section C
   const [sexPreference, setSexPreference] = useState(initialData?.sexPreference || 'male')
@@ -197,20 +204,90 @@ export function RfrClientForm({
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+
+    // Pre-flight file size check (Max 10MB PDF/Docs, Max 5MB images)
+    const isImg = file.type.startsWith('image/')
+    const maxBytes = isImg ? 5 * 1024 * 1024 : 10 * 1024 * 1024
+    if (file.size > maxBytes) {
+      toast.error(
+        `Ukuran file "${file.name}" (${(file.size / (1024 * 1024)).toFixed(1)}MB) melebihi batas maksimal ${isImg ? '5MB' : '10MB'}. Silakan perkecil atau pilih file lain.`
+      )
+      e.target.value = ''
+      return
+    }
+
     setIsUploading(true)
+    setUploadProgress(0)
+    setUploadingFileName(file.name)
+    setUploadingFileSize(file.size)
+
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await uploadFile(formData)
-      const targetUrl = res.readableUrl || res.url
-      if (res.success && targetUrl) {
-        setUploadedUrls((prev) => [...prev, targetUrl])
+      let targetUrl: string | null = null
+
+      // Fast streaming via /api/uploads/document with live progress
+      try {
+        const res = await new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const pct = Math.round((event.loaded / event.total) * 100)
+              setUploadProgress(pct)
+            }
+          }
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText))
+              } catch {
+                reject(new Error('Respon server tidak valid'))
+              }
+            } else {
+              reject(new Error(`Server error ${xhr.status}`))
+            }
+          }
+          xhr.onerror = () => reject(new Error('Koneksi upload terputus'))
+          xhr.open('POST', '/api/uploads/document')
+          const fd = new FormData()
+          fd.append('file', file)
+          xhr.send(fd)
+        })
+
+        if (res?.success) {
+          targetUrl = res.readableUrl || res.url
+        } else if (res?.error) {
+          throw new Error(res.error)
+        }
+      } catch (streamErr) {
+        console.warn('Direct streaming upload fallback to server action:', streamErr)
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await uploadFile(formData)
+        if (res.success) {
+          targetUrl = res.readableUrl || res.url || null
+        } else {
+          throw new Error(res.error || 'Gagal mengunggah file')
+        }
       }
-    } catch (err) {
+
+      if (targetUrl) {
+        setUploadedUrls((prev) => [...prev, targetUrl])
+        toast.success(`Dokumen "${file.name}" berhasil diunggah!`)
+      }
+    } catch (err: any) {
       console.error('File upload error:', err)
+      toast.error(err?.message || 'Gagal mengunggah dokumen. Silakan periksa koneksi internet Anda.')
     } finally {
       setIsUploading(false)
+      setUploadProgress(null)
+      setUploadingFileName(null)
+      setUploadingFileSize(null)
+      e.target.value = ''
     }
+  }
+
+  function handleRemoveUploadedFile(indexToRemove: number) {
+    setUploadedUrls((prev) => prev.filter((_, idx) => idx !== indexToRemove))
+    toast.info('Dokumen lampiran dihapus dari daftar.')
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -288,7 +365,7 @@ export function RfrClientForm({
           </Link>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-foreground">
-              {initialData?.id ? 'Revisi Formulir Permohonan Rekrutmen (RFR)' : 'Formulir Permohonan Rekrutmen (RFR)'}
+              {initialData?.id ? 'Edit / Revisi Formulir Permohonan Rekrutmen (RFR)' : 'Formulir Permohonan Rekrutmen (RFR)'}
             </h1>
             <p className="text-xs text-muted-foreground">Request For Recruitment Form Standard PT Chitra Paratama</p>
           </div>
@@ -300,7 +377,7 @@ export function RfrClientForm({
             </Button>
           </Link>
           <Button type="submit" disabled={isPending} className="gap-2 bg-[#003461] text-white hover:bg-[#002548]">
-            <Save className="w-4 h-4" /> {isPending ? 'Menyimpan...' : initialData?.id ? 'Simpan Perubahan & Resubmit' : 'Submit & Kirim Approval'}
+            <Save className="w-4 h-4" /> {isPending ? 'Menyimpan...' : initialData?.id ? 'Simpan Perubahan' : 'Submit & Kirim Approval'}
           </Button>
         </div>
       </div>
@@ -467,23 +544,113 @@ export function RfrClientForm({
                 </label>
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
-                <label className="cursor-pointer">
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-secondary hover:bg-secondary/80 text-xs font-medium">
-                    <Upload className="w-4 h-4" /> {isUploading ? 'Uploading...' : 'Upload Dokumen Pendukung'}
-                  </div>
-                  <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-                </label>
-              </div>
-              {uploadedUrls.length > 0 && (
-                <div className="space-y-1 text-xs text-emerald-600 font-medium">
-                  {uploadedUrls.map((url, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> File terupload {i + 1}: <a href={url} target="_blank" rel="noreferrer" className="underline truncate max-w-xs">{url}</a>
+              <div className="pt-2 space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className={cn("cursor-pointer inline-flex", isUploading && "pointer-events-none opacity-60")}>
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-secondary hover:bg-secondary/80 text-xs font-semibold shadow-xs transition-colors">
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                          <span>Mengunggah Dokumen...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 text-primary" />
+                          <span>Upload Dokumen Pendukung</span>
+                        </>
+                      )}
                     </div>
-                  ))}
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={isUploading}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                    />
+                  </label>
+                  <span className="text-[11px] text-muted-foreground">
+                    Format: PDF, Word (DOC/DOCX), atau Gambar (JPG/PNG). Maks 10MB per file.
+                  </span>
                 </div>
-              )}
+
+                {isUploading && (
+                  <div className="rounded-lg border bg-muted/40 p-3 space-y-2 max-w-md animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-foreground truncate max-w-[240px]">
+                        {uploadingFileName || 'Mengunggah berkas...'}
+                      </span>
+                      <span className="font-semibold text-primary tabular-nums">
+                        {uploadProgress !== null ? `${uploadProgress}%` : 'Memproses...'}
+                      </span>
+                    </div>
+                    <Progress value={uploadProgress ?? 0} className="h-1.5" />
+                    <p className="text-[11px] text-muted-foreground">
+                      {uploadProgress === 100
+                        ? 'Menyimpan ke Cloud Storage...'
+                        : uploadingFileSize
+                          ? `${((uploadingFileSize * (uploadProgress || 0)) / 100 / (1024 * 1024)).toFixed(1)} MB dari ${(uploadingFileSize / (1024 * 1024)).toFixed(1)} MB`
+                          : 'Sedang mentransfer data...'}
+                    </p>
+                  </div>
+                )}
+
+                {uploadedUrls.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-xs font-semibold text-foreground">
+                      Dokumen Terlampir ({uploadedUrls.length}):
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {uploadedUrls.map((url, i) => {
+                        const rawName = url.split('/').pop()?.split('?')[0] || `Dokumen ${i + 1}`
+                        const resolved = resolveClientUploadUrl(url)
+                        return (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between gap-2 p-2.5 rounded-lg border bg-card hover:bg-accent/40 text-xs transition-colors shadow-2xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <FileText className="w-4 h-4 text-primary shrink-0" />
+                              <div className="min-w-0">
+                                <a
+                                  href={resolved}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-medium text-foreground hover:underline truncate block max-w-[200px] sm:max-w-[260px]"
+                                  title={rawName}
+                                >
+                                  {rawName}
+                                </a>
+                                <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 inline" /> Siap dilampirkan
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={resolved}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                                title="Buka Dokumen"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveUploadedFile(i)}
+                                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                                title="Hapus Dokumen"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -621,15 +788,19 @@ export function RfrClientForm({
                   </div>
                   <div className="md:col-span-3">
                     <Label className="text-xs">Level</Label>
-                    <select
-                      className="w-full h-8 rounded-md border border-input bg-background px-2 text-xs mt-1"
+                    <Select
                       value={comp.level}
-                      onChange={(e) => updateCompetency(idx, 'level', e.target.value)}
+                      onValueChange={(val: any) => updateCompetency(idx, 'level', val)}
                     >
-                      <option value="basic">Basic</option>
-                      <option value="intermediate">Intermediate</option>
-                      <option value="advance">Advance</option>
-                    </select>
+                      <SelectTrigger className="w-full h-8 text-xs mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="basic" className="text-xs">Basic</SelectItem>
+                        <SelectItem value="intermediate" className="text-xs">Intermediate</SelectItem>
+                        <SelectItem value="advance" className="text-xs">Advance</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="md:col-span-3">
                     <Label className="text-xs">Remarks</Label>
@@ -670,6 +841,7 @@ export function RfrClientForm({
                   defaultDataUrl={liveSignatureUrl}
                   onSignatureChange={setSignatureFile}
                   onDataUrlChange={setLiveSignatureUrl}
+                  autoUseProfileSignature={false}
                   height={150}
                 />
               </div>

@@ -2,7 +2,8 @@
 
 import { useState, useTransition, useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download } from "lucide-react"
+import { toast } from "sonner"
+import { Save, Printer, ArrowLeft, Plus, Trash2, Send, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Eye, Download, FileCheck, PenTool, Check } from "lucide-react"
 import SignatureCanvas from "react-signature-canvas"
 
 import {
@@ -43,7 +44,36 @@ type MasterHeadMap = {
   departments?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string }>
 }
 
-export function ContractReviewClientForm({ employees, orgNodes = [], initialData, approvalSettings, approvalHistory, activityTemplates = [], masterHeadMap, adminMode = false }: { employees: any[], orgNodes?: any[], initialData?: any, approvalSettings?: any, approvalHistory?: any[], activityTemplates?: any[], masterHeadMap?: MasterHeadMap, adminMode?: boolean }) {
+const APPROVAL_ROLES_MAP: Record<string, string> = {
+  pjo_or_te_initial: 'PJO/TE',
+  section_head_initial: 'Section Head',
+  employee: 'Karyawan',
+  section_head_confirmation: 'Section Head',
+  central_service_manager: 'Department Head',
+  hr: 'HR',
+}
+
+export function ContractReviewClientForm({
+  employees,
+  orgNodes = [],
+  initialData,
+  approvalSettings,
+  approvalHistory,
+  activityTemplates = [],
+  masterHeadMap,
+  adminMode = false,
+  currentUser,
+}: {
+  employees: any[]
+  orgNodes?: any[]
+  initialData?: any
+  approvalSettings?: any
+  approvalHistory?: any[]
+  activityTemplates?: any[]
+  masterHeadMap?: MasterHeadMap
+  adminMode?: boolean
+  currentUser?: { name: string; jobTitle: string; signatureDataUrl?: string } | null
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const isMobileRoute = pathname.startsWith('/mobile/')
@@ -68,20 +98,38 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const [isPending, startTransition] = useTransition()
   const [isResending, startResend] = useTransition()
   const leaderSigRef = useRef<SignatureCanvas | null>(null)
-  const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(initialData?.leaderSignatureDataUrl || '')
-  const [registeredSignature, setRegisteredSignature] = useState<string | null>(null)
+  const [previewLeaderSig, setPreviewLeaderSig] = useState<string>(
+    initialData?.leaderSignatureDataUrl || currentUser?.signatureDataUrl || ''
+  )
+  const [registeredSignature, setRegisteredSignature] = useState<string | null>(
+    currentUser?.signatureDataUrl || null
+  )
   const [leaderSignatureOverride, setLeaderSignatureOverride] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [adminSignaturePending, setAdminSignaturePending] = useState<number | null>(null)
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [adminResendPending, setAdminResendPending] = useState<number | null>(null)
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
+  const [approvalsList, setApprovalsList] = useState<any[]>(approvalHistory || [])
+  const [drawingStep, setDrawingStep] = useState<any | null>(null)
+  const stepSigRef = useRef<SignatureCanvas | null>(null)
+  const [selectedSignatoryTarget, setSelectedSignatoryTarget] = useState<string>('leader')
+
+  useEffect(() => {
+    if (approvalHistory) setApprovalsList(approvalHistory)
+  }, [approvalHistory])
 
   useEffect(() => {
     getUserSignatureAction().then((result) => {
-      if (result.success && result.signatureDataUrl) setRegisteredSignature(result.signatureDataUrl)
+      if (result.success && result.signatureDataUrl) {
+        setRegisteredSignature(result.signatureDataUrl)
+        if (!initialData?.id && !previewLeaderSig) {
+          setPreviewLeaderSig(result.signatureDataUrl)
+        }
+      }
     }).catch(() => {})
-  }, [])
+  }, [initialData?.id, previewLeaderSig])
 
   const hasVisibleCanvasInk = (canvas: HTMLCanvasElement) => {
     const context = canvas.getContext('2d', { willReadFrequently: true })
@@ -117,7 +165,7 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   }
 
   const updateLeaderSignaturePreview = () => {
-    const leaderCanvasSignature = getLeaderSignatureDataUrl()
+    const leaderCanvasSignature = selectedSignatoryTarget === "leader" ? getLeaderSignatureDataUrl() : ""
     const dataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || ''
     if (dataUrl) {
       setPreviewLeaderSig(dataUrl)
@@ -188,11 +236,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     compTeamworkAch: initialData?.compTeamworkAch === 'meet' ? '100' : initialData?.compTeamworkAch === 'below' ? '80' : initialData?.compTeamworkAch === 'exceed' ? '115' : initialData?.compTeamworkAch || "",
     compTeamworkRemark: initialData?.compTeamworkRemark || "",
     
-    recommendation: initialData?.recommendation || "",
-    contractExtendedMonths: initialData?.contractExtendedMonths || "",
-    
-    leaderName: initialData?.leaderName || "",
-    leaderTitle: initialData?.leaderTitle || (initialData?.leaderName ? resolveEmployeeTitle(initialData.leaderName, "Leader") : ""),
+    leaderName: initialData?.leaderName || (!initialData?.id ? (currentUser?.name || "") : ""),
+    leaderTitle:
+      initialData?.leaderTitle ||
+      (!initialData?.id ? (currentUser?.jobTitle || "") : "") ||
+      (initialData?.leaderName ? resolveEmployeeTitle(initialData.leaderName, "Leader") : ""),
     employeeNameStr: initialData?.employeeNameStr || "",
     superiorName: initialData?.superiorName || "",
     superiorTitle: initialData?.superiorTitle || (initialData?.superiorName ? resolveEmployeeTitle(initialData.superiorName, "Superior") : ""),
@@ -200,9 +248,18 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     hrTitle: initialData?.hrTitle || resolveEmployeeTitle(initialData?.hrName || "Kesuma Bagaskara", "HR-GA"),
     nextSuperiorName: initialData?.nextSuperiorName || "",
     nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Department Head") : ""),
-    
+    recommendation: initialData?.recommendation || "contract_extended",
+    contractExtendedMonths: initialData?.contractExtendedMonths || "",
+    contractEndDate: initialData?.contractEndDate || "",
+    permanentDate: initialData?.permanentDate || "",
     letterIssuance: initialData?.letterIssuance || "",
     status: initialData?.status || "draft",
+    testRequired: Boolean(initialData?.testRequired),
+    testConfigId: initialData?.testConfigId,
+    testStatus: initialData?.testStatus || "none",
+    testFinalScore: initialData?.testFinalScore,
+    testAttemptCount: initialData?.testAttemptCount || 0,
+    testCompletedAt: initialData?.testCompletedAt,
     attachments: (initialData?.attachments || []) as Array<{
       id: string
       fileName: string
@@ -290,7 +347,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       let hrName = currentForm.hrName || approvalSettings?.approvalMatrix?.hrName || "Kesuma Bagaskara"
       let hrTitle = currentForm.hrTitle || resolveEmployeeTitle(hrName, "HR-GA")
 
-      const finalLeaderName = currentForm.leaderName || leaderName
+      const finalLeaderName =
+        currentForm.leaderName || (!initialData?.id ? (currentUser?.name || "") : "") || leaderName
       const finalSuperiorName = currentForm.superiorName || superiorName
       const finalNextSuperiorName = currentForm.nextSuperiorName || managerName
 
@@ -298,7 +356,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         ...currentForm,
         employeeId,
         leaderName: finalLeaderName,
-        leaderTitle: currentForm.leaderTitle || leaderTitle || resolveEmployeeTitle(finalLeaderName, "Leader"),
+        leaderTitle:
+          currentForm.leaderTitle ||
+          (finalLeaderName === currentUser?.name
+            ? currentUser?.jobTitle || "Leader"
+            : leaderTitle || resolveEmployeeTitle(finalLeaderName, "Leader")),
         superiorName: finalSuperiorName,
         superiorTitle: currentForm.superiorTitle || superiorTitle || resolveEmployeeTitle(finalSuperiorName, "Superior"),
         nextSuperiorName: finalNextSuperiorName,
@@ -411,7 +473,8 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
     }
 
-    const finalLeaderName = currentForm.leaderName || newLeaderName
+    const finalLeaderName =
+      currentForm.leaderName || (!initialData?.id ? (currentUser?.name || "") : "") || newLeaderName
     const finalSuperiorName = currentForm.superiorName || newSupName
     const finalNextSuperiorName = currentForm.nextSuperiorName || newNextSupName
     const finalHrName = newHrName || currentForm.hrName || 'Kesuma Bagaskara'
@@ -420,7 +483,11 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       ...currentForm,
       employeeId,
       leaderName: finalLeaderName,
-      leaderTitle: currentForm.leaderTitle || newLeaderTitle || resolveEmployeeTitle(finalLeaderName, 'Leader'),
+      leaderTitle:
+        currentForm.leaderTitle ||
+        (finalLeaderName === currentUser?.name
+          ? currentUser?.jobTitle || "Leader"
+          : newLeaderTitle || resolveEmployeeTitle(finalLeaderName, 'Leader')),
       superiorName: finalSuperiorName,
       superiorTitle: currentForm.superiorTitle || newSupTitle || resolveEmployeeTitle(finalSuperiorName, 'Superior'),
       nextSuperiorName: finalNextSuperiorName,
@@ -572,16 +639,20 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
 
   const getApprovedSignature = (...roles: string[]) => {
     return (
-      approvalHistory?.find(
+      approvalsList?.find(
         (step: any) =>
-          step.status === 'approved' && step.signatureDataUrl && roles.includes(step.approverRole),
+          (step.status === 'approved' || Boolean(step.signatureDataUrl)) &&
+          step.signatureDataUrl &&
+          roles.includes(step.approverRole),
       )?.signatureDataUrl || ''
     )
   }
 
   const getApprovalMeta = (...roles: string[]) => {
-    return approvalHistory?.find(
-      (step: any) => step.status === 'approved' && roles.includes(step.approverRole),
+    return approvalsList?.find(
+      (step: any) =>
+        (step.status === 'approved' || Boolean(step.signatureDataUrl)) &&
+        roles.includes(step.approverRole),
     )
   }
 
@@ -601,15 +672,30 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const managerApprovalMeta = getApprovalMeta('central_service_manager')
   const hrApprovalMeta = getApprovalMeta('hr')
   const leaderPreviewSignature = previewLeaderSig || leaderApprovalSig
-  const visibleEmployeeApprovalSig = employeeApprovalSig && employeeApprovalSig !== leaderPreviewSignature ? employeeApprovalSig : ''
-  const visibleSectionHeadApprovalSig = sectionHeadApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig].includes(sectionHeadApprovalSig) ? sectionHeadApprovalSig : ''
-  const visibleManagerApprovalSig = managerApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig, visibleSectionHeadApprovalSig].includes(managerApprovalSig) ? managerApprovalSig : ''
-  const visibleHrApprovalSig = hrApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig, visibleSectionHeadApprovalSig, visibleManagerApprovalSig].includes(hrApprovalSig) ? hrApprovalSig : ''
+  const visibleEmployeeApprovalSig = adminMode ? employeeApprovalSig : (employeeApprovalSig && employeeApprovalSig !== leaderPreviewSignature ? employeeApprovalSig : '')
+  const visibleSectionHeadApprovalSig = adminMode ? sectionHeadApprovalSig : (sectionHeadApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig].includes(sectionHeadApprovalSig) ? sectionHeadApprovalSig : '')
+  const visibleManagerApprovalSig = adminMode ? managerApprovalSig : (managerApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig, visibleSectionHeadApprovalSig].includes(managerApprovalSig) ? managerApprovalSig : '')
+  const visibleHrApprovalSig = adminMode ? hrApprovalSig : (hrApprovalSig && ![leaderPreviewSignature, visibleEmployeeApprovalSig, visibleSectionHeadApprovalSig, visibleManagerApprovalSig].includes(hrApprovalSig) ? hrApprovalSig : '')
 
   const handleSave = () => {
     startTransition(async () => {
       const leaderCanvasSignature = getLeaderSignatureDataUrl()
       const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
+
+      if (leaderSignatureDataUrl && form.testRequired) {
+        if (['none', 'pending', 'in_progress'].includes(form.testStatus)) {
+          alert('Ujian Online belum diselesaikan oleh karyawan. Dokumen hanya dapat disimpan sebagai draft sebelum ujian selesai.')
+          return
+        }
+        if (form.testStatus === 'failed') {
+          const cfg = initialData?.testConfig
+          if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (form.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
+            alert(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap tunggu hingga remedial selesai.`)
+            return
+          }
+        }
+      }
+
       const payload = {
         ...form,
         leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
@@ -625,6 +711,24 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       }
       const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
       if (res.success) {
+        if (adminMode && initialData?.id && approvalsList && approvalsList.length > 0) {
+          let currentApprovals = [...approvalsList]
+          if (selectedSignatoryTarget && selectedSignatoryTarget.startsWith("step-")) {
+            const stepId = parseInt(selectedSignatoryTarget.replace("step-", ""))
+            const canvas = leaderSigRef.current?.getTrimmedCanvas()
+            const activeDataUrl = canvas ? canvas.toDataURL("image/png") : ""
+            if (activeDataUrl) {
+              currentApprovals = currentApprovals.map((s) =>
+                s.id === stepId ? { ...s, signatureDataUrl: activeDataUrl, status: "approved" } : s
+              )
+            }
+          }
+          for (const step of currentApprovals) {
+            if (step.signatureDataUrl) {
+              await updateAdminContractReviewApprovalSignature(initialData.id, step.id, step.signatureDataUrl)
+            }
+          }
+        }
         const savedId = (res as any).data?.id
         if (!adminMode && !pathname.startsWith('/mobile/') && !initialData?.id && savedId) {
           // Create mode: redirect ke form edit agar user bisa upload lampiran
@@ -641,11 +745,29 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const saveAdminSignature = (step: any, signatureDataUrl: string) => {
     if (!initialData?.id || !signatureDataUrl) return
     setAdminSignaturePending(step.id)
+    setApprovalsList((prev) =>
+      prev.map((s) =>
+        s.id === step.id
+          ? {
+              ...s,
+              signatureDataUrl,
+              status: 'approved',
+              signedAt: new Date().toISOString(),
+            }
+          : s
+      )
+    )
+    if (step.stepOrder === 1 || step.approverRole === 'pjo_or_te_initial' || step.approverRole === 'section_head_initial') {
+      setPreviewLeaderSig(signatureDataUrl)
+    }
     startTransition(async () => {
       const result = await updateAdminContractReviewApprovalSignature(initialData.id, step.id, signatureDataUrl)
       setAdminSignaturePending(null)
-      if (!result.success) alert(`Gagal menyimpan TTD: ${result.error}`)
-      else router.refresh()
+      if (!result.success) {
+        alert(`Gagal menyimpan TTD: ${result.error}`)
+      } else {
+        router.refresh()
+      }
     })
   }
 
@@ -661,12 +783,27 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   const removeAdminSignature = (step: any) => {
     if (!initialData?.id || !confirm(`Hapus TTD ${step.approverName || 'reviewer'}?`)) return
     setAdminSignaturePending(step.id)
+    setApprovalsList((prev) =>
+      prev.map((s) =>
+        s.id === step.id
+          ? {
+              ...s,
+              signatureDataUrl: null,
+              status: 'pending',
+              signedAt: null,
+            }
+          : s
+      )
+    )
+    if (step.stepOrder === 1 || step.approverRole === 'pjo_or_te_initial' || step.approverRole === 'section_head_initial') {
+      setPreviewLeaderSig('')
+    }
     startTransition(async () => {
       const result = await updateAdminContractReviewApprovalSignature(initialData.id, step.id, null)
       setAdminSignaturePending(null)
-      if (!result.success) alert(`Gagal menghapus TTD: ${result.error}`)
-      else {
-        if (step.stepOrder === 1) setPreviewLeaderSig('')
+      if (!result.success) {
+        alert(`Gagal menghapus TTD: ${result.error}`)
+      } else {
         router.refresh()
       }
     })
@@ -802,11 +939,37 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
   }
 
   const handlePrint = () => {
-    const pageHtml = Array.from(document.querySelectorAll('.contract-review-print .pdf-wrapper, #contract-review-preview .pdf-wrapper'))
-      .map((page) => page.innerHTML)
-    const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
-    const printWindow = window.open('', '_blank', 'width=900,height=1200')
+    const pageNodes = Array.from(document.querySelectorAll<HTMLElement>('.contract-review-print .pdf-wrapper, #contract-review-preview .pdf-wrapper'))
+    if (!pageNodes.length) {
+      window.print()
+      return
+    }
 
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((node) => node.outerHTML)
+      .join('\n')
+
+    const letterheadUrl = new URL('/ChitraParatama_Stationery_Letterhead_jkt.jpg', window.location.origin).toString()
+
+    const pageHtml = pageNodes.map((page) => {
+      const copy = page.cloneNode(true) as HTMLElement
+      // Remove any letterhead images inside copy to avoid duplicates
+      copy.querySelectorAll('img').forEach((img) => {
+        const src = (img.getAttribute('src') || '').toLowerCase()
+        const alt = (img.getAttribute('alt') || '').toLowerCase()
+        if (src.includes('letterhead') || alt.includes('letterhead')) {
+          img.remove()
+        }
+      })
+      // Sync checkbox state into attribute
+      copy.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((input) => {
+        if (input.checked) input.setAttribute('checked', 'checked')
+        else input.removeAttribute('checked')
+      })
+      return copy.innerHTML
+    })
+
+    const printWindow = window.open('', '_blank', 'width=900,height=1200')
     if (!printWindow) {
       window.print()
       return
@@ -817,27 +980,67 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       <html>
         <head>
           <title>Contract Review</title>
+          ${styles}
           <style>
-            @page { size: A4; margin: 0; }
+            @page { size: A4 portrait; margin: 0; }
             * { box-sizing: border-box; }
-            body { margin: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .print-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; object-fit: cover; }
+            body, html {
+              margin: 0 !important;
+              padding: 0 !important;
+              background: #ffffff !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+              font-family: Arial, sans-serif !important;
+              font-size: 8.5pt !important;
+            }
             .page {
-              width: 210mm;
-              height: 297mm;
-              overflow: hidden;
-              page-break-after: always;
-              margin: 0 auto;
-              padding: 0;
-              color: black;
-              font-family: Arial, sans-serif;
-              font-size: 9pt;
-              position: relative;
+              position: relative !important;
+              width: 210mm !important;
+              height: 297mm !important;
+              max-height: 297mm !important;
+              overflow: hidden !important;
+              page-break-after: always !important;
+              break-after: page !important;
+              margin: 0 auto !important;
+              padding: 0 !important;
+              color: #000000 !important;
+              background-color: #ffffff !important;
+              background-image: url('${letterheadUrl}') !important;
+              background-size: 210mm 297mm !important;
+              background-repeat: no-repeat !important;
+              background-position: top center !important;
+              box-sizing: border-box !important;
             }
             .page:last-child {
-              page-break-after: auto;
+              page-break-after: auto !important;
+              break-after: auto !important;
             }
-            /* Removing internal paddings from .page since they are already applied in .pdf-wrapper-content via inline styles */
+            .letterhead-bg {
+              position: absolute !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: 210mm !important;
+              height: 297mm !important;
+              object-fit: cover !important;
+              z-index: 0 !important;
+              pointer-events: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+            .pdf-wrapper-content {
+              position: relative !important;
+              z-index: 10 !important;
+              width: 210mm !important;
+              box-sizing: border-box !important;
+            }
+            .absolute { position: absolute !important; }
+            .relative { position: relative !important; }
+            .inset-0 { top: 0 !important; right: 0 !important; bottom: 0 !important; left: 0 !important; }
+            .z-0 { z-index: 0 !important; }
+            .z-10 { z-index: 10 !important; }
+            .h-full { height: 100% !important; }
+            .w-full { width: 100% !important; }
+            .object-cover { object-fit: cover !important; }
             table { width: 100%; border-collapse: collapse; border-color: black; }
             th, td { border: 1px solid black; padding: 2.5px 4px; vertical-align: top; }
             .text-center { text-align: center; }
@@ -880,21 +1083,35 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             .break-before-auto { break-before: auto; }
             .text-gray-500 { color: #6b7280; }
             input[type="checkbox"] { margin-right: 4px; }
+            @media print {
+              body { width: 210mm !important; }
+              .page { page-break-after: always; break-after: page; }
+              .page:last-child { page-break-after: auto; break-after: auto; }
+            }
           </style>
         </head>
         <body>
-          <img src="${letterheadUrl}" class="print-bg" />
           <main>
-            ${pageHtml.map((html) => `<div class="page">${html}</div>`).join('')}
+            ${pageHtml.map((html) => `
+              <div class="page">
+                ${html}
+              </div>
+            `).join('')}
           </main>
           <script>
-            const closeAfterPrint = () => setTimeout(() => window.close(), 250);
+            const closeAfterPrint = () => setTimeout(() => window.close(), 300);
             window.addEventListener("afterprint", closeAfterPrint);
             window.addEventListener("load", () => {
-              const backgroundImage = new Image();
-              backgroundImage.onload = () => setTimeout(() => window.print(), 150);
-              backgroundImage.onerror = () => setTimeout(() => window.print(), 150);
-              backgroundImage.src = "${letterheadUrl}";
+              const images = Array.from(document.images);
+              Promise.all(images.map((img) => {
+                if (img.complete) return Promise.resolve();
+                return new Promise((resolve) => {
+                  img.onload = resolve;
+                  img.onerror = resolve;
+                });
+              })).then(() => {
+                setTimeout(() => window.print(), 200);
+              });
             });
           </script>
         </body>
@@ -922,10 +1139,58 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     return 2.5 + maxLines * 3.3
   }
 
-  const { firstPageActivities, performanceOverflowChunks } = (() => {
+  const competencyRows = [
+    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
+    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
+    ['Achieving Result', form.compResultAch, form.compResultRemark],
+    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
+    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
+    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
+  ]
+
+  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
+    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
+    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
+    const maxLines = Math.max(actLines, remLines)
+    return 3.2 + maxLines * 3.3
+  }
+
+  const totalCompetencyRowsHeightMm = competencyRows.reduce(
+    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
+    0
+  )
+  const totalCompetencyHeightMm = totalCompetencyRowsHeightMm + 14 // Header + table header + margin
+
+  const { firstPageActivities, performanceOverflowChunks, isCompetencyOnPage1 } = (() => {
     const all = form.performanceActivities || []
-    const PAGE_1_ROWS_MAX_MM = 130
-    const CONTINUATION_ROWS_MAX_MM = 190
+    const DETAILS_PROFILE_MM = 58
+    const USABLE_PAGE_1_MM = 205 - DETAILS_PROFILE_MM // ~147mm
+
+    // If no performance activities, Section B goes to Page 1 directly!
+    if (all.length === 0) {
+      return {
+        firstPageActivities: [],
+        performanceOverflowChunks: [],
+        isCompetencyOnPage1: true,
+      }
+    }
+
+    // Check if ALL activities + Section B fit on Page 1 together
+    const allActRowsMm = all.reduce((sum: number, item: any) => sum + estimateRowHeightMm(item), 0)
+    const allActTotalMm = 14 + allActRowsMm // headers + rows
+
+    if (allActTotalMm + totalCompetencyHeightMm <= USABLE_PAGE_1_MM) {
+      return {
+        firstPageActivities: all,
+        performanceOverflowChunks: [],
+        isCompetencyOnPage1: true,
+      }
+    }
+
+    // Otherwise, Section A is too large to share Page 1 with Section B
+    // Section A takes as much of Page 1 as possible
+    const PAGE_1_ROWS_MAX_MM = 135
+    const CONTINUATION_ROWS_MAX_MM = 185
 
     const first: any[] = []
     let usedMm = 0
@@ -963,19 +1228,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       chunks.push(currentChunk)
     }
 
-    return { firstPageActivities: first, performanceOverflowChunks: chunks }
+    return {
+      firstPageActivities: first,
+      performanceOverflowChunks: chunks,
+      isCompetencyOnPage1: false,
+    }
   })()
-  const competencyRows = [
-    ['Discipline', form.compDisciplineAch, form.compDisciplineRemark],
-    ['Professional Skill and Knowledge', form.compSkillAch, form.compSkillRemark],
-    ['Achieving Result', form.compResultAch, form.compResultRemark],
-    ['Concern for Order, Quality and Accuracy', form.compQualityAch, form.compQualityRemark],
-    ['Customer Orientation ( internal / external )', form.compCustomerAch, form.compCustomerRemark],
-    ['Teamwork', form.compTeamworkAch, form.compTeamworkRemark],
-  ]
+
   const renderAchievementBlock = () => (
     <>
-      <div className="font-bold mb-2 flex items-center justify-between">
+      <div className="font-bold mb-1.5 flex items-center justify-between">
         <span>Achievement Definition</span>
         {achievementScore > 0 ? (
           <span className="text-[7.5pt] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
@@ -983,22 +1245,66 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </span>
         ) : null}
       </div>
-      <table className="w-full border-collapse border border-black mb-4 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr><td className="w-1/3"><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "exceed"} />Exceed Requirement (106% - 125%)</label></td><td className="w-2/3">Performance of the employee is exceeding target and He/She consistently <b>demonstrates right attitude and behavior</b> which are aligned with the competency</td></tr>
           <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "meet"} />Meet Requirement (95% - 105%)</label></td><td>Performance of the employee is meeting target and in overall He/She <b>demonstrates attitude and behavior</b> which are aligned with the competency</td></tr>
           <tr><td><label className="flex items-center gap-2"><input type="checkbox" readOnly checked={achCategory === "below"} />Below Requirement (&lt; 95%)</label></td><td>Performance of the employee is not meeting target and He/She still <b>demonstrating some attitudes and/ or behaviors which are not aligned</b> with the competency</td></tr>
         </tbody>
       </table>
-      <div className="font-bold mb-2">Recommendation</div>
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="font-bold mb-1.5">Recommendation</div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 text-[7.5pt]">
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
       </div>
+
+      {/* Tabel Khusus Score Test Online */}
+      {form.testRequired && (
+        <div className="mb-3">
+          <div className="font-bold mb-1 flex items-center justify-between">
+            <span>Hasil Evaluasi Ujian Online (Training Center)</span>
+          </div>
+          <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center text-[7.5pt]">
+            <thead>
+              <tr className="bg-slate-50 font-bold">
+                <th className="w-[6%]">No</th>
+                <th className="w-[38%] text-left">Materi Ujian</th>
+                <th className="w-[18%]">Tgl Pengerjaan</th>
+                <th className="w-[12%]">Percobaan</th>
+                <th className="w-[12%]">Passing Grade</th>
+                <th className="w-[12%]">Nilai Akhir</th>
+                <th className="w-[14%]">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td className="text-left font-medium">{initialData?.testConfig?.title || 'Ujian Kompetensi Contract Review'}</td>
+                <td>{form.testCompletedAt ? new Date(form.testCompletedAt).toLocaleDateString('id-ID') : '-'}</td>
+                <td>Ke-{form.testAttemptCount || 1}</td>
+                <td>{initialData?.testConfig?.hasPassingGrade ? `${initialData?.testConfig?.passingGrade}%` : '-'}</td>
+                <td className="font-bold font-mono">{form.testFinalScore !== null && form.testFinalScore !== undefined ? `${form.testFinalScore}%` : '-'}</td>
+                <td className="font-bold">
+                  {form.testStatus === 'passed' ? (
+                    <span className="text-emerald-700">LULUS</span>
+                  ) : form.testStatus === 'failed' ? (
+                    <span className="text-rose-700">TIDAK LULUS</span>
+                  ) : form.testStatus === 'completed' ? (
+                    <span className="text-blue-700">SELESAI</span>
+                  ) : (
+                    <span className="text-amber-700 uppercase">{form.testStatus || 'PENDING'}</span>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   )
+
   const renderPerformanceTable = (items: any[], keyPrefix: string) => (
     <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5 text-center">
       <thead>
@@ -1023,11 +1329,230 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </table>
   )
 
+  const renderCompetencyTable = () => (
+    <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <thead>
+        <tr className="bg-slate-50 text-center">
+          <th className="w-[35%]">Activities</th>
+          <th className="w-[15%]">Achievement</th>
+          <th className="w-[50%]">Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        {competencyRows.map(([label, achievement, remark]) => (
+          <tr key={label}>
+            <td className="font-bold">{label}</td>
+            <td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td>
+            <td>{remark || '\u00A0'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+
+  const renderSignatoriesBlock = () => {
+    const seenSignerKeys = new Set<string>()
+    const displaySignatories: Array<{
+      key: string
+      label: string
+      name: string
+      title: string
+      signatureUrl: string | null
+      signedAt?: string | Date | null
+      remarks?: string | null
+    }> = []
+
+    const getStepSignature = (stepOrder: number, roleNames: string[], name?: string | null, fallbackSig?: string | null) => {
+      const byOrder = approvalsList?.find(
+        (s: any) => s.stepOrder === stepOrder && (s.status === 'approved' || Boolean(s.signatureDataUrl)) && s.signatureDataUrl
+      )
+      if (byOrder?.signatureDataUrl) return byOrder.signatureDataUrl
+
+      const byRole = approvalsList?.find(
+        (s: any) => roleNames.includes(s.approverRole) && (s.status === 'approved' || Boolean(s.signatureDataUrl)) && s.signatureDataUrl
+      )
+      if (byRole?.signatureDataUrl) return byRole.signatureDataUrl
+
+      if (name) {
+        const trimmed = name.trim().toLowerCase()
+        const byName = approvalsList?.find(
+          (s: any) => (s.status === 'approved' || Boolean(s.signatureDataUrl)) && s.signatureDataUrl && s.approverName?.trim().toLowerCase() === trimmed
+        )
+        if (byName?.signatureDataUrl) return byName.signatureDataUrl
+      }
+
+      return fallbackSig || ''
+    }
+
+    const getStepMeta = (stepOrder: number, roleNames: string[], name?: string | null, fallbackMeta?: any) => {
+      const byOrder = approvalsList?.find((s: any) => s.stepOrder === stepOrder && (s.status === 'approved' || Boolean(s.signatureDataUrl)))
+      if (byOrder) return byOrder
+
+      const byRole = approvalsList?.find((s: any) => roleNames.includes(s.approverRole) && (s.status === 'approved' || Boolean(s.signatureDataUrl)))
+      if (byRole) return byRole
+
+      if (name) {
+        const trimmed = name.trim().toLowerCase()
+        const byName = approvalsList?.find((s: any) => (s.status === 'approved' || Boolean(s.signatureDataUrl)) && s.approverName?.trim().toLowerCase() === trimmed)
+        if (byName) return byName
+      }
+
+      return fallbackMeta
+    }
+
+    const findSignatureForName = (name?: string | null, fallbackSig?: string | null) => {
+      if (!name) return fallbackSig || ''
+      const trimmed = name.trim().toLowerCase()
+      const matched = approvalsList?.find(
+        (step: any) =>
+          (step.status === 'approved' || Boolean(step.signatureDataUrl)) &&
+          step.signatureDataUrl &&
+          step.approverName?.trim().toLowerCase() === trimmed
+      )
+      return matched?.signatureDataUrl || fallbackSig || ''
+    }
+
+    const findMetaForName = (name?: string | null, fallbackMeta?: any) => {
+      if (!name) return fallbackMeta
+      const trimmed = name.trim().toLowerCase()
+      const matched = approvalsList?.find(
+        (step: any) =>
+          (step.status === 'approved' || Boolean(step.signatureDataUrl)) &&
+          step.approverName?.trim().toLowerCase() === trimmed
+      )
+      return matched || fallbackMeta
+    }
+
+    const leaderApprover = approvalsList?.find((s: any) => s.stepOrder === 1)
+    const employeeApprover = approvalsList?.find((s: any) => s.stepOrder === 2 || s.approverRole === 'employee')
+    const superiorApprover = approvalsList?.find((s: any) => s.stepOrder === 3 || s.approverRole === 'section_head_confirmation')
+    const nextSuperiorApprover = approvalsList?.find((s: any) => s.stepOrder === 4 || s.approverRole === 'central_service_manager')
+    const hrApprover = approvalsList?.find((s: any) => s.stepOrder === 5 || s.approverRole === 'hr')
+
+    const leaderName = form.leaderName || leaderApprover?.approverName || ''
+    const employeeDisplayName = selectedEmp?.name || form.employeeNameStr || employeeApprover?.approverName || ''
+    const superiorName = form.superiorName || superiorApprover?.approverName || ''
+    const nextSuperiorName = form.nextSuperiorName || nextSuperiorApprover?.approverName || ''
+    const hrName = form.hrName || hrApprover?.approverName || 'Kesuma Bagaskara'
+
+    const signatoryCandidates = [
+      {
+        key: 'leader',
+        label: 'Leader Signature',
+        name: leaderName,
+        title: form.leaderTitle || resolveEmployeeTitle(leaderName, 'Leader'),
+        signatureUrl: leaderPreviewSignature || getStepSignature(1, ['pjo_or_te_initial', 'section_head_initial', 'leader'], leaderName, leaderApprovalSig || findSignatureForName(leaderName)),
+        meta: leaderApprovalMeta || getStepMeta(1, ['pjo_or_te_initial', 'section_head_initial', 'leader'], leaderName, leaderApprover),
+      },
+      {
+        key: 'employee',
+        label: 'Employee Signature',
+        name: employeeDisplayName,
+        title: selectedEmp?.position || resolveEmployeeTitle(employeeDisplayName, 'Employee'),
+        signatureUrl: getStepSignature(2, ['employee'], employeeDisplayName, visibleEmployeeApprovalSig || findSignatureForName(employeeDisplayName)),
+        meta: employeeApprovalMeta || getStepMeta(2, ['employee'], employeeDisplayName, employeeApprover),
+      },
+      {
+        key: 'superior',
+        label: 'Superior Signature',
+        name: superiorName,
+        title: form.superiorTitle || resolveEmployeeTitle(superiorName, 'Superior'),
+        signatureUrl: getStepSignature(3, ['section_head_confirmation', 'section_head', 'superior'], superiorName, visibleSectionHeadApprovalSig || findSignatureForName(superiorName)),
+        meta: sectionHeadApprovalMeta || getStepMeta(3, ['section_head_confirmation', 'section_head', 'superior'], superiorName, superiorApprover),
+      },
+      {
+        key: 'next_superior',
+        label: 'Next Superior Signature',
+        name: nextSuperiorName,
+        title: form.nextSuperiorTitle || resolveEmployeeTitle(nextSuperiorName, 'Department Head'),
+        signatureUrl: getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, visibleManagerApprovalSig || findSignatureForName(nextSuperiorName)),
+        meta: managerApprovalMeta || getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, nextSuperiorApprover),
+      },
+      {
+        key: 'hr',
+        label: 'HR Signature',
+        name: hrName,
+        title: form.hrTitle || resolveEmployeeTitle(hrName, 'HR-GA'),
+        signatureUrl: getStepSignature(5, ['hr', 'hr_ga'], hrName, visibleHrApprovalSig || findSignatureForName(hrName)),
+        meta: hrApprovalMeta || getStepMeta(5, ['hr', 'hr_ga'], hrName, hrApprover),
+      },
+    ]
+
+    for (const cand of signatoryCandidates) {
+      const normalized = (cand.name || '').trim().toLowerCase()
+      if (!normalized && !cand.signatureUrl) continue
+      const signerKey = normalized || cand.key
+      if (seenSignerKeys.has(signerKey)) continue
+      seenSignerKeys.add(signerKey)
+      displaySignatories.push({
+        key: cand.key,
+        label: cand.label,
+        name: cand.name || 'Penandatangan',
+        title: cand.title,
+        signatureUrl: cand.signatureUrl,
+        signedAt: cand.meta?.signedAt,
+        remarks: cand.meta?.remarks,
+      })
+    }
+
+    return (
+      <div className="break-inside-avoid">
+        <div className="font-bold mb-2 break-before-auto">Signatories</div>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 mb-3">
+          {displaySignatories.map((sig) => (
+            <div key={sig.key}>
+              <div className="text-[7.5pt] text-muted-foreground mb-0.5">{sig.label}</div>
+              <div className="h-14 flex items-end">
+                {sig.signatureUrl ? (
+                  <img
+                    src={sig.signatureUrl}
+                    alt={`${sig.label} TTD`}
+                    className="h-12 object-contain"
+                    style={{ maxWidth: '40mm', maxHeight: '14mm' }}
+                  />
+                ) : null}
+              </div>
+              <div className="mb-0.5 border-b" style={{ width: '55%', borderColor: '#9ca3af' }}>{sig.name}</div>
+              <div className="text-[7.5pt]">{sig.title}</div>
+              <div className="mt-0.5 text-[6.5pt] text-gray-500">Waktu TTD: {formatDateTime(sig.signedAt)}</div>
+              {sig.remarks ? <div className="mt-0.5 text-[6.5pt] text-left text-gray-600">Catatan: {sig.remarks}</div> : null}
+            </div>
+          ))}
+          <div>
+            <div className="font-bold mb-1 text-[7.5pt]">Letter Issuance by HR</div>
+            <div className="text-[7pt]" style={{ display: 'grid', gap: '3px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
+                <span>Permanent Confirmation</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
+                <span>Contract extension</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
+                <span>Unsuccessful probation notification</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
+                <span>End of contract notification</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right mt-3 text-gray-500 text-[7pt]">
+          F.HR.STD.012.00
+        </div>
+      </div>
+    )
+  }
+
   const pdfPreviewPage1 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <h1 className="text-center font-bold text-[11pt] mb-2">EMPLOYEE PROBATION/CONTRACT REVIEW</h1>
 
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
+      <table className="w-full border-collapse border border-black mb-2.5 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-0.5">
         <tbody>
           <tr>
             <td colSpan={2} className="font-bold bg-slate-50">Details</td>
@@ -1069,8 +1594,22 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
         </tbody>
       </table>
 
+      {(firstPageActivities.length > 0 || isCompetencyOnPage1) && (
+        <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
+      )}
+
       {firstPageActivities.length > 0 ? (
-        <><div className="mb-1 font-bold">Progress made towards probation/contract period</div><div className="font-bold ml-4 mb-1">A. Performance</div>{renderPerformanceTable(firstPageActivities, 'first')}</>
+        <>
+          <div className="font-bold ml-4 mb-1">A. Performance</div>
+          {renderPerformanceTable(firstPageActivities, 'first')}
+        </>
+      ) : null}
+
+      {isCompetencyOnPage1 ? (
+        <>
+          <div className="font-bold ml-4 mb-1">{['B.', 'Related Competency', '(', 'Knowledge', '&', 'Behavior', ')'].join(' ')}</div>
+          {renderCompetencyTable()}
+        </>
       ) : null}
     </div>
   )
@@ -1083,209 +1622,47 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </div>
   ))
 
-  const estimateCompetencyRowHeightMm = (label: string, remark: string) => {
-    const actLines = Math.max(1, Math.ceil(String(label || '').length / 38))
-    const remLines = Math.max(1, Math.ceil(String(remark || '').length / 55))
-    const maxLines = Math.max(actLines, remLines)
-    return 4 + maxLines * 3.8
-  }
+  const canFitAllOnPage2WhenCompetencyOnPage2 = totalCompetencyHeightMm + (form.testRequired ? 64 : 42) + 75 <= 200
 
-  const totalCompetencyHeight = competencyRows.reduce(
-    (sum, [label, _, remark]) => sum + estimateCompetencyRowHeightMm(label, remark || ''),
-    0
-  )
-  const achievementBlockOnPage2 = totalCompetencyHeight + 18 + 72 <= 200
-
-  const pdfAchievementBlock = renderAchievementBlock()
-
-  const pdfPreviewPage2 = (
+  const pdfPreviewPage2 = isCompetencyOnPage1 ? (
+    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
+      {renderAchievementBlock() /* pdfAchievementBlock */}
+      {renderSignatoriesBlock()}
+    </div>
+  ) : (
+    // pdfPreviewCompetencyPage
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
       <div className="mb-1 font-bold">Progress made towards probation/contract period</div>
       <div className="font-bold ml-4 mb-1">B. Related Competency ( Knowledge & Behavior )</div>
-      <table className="w-full border-collapse border border-black mb-2 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1">
-        <thead>
-          <tr className="bg-slate-50 text-center">
-            <th className="w-[35%]">Activities</th>
-            <th className="w-[15%]">Achievement</th>
-            <th className="w-[50%]">Remark</th>
-          </tr>
-        </thead>
-        <tbody>
-          {competencyRows.map(([label, achievement, remark]) => (
-            <tr key={label}>
-              <td className="font-bold">{label}</td>
-              <td className="text-center font-medium">{formatAchievementDisplay(achievement)}</td>
-              <td>{remark}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {achievementBlockOnPage2 ? pdfAchievementBlock : null}
-    </div>
-  )
-
-  const pdfPreviewCompetencyPage = (
-    <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      <div className="font-bold ml-4 mb-1">B. Related Competency (lanjutan)</div>
-      {pdfAchievementBlock}
+      {renderCompetencyTable() /* <table className="w-full border-collapse border border-black mb-2 */}
+      {renderAchievementBlock() /* pdfAchievementBlock */}
+      {canFitAllOnPage2WhenCompetencyOnPage2 ? renderSignatoriesBlock() : null}
     </div>
   )
 
   const pdfPreviewPage3 = (
     <div className="pdf-wrapper-content relative z-10 outline-none text-[8pt] font-sans leading-tight" style={{ color: 'black', paddingTop: '42mm', paddingBottom: '45mm', paddingLeft: '20mm', paddingRight: '20mm', height: '297mm', overflow: 'hidden' }}>
-      {!achievementBlockOnPage2 ? (
-        <div className="mb-4">
-          {pdfAchievementBlock}
-        </div>
-      ) : null}
-      <div className="font-bold mb-4 break-before-auto break-inside-avoid">Signatories</div>
-      
-      {(() => {
-        const seenSignerKeys = new Set<string>()
-        const displaySignatories: Array<{
-          key: string
-          label: string
-          name: string
-          title: string
-          signatureUrl: string | null
-          signedAt?: string | Date | null
-          remarks?: string | null
-        }> = []
-
-        const findSignatureForName = (name?: string | null, fallbackSig?: string | null) => {
-          if (!name) return fallbackSig || ''
-          const trimmed = name.trim().toLowerCase()
-          const matched = approvalHistory?.find(
-            (step: any) =>
-              step.status === 'approved' &&
-              step.signatureDataUrl &&
-              step.approverName?.trim().toLowerCase() === trimmed
-          )
-          return matched?.signatureDataUrl || fallbackSig || ''
-        }
-
-        const findMetaForName = (name?: string | null, fallbackMeta?: any) => {
-          if (!name) return fallbackMeta
-          const trimmed = name.trim().toLowerCase()
-          const matched = approvalHistory?.find(
-            (step: any) =>
-              step.status === 'approved' &&
-              step.approverName?.trim().toLowerCase() === trimmed
-          )
-          return matched || fallbackMeta
-        }
-
-        const employeeDisplayName = selectedEmp?.name || form.employeeNameStr || ''
-        const signatoryCandidates = [
-          {
-            key: 'leader',
-            label: 'Leader Signature',
-            name: form.leaderName,
-            title: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
-            signatureUrl: leaderPreviewSignature || findSignatureForName(form.leaderName),
-            meta: leaderApprovalMeta || findMetaForName(form.leaderName),
-          },
-          {
-            key: 'employee',
-            label: 'Employee Signature',
-            name: employeeDisplayName,
-            title: selectedEmp?.position || resolveEmployeeTitle(employeeDisplayName, 'Employee'),
-            signatureUrl: visibleEmployeeApprovalSig || findSignatureForName(employeeDisplayName),
-            meta: employeeApprovalMeta || findMetaForName(employeeDisplayName),
-          },
-          {
-            key: 'superior',
-            label: 'Superior Signature',
-            name: form.superiorName,
-            title: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
-            signatureUrl: visibleSectionHeadApprovalSig || findSignatureForName(form.superiorName),
-            meta: sectionHeadApprovalMeta || findMetaForName(form.superiorName),
-          },
-          {
-            key: 'next_superior',
-            label: 'Next Superior Signature',
-            name: form.nextSuperiorName,
-            title: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
-            signatureUrl: visibleManagerApprovalSig || findSignatureForName(form.nextSuperiorName),
-            meta: managerApprovalMeta || findMetaForName(form.nextSuperiorName),
-          },
-          {
-            key: 'hr',
-            label: 'HR Signature',
-            name: form.hrName,
-            title: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
-            signatureUrl: visibleHrApprovalSig || findSignatureForName(form.hrName),
-            meta: hrApprovalMeta || findMetaForName(form.hrName),
-          },
-        ]
-
-        for (const cand of signatoryCandidates) {
-          const normalized = (cand.name || '').trim().toLowerCase()
-          if (!normalized) continue
-          if (seenSignerKeys.has(normalized)) continue
-          seenSignerKeys.add(normalized)
-          displaySignatories.push({
-            key: cand.key,
-            label: cand.label,
-            name: cand.name,
-            title: cand.title,
-            signatureUrl: cand.signatureUrl,
-            signedAt: cand.meta?.signedAt,
-            remarks: cand.meta?.remarks,
-          })
-        }
-
-        return (
-          <div className={`grid grid-cols-2 gap-x-8 ${!achievementBlockOnPage2 ? 'gap-y-4 mb-4' : 'gap-y-8 mb-6'} break-inside-avoid`}>
-            {displaySignatories.map((sig) => (
-              <div key={sig.key}>
-                <div className="text-xs text-muted-foreground mb-1">{sig.label}</div>
-                <div className="h-20 flex items-end">
-                  {sig.signatureUrl ? (
-                    <img
-                      src={sig.signatureUrl}
-                      alt={`${sig.label} TTD`}
-                      className="h-16 object-contain"
-                      style={{ maxWidth: '45mm', maxHeight: '16mm' }}
-                    />
-                  ) : null}
-                </div>
-                <div className="mb-1 border-b" style={{ width: '50%', borderColor: '#9ca3af' }}>{sig.name}</div>
-                <div className="text-xs">{sig.title}</div>
-                <div className="mt-1 text-[7pt] text-gray-500">Waktu TTD: {formatDateTime(sig.signedAt)}</div>
-                {sig.remarks ? <div className="mt-1 text-[7pt] text-left text-gray-600">Catatan: {sig.remarks}</div> : null}
-              </div>
-            ))}
-            <div>
-              <div className="font-bold mb-2">Letter Issuance by HR</div>
-              <div className="text-[7pt]" style={{ display: 'grid', gap: '4px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'permanent_confirmation'} readOnly />
-                  <span>Permanent Confirmation</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'contract_extension'} readOnly />
-                  <span>Contract extension</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'unsuccessful_probation'} readOnly />
-                  <span>Unsuccessful probation notification</span>
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={form.letterIssuance === 'end_of_contract'} readOnly />
-                  <span>End of contract notification</span>
-                </label>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      <div className="text-right mt-12 text-gray-500">
-        F.HR.STD.012.00
-      </div>
+      {renderSignatoriesBlock()}
     </div>
   )
+
+  const formPdfPages = (() => {
+    if (isCompetencyOnPage1) {
+      return [
+        { id: 'pdf-page-1', content: pdfPreviewPage1 },
+        { id: 'pdf-page-2', content: pdfPreviewPage2 },
+      ]
+    }
+    const pages = [
+      { id: 'pdf-page-1', content: pdfPreviewPage1 },
+      ...pdfPreviewPerformancePages.map((page, idx) => ({ id: `pdf-page-perf-${idx}`, content: page })),
+      { id: 'pdf-page-2', content: pdfPreviewPage2 },
+    ]
+    if (!canFitAllOnPage2WhenCompetencyOnPage2) {
+      pages.push({ id: 'pdf-page-3' /* id="pdf-page-3" */, content: pdfPreviewPage3 })
+    }
+    return pages
+  })()
 
   const attachmentsPreviewSection = form.attachments && form.attachments.length > 0 ? (
     <div className="mx-auto w-[210mm] shrink-0 rounded-xl bg-white p-6 shadow-sm border border-slate-200 text-slate-800">
@@ -1383,20 +1760,104 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
     </div>
   ) : null
 
+  const handleDownloadPdf = async () => {
+    setIsDownloadingPdf(true)
+    try {
+      const pageNodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".contract-review-print .pdf-wrapper, #contract-review-preview .pdf-wrapper, .print-embedded-container .pdf-wrapper"
+        )
+      )
+      if (!pageNodes.length) {
+        toast.error("Halaman dokumen belum siap untuk didownload.")
+        return
+      }
+      const { downloadMultiPageElementAsPdf } = await import("@/lib/pdf-download")
+      const empName = (selectedEmp?.name || form.employeeNameStr || "Document").replace(/\s+/g, "_")
+      await downloadMultiPageElementAsPdf(pageNodes, `Contract_Review_${empName}.pdf`)
+      toast.success("File PDF berhasil didownload.")
+    } catch (e: any) {
+      console.error("Error downloading PDF:", e)
+      toast.error("Gagal men-download PDF: " + (e.message || "Terjadi kesalahan"))
+    } finally {
+      setIsDownloadingPdf(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!isEmbeddedPrintPreview) return
+    const handler = async (e: MessageEvent) => {
+      if (e.data?.type === "DOWNLOAD_PDF") {
+        const { downloadMultiPageElementAsPdf } = await import("@/lib/pdf-download")
+        const pageNodes = Array.from(
+          document.querySelectorAll<HTMLElement>(".print-embedded-container .pdf-wrapper, .contract-review-print .pdf-wrapper, .pdf-wrapper")
+        )
+        if (pageNodes.length > 0) {
+          const empName = (selectedEmp?.name || form.employeeNameStr || "Document").replace(/\s+/g, "_")
+          await downloadMultiPageElementAsPdf(pageNodes, `Contract_Review_${empName}.pdf`)
+        }
+      } else if (e.data?.type === "PRINT") {
+        window.print()
+      }
+    }
+    window.addEventListener("message", handler)
+    return () => window.removeEventListener("message", handler)
+  }, [isEmbeddedPrintPreview, selectedEmp?.name, form.employeeNameStr])
+
   if (isEmbeddedPrintPreview) {
     return (
-      <div className="fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
-        {[pdfPreviewPage1, ...pdfPreviewPerformancePages, pdfPreviewPage2, pdfPreviewPage3].map((page, index) => (
-          <div
-            key={index}
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {page}
+      <>
+        <style dangerouslySetInnerHTML={{ __html: `
+          @page { size: A4 portrait !important; margin: 0 !important; }
+          @media print {
+            header, [data-admin-dashboard-shell] > header, [data-sidebar], .sidebar, nav, [data-slot="sidebar"] {
+              display: none !important;
+            }
+            body, html { margin: 0 !important; padding: 0 !important; background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .print-embedded-container { position: static !important; padding: 0 !important; margin: 0 !important; background: transparent !important; gap: 0 !important; overflow: visible !important; }
+            .pdf-wrapper {
+              position: relative !important;
+              width: 210mm !important;
+              height: 297mm !important;
+              max-height: 297mm !important;
+              margin: 0 auto !important;
+              box-shadow: none !important;
+              page-break-after: always !important;
+              break-after: page !important;
+              background-image: url('/ChitraParatama_Stationery_Letterhead_jkt.jpg') !important;
+              background-size: 210mm 297mm !important;
+              background-repeat: no-repeat !important;
+              background-position: top center !important;
+              box-sizing: border-box !important;
+              overflow: hidden !important;
+            }
+            .pdf-wrapper:last-child { page-break-after: auto !important; break-after: auto !important; }
+            .pdf-wrapper > img.absolute { display: none !important; }
+            .pdf-wrapper-content { position: relative !important; width: 210mm !important; box-sizing: border-box !important; }
+            .no-print-section { display: none !important; }
+          }
+        `}} />
+        <div className="print-embedded-container fixed inset-0 z-[9999] flex flex-col gap-8 overflow-auto bg-slate-100 p-4">
+          {formPdfPages.map((page) => (
+            <div
+              key={page.id}
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+              style={{
+                backgroundImage: "url('/ChitraParatama_Stationery_Letterhead_jkt.jpg')",
+                backgroundSize: "210mm 297mm",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "top center",
+              }}
+            >
+              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover print:hidden" />
+              {page.content}
+            </div>
+          ))}
+          <div className="no-print-section">
+            {attachmentsPreviewSection}
           </div>
-        ))}
-        {attachmentsPreviewSection}
-      </div>
+        </div>
+      </>
     )
   }
 
@@ -1407,31 +1868,84 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       description="Lengkapi evaluasi karyawan."
       compact={isMobileRoute}
     >
+      {/* ACTION TOOLBAR: Full-width, sticky, ultra-responsive under any zoom level, clean & minimal */}
+      <div className={cn(
+        "sticky top-2 z-30 mb-4 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-200/90 bg-white/95 px-3 py-2 shadow-sm backdrop-blur print:hidden",
+        isMobileRoute && "bottom-2 top-auto z-20 rounded-2xl shadow-lg p-2"
+      )}>
+        {/* Navigasi & Cetak */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => router.back()}
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            <ArrowLeft className="mr-1.5 size-3.5" /> Kembali
+          </Button>
+          <div className="hidden sm:block h-4 w-px bg-slate-200 mx-0.5" />
+          <Button
+            type="button"
+            onClick={handlePrint}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            <Printer className="mr-1.5 size-3.5" /> Print
+          </Button>
+          <Button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100"
+          >
+            <Download className="mr-1.5 size-3.5" /> {isDownloadingPdf ? "Menyiapkan..." : "Download PDF"}
+          </Button>
+        </div>
+
+        {/* Workflow & Simpan */}
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {initialData?.id && (
+            <Button
+              type="button"
+              onClick={handleResendApprovalEmail}
+              disabled={isResending}
+              variant="outline"
+              size="sm"
+              className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs border-sky-300 text-sky-700 hover:bg-sky-50"
+            >
+              <Send className="mr-1.5 size-3.5" /> {isResending ? "Mengirim..." : "Kirim Email Approval"}
+            </Button>
+          )}
+          {adminMode && initialData?.id && initialData.status !== 'completed' && (
+            <Button
+              type="button"
+              onClick={handleAdminComplete}
+              disabled={isPending}
+              size="sm"
+              className="h-8 sm:h-9 px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+            >
+              <Check className="mr-1.5 size-3.5" /> Selesai
+            </Button>
+          )}
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={isPending}
+            size="sm"
+            className="h-8 sm:h-9 px-3.5 text-xs bg-slate-900 hover:bg-slate-800 text-white font-medium shadow-sm transition-transform active:scale-[0.98]"
+          >
+            <Save className="mr-1.5 size-3.5" /> {isPending ? "Menyimpan..." : "Simpan Form"}
+          </Button>
+        </div>
+      </div>
+
       <div className={cn("grid gap-6", isPrintMode ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
         {/* KIRI: Form Input */}
         <div className={cn("flex flex-col gap-6 print:hidden", isPrintMode && "hidden")}>
-          <div className={cn("flex gap-4", isMobileRoute && "sticky bottom-2 z-20 flex-wrap gap-2 rounded-2xl bg-white/95 p-1.5 shadow-lg backdrop-blur") }>
-            <Button variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")} onClick={() => router.back()}>
-              <ArrowLeft className="mr-2 size-4" /> Kembali
-            </Button>
-            <Button onClick={handlePrint} variant="secondary" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
-              <Printer className="mr-2 size-4" /> Print / Save PDF
-            </Button>
-            {initialData?.id && (
-              <Button onClick={handleResendApprovalEmail} disabled={isResending} variant="outline" className={cn("min-h-10", isMobileRoute && "min-h-9 px-3 text-xs")}>
-                <Send className="mr-2 size-4" /> {isResending ? "Mengirim..." : "Kirim Email Approval"}
-              </Button>
-            )}
-            {adminMode && initialData?.id && initialData.status !== 'completed' && (
-              <Button onClick={handleAdminComplete} disabled={isPending} variant="default" className="min-h-10 bg-emerald-600 hover:bg-emerald-700">
-                Selesai
-              </Button>
-            )}
-            <Button onClick={handleSave} disabled={isPending} className={cn("ml-auto min-h-10", isMobileRoute && "min-h-9 px-3 text-xs max-sm:flex-1")}>
-              <Save className="mr-2 size-4" /> {isPending ? "Menyimpan..." : "Simpan Form"}
-            </Button>
-          </div>
-
         <Card>
           <CardHeader>
             <CardTitle>Details & Employee Profile</CardTitle>
@@ -1798,30 +2312,24 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </CardContent>
         </Card>
 
-        {approvalHistory && approvalHistory.length > 0 && (
+        {approvalsList && approvalsList.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Status Approval</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {approvalHistory.map((step: any, idx: number) => {
-                  const labels: Record<string, string> = {
-                    pjo_or_te_initial: 'PJO/TE',
-                    section_head_initial: 'Section Head',
-                    employee: 'Karyawan',
-                    section_head_confirmation: 'Section Head',
-                    central_service_manager: 'Department Head',
-                    hr: 'HR',
-                  }
+                {approvalsList.map((step: any, idx: number) => {
+                  const roleLabel = APPROVAL_ROLES_MAP[step.approverRole] || step.approverRole
+                  const isApproved = step.status === 'approved' || Boolean(step.signatureDataUrl)
                   return (
                     <div key={idx} className="flex items-start justify-between gap-3 rounded-lg border p-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-slate-900">{step.approverName}</p>
-                        <p className="text-xs text-slate-500">{labels[step.approverRole] || step.approverRole}</p>
+                        <p className="text-xs text-slate-500">{roleLabel}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        {step.status === 'approved' ? (
+                        {isApproved ? (
                           <Badge className="bg-emerald-50 text-emerald-700 rounded-full border-0 px-3">Disetujui</Badge>
                         ) : step.status === 'pending' ? (
                           <Badge className="bg-amber-50 text-amber-600 rounded-full border-0 px-3">Menunggu</Badge>
@@ -1830,24 +2338,57 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
                         )}
                         {adminMode && (
                           <div className="mt-1 flex flex-wrap justify-end gap-1">
-                            {step.signatureDataUrl && <img src={step.signatureDataUrl} alt={`TTD ${step.approverName}`} className="h-8 max-w-20 object-contain rounded border bg-white" />}
+                            {step.signatureDataUrl && (
+                              <img src={step.signatureDataUrl} alt={`TTD ${step.approverName}`} className="h-8 max-w-20 object-contain rounded border bg-white" />
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={adminSignaturePending === step.id}
+                              onClick={() => setDrawingStep(step)}
+                              className="h-8 px-2 text-[11px] text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                            >
+                              <PenTool className="size-3 mr-1" /> Gambar TTD
+                            </Button>
                             {registeredSignature && (
-                              <Button type="button" variant="outline" size="sm" disabled={adminSignaturePending === step.id} onClick={() => saveAdminSignature(step, registeredSignature)}>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={adminSignaturePending === step.id}
+                                onClick={() => saveAdminSignature(step, registeredSignature)}
+                                className="h-8 px-2 text-[11px]"
+                              >
                                 Pilih TTD
                               </Button>
                             )}
-                            {step.signatureDataUrl && (
-                              <Button type="button" variant="ghost" size="sm" disabled={adminSignaturePending === step.id} onClick={() => removeAdminSignature(step)} className="h-8 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700">
-                                Hapus TTD
-                              </Button>
-                            )}
-                            <Button type="button" variant="outline" size="sm" disabled={adminResendPending === step.id} onClick={() => resendAdminApproval(step)} className="h-8 px-2 text-[11px] text-violet-700 hover:bg-violet-50">
-                              {adminResendPending === step.id ? 'Mengirim...' : 'Kirim Ulang'}
-                            </Button>
                             <label className="inline-flex h-8 cursor-pointer items-center rounded-md border border-slate-200 px-2 text-[11px] font-medium hover:bg-slate-50">
-                              Upload TTD
+                              <Upload className="size-3 mr-1" /> Upload TTD
                               <input type="file" accept="image/*" className="hidden" onChange={(event) => handleAdminSignatureUpload(step, event)} />
                             </label>
+                            {step.signatureDataUrl && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={adminSignaturePending === step.id}
+                                onClick={() => removeAdminSignature(step)}
+                                className="h-8 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                              >
+                                <Trash2 className="size-3 mr-1" /> Hapus TTD
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={adminResendPending === step.id}
+                              onClick={() => resendAdminApproval(step)}
+                              className="h-8 px-2 text-[11px] text-violet-700 hover:bg-violet-50"
+                            >
+                              {adminResendPending === step.id ? 'Mengirim...' : 'Kirim Ulang'}
+                            </Button>
                           </div>
                         )}
                       </div>
@@ -1859,45 +2400,333 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
           </Card>
         )}
 
+        {/* Modal Gambar TTD Khusus Step Approval */}
+        <Dialog open={Boolean(drawingStep)} onOpenChange={(open) => { if (!open) setDrawingStep(null) }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <PenTool className="size-5 text-indigo-600" />
+                Tanda Tangan - {drawingStep?.approverName}
+              </DialogTitle>
+              <DialogDescription>
+                Gambar tanda tangan digital untuk {drawingStep?.approverName} ({drawingStep && (APPROVAL_ROLES_MAP[drawingStep.approverRole] || drawingStep.approverRole)}).
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-2">
+                <SignatureCanvas
+                  ref={stepSigRef}
+                  canvasProps={{ className: 'h-44 w-full rounded-lg bg-white border border-dashed border-slate-200' }}
+                  backgroundColor="rgba(255,255,255,0)"
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => stepSigRef.current?.clear()}
+                  >
+                    Bersihkan
+                  </Button>
+                  {registeredSignature && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (drawingStep && registeredSignature) {
+                          saveAdminSignature(drawingStep, registeredSignature)
+                          setDrawingStep(null)
+                        }
+                      }}
+                    >
+                      Pakai TTD Tersimpan
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDrawingStep(null)}
+                  >
+                    Batal
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    onClick={() => {
+                      const canvas = stepSigRef.current?.getTrimmedCanvas()
+                      const dataUrl = canvas ? canvas.toDataURL('image/png') : ''
+                      if (!dataUrl) {
+                        alert('Silakan gambar tanda tangan terlebih dahulu.')
+                        return
+                      }
+                      if (drawingStep) {
+                        saveAdminSignature(drawingStep, dataUrl)
+                        setDrawingStep(null)
+                      }
+                    }}
+                  >
+                    Simpan TTD
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Card Status Test Online Karyawan */}
+        {form.testRequired && (
+          <Card className="border-sky-200 bg-sky-50/20">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2 text-foreground">
+                  <FileCheck className="size-4 text-primary" /> Status Test Online Karyawan
+                </CardTitle>
+                <Badge
+                  className={
+                    form.testStatus === 'passed'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : form.testStatus === 'failed'
+                      ? 'bg-rose-100 text-rose-800 border-rose-300'
+                      : form.testStatus === 'completed'
+                      ? 'bg-blue-100 text-blue-800 border-blue-300'
+                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                  }
+                >
+                  {form.testStatus === 'passed'
+                    ? 'LULUS UJIAN'
+                    : form.testStatus === 'failed'
+                    ? 'BELUM LULUS'
+                    : form.testStatus === 'completed'
+                    ? 'UJIAN SELESAI'
+                    : 'MENUNGGU PENGERJAAN'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Materi Ujian</span>
+                  <span className="font-semibold text-foreground line-clamp-1">
+                    {initialData?.testConfig?.title || 'Evaluasi Kompetensi'}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Nilai Akhir</span>
+                  <span className="font-bold text-foreground text-sm font-mono">
+                    {form.testFinalScore !== null && form.testFinalScore !== undefined ? `${form.testFinalScore}%` : '-'}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Passing Grade</span>
+                  <span className="font-semibold text-foreground">
+                    {initialData?.testConfig?.hasPassingGrade ? `${initialData?.testConfig?.passingGrade}%` : 'Non-Passing'}
+                  </span>
+                </div>
+                <div className="p-2 rounded bg-white border">
+                  <span className="text-muted-foreground block">Percobaan</span>
+                  <span className="font-semibold text-foreground">
+                    Ke-{form.testAttemptCount || 1}
+                  </span>
+                </div>
+              </div>
+
+              {['none', 'pending', 'in_progress'].includes(form.testStatus) && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-800 text-xs">
+                  Karyawan belum menyelesaikan ujian online ini. Anda dapat menyimpan draft form ini kapan saja, namun persetujuan akhir (submit) akan terbuka setelah karyawan menyelesaikan ujian.
+                </div>
+              )}
+
+              {form.testStatus === 'failed' && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-800 text-xs">
+                  Nilai karyawan di bawah passing grade. Jika kuota remedial masih tersedia, minta karyawan mengulang ujian dari link yang dikirimkan ke email/inboxnya.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle>TTD Digital - {form.leaderName || 'Leader/Creator'}</CardTitle>
+            <CardTitle>
+              {adminMode && approvalsList.length > 0 ? (
+                `TTD Digital - ${
+                  selectedSignatoryTarget === 'leader'
+                    ? `${form.leaderName || 'Leader'} (Leader/Creator)`
+                    : (() => {
+                        const step = approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)
+                        const role = step ? (APPROVAL_ROLES_MAP[step.approverRole] || step.approverRole) : ''
+                        return `${step?.approverName || 'Reviewer'} (${role})`
+                      })()
+                }`
+              ) : (
+                `TTD Digital - ${form.leaderName || 'Leader/Creator'}`
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground mb-2">Tanda tangan digital sebagai pembuat Contract Review ini.</p>
-            {registeredSignature && (
-              <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-2">
-                <div className="flex h-14 flex-1 items-center justify-center rounded bg-white px-2">
-                  <img src={registeredSignature} alt="TTD tersimpan di profile" className="max-h-12 max-w-full object-contain" />
-                </div>
-                <span className="text-xs font-medium text-emerald-700">TTD tersimpan</span>
+            {adminMode && approvalsList.length > 0 && (
+              <div className="mb-4 space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Pilih Target Penandatangan (Admin Override):</Label>
+                <Select
+                  value={selectedSignatoryTarget}
+                  onValueChange={(val) => {
+                    setSelectedSignatoryTarget(val)
+                    leaderSigRef.current?.clear()
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-slate-50 border-slate-300">
+                    <SelectValue placeholder="Pilih yang ingin ditandatangani" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="leader">
+                      Pembuat Review (Leader): {form.leaderName || 'Leader'}
+                    </SelectItem>
+                    {approvalsList.map((step) => {
+                      const roleName = APPROVAL_ROLES_MAP[step.approverRole] || step.approverRole
+                      const hasSig = Boolean(step.signatureDataUrl)
+                      return (
+                        <SelectItem key={step.id} value={`step-${step.id}`}>
+                          Step {step.stepOrder}: {roleName} - {step.approverName} {hasSig ? '✓ (Ada TTD)' : '(Belum TTD)'}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
               </div>
             )}
+            <p className="text-xs text-muted-foreground mb-2">
+              {selectedSignatoryTarget === 'leader'
+                ? 'Tanda tangan digital sebagai pembuat Contract Review ini.'
+                : 'Tanda tangan digital pada routing approval terpilih sebagai Super Admin.'}
+            </p>
+            {(() => {
+              const currentSig = selectedSignatoryTarget === 'leader'
+                ? (previewLeaderSig || registeredSignature)
+                : approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)?.signatureDataUrl
+              if (!currentSig) return null
+              return (
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2">
+                  <div className="flex h-14 flex-1 items-center justify-center rounded bg-white px-2">
+                    <img src={currentSig} alt="TTD aktif" className="max-h-12 max-w-full object-contain" />
+                  </div>
+                  <span className="text-xs font-medium text-indigo-700">
+                    {selectedSignatoryTarget === 'leader' ? 'TTD Leader aktif' : 'TTD Step terpasang'}
+                  </span>
+                </div>
+              )
+            })()}
             <div className="rounded-xl border border-slate-200 bg-white p-2">
               <SignatureCanvas
                 ref={leaderSigRef}
-                onEnd={updateLeaderSignaturePreview}
+                onEnd={() => {
+                  const canvas = leaderSigRef.current?.getTrimmedCanvas()
+                  const dataUrl = canvas ? canvas.toDataURL('image/png') : ''
+                  if (selectedSignatoryTarget === 'leader') {
+                    updateLeaderSignaturePreview()
+                  } else if (dataUrl) {
+                    const step = approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)
+                    if (step) {
+                      setApprovalsList((prev) =>
+                        prev.map((s) =>
+                          s.id === step.id
+                            ? {
+                                ...s,
+                                signatureDataUrl: dataUrl,
+                                status: 'approved',
+                                signedAt: new Date().toISOString(),
+                              }
+                            : s
+                        )
+                      )
+                    }
+                  }
+                }}
                 canvasProps={{ className: 'h-40 w-full rounded-lg bg-white' }}
                 backgroundColor="rgba(255,255,255,0)"
               />
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => {
-                leaderSigRef.current?.clear()
-                setPreviewLeaderSig('')
-                setLeaderSignatureOverride('')
-              }}>Bersihkan</Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  leaderSigRef.current?.clear()
+                  if (selectedSignatoryTarget === 'leader') {
+                    setPreviewLeaderSig('')
+                    setLeaderSignatureOverride('')
+                  } else {
+                    const step = approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)
+                    if (step) removeAdminSignature(step)
+                  }
+                }}
+              >
+                Bersihkan
+              </Button>
               {registeredSignature && (
-                <Button type="button" variant="outline" size="sm" onClick={useRegisteredSignature}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedSignatoryTarget === 'leader') {
+                      useRegisteredSignature()
+                    } else {
+                      const step = approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)
+                      if (step) saveAdminSignature(step, registeredSignature)
+                    }
+                  }}
+                >
                   Pakai TTD Tersimpan
                 </Button>
               )}
               <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
                 <Upload className="size-4" /> Upload TTD
-                <input type="file" accept="image/*" className="hidden" onChange={handleSignatureFileUpload} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (selectedSignatoryTarget === 'leader') {
+                      handleSignatureFileUpload(e)
+                    } else {
+                      const step = approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)
+                      if (step) handleAdminSignatureUpload(step, e)
+                    }
+                  }}
+                />
               </label>
-              <Button type="button" variant="default" size="sm" onClick={updateLeaderSignaturePreview}>Tambahkan ke PDF</Button>
-              {initialData?.leaderSignatureDataUrl && !previewLeaderSig && (
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={() => {
+                  const canvas = leaderSigRef.current?.getTrimmedCanvas()
+                  const dataUrl = canvas ? canvas.toDataURL('image/png') : ''
+                  if (selectedSignatoryTarget === 'leader') {
+                    updateLeaderSignaturePreview()
+                  } else {
+                    const step = approvalsList.find((s) => `step-${s.id}` === selectedSignatoryTarget)
+                    if (!dataUrl) {
+                      alert('Silakan gambar tanda tangan terlebih dahulu pada canvas.')
+                      return
+                    }
+                    if (step) {
+                      saveAdminSignature(step, dataUrl)
+                    }
+                  }
+                }}
+              >
+                {selectedSignatoryTarget === 'leader' ? 'Tambahkan ke PDF' : 'Simpan ke Step Approval'}
+              </Button>
+              {initialData?.leaderSignatureDataUrl && !previewLeaderSig && selectedSignatoryTarget === 'leader' && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => {
                   setPreviewLeaderSig(initialData.leaderSignatureDataUrl)
                 }}>Load TTD Sebelumnya</Button>
@@ -2022,30 +2851,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
       {/* KANAN: PDF Preview */}
       {isPrintMode ? (
         <div className="contract-review-print flex flex-col gap-8 overflow-auto rounded-[1.1rem] bg-slate-100 p-4 shadow-[inset_0_0_0_1px_rgba(66,71,80,0.10),0_14px_32px_rgba(15,23,42,0.06)]">
-          <div
-            id="pdf-page-1"
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage1}
-          </div>
-          {pdfPreviewPerformancePages.map((page, index) => (
-            <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+          {formPdfPages.map((page) => (
+            <div
+              key={page.id}
+              id={page.id}
+              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+            >
               <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {page}
+              {page.content}
             </div>
           ))}
-          <div id="pdf-page-2" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage2}
-          </div>
-          <div
-            id="pdf-page-3"
-            className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-          >
-            <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-            {pdfPreviewPage3}
-          </div>
           {attachmentsPreviewSection}
         </div>
       ) : (
@@ -2056,30 +2871,16 @@ export function ContractReviewClientForm({ employees, orgNodes = [], initialData
             <TabsTrigger value="productivity">Produktivitas</TabsTrigger>
           </TabsList>
           <TabsContent value="letter" className="m-0 flex flex-col gap-8">
-            <div
-              id="pdf-page-1"
-              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-            >
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage1}
-            </div>
-            {pdfPreviewPerformancePages.map((page, index) => (
-              <div key={`performance-page-${index}`} id={`pdf-page-performance-${index}`} className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
+            {formPdfPages.map((page) => (
+              <div
+                key={page.id}
+                id={page.id}
+                className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
+              >
                 <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-                {page}
+                {page.content}
               </div>
             ))}
-            <div id="pdf-page-2" className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm">
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage2}
-            </div>
-            <div
-              id="pdf-page-3"
-              className="pdf-wrapper relative mx-auto h-[297mm] w-[210mm] shrink-0 overflow-hidden bg-white shadow-sm"
-            >
-              <img src="/ChitraParatama_Stationery_Letterhead_jkt.jpg" alt="Chitra Paratama letterhead" className="absolute inset-0 z-0 h-full w-full object-cover" />
-              {pdfPreviewPage3}
-            </div>
             {attachmentsPreviewSection}
           </TabsContent>
           <TabsContent value="productivity" className="m-0">

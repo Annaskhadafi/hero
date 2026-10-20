@@ -4,7 +4,7 @@ import { db } from '@/db'
 import { attendanceRecords, employees } from '@/db/schema/hero'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { rarayVerifyFace, rarayRecognizeFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
-import { checkEmployeeOffDayStatus } from '@/lib/timesheet/attendance-punctuality'
+import { checkEmployeeOffDayStatus, isStaffRole, resolveNightShiftCheckoutContext } from '@/lib/timesheet/attendance-punctuality'
 import {
   getSiteAttendanceClockConfig,
   resolveSiteAttendancePunctuality,
@@ -42,13 +42,26 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const targetSiteId = currentEmp.siteId || 1
     const eventTime = new Date()
 
+    const nightShiftContext = await resolveNightShiftCheckoutContext({
+      employeeId: currentEmp.id,
+      siteId: targetSiteId,
+      eventTime,
+      eventType,
+    })
+    const evalDate = nightShiftContext.effectiveDate
+
     // Off-day policy check: Non-staff can record on off-days, staff is blocked by default
     const siteConfig = await getSiteAttendanceClockConfig(targetSiteId)
+    const empLevelName = (currentEmp as Record<string, unknown>).levelName as string | undefined
     const offDayCheck = checkEmployeeOffDayStatus({
-      eventTime,
-      role: currentEmp.role || currentEmp.jobTitle,
+      eventTime: evalDate,
+      role: currentEmp.role,
+      jobTitle: currentEmp.jobTitle,
+      levelName: empLevelName,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,
+      rosterTypeStaff: siteConfig.rosterTypeStaff,
+      rosterTypeNonStaff: siteConfig.rosterTypeNonStaff,
       timeZone: siteConfig.timezone,
     })
 
@@ -123,11 +136,13 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const shiftLabel = shiftCode === 'night' ? 'Shift Malam' : 'Shift Pagi'
 
     // Compute punctuality
+    const isStaff = isStaffRole(currentEmp.role, currentEmp.jobTitle, currentEmp.levelName)
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: targetSiteId,
       eventType,
       eventTime,
       shiftCode,
+      isStaff,
     })
 
     const offDayLabel = offDayCheck.isOffDay ? ' [Hari OFF / Lembur]' : ''

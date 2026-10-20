@@ -8,7 +8,7 @@ import { db } from '@/db'
 import { session, user } from '@/db/schema/auth'
 import { employees } from '@/db/schema/hero'
 import { auth } from '@/lib/auth'
-import { findCredentialAccount, upsertCredentialAccount } from '@/lib/auth-credentials'
+import { buildDefaultCredentialPassword, findCredentialAccount, upsertCredentialAccount } from '@/lib/auth-credentials'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { verifyPassword } from 'better-auth/crypto'
 
@@ -91,8 +91,8 @@ export async function changeMyPasswordAction(
     return { ok: false, message: 'Password saat ini wajib diisi.' }
   }
 
-  if (newPassword.length < 6) {
-    return { ok: false, message: 'Password baru minimal 6 karakter.' }
+  if (newPassword.length < 8) {
+    return { ok: false, message: 'Password baru minimal 8 karakter.' }
   }
 
   const userEmail =
@@ -105,25 +105,28 @@ export async function changeMyPasswordAction(
     email: userEmail,
   })
 
-  if (!cred?.password) {
-    return { ok: false, message: 'Akun login tidak ditemukan. Hubungi Administrator.' }
-  }
+  const defaultPassword = currentEmp?.employeeSn ? buildDefaultCredentialPassword(currentEmp.employeeSn) : null
 
   // Verify current password
   let isValid = false
-  try {
-    isValid = await verifyPassword({ hash: cred.password, password: currentPassword })
-  } catch {
-    // If argon2/bcrypt throws because of legacy plaintext or different format
-    if (cred.password === currentPassword) {
-      isValid = true
-    } else {
-      return { ok: false, message: 'Format password lama tidak valid. Hubungi administrator.' }
+  if (cred?.password) {
+    try {
+      isValid = await verifyPassword({ hash: cred.password, password: currentPassword })
+    } catch {
+      // If argon2/bcrypt throws because of legacy plaintext or different format
+      if (cred.password === currentPassword) {
+        isValid = true
+      }
     }
-  }
 
-  if (!isValid && cred.password === currentPassword) {
-    isValid = true
+    if (!isValid && cred.password === currentPassword) {
+      isValid = true
+    }
+  } else {
+    // If account was not yet provisioned in hero_auth_accounts, verify against default password
+    if (defaultPassword && currentPassword === defaultPassword) {
+      isValid = true
+    }
   }
 
   if (!isValid) {
@@ -133,7 +136,7 @@ export async function changeMyPasswordAction(
   const now = new Date()
 
   await upsertCredentialAccount({
-    authUserId: targetAuthUserId || cred.userId,
+    authUserId: targetAuthUserId || cred?.userId || currentEmp?.authUserId || '',
     email: userEmail,
     password: newPassword,
     now,

@@ -1,11 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Boxes, Building2, CircleDollarSign, MapPinned, Users } from 'lucide-react'
+import { useMemo, useState, useRef } from 'react'
+import { Boxes, Building2, CircleDollarSign, MapPinned, Users, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 
 import { TableActionMenu, MinimalTableShell } from '@/components/ui/minimal-table-shell'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { HeroSearchableSelect } from '@/components/templates'
 import {
   Table,
   TableBody,
@@ -87,20 +89,40 @@ function FilterSelect({
   label: string
   options: Array<{ value: string; label: string }>
 }) {
+  const [val, setVal] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleChange = (newVal: any) => {
+    const next = newVal || ""
+    setVal(next)
+    if (inputRef.current) {
+      inputRef.current.value = next
+      inputRef.current.dispatchEvent(new Event("change", { bubbles: true }))
+      inputRef.current.dispatchEvent(new Event("input", { bubbles: true }))
+    }
+  }
+
+  const selectOptions = useMemo(() => [
+    { value: "", label },
+    ...options
+  ], [label, options])
+
   return (
-    <select
-      aria-label={label}
-      data-table-filter-key={filterKey}
-      className="border-border/70 bg-muted/30 text-foreground h-9 max-w-[190px] rounded-lg border px-2.5 text-[13px] shadow-none"
-      defaultValue=""
-    >
-      <option value="">{label}</option>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <div className="min-w-[170px] max-w-[190px]">
+      <input
+        ref={inputRef}
+        type="hidden"
+        data-table-filter-key={filterKey}
+        value={val}
+        readOnly
+      />
+      <HeroSearchableSelect
+        value={val}
+        onChange={handleChange}
+        options={selectOptions}
+        placeholder={label}
+      />
+    </div>
   )
 }
 
@@ -240,6 +262,38 @@ function AssetRegister({
     [data.byCostCenter]
   )
 
+  const [sortField, setSortField] = useState<string>("assetNo")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
+
+  const sortedAssets = useMemo(() => {
+    return [...assets].sort((a, b) => {
+      let aVal: any = (a as any)[sortField]
+      let bVal: any = (b as any)[sortField]
+      if (sortField === "bookValue") {
+        aVal = Number(aVal || 0)
+        bVal = Number(bVal || 0)
+      } else if (sortField === "firstAcquisitionOn") {
+        aVal = new Date(aVal || 0).getTime()
+        bVal = new Date(bVal || 0).getTime()
+      } else {
+        aVal = String(aVal || "").toLowerCase()
+        bVal = String(bVal || "").toLowerCase()
+      }
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1
+      return 0
+    })
+  }, [assets, sortField, sortDir])
+
   return (
     <div data-inventory-table="register">
       <MinimalTableShell
@@ -263,19 +317,145 @@ function AssetRegister({
         <Table>
           <TableHeader className="sticky top-0 z-10 bg-slate-50">
             <TableRow>
-              <TableHead>Asset</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Class</TableHead>
-              <TableHead>Location / Room</TableHead>
-              <TableHead>Holder</TableHead>
-              <TableHead>Cost Center</TableHead>
-              <TableHead>Inventory / Serial</TableHead>
-              <TableHead>Acquisition Date</TableHead>
-              <TableHead className="text-right">Book Value</TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("assetNo")}
+                >
+                  Asset
+                  {sortField === "assetNo" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("assetDescription")}
+                >
+                  Description
+                  {sortField === "assetDescription" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("assetClass")}
+                >
+                  Class
+                  {sortField === "assetClass" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("assetLocation")}
+                >
+                  Location / Room
+                  {sortField === "assetLocation" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("holderName")}
+                >
+                  Holder
+                  {sortField === "holderName" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("costCenter")}
+                >
+                  Cost Center
+                  {sortField === "costCenter" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("inventoryNumber")}
+                >
+                  Inventory / Serial
+                  {sortField === "inventoryNumber" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("firstAcquisitionOn")}
+                >
+                  Acquisition Date
+                  {sortField === "firstAcquisitionOn" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead className="text-right">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-mr-3 ml-auto h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("bookValue")}
+                >
+                  Book Value
+                  {sortField === "bookValue" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {assets.map((asset) => (
+            {sortedAssets.map((asset) => (
               <TableRow
                 key={`${asset.assetNo}-${asset.subNumber}`}
                 data-filter-location={asset.assetLocation}

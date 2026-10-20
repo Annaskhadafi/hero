@@ -35,6 +35,14 @@ import { GripVertical, Save, X } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
 import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 import { calculateQuotationTotal } from "@/lib/service360-quotation-total"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { HeroSearchableSelect } from "@/components/templates"
 
 const itemSchema = z.object({
   id: z.number(),
@@ -207,10 +215,18 @@ const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [customers, setCustomers] = useState(initialCustomers)
   const [signatureDisplayUrl, setSignatureDisplayUrl] = useState(initialSignatureReadableUrl || initialData?.fromSignatureUrl || "")
+  const [savedDraft, setSavedDraft] = useState<any | null>(null)
+  const [showDraftBanner, setShowDraftBanner] = useState(false)
   const parsedPoPeriod = parsePoPeriod(initialData?.poPeriod)
   const initialProjectSiteId =
     siteList?.find((site) => site.name === initialData?.projectName)?.id?.toString() ||
     (initialData?.projectName ? "manual" : "")
+
+  const projectSiteOptions = React.useMemo(() => [
+    { value: "", label: "Select Site Location (Optional)" },
+    ...(siteList || []).map(s => ({ value: String(s.id), label: s.name })),
+    { value: "manual", label: "Manual Input" },
+  ], [siteList])
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<QuotationFormValues>({
     resolver: zodResolver(quotationSchema),
@@ -353,6 +369,65 @@ const router = useRouter()
     }, 500);
     return () => clearTimeout(timer);
   }, [fromName, isEdit, initialData, setValue]);
+
+  // Draft persistence: detect existing local draft on mount
+  useEffect(() => {
+    if (!isEdit && typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("service360_quotation_create_draft")
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if ((parsed?.items && parsed.items.length > 0) || parsed?.customerId || parsed?.notes) {
+            setSavedDraft(parsed)
+            setShowDraftBanner(true)
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to read quotation draft", e)
+      }
+    }
+  }, [isEdit])
+
+  // Draft persistence: auto-save on change (debounced 1.5s)
+  const currentValues = watch()
+  useEffect(() => {
+    if (isEdit || typeof window === "undefined") return
+    const timer = setTimeout(() => {
+      try {
+        if ((currentValues?.items && currentValues.items.length > 0) || currentValues?.customerId || currentValues?.notes) {
+          localStorage.setItem("service360_quotation_create_draft", JSON.stringify(currentValues))
+        }
+      } catch (e) {}
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [isEdit, currentValues])
+
+  const restoreDraft = () => {
+    if (!savedDraft) return
+    try {
+      Object.entries(savedDraft).forEach(([key, val]) => {
+        if (key !== "quotationNumber") {
+          setValue(key as any, val)
+        }
+      })
+      if (savedDraft.fromSignatureUrl) {
+        setSignatureDisplayUrl(toProxyUrl(savedDraft.fromSignatureUrl))
+      }
+      setShowDraftBanner(false)
+      toast.success("Draft quotation berhasil dipulihkan!")
+    } catch (e) {
+      toast.error("Gagal memulihkan draft quotation")
+    }
+  }
+
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem("service360_quotation_create_draft")
+      setSavedDraft(null)
+      setShowDraftBanner(false)
+      toast.info("Draft quotation telah dihapus")
+    } catch (e) {}
+  }
 
   const handleDeleteHistory = async (field: string, value: string) => {
     if (selectedCustomerId && selectedCustomerId !== "manual") {
@@ -675,6 +750,11 @@ const router = useRouter()
         
       if (res && res.id) {
         toast.success(isEdit ? "Quotation updated" : "Quotation created");
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("service360_quotation_create_draft");
+          } catch {}
+        }
         setIsSubmitting(false);
         setLoading(false);
         router.push(`/dashboard/360-service/quotations/${res.id}`);
@@ -733,6 +813,25 @@ const router = useRouter()
           Cancel
         </Button>
       </div>
+
+      {showDraftBanner && !isEdit && (
+        <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Ditemukan draft Quotation dari sesi sebelumnya</p>
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              Ada {savedDraft?.items?.length || 0} item tersimpan. Anda bisa memulihkan isian ini agar tidak perlu mengulang dari awal.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" type="button" onClick={restoreDraft} className="bg-amber-600 hover:bg-amber-700 text-white font-semibold">
+              Pulihkan Draft
+            </Button>
+            <Button size="sm" type="button" variant="outline" onClick={discardDraft} className="border-amber-300 text-amber-800 hover:bg-amber-100">
+              Abaikan
+            </Button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
         <Card>
@@ -848,7 +947,7 @@ const router = useRouter()
               <label className="text-sm font-medium mb-1.5 block">Tax</label>
               <div className="flex gap-4 items-center">
                 <div className="flex items-center gap-2 w-24">
-                  <Input type="number" {...register("taxRate", { valueAsNumber: true })} />
+                  <Input type="number" onFocus={(e) => e.target.select()} {...register("taxRate", { valueAsNumber: true })} />
                   <span className="text-sm">%</span>
                 </div>
                 
@@ -863,8 +962,21 @@ const router = useRouter()
                       if (!v) setValue("discountValue", 0)
                     }} />
                     <label className="text-xs leading-tight">Discount</label>
-                    {discountType && <select className="h-8 rounded border px-1 text-xs" value={discountType} onChange={(e) => setValue("discountType", e.target.value as "percent" | "fixed")}><option value="percent">%</option><option value="fixed">Fixed</option></select>}
-                    {discountType && <Input className="h-8 w-24" type="number" min="0" {...register("discountValue", { valueAsNumber: true })} />}
+                    {discountType && (
+                      <Select
+                        value={discountType}
+                        onValueChange={(val) => setValue("discountType", val as "percent" | "fixed")}
+                      >
+                        <SelectTrigger className="h-8 w-20 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percent">%</SelectItem>
+                          <SelectItem value="fixed">Fixed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {discountType && <Input className="h-8 w-24" type="number" min="0" onFocus={(e) => e.target.select()} {...register("discountValue", { valueAsNumber: true })} />}
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={showQty} onCheckedChange={(v) => setValue("showQty", v)} />
@@ -900,16 +1012,12 @@ const router = useRouter()
 
             <div className="lg:col-span-2">
               <label className="text-sm font-medium block mb-1.5">Project Name (for intro text)</label>
-              <select 
-                {...register("selectedProjectSite")}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 mb-2"
-              >
-                <option value="">Select Site Location (Optional)</option>
-                {siteList?.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-                <option value="manual">Manual Input</option>
-              </select>
+              <HeroSearchableSelect
+                value={watch("selectedProjectSite") || ""}
+                onChange={(val: any) => setValue("selectedProjectSite", val || "")}
+                options={projectSiteOptions}
+                placeholder="Select Site Location (Optional)"
+              />
               {watch("selectedProjectSite") === "manual" && (
                 <Input {...register("projectName")} placeholder="e.g. CK BMB Project" className="mt-2" />
               )}
@@ -1207,8 +1315,13 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                             type="number" 
                             min="0.01" 
                             step="0.01" 
-                            value={selItem.quantity} 
-                            onChange={(e) => updateItem(selItem.id, 'quantity', Number(e.target.value))} 
+                            placeholder="1"
+                            value={selItem.quantity === 0 ? '' : selItem.quantity} 
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateItem(selItem.id, 'quantity', val === '' ? 0 : Number(val));
+                            }} 
                           />
                         </TableCell>
                         <TableCell className="align-top">
@@ -1216,8 +1329,13 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                             <Input 
                               type="number" 
                               min="0" 
-                              value={selItem.price} 
-                              onChange={(e) => updateItem(selItem.id, 'price', Number(e.target.value))} 
+                              placeholder="0"
+                              value={selItem.price === 0 ? '' : selItem.price} 
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateItem(selItem.id, 'price', val === '' ? 0 : Number(val));
+                              }} 
                             />
                             {selItem.isBackup && (
                               <div className="mt-4 pt-4 border-t border-slate-200 relative">
@@ -1225,8 +1343,13 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
                                 <Input 
                                   type="number" 
                                   min="0" 
-                                  value={selItem.backupPrice || 0} 
-                                  onChange={(e) => updateItem(selItem.id, 'backupPrice', Number(e.target.value))} 
+                                  placeholder="0"
+                                  value={!selItem.backupPrice ? '' : selItem.backupPrice} 
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    updateItem(selItem.id, 'backupPrice', val === '' ? 0 : Number(val));
+                                  }} 
                                 />
                               </div>
                             )}
@@ -1320,11 +1443,36 @@ As you are aware, Tire Maintenance is performing services at CK BMB..."
             <Button variant="outline" type="button" onClick={() => router.push("/dashboard/360-service/quotations")}>
               Cancel
             </Button>
-            <Button variant="secondary" type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, true), onInvalid)}>
-              {loading ? "Saving..." : "Save"}
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={loading || formItems.length === 0}
+              onClick={async () => {
+                // Immediately save snapshot to browser storage so user never loses work
+                try {
+                  const values = watch();
+                  localStorage.setItem("service360_quotation_create_draft", JSON.stringify(values));
+                  toast.success("Draft berhasil diamankan di browser!");
+                } catch {}
+
+                handleSubmit(
+                  (data) => submitHandler(data, true),
+                  (errs) => {
+                    onInvalid(errs);
+                    toast.info("Draft telah tersimpan di browser. Lengkapi kolom yang dibutuhkan untuk menyimpan ke server.");
+                  }
+                )();
+              }}
+            >
+              <Save className="size-4 mr-2" />
+              {loading ? "Menyimpan..." : "Save Draft"}
             </Button>
-            <Button type="button" disabled={loading || formItems.length === 0} onClick={handleSubmit((data) => submitHandler(data, false), onInvalid)}>
-              {loading ? "Saving..." : (isEdit ? "Update Quotation" : "Create Quotation")}
+            <Button
+              type="button"
+              disabled={loading || formItems.length === 0}
+              onClick={handleSubmit((data) => submitHandler(data, false), onInvalid)}
+            >
+              {loading ? "Menyimpan..." : (isEdit ? "Update Quotation" : "Create Quotation")}
             </Button>
           </CardFooter>
         </Card>

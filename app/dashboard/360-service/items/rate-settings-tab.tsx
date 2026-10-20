@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -21,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { HeroSearchableSelect } from "@/components/templates"
 
 type RateSetting = {
   id: number
@@ -38,6 +40,35 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
   const [customLevel, setCustomLevel] = useState("")
   const [price, setPrice] = useState("")
   const [loading, setLoading] = useState(false)
+  const [sortField, setSortField] = useState<string>("siteName")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
+
+  const locationOptions = useMemo(() => [
+    { value: "", label: "Select a Location..." },
+    ...(locations || []).map(loc => ({ value: loc, label: loc }))
+  ], [locations])
+
+  const sectionOptions = useMemo(() => [
+    { value: "", label: "Select a Section..." },
+    ...(sections || []).map(sec => ({ value: sec, label: sec }))
+  ], [sections])
+
+  const levelOptions = [
+    { value: "0", label: "Default" },
+    { value: "1", label: "Level 1" },
+    { value: "2", label: "Level 2" },
+    { value: "3", label: "Level 3" },
+    { value: "others", label: "Others" },
+  ]
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -131,14 +162,31 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
   }
 
   // Group existing settings by site and section
-  const groupedSettings = (settings || []).reduce((acc, s) => {
-    const loc = s.workLocation || "Unknown"
-    const sec = s.section || "Unknown"
-    const key = `${loc}###${sec}`
-    if (!acc[key]) acc[key] = []
-    acc[key].push(s)
-    return acc
-  }, {} as Record<string, RateSetting[]>)
+  const groupedSettings = useMemo(() => {
+    return (settings || []).reduce((acc, s) => {
+      const loc = s.workLocation || "Unknown"
+      const sec = s.section || "Unknown"
+      const key = `${loc}###${sec}`
+      if (!acc[key]) acc[key] = []
+      acc[key].push(s)
+      return acc
+    }, {} as Record<string, RateSetting[]>)
+  }, [settings])
+
+  const sortedGroups = useMemo(() => {
+    const entries = Object.entries(groupedSettings)
+    return entries.sort(([keyA], [keyB]) => {
+      const [siteA, secA] = keyA.split("###")
+      const [siteB, secB] = keyB.split("###")
+      let valA = sortField === "sectionName" ? secA : siteA
+      let valB = sortField === "sectionName" ? secB : siteB
+      valA = (valA || "").toLowerCase()
+      valB = (valB || "").toLowerCase()
+      if (valA < valB) return sortDir === "asc" ? -1 : 1
+      if (valA > valB) return sortDir === "asc" ? 1 : -1
+      return 0
+    })
+  }, [groupedSettings, sortField, sortDir])
 
   return (
     <div className="space-y-6">
@@ -147,46 +195,31 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
           <form onSubmit={handleSave} className="flex flex-col md:flex-row gap-4 items-start md:items-end">
             <div className="flex-1 w-full md:w-auto">
               <label className="text-sm font-medium block mb-1">Site Location</label>
-              <select 
-                value={workLocation} 
-                onChange={e => setWorkLocation(e.target.value)}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                required
-              >
-                <option value="">Select a Location...</option>
-                {(locations || []).map(loc => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                value={workLocation}
+                onChange={(val: any) => setWorkLocation(val || "")}
+                options={locationOptions}
+                placeholder="Select a Location..."
+              />
             </div>
             <div className="flex-1 w-full md:w-auto">
               <label className="text-sm font-medium block mb-1">Section</label>
-              <select 
-                value={section} 
-                onChange={e => setSection(e.target.value)}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                required
-              >
-                <option value="">Select a Section...</option>
-                {(sections || []).map(sec => (
-                  <option key={sec} value={sec}>{sec}</option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                value={section}
+                onChange={(val: any) => setSection(val || "")}
+                options={sectionOptions}
+                placeholder="Select a Section..."
+              />
             </div>
-            <div className="w-full md:w-32 flex flex-col gap-2">
+            <div className="w-full md:w-36 flex flex-col gap-2">
               <div>
                 <label className="text-sm font-medium block mb-1">Level</label>
-                <select 
-                  value={level} 
-                  onChange={e => setLevel(e.target.value)}
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                >
-                  <option value="0">Default</option>
-                  <option value="1">Level 1</option>
-                  <option value="2">Level 2</option>
-                  <option value="3">Level 3</option>
-                  <option value="others">Others</option>
-                </select>
+                <HeroSearchableSelect
+                  value={level}
+                  onChange={(val: any) => setLevel(val || "0")}
+                  options={levelOptions}
+                  placeholder="Select Level"
+                />
               </div>
               {level === "others" && (
                 <div>
@@ -196,6 +229,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                     onChange={e => setCustomLevel(e.target.value)}
                     placeholder="e.g. Manager"
                     required
+                    className="h-9"
                   />
                 </div>
               )}
@@ -209,9 +243,10 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                 onChange={e => setPrice(e.target.value)}
                 placeholder="e.g. 1500000"
                 required
+                className="h-9"
               />
             </div>
-            <Button type="submit" disabled={loading} className="w-full md:w-auto mt-4 md:mt-0">
+            <Button type="submit" disabled={loading} className="w-full md:w-auto mt-4 md:mt-0 h-9">
               {loading ? "Saving..." : "Save Setting"}
             </Button>
           </form>
@@ -222,8 +257,36 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Site Location</TableHead>
-              <TableHead>Section</TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("siteName")}
+                >
+                  Site Location
+                  {sortField === "siteName" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+                  onClick={() => handleSort("sectionName")}
+                >
+                  Section
+                  {sortField === "sectionName" ? (
+                    sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+                  )}
+                </Button>
+              </TableHead>
               <TableHead>Default Rate</TableHead>
               <TableHead>Level 1</TableHead>
               <TableHead>Level 2</TableHead>
@@ -233,7 +296,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Object.entries(groupedSettings || {}).map(([key, siteSettings]) => {
+            {sortedGroups.map(([key, siteSettings]) => {
               const [siteName, sectionName] = key.split("###")
               const getPrice = (lvl: string) => {
                 const setting = siteSettings.find(s => String(s.level) === lvl)
@@ -262,7 +325,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                     ) : "-"}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEdit(
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => handleEdit(
                       siteName, 
                       sectionName, 
                       siteSettings.find(s => s.level === "0")?.price || "",
@@ -272,10 +335,10 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                     )}>
                       Edit
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => openDuplicate(siteName, sectionName)}>
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => openDuplicate(siteName, sectionName)}>
                       Duplicate
                     </Button>
-                    <Button variant="outline" size="sm" className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleDelete(siteName, sectionName)}>
+                    <Button variant="outline" size="sm" className="h-9 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleDelete(siteName, sectionName)}>
                       Delete
                     </Button>
                   </TableCell>
@@ -284,7 +347,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
             })}
             {(settings || []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   No rate settings configured yet.
                 </TableCell>
               </TableRow>
@@ -304,37 +367,27 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
           <form onSubmit={handleDuplicate} className="space-y-4 pt-4">
             <div>
               <label className="text-sm font-medium mb-1 block">Target Site Location</label>
-              <select 
-                value={targetLoc} 
-                onChange={e => setTargetLoc(e.target.value)}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                required
-              >
-                <option value="">Select a Location...</option>
-                {(locations || []).map(loc => (
-                  <option key={loc} value={loc}>{loc}</option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                value={targetLoc}
+                onChange={(val: any) => setTargetLoc(val || "")}
+                options={locationOptions}
+                placeholder="Select a Location..."
+              />
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Target Section</label>
-              <select 
-                value={targetSec} 
-                onChange={e => setTargetSec(e.target.value)}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                required
-              >
-                <option value="">Select a Section...</option>
-                {(sections || []).map(sec => (
-                  <option key={sec} value={sec}>{sec}</option>
-                ))}
-              </select>
+              <HeroSearchableSelect
+                value={targetSec}
+                onChange={(val: any) => setTargetSec(val || "")}
+                options={sectionOptions}
+                placeholder="Select a Section..."
+              />
             </div>
             <div className="flex justify-end pt-4">
-              <Button type="button" variant="outline" className="mr-2" onClick={() => setDuplicateOpen(false)}>
+              <Button type="button" variant="outline" className="mr-2 h-9" onClick={() => setDuplicateOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading || !targetLoc || !targetSec}>
+              <Button type="submit" className="h-9" disabled={loading || !targetLoc || !targetSec}>
                 {loading ? "Duplicating..." : "Duplicate"}
               </Button>
             </div>
@@ -354,31 +407,21 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium mb-1 block">Site Location</label>
-                <select 
-                  value={editLoc} 
-                  onChange={e => setEditLoc(e.target.value)}
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  required
-                >
-                  <option value="">Select a Location...</option>
-                  {(locations || []).map(loc => (
-                    <option key={loc} value={loc}>{loc}</option>
-                  ))}
-                </select>
+                <HeroSearchableSelect
+                  value={editLoc}
+                  onChange={(val: any) => setEditLoc(val || "")}
+                  options={locationOptions}
+                  placeholder="Select a Location..."
+                />
               </div>
               <div>
                 <label className="text-sm font-medium mb-1 block">Section</label>
-                <select 
-                  value={editSec} 
-                  onChange={e => setEditSec(e.target.value)}
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                  required
-                >
-                  <option value="">Select a Section...</option>
-                  {(sections || []).map(sec => (
-                    <option key={sec} value={sec}>{sec}</option>
-                  ))}
-                </select>
+                <HeroSearchableSelect
+                  value={editSec}
+                  onChange={(val: any) => setEditSec(val || "")}
+                  options={sectionOptions}
+                  placeholder="Select a Section..."
+                />
               </div>
             </div>
             
@@ -391,6 +434,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                   value={editLvl0}
                   onChange={e => setEditLvl0(e.target.value)}
                   placeholder="e.g. 1000000"
+                  className="h-9"
                 />
               </div>
               <div>
@@ -401,6 +445,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                   value={editLvl1}
                   onChange={e => setEditLvl1(e.target.value)}
                   placeholder="e.g. 1500000"
+                  className="h-9"
                 />
               </div>
               <div>
@@ -411,6 +456,7 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                   value={editLvl2}
                   onChange={e => setEditLvl2(e.target.value)}
                   placeholder="e.g. 1750000"
+                  className="h-9"
                 />
               </div>
               <div>
@@ -421,17 +467,16 @@ export function RateSettingsTab({ settings, locations, sections }: { settings: R
                   value={editLvl3}
                   onChange={e => setEditLvl3(e.target.value)}
                   placeholder="e.g. 2000000"
+                  className="h-9"
                 />
               </div>
             </div>
 
-
-
             <div className="flex justify-end pt-4">
-              <Button type="button" variant="outline" className="mr-2" onClick={() => setEditOpen(false)}>
+              <Button type="button" variant="outline" className="mr-2 h-9" onClick={() => setEditOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={loading || !editLoc || !editSec}>
+              <Button type="submit" className="h-9" disabled={loading || !editLoc || !editSec}>
                 {loading ? "Saving..." : "Save Changes"}
               </Button>
             </div>

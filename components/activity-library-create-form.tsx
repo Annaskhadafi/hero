@@ -22,7 +22,7 @@ const CREATE_TOGGLE_FIELDS = [
   ["requiresDuration", "Wajib durasi"],
   ["requiresLocationGps", "Wajib GPS"],
   ["requiresMaterialUsed", "Wajib material"],
-  ["requiresTireCount", "Pilihan jumlah tire"],
+  ["requiresTireCount", "Pilihan jumlah pcs / qty"],
   ["isAssignable", "Bisa di-assign"],
   ["isSelfInput", "Bisa self-input"],
   ["approvalRequired", "Butuh approval"],

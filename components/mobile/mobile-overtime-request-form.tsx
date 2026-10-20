@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Camera,
   Check,
   CheckCircle2,
   Download,
   Eye,
   ExternalLink,
   FileText,
+  Loader2,
   Move,
+  PenLine,
   Plus,
   RotateCcw,
   Trash2,
@@ -22,6 +25,9 @@ import {
   createOvertimeCommandLetterAction,
   resubmitOvertimeCommandLetterAction,
 } from "@/app/dashboard/overtime-requests/actions";
+import { uploadFile } from "@/app/actions/upload";
+import { compressImageFile } from "@/lib/client-image-compression";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +42,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea";
 import { downloadElementAsPdf } from "@/lib/pdf-download";
 import { resolveEmployeeApproverHierarchy, type EmployeeHierarchyInfo } from "@/lib/overtime-hierarchy";
+import { SplEvidenceQrBox } from "@/components/overtime-document-qr";
 import { cn } from "@/lib/utils";
 
 function fmtDate(d: string | Date | null | undefined): string {
@@ -71,9 +78,21 @@ type WorkerRow = {
 
 type LineItemRow = {
   lineLabel: string;
-  targetUnit: string;
-  estimatedMinutes: number;
-  plannedPoints: number;
+  targetUnit?: string;
+  estimatedMinutes?: number;
+  plannedPoints?: number;
+  isCustom?: boolean;
+  code?: string;
+  name?: string;
+  unitNumber?: string;
+  tireCount?: number;
+  materialUsed?: string;
+  startTime?: string;
+  endTime?: string;
+  duration?: string;
+  remark?: string;
+  photoUrl?: string | null;
+  photos?: string[];
 };
 
 function dateInputValue(value = new Date()) {
@@ -95,14 +114,26 @@ function formatPtwTime(value: Date | string | null | undefined) {
   return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }).replace(".", ":");
 }
 
+export type OvertimeActivityLibraryItem = {
+  id: number;
+  activityCode: string;
+  activityName: string;
+  category?: string | null;
+  basePoints?: number | string | null;
+  slaHours?: number | string | null;
+  requiresEquipmentNo?: boolean | null;
+};
+
 export function MobileOvertimeRequestForm({
   employees = [],
+  activityLibraries = [],
   currentEmployee,
   parentSplId,
   editSplId,
   initialSplData,
 }: {
   employees: EmployeeOption[];
+  activityLibraries?: OvertimeActivityLibraryItem[];
   currentEmployee?: EmployeeOption | null;
   parentSplId?: number;
   editSplId?: number;
@@ -166,10 +197,25 @@ export function MobileOvertimeRequestForm({
     doc?.requesterDepartment || doc?.department || initialHierarchy.department || currentEmployee?.department || "Central Services"
   );
   const [requestNotes, setRequestNotes] = useState(doc?.requestNotes || "");
+  const initialPhotoUrl = (() => {
+    if (doc?.photoUrl) return doc.photoUrl;
+    if (doc?.requestNotes && doc.requestNotes.includes('[Foto Bukti SPL]:')) {
+      const match = doc.requestNotes.match(/\[Foto Bukti SPL\]:\s*(\S+)/);
+      if (match?.[1]) return match[1];
+    }
+    return '';
+  })();
+  const [photoUrl, setPhotoUrl] = useState<string>(initialPhotoUrl);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
 
   const isApprovedDoc =
     (doc?.status || '').toLowerCase() === 'approved' ||
     (doc?.status || '').toLowerCase() === 'closed';
+
+  const canEditPoints = (() => {
+    const jobTitle = (currentEmployee?.position || currentEmployee?.rank || '').toLowerCase();
+    return ['admin', 'superadmin', 'leader', 'supervisor', 'section head', 'pjo', 'manager', 'foreman', 'kepala', 'coordinator', 'superintendent'].some(role => jobTitle.includes(role));
+  })();
 
   const existingEmployeeApproval = doc?.approvals?.find((a: any) => a.stepOrder === 1 || a.approverRole === 'employee' || a.approverRole === 'requester' || (a.stepLabel && a.stepLabel.toLowerCase().includes('karyawan')));
   const existingLeaderApproval = doc?.approvals?.find((a: any) => (doc?.approvals?.length === 2 ? a.stepOrder === 1 : a.stepOrder === 2) || a.approverRole === 'leader' || a.approverRole === 'pjo_or_te_initial' || (a.stepLabel && (a.stepLabel.toLowerCase().includes('leader') || a.stepLabel.toLowerCase().includes('supervisor'))));
@@ -304,19 +350,27 @@ export function MobileOvertimeRequestForm({
 
   const [lineItems, setLineItems] = useState<LineItemRow[]>(() => {
     if (initialSplData?.lineItems && initialSplData.lineItems.length > 0) {
-      return initialSplData.lineItems.map((l: any) => ({
-        lineLabel: l.lineLabel || "",
-        targetUnit: l.targetUnit || "",
-        estimatedMinutes: Number(l.estimatedMinutes) || 60,
-        plannedPoints: Number(l.plannedPoints) || 5,
-      }));
+      return initialSplData.lineItems.map((l: any) => {
+        const rawLabel = (l.lineLabel || "").trim();
+        const isMatched = (activityLibraries || []).some(
+          (lib) => lib.activityName.toLowerCase().trim() === rawLabel.toLowerCase()
+        );
+        return {
+          lineLabel: rawLabel,
+          targetUnit: l.targetUnit || "",
+          estimatedMinutes: Number(l.estimatedMinutes) || 60,
+          plannedPoints: Number(l.plannedPoints) || 5,
+          isCustom: rawLabel ? !isMatched : false,
+        };
+      });
     }
     return [
       {
-        lineLabel: "Overtime Pemasangan & Dismounting Tyre OTR",
-        targetUnit: "1 Unit HD",
+        lineLabel: "",
+        targetUnit: "1 Unit",
         estimatedMinutes: 120,
         plannedPoints: 10,
+        isCustom: false,
       },
     ];
   });
@@ -354,6 +408,7 @@ export function MobileOvertimeRequestForm({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === "mouse") return;
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return;
     setIsDragging(true);
     dragStartRef.current = {
       x: e.clientX - panOffset.x,
@@ -382,6 +437,7 @@ export function MobileOvertimeRequestForm({
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return;
     if (e.touches.length === 2) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -470,6 +526,55 @@ export function MobileOvertimeRequestForm({
     [employees]
   );
 
+  const activityLibraryOptions = useMemo(
+    () =>
+      (activityLibraries || []).map((lib) => ({
+        value: lib.activityName,
+        label: `${lib.activityCode ? `[${lib.activityCode}] ` : ''}${lib.activityName}${lib.category ? ` (${lib.category})` : ''}`,
+      })),
+    [activityLibraries]
+  );
+
+  function selectActivityForLineItem(index: number, value: string) {
+    const matched = (activityLibraries || []).find(
+      (lib) =>
+        lib.activityName.toLowerCase().trim() === value.toLowerCase().trim() ||
+        lib.activityCode.toLowerCase().trim() === value.toLowerCase().trim()
+    );
+    if (matched) {
+      setLineItems((prev) => {
+        const next = [...prev];
+        const currentTarget = next[index]?.targetUnit;
+        const defaultTarget = matched.requiresEquipmentNo ? '1 Unit' : (currentTarget && currentTarget.trim() ? currentTarget : '1 Job');
+        const defaultMinutes = matched.slaHours ? Math.round(Number(matched.slaHours) * 60) : 60;
+        const defaultPoints = matched.basePoints ? Number(matched.basePoints) : 5;
+
+        next[index] = {
+          ...next[index],
+          lineLabel: matched.activityName,
+          targetUnit: defaultTarget,
+          estimatedMinutes: defaultMinutes,
+          plannedPoints: defaultPoints,
+          isCustom: false,
+        };
+        return next;
+      });
+    } else {
+      setLineItems((prev) => {
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          lineLabel: value,
+          targetUnit: next[index]?.targetUnit || "1 Unit",
+          estimatedMinutes: next[index]?.estimatedMinutes || 60,
+          plannedPoints: next[index]?.plannedPoints || 5,
+          isCustom: Boolean(value.trim()),
+        };
+        return next;
+      });
+    }
+  }
+
   const totalEstimatedMinutes = useMemo(
     () => lineItems.reduce((sum, item) => sum + (Number(item.estimatedMinutes) || 0), 0),
     [lineItems]
@@ -517,6 +622,20 @@ export function MobileOvertimeRequestForm({
         targetUnit: "",
         estimatedMinutes: 60,
         plannedPoints: 5,
+        isCustom: false,
+      },
+    ]);
+  }
+
+  function addCustomLineItem() {
+    setLineItems((prev) => [
+      ...prev,
+      {
+        lineLabel: "",
+        targetUnit: "1 Unit",
+        estimatedMinutes: 60,
+        plannedPoints: 5,
+        isCustom: true,
       },
     ]);
   }
@@ -529,6 +648,7 @@ export function MobileOvertimeRequestForm({
         targetUnit: preset.unit,
         estimatedMinutes: preset.dur,
         plannedPoints: preset.pts,
+        isCustom: false,
       },
     ]);
     toast.success(`Preset "${preset.name}" ditambahkan.`);
@@ -545,6 +665,43 @@ export function MobileOvertimeRequestForm({
   function removeLineItem(index: number) {
     if (lineItems.length <= 1) return;
     setLineItems((prev) => prev.filter((_, idx) => idx !== index));
+    setIsUploadingLinePhoto((prev) => prev.filter((_, idx) => idx !== index));
+  }
+
+  const [isUploadingLinePhoto, setIsUploadingLinePhoto] = useState<boolean[]>([]);
+
+  async function handleLinePhotoUpload(idx: number, file: File) {
+    setIsUploadingLinePhoto((prev) => {
+      const next = [...prev];
+      next[idx] = true;
+      return next;
+    });
+    try {
+      const compressedFile = await compressImageFile(file, {
+        maxDimension: 1000,
+        quality: 0.7,
+        mimeType: 'image/webp',
+      });
+      const fd = new FormData();
+      fd.append('file', compressedFile);
+      fd.append('uploadTarget', 'activity-photos');
+      const result = await uploadFile(fd);
+      if (result.success && (result.readableUrl || result.url)) {
+        const finalUrl = result.readableUrl || result.url;
+        updateLineItem(idx, 'photoUrl', finalUrl);
+        toast.success('Foto evidence berhasil diunggah');
+      } else {
+        toast.error('Gagal mengunggah foto evidence');
+      }
+    } catch {
+      toast.error('Gagal mengunggah foto evidence');
+    } finally {
+      setIsUploadingLinePhoto((prev) => {
+        const next = [...prev];
+        next[idx] = false;
+        return next;
+      });
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -569,8 +726,17 @@ export function MobileOvertimeRequestForm({
 
     setIsSubmitting(true);
     try {
-      const startDateTime = `${plannedStartDate}T${plannedStartTime}`;
-      const endDateTime = `${plannedEndDate}T${plannedEndTime}`;
+      const cleanStartTime = plannedStartTime?.trim().length === 5 ? `${plannedStartTime.trim()}:00` : (plannedStartTime?.trim() || '17:00:00');
+      const cleanEndTime = plannedEndTime?.trim().length === 5 ? `${plannedEndTime.trim()}:00` : (plannedEndTime?.trim() || '20:00:00');
+      const baseDate = workDate || dateInputValue();
+      let effectiveEndDate = baseDate;
+      if (cleanEndTime < cleanStartTime) {
+        const nextDay = new Date(`${baseDate}T00:00:00`);
+        nextDay.setDate(nextDay.getDate() + 1);
+        effectiveEndDate = nextDay.toISOString().slice(0, 10);
+      }
+      const startDateTime = new Date(`${baseDate}T${cleanStartTime}`);
+      const endDateTime = new Date(`${effectiveEndDate}T${cleanEndTime}`);
 
       if (editSplId) {
         const res = await resubmitOvertimeCommandLetterAction({
@@ -579,6 +745,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
+          photoUrl: photoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           status: 'Submitted',
@@ -590,9 +757,10 @@ export function MobileOvertimeRequestForm({
           })),
           lineItems: validItems.map((item) => ({
             lineLabel: item.lineLabel.trim(),
-            targetUnit: item.targetUnit.trim(),
+            targetUnit: (item.targetUnit || "").trim(),
             estimatedMinutes: Number(item.estimatedMinutes) || 60,
             plannedPoints: Number(item.plannedPoints) || 0,
+            photoUrl: item.photoUrl || undefined,
           })),
           leaderName: leaderName || undefined,
           superiorName: superiorName || undefined,
@@ -607,6 +775,7 @@ export function MobileOvertimeRequestForm({
         // Reset state form menjadi bersih
         setTitle("");
         setRequestNotes("");
+        setPhotoUrl("");
         setWorkers([
           {
             employeeId: currentEmployee?.id ? String(currentEmployee.id) : "",
@@ -615,14 +784,7 @@ export function MobileOvertimeRequestForm({
             category: "after_mandatory_ot",
           },
         ]);
-        setLineItems([
-          {
-            lineLabel: "Overtime Pemasangan & Dismounting Tyre OTR",
-            targetUnit: "1 Unit HD",
-            estimatedMinutes: 120,
-            plannedPoints: 10,
-          },
-        ]);
+        setLineItems([]);
         setSubmittedSummary(null);
         router.push("/mobile/overtime?tab=approval&submitted=1");
         router.refresh();
@@ -632,6 +794,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
+          photoUrl: photoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           workerParticipants: validWorkers.map((w) => ({
@@ -642,9 +805,10 @@ export function MobileOvertimeRequestForm({
           })),
           lineItems: validItems.map((item) => ({
             lineLabel: item.lineLabel.trim(),
-            targetUnit: item.targetUnit.trim(),
+            targetUnit: (item.targetUnit || "").trim(),
             estimatedMinutes: Number(item.estimatedMinutes) || 60,
             plannedPoints: Number(item.plannedPoints) || 0,
+            photoUrl: item.photoUrl || undefined,
           })),
           leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : null,
           leaderName: leaderName || null,
@@ -660,6 +824,7 @@ export function MobileOvertimeRequestForm({
         toast.success("Surat Perintah Lembur (SPL) berhasil diajukan!");
         setTitle("");
         setRequestNotes("");
+        setPhotoUrl("");
         setWorkers([
           {
             employeeId: currentEmployee?.id ? String(currentEmployee.id) : "",
@@ -668,14 +833,7 @@ export function MobileOvertimeRequestForm({
             category: "after_mandatory_ot",
           },
         ]);
-        setLineItems([
-          {
-            lineLabel: "Overtime Pemasangan & Dismounting Tyre OTR",
-            targetUnit: "1 Unit HD",
-            estimatedMinutes: 120,
-            plannedPoints: 10,
-          },
-        ]);
+        setLineItems([]);
         setSubmittedSummary(null);
         router.push("/mobile/overtime?tab=approval&submitted=1");
         router.refresh();
@@ -876,39 +1034,23 @@ export function MobileOvertimeRequestForm({
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-700">Mulai (Start) *</span>
-              <div className="flex gap-1">
-                <Input
-                  type="date"
-                  value={plannedStartDate}
-                  onChange={(e) => setPlannedStartDate(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-3/5 px-1.5"
-                />
-                <Input
-                  type="time"
-                  value={plannedStartTime}
-                  onChange={(e) => setPlannedStartTime(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-2/5 px-1.5 font-semibold"
-                />
-              </div>
+              <span className="text-[11px] font-bold text-slate-700">Jam Mulai *</span>
+              <Input
+                type="time"
+                value={plannedStartTime}
+                onChange={(e) => setPlannedStartTime(e.target.value)}
+                className="h-10 rounded-xl bg-slate-50/70 border-slate-200 text-xs px-3 font-semibold w-full"
+              />
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-700">Selesai (End) *</span>
-              <div className="flex gap-1">
-                <Input
-                  type="date"
-                  value={plannedEndDate}
-                  onChange={(e) => setPlannedEndDate(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-3/5 px-1.5"
-                />
-                <Input
-                  type="time"
-                  value={plannedEndTime}
-                  onChange={(e) => setPlannedEndTime(e.target.value)}
-                  className="h-9 rounded-lg bg-slate-50/70 border-slate-200 text-[11px] w-2/5 px-1.5 font-semibold"
-                />
-              </div>
+              <span className="text-[11px] font-bold text-slate-700">Jam Selesai *</span>
+              <Input
+                type="time"
+                value={plannedEndTime}
+                onChange={(e) => setPlannedEndTime(e.target.value)}
+                className="h-10 rounded-xl bg-slate-50/70 border-slate-200 text-xs px-3 font-semibold w-full"
+              />
             </div>
           </div>
 
@@ -924,6 +1066,8 @@ export function MobileOvertimeRequestForm({
           </Label>
         </div>
       </section>
+
+
 
       {/* ── 2. Section A: Workers (Peserta Lembur) ── */}
       <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -1036,83 +1180,252 @@ export function MobileOvertimeRequestForm({
 
 
 
-        <div className="space-y-3">
-          {lineItems.map((item, idx) => (
-            <div
-              key={idx}
-              className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5"
+        {/* Quick Presets Shortcuts */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+          <span className="text-[10px] font-bold text-slate-400 shrink-0">Preset Cepat:</span>
+          {SPL_PRESETS.map((p, pIdx) => (
+            <button
+              key={pIdx}
+              type="button"
+              onClick={() => addPresetLineItem(p)}
+              className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-medium border border-slate-200/80 transition-colors flex items-center gap-1"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-600">Aktivitas #{idx + 1}</span>
-                {lineItems.length > 1 && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeLineItem(idx)}
-                    className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                )}
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold text-slate-500 block mb-1">
-                  Uraian Aktivitas Pekerjaan *
-                </span>
-                <Input
-                  required
-                  placeholder="Nama aktivitas pekerjaan..."
-                  value={item.lineLabel}
-                  onChange={(e) => updateLineItem(idx, "lineLabel", e.target.value)}
-                  className="h-9 rounded-lg bg-white border-slate-200 text-xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Target / Unit</span>
-                  <Input
-                    placeholder="e.g. 1 Unit HD"
-                    value={item.targetUnit}
-                    onChange={(e) => updateLineItem(idx, "targetUnit", e.target.value)}
-                    className="h-8 rounded-lg bg-white border-slate-200 text-[11px]"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Durasi (Mnt)</span>
-                  <Input
-                    type="number"
-                    min={15}
-                    value={item.estimatedMinutes}
-                    onChange={(e) => updateLineItem(idx, "estimatedMinutes", Number(e.target.value))}
-                    className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-semibold text-center"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 block mb-1">Poin</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={item.plannedPoints}
-                    onChange={(e) => updateLineItem(idx, "plannedPoints", Number(e.target.value))}
-                    className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-bold text-center"
-                  />
-                </div>
-              </div>
-            </div>
+              <Plus className="size-2.5 text-slate-500" />
+              <span>{p.name.length > 28 ? p.name.slice(0, 28) + '...' : p.name}</span>
+            </button>
           ))}
+        </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={addLineItem}
-            className="w-full h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
-          >
-            <Plus className="size-3.5 text-slate-500" /> Tambah Baris Aktivitas
-          </Button>
+        <div className="space-y-3">
+          {lineItems.map((item, idx) => {
+            const isCustom = Boolean(item.isCustom);
+            return (
+              <div
+                key={idx}
+                className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-700">Aktivitas #{idx + 1}</span>
+                    <div className="inline-flex items-center bg-slate-200/80 p-0.5 rounded-md text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "isCustom", false)}
+                        className={cn(
+                          "px-2 py-0.5 rounded transition-all font-medium",
+                          !isCustom
+                            ? "bg-white text-slate-800 shadow-2xs font-bold"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        Kamus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "isCustom", true)}
+                        className={cn(
+                          "px-2 py-0.5 rounded transition-all font-medium",
+                          isCustom
+                            ? "bg-[#003461] text-white shadow-2xs font-bold"
+                            : "text-slate-500 hover:text-slate-800"
+                        )}
+                      >
+                        Kustom
+                      </button>
+                    </div>
+                  </div>
+                  {lineItems.length > 1 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeLineItem(idx)}
+                      className="size-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
+
+                {isCustom ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Uraian Aktivitas Kustom (Bebas) *
+                      </span>
+                      <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        Bebas / Di luar Kamus
+                      </span>
+                    </div>
+                    <Input
+                      placeholder="Contoh: Overtime Fabrikasi Bracket & Welding Workshop..."
+                      value={item.lineLabel}
+                      onChange={(e) => updateLineItem(idx, "lineLabel", e.target.value)}
+                      className="h-9 rounded-lg bg-white border-slate-200 text-xs font-medium focus-visible:ring-1 focus-visible:ring-[#003461]"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-slate-500">
+                        Uraian Aktivitas Pekerjaan (Kamus) *
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "isCustom", true)}
+                        className="text-[10px] font-semibold text-blue-600 hover:underline flex items-center gap-0.5"
+                      >
+                        <PenLine className="size-2.5" /> Input Kustom
+                      </button>
+                    </div>
+                    <SearchableSelect
+                      label="Aktivitas"
+                      placeholder="PILIH DARI KAMUS AKTIVITAS..."
+                      value={item.lineLabel}
+                      onValueChange={(val) => selectActivityForLineItem(idx, val)}
+                      options={activityLibraryOptions}
+                      allowCustom={true}
+                      widthClassName="w-full"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">Target / Unit</span>
+                    <Input
+                      placeholder="e.g. 1 Unit HD"
+                      value={item.targetUnit}
+                      onChange={(e) => updateLineItem(idx, "targetUnit", e.target.value)}
+                      className="h-8 rounded-lg bg-white border-slate-200 text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">Durasi (Mnt)</span>
+                    <Input
+                      type="number"
+                      min={15}
+                      value={item.estimatedMinutes}
+                      onChange={(e) => updateLineItem(idx, "estimatedMinutes", Number(e.target.value))}
+                      className="h-8 rounded-lg bg-white border-slate-200 text-[11px] font-semibold text-center"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 block mb-1">
+                      Poin {!canEditPoints && <span className="font-normal text-slate-400 text-[9px]">(otomatis)</span>}
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={item.plannedPoints}
+                      onChange={(e) => updateLineItem(idx, "plannedPoints", Number(e.target.value))}
+                      className={cn(
+                        "h-8 rounded-lg border-slate-200 text-[11px] font-bold text-center",
+                        !canEditPoints ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-white text-slate-800"
+                      )}
+                      readOnly={!canEditPoints}
+                      title={!canEditPoints ? 'Poin mengikuti nilai kamus aktivitas. Hanya Leader/Supervisor/Admin yang dapat mengubah.' : undefined}
+                    />
+                  </div>
+                </div>
+
+                {/* Foto Bukti Evidence (Opsional) */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 block mb-1.5">
+                    Foto Bukti <span className="font-normal text-slate-400">(Opsional)</span>
+                  </span>
+                  {item.photoUrl ? (
+                    <div className="flex items-start gap-2">
+                      <a
+                        href={resolveUploadUrl(item.photoUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <img
+                          src={resolveUploadUrl(item.photoUrl)}
+                          alt="Foto bukti aktivitas"
+                          className="size-16 object-cover rounded-xl border border-slate-200 shadow-sm"
+                        />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => updateLineItem(idx, "photoUrl", null)}
+                        className="mt-1 flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-semibold text-rose-600"
+                      >
+                        <X className="size-3" /> Hapus
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <label
+                        className={cn(
+                          "cursor-pointer inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-semibold text-slate-700",
+                          isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        <Camera className="size-3.5 text-slate-500" />
+                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Kamera"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          disabled={isUploadingLinePhoto[idx]}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleLinePhotoUpload(idx, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                      <label
+                        className={cn(
+                          "cursor-pointer inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-semibold text-slate-700",
+                          isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        <FileText className="size-3.5 text-slate-500" />
+                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Galeri"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={isUploadingLinePhoto[idx]}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleLinePhotoUpload(idx, f);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addLineItem}
+              className="h-9 rounded-xl border-dashed border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50 text-xs font-semibold gap-1.5"
+            >
+              <Plus className="size-3.5 text-slate-500" /> Dari Kamus
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addCustomLineItem}
+              className="h-9 rounded-xl border-dashed border-amber-300 bg-amber-50/40 text-amber-800 hover:bg-amber-100/60 hover:border-amber-400 text-xs font-semibold gap-1.5"
+            >
+              <PenLine className="size-3.5 text-amber-600" /> Aktivitas Kustom
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -1126,7 +1439,7 @@ export function MobileOvertimeRequestForm({
             </p>
           </div>
           <Badge className="bg-amber-50 text-amber-700 border-0 font-bold text-[10px]">
-            2-Tier Verification
+            1-Tier Approver (Leader / PJO)
           </Badge>
         </div>
 
@@ -1134,55 +1447,31 @@ export function MobileOvertimeRequestForm({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-bold text-slate-700">
-                Leader / Supervisor (Tahap 1)
+                Leader / PJO (Site Lead / Pengawas)
               </span>
-              {isLeaderLocked ? (
+              {isLeaderLocked || isSuperiorLocked ? (
                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                   SUDAH DISETUJUI (TERKUNCI)
                 </span>
               ) : null}
             </div>
             <SearchableSelect
-              label="Leader"
-              placeholder="PILIH LEADER..."
-              value={leaderEmployeeId}
+              label="Leader / PJO"
+              placeholder="PILIH LEADER / PJO..."
+              value={leaderEmployeeId || superiorEmployeeId}
               onValueChange={(val) => {
-                if (isLeaderLocked) return;
+                if (isLeaderLocked && isSuperiorLocked) return;
                 setLeaderEmployeeId(val);
-                const emp = employees.find((e) => String(e.id) === val);
-                setLeaderName(emp?.name || "");
-              }}
-              options={employeeOptions}
-              widthClassName="w-full"
-              disabled={isLeaderLocked}
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-bold text-slate-700">
-                Superior / Section Head (Tahap 2)
-              </span>
-              {isSuperiorLocked ? (
-                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  SUDAH DISETUJUI (TERKUNCI)
-                </span>
-              ) : null}
-            </div>
-            <SearchableSelect
-              label="Section Head"
-              placeholder="PILIH SECTION HEAD..."
-              value={superiorEmployeeId}
-              onValueChange={(val) => {
-                if (isSuperiorLocked) return;
                 setSuperiorEmployeeId(val);
                 const emp = employees.find((e) => String(e.id) === val);
+                setLeaderName(emp?.name || "");
                 setSuperiorName(emp?.name || "");
               }}
               options={employeeOptions}
               widthClassName="w-full"
-              disabled={isSuperiorLocked}
+              disabled={isLeaderLocked && isSuperiorLocked}
             />
+            <p className="text-[10px] text-slate-400 mt-1">Verifikasi & persetujuan langsung (Pemohon &rarr; Leader / PJO &rarr; Selesai)</p>
           </div>
         </div>
       </section>
@@ -1417,15 +1706,19 @@ export function MobileOvertimeRequestForm({
                     <tr>
                       <td className="font-bold bg-slate-50 text-black">Planned Schedule</td>
                       <td colSpan={3} className="text-black">
-                        {plannedStartDate ? fmtDate(plannedStartDate) : ''} ({plannedStartTime} s.d. {plannedEndTime})
+                        {workDate ? fmtDate(workDate) : ''} ({plannedStartTime} s.d. {plannedEndTime})
                       </td>
                     </tr>
-                    {requestNotes ? (
-                      <tr>
-                        <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                        <td colSpan={3} className="text-black">{requestNotes}</td>
-                      </tr>
-                    ) : null}
+                    {(() => {
+                      const cleanedNotes = (requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                      if (!cleanedNotes) return null
+                      return (
+                        <tr>
+                          <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                          <td colSpan={3} className="text-black">{cleanedNotes}</td>
+                        </tr>
+                      )
+                    })()}
                   </tbody>
                 </table>
 
@@ -1476,23 +1769,55 @@ export function MobileOvertimeRequestForm({
                 <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
                   <thead>
                     <tr className="bg-slate-50 text-center font-bold text-black">
-                      <th className="w-[8%]">#</th>
-                      <th className="text-left w-[40%]">Activity</th>
-                      <th className="w-[18%]">Target</th>
-                      <th className="w-[14%]">Minutes</th>
-                      <th className="w-[20%]">Points</th>
+                      <th className="w-[6%]">#</th>
+                      <th className="text-left w-[34%]">Activity</th>
+                      <th className="w-[15%]">Target / Unit</th>
+                      <th className="w-[15%]">Waktu</th>
+                      <th className="w-[12%]">Tire / Material</th>
+                      <th className="w-[8%]">Poin</th>
+                      <th className="w-[10%]">Evidence</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="text-center font-mono">{idx + 1}</td>
-                        <td className="font-medium text-black">{item.lineLabel}</td>
-                        <td className="text-center font-mono text-black">{item.targetUnit || '—'}</td>
-                        <td className="text-center font-mono text-black">{item.estimatedMinutes} m</td>
-                        <td className="text-center font-bold font-mono text-black">{item.plannedPoints} pts</td>
+                    {lineItems.filter(item => Boolean(item.lineLabel.trim())).length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                       </tr>
-                    ))}
+                    ) : (
+                      lineItems.filter(item => Boolean(item.lineLabel.trim())).map((item, idx) => {
+                        const actName = item.name || item.lineLabel
+                        const actCode = item.code ? `[${item.code}] ` : ''
+                        const tireMat = [
+                          item.tireCount ? `${item.tireCount} Ban` : null,
+                          item.materialUsed ? item.materialUsed : null,
+                        ].filter(Boolean).join(' • ') || '—'
+                        const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                        const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                        return (
+                          <tr key={idx}>
+                            <td className="text-center font-mono">{idx + 1}</td>
+                            <td className="font-medium text-black text-left">
+                              {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                              {actName}
+                            </td>
+                            <td className="text-center font-mono text-black">{item.unitNumber || item.targetUnit || '—'}</td>
+                            <td className="text-center font-mono text-black">{timeStr}</td>
+                            <td className="text-center text-black">{tireMat}</td>
+                            <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
+                            <td className="text-center text-[7pt]">
+                              {hasPhoto ? (
+                                <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                              {item.remark && (
+                                <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
 
@@ -1504,11 +1829,11 @@ export function MobileOvertimeRequestForm({
                   <thead>
                     <tr className="bg-slate-50 font-bold text-black">
                       <th className="w-[6%]">#</th>
-                      <th className="text-left w-[20%]">Tahap</th>
-                      <th className="text-left w-[22%]">Approver</th>
+                      <th className="text-left w-[22%]">Tahap</th>
+                      <th className="text-left w-[24%]">Approver</th>
                       <th className="w-[14%]">Status</th>
                       <th className="w-[16%]">Waktu</th>
-                      <th className="text-left w-[22%]">Catatan</th>
+                      <th className="text-left w-[18%]">Catatan</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1516,7 +1841,7 @@ export function MobileOvertimeRequestForm({
                       doc.approvals.map((step: any, idx: number) => (
                         <tr key={`spl-preview-step-${step.id || step.stepOrder || idx}`}>
                           <td>{step.stepOrder || idx + 1}</td>
-                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Leader / Supervisor' : 'Section Head')}</td>
+                          <td className="text-left">{step.stepLabel || (idx === 0 ? 'Pemohon' : 'Leader / PJO')}</td>
                           <td className="text-left">{step.approverName || '-'}</td>
                           <td className="capitalize font-semibold text-black">{step.status || 'pending'}</td>
                           <td className="text-[7pt]">{fmtDt(step.signedAt)}</td>
@@ -1527,7 +1852,7 @@ export function MobileOvertimeRequestForm({
                       <>
                         <tr>
                           <td>1</td>
-                          <td className="text-left">Karyawan Sign</td>
+                          <td className="text-left">Pemohon (Serviceman)</td>
                           <td className="text-left">{requesterName}</td>
                           <td className="capitalize font-semibold text-black">Draft</td>
                           <td className="text-[7pt]">—</td>
@@ -1535,28 +1860,20 @@ export function MobileOvertimeRequestForm({
                         </tr>
                         <tr>
                           <td>2</td>
-                          <td className="text-left">Leader / Supervisor</td>
-                          <td className="text-left">{currentLeaderName || '-'}</td>
-                          <td className="capitalize font-semibold text-black">{existingLeaderApproval?.status || 'Waiting'}</td>
-                          <td className="text-[7pt]">{fmtDt(existingLeaderApproval?.signedAt)}</td>
-                          <td className="text-left text-[7pt] text-slate-600">{existingLeaderApproval?.remarks || '—'}</td>
-                        </tr>
-                        <tr>
-                          <td>3</td>
-                          <td className="text-left">Section Head</td>
-                          <td className="text-left">{currentSuperiorName || '-'}</td>
-                          <td className="capitalize font-semibold text-black">{existingSuperiorApproval?.status || 'Waiting'}</td>
-                          <td className="text-[7pt]">{fmtDt(existingSuperiorApproval?.signedAt)}</td>
-                          <td className="text-left text-[7pt] text-slate-600">{existingSuperiorApproval?.remarks || '—'}</td>
+                          <td className="text-left">Leader / PJO (Site Lead)</td>
+                          <td className="text-left">{currentLeaderName || currentSuperiorName || '-'}</td>
+                          <td className="capitalize font-semibold text-black">{existingLeaderApproval?.status || existingSuperiorApproval?.status || 'Waiting'}</td>
+                          <td className="text-[7pt]">{fmtDt(existingLeaderApproval?.signedAt || existingSuperiorApproval?.signedAt)}</td>
+                          <td className="text-left text-[7pt] text-slate-600">{existingLeaderApproval?.remarks || existingSuperiorApproval?.remarks || '—'}</td>
                         </tr>
                       </>
                     )}
                   </tbody>
                 </table>
 
-                {/* Section 5: Signatories Grid */}
+                {/* Section 5: Signatories Grid (2-Grid Pemohon & Leader/PJO) */}
                 <div className="font-bold mb-2 text-[8pt] text-black">Signatories</div>
-                <div className="grid grid-cols-3 gap-3 mb-3 text-center">
+                <div className="grid grid-cols-2 gap-6 mb-3 text-center">
                   {/* 1. Serviceman / Requester */}
                   <div className="flex flex-col items-center text-center">
                     <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
@@ -1581,13 +1898,13 @@ export function MobileOvertimeRequestForm({
                     </div>
                   </div>
 
-                  {/* 2. Leader / Supervisor */}
+                  {/* 2. Leader / PJO */}
                   <div className="flex flex-col items-center text-center">
-                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
                     <div className="h-14 w-full flex items-center justify-center my-1">
-                      {existingLeaderApproval?.signatureDataUrl ? (
-                        <img src={existingLeaderApproval.signatureDataUrl} alt="TTD Leader" className="max-h-12 max-w-full object-contain" />
-                      ) : isLeaderSigned ? (
+                      {(existingLeaderApproval?.signatureDataUrl || existingSuperiorApproval?.signatureDataUrl) ? (
+                        <img src={(existingLeaderApproval?.signatureDataUrl || existingSuperiorApproval?.signatureDataUrl)!} alt="TTD Leader/PJO" className="max-h-12 max-w-full object-contain" />
+                      ) : (isLeaderSigned || isSuperiorSigned) ? (
                         <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
                           <path d="M22 30 C38 32, 60 28, 84 26" />
@@ -1597,41 +1914,26 @@ export function MobileOvertimeRequestForm({
                       )}
                     </div>
                     <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                      {currentLeaderName || '—'}
+                      {currentLeaderName || currentSuperiorName || '—'}
                     </div>
-                    <div className="text-[7pt] text-slate-600 font-medium">Leader / Supervisor</div>
+                    <div className="text-[7pt] text-slate-600 font-medium">{existingLeaderApproval?.stepLabel || existingSuperiorApproval?.stepLabel || 'Leader / PJO Site'}</div>
                     <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                      {isLeaderSigned && existingLeaderApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingLeaderApproval.signedAt)}` : '—'}
-                    </div>
-                  </div>
-
-                  {/* 3. Section Head / Superior */}
-                  <div className="flex flex-col items-center text-center">
-                    <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
-                    <div className="h-14 w-full flex items-center justify-center my-1">
-                      {existingSuperiorApproval?.signatureDataUrl ? (
-                        <img src={existingSuperiorApproval.signatureDataUrl} alt="TTD Superior" className="max-h-12 max-w-full object-contain" />
-                      ) : isSuperiorSigned ? (
-                        <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
-                          <path d="M22 30 C38 32, 60 28, 84 26" />
-                        </svg>
-                      ) : (
-                        <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                      )}
-                    </div>
-                    <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                      {currentSuperiorName || '—'}
-                    </div>
-                    <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                    <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                      {isSuperiorSigned && existingSuperiorApproval?.signedAt ? `Waktu TTD: ${fmtDt(existingSuperiorApproval.signedAt)}` : '—'}
+                      {(isLeaderSigned || isSuperiorSigned) && (existingLeaderApproval?.signedAt || existingSuperiorApproval?.signedAt) ? `Waktu TTD: ${fmtDt(existingLeaderApproval?.signedAt || existingSuperiorApproval?.signedAt)}` : '—'}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
-                  F.HC.SPL.001.01 • PT Chitra Paratama
+                {/* Bottom Info & Evidence QR Code */}
+                <div className="flex items-end justify-between mt-3 pt-1">
+                  <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                    * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {doc?.id && <SplEvidenceQrBox splId={doc.id} splNumber={doc.splNumber} />}
+                    <div className="text-right text-[7pt] text-slate-500 font-mono mt-0.5">
+                      F.HC.SPL.001.01 • PT Chitra Paratama
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,4 +1,4 @@
-﻿import { pgTable, serial, integer, text, timestamp, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, timestamp, boolean, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { employees } from "./hero";
 
 // Extended fields for user management enhancements
@@ -70,3 +70,18 @@ export const userGroupMemberships = pgTable(
     groupIdx: uniqueIndex("hero_user_group_memberships_group_idx").on(table.groupId),
   }),
 );
+
+export const userPinnedServices = pgTable(
+  "hero_user_pinned_services",
+  {
+    id: serial("id").primaryKey(),
+    userEmail: text("user_email").notNull(),
+    pinnedTitles: jsonb("pinned_titles").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    userEmailIdx: uniqueIndex("hero_user_pinned_services_email_idx").on(table.userEmail),
+  }),
+);
+

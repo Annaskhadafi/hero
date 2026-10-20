@@ -21,3 +21,45 @@ export function isCiptaKridatamaCustomer(customerName?: string | null): boolean 
     c.includes('mvc')
   )
 }
+
+/**
+ * Helper to identify KPC (Kaltim Prima Coal) customer or site variations.
+ * Used for filtering KPC vs Non-KPC (HERO) Work Order records.
+ */
+export function isKpcCustomer(customerOrSite?: string | null): boolean {
+  if (!customerOrSite) return false
+  const c = customerOrSite.toUpperCase().trim()
+  return c.includes('KALTIM PRIMA COAL') || c.includes('KPC')
+}
+
+export function isKpcRecord(record?: {
+  customer?: string | null
+  site?: string | null
+  store_loc?: string | null
+  customerSite?: string | null
+  inspectLocation?: string | null
+} | null): boolean {
+  if (!record) return false
+  return (
+    isKpcCustomer(record.customer) ||
+    isKpcCustomer(record.site) ||
+    isKpcCustomer(record.store_loc) ||
+    isKpcCustomer(record.customerSite) ||
+    isKpcCustomer(record.inspectLocation)
+  )
+}
+
+/**
+ * Helper to identify PT Bumi Suksesindo (BSI) customer or site variations.
+ * Specifically for routing Form WO Team Billing approvals and signatures to Sugeng Wasiat.
+ */
+export function isBumiSuksesindoCustomer(customerOrSite?: string | null): boolean {
+  if (!customerOrSite) return false
+  const c = customerOrSite.toUpperCase().trim()
+  return (
+    c.includes('BUMI SUKSESINDO') ||
+    c.includes('BUMI SUKSES INDO') ||
+    c.includes('SUKSESINDO') ||
+    /\bBSI\b/.test(c)
+  )
+}

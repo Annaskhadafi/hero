@@ -23,7 +23,6 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -187,7 +186,7 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
     }
   }
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     const rows = filtered.map((r, i) => ({
       No: i + 1,
       'No. Laporan': r.reportNumber,
@@ -205,6 +204,7 @@ export function MobileFiveRClient({ initialReports, currentUser }: MobileFiveRCl
       Status: r.status,
     }))
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Audit 5R')

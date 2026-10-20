@@ -211,3 +211,21 @@ test('approval-workspace.ts isolates step role categories to prevent approved it
   assert.match(wsSource, /keys:\s*\['warehouse'/)
   assert.match(wsSource, /keys:\s*\['retread operation', 'repair operation'/)
 })
+
+test('Form WO routes Team Billing to Sugeng Wasiat for PT Bumi Suksesindo in approval engine, PDF, and preview', () => {
+  const custSource = read('lib/form-wo-customer.ts')
+  assert.match(custSource, /export function isBumiSuksesindoCustomer/)
+  assert.match(custSource, /BUMI SUKSESINDO/)
+
+  const engineSource = read('lib/approval-engine.ts')
+  assert.match(engineSource, /isBumiSuksesindoCustomer/)
+  assert.match(engineSource, /preferredName:\s*isBsi\s*\?\s*'Sugeng Wasiat'\s*:\s*undefined/)
+
+  const pdfSource = read('lib/form-wo-pdf.ts')
+  assert.match(pdfSource, /isBumiSuksesindoCustomer/)
+  assert.match(pdfSource, /isBsi[\s\S]*?'Sugeng Wasiat'/)
+
+  const previewSource = read('components/form-wo-document-preview-dialog.tsx')
+  assert.match(previewSource, /isBumiSuksesindoCustomer/)
+  assert.match(previewSource, /isBsi[\s\S]*?'Sugeng Wasiat'/)
+})

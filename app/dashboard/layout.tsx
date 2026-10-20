@@ -16,6 +16,7 @@ import { getDashboardRoutePermission } from '@/lib/hero-access'
 import { getRecipientUnreadNotificationCount } from '@/lib/notification-feed'
 import { FaceRegistrationReminderPopup } from '@/components/face-registration-reminder-popup'
 import { FloatingGeniusChatClient } from '@/components/hero-genius/floating-genius-chat-client'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 import '@/app/dashboard/theme.css'
 
@@ -40,6 +41,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
     if (mobileContractReviewPath !== dashboardPath) {
       redirect(mobileContractReviewPath)
     }
+
+    const mobileTrainingPengajuanPath = dashboardPath.replace(
+      /^\/dashboard\/training\/pengajuan(?=\/|$)/,
+      '/mobile/training/pengajuan',
+    )
+    if (mobileTrainingPengajuanPath !== dashboardPath) {
+      redirect(mobileTrainingPengajuanPath)
+    }
+
     redirect('/mobile')
   }
 
@@ -50,6 +60,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get('sidebar_state')?.value === 'true'
+  const sidebarModeCookie = cookieStore.get('hero_sidebar_layout_mode')?.value
+  const initialSidebarMode = sidebarModeCookie === 'modern' ? 'modern' : 'classic'
   const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications, groupLabelColor] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
@@ -83,13 +95,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
         user={{
           name: employeeDisplay?.name || session.user.name || 'User',
           email: employeeDisplay?.email || session.user.email,
-          avatar: session.user.image || '/logo.png',
+          avatar: resolveUploadUrl(session.user.image || '/icon-192.png?v=hero-cat-20261012'),
           unreadNotifications,
         }}
         navMain={sidebarData.navMain}
         navSecondary={sidebarData.navSecondary}
         documents={sidebarData.documents}
         groupLabelColor={groupLabelColor}
+        initialMode={initialSidebarMode}
       />
       <SidebarInset data-admin-dashboard-shell>
         <SiteHeader

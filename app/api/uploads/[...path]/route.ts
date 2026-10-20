@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage"
 import { getServerSession } from "@/lib/auth-session"
 import { join } from "path"
-import { existsSync, readFileSync } from "fs"
-import heicDecode from "heic-decode"
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
+import { createHash } from "crypto"
 import sharp from "sharp"
 
 export const dynamic = "force-dynamic"
@@ -35,6 +35,12 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "public-career-cv",
   "cer",
   "cer-attachments",
+  "hse-osm",
+  "reward-store",
+  "training-requests",
+  "marital-status",
+  "hrga-kerjasama",
+  "ga-house-rental",
 ])
 
 function getContentType(fileName: string) {
@@ -67,22 +73,118 @@ function isAllowedUploadPath(path: string[]) {
   return ALLOWED_UPLOAD_PREFIXES.has(path[0])
 }
 
-async function prepareResponseBuffer(buffer: Buffer, fileName: string): Promise<{ data: Buffer; contentType: string }> {
+async function prepareResponseBuffer(
+  buffer: Buffer,
+  fileName: string,
+  targetWidth?: number | null,
+  cachedThumbPath?: string,
+  cacheDir?: string
+): Promise<{ data: Buffer; contentType: string; isThumbnail?: boolean }> {
   const lower = fileName.toLowerCase()
-  if (lower.endsWith(".heic") || lower.endsWith(".heif")) {
+  const isHeic = lower.endsWith(".heic") || lower.endsWith(".heif")
+  const isRasterImage = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lower)
+
+  if (isHeic) {
     try {
+      // @ts-ignore
+      const { default: heicDecode } = await import("heic-decode")
       const { width, height, data } = await heicDecode({ buffer })
-      const converted = await sharp(Buffer.from(data), {
+      let pipeline = sharp(Buffer.from(data), {
         raw: { width, height, channels: 4 },
-      })
-        .jpeg({ quality: 85, mozjpeg: true })
+      }).rotate()
+
+      if (targetWidth && targetWidth < width) {
+        pipeline = pipeline.resize({ width: targetWidth, withoutEnlargement: true })
+      }
+
+      const converted = await pipeline
+        .jpeg({ quality: targetWidth ? 82 : 85, mozjpeg: true })
         .toBuffer()
-      return { data: converted, contentType: "image/jpeg" }
+
+      if (targetWidth && cachedThumbPath && cacheDir) {
+        try {
+          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
+          writeFileSync(cachedThumbPath, converted)
+        } catch {}
+      }
+
+      return { data: converted, contentType: "image/jpeg", isThumbnail: !!targetWidth }
     } catch (e) {
       console.warn("HEIC auto-conversion failed in uploads proxy:", e)
     }
   }
+
+  if (targetWidth && isRasterImage) {
+    try {
+      const resized = await sharp(buffer)
+        .rotate()
+        .resize({ width: targetWidth, withoutEnlargement: true })
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toBuffer()
+
+      if (cachedThumbPath && cacheDir) {
+        try {
+          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
+          writeFileSync(cachedThumbPath, resized)
+        } catch {}
+      }
+
+      return { data: resized, contentType: "image/jpeg", isThumbnail: true }
+    } catch (resizeErr) {
+      console.warn("Image thumbnail resize failed in uploads proxy, falling back to original:", resizeErr)
+    }
+  }
+
   return { data: buffer, contentType: getContentType(fileName) }
+}
+
+function createStreamingResponse(
+  fileBuffer: Buffer,
+  contentType: string,
+  fileName: string,
+  isThumbnail: boolean | undefined,
+  request: Request
+): NextResponse {
+  const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf";
+  const rangeHeader = request.headers.get("range");
+
+  if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+    const parts = rangeHeader.replace(/bytes=/, "").split("-");
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : fileBuffer.length - 1;
+
+    if (!isNaN(start) && start < fileBuffer.length) {
+      const safeEnd = Math.min(isNaN(end) ? fileBuffer.length - 1 : end, fileBuffer.length - 1);
+      const chunk = fileBuffer.subarray(start, safeEnd + 1);
+
+      const headers = new Headers();
+      headers.set("Content-Type", contentType);
+      headers.set("Accept-Ranges", "bytes");
+      headers.set("Content-Range", `bytes ${start}-${safeEnd}/${fileBuffer.length}`);
+      headers.set("Content-Length", chunk.length.toString());
+      headers.set("Cache-Control", isThumbnail ? "public, max-age=31536000, immutable" : "public, max-age=86400, stale-while-revalidate=604800");
+      headers.set("X-Content-Type-Options", "nosniff");
+      headers.set("Content-Disposition", `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`);
+
+      return new NextResponse(new Uint8Array(chunk), {
+        status: 206,
+        headers,
+      });
+    }
+  }
+
+  const headers = new Headers();
+  headers.set("Content-Type", contentType);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Content-Length", fileBuffer.length.toString());
+  headers.set("Cache-Control", isThumbnail ? "public, max-age=31536000, immutable" : "public, max-age=86400, stale-while-revalidate=604800");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Content-Disposition", `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`);
+
+  return new NextResponse(new Uint8Array(fileBuffer), {
+    status: 200,
+    headers,
+  });
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
@@ -108,7 +210,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "face-attendance-v2" ||
     path[0] === "sop-win" ||
     path[0] === "lms-covers" ||
-    path[0] === "chitralearning"
+    path[0] === "lms-materials" ||
+    path[0] === "chitralearning" ||
+    path[0] === "public-career-cv" ||
+    path[0] === "contract-review-attachment" ||
+    path[0] === "reward-store" ||
+    path[0] === "training-requests" ||
+    path[0] === "hse-osm" ||
+    path[0] === "hrga-kerjasama" ||
+    path[0] === "ga-house-rental"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {
@@ -121,8 +231,36 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   const relativePath = path.join("/")
   const fileName = path[path.length - 1]
 
-  // 1. Check local public/uploads directory candidates
+  // Parse thumbnail width query param (?w=800 or ?width=800)
+  const reqUrl = new URL(request.url)
+  const widthParam = reqUrl.searchParams.get("w") || reqUrl.searchParams.get("width")
+  const targetWidth = widthParam && !isNaN(Number(widthParam)) ? Math.min(Math.max(Math.round(Number(widthParam)), 32), 2560) : null
+
+  // Fast disk cache check for generated thumbnails
   const publicDir = join(/*turbopackIgnore: true*/ process.cwd(), "public")
+  const thumbCacheDir = join(publicDir, "uploads", "cache", "thumbnails")
+  let cachedThumbPath: string | undefined
+  if (targetWidth) {
+    const thumbHash = createHash("md5").update(`${relativePath}_w${targetWidth}`).digest("hex")
+    cachedThumbPath = join(thumbCacheDir, `${thumbHash}.jpg`)
+    if (existsSync(cachedThumbPath)) {
+      try {
+        const cachedThumbBuf = readFileSync(cachedThumbPath)
+        return new NextResponse(new Uint8Array(cachedThumbBuf), {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": `inline; filename="thumb-${encodeURIComponent(fileName)}"`,
+          },
+        })
+      } catch (err) {
+        console.warn("Failed reading cached thumbnail:", err)
+      }
+    }
+  }
+
+  // 1. Check local public/uploads directory candidates
   const candidateLocalPaths = [
     join(publicDir, "uploads", relativePath),
     join(publicDir, "uploads", fileName),
@@ -134,16 +272,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     if (existsSync(localPath)) {
       try {
         const rawBuffer = readFileSync(localPath)
-        const { data: fileBuffer, contentType } = await prepareResponseBuffer(rawBuffer, fileName)
-        const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
-        return new NextResponse(new Uint8Array(fileBuffer), {
-          headers: {
-            "Content-Type": contentType,
-            "Cache-Control": "private, max-age=300",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
-          },
-        })
+        const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
+        return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
       } catch (e) {
         console.error("Local file read error:", e)
       }
@@ -168,6 +298,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `offering-letters/${fileName}`,
       `cer/${fileName}`,
       `cer-attachments/${fileName}`,
+      `public-career-cv/${fileName}`,
+      `lms-materials/${fileName}`,
+      `lms-covers/${fileName}`,
+      `chitralearning/${fileName}`,
+      `contract-review-attachment/${fileName}`,
+      `training-requests/${fileName}`,
+      `marital-status/${fileName}`,
+      `hse-osm/${fileName}`,
+      `hrga-kerjasama/${fileName}`,
+      `ga-house-rental/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {
@@ -175,16 +315,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
         const object = await getS3ObjectForProxy(key)
         if (object && object.body) {
           const rawBuffer = Buffer.from(object.body)
-          const { data: fileBuffer, contentType } = await prepareResponseBuffer(rawBuffer, fileName)
-          const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf"
-          return new NextResponse(new Uint8Array(fileBuffer), {
-            headers: {
-              "Content-Type": contentType,
-              "Cache-Control": "private, max-age=300",
-              "X-Content-Type-Options": "nosniff",
-              "Content-Disposition": `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
-            },
-          })
+
+          // Persist S3 download to local public/uploads disk cache so future requests are instantaneous
+          try {
+            const localCachePath = join(publicDir, "uploads", relativePath)
+            const localCacheDir = join(publicDir, "uploads", ...path.slice(0, -1))
+            if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
+            writeFileSync(localCachePath, rawBuffer)
+          } catch (writeErr) {
+            console.warn("Failed caching S3 file to local disk:", writeErr)
+          }
+
+          const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
+          return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
         }
       } catch (error) {
         console.warn("Failed to proxy S3 upload key:", key, error)
@@ -192,9 +335,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     }
   }
 
+  // 3. For missing image/document/PDF files, return clean 404 instead of receiving HTML
+  const isBinaryOrDocFile = /\.(jpe?g|png|webp|gif|heic|heif|svg|bmp|ico|pdf|docx?|xlsx?|pptx?|zip)$/i.test(fileName)
+  if (isBinaryOrDocFile) {
+    return new NextResponse(null, { status: 404 })
+  }
 
-
-  // 3. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
+  // 4. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>

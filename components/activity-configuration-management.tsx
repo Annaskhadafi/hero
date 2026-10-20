@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Gauge, Plus, Search, Edit2, Trash2, CheckCircle2, XCircle, ShieldAlert, FileJson, Hash, ToggleLeft, Type, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -79,6 +80,7 @@ export function ActivityConfigurationManagement({ initialSettings, sites, permis
   const canEdit = permissions?.canEdit ?? true;
   const canDelete = permissions?.canDelete ?? true;
 
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSiteFilter, setSelectedSiteFilter] = useState<string>("all");
   const [isPending, startTransition] = useTransition();
@@ -194,6 +196,7 @@ export function ActivityConfigurationManagement({ initialSettings, sites, permis
         if (result?.success) {
           toast.success(result.message || "Rule global berhasil ditambahkan");
           setIsCreateOpen(false);
+          router.refresh();
         }
       } catch (error: any) {
         toast.error(error?.message || "Gagal menambahkan rule global");
@@ -230,6 +233,7 @@ export function ActivityConfigurationManagement({ initialSettings, sites, permis
         if (result?.success) {
           toast.success(result.message || "Rule global berhasil diperbarui");
           setEditingItem(null);
+          router.refresh();
         }
       } catch (error: any) {
         toast.error(error?.message || "Gagal mengupdate rule global");
@@ -246,6 +250,7 @@ export function ActivityConfigurationManagement({ initialSettings, sites, permis
         if (result?.success) {
           toast.success(result.message || "Rule global berhasil dihapus");
           setDeletingItem(null);
+          router.refresh();
         }
       } catch (error: any) {
         toast.error(error?.message || "Gagal menghapus rule global");

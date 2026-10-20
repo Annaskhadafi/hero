@@ -8,6 +8,9 @@ import {
   hcContractReviewApprovals,
   hcContractReviewReminders,
   hcContractReviewSettings,
+  hcContractReviewTestAttempts,
+  hcContractReviewTestConfigs,
+  hcContractReviewTestQuestions,
   hcEmployeeContractReviews,
   hrPositions,
   masterDepartments,
@@ -15,8 +18,16 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { and, asc, desc, eq, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
+
+function safeRevalidatePath(path: string) {
+  try {
+    revalidatePath(path)
+  } catch {
+    // Ignore error outside Next.js request context (e.g. test runner, background tasks)
+  }
+}
 import { randomUUID } from 'crypto'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { headers } from 'next/headers'
@@ -215,6 +226,28 @@ Terima kasih atas perhatian Anda.
 Hormat kami,
 HR Department - PT Chitra Paratama`,
     },
+    onlineTestInvitation: {
+      subject: '[Contract Review] Ujian Evaluasi Kompetensi Online - {{employeeName}} ({{employeeSn}})',
+      body: `Yth. {{employeeName}},
+
+Sebagai bagian dari proses evaluasi Contract Review, Anda diwajibkan untuk mengerjakan Test Online berikut:
+
+Materi Ujian\t: {{testTitle}}
+Section\t\t: {{employeeSection}}
+Durasi\t\t: {{durationMinutes}} Menit
+Passing Grade\t: {{passingGrade}}
+
+Silakan akses link ujian berikut untuk memulai pengerjaan:
+{{testLink}}
+
+Harap segera diselesaikan sebelum batas waktu yang ditentukan.
+
+Hormat kami,
+Training Center & HR Department - PT Chitra Paratama`,
+    },
+  },
+  onlineTest: {
+    enabled: true,
   },
 }
 
@@ -222,7 +255,7 @@ type ContractReviewSettings = typeof DEFAULT_CONTRACT_REVIEW_SETTINGS
 
 let contractReviewWorkflowTablesPromise: Promise<void> | null = null
 
-async function ensureContractReviewWorkflowTables() {
+export async function ensureContractReviewWorkflowTables() {
   if (contractReviewWorkflowTablesPromise) {
     return contractReviewWorkflowTablesPromise
   }
@@ -241,6 +274,16 @@ async function ensureContractReviewWorkflowTablesOnce() {
     ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS superior_title text NOT NULL DEFAULT '';
     ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS hr_title text NOT NULL DEFAULT '';
     ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS next_superior_title text NOT NULL DEFAULT '';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS attachments jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_required boolean NOT NULL DEFAULT false;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_config_id integer;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_status text NOT NULL DEFAULT 'none';
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_final_score integer;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_attempt_count integer NOT NULL DEFAULT 0;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS test_completed_at timestamp;
+    ALTER TABLE hero_hc_employee_contract_reviews ADD COLUMN IF NOT EXISTS allow_approver_customization boolean NOT NULL DEFAULT true;
+    ALTER TABLE hero_hc_contract_review_test_configs ADD COLUMN IF NOT EXISTS target_section_ids jsonb DEFAULT '[]'::jsonb;
+    ALTER TABLE hero_hc_contract_review_test_configs ADD COLUMN IF NOT EXISTS target_section_names jsonb DEFAULT '[]'::jsonb;
   `)
   await db.execute(sql`
     create table if not exists hero_hc_contract_review_approvals (
@@ -285,8 +328,65 @@ async function ensureContractReviewWorkflowTablesOnce() {
     )
   `)
   await db.execute(sql`
-    alter table hero_hc_employee_contract_reviews
-    add column if not exists attachments jsonb default '[]'::jsonb;
+    create table if not exists hero_hc_contract_review_test_configs (
+      id serial primary key,
+      section_id integer references hero_master_sections(id) on delete set null,
+      section_name text not null default '',
+      review_type text not null default 'all',
+      title text not null,
+      description text not null default '',
+      duration_minutes integer not null default 30,
+      has_passing_grade boolean not null default true,
+      passing_grade integer not null default 75,
+      max_remedial_attempts integer not null default 1,
+      is_active boolean not null default true,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    )
+  `)
+  await db.execute(sql`
+    create table if not exists hero_hc_contract_review_test_questions (
+      id serial primary key,
+      config_id integer not null references hero_hc_contract_review_test_configs(id) on delete cascade,
+      question_text text not null,
+      question_image_url text not null default '',
+      option_a text not null,
+      option_a_image_url text not null default '',
+      option_b text not null,
+      option_b_image_url text not null default '',
+      option_c text not null default '',
+      option_c_image_url text not null default '',
+      option_d text not null default '',
+      option_d_image_url text not null default '',
+      correct_option text not null default 'A',
+      explanation text not null default '',
+      points integer not null default 1,
+      sort_order integer not null default 1,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    )
+  `)
+  await db.execute(sql`
+    create table if not exists hero_hc_contract_review_test_attempts (
+      id serial primary key,
+      config_id integer not null references hero_hc_contract_review_test_configs(id) on delete cascade,
+      employee_id integer not null references hero_employees(id) on delete cascade,
+      review_id integer references hero_hc_employee_contract_reviews(id) on delete set null,
+      attempt_number integer not null default 1,
+      access_token text not null unique,
+      score integer,
+      total_questions integer not null default 0,
+      correct_answers integer not null default 0,
+      has_passing_grade boolean not null default true,
+      passing_grade integer not null default 75,
+      status text not null default 'pending',
+      answers_payload jsonb default '{}'::jsonb,
+      started_at timestamp,
+      completed_at timestamp,
+      expires_at timestamp,
+      created_at timestamp not null default now(),
+      updated_at timestamp not null default now()
+    )
   `)
 }
 
@@ -319,6 +419,10 @@ export async function getContractReviewSettings() {
       Array.isArray(stored.reminderDaysBefore) && stored.reminderDaysBefore.length > 0
         ? stored.reminderDaysBefore.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 0)
         : DEFAULT_CONTRACT_REVIEW_SETTINGS.reminderDaysBefore,
+    onlineTest: {
+      ...DEFAULT_CONTRACT_REVIEW_SETTINGS.onlineTest,
+      ...stored.onlineTest,
+    },
   } satisfies ContractReviewSettings
 }
 
@@ -355,6 +459,40 @@ export async function saveContractReviewSettings(settings: ContractReviewSetting
   } else {
     await db.insert(hcContractReviewSettings).values({ settingKey: 'contract_review_workflow', settingValue: settings })
   }
+
+  // If online test is disabled globally, deactivate test requirement from all pending draft/in_progress reviews
+  if (settings.onlineTest?.enabled === false) {
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({
+        testRequired: false,
+        testStatus: 'none',
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(hcEmployeeContractReviews.testRequired, true),
+          inArray(hcEmployeeContractReviews.testStatus, ['none', 'pending', 'in_progress'])
+        )
+      )
+
+    // Auto-advance all draft reviews that already have leader signature
+    const draftReviews = await db
+      .select({ id: hcEmployeeContractReviews.id })
+      .from(hcEmployeeContractReviews)
+      .where(
+        and(
+          eq(hcEmployeeContractReviews.status, 'draft'),
+          isNotNull(hcEmployeeContractReviews.leaderSignatureDataUrl),
+          ne(hcEmployeeContractReviews.leaderSignatureDataUrl, '')
+        )
+      )
+
+    for (const dr of draftReviews) {
+      await autoAdvanceDraftReviewIfReady(dr.id)
+    }
+  }
+
   revalidatePath('/dashboard/hc/contract-review')
   return { success: true }
 }
@@ -382,50 +520,104 @@ function parseIsoDate(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-function getCompletedEmployeeContractDates(
+export async function syncCompletedContractReviewToEmployee(
   review: typeof hcEmployeeContractReviews.$inferSelect,
-  completedAt: Date,
-) {
-  const employeeDates: Partial<typeof employees.$inferInsert> = {}
-  const contractStart = parseIsoDate(review.hireDate ? String(review.hireDate) : null)
-  const reviewDate = parseIsoDate(review.todayDate ? String(review.todayDate) : null) || completedAt
-
-  if (contractStart) {
-    employeeDates.contractDurationStart = contractStart.toISOString().slice(0, 10)
-  }
-
-  if (review.contractEndDate) {
-    employeeDates.contractDurationEnd = String(review.contractEndDate)
-  } else if (review.recommendation === 'contract_extended') {
-    let contractEnd: Date | null = null
-    if (!contractEnd && contractStart && review.contractExtendedMonths) {
-      contractEnd = new Date(contractStart)
-      contractEnd.setMonth(contractEnd.getMonth() + review.contractExtendedMonths)
-    }
-    if (contractEnd) employeeDates.contractDurationEnd = contractEnd.toISOString().slice(0, 10)
-  } else if (review.recommendation === 'contract_ended') {
-    employeeDates.contractDurationEnd = reviewDate.toISOString().slice(0, 10)
-  }
-
-  if (review.permanentDate) {
-    employeeDates.permanentDate = String(review.permanentDate)
-  } else if (review.recommendation === 'confirm_permanent') {
-    employeeDates.permanentDate = reviewDate.toISOString().slice(0, 10)
-  }
-
-  return employeeDates
-}
-
-async function syncCompletedContractReviewToEmployee(
-  review: typeof hcEmployeeContractReviews.$inferSelect,
-  completedAt: Date,
+  completedAt: Date = new Date(),
 ) {
   if (!review.employeeId) return
-  const employeeDates = getCompletedEmployeeContractDates(review, completedAt)
-  if (Object.keys(employeeDates).length === 0) return
-  await db.update(employees).set(employeeDates).where(eq(employees.id, review.employeeId))
-  revalidatePath('/dashboard/hc/employee')
-  revalidatePath(`/dashboard/hc/employee/${review.employeeId}`)
+
+  const [emp] = await db
+    .select()
+    .from(employees)
+    .where(eq(employees.id, review.employeeId))
+    .limit(1)
+
+  if (!emp) return
+
+  const reviewDate = parseIsoDate(review.todayDate ? String(review.todayDate) : null) || completedAt
+  const updateEmpData: Partial<typeof employees.$inferInsert> = {}
+  const updateReviewData: Partial<typeof hcEmployeeContractReviews.$inferInsert> = {}
+
+  if (review.recommendation === 'confirm_permanent') {
+    const permDate = review.permanentDate
+      ? parseIsoDate(String(review.permanentDate))
+      : reviewDate
+    const permDateStr = permDate ? permDate.toISOString().slice(0, 10) : completedAt.toISOString().slice(0, 10)
+
+    updateEmpData.permanentDate = permDateStr
+    updateEmpData.employmentStatus = 'permanent'
+
+    const currentType = emp.employeeStatusType || ''
+    if (currentType.includes('Non Staff')) {
+      updateEmpData.employeeStatusType = 'Permanen | Non Staff'
+    } else if (currentType.toLowerCase().includes('contract') && !currentType.includes('|')) {
+      updateEmpData.employeeStatusType = 'Permanent'
+    } else {
+      updateEmpData.employeeStatusType = 'Permanen | Staff'
+    }
+    updateEmpData.isActive = true
+
+    if (!review.permanentDate) {
+      updateReviewData.permanentDate = permDateStr
+    }
+  } else if (review.recommendation === 'contract_extended') {
+    const months = review.contractExtendedMonths || 12
+    const currentEnd = emp.contractDurationEnd ? parseIsoDate(String(emp.contractDurationEnd)) : null
+    const currentStart = emp.contractDurationStart ? parseIsoDate(String(emp.contractDurationStart)) : null
+
+    // Extend from current contract end date if it is in the future relative to review,
+    // otherwise extend from reviewDate so the employee is extended forward into the future.
+    const baseDate = (currentEnd && currentEnd > reviewDate) ? currentEnd : reviewDate
+    const extendedEnd = new Date(baseDate)
+    extendedEnd.setMonth(extendedEnd.getMonth() + months)
+
+    const newStartStr = (currentEnd && currentEnd <= reviewDate)
+      ? currentEnd.toISOString().slice(0, 10)
+      : (currentStart ? currentStart.toISOString().slice(0, 10) : reviewDate.toISOString().slice(0, 10))
+    const newEndStr = extendedEnd.toISOString().slice(0, 10)
+
+    updateEmpData.contractDurationStart = newStartStr
+    updateEmpData.contractDurationEnd = newEndStr
+    updateEmpData.employmentStatus = 'active'
+    updateEmpData.isActive = true
+
+    const currentType = emp.employeeStatusType || ''
+    if (!currentType.toLowerCase().includes('kontrak') && !currentType.toLowerCase().includes('contract')) {
+      updateEmpData.employeeStatusType = currentType.includes('Non Staff') ? 'Kontrak | Non Staff' : 'Kontrak | Staff'
+    }
+
+    updateReviewData.contractEndDate = newEndStr
+  } else if (review.recommendation === 'contract_ended' || review.recommendation === 'terminate_probation') {
+    updateEmpData.employmentStatus = 'inactive'
+    if (emp.contractDurationEnd) {
+      updateEmpData.contractDurationEnd = String(emp.contractDurationEnd)
+    } else {
+      updateEmpData.contractDurationEnd = reviewDate.toISOString().slice(0, 10)
+    }
+  }
+
+  if (Object.keys(updateEmpData).length > 0) {
+    await db.update(employees).set(updateEmpData).where(eq(employees.id, review.employeeId))
+  }
+
+  if (Object.keys(updateReviewData).length > 0) {
+    await db.update(hcEmployeeContractReviews).set(updateReviewData).where(eq(hcEmployeeContractReviews.id, review.id))
+  }
+
+  safeRevalidatePath('/dashboard/hc/employee')
+  safeRevalidatePath(`/dashboard/hc/employee/${review.employeeId}`)
+  safeRevalidatePath('/dashboard/hc/contract-review')
+}
+
+export async function syncAllCompletedContractReviews() {
+  const completedReviews = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.status, 'completed'))
+
+  for (const review of completedReviews) {
+    await syncCompletedContractReviewToEmployee(review, review.updatedAt || new Date())
+  }
 }
 
 function formatDisplayDate(value: Date) {
@@ -459,6 +651,12 @@ function getLegacySectionHeadConfig(
   }
   if (normalized.includes('other')) {
     return settings.approvalMatrix.sectionHeads.serviceOthers
+  }
+  if (normalized.includes('technical') || normalized.includes('te')) {
+    return {
+      name: 'Muhammad Abian Husain',
+      email: 'abian.husain@chitraparatama.co.id',
+    }
   }
 
   return {
@@ -597,6 +795,7 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
       siteId: employees.siteId,
       departmentId: employees.departmentId,
       sectionId: employees.sectionId,
+      jobTitle: employees.jobTitle,
       directManagerId: employees.directManagerId,
       workLocation: employees.workLocation,
     })
@@ -633,16 +832,35 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
     sectionName: section || null,
     departmentName: 'Central Services',
   })
-  const sectionHead =
+  let sectionHead =
     masterHeads.sectionHead ??
     (await getUserByName(legacySectionHead.name, legacySectionHead.email))
-  const departmentHead =
+  if (review.superiorName) {
+    const customSuperior = await getUserByName(review.superiorName)
+    if (customSuperior?.id || customSuperior?.name) {
+      sectionHead = customSuperior
+    }
+  }
+
+  let departmentHead =
     masterHeads.departmentHead ??
     (await getUserByName(settings.approvalMatrix.managerName, settings.approvalMatrix.managerEmail))
+  if (review.nextSuperiorName) {
+    const customDeptHead = await getUserByName(review.nextSuperiorName)
+    if (customDeptHead?.id || customDeptHead?.name) {
+      departmentHead = customDeptHead
+    }
+  }
+
   const hr = await getUserByName(review.hrName || settings.approvalMatrix.hrName, settings.approvalMatrix.hrEmail)
 
   let firstApprover = sectionHead
-  if (!isHo) {
+  if (review.leaderName) {
+    const customLeader = await getUserByName(review.leaderName)
+    if (customLeader?.id || customLeader?.name) {
+      firstApprover = customLeader
+    }
+  } else if (!isHo) {
     let siteHead: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
     // 1. Lokasi Head / PJO from Master Data Sites
     if (siteRow?.headEmployeeId) {
@@ -662,22 +880,48 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
       const matched = pjoCandidates.find((c) => isPjoOrTechnical(c.jobTitle))
       if (matched) siteHead = matched
     }
-    if (siteHead && siteHead.id) {
+    if (siteHead && siteHead.id && siteHead.id !== userEmployee.id) {
       firstApprover = {
         id: siteHead.id,
         name: siteHead.name,
         email: siteHead.email,
         jobTitle: siteHead.jobTitle || '',
       }
-    } else if (userEmployee.directManagerId) {
+    } else if (userEmployee.directManagerId && userEmployee.directManagerId !== userEmployee.id) {
       const directMgr = await getUserById(userEmployee.directManagerId)
-      if (directMgr?.email && directMgr.id) {
+      if (directMgr?.email && directMgr.id && directMgr.id !== userEmployee.id) {
         firstApprover = {
           id: directMgr.id,
           name: directMgr.name,
           email: directMgr.email,
           jobTitle: directMgr.jobTitle || '',
         }
+      }
+    }
+  }
+
+  // Ensure Technical or PJO contract reviews (or when the PJO himself is reviewed) route directly to Abian (Muhammad Abian Husain)
+  const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
+  const isTechnicalOrPjo =
+    section.toLowerCase().includes('technical') ||
+    section.toLowerCase().includes('te') ||
+    isPjoOrTechnical(userEmployee.jobTitle || '') ||
+    userEmployee.sectionId === 37 ||
+    (siteRow?.headEmployeeId != null && siteRow.headEmployeeId === userEmployee.id)
+
+  if (
+    isTechnicalOrPjo ||
+    firstApprover.id === userEmployee.id ||
+    firstApprover.name === userEmployee.name ||
+    !firstApprover.id ||
+    !firstApprover.email
+  ) {
+    if (abianUser?.id && abianUser.id !== userEmployee.id) {
+      firstApprover = {
+        id: abianUser.id,
+        name: abianUser.name,
+        email: abianUser.email,
+        jobTitle: abianUser.jobTitle || 'Technical Leader',
       }
     }
   }
@@ -706,7 +950,78 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
   }))
 }
 
+export async function ensureContractReviewApprovals(reviewId: number) {
+  const [review] = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.id, reviewId))
+    .limit(1)
+
+  if (!review || !review.employeeId) return []
+
+  const existingApprovals = await db
+    .select()
+    .from(hcContractReviewApprovals)
+    .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+    .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+  if (existingApprovals.length > 0) {
+    const step1 = existingApprovals.find((a) => a.stepOrder === 1 && a.status === 'pending')
+    if (step1 && step1.approverEmployeeId === review.employeeId) {
+      const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
+      if (abianUser?.id && abianUser.id !== review.employeeId) {
+        await db
+          .update(hcContractReviewApprovals)
+          .set({
+            approverEmployeeId: abianUser.id,
+            approverName: abianUser.name,
+            approverEmail: abianUser.email,
+          })
+          .where(eq(hcContractReviewApprovals.id, step1.id))
+        step1.approverEmployeeId = abianUser.id
+        step1.approverName = abianUser.name
+        step1.approverEmail = abianUser.email
+      }
+    }
+    return existingApprovals
+  }
+
+  const approvalSteps = await buildContractReviewApprovals(review)
+  if (approvalSteps.length === 0) return []
+
+  const stepsWithSig = [...approvalSteps]
+  const canAutoApproveFirstStep = Boolean(review.leaderSignatureDataUrl) && !review.testRequired
+
+  if (canAutoApproveFirstStep && stepsWithSig[0]) {
+    stepsWithSig[0] = {
+      ...(stepsWithSig[0] as any),
+      status: 'approved',
+      signatureDataUrl: review.leaderSignatureDataUrl as string,
+      signedAt: new Date(),
+    }
+    if (stepsWithSig[1]) {
+      stepsWithSig[1] = { ...(stepsWithSig[1] as any), status: 'pending' }
+    }
+  }
+
+  await db.insert(hcContractReviewApprovals).values(stepsWithSig as any)
+
+  if (review.status === 'draft' && canAutoApproveFirstStep) {
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({ status: 'in_progress', updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+  }
+
+  return db
+    .select()
+    .from(hcContractReviewApprovals)
+    .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+    .orderBy(asc(hcContractReviewApprovals.stepOrder))
+}
+
 async function getContractReviewReminderContext(review: typeof hcEmployeeContractReviews.$inferSelect) {
+  await ensureContractReviewApprovals(review.id)
   const [approvals, hrEmployee] = await Promise.all([
     db
       .select()
@@ -849,6 +1164,156 @@ async function sendContractReviewApprovalEmailForStep(
   }
 }
 
+export async function reconcileContractReviewWorkflow(reviewId: number) {
+  try {
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) return null
+
+    let approvals = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+    if (approvals.length === 0) {
+      approvals = await ensureContractReviewApprovals(reviewId)
+    }
+    if (approvals.length === 0) return null
+
+    // 1. Sync leader signature between review and Step 1
+    if (review.leaderSignatureDataUrl && approvals[0] && !approvals[0].signatureDataUrl) {
+      await db
+        .update(hcContractReviewApprovals)
+        .set({
+          signatureDataUrl: review.leaderSignatureDataUrl,
+          signedAt: review.updatedAt || new Date(),
+          status: 'approved',
+        })
+        .where(eq(hcContractReviewApprovals.id, approvals[0].id))
+      approvals[0].signatureDataUrl = review.leaderSignatureDataUrl
+      approvals[0].status = 'approved'
+    } else if (approvals[0]?.signatureDataUrl && !review.leaderSignatureDataUrl) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ leaderSignatureDataUrl: approvals[0].signatureDataUrl, updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+      review.leaderSignatureDataUrl = approvals[0].signatureDataUrl
+    }
+
+    // 2. Any step that has signatureDataUrl MUST be status = 'approved'
+    for (const step of approvals) {
+      const hasSig = Boolean(step.signatureDataUrl && step.signatureDataUrl.trim().length > 0)
+      if (hasSig && step.status !== 'approved') {
+        const signedAt = step.signedAt || new Date()
+        await db
+          .update(hcContractReviewApprovals)
+          .set({ status: 'approved', signedAt })
+          .where(eq(hcContractReviewApprovals.id, step.id))
+        step.status = 'approved'
+        step.signedAt = signedAt
+      }
+    }
+
+    // 3. Skip progression if review is cancelled
+    if (review.status === 'cancelled') {
+      return { review, approvals }
+    }
+
+    const allSigned = approvals.every((s) => s.status === 'approved' || Boolean(s.signatureDataUrl))
+
+    if (allSigned) {
+      // All steps are signed -> review MUST be completed
+      for (const step of approvals) {
+        if (step.status !== 'approved') {
+          await db
+            .update(hcContractReviewApprovals)
+            .set({ status: 'approved' })
+            .where(eq(hcContractReviewApprovals.id, step.id))
+          step.status = 'approved'
+        }
+      }
+
+      if (review.status !== 'completed') {
+        const completedAt = new Date()
+        await db
+          .update(hcEmployeeContractReviews)
+          .set({ status: 'completed', updatedAt: completedAt })
+          .where(eq(hcEmployeeContractReviews.id, reviewId))
+        await syncCompletedContractReviewToEmployee(review, completedAt)
+        review.status = 'completed'
+      }
+    } else {
+      // Not all steps are signed
+      let foundFirstUnsigned = false
+      let stepToEmail: typeof approvals[0] | null = null
+
+      for (const step of approvals) {
+        const isSigned = step.status === 'approved' || Boolean(step.signatureDataUrl)
+        if (isSigned) {
+          if (step.status !== 'approved') {
+            await db
+              .update(hcContractReviewApprovals)
+              .set({ status: 'approved', signedAt: step.signedAt || new Date() })
+              .where(eq(hcContractReviewApprovals.id, step.id))
+            step.status = 'approved'
+          }
+        } else {
+          if (!foundFirstUnsigned) {
+            foundFirstUnsigned = true
+            const shouldBePending = review.status === 'in_progress' || (review.status === 'draft' && step.stepOrder === 1)
+            const targetStatus = shouldBePending ? 'pending' : 'waiting'
+            if (step.status !== targetStatus) {
+              await db
+                .update(hcContractReviewApprovals)
+                .set({ status: targetStatus })
+                .where(eq(hcContractReviewApprovals.id, step.id))
+              if (targetStatus === 'pending' && step.status !== 'pending') {
+                stepToEmail = step
+              }
+              step.status = targetStatus
+            }
+          } else {
+            if (step.status !== 'waiting') {
+              await db
+                .update(hcContractReviewApprovals)
+                .set({ status: 'waiting' })
+                .where(eq(hcContractReviewApprovals.id, step.id))
+              step.status = 'waiting'
+            }
+          }
+        }
+      }
+
+      // If review was marked completed prematurely without all signatures
+      if (review.status === 'completed') {
+        await db
+          .update(hcEmployeeContractReviews)
+          .set({ status: 'in_progress', updatedAt: new Date() })
+          .where(eq(hcEmployeeContractReviews.id, reviewId))
+        review.status = 'in_progress'
+      }
+
+      if (stepToEmail && review.status === 'in_progress') {
+        try {
+          await sendContractReviewApprovalEmailForStep(review, stepToEmail)
+        } catch (e) {
+          console.warn('[reconcile] Could not dispatch auto approval email:', e)
+        }
+      }
+    }
+
+    return { review, approvals }
+  } catch (err) {
+    console.error('[reconcileContractReviewWorkflow] Error:', err)
+    return null
+  }
+}
+
 async function resolveApproverForEmployee(emp: {
   id: number
   sectionId?: number | null
@@ -929,17 +1394,20 @@ async function resolveApproverForEmployee(emp: {
     }
   }
 
+  const validSiteHead = siteHead && siteHead.id !== emp.id ? siteHead : null
+  const validDirectManager = directManager && directManager.id !== emp.id ? directManager : null
+
   // Determine Primary Recipient:
   // - If at site (non-HO):
-  //   1st preference: PJO / Lokasi Head (Master Data Sites)
-  //   2nd preference: Direct Manager (Struktur Organisasi)
+  //   1st preference: PJO / Lokasi Head (Master Data Sites) - IF NOT THE EMPLOYEE THEMSELVES
+  //   2nd preference: Direct Manager (Struktur Organisasi) - IF NOT THE EMPLOYEE THEMSELVES
   //   3rd preference: Section Head (Master Data Sections)
   // - If at HO / Office:
   //   1st preference: Direct Manager (Struktur Organisasi)
   //   2nd preference: Section Head (Master Data Sections)
   let primaryApprover = isHo
-    ? (directManager?.email ? directManager : sectionHead)
-    : (siteHead?.email ? siteHead : directManager?.email ? directManager : sectionHead)
+    ? (validDirectManager?.email ? validDirectManager : sectionHead)
+    : (validSiteHead?.email ? validSiteHead : validDirectManager?.email ? validDirectManager : sectionHead)
 
   // Fallback to department head or HR if primary has no valid email
   if (!primaryApprover?.email) {
@@ -947,10 +1415,10 @@ async function resolveApproverForEmployee(emp: {
   }
 
   let approverRoleTitle = 'Approver'
-  if (siteHead && primaryApprover?.id === siteHead.id) {
+  if (validSiteHead && primaryApprover?.id === validSiteHead.id) {
     approverRoleTitle = `PJO / Lokasi Head (${siteName || 'Site'})`
-  } else if (directManager && primaryApprover?.id === directManager.id) {
-    approverRoleTitle = `Atasan Langsung (${directManager.name})`
+  } else if (validDirectManager && primaryApprover?.id === validDirectManager.id) {
+    approverRoleTitle = `Atasan Langsung (${validDirectManager.name})`
   } else if (sectionHead && primaryApprover?.id === sectionHead.id) {
     approverRoleTitle = `Section Head (${emp.sectionName || 'Section'})`
   } else if (departmentHead && primaryApprover?.id === departmentHead.id) {
@@ -991,6 +1459,16 @@ export type ExpiringContractEmployee = {
   reviewStatus: string
   reviewRecommendation: string | null
   reviewType: string | null
+  latestReview?: {
+    id: number
+    status: string
+    reviewType: string
+    recommendation: string | null
+    currentStep: number | null
+    currentApproverRole: string | null
+    currentApproverName: string | null
+    todayDate: string | null
+  } | null
 }
 
 export async function getExpiringContractEmployees(): Promise<ExpiringContractEmployee[]> {
@@ -1013,6 +1491,7 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       employeeStatusType: employees.employeeStatusType,
       contractDurationStart: employees.contractDurationStart,
       contractDurationEnd: employees.contractDurationEnd,
+      permanentDate: employees.permanentDate,
       departmentName: masterDepartments.name,
       sectionName: masterSections.name,
       siteName: sites.name,
@@ -1026,25 +1505,77 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
     .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
     .where(and(eq(employees.isActive, true), isNotNull(employees.contractDurationEnd)))
 
-  // 2. Fetch all contract reviews to match
-  const allReviews = await db
-    .select({
-      id: hcEmployeeContractReviews.id,
-      employeeId: hcEmployeeContractReviews.employeeId,
-      employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
-      reviewType: hcEmployeeContractReviews.reviewType,
-      status: hcEmployeeContractReviews.status,
-      recommendation: hcEmployeeContractReviews.recommendation,
-      updatedAt: hcEmployeeContractReviews.updatedAt,
-      createdAt: hcEmployeeContractReviews.createdAt,
-    })
-    .from(hcEmployeeContractReviews)
-    .orderBy(desc(hcEmployeeContractReviews.createdAt))
+  // 2. Fetch all contract reviews and approvals to match
+  const [allReviews, allApprovals] = await Promise.all([
+    db
+      .select({
+        id: hcEmployeeContractReviews.id,
+        employeeId: hcEmployeeContractReviews.employeeId,
+        employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
+        employeeSn: employees.employeeSn,
+        reviewType: hcEmployeeContractReviews.reviewType,
+        status: hcEmployeeContractReviews.status,
+        recommendation: hcEmployeeContractReviews.recommendation,
+        todayDate: hcEmployeeContractReviews.todayDate,
+        updatedAt: hcEmployeeContractReviews.updatedAt,
+        createdAt: hcEmployeeContractReviews.createdAt,
+      })
+      .from(hcEmployeeContractReviews)
+      .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
+      .orderBy(desc(hcEmployeeContractReviews.createdAt)),
+    db
+      .select()
+      .from(hcContractReviewApprovals)
+      .orderBy(asc(hcContractReviewApprovals.stepOrder)),
+  ])
 
-  const reviewsByEmpId = new Map<number, (typeof allReviews)[0]>()
+  const approvalsByReview = new Map<number, typeof allApprovals>()
+  for (const approval of allApprovals) {
+    const arr = approvalsByReview.get(approval.reviewId) ?? []
+    arr.push(approval)
+    approvalsByReview.set(approval.reviewId, arr)
+  }
+
+  type EnrichedReview = (typeof allReviews)[0] & {
+    currentStep: number | null
+    currentApproverName: string | null
+    currentApproverRole: string | null
+  }
+
+  const reviewsByEmpId = new Map<number, EnrichedReview>()
+  const reviewsByName = new Map<string, EnrichedReview>()
+  const reviewsBySn = new Map<string, EnrichedReview>()
+
   for (const rev of allReviews) {
+    const reviewApprovals = approvalsByReview.get(rev.id) ?? []
+    let currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+    if (!currentApproval && rev.status === 'in_progress') {
+      currentApproval = reviewApprovals.find(
+        (approval) => approval.status !== 'approved' && !approval.signatureDataUrl
+      )
+    }
+
+    const enriched: EnrichedReview = {
+      ...rev,
+      currentStep: currentApproval?.stepOrder ?? (rev.status === 'completed' ? reviewApprovals.length : null),
+      currentApproverName: currentApproval?.approverName ?? null,
+      currentApproverRole: currentApproval?.approverRole ?? null,
+    }
+
     if (rev.employeeId && !reviewsByEmpId.has(rev.employeeId)) {
-      reviewsByEmpId.set(rev.employeeId, rev)
+      reviewsByEmpId.set(rev.employeeId, enriched)
+    }
+    if (rev.employeeNameStr?.trim()) {
+      const normName = rev.employeeNameStr.trim().toLowerCase()
+      if (!reviewsByName.has(normName)) {
+        reviewsByName.set(normName, enriched)
+      }
+    }
+    if (rev.employeeSn?.trim()) {
+      const normSn = normalizeSn(rev.employeeSn)
+      if (normSn && !reviewsBySn.has(normSn)) {
+        reviewsBySn.set(normSn, enriched)
+      }
     }
   }
 
@@ -1057,7 +1588,31 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
     const daysLeft = differenceInCalendarDays(endDate, today)
     if (daysLeft > 90) continue
 
-    const matchingReview = reviewsByEmpId.get(emp.id)
+    const normEmpName = emp.name.trim().toLowerCase()
+    const normEmpSn = normalizeSn(emp.employeeSn)
+    const matchingReview =
+      reviewsByEmpId.get(emp.id) ||
+      (normEmpName ? reviewsByName.get(normEmpName) : null) ||
+      (normEmpSn ? reviewsBySn.get(normEmpSn) : null)
+
+    const isPermanent =
+      Boolean(emp.permanentDate) ||
+      emp.employmentStatus?.toLowerCase() === 'permanent' ||
+      emp.employmentStatus?.toLowerCase() === 'permanen' ||
+      (emp.employeeStatusType?.toLowerCase().includes('permanen') && !emp.employeeStatusType?.toLowerCase().includes('kontrak'))
+
+    if (isPermanent) {
+      continue
+    }
+
+    if (emp.employmentStatus?.toLowerCase() === 'inactive') {
+      continue
+    }
+
+    // Yang sudah di-review (completed) atau sedang diproses review (in_progress, draft) hilang dari list outstanding
+    if (matchingReview && ['completed', 'in_progress', 'draft'].includes(matchingReview.status.toLowerCase())) {
+      continue
+    }
 
     let urgency: 'overdue' | 'critical' | 'warning' | 'normal' = 'normal'
     if (daysLeft < 0) {
@@ -1068,10 +1623,23 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       urgency = 'warning'
     }
 
+    const latestReview = matchingReview
+      ? {
+          id: matchingReview.id,
+          status: matchingReview.status,
+          reviewType: matchingReview.reviewType || 'contract',
+          recommendation: matchingReview.recommendation,
+          currentStep: matchingReview.currentStep ?? 1,
+          currentApproverRole: matchingReview.currentApproverRole ?? null,
+          currentApproverName: matchingReview.currentApproverName ?? null,
+          todayDate: matchingReview.todayDate ? String(matchingReview.todayDate) : null,
+        }
+      : null
+
     expiringEmployees.push({
       id: emp.id,
       name: emp.name,
-      employeeSn: normalizeSn(emp.employeeSn),
+      employeeSn: normEmpSn,
       email: emp.email || '',
       jobTitle: emp.positionName || emp.jobTitle || 'Staff',
       department: emp.departmentName || '',
@@ -1089,6 +1657,7 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       reviewStatus: matchingReview?.status ?? 'unreviewed',
       reviewRecommendation: matchingReview?.recommendation ?? null,
       reviewType: matchingReview?.reviewType ?? null,
+      latestReview,
     })
   }
 
@@ -1551,6 +2120,24 @@ export async function sendDueContractReviewReminders() {
       },
     })
 
+    // Dispatch Online Test invitation to employee if active test config exists
+    if (settings.onlineTest?.enabled) {
+      try {
+        const { findActiveTestConfigForEmployee, dispatchContractReviewTestInvitation } = await import(
+          './contract-review-tests'
+        )
+        const activeConfig = await findActiveTestConfigForEmployee(expEmp.id, 'contract')
+        if (activeConfig) {
+          await dispatchContractReviewTestInvitation({
+            employeeId: expEmp.id,
+            configId: activeConfig.id,
+          })
+        }
+      } catch (err) {
+        console.warn('[contract-review] Failed to dispatch test invitation during reminder:', err)
+      }
+    }
+
     sent += 1
   }
 
@@ -1576,14 +2163,24 @@ export async function getContractReviews() {
       success: true,
       data: records.map((record) => {
         const reviewApprovals = approvalsByReview.get(record.id) ?? []
-        const currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+        const completedSteps = reviewApprovals.filter(
+          (approval) => approval.status === 'approved' || Boolean(approval.signatureDataUrl)
+        ).length
+
+        let currentApproval = reviewApprovals.find((approval) => approval.status === 'pending')
+        if (!currentApproval && record.status === 'in_progress') {
+          currentApproval = reviewApprovals.find(
+            (approval) => approval.status !== 'approved' && !approval.signatureDataUrl
+          )
+        }
+
         return {
           ...record,
-          approvalStep: currentApproval?.stepOrder ?? null,
+          approvalStep: currentApproval?.stepOrder ?? (record.status === 'completed' ? reviewApprovals.length : null),
           approvalTotalSteps: reviewApprovals.length,
           approvalApproverName: currentApproval?.approverName ?? null,
           approvalApproverRole: currentApproval?.approverRole ?? null,
-          approvalCompletedSteps: reviewApprovals.filter((approval) => approval.status === 'approved').length,
+          approvalCompletedSteps: completedSteps,
         }
       }),
     }
@@ -1627,11 +2224,162 @@ export async function getContractReviewActivityTemplates() {
   }
 }
 
+export async function autoAdvanceDraftReviewIfReady(reviewId: number) {
+  try {
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) return { autoSent: false, reason: 'Review not found' }
+    if (review.status !== 'draft') return { autoSent: false, reason: 'Review not in draft' }
+    if (review.testRequired) return { autoSent: false, reason: 'Test still required' }
+    if (!review.leaderSignatureDataUrl) return { autoSent: false, reason: 'No leader signature' }
+
+    // Check step 1 approval
+    const [firstPending] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, reviewId),
+          eq(hcContractReviewApprovals.stepOrder, 1),
+          eq(hcContractReviewApprovals.status, 'pending')
+        )
+      )
+      .limit(1)
+
+    if (!firstPending) return { autoSent: false, reason: 'Step 1 not pending' }
+
+    // 1. Approve step 1 with leader signature
+    await db
+      .update(hcContractReviewApprovals)
+      .set({
+        status: 'approved',
+        signatureDataUrl: review.leaderSignatureDataUrl,
+        signedAt: new Date(),
+      })
+      .where(eq(hcContractReviewApprovals.id, firstPending.id))
+
+    // 2. Mark step 2 as pending
+    const [nextStep] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, reviewId),
+          eq(hcContractReviewApprovals.stepOrder, 2),
+          eq(hcContractReviewApprovals.status, 'waiting')
+        )
+      )
+      .limit(1)
+
+    if (nextStep) {
+      await db
+        .update(hcContractReviewApprovals)
+        .set({ status: 'pending' })
+        .where(eq(hcContractReviewApprovals.id, nextStep.id))
+
+      // 3. Mark review status as in_progress
+      const [updatedReview] = await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+        .returning()
+
+      // 4. Auto send approval email to next approver
+      if (updatedReview) {
+        await sendPendingContractReviewApprovalEmail(updatedReview)
+      }
+
+      safeRevalidatePath('/dashboard/hc/contract-review')
+      safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      return { autoSent: true, newStatus: 'in_progress' }
+    } else {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'completed', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+
+      safeRevalidatePath('/dashboard/hc/contract-review')
+      safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      return { autoSent: true, newStatus: 'completed' }
+    }
+  } catch (error) {
+    console.error('Error auto-advancing draft review:', error)
+    return { autoSent: false, error }
+  }
+}
+
 export async function getContractReviewById(id: number) {
   try {
+    await ensureContractReviewWorkflowTables()
+    await ensureContractReviewApprovals(id)
+    await reconcileContractReviewWorkflow(id)
     const [record] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, id))
     if (!record) return { success: false, error: 'Review not found' }
-    return { success: true, data: record }
+
+    let testConfig: any = null
+    let testAttempts: any[] = []
+
+    if (record.testConfigId) {
+      const [cfg] = await db
+        .select()
+        .from(hcContractReviewTestConfigs)
+        .where(eq(hcContractReviewTestConfigs.id, record.testConfigId))
+        .limit(1)
+      testConfig = cfg || null
+    }
+
+    // Reconcile online test requirement if config is inactive, deleted, or globally disabled
+    const settings = await getContractReviewSettings()
+    const isTestConfigUnavailable = !testConfig || !testConfig.isActive || settings.onlineTest?.enabled === false
+    const isTestUnfinished = ['none', 'pending', 'in_progress'].includes(record.testStatus)
+
+    if (record.testRequired && isTestUnfinished && isTestConfigUnavailable) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({
+          testRequired: false,
+          testStatus: 'none',
+          updatedAt: new Date(),
+        })
+        .where(eq(hcEmployeeContractReviews.id, id))
+
+      record.testRequired = false
+      record.testStatus = 'none'
+    }
+
+    // Auto-advance if draft review has leader signature and test is no longer required
+    if (record.status === 'draft' && !record.testRequired && record.leaderSignatureDataUrl) {
+      const advanceResult = await autoAdvanceDraftReviewIfReady(id)
+      if (advanceResult.autoSent) {
+        record.status = advanceResult.newStatus || 'in_progress'
+      }
+    }
+
+    if (record.employeeId) {
+      testAttempts = await db
+        .select()
+        .from(hcContractReviewTestAttempts)
+        .where(
+          or(
+            eq(hcContractReviewTestAttempts.reviewId, id),
+            eq(hcContractReviewTestAttempts.employeeId, record.employeeId)
+          )
+        )
+      .orderBy(desc(hcContractReviewTestAttempts.attemptNumber))
+    }
+
+    return {
+      success: true,
+      data: {
+        ...record,
+        testConfig,
+        testAttempts,
+      },
+    }
   } catch (error: any) {
     console.error('Error fetching contract review:', error)
     return { success: false, error: error.message }
@@ -1656,6 +2404,8 @@ export async function resendContractReviewApprovalEmail(reviewId: number) {
       .where(eq(hcEmployeeContractReviews.id, reviewId))
       .limit(1)
     if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+
+    await ensureContractReviewApprovals(reviewId)
 
     const result = await sendPendingContractReviewApprovalEmail(review)
     if (result.sent) {
@@ -1741,8 +2491,30 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
     }
 
     await ensureContractReviewWorkflowTables()
+    const settings = await getContractReviewSettings()
     let saved: any
     if (data.id) {
+      const reviewData = { ...data }
+      if (reviewData.testRequired && ['none', 'pending', 'in_progress'].includes(reviewData.testStatus || 'none')) {
+        if (settings.onlineTest?.enabled === false) {
+          reviewData.testRequired = false
+          reviewData.testStatus = 'none'
+        } else if (reviewData.testConfigId) {
+          const [cfg] = await db
+            .select({ id: hcContractReviewTestConfigs.id, isActive: hcContractReviewTestConfigs.isActive })
+            .from(hcContractReviewTestConfigs)
+            .where(eq(hcContractReviewTestConfigs.id, reviewData.testConfigId))
+            .limit(1)
+          if (!cfg || !cfg.isActive) {
+            reviewData.testRequired = false
+            reviewData.testStatus = 'none'
+          }
+        } else {
+          reviewData.testRequired = false
+          reviewData.testStatus = 'none'
+        }
+      }
+
       const [existingReview] = await db
         .select({ leaderSignatureDataUrl: hcEmployeeContractReviews.leaderSignatureDataUrl })
         .from(hcEmployeeContractReviews)
@@ -1751,10 +2523,13 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
 
       const [updated] = await db
         .update(hcEmployeeContractReviews)
-        .set({ ...data, updatedAt: new Date() })
+        .set({ ...reviewData, updatedAt: new Date() })
         .where(eq(hcEmployeeContractReviews.id, data.id))
         .returning()
       saved = updated
+
+      // Ensure approvals exist for existing review (e.g. if employee was chosen on edit or imported)
+      await ensureContractReviewApprovals(data.id)
 
       // Only a newly drawn leader signature can approve the initial workflow step.
       const hasNewLeaderSignature = Boolean(
@@ -1788,8 +2563,19 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
             const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, data.id as number)).limit(1)
             if (review) await sendPendingContractReviewApprovalEmail(review)
           } else {
-            await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: new Date() }).where(eq(hcEmployeeContractReviews.id, data.id))
+            const completedAt = new Date()
+            await db.update(hcEmployeeContractReviews).set({ status: 'completed', updatedAt: completedAt }).where(eq(hcEmployeeContractReviews.id, data.id))
+            const [rev] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, data.id as number)).limit(1)
+            if (rev) await syncCompletedContractReviewToEmployee(rev, completedAt)
           }
+        }
+      }
+
+      // If draft review has leader signature and no test is required, auto-send to in_progress
+      if (saved.status === 'draft' && !saved.testRequired && saved.leaderSignatureDataUrl) {
+        const advanceRes = await autoAdvanceDraftReviewIfReady(saved.id)
+        if (advanceRes.autoSent) {
+          saved.status = advanceRes.newStatus || 'in_progress'
         }
       }
     } else {
@@ -1798,20 +2584,71 @@ export async function saveContractReview(data: Partial<typeof hcEmployeeContract
         .values(data as any)
         .returning()
       saved = inserted
-      const approvalSteps = await buildContractReviewApprovals(inserted)
+
+      // Check if Online Test is required for this employee
+      if (inserted.employeeId && settings.onlineTest?.enabled !== false) {
+        try {
+          const { findActiveTestConfigForEmployee, dispatchContractReviewTestInvitation } = await import(
+            './contract-review-tests'
+          )
+          const activeCfg = await findActiveTestConfigForEmployee(
+            inserted.employeeId,
+            inserted.reviewType || 'contract'
+          )
+          if (activeCfg) {
+            await db
+              .update(hcEmployeeContractReviews)
+              .set({
+                testRequired: true,
+                testConfigId: activeCfg.id,
+                testStatus: 'pending',
+              })
+              .where(eq(hcEmployeeContractReviews.id, inserted.id))
+            saved.testRequired = true
+            saved.testConfigId = activeCfg.id
+            saved.testStatus = 'pending'
+
+            // Dispatch test invitation to employee
+            await dispatchContractReviewTestInvitation({
+              employeeId: inserted.employeeId,
+              reviewId: inserted.id,
+              configId: activeCfg.id,
+            })
+          }
+        } catch (e) {
+          console.warn('[contract-review] Error setting up test during review create:', e)
+        }
+      }
+
+      // If test is required, PJO cannot auto-approve on creation
+      const canAutoApproveFirstStep = Boolean(data.leaderSignatureDataUrl) && !saved.testRequired
+
+      const approvalSteps = await buildContractReviewApprovals(saved)
       if (approvalSteps.length > 0) {
         const stepsWithSig = [...approvalSteps]
-        // Pass leader signature to first approval step
-        if (data.leaderSignatureDataUrl && stepsWithSig[0]) {
-          stepsWithSig[0] = { ...stepsWithSig[0] as any, status: 'approved', signatureDataUrl: data.leaderSignatureDataUrl as string, signedAt: new Date() }
-          // Mark next step as pending
-          if (stepsWithSig[1]) stepsWithSig[1] = { ...stepsWithSig[1] as any, status: 'pending' }
+        if (canAutoApproveFirstStep && stepsWithSig[0]) {
+          stepsWithSig[0] = {
+            ...(stepsWithSig[0] as any),
+            status: 'approved',
+            signatureDataUrl: data.leaderSignatureDataUrl as string,
+            signedAt: new Date(),
+          }
+          if (stepsWithSig[1]) stepsWithSig[1] = { ...(stepsWithSig[1] as any), status: 'pending' }
         }
         await db.insert(hcContractReviewApprovals).values(stepsWithSig as any)
-        await db.update(hcEmployeeContractReviews).set({ status: 'in_progress' }).where(eq(hcEmployeeContractReviews.id, inserted.id))
-        saved = { ...inserted, status: 'in_progress' }
-        await sendPendingContractReviewApprovalEmail(saved)
+        await db
+          .update(hcEmployeeContractReviews)
+          .set({ status: canAutoApproveFirstStep ? 'in_progress' : 'draft' })
+          .where(eq(hcEmployeeContractReviews.id, inserted.id))
+        saved = { ...saved, status: canAutoApproveFirstStep ? 'in_progress' : 'draft' }
+        if (canAutoApproveFirstStep) {
+          await sendPendingContractReviewApprovalEmail(saved)
+        }
       }
+    }
+
+    if (saved?.id) {
+      await reconcileContractReviewWorkflow(saved.id)
     }
 
     revalidatePath('/dashboard/hc/contract-review')
@@ -1845,6 +2682,8 @@ export async function saveAdminContractReview(data: Partial<typeof hcEmployeeCon
       .set({ ...fields, status: existing.status, updatedAt: new Date() })
       .where(eq(hcEmployeeContractReviews.id, data.id))
       .returning()
+    await ensureContractReviewApprovals(data.id)
+    await reconcileContractReviewWorkflow(data.id)
     revalidatePath('/dashboard/hc/contract-review')
     revalidatePath(`/dashboard/hc/contract-review/form/${data.id}`)
     return { success: true, data: saved }
@@ -1858,11 +2697,14 @@ export async function updateAdminContractReviewApprovalSignature(reviewId: numbe
   try {
     const access = await requireSuperAdminContractReviewAccess()
     if (!access.ok) return { success: false, error: access.error }
-    if (signatureDataUrl !== null && !signatureDataUrl.startsWith('data:image/')) return { success: false, error: 'Format TTD tidak valid.' }
+    if (signatureDataUrl !== null && signatureDataUrl !== '' && !signatureDataUrl.startsWith('data:image/')) {
+      return { success: false, error: 'Format TTD tidak valid.' }
+    }
     const [approval] = await db
       .select({
         id: hcContractReviewApprovals.id,
         stepOrder: hcContractReviewApprovals.stepOrder,
+        approverRole: hcContractReviewApprovals.approverRole,
         status: hcEmployeeContractReviews.status,
       })
       .from(hcContractReviewApprovals)
@@ -1870,30 +2712,29 @@ export async function updateAdminContractReviewApprovalSignature(reviewId: numbe
       .where(and(eq(hcContractReviewApprovals.id, approvalId), eq(hcContractReviewApprovals.reviewId, reviewId)))
       .limit(1)
     if (!approval) return { success: false, error: 'Step approval tidak ditemukan.' }
-    if (approval.status === 'draft') return { success: false, error: 'Review draft belum dapat diubah melalui override admin.' }
-    const duplicateSignature = signatureDataUrl === null ? [] : await db
-      .select({ id: hcContractReviewApprovals.id })
-      .from(hcContractReviewApprovals)
-      .where(
-        and(
-          eq(hcContractReviewApprovals.reviewId, reviewId),
-          ne(hcContractReviewApprovals.id, approvalId),
-          eq(hcContractReviewApprovals.signatureDataUrl, signatureDataUrl),
-        ),
-      )
-      .limit(1)
-    if (duplicateSignature.length > 0) return { success: false, error: 'TTD ini sudah dipakai reviewer lain pada review ini.' }
+
+    const isClearing = signatureDataUrl === null || signatureDataUrl === ''
     await db
       .update(hcContractReviewApprovals)
-      .set({ signatureDataUrl, signedAt: signatureDataUrl ? new Date() : null })
+      .set({
+        signatureDataUrl: isClearing ? null : signatureDataUrl,
+        signedAt: isClearing ? null : new Date(),
+        status: isClearing ? 'pending' : 'approved',
+      })
       .where(eq(hcContractReviewApprovals.id, approvalId))
+
     if (approval.stepOrder === 1) {
       await db
         .update(hcEmployeeContractReviews)
-        .set({ leaderSignatureDataUrl: signatureDataUrl, updatedAt: new Date() })
+        .set({ leaderSignatureDataUrl: isClearing ? null : signatureDataUrl, updatedAt: new Date() })
         .where(eq(hcEmployeeContractReviews.id, reviewId))
     }
+
+    await reconcileContractReviewWorkflow(reviewId)
+
     revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+    revalidatePath('/dashboard/hc/contract-review')
     return { success: true }
   } catch (error: any) {
     console.error('Error updating admin Contract Review signature:', error)
@@ -1917,6 +2758,74 @@ export async function completeAdminContractReview(reviewId: number) {
   } catch (error: any) {
     console.error('Error completing admin Contract Review:', error)
     return { success: false, error: error.message || 'Gagal menyelesaikan review.' }
+  }
+}
+
+export async function updateContractReviewStatus(
+  reviewId: number,
+  newStatus: 'draft' | 'in_progress' | 'completed' | 'cancelled'
+) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
+    const role = await getCurrentEmployeeAccessRole()
+    if (!isSuperAdminRole(role)) {
+      return { success: false, error: 'Forbidden: Hanya Super Admin / HC Manager yang dapat mengubah status review.' }
+    }
+
+    await ensureContractReviewWorkflowTables()
+    await ensureContractReviewApprovals(reviewId)
+    await reconcileContractReviewWorkflow(reviewId)
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, reviewId))
+      .limit(1)
+
+    if (!review) return { success: false, error: 'Review Contract Review tidak ditemukan.' }
+
+    if (newStatus === 'in_progress') {
+      if (review.status === 'draft') {
+        if (!review.testRequired && review.leaderSignatureDataUrl) {
+          const advanceRes = await autoAdvanceDraftReviewIfReady(reviewId)
+          if (advanceRes.autoSent) {
+            safeRevalidatePath('/dashboard/hc/contract-review')
+            safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+            return { success: true, message: 'Status diubah ke In Progress dan email approval dikirim ke reviewer berikutnya.' }
+          }
+        }
+      }
+
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+
+      const [updatedReview] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, reviewId)).limit(1)
+      if (updatedReview) {
+        await sendPendingContractReviewApprovalEmail(updatedReview)
+      }
+    } else if (newStatus === 'completed') {
+      const completedAt = new Date()
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'completed', updatedAt: completedAt })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+      await syncCompletedContractReviewToEmployee(review, completedAt)
+    } else {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: newStatus, updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, reviewId))
+    }
+
+    await reconcileContractReviewWorkflow(reviewId)
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+    return { success: true, message: `Status review berhasil diubah menjadi ${newStatus}.` }
+  } catch (error: any) {
+    console.error('Error updating contract review status:', error)
+    return { success: false, error: error.message || 'Gagal mengubah status review.' }
   }
 }
 
@@ -2081,6 +2990,45 @@ export async function approveContractReviewStep(
       return { success: false, error: 'TTD ini sudah digunakan pada step approval lain.' }
     }
 
+    // Check Online Test requirement gate for Step 1 (PJO/Leader)
+    const [reviewRecord] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+      .limit(1)
+
+    if (approval.stepOrder === 1 && reviewRecord?.testRequired) {
+      if (['none', 'pending', 'in_progress'].includes(reviewRecord.testStatus)) {
+        return {
+          success: false,
+          error: 'Persetujuan belum dapat dilakukan karena karyawan belum menyelesaikan Ujian Online yang disyaratkan.',
+        }
+      }
+
+      if (reviewRecord.testStatus === 'failed') {
+        let maxRemedial = 0
+        let passGrade = 75
+        if (reviewRecord.testConfigId) {
+          const [cfg] = await db
+            .select()
+            .from(hcContractReviewTestConfigs)
+            .where(eq(hcContractReviewTestConfigs.id, reviewRecord.testConfigId))
+            .limit(1)
+          if (cfg) {
+            maxRemedial = cfg.maxRemedialAttempts
+            passGrade = cfg.passingGrade
+          }
+        }
+
+        if (maxRemedial > 0 && reviewRecord.testAttemptCount <= maxRemedial) {
+          return {
+            success: false,
+            error: `Karyawan belum mencapai passing grade (${passGrade}%) dan masih memiliki kuota remedial. Harap menunggu hingga sesi remedial selesai.`,
+          }
+        }
+      }
+    }
+
     // If recommendation/letterIssuance are changed, update the master review record
     // Rekomendasi kontrak tidak boleh diubah oleh karyawan yang sedang direview (step 2 / role employee)
     const isEmployeeReviewer = approval.approverRole === 'employee' || approval.stepOrder === 2
@@ -2113,34 +3061,49 @@ export async function approveContractReviewStep(
       return { success: false, error: 'Approval ini sudah diproses atau tidak lagi aktif.' }
     }
 
-    const [nextApproval] = await db
+    // Check ALL remaining steps for this review
+    const allRemainingSteps = await db
       .select()
       .from(hcContractReviewApprovals)
-      .where(and(eq(hcContractReviewApprovals.reviewId, approval.reviewId), eq(hcContractReviewApprovals.status, 'waiting')))
+      .where(
+        and(
+          eq(hcContractReviewApprovals.reviewId, approval.reviewId),
+          ne(hcContractReviewApprovals.id, approval.id)
+        )
+      )
       .orderBy(asc(hcContractReviewApprovals.stepOrder))
-      .limit(1)
 
-    if (nextApproval) {
-      await db.update(hcContractReviewApprovals).set({ status: 'pending' }).where(eq(hcContractReviewApprovals.id, nextApproval.id))
-      const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, approval.reviewId)).limit(1)
+    const unapprovedSteps = allRemainingSteps.filter((s) => s.status !== 'approved')
+
+    if (unapprovedSteps.length > 0) {
+      // Document is STILL IN PROGRESS.
+      // Activate the next step in line if none is already pending
+      const hasPendingStep = unapprovedSteps.some((s) => s.status === 'pending')
+      if (!hasPendingStep) {
+        const nextStepToActivate = unapprovedSteps[0]
+        await db
+          .update(hcContractReviewApprovals)
+          .set({ status: 'pending' })
+          .where(eq(hcContractReviewApprovals.id, nextStepToActivate.id))
+      }
+
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({ status: 'in_progress', updatedAt: new Date() })
+        .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+
+      const [review] = await db
+        .select()
+        .from(hcEmployeeContractReviews)
+        .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+        .limit(1)
       if (review) await sendPendingContractReviewApprovalEmail(review)
     } else {
-      // Final step completed — update contract dates based on recommendation
+      // Final step completed — ALL approvals are truly approved!
       const [review] = await db.select().from(hcEmployeeContractReviews).where(eq(hcEmployeeContractReviews.id, approval.reviewId)).limit(1)
       if (review) {
         const today = new Date()
         const updateData: Record<string, any> = { status: 'completed', updatedAt: today }
-
-        if (review.recommendation === 'contract_extended' && review.contractExtendedMonths) {
-          // Extend contract end date
-          const hireDate = review.hireDate ? new Date(review.hireDate) : today
-          const contractEnd = new Date(hireDate)
-          contractEnd.setMonth(contractEnd.getMonth() + review.contractExtendedMonths)
-          updateData.contractEndDate = contractEnd.toISOString().slice(0, 10)
-        } else if (review.recommendation === 'confirm_permanent') {
-          // Set permanent date to today
-          updateData.permanentDate = today.toISOString().slice(0, 10)
-        }
 
         await db.update(hcEmployeeContractReviews).set(updateData).where(eq(hcEmployeeContractReviews.id, approval.reviewId))
         await syncCompletedContractReviewToEmployee({ ...review, ...updateData }, today)
@@ -2175,8 +3138,10 @@ export async function approveContractReviewStep(
       }
     }
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath('/dashboard/approval')
+    await reconcileContractReviewWorkflow(approval.reviewId)
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath('/dashboard/approval')
     return { success: true }
   } catch (error: any) {
     console.error('Error approving contract review step:', error)
@@ -2628,3 +3593,263 @@ export async function deleteContractReviewAttachment(params: {
     return { success: false, error: error.message || 'Gagal menghapus lampiran.' }
   }
 }
+
+export async function updateContractReviewByApproverToken(
+  token: string,
+  payload: {
+    performanceActivities?: Array<{ activity: string; achievement: string; remark: string }>
+    compDisciplineAch?: string
+    compDisciplineRemark?: string
+    compSkillAch?: string
+    compSkillRemark?: string
+    compResultAch?: string
+    compResultRemark?: string
+    compQualityAch?: string
+    compQualityRemark?: string
+    compCustomerAch?: string
+    compCustomerRemark?: string
+    compTeamworkAch?: string
+    compTeamworkRemark?: string
+    recommendation?: string
+    contractExtendedMonths?: number
+    contractEndDate?: string
+    permanentDate?: string
+    letterIssuance?: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [approval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!approval) {
+      return { success: false, error: 'Token approval tidak valid.' }
+    }
+
+    if (approval.approverRole === 'employee' || approval.stepOrder === 2) {
+      return {
+        success: false,
+        error: 'Karyawan yang sedang dievaluasi hanya memiliki akses membaca dan menandatangani dokumen.',
+      }
+    }
+
+    const [review] = await db
+      .select()
+      .from(hcEmployeeContractReviews)
+      .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+      .limit(1)
+
+    if (!review) {
+      return { success: false, error: 'Dokumen Contract Review tidak ditemukan.' }
+    }
+
+    const updateData: Record<string, any> = {
+      updatedAt: new Date(),
+    }
+
+    if (payload.performanceActivities !== undefined) {
+      updateData.performanceActivities = payload.performanceActivities
+    }
+    if (payload.compDisciplineAch !== undefined) updateData.compDisciplineAch = payload.compDisciplineAch
+    if (payload.compDisciplineRemark !== undefined) updateData.compDisciplineRemark = payload.compDisciplineRemark
+    if (payload.compSkillAch !== undefined) updateData.compSkillAch = payload.compSkillAch
+    if (payload.compSkillRemark !== undefined) updateData.compSkillRemark = payload.compSkillRemark
+    if (payload.compResultAch !== undefined) updateData.compResultAch = payload.compResultAch
+    if (payload.compResultRemark !== undefined) updateData.compResultRemark = payload.compResultRemark
+    if (payload.compQualityAch !== undefined) updateData.compQualityAch = payload.compQualityAch
+    if (payload.compQualityRemark !== undefined) updateData.compQualityRemark = payload.compQualityRemark
+    if (payload.compCustomerAch !== undefined) updateData.compCustomerAch = payload.compCustomerAch
+    if (payload.compCustomerRemark !== undefined) updateData.compCustomerRemark = payload.compCustomerRemark
+    if (payload.compTeamworkAch !== undefined) updateData.compTeamworkAch = payload.compTeamworkAch
+    if (payload.compTeamworkRemark !== undefined) updateData.compTeamworkRemark = payload.compTeamworkRemark
+    if (payload.recommendation !== undefined) updateData.recommendation = payload.recommendation
+    if (payload.contractExtendedMonths !== undefined) updateData.contractExtendedMonths = payload.contractExtendedMonths
+    if (payload.contractEndDate !== undefined) updateData.contractEndDate = payload.contractEndDate
+    if (payload.permanentDate !== undefined) updateData.permanentDate = payload.permanentDate
+    if (payload.letterIssuance !== undefined) updateData.letterIssuance = payload.letterIssuance
+
+    await db
+      .update(hcEmployeeContractReviews)
+      .set(updateData)
+      .where(eq(hcEmployeeContractReviews.id, approval.reviewId))
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/${approval.reviewId}`)
+    safeRevalidatePath(`/dashboard/hc/contract-review/form/${approval.reviewId}`)
+    safeRevalidatePath(`/review/${token}`)
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updating review by approver token:', error)
+    return { success: false, error: error.message || 'Gagal menyimpan perubahan review.' }
+  }
+}
+
+export async function addContractReviewApproverRow(
+  token: string,
+  newApprover: {
+    approverName: string
+    approverEmail: string
+    approverRole: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [currentApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!currentApproval) {
+      return { success: false, error: 'Approval step tidak ditemukan.' }
+    }
+
+    if (currentApproval.approverRole === 'employee' || currentApproval.stepOrder === 2) {
+      return {
+        success: false,
+        error: 'Karyawan yang sedang dievaluasi tidak memiliki izin untuk menambah approver.',
+      }
+    }
+
+    if (!newApprover.approverName.trim()) {
+      return { success: false, error: 'Nama penandatangan/approver wajib diisi.' }
+    }
+
+    // Get all steps ordered
+    const allSteps = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, currentApproval.reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
+
+    // Insert new approver right after the current approver
+    const insertAfterOrder = currentApproval.stepOrder
+
+    // Shift subsequent step orders by +1
+    for (const step of allSteps) {
+      if (step.stepOrder > insertAfterOrder) {
+        await db
+          .update(hcContractReviewApprovals)
+          .set({ stepOrder: step.stepOrder + 1 })
+          .where(eq(hcContractReviewApprovals.id, step.id))
+      }
+    }
+
+    const newToken = randomUUID().replace(/-/g, '')
+    const [createdStep] = await db
+      .insert(hcContractReviewApprovals)
+      .values({
+        reviewId: currentApproval.reviewId,
+        stepOrder: insertAfterOrder + 1,
+        approvalToken: newToken,
+        approverName: newApprover.approverName.trim(),
+        approverEmail: newApprover.approverEmail.trim(),
+        approverRole: newApprover.approverRole.trim() || 'Co-PJO / Supervisor',
+        status: currentApproval.status === 'approved' ? 'pending' : 'waiting',
+      })
+      .returning()
+
+    // Ensure review status remains in_progress if it was previously completed
+    await db
+      .update(hcEmployeeContractReviews)
+      .set({ status: 'in_progress', updatedAt: new Date() })
+      .where(eq(hcEmployeeContractReviews.id, currentApproval.reviewId))
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/${currentApproval.reviewId}`)
+    safeRevalidatePath(`/review/${token}`)
+
+    return { success: true, createdStep }
+  } catch (error: any) {
+    console.error('Error adding contract review approver row:', error)
+    return { success: false, error: error.message || 'Gagal menambahkan baris approver.' }
+  }
+}
+
+export async function updateContractReviewApproverDetails(
+  token: string,
+  approvalId: number,
+  data: {
+    approverName: string
+    approverRole?: string
+    approverEmail?: string
+  }
+) {
+  try {
+    await ensureContractReviewWorkflowTables()
+    const [currentApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.approvalToken, token))
+      .limit(1)
+
+    if (!currentApproval) {
+      return { success: false, error: 'Approval step tidak ditemukan.' }
+    }
+
+    if (currentApproval.approverRole === 'employee' || currentApproval.stepOrder === 2) {
+      return {
+        success: false,
+        error: 'Karyawan yang sedang dievaluasi tidak memiliki izin untuk mengedit approver.',
+      }
+    }
+
+    if (!data.approverName.trim()) {
+      return { success: false, error: 'Nama penandatangan wajib diisi.' }
+    }
+
+    const [targetApproval] = await db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(
+        and(
+          eq(hcContractReviewApprovals.id, approvalId),
+          eq(hcContractReviewApprovals.reviewId, currentApproval.reviewId)
+        )
+      )
+      .limit(1)
+
+    if (!targetApproval) {
+      return { success: false, error: 'Target penandatangan tidak ditemukan.' }
+    }
+
+    if (targetApproval.approverRole === 'employee' || targetApproval.stepOrder === 2) {
+      return { success: false, error: 'Step penandatangan karyawan tidak dapat diubah.' }
+    }
+
+    await db
+      .update(hcContractReviewApprovals)
+      .set({
+        approverName: data.approverName.trim(),
+        approverRole: data.approverRole?.trim() || targetApproval.approverRole,
+        approverEmail: data.approverEmail?.trim() ?? targetApproval.approverEmail,
+      })
+      .where(eq(hcContractReviewApprovals.id, approvalId))
+
+    // If step 1 (leader/creator), keep leaderName and leaderTitle on review table in sync
+    if (targetApproval.stepOrder === 1) {
+      await db
+        .update(hcEmployeeContractReviews)
+        .set({
+          leaderName: data.approverName.trim(),
+          leaderTitle: data.approverRole?.trim() || undefined,
+          updatedAt: new Date(),
+        })
+        .where(eq(hcEmployeeContractReviews.id, currentApproval.reviewId))
+    }
+
+    safeRevalidatePath('/dashboard/hc/contract-review')
+    safeRevalidatePath(`/dashboard/hc/contract-review/${currentApproval.reviewId}`)
+    safeRevalidatePath(`/review/${token}`)
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updating contract review approver details:', error)
+    return { success: false, error: error.message || 'Gagal mengubah penandatangan.' }
+  }
+}
+

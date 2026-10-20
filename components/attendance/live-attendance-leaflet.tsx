@@ -67,16 +67,20 @@ function MapController({
   const map = useMap()
 
   useEffect(() => {
-    if (focusSite) {
+    if (focusSite && Number.isFinite(focusSite.latitude) && Number.isFinite(focusSite.longitude)) {
       map.flyTo([focusSite.latitude, focusSite.longitude], 14, { duration: 1.1 })
       return
     }
     if (selectedRecord && selectedRecord.latitude && selectedRecord.longitude) {
-      map.flyTo(
-        [Number(selectedRecord.latitude), Number(selectedRecord.longitude)],
-        16, // Zoom closer to the specific marker
-        { duration: 1.5 }
-      )
+      const lat = Number(selectedRecord.latitude)
+      const lng = Number(selectedRecord.longitude)
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        map.flyTo(
+          [lat, lng],
+          16, // Zoom closer to the specific marker
+          { duration: 1.5 }
+        )
+      }
     }
   }, [focusSite, selectedRecord, map])
 
@@ -84,6 +88,7 @@ function MapController({
 }
 
 function SiteMarker({ site, refresh, canEdit, onSiteSaved }: { site: Site; refresh?: () => void; canEdit: boolean; onSiteSaved?: () => void | Promise<void> }) {
+  const isSiteCoordValid = Number.isFinite(site.latitude) && Number.isFinite(site.longitude)
   const [position, setPosition] = useState([site.latitude, site.longitude] as [number, number])
   const [radius, setRadius] = useState(site.radiusMeters)
   const [saving, setSaving] = useState(false)
@@ -91,11 +96,13 @@ function SiteMarker({ site, refresh, canEdit, onSiteSaved }: { site: Site; refre
   const markerRef = useRef<any>(null)
 
   useEffect(() => {
-    if (!editing) {
+    if (!editing && isSiteCoordValid) {
       setPosition([site.latitude, site.longitude])
       setRadius(site.radiusMeters)
     }
-  }, [editing, site.latitude, site.longitude, site.radiusMeters])
+  }, [editing, isSiteCoordValid, site.latitude, site.longitude, site.radiusMeters])
+
+  if (!isSiteCoordValid) return null
 
   const iconHtml = `<div style="position:relative;display:flex;width:48px;height:48px;align-items:center;justify-content:center;border-radius:12px;border:3px solid white;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);background-color:#0a4f51;transition:transform 0.15s"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg></div>`
   const customIcon = L.divIcon({
@@ -242,7 +249,13 @@ export default function LiveAttendanceLeaflet({
   // Center map on the first valid record on mount if no selected id
   useEffect(() => {
     if (!selectedId && records.length > 0) {
-    const firstValid = records.find((r) => r.latitude && r.longitude)
+      const firstValid = records.find(
+        (r) =>
+          r.latitude &&
+          r.longitude &&
+          Number.isFinite(Number(r.latitude)) &&
+          Number.isFinite(Number(r.longitude))
+      )
       if (firstValid) {
         mapCenterRef.current = [Number(firstValid.latitude), Number(firstValid.longitude)]
       }
@@ -282,16 +295,25 @@ export default function LiveAttendanceLeaflet({
 
           const lat = Number(record.latitude)
           const lng = Number(record.longitude)
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
           const active = statusIsLive(record)
           const isSelected = selectedId === record.employeeId
           // Calculate distance to site if site coords exist
           let distanceToSite = 0
           let isOutOfBounds = false
-          const hasSitePosition = Boolean(record.siteGeoLatitude && record.siteGeoLongitude)
+          const siteLat = Number(record.siteGeoLatitude)
+          const siteLng = Number(record.siteGeoLongitude)
+          const hasSitePosition = Boolean(
+            record.siteGeoLatitude &&
+            record.siteGeoLongitude &&
+            Number.isFinite(siteLat) &&
+            Number.isFinite(siteLng)
+          )
           if (hasSitePosition) {
             distanceToSite = Math.round(
               L.latLng(lat, lng).distanceTo(
-                L.latLng(Number(record.siteGeoLatitude), Number(record.siteGeoLongitude))
+                L.latLng(siteLat, siteLng)
               )
             )
             isOutOfBounds = distanceToSite > (record.siteRadiusMeters || 500)

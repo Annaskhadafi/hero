@@ -335,7 +335,7 @@ const SITE_APPROVER_MAP: Record<string, string> = {
   '125': '1375', // Ade Saharu (Jakarta - HSE)
   '126': '955',  // Apriyanto (Balikpapan)
   '127': '1164', // Saipudin (Sangatta - HSE Leader)
-  '128': '1308', // Irfan Rivai Remba (CK MHU - HSE)
+  '128': '1375', // Ade Saharu (CK MHU - HSE)
   '129': '1380', // Rizky Rahmadani (CK KIM - HSE)
   '130': '97',   // Tommy Indra Aldiny Rambe (Tj. Adaro - Technical Leader / PJO)
   '131': '1285', // Danny Hangga Irawan (CK BMB - HSE)
@@ -356,7 +356,7 @@ const SITE_APPROVER_MAP: Record<string, string> = {
   '146': '255',  // Muhammad Refaldi (PT SMJ Berau - PJO)
   '147': '1294', // Nando Aji Saputra (PKA Musi Rawas)
   '148': '1289', // Yoga Perdana (MTN ME)
-  '149': '1180', // Muchamat Nurkolis Majid (PPA BIB - PJO)
+  '149': '1114', // Revy Andyaksa Saroni (PPA BIB - PJO)
   '150': '1250', // Rakha Dwi Saputra (CDE Bengkulu)
   '151': '955',  // Apriyanto (Makassar)
   '210': '1212', // Dowy Pratama Sita (BUMA Tanjung - PJO)
@@ -423,7 +423,7 @@ const DEPARTMENT_HEAD_BY_DEPT_ID: Record<string, string> = {
 function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
   const SITES_WITH_DEDICATED_PJO: Record<string, string> = {
     '127': '1164', // Sangatta -> Saipudin (HSE Leader / PJO)
-    '128': '1308', // CK MHU -> Irfan Rivai Remba (HSE / PJO)
+    '128': '1375', // CK MHU -> Ade Saharu (HSE / PJO)
     '129': '1380', // CK KIM -> Rizky Rahmadani (HSE / PJO)
     '130': '97',   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader / PJO)
     '131': '1285', // CK BMB -> Danny Hangga Irawan (HSE / PJO)
@@ -439,7 +439,7 @@ function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
     '146': '255',  // PT SMJ Berau -> Muhammad Refaldi (PJO)
     '147': '1294', // PKA Musi Rawas -> Nando Aji Saputra (PJO)
     '148': '1289', // MTN ME -> Yoga Perdana (PJO)
-    '149': '1180', // PPA BIB -> Muchamat Nurkolis Majid (PJO)
+    '149': '1114', // PPA BIB -> Revy Andyaksa Saroni (PJO)
     '150': '1250', // CDE Bengkulu -> Rakha Dwi Saputra (PJO)
     '210': '1212', // BUMA Tanjung -> Dowy Pratama Sita (PJO)
   }
@@ -489,7 +489,7 @@ export const MASTER_CATEGORIZED_SITES = [
   { id: '133', name: 'CK BIB', category: 'HSE', approverId: '1374' }, // Fathurrahman Sufi (HSE Officer)
   { id: '131', name: 'CK BMB', category: 'HSE', approverId: '1285' }, // Danny Hangga Irawan (HSE Officer)
   { id: '129', name: 'CK KIM', category: 'HSE', approverId: '1380' }, // Rizky Rahmadani (HSE Officer)
-  { id: '128', name: 'CK MHU', category: 'HSE', approverId: '1308' }, // Irfan Rivai Remba (HSE)
+  { id: '128', name: 'CK MHU', category: 'HSE', approverId: '1375' }, // Ade Saharu (HSE)
   { id: '140', name: 'Vale - Sorowako', category: 'HSE', approverId: '1307' }, // Muhammad Wahyu Ichsan (HSE Officer)
 
   // 3. PJO (13 Sites)
@@ -502,7 +502,7 @@ export const MASTER_CATEGORIZED_SITES = [
   { id: '151', name: 'Makassar', category: 'PJO', approverId: '955' }, // Apriyanto (Head of Service MVC)
   { id: '134', name: 'Palembang', category: 'PJO', approverId: '96' }, // Febrial Hariri (Leader Technical Sumatera)
   { id: '136', name: 'Pekanbaru', category: 'PJO', approverId: '96' }, // Febrial Hariri (Leader Technical Sumatera)
-  { id: '149', name: 'PPA BIB', category: 'PJO', approverId: '1180' }, // Muchamat Nurkolis Majid (Technical Engineer)
+  { id: '149', name: 'PPA BIB', category: 'PJO', approverId: '1114' }, // Revy Andyaksa Saroni (Technical Engineer)
   { id: '127', name: 'Sangatta', category: 'PJO', approverId: '1164' }, // Saipudin (HSE Leader)
   { id: '139', name: 'Sebamban', category: 'PJO', approverId: '955' }, // Apriyanto (Head of Service MVC)
   { id: '130', name: 'Tj. Adaro', category: 'PJO', approverId: '97' }, // Tommy Indra Aldiny Rambe (Technical Leader)
@@ -586,6 +586,7 @@ function WorkflowBuilderDialog({
       if (lower.includes('junaidi')) map.set('junaidi', e.id.toString())
       if (lower.includes('iqbal')) map.set('iqbal', e.id.toString())
       if (lower.includes('ali') && lower.includes('rahman')) map.set('alirahman', e.id.toString())
+      if (lower.includes('renaldo')) map.set('renaldo', e.id.toString())
     }
     return map
   }, [employeeOptions])
@@ -593,7 +594,7 @@ function WorkflowBuilderDialog({
   function resolveApproverForSiteAndSection(siteId: string, sectionId?: string): string {
     const SITES_WITH_DEDICATED_PJO: Record<string, string> = {
       '127': '1164', // Sangatta -> Saipudin (HSE Leader / PJO)
-      '128': '1308', // CK MHU -> Irfan Rivai Remba (HSE / PJO)
+      '128': '1375', // CK MHU -> Ade Saharu (HSE / PJO)
       '129': '1380', // CK KIM -> Rizky Rahmadani (HSE / PJO)
       '130': '97',   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader / PJO)
       '131': '1285', // CK BMB -> Danny Hangga Irawan (HSE / PJO)
@@ -609,7 +610,7 @@ function WorkflowBuilderDialog({
       '146': '255',  // PT SMJ Berau -> Muhammad Refaldi (PJO)
       '147': '1294', // PKA Musi Rawas -> Nando Aji Saputra (PJO)
       '148': '1289', // MTN ME -> Yoga Perdana (PJO)
-      '149': '1180', // PPA BIB -> Muchamat Nurkolis Majid (PJO)
+      '149': '1114', // PPA BIB -> Revy Andyaksa Saroni (PJO)
       '150': '1250', // CDE Bengkulu -> Rakha Dwi Saputra (PJO)
       '210': '1212', // BUMA Tanjung -> Dowy Pratama Sita (PJO)
     }
@@ -925,6 +926,10 @@ function WorkflowBuilderDialog({
     { id: 'step-1', label: 'Admin / PJO / HSE', type: 'employee' },
   ]
 
+  const jobcardQcDefaults: ApprovalStep[] = [
+    { id: 'step-1', label: 'Sign QC / Leader', type: 'employee' },
+  ]
+
   const generalDefaults: ApprovalStep[] = [
     { id: 'step-0', label: 'Section', type: 'section' },
     { id: 'step-1', label: 'Leader', type: 'employee' },
@@ -945,7 +950,8 @@ function WorkflowBuilderDialog({
 
   function buildInitialSteps(): ApprovalStep[] {
     const menuKeyLower = (selectedMenuKey || initial?.id || '').toLowerCase()
-    const isFormWo = menuKeyLower.includes('wo')
+    const isJobcard = menuKeyLower.includes('jobcard')
+    const isFormWo = menuKeyLower.includes('wo') && !isJobcard
     const isRfr = menuKeyLower.includes('rfr')
     const isFiveR = menuKeyLower.includes('5r') || menuKeyLower.includes('five-r')
     const isSummary = menuKeyLower.includes('summary')
@@ -958,19 +964,21 @@ function WorkflowBuilderDialog({
       ? formWoServiceDefaults
       : formWoRepairDefaults
 
-    const defaults = isRfr
-      ? rfrDefaults
-      : isFormWo
-        ? formWoDefaults
-        : isFiveR
-          ? fiveRDefaults
-          : isMaterialTools
-            ? materialToolsDefaults
-            : isSummary
-              ? summaryApdDefaults
-              : isApd
-                ? apdDefaults
-                : generalDefaults
+    const defaults = isJobcard
+      ? jobcardQcDefaults
+      : isRfr
+        ? rfrDefaults
+        : isFormWo
+          ? formWoDefaults
+          : isFiveR
+            ? fiveRDefaults
+            : isMaterialTools
+              ? materialToolsDefaults
+              : isSummary
+                ? summaryApdDefaults
+                : isApd
+                  ? apdDefaults
+                  : generalDefaults
 
     if (isSummary) {
       const filteredExisting = (initial?.globalSteps || []).filter((gs) => {
@@ -1138,7 +1146,7 @@ function WorkflowBuilderDialog({
       }
 
       if (name.includes('mhu') || siteId === '128') {
-        return '1308' // Irfan Rivai Remba (HSE / PJO)
+        return '1375' // Ade Saharu (HSE / PJO)
       }
 
       if (name.includes('bmb') || siteId === '131') {
@@ -1553,6 +1561,18 @@ function WorkflowBuilderDialog({
       })
     }
 
+    if (menuKeyLower.includes('jobcard')) {
+      const defaultQcId = employeeLookupByName.get('renaldo') ?? '5'
+      return MASTER_CATEGORIZED_SITES.map((site, index) => ({
+        key: `site-jc-${index}-${site.id}`,
+        siteId: site.id.toString(),
+        departmentId: '',
+        values: {
+          'step-1': defaultQcId,
+        },
+      }))
+    }
+
     return []
   })
 
@@ -1696,7 +1716,7 @@ function WorkflowBuilderDialog({
       '129': '1101', // Jaya Kusuma Putra (CK KIM)
       '146': '255',  // Muhammad Refaldi (PT SMJ Berau)
       '137': '255',  // Muhammad Refaldi (Berau)
-      '149': '1180', // Muchamat Nurkolis Majid (PPA BIB)
+      '149': '1114', // Revy Andyaksa Saroni (PPA BIB)
       '144': '1057', // Singgih Wiyono (AMM Tabang)
       '133': '1053', // Abdul Ajis Setiawan (CK BIB)
       '128': '312',  // Andi Ibrahim (CK MHU)
@@ -2003,6 +2023,18 @@ function WorkflowBuilderDialog({
                         })
                       }
                     }
+                    setSiteData(autoRows)
+                  } else if (newKey.toLowerCase().includes('jobcard')) {
+                    setApprovalSteps(jobcardQcDefaults)
+                    const defaultQcId = employeeLookupByName.get('renaldo') ?? '5'
+                    const autoRows = MASTER_CATEGORIZED_SITES.map((site, index) => ({
+                      key: `site-jc-${index}-${site.id}`,
+                      siteId: site.id.toString(),
+                      departmentId: '',
+                      values: {
+                        'step-1': defaultQcId,
+                      },
+                    }))
                     setSiteData(autoRows)
                   } else {
                     setApprovalSteps(generalDefaults)

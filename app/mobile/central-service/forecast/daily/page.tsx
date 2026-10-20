@@ -1,11 +1,18 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { getDailyForecastItems, getForecastPeriods } from "@/app/actions/central-service-forecast";
 import { fetchSapInvoices } from "@/lib/cs-sap-db";
+import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { MobileDailyClientPage } from "./client-page";
 
 export const revalidate = 0;
 
 export default async function MobileDailyForecastPage() {
+  const permission = await getCurrentMenuPermission("cs-forecast");
+  if (!permission.canView) {
+    redirect("/mobile/dashboard");
+  }
+
   let allItems: any[] = [];
   let periods: any[] = [];
   let sapInvoices: any[] = [];

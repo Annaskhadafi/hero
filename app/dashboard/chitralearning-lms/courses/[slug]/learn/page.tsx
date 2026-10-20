@@ -67,18 +67,26 @@ export default async function LmsCoursePlayerPage({
     .limit(1)
   
   const currentEmployee = currentEmployeeRows[0] || null
+  let existingEnrollment: any = null
+  let isFailedCooldown = false
   if (currentEmployee) {
-    const [existingEnrollment] = await db
+    const [enrollment] = await db
       .select()
       .from(chitraLearningEnrollments)
       .where(and(eq(chitraLearningEnrollments.courseId, course.id), eq(chitraLearningEnrollments.employeeId, currentEmployee.id)))
       .limit(1)
 
+    existingEnrollment = enrollment
+
     if (!existingEnrollment || existingEnrollment.approvalStatus !== 'approved') {
       redirect(`/dashboard/chitralearning-lms/courses/${course.slug}`)
     }
 
-    if (existingEnrollment.status !== 'passed') {
+    isFailedCooldown = existingEnrollment.status === 'failed' && Boolean(
+      existingEnrollment.cooldownUntil && new Date().getTime() < new Date(existingEnrollment.cooldownUntil).getTime()
+    );
+
+    if (existingEnrollment.status !== 'passed' && !isFailedCooldown) {
       await db
         .update(chitraLearningEnrollments)
         .set({
@@ -156,7 +164,7 @@ export default async function LmsCoursePlayerPage({
   }))
   
   let attemptCount = 0;
-  let effectiveMaxRetakes = course.maxRetakes ?? -1;
+  let effectiveMaxRetakes = activeTestPhase === 'posttest' ? 2 : (course.maxRetakes ?? -1);
   if (['quiz', 'pretest', 'posttest'].includes(activeLessonType)) {
     const auditRows = await db
       .select({ count: sql<number>`count(*)` })
@@ -190,6 +198,31 @@ export default async function LmsCoursePlayerPage({
     ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fileUrl)}`
     : ''
   const pdfViewerUrl = isPdfResource ? `${fileUrl}${fileUrl.includes('#') ? '&' : '#'}toolbar=0&navpanes=0&scrollbar=1` : ''
+
+  let googleSlideEmbedUrl = ''
+  let googleSlideExternalUrl = ''
+  if ((activeLessonType as string) === 'google_slide' && rawFileUrl) {
+    if (rawFileUrl.includes('<iframe')) {
+      const srcMatch = rawFileUrl.match(/src=["']([^"']+)["']/i)
+      googleSlideEmbedUrl = srcMatch ? srcMatch[1] : ''
+    } else if (/^https?:\/\//i.test(rawFileUrl)) {
+      googleSlideEmbedUrl = rawFileUrl
+    }
+
+    if (googleSlideEmbedUrl) {
+      if (googleSlideEmbedUrl.includes('/pub?')) {
+        googleSlideEmbedUrl = googleSlideEmbedUrl.replace('/pub?', '/pubembed?')
+      } else if (googleSlideEmbedUrl.includes('/edit')) {
+        googleSlideEmbedUrl = googleSlideEmbedUrl.replace(/\/edit.*$/, '/embed?start=false&loop=false&delayms=3000')
+      }
+      googleSlideExternalUrl = googleSlideEmbedUrl
+        .replace(/\/embed.*$/, '/present')
+        .replace(/\/pubembed.*$/, '/present')
+      if (!googleSlideExternalUrl.startsWith('http')) {
+        googleSlideExternalUrl = googleSlideEmbedUrl
+      }
+    }
+  }
 
   const isDocument = isPdfResource || isOfficeResource || (activeLessonType as string) === 'google_slide'
   const playerContainerClass = isDocument ? "w-full max-w-none lg:px-4" : "w-full max-w-5xl"
@@ -237,6 +270,9 @@ export default async function LmsCoursePlayerPage({
                   <h2 className="text-2xl font-bold font-heading">{activeLesson.title}</h2>
                   <div className="mt-4 text-slate-700" dangerouslySetInnerHTML={{ __html: activeLesson.description || 'Tidak ada deskripsi.' }} />
                 </div>
+                <div className="mt-8 not-prose">
+                  <LmsLessonCompleteButton courseId={course.id} lessonId={activeLesson.id} nextLessonHref={nextLessonHref} />
+                </div>
               </div>
             ) : ['quiz', 'pretest', 'posttest'].includes(activeLessonType) ? (
               <div className="w-full py-8">
@@ -254,6 +290,9 @@ export default async function LmsCoursePlayerPage({
                   randomizeOptions={(activeLesson as any).quizSettings?.randomizeOptions}
                   attemptCount={attemptCount}
                   maxRetakes={effectiveMaxRetakes}
+                  passingScore={course.passingScore}
+                  isLockedCooldown={isFailedCooldown}
+                  cooldownUntil={existingEnrollment?.cooldownUntil}
                 />
               </div>
             ) : (
@@ -263,17 +302,52 @@ export default async function LmsCoursePlayerPage({
                   {activeLesson.description ? (
                     <div dangerouslySetInnerHTML={{ __html: activeLesson.description }} />
                   ) : null}
-                  {(activeLessonType as string) === 'google_slide' && rawFileUrl && rawFileUrl.includes('<iframe') ? (
-                    <div className="mt-6 not-prose w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center [&>iframe]:w-full [&>iframe]:h-[82vh]" dangerouslySetInnerHTML={{ __html: rawFileUrl }} />
+                  {(activeLessonType as string) === 'google_slide' && (googleSlideEmbedUrl || (rawFileUrl && rawFileUrl.includes('<iframe'))) ? (
+                    <div className="mt-6 not-prose space-y-3">
+                      <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm flex items-center justify-center [&>iframe]:w-full [&>iframe]:h-[82vh]">
+                        {googleSlideEmbedUrl ? (
+                          <iframe
+                            src={googleSlideEmbedUrl}
+                            allowFullScreen
+                            className="h-[82vh] w-full rounded-xl border-0"
+                            title={activeLesson.title}
+                          />
+                        ) : (
+                          <div className="w-full h-[82vh]" dangerouslySetInnerHTML={{ __html: rawFileUrl }} />
+                        )}
+                      </div>
+                      {googleSlideExternalUrl ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600">
+                          <span className="flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                            Materi slide disematkan dari Google Slides.
+                          </span>
+                          <a
+                            href={googleSlideExternalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-medium text-blue-600 hover:text-blue-700 underline inline-flex items-center gap-1 shrink-0"
+                          >
+                            Buka Slide di Tab Baru ↗
+                          </a>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : fileUrl && (activeLessonType as string) !== 'google_slide' ? (
                     <div className="mt-6 not-prose">
                       {isPdfResource ? (
-                        <iframe
-                          src={pdfViewerUrl}
-                          allowFullScreen
+                        <object
+                          data={pdfViewerUrl}
+                          type="application/pdf"
                           className="h-[82vh] w-full rounded-xl border border-slate-200"
-                          title={activeLesson.title}
-                        />
+                        >
+                          <iframe
+                            src={pdfViewerUrl}
+                            allowFullScreen
+                            className="h-[82vh] w-full rounded-xl border border-slate-200"
+                            title={activeLesson.title}
+                          />
+                        </object>
                       ) : officeViewerUrl ? (
                         <iframe
                           src={officeViewerUrl}

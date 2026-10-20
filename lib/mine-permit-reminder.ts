@@ -609,7 +609,7 @@ export async function sendSiteMinePermitExpiryReminder(
 
       return `<li style="margin:0 0 10px;padding:12px 14px;background:#f8fafc;border-left:4px solid ${badgeColor};border-radius:6px;color:#334155;font-size:13px;line-height:1.55;">
         <strong style="display:block;color:#0f172a;font-size:14px;">${idx + 1}. ${escapeEmailHtml(emp.name)}</strong>
-        <span>NIK ${escapeEmailHtml(emp.employeeSn || '-')} · ${escapeEmailHtml(emp.jobTitle || emp.department || '-')} · Exp. ${escapeEmailHtml(expDate)}</span><br>
+        <span>SN ${escapeEmailHtml(emp.employeeSn || '-')} · ${escapeEmailHtml(emp.jobTitle || emp.department || '-')} · Exp. ${escapeEmailHtml(expDate)}</span><br>
         <span style="color:${badgeColor};font-weight:700;">${daysText}</span>
       </li>`
     })
@@ -625,7 +625,7 @@ export async function sendSiteMinePermitExpiryReminder(
       )
       const isExpired = daysLeft < 0
       const daysText = isExpired ? `Expired (${Math.abs(daysLeft)} hari lalu)` : `${daysLeft} hari lagi`
-      return `${idx + 1}. ${emp.name} (NIK: ${emp.employeeSn || '-'}) | Posisi: ${emp.jobTitle || emp.department || '-'} | Exp: ${expDate} (${daysText})`
+      return `${idx + 1}. ${emp.name} (SN: ${emp.employeeSn || '-'}) | Posisi: ${emp.jobTitle || emp.department || '-'} | Exp: ${expDate} (${daysText})`
     })
     .join('\n')
 

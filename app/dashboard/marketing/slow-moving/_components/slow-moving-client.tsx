@@ -9,7 +9,6 @@ import {
 } from "@/app/actions/slow-moving-products"
 import type { MonthlySellingQty, SellingOutDetail } from "@/app/actions/slow-moving-products"
 import { Box, ChevronRight, Download, Loader2, PackageSearch, RotateCcw, Search, Trash2, Upload, ArrowUpDown } from "lucide-react"
-import * as XLSX from "xlsx"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -367,12 +366,13 @@ export function SlowMovingClient({
         setSelectedKeys((current) => Array.from(new Set([...current, ...visibleKeys])))
     }
 
-    const handleExport = () => {
+    const handleExport = async () => {
         if (reportRows.length === 0) {
             toast.error("Tidak ada data untuk diexport")
             return
         }
 
+        const XLSX = await import("xlsx")
         const rows = reportRows.map((row, index) => {
             const sellingEntry = sellingMap.get(row.key)
             const totalQtySold = sumByMonths(sellingEntry?.monthlyQty, allMonths)

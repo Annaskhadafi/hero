@@ -68,7 +68,7 @@ Human Capital - PT Chitra Paratama`,
       siteName: 'Tabang',
       totalExpiring: '3',
       reminderDays: '30',
-      tableContentHtml: '<ul style="margin:16px 0;padding:0;list-style:none;"><li style="margin-bottom:10px;padding:12px 14px;background:#f8fafc;border-left:4px solid #b45309;border-radius:6px;"><strong style="display:block;">1. Budi Santoso</strong><span>NIK CP001 · Mechanic · Exp. 2026-09-30</span><br><span style="color:#b45309;font-weight:700;">21 hari lagi</span></li></ul>',
+      tableContentHtml: '<ul style="margin:16px 0;padding:0;list-style:none;"><li style="margin-bottom:10px;padding:12px 14px;background:#f8fafc;border-left:4px solid #b45309;border-radius:6px;"><strong style="display:block;">1. Budi Santoso</strong><span>SN CP001 · Mechanic · Exp. 2026-09-30</span><br><span style="color:#b45309;font-weight:700;">21 hari lagi</span></li></ul>',
       viewLink: 'https://hero.chitraparatama.com/dashboard/hc/employee',
     },
   },
@@ -471,6 +471,60 @@ Silakan tinjau lampiran PDF RFR pada email ini dan lakukan tanda tangan digital 
       approvalLink: 'https://hero.chitraparatama.com/review/rfr/token123',
     },
   },
+
+  {
+    name: 'RFR Submission Confirmation (To Requestor)',
+    templateCode: 'rfr_submission_confirmation',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[RFR Terkirim] Konfirmasi Pengajuan: {{rfrNumber}} - {{positionTitle}}',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#003461,#005b96);padding:24px;border-radius:10px 10px 0 0">
+  <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
+  <p style="color:#bfdbfe;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Konfirmasi Pengajuan RFR</p>
+</div>
+<div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{requestorName}}</strong>,</p>
+  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 20px">
+    Permohonan Rekrutmen (Request For Recruitment) Anda dengan nomor <strong>{{rfrNumber}}</strong> telah berhasil diajukan dan sedang diproses verifikasi persetujuan di sistem HERO.
+  </p>
+
+  <div style="background:#f1f5f9;border-left:4px solid #003461;padding:16px;border-radius:6px;margin:0 0 24px">
+    <table style="width:100%;font-size:13px;color:#334155;border-collapse:collapse">
+      <tr><td width="140" style="color:#64748b;padding:4px 0">No. RFR:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{rfrNumber}}</td></tr>
+      <tr><td style="color:#64748b;padding:4px 0">Posisi:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{positionTitle}} ({{numberOfPersons}} Orang)</td></tr>
+      <tr><td style="color:#64748b;padding:4px 0">Departemen:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{sectionDepartment}}</td></tr>
+      <tr><td style="color:#64748b;padding:4px 0">Approver Aktif:</td><td style="font-weight:600;color:#0f172a;padding:4px 0">{{nextApproverName}} ({{nextApprovalStep}})</td></tr>
+    </table>
+  </div>
+
+  <div style="text-align:center;margin:28px 0">
+    <a href="{{detailUrl}}" style="background:#003461;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 28px;border-radius:8px;display:inline-block">Pantau Status RFR</a>
+  </div>
+
+  <p style="color:#64748b;font-size:12px;margin:24px 0 0;line-height:1.5">
+    Salinan dokumen resmi permohonan RFR terlampir dalam format PDF pada email ini.<br>
+    Email ini dibuat secara otomatis oleh Human Capital HERO System.
+  </p>
+</div>
+</div>`,
+    textContent: `Yth. {{requestorName}},\n\nPermohonan RFR {{rfrNumber}} ({{positionTitle}}) telah berhasil diajukan.\nApprover aktif: {{nextApproverName}} ({{nextApprovalStep}}).\nLink pantau status: {{detailUrl}}\n\nPT Chitra Paratama`,
+    description: 'Konfirmasi bukti pengajuan RFR yang dikirimkan ke pemohon (requestor) beserta lampiran salinan PDF.',
+    variables: ['requestorName', 'rfrNumber', 'positionTitle', 'numberOfPersons', 'sectionDepartment', 'nextApproverName', 'nextApprovalStep', 'detailUrl'],
+    sampleValues: {
+      requestorName: 'Apriyanto',
+      rfrNumber: 'RFR-2026-0019',
+      positionTitle: 'Serviceman',
+      numberOfPersons: '20',
+      sectionDepartment: 'Service Operation',
+      nextApproverName: 'Adila Tri Arizona',
+      nextApprovalStep: 'HC Verification',
+      detailUrl: 'https://hero.chitraparatama.com/dashboard/hc/rfr',
+    },
+  },
+
   {
     name: 'RFR Completed & Lowongan Generated',
     templateCode: 'rfr_completed_notification',
@@ -2447,6 +2501,70 @@ Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku 
     },
   },
   {
+    name: 'HSE OSM Finding Alert',
+    templateCode: 'hse_osm_finding_alert',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell',
+    recipientScope: 'hse',
+    ccEmail: 'hse.cp@chitraparatama.co.id',
+    subject: '[HERO OSM] Temuan Baru Lapangan: {{findingNumber}} - {{classificationName}} ({{locationArea}})',
+    htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:620px;margin:0 auto;background:#f8fafc;padding:20px">
+<div style="background:linear-gradient(135deg,#0f766e,#0d9488);padding:20px 24px;border-radius:8px 8px 0 0">
+  <table cellpadding="0" cellspacing="0" width="100%"><tr>
+    <td><h1 style="color:#fff;font-size:18px;margin:0;font-weight:700">HERO HSE — On the Spot Monitoring</h1>
+    <p style="color:#ccfbf1;font-size:11px;margin:3px 0 0;text-transform:uppercase;letter-spacing:1px">Laporan Temuan Lapangan KPC Standard</p></td>
+  </tr></table>
+</div>
+<div style="background:#fff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:0">
+  <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 12px">Telah dicatat laporan temuan lapangan (OSM) baru yang memerlukan perhatian dan tindak lanjut perbaikan:</p>
+  <table cellpadding="0" cellspacing="0" style="width:100%;margin-bottom:16px">
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px;width:140px">Nomor Tiket:</td><td style="padding:6px 0;color:#0f172a;font-size:13px;font-weight:600">{{findingNumber}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Sesi OSM:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{sessionNumber}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Lokasi / Area:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{locationArea}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Fokus Area:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{focusItemName}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Klasifikasi:</td><td style="padding:6px 0;color:#0f172a;font-size:13px;font-weight:600">{{classificationName}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Tingkat Risiko:</td><td style="padding:6px 0;color:#b91c1c;font-size:13px;font-weight:700">{{riskLevel}}</td></tr>
+    <tr><td style="padding:6px 0;color:#64748b;font-size:13px">Inisiator Tim:</td><td style="padding:6px 0;color:#0f172a;font-size:13px">{{leadEmployeeName}} ({{leadBadgeNumber}})</td></tr>
+  </table>
+  <div style="background:#f1f5f9;padding:12px 16px;border-radius:6px;margin-bottom:16px">
+    <p style="margin:0;font-size:12px;color:#475569;font-weight:600">Uraian Temuan Masalah:</p>
+    <p style="margin:4px 0 0;font-size:13px;color:#1e293b;line-height:1.5">{{description}}</p>
+  </div>
+  <p style="color:#64748b;font-size:12px;margin:0 0 16px">Mohon tim kerja atau PIC terkait segera melakukan tindakan korektif dan mengunggah bukti perbaikan di aplikasi HERO.</p>
+  <div style="text-align:center;margin:20px 0">
+    <a href="{{viewLink}}" style="background:#0d9488;color:#fff;padding:10px 24px;text-decoration:none;font-size:13px;font-weight:600;border-radius:6px;display:inline-block">Buka Detail Sesi OSM</a>
+  </div>
+</div>
+</div>`,
+    textContent: `HERO HSE — On the Spot Monitoring
+Laporan Temuan Baru: {{findingNumber}}
+
+Sesi OSM: {{sessionNumber}}
+Lokasi: {{locationArea}}
+Fokus Area: {{focusItemName}}
+Klasifikasi: {{classificationName}}
+Tingkat Risiko: {{riskLevel}}
+Inisiator: {{leadEmployeeName}} ({{leadBadgeNumber}})
+
+Uraian: {{description}}
+
+Mohon segera ditindaklanjuti di aplikasi HERO: {{viewLink}}`,
+    description: 'Pemberitahuan email temuan bahaya/kondisi baru OSM ke tim HSE dan PIC terkait.',
+    variables: ['findingNumber', 'sessionNumber', 'locationArea', 'focusItemName', 'classificationName', 'riskLevel', 'leadEmployeeName', 'leadBadgeNumber', 'description', 'viewLink'],
+    sampleValues: {
+      findingNumber: 'OSM-TKT-202610-0001',
+      sessionNumber: 'OSM-SES-202610-0001',
+      locationArea: 'Workshop Bay 3',
+      focusItemName: 'Fatality Prevention',
+      classificationName: 'Vehicle & Mobile Equipment Pneumatic & Hand Tools',
+      riskLevel: 'HIGH',
+      leadEmployeeName: 'Muhammad Ikbal Isisa',
+      leadBadgeNumber: '2108847',
+      description: 'Selang kompresor udara bertekanan tinggi mengalami retak pada klem fitting dan belum terpasang whip check safety.',
+      viewLink: 'https://hero.chitraparatama.com/dashboard/hse/osm',
+    },
+  },
+  {
     name: 'HC Employee Created',
     templateCode: 'hc_employee_created',
     templateType: 'Notification',
@@ -3917,6 +4035,34 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
     },
   })),
   {
+    name: 'Permohonan Status Pernikahan - Approval Request',
+    templateCode: 'marital_status_approval_requested',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[HERO] Permohonan Perubahan Status Pernikahan: {{requestNumber}} - {{employeeName}}',
+    htmlContent: '',
+    textContent: 'Yth. {{approverName}},\n\nPermohonan perubahan status pernikahan {{requestNumber}} dari {{employeeName}} ({{employeeSn}}) memerlukan persetujuan Anda pada Tahap {{approvalLevel}}.\n\nStatus Awal: {{currentMaritalStatus}}\nStatus Tujuan: {{targetMaritalStatus}}\nAlasan: {{reason}}\n\nSilakan buka Inbox Approval HERO untuk memproses permohonan ini.',
+    description: 'Notifikasi permintaan persetujuan perubahan status pernikahan karyawan ke approver (Level 1 / Level 2).',
+    variables: ['requestNumber', 'employeeName', 'employeeSn', 'jobTitle', 'departmentName', 'sectionName', 'siteName', 'currentMaritalStatus', 'targetMaritalStatus', 'reason', 'approverName', 'approvalLevel', 'approvalLink'],
+    sampleValues: {
+      requestNumber: 'MAR-2026-0001',
+      employeeName: 'Ahmad Fauzi',
+      employeeSn: 'CP0123',
+      jobTitle: 'Mechanic Leader',
+      departmentName: 'Service Operation',
+      sectionName: 'Service Operation',
+      siteName: 'Balikpapan',
+      currentMaritalStatus: 'TK',
+      targetMaritalStatus: 'K-0',
+      reason: 'Ingin hidup berdekatan dengan istri dan anak.',
+      approverName: 'Budi Santoso',
+      approvalLevel: '1',
+      approvalLink: 'https://hero.chitraparatama.com/dashboard/approval',
+    },
+  },
+  {
     name: 'Pengajuan CER Baru Membutuhkan Approval',
     templateCode: 'cer_request_submitted',
     templateType: 'Approval',
@@ -4138,6 +4284,63 @@ General Affairs & Asset Management - PT Chitra Paratama`,
       viewLink: 'https://hero.chitraparatama.com/dashboard/assets/cer',
     },
   },
+  {
+    name: 'Permohonan Status Pernikahan - Disetujui',
+    templateCode: 'marital_status_request_approved',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester,employee',
+    ccEmail: '',
+    subject: '[HERO] Permohonan Perubahan Status Pernikahan {{requestNumber}} Disetujui',
+    htmlContent: '',
+    textContent: 'Yth. {{employeeName}},\n\nPermohonan perubahan status pernikahan Anda ({{requestNumber}}) telah DISETUJUI SEPENUHNYA.\nData status pernikahan di profil HERO Anda telah diperbarui menjadi {{targetMaritalStatus}}.',
+    description: 'Notifikasi persetujuan akhir perubahan status pernikahan ke karyawan pemohon.',
+    variables: ['requestNumber', 'employeeName', 'targetMaritalStatus', 'detailLink'],
+    sampleValues: {
+      requestNumber: 'MAR-2026-0001',
+      employeeName: 'Ahmad Fauzi',
+      targetMaritalStatus: 'K-0',
+      detailLink: 'https://hero.chitraparatama.com/dashboard/central-service/marital-status',
+    },
+  },
+  {
+    name: 'Permohonan Status Pernikahan - Ditolak',
+    templateCode: 'marital_status_request_rejected',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester,employee',
+    ccEmail: '',
+    subject: '[HERO] Permohonan Perubahan Status Pernikahan {{requestNumber}} Ditolak',
+    htmlContent: '',
+    textContent: 'Yth. {{employeeName}},\n\nPermohonan perubahan status pernikahan Anda ({{requestNumber}}) tidak disetujui.\nCatatan Penolakan: {{rejectionReason}}',
+    description: 'Notifikasi penolakan perubahan status pernikahan ke karyawan pemohon.',
+    variables: ['requestNumber', 'employeeName', 'rejectionReason', 'detailLink'],
+    sampleValues: {
+      requestNumber: 'MAR-2026-0001',
+      employeeName: 'Ahmad Fauzi',
+      rejectionReason: 'Lampiran surat nikah belum sesuai.',
+      detailLink: 'https://hero.chitraparatama.com/dashboard/central-service/marital-status',
+    },
+  },
+  {
+    name: 'Permohonan Status Pernikahan - Dikembalikan / Revisi',
+    templateCode: 'marital_status_request_reverted',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester,employee',
+    ccEmail: '',
+    subject: '[HERO] Permohonan Perubahan Status Pernikahan {{requestNumber}} Dikembalikan untuk Revisi',
+    htmlContent: '',
+    textContent: 'Yth. {{employeeName}},\n\nPermohonan perubahan status pernikahan Anda ({{requestNumber}}) dikembalikan untuk revisi.\nCatatan Revisi: {{revertReason}}',
+    description: 'Notifikasi pengembalian / revisi permohonan perubahan status pernikahan ke karyawan pemohon.',
+    variables: ['requestNumber', 'employeeName', 'revertReason', 'detailLink'],
+    sampleValues: {
+      requestNumber: 'MAR-2026-0001',
+      employeeName: 'Ahmad Fauzi',
+      revertReason: 'Mohon perbaiki tanggal pernikahan dan unggah ulang lampiran surat nikah.',
+      detailLink: 'https://hero.chitraparatama.com/dashboard/central-service/marital-status',
+    },
+  },
 ]
 function escapeEmailHtml(value: string) {
   return value
@@ -4247,6 +4450,7 @@ function formatEmailBody(value: string, templateCode: string, templateType: stri
 function inferTemplateFeature(templateCode: string) {
   const prefixes: [string, string][] = [
     ['material_tools_', 'Material & Tools'],
+    ['marital_status_', 'Central Service'],
     ['apd_summary_', 'Summary APD'],
     ['apd_request_', 'HSE Safety'],
     ['workflow_five_r_report_', 'Quality Management (5R)'],

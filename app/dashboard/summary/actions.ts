@@ -16,9 +16,13 @@ import { db } from '@/db';
 import { employees, sites, masterSections, masterDepartments, employeeAssets } from '@/db/schema/hero';
 import { eq, and, asc, ilike, desc } from 'drizzle-orm';
 
-export async function getPendingRequestsAction(sectionId: number, targetSite: string) {
+export async function getPendingRequestsAction(
+  sectionId: number,
+  targetSite: string,
+  dateRange?: { startDate?: string; endDate?: string }
+) {
   try {
-    const requests = await getPendingRequestsForSection(sectionId, targetSite);
+    const requests = await getPendingRequestsForSection(sectionId, targetSite, dateRange);
     return { success: true, requests };
   } catch (error: any) {
     console.error('Get pending requests error:', error);
@@ -147,5 +151,17 @@ export async function approveSummaryAction(
   } catch (error: any) {
     console.error('Approve summary error:', error);
     return { success: false, error: error.message || 'Gagal approve summary' };
+  }
+}
+
+export async function getApdRequestDetailsAction(id: number) {
+  try {
+    const { fetchApdRequestById } = await import('@/lib/apd-data');
+    const request = await fetchApdRequestById(id);
+    if (!request) return { success: false, error: 'Pengajuan APD tidak ditemukan' };
+    return { success: true, request };
+  } catch (error: any) {
+    console.error('Get APD request details error:', error);
+    return { success: false, error: error.message || 'Gagal mengambil detail pengajuan' };
   }
 }

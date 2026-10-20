@@ -9,6 +9,7 @@ type HcWorkspaceBannerProps = {
   description?: string;
   items?: Array<{ label: string; value: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" }>;
   metrics?: Array<{ label: string; value: ReactNode; tone?: "slate" | "emerald" | "amber" | "rose" | "sky" }>;
+  actions?: ReactNode;
   className?: string;
 };
 
@@ -29,6 +30,7 @@ export function HcWorkspaceBanner({
   description,
   items,
   metrics,
+  actions,
   className,
 }: HcWorkspaceBannerProps) {
   const displayEyebrow = badge || eyebrow || "Human Capital";
@@ -45,7 +47,10 @@ export function HcWorkspaceBanner({
       <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{displayEyebrow}</p>
-          <h2 className="font-display text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="font-display text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">{title}</h2>
+            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          </div>
           {description ? <p className="max-w-2xl text-sm leading-6 text-slate-600">{description}</p> : null}
         </div>
         {displayItems.length ? (

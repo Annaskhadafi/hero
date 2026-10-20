@@ -130,4 +130,8 @@ GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
-Single-context repo. See `docs/agents/domain.md`.
+Single-context repo. See `docs/agents/domain.md`.
+
+## Git Commit & Push Conventions
+
+- Always write Git commit messages, pull request titles, and push descriptions in **English** (e.g., `feat(apd): add requested for option for HSE accounts`). Do NOT use Indonesian for Git commit messages.

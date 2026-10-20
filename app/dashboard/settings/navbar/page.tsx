@@ -1,6 +1,7 @@
 import { GroupLabelStyleManager } from "@/components/group-label-style-manager";
 import { NavbarMenuManager } from "@/components/navbar-menu-manager";
 import { NavbarSettingsPanel } from "@/components/navbar-settings-panel";
+import { SidebarModeSettingsCard } from "@/components/sidebar-mode-switcher";
 import { getGroupLabelStyles, getNavbarSettingsData } from "@/lib/hero-admin";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { redirect } from "next/navigation";
@@ -20,6 +21,8 @@ export default async function NavbarSettingsPage() {
           Atur warna header, grup section, dan daftar menu admin HERO. Drag & drop untuk mengurutkan.
         </p>
       </div>
+
+      <SidebarModeSettingsCard />
 
       <NavbarSettingsPanel theme={theme as any} menuItems={menuItems} />
 

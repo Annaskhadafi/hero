@@ -1,17 +1,22 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
-import { getEwhSummaryAction, getEwhTeamsAction, getEwhEmployeesAction } from './actions'
+import {
+  getEwhSummaryAction,
+  getEwhTeamsAction,
+  getEwhEmployeesAction,
+  getEwhSiteMonthlyMatrixAction,
+} from './actions'
 import { EwhDashboardClient } from './ewh-dashboard-client'
 
 interface PageProps {
-  searchParams: Promise<{ siteId?: string; period?: string }>
+  searchParams: Promise<{ siteId?: string; period?: string; departmentId?: string; tab?: string }>
 }
 
 export const metadata = {
-  title: 'EWH Dashboard — Effective Working Hours',
+  title: 'EWH Dashboard — Effective Working Hours | HERO',
   description:
-    'Monitor jam kerja efektif seluruh karyawan per site per periode. Terhubung dengan Attendance Real dan Daily Activity.',
+    'Monitor jam kerja efektif dan utilitas aktivitas operasional per site dan departemen. Terintegrasi dengan Attendance Real, Daily Activity, dan Standar 2-Shift (22 Jam/Hari).',
 }
 
 export default async function EwhDashboardPage({ searchParams }: PageProps) {
@@ -19,38 +24,43 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
   if (!employee) redirect('/sign-in')
 
   const params = await searchParams
-  const siteId = params.siteId ? parseInt(params.siteId, 10) : employee.siteId
+  let siteId: string | number | null = employee.siteId || 1
+  if (params.siteId !== undefined) {
+    if (params.siteId === 'ALL' || params.siteId === 'all' || params.siteId === '') {
+      siteId = 'ALL'
+    } else {
+      const parsed = parseInt(params.siteId, 10)
+      if (!isNaN(parsed) && parsed > 0) siteId = parsed
+    }
+  }
+
   const now = new Date()
   const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const period = params.period ?? defaultPeriod
+  const departmentId = params.departmentId ?? undefined
 
-  const [result, teamsRes, employeesRes] = await Promise.all([
-    getEwhSummaryAction(siteId, period),
+  const [matrixRes, summaryRes, teamsRes, employeesRes] = await Promise.all([
+    getEwhSiteMonthlyMatrixAction(siteId, period, departmentId),
+    getEwhSummaryAction(siteId, period, departmentId),
     getEwhTeamsAction(siteId),
-    getEwhEmployeesAction(siteId),
+    getEwhEmployeesAction(siteId, departmentId),
   ])
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          EWH — Effective Working Hours
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Jam kerja efektif karyawan berbasis 24 jam. Terintegrasi dengan Attendance Real, Daily
-          Activity, dan SPL/Overtime.
-        </p>
-      </div>
-
-      <Suspense fallback={<div className="text-muted-foreground text-sm">Memuat data EWH…</div>}>
+    <div className="flex flex-col gap-6 p-4 sm:p-6 bg-slate-50/50 min-h-screen">
+      <Suspense fallback={<div className="text-muted-foreground text-sm p-8 text-center">Memuat data EWH & Utilitas…</div>}>
         <EwhDashboardClient
-          rows={result.rows}
-          siteId={siteId}
+          monthlyMatrixData={matrixRes}
+          rows={summaryRes.rows}
+          siteId={matrixRes.siteId}
+          departmentId={matrixRes.departmentId}
           period={period}
-          employeeSiteId={employee.siteId}
+          employeeSiteId={employee.siteId || 1}
           teams={teamsRes.teams || []}
           allEmployees={employeesRes.employees || []}
+          allSites={matrixRes.allSites || []}
+          allDepartments={matrixRes.allDepartments || []}
+          initialTab={params.tab}
         />
       </Suspense>
     </div>

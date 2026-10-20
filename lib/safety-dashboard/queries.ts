@@ -13,6 +13,7 @@ import {
   safetyMonthlyManHours,
   safetyPerformanceMetrics,
   safetyWeeklyActivities,
+  safetySiteMonthlySummary,
 } from "@/db/schema/hero"
 import { heroSafetyInductions } from "@/db/schema/safety-induction"
 import { getCurrentEmployeeAccessRole, getCurrentMenuPermission } from "@/lib/hero-access"
@@ -123,6 +124,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     access,
     activeEmployees,
     masterSitesList,
+    rawSiteMonthlySummaries,
   ] = await Promise.all([
     db.select().from(safetyIncidentSummaryYearly).orderBy(desc(safetyIncidentSummaryYearly.year)),
     db.select().from(safetyIncidentSummaryMonthly).orderBy(desc(safetyIncidentSummaryMonthly.month)),
@@ -146,6 +148,35 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
       .leftJoin(sites, eq(sites.id, heroEmployees.siteId))
       .where(eq(heroEmployees.isActive, true)),
     db.select().from(sites).where(eq(sites.isActive, true)),
+    db
+      .select({
+        id: safetySiteMonthlySummary.id,
+        siteId: safetySiteMonthlySummary.siteId,
+        siteName: sites.name,
+        siteLocation: sites.location,
+        geoLatitude: sites.geoLatitude,
+        geoLongitude: sites.geoLongitude,
+        month: safetySiteMonthlySummary.month,
+        nearmiss: safetySiteMonthlySummary.nearmiss,
+        propertyDamage: safetySiteMonthlySummary.propertyDamage,
+        firstAid: safetySiteMonthlySummary.firstAid,
+        medicalTreatment: safetySiteMonthlySummary.medicalTreatment,
+        environmental: safetySiteMonthlySummary.environmental,
+        majorInjury: safetySiteMonthlySummary.majorInjury,
+        fatality: safetySiteMonthlySummary.fatality,
+        safetyManHours: safetySiteMonthlySummary.safetyManHours,
+        totalManpower: safetySiteMonthlySummary.totalManpower,
+        sickEmployeesCount: safetySiteMonthlySummary.sickEmployeesCount,
+        lostDaysCount: safetySiteMonthlySummary.lostDaysCount,
+        sickLettersCount: safetySiteMonthlySummary.sickLettersCount,
+        occupationalDiseasesCount: safetySiteMonthlySummary.occupationalDiseasesCount,
+        incidentNotes: safetySiteMonthlySummary.incidentNotes,
+        createdAt: safetySiteMonthlySummary.createdAt,
+        updatedAt: safetySiteMonthlySummary.updatedAt,
+      })
+      .from(safetySiteMonthlySummary)
+      .leftJoin(sites, eq(sites.id, safetySiteMonthlySummary.siteId))
+      .orderBy(desc(safetySiteMonthlySummary.month)),
   ])
 
   // Other raw locations to map into master sites
@@ -421,6 +452,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
   return {
     yearlySummaries,
     monthlySummaries,
+    siteMonthlySummaries: rawSiteMonthlySummaries,
     incidentReports,
     certifications,
     performanceMetrics,

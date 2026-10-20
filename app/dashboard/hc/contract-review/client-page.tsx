@@ -5,9 +5,14 @@ import { useRouter } from "next/navigation"
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   Bell,
   Bug,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Eye,
   FilePlus2,
@@ -18,6 +23,9 @@ import {
   Send,
   Settings,
   Users,
+  Printer,
+  Download,
+  ExternalLink,
 } from "lucide-react"
 
 import {
@@ -28,6 +36,7 @@ import {
   sendDueContractReviewReminders,
   sendSingleContractReminder,
   sendBatchContractReminders,
+  updateContractReviewStatus,
 } from "@/app/actions/contract-review"
 import { AdminPageShell } from "@/components/admin-page-shell"
 import { HcWorkspaceBanner, hcPrimaryActionClassName } from "@/components/hc/hc-workspace-banner"
@@ -36,15 +45,25 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { MultiSelectFilterDropdown } from "@/components/ui/multi-select-filter-dropdown"
 import { SearchableSelect } from "@/components/ui/searchable-select"
+import { HeroSearchableSelect } from "@/components/templates"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 
 interface ExpiringEmployee {
@@ -61,6 +80,9 @@ interface ExpiringEmployee {
   contractDurationEnd: string | null
   daysLeft: number
   urgency: "overdue" | "critical" | "warning" | "normal"
+  reviewId?: number | null
+  reviewStatus?: string | null
+  reviewRecommendation?: string | null
   latestReview: {
     id: number
     status: string
@@ -111,6 +133,34 @@ export function ContractReviewClientPage({
   const [monitoringSearch, setMonitoringSearch] = useState("")
   const [urgencyFilter, setUrgencyFilter] = useState<string>("all")
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>("all")
+  const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null)
+
+  useEffect(() => {
+    setRows(reviews)
+  }, [reviews])
+
+  const handleStatusChange = async (
+    reviewId: number,
+    newStatus: 'draft' | 'in_progress' | 'completed' | 'cancelled'
+  ) => {
+    setUpdatingStatusId(reviewId)
+    try {
+      const res = await updateContractReviewStatus(reviewId, newStatus)
+      if (res.success) {
+        toast.success(res.message || `Status review berhasil diubah menjadi ${newStatus}.`)
+        setRows((prev) =>
+          prev.map((r) => (r.id === reviewId ? { ...r, status: newStatus } : r))
+        )
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Gagal mengubah status review.')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan saat mengubah status.')
+    } finally {
+      setUpdatingStatusId(null)
+    }
+  }
 
   const access = { canView: true, canEdit: true, canDelete: true }
   const toolbarButtonClassName = "h-9 rounded-lg px-3 text-[13px] font-medium normal-case tracking-normal shadow-[0_6px_14px_rgba(15,23,42,0.06)] transition-[transform,background-color,box-shadow,color]"
@@ -267,7 +317,49 @@ export function ContractReviewClientPage({
       ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch))
     })
   }, [employees, reviewSearch, reviewSectionFilters, rows])
-  const visibleReviewRows = filteredReviewRows.slice(0, visibleReviewCount)
+
+  const [reviewSortField, setReviewSortField] = useState<string | null>(null)
+  const [reviewSortDir, setReviewSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleReviewSort = (field: string) => {
+    if (reviewSortField === field) {
+      if (reviewSortDir === 'asc') {
+        setReviewSortDir('desc')
+      } else {
+        setReviewSortField(null)
+        setReviewSortDir('asc')
+      }
+    } else {
+      setReviewSortField(field)
+      setReviewSortDir('asc')
+    }
+  }
+
+  const sortedReviewRows = useMemo(() => {
+    if (!reviewSortField) return filteredReviewRows
+    return [...filteredReviewRows].sort((a, b) => {
+      let aVal = (a as any)[reviewSortField] ?? ''
+      let bVal = (b as any)[reviewSortField] ?? ''
+      if (reviewSortField === 'employeeNameStr') {
+        const empA = employees.find((e: any) => e.id === a.employeeId)
+        const empB = employees.find((e: any) => e.id === b.employeeId)
+        aVal = empA?.name || a.employeeNameStr || ''
+        bVal = empB?.name || b.employeeNameStr || ''
+      } else if (reviewSortField === 'section') {
+        const empA = employees.find((e: any) => e.id === a.employeeId)
+        const empB = employees.find((e: any) => e.id === b.employeeId)
+        aVal = empA?.section || ''
+        bVal = empB?.section || ''
+      }
+      aVal = String(aVal).toLowerCase()
+      bVal = String(bVal).toLowerCase()
+      if (aVal < bVal) return reviewSortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return reviewSortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredReviewRows, reviewSortField, reviewSortDir, employees])
+
+  const visibleReviewRows = sortedReviewRows.slice(0, visibleReviewCount)
   const allReviewsSelected = filteredReviewRows.length > 0 && filteredReviewRows.every((row) => selectedReviewIds.includes(row.id))
   const toggleSelectReview = (id: number) => {
     setSelectedReviewIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id])
@@ -295,15 +387,29 @@ export function ContractReviewClientPage({
     return () => observer.disconnect()
   }, [filteredReviewRows.length, visibleReviewCount])
 
-  // Keep employees with an active review in the Daftar Review tab only.
+  // Keep employees who already have reviews (draft, in_progress, completed) in the Daftar Review tab only.
   const monitoringEmployees = useMemo(() => {
-    const activeReviewEmployeeIds = new Set(
-      rows
-        .filter((row) => ['draft', 'in_progress'].includes(String(row.status || '').toLowerCase()))
-        .map((row) => row.employeeId)
-        .filter((id): id is number => typeof id === 'number')
-    )
-    return expiringEmployees.filter((employee) => !activeReviewEmployeeIds.has(employee.id))
+    const reviewedEmpIds = new Set<number>()
+    const reviewedNames = new Set<string>()
+    const reviewedSns = new Set<string>()
+
+    for (const row of rows) {
+      const st = String(row.status || '').toLowerCase()
+      if (['draft', 'in_progress', 'completed'].includes(st)) {
+        if (typeof row.employeeId === 'number') reviewedEmpIds.add(row.employeeId)
+        if (row.employeeNameStr) reviewedNames.add(row.employeeNameStr.trim().toLowerCase())
+        if (row.employeeSn) reviewedSns.add(String(row.employeeSn).trim().replace(/^EMP-/i, ''))
+      }
+    }
+
+    return expiringEmployees.filter((employee) => {
+      if (reviewedEmpIds.has(employee.id)) return false
+      if (employee.name && reviewedNames.has(employee.name.trim().toLowerCase())) return false
+      if (employee.employeeSn && reviewedSns.has(String(employee.employeeSn).trim().replace(/^EMP-/i, ''))) return false
+      if (employee.latestReview && ['draft', 'in_progress', 'completed'].includes(employee.latestReview.status.toLowerCase())) return false
+      if (employee.reviewStatus && ['draft', 'in_progress', 'completed'].includes(employee.reviewStatus.toLowerCase())) return false
+      return true
+    })
   }, [expiringEmployees, rows])
 
   // Monitoring stats
@@ -352,6 +458,41 @@ export function ContractReviewClientPage({
       return true
     })
   }, [monitoringEmployees, monitoringSearch, urgencyFilter, reviewStatusFilter])
+
+  const [expiringSortField, setExpiringSortField] = useState<string | null>(null)
+  const [expiringSortDir, setExpiringSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleExpiringSort = (field: string) => {
+    if (expiringSortField === field) {
+      if (expiringSortDir === 'asc') {
+        setExpiringSortDir('desc')
+      } else {
+        setExpiringSortField(null)
+        setExpiringSortDir('asc')
+      }
+    } else {
+      setExpiringSortField(field)
+      setExpiringSortDir('asc')
+    }
+  }
+
+  const sortedExpiringEmployees = useMemo(() => {
+    if (!expiringSortField) return filteredExpiringEmployees
+    return [...filteredExpiringEmployees].sort((a, b) => {
+      let aVal = (a as any)[expiringSortField] ?? ''
+      let bVal = (b as any)[expiringSortField] ?? ''
+      if (expiringSortField === 'daysLeft') {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      } else {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+      }
+      if (aVal < bVal) return expiringSortDir === 'asc' ? -1 : 1
+      if (aVal > bVal) return expiringSortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredExpiringEmployees, expiringSortField, expiringSortDir])
 
   // Checkbox helpers
   const allFilteredSelected =
@@ -471,13 +612,104 @@ export function ContractReviewClientPage({
                   <TableHead className="w-10">
                     <Checkbox checked={allReviewsSelected} onCheckedChange={toggleSelectAllReviews} aria-label="Pilih semua review" />
                   </TableHead>
-                  <TableHead>Tgl Review</TableHead>
-                  <TableHead>Karyawan</TableHead>
-                  <TableHead>Section</TableHead>
-                  <TableHead>Pembuat / Leader</TableHead>
-                  <TableHead>Jenis Review</TableHead>
-                  <TableHead>Rekomendasi</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('todayDate')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Tgl Review</span>
+                      {reviewSortField === 'todayDate' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('employeeNameStr')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Karyawan</span>
+                      {reviewSortField === 'employeeNameStr' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('section')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Section</span>
+                      {reviewSortField === 'section' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('leaderName')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Pembuat / Leader</span>
+                      {reviewSortField === 'leaderName' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('reviewType')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Jenis Review</span>
+                      {reviewSortField === 'reviewType' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('recommendation')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Rekomendasi</span>
+                      {reviewSortField === 'recommendation' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleReviewSort('status')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Status</span>
+                      {reviewSortField === 'status' ? (
+                        reviewSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                   <TableHead>Step Approval Sampai Dimana</TableHead>
                 </TableRow>
@@ -507,7 +739,83 @@ export function ContractReviewClientPage({
                       <TableCell className="capitalize">{row.reviewType}</TableCell>
                       <TableCell className="capitalize"><div className="max-w-[170px] truncate">{row.recommendation.replace('_', ' ')}</div></TableCell>
                       <TableCell>
-                        <AdminStatusBadge value={status || 'draft'} />
+                        {isSuperAdmin ? (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild disabled={updatingStatusId === row.id}>
+                                <button
+                                  type="button"
+                                  className="group inline-flex items-center gap-1.5 rounded-full p-0.5 transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title="Klik untuk mengubah status review"
+                                >
+                                  {updatingStatusId === row.id ? (
+                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100 text-xs text-slate-600">
+                                      <Loader2 className="size-3 animate-spin" />
+                                      <span>Updating...</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <AdminStatusBadge value={status || 'draft'} />
+                                      <ChevronDown className="size-3 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                    </>
+                                  )}
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-48">
+                                <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                  Ubah Status Review
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={status === 'draft'}
+                                  onClick={() => handleStatusChange(row.id, 'draft')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-sky-500" />
+                                    <span>Draft</span>
+                                  </div>
+                                  {status === 'draft' && <Check className="size-4 text-sky-600" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={status === 'in_progress'}
+                                  onClick={() => handleStatusChange(row.id, 'in_progress')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-cyan-500" />
+                                    <span>In Progress</span>
+                                  </div>
+                                  {status === 'in_progress' && <Check className="size-4 text-cyan-600" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={status === 'completed'}
+                                  onClick={() => handleStatusChange(row.id, 'completed')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-emerald-500" />
+                                    <span>Completed</span>
+                                  </div>
+                                  {status === 'completed' && <Check className="size-4 text-emerald-600" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={status === 'cancelled'}
+                                  onClick={() => handleStatusChange(row.id, 'cancelled')}
+                                  className="flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="size-2 rounded-full bg-slate-500" />
+                                    <span>Cancelled</span>
+                                  </div>
+                                  {status === 'cancelled' && <Check className="size-4 text-slate-600" />}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ) : (
+                          <AdminStatusBadge value={status || 'draft'} />
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
@@ -556,10 +864,12 @@ export function ContractReviewClientPage({
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>
                           </div>
-                        ) : row.approvalStep ? (
+                        ) : row.approvalStep || totalSteps > 0 ? (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-3 text-xs">
-                              <span className="font-semibold text-slate-900">Step {row.approvalStep}/{row.approvalTotalSteps}</span>
+                              <span className="font-semibold text-slate-900">
+                                {row.approvalStep ? `Step ${row.approvalStep}/${row.approvalTotalSteps || totalSteps}` : `Menunggu Approval`}
+                              </span>
                               <span className="font-mono text-[11px] text-slate-500">{completedSteps}/{totalSteps} TTD</span>
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500" style={{ width: `${progress}%` }} /></div>
@@ -672,17 +982,18 @@ export function ContractReviewClientPage({
 
               {/* Review Status Filter */}
               <div className="flex items-center gap-1">
-                <select
-                  aria-label="Filter status review kontrak"
+                <HeroSearchableSelect
                   value={reviewStatusFilter}
-                  onChange={(e) => setReviewStatusFilter(e.target.value)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  <option value="all">Semua Status Review</option>
-                  <option value="none">Belum Ada Review</option>
-                  <option value="in_progress">Review In Progress</option>
-                  <option value="completed">Review Selesai</option>
-                </select>
+                  onChange={(val: string) => setReviewStatusFilter(val)}
+                  options={[
+                    { value: "all", label: "Semua Status Review" },
+                    { value: "none", label: "Belum Ada Review" },
+                    { value: "in_progress", label: "Review In Progress" },
+                    { value: "completed", label: "Review Selesai" },
+                  ]}
+                  placeholder="Status Review..."
+                  className="h-8 w-[190px] text-xs"
+                />
               </div>
             </div>
 
@@ -759,17 +1070,95 @@ export function ContractReviewClientPage({
                       aria-label="Pilih semua karyawan"
                     />
                   </TableHead>
-                  <TableHead>Karyawan</TableHead>
-                  <TableHead>Departemen / Section</TableHead>
-                  <TableHead>Site</TableHead>
-                  <TableHead>Masa Kontrak</TableHead>
-                  <TableHead>Sisa Waktu</TableHead>
-                  <TableHead>Status Review</TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('name')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Karyawan</span>
+                      {expiringSortField === 'name' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('department')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Departemen / Section</span>
+                      {expiringSortField === 'department' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('siteName')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Site</span>
+                      {expiringSortField === 'siteName' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('contractEnd')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Masa Kontrak</span>
+                      {expiringSortField === 'contractEnd' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('daysLeft')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Sisa Waktu</span>
+                      {expiringSortField === 'daysLeft' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead>
+                    <button
+                      type="button"
+                      onClick={() => handleExpiringSort('urgency')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+                    >
+                      <span>Status Review</span>
+                      {expiringSortField === 'urgency' ? (
+                        expiringSortDir === 'asc' ? <ArrowUp className="size-3 text-primary" /> : <ArrowDown className="size-3 text-primary" />
+                      ) : (
+                        <ArrowUpDown className="size-3 text-muted-foreground/60 group-hover:opacity-100" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExpiringEmployees.length === 0 && (
+                {sortedExpiringEmployees.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
                       <div className="flex flex-col items-center justify-center space-y-2">
@@ -780,7 +1169,7 @@ export function ContractReviewClientPage({
                     </TableCell>
                   </TableRow>
                 )}
-                {filteredExpiringEmployees.map((emp) => {
+                {sortedExpiringEmployees.map((emp) => {
                   const isOverdue = emp.daysLeft < 0
                   const isCritical = emp.daysLeft >= 0 && emp.daysLeft <= 30
                   const isSelected = selectedEmployeeIds.includes(emp.id)
@@ -933,6 +1322,27 @@ export function ContractReviewClientPage({
           <div className="grid gap-6 lg:grid-cols-2">
             {/* ── Approval Matrix ── */}
             <div className="space-y-5">
+              <div className="flex items-center justify-between rounded-xl border border-sky-200 bg-sky-50/40 p-3.5">
+                <div className="space-y-0.5 pr-2">
+                  <Label className="text-sm font-semibold text-slate-900">Integrasi Ujian Online Karyawan</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Jika dinonaktifkan, seluruh form contract review tidak akan mewajibkan test online kompetensi bagi karyawan.
+                  </p>
+                </div>
+                <Switch
+                  checked={settingsForm.onlineTest?.enabled ?? true}
+                  onCheckedChange={(checked) =>
+                    setSettingsForm({
+                      ...settingsForm,
+                      onlineTest: {
+                        ...settingsForm.onlineTest,
+                        enabled: checked,
+                      },
+                    })
+                  }
+                />
+              </div>
+
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Approval Matrix</h3>
               <div className="space-y-3">
                 <div><Label>HO Sites (pisahkan koma)</Label><Input value={settingsForm.approvalMatrix.hoSites.join(', ')} onChange={(e) => setSettingsForm({ ...settingsForm, approvalMatrix: { ...settingsForm.approvalMatrix, hoSites: e.target.value.split(',').map((v: string) => v.trim()).filter(Boolean) } })} /></div>
@@ -1041,12 +1451,55 @@ export function ContractReviewClientPage({
 
       <Dialog open={previewReviewId !== null} onOpenChange={(open) => { if (!open) setPreviewReviewId(null) }}>
         <DialogContent className="z-[10000] flex h-[92vh] w-[96vw] max-w-[1400px] flex-col overflow-hidden p-0">
-          <DialogHeader className="border-b px-6 py-4">
-            <DialogTitle>Preview Contract Review</DialogTitle>
-            <DialogDescription>Preview dokumen Contract Review sebelum dicetak atau disimpan sebagai PDF.</DialogDescription>
+          <DialogHeader className="border-b px-6 py-4 flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle>Preview Contract Review</DialogTitle>
+              <DialogDescription>Preview dokumen Contract Review sebelum dicetak atau disimpan sebagai PDF.</DialogDescription>
+            </div>
+            <div className="flex items-center gap-2 pr-6">
+              {previewReviewId !== null && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="gap-1.5 text-slate-600 hover:text-slate-900"
+                >
+                  <a href={`/print/contract-review/${previewReviewId}`} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="size-4" /> Tab Baru
+                  </a>
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const iframe = document.getElementById('contract-review-preview-iframe') as HTMLIFrameElement | null
+                  if (iframe?.contentWindow) {
+                    iframe.contentWindow.print()
+                  }
+                }}
+                className="gap-1.5"
+              >
+                <Printer className="size-4" /> Cetak / Save PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() => {
+                  const iframe = document.getElementById('contract-review-preview-iframe') as HTMLIFrameElement | null
+                  if (iframe?.contentWindow) {
+                    iframe.contentWindow.postMessage({ type: "DOWNLOAD_PDF" }, "*")
+                  }
+                }}
+                className="gap-1.5 bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Download className="size-4" /> Download PDF
+              </Button>
+            </div>
           </DialogHeader>
           {previewReviewId !== null && (
             <iframe
+              id="contract-review-preview-iframe"
               title="Preview Contract Review"
               src={`/dashboard/hc/contract-review/${previewReviewId}?mode=print&embedded=1`}
               className="h-[calc(92vh-88px)] w-full flex-none border-0 bg-slate-100"

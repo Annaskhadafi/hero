@@ -6,23 +6,30 @@ import {
   attendanceRecords,
   dailyActivitySessions,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   employees,
   masterDepartments,
   masterPositions,
   masterSections,
   overtimeCommandLetters,
+  overtimeCommandLetterParticipants,
   sites,
 } from '@/db/schema/hero'
 import {
+  timesheetSchedulingConfigs,
   timesheetSchedulingPlansV2,
   timesheetSchedulingPlans,
   timesheetFieldBreakPlans,
 } from '@/db/schema/timesheet'
 import { and, desc, eq, inArray, isNull, like, or, sql, ilike } from 'drizzle-orm'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { calcClockDuration } from '@/lib/ewh/calculate-ewh'
+import { isServicemanEmployee } from '@/lib/employee-role-utils'
 
 export interface DailyActivityFilterParams {
   siteId?: string
+  authorizedSiteIds?: number[]
   date?: string
   startDate?: string
   endDate?: string
@@ -106,6 +113,20 @@ export interface EmployeeActivityRow {
   totalPoints: number
   tasks: ActivityTaskItem[]
   sessions: EmployeeSessionMeta[]
+  ewhActualHours: number
+  ewhTargetHours: number
+  ewhLabel: string
+  ewhPercentage: number
+  rosterClockIn?: string
+  rosterClockOut?: string
+  isRosterOff?: boolean
+  baseNormalHours?: number
+  overtimeHours?: number
+  rosterScheduleCode?: string
+  isTeamMember?: boolean
+  representedByName?: string | null
+  isMultiSession?: boolean
+  multiSessionLabel?: string | null
 }
 
 
@@ -162,6 +183,8 @@ export interface DailyActivityDashboardData {
   sectionsList: Array<{ id: number; name: string; departmentId?: number | null }>
   currentSite: DailyActivitySiteItem
   currentDate: string
+  currentDateIso?: string
+  isToday?: boolean
   startDate?: string
   endDate?: string
   selectedShift: string
@@ -249,12 +272,61 @@ function formatDuration(start?: Date | string | null, end?: Date | string | null
   return fallback || '-'
 }
 
+function parseDurationMinutes(
+  start?: Date | string | null,
+  end?: Date | string | null,
+  fallback?: any
+): number {
+  if (start && end) {
+    try {
+      const s = new Date(start).getTime()
+      const e = new Date(end).getTime()
+      const diffMs = e - s
+      if (!Number.isNaN(diffMs) && diffMs > 0 && diffMs <= 18 * 3600 * 1000) {
+        return Math.round(diffMs / 60000)
+      }
+    } catch {}
+  }
+
+  if (fallback !== undefined && fallback !== null && fallback !== '') {
+    if (typeof fallback === 'number' && fallback > 0) {
+      return Math.round(fallback)
+    }
+    if (typeof fallback === 'string') {
+      const str = fallback.trim().toLowerCase()
+      if (str && str !== '-') {
+        let mins = 0
+        const hoursMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:j|jam|h|hours?)/)
+        if (hoursMatch) mins += parseFloat(hoursMatch[1]) * 60
+        const minsMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:m|menit|mins?)/)
+        if (minsMatch) mins += parseFloat(minsMatch[1])
+        if (mins > 0) return Math.round(mins)
+
+        const num = parseFloat(str)
+        if (!Number.isNaN(num) && num > 0) {
+          return num <= 16 ? Math.round(num * 60) : Math.round(num)
+        }
+      }
+    }
+  }
+
+  return 0
+}
+
 function normalizeUnit(unit?: string | null): string {
   if (!unit) return '-'
   const trimmed = unit.trim().toUpperCase()
   if (!trimmed || trimmed === '-' || trimmed === 'NONE') return '-'
   // Standardize spaces between letters and numbers (e.g., DA25073 -> DA 25073)
   return trimmed.replace(/^([A-Z]+)\s*(\d+)$/, '$1 $2')
+}
+
+export function splitAndNormalizeUnits(raw?: string | null): string[] {
+  if (!raw) return []
+  return raw
+    .split(/[,;\n\r]+/)
+    .map((u) => normalizeUnit(u))
+    .filter((u) => u && u !== '-')
 }
 
 function normalizeShift(shiftCode?: string | null): 'Pagi' | 'Siang' | 'Malam' {
@@ -287,20 +359,175 @@ function formatTimeHHmm(date?: Date | string | null): string {
 
 
 
+function getTodayIsoString(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+import { getCurrentWeekRange } from './daily-activity-types'
+export { getCurrentWeekRange }
+
+export function normalizeDateToYmdString(dateInput?: Date | string | null): string {
+  if (!dateInput) return 'nodate'
+  if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput.trim())) {
+    return dateInput.trim()
+  }
+  try {
+    const d = new Date(dateInput)
+    if (Number.isNaN(d.getTime())) return 'nodate'
+    // Format using Asia/Makassar (WITA, site HQ) timezone to avoid UTC day boundary shift
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Makassar',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    return formatter.format(d)
+  } catch {
+    return 'nodate'
+  }
+}
+
 function formatDateDisplay(date?: Date | string | null): string {
-  if (!date) return '24 Sep 2026'
+  if (!date) {
+    const today = new Date()
+    return today.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
   try {
     const d = new Date(date)
     return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
   } catch {
-    return '24 Sep 2026'
+    return String(date)
   }
+}
+
+function getDatesInRange(startStr: string, endStr: string, maxDays = 31): string[] {
+  if (!startStr && !endStr) return ['2026-09-24']
+  const s = startStr || endStr
+  const e = endStr || startStr
+  try {
+    const startDate = new Date(`${s}T00:00:00Z`)
+    const endDate = new Date(`${e}T00:00:00Z`)
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return [s]
+    }
+    const dates: string[] = []
+    const curr = new Date(startDate)
+    let count = 0
+    while (curr <= endDate && count < maxDays) {
+      dates.push(curr.toISOString().split('T')[0])
+      curr.setUTCDate(curr.getUTCDate() + 1)
+      count++
+    }
+    return dates.length > 0 ? dates : [s]
+  } catch {
+    return [s]
+  }
+}
+
+interface RosterClockTimes {
+  clockIn: string
+  clockOut: string
+  source: string
+}
+
+function resolveRosterClocksForEmployee(params: {
+  siteConfig?: {
+    scheduleType?: string
+    rosterType?: string
+    fieldBreakConfig?: any
+  } | null
+  shiftCode?: string | null
+  rosterScheduleCode?: string | null
+}): RosterClockTimes {
+  const { siteConfig, shiftCode, rosterScheduleCode } = params
+  const fbConfig = siteConfig?.fieldBreakConfig && typeof siteConfig.fieldBreakConfig === 'object'
+    ? (siteConfig.fieldBreakConfig as Record<string, unknown>)
+    : {}
+
+  const readTime = (key: string, fallback: string): string => {
+    const val = fbConfig[key]
+    return typeof val === 'string' && val.trim().length > 0 ? val.trim() : fallback
+  }
+
+  // 1. If roster schedule code has explicit time range (e.g. "08:00-17:00" or "06:00-18:00")
+  if (rosterScheduleCode) {
+    const rangeMatch = rosterScheduleCode.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/)
+    if (rangeMatch) {
+      return {
+        clockIn: rangeMatch[1],
+        clockOut: rangeMatch[2],
+        source: 'schedule-code-range',
+      }
+    }
+  }
+
+  const normShift = normalizeShift(shiftCode)
+  const normCode = (rosterScheduleCode || '').trim().toUpperCase()
+  const isNight =
+    normShift === 'Malam' ||
+    normCode === 'NS' ||
+    normCode.includes('MALAM') ||
+    normCode.includes('NIGHT')
+
+  if (isNight) {
+    return {
+      clockIn: readTime('nightShiftClockIn', '18:00'),
+      clockOut: readTime('nightShiftClockOut', '06:00'),
+      source: 'site-night-shift-config',
+    }
+  }
+
+  if (normShift === 'Siang') {
+    return {
+      clockIn: readTime('dayShiftClockIn', '14:00'),
+      clockOut: readTime('dayShiftClockOut', '22:00'),
+      source: 'site-middle-shift-config',
+    }
+  }
+
+  // Day shift / Shift Pagi:
+  // If scheduleType is 'office' and defaultClockIn/defaultClockOut are configured:
+  if (siteConfig?.scheduleType === 'office') {
+    return {
+      clockIn: readTime('defaultClockIn', readTime('dayShiftClockIn', '07:00')),
+      clockOut: readTime('defaultClockOut', readTime('dayShiftClockOut', '17:00')),
+      source: 'site-office-config',
+    }
+  }
+
+  // Default site shift
+  return {
+    clockIn: readTime('dayShiftClockIn', '06:00'),
+    clockOut: readTime('dayShiftClockOut', '18:00'),
+    source: 'site-day-shift-config',
+  }
+}
+
+function computeRosterNetHours(clockIn: string, clockOut: string): number {
+  const diffM = calcClockDuration(clockIn, clockOut)
+  if (diffM <= 0) return 11 // fallback
+  const grossHours = diffM / 60
+  // Istirahat 1 jam tidak dihitung (dikurangi 1 jam)
+  const netHours = Math.max(1, grossHours - 1)
+  return Math.round(netHours * 10) / 10
 }
 
 export async function getDailyActivityDashboardData(
   params: DailyActivityFilterParams = {}
 ): Promise<DailyActivityDashboardData> {
+  const isCustomerScoped = Array.isArray(params.authorizedSiteIds) && params.authorizedSiteIds.length > 0
+  const scopedSiteIds = isCustomerScoped ? params.authorizedSiteIds! : []
+
   // 1. Fetch available sites, departments, and sections with PJO / Site Head details
+  const siteWhere = [eq(sites.isActive, true)]
+  if (isCustomerScoped) {
+    siteWhere.push(inArray(sites.id, scopedSiteIds))
+  }
+
   const [allSites, allDepartments, allSections] = await Promise.all([
     db
       .select({
@@ -312,7 +539,7 @@ export async function getDailyActivityDashboardData(
       })
       .from(sites)
       .leftJoin(employees, eq(sites.headEmployeeId, employees.id))
-      .where(eq(sites.isActive, true))
+      .where(and(...siteWhere))
       .orderBy(sites.name),
     db
       .select({
@@ -333,44 +560,82 @@ export async function getDailyActivityDashboardData(
       .orderBy(masterSections.name),
   ])
 
-  // Select active site
-  const sitesList: DailyActivitySiteItem[] = [
-    {
-      id: 0,
-      name: 'Semua Site',
-      customerName: 'Semua Customer',
-      pjoName: 'Seluruh PJO & Head Site',
-      pjoJobTitle: 'Operations Supervisory',
-    },
-    ...allSites,
-  ]
-  let currentSite = sitesList[0]
+  // Select active site (strictly 1 site monitoring)
+  let sitesList: DailyActivitySiteItem[]
+  if (isCustomerScoped && allSites.length > 0) {
+    sitesList = allSites
+  } else if (allSites.length > 0) {
+    sitesList = allSites
+  } else {
+    sitesList = [
+      {
+        id: scopedSiteIds[0] || 1,
+        name: 'Site Operasional',
+        customerName: 'Customer',
+        pjoName: 'PJO Site',
+        pjoJobTitle: 'Operations Supervisory',
+      },
+    ]
+  }
 
+  let currentSite = sitesList[0]
   if (params.siteId && params.siteId !== 'all' && params.siteId !== '0') {
-    const found = allSites.find((s) => String(s.id) === params.siteId)
+    const cleanSiteId = params.siteId.split(',')[0].trim()
+    const found = sitesList.find((s) => String(s.id) === cleanSiteId)
     if (found) currentSite = found
   }
 
   // 2. Fetch real sessions from DB
+  const defaultToday = getTodayIsoString()
+  const currentWeek = getCurrentWeekRange()
+  const requestedDate = params.date?.trim()
+  const requestedStart = params.startDate?.trim()
+  const requestedEnd = params.endDate?.trim()
+
+  // Operating mode: defaults to current running week ("Minggu berjalannya") if neither date nor date range is provided
+  let effectiveStartDate: string
+  let effectiveEndDate: string
+  let singleDate = ''
+
+  if (requestedStart && requestedEnd && requestedStart !== requestedEnd) {
+    effectiveStartDate = requestedStart
+    effectiveEndDate = requestedEnd
+    singleDate = ''
+  } else if (requestedDate) {
+    singleDate = requestedDate
+    effectiveStartDate = requestedDate
+    effectiveEndDate = requestedDate
+  } else if (requestedStart || requestedEnd) {
+    effectiveStartDate = requestedStart || requestedEnd || currentWeek.startDate
+    effectiveEndDate = requestedEnd || requestedStart || currentWeek.endDate
+    if (effectiveStartDate === effectiveEndDate) {
+      singleDate = effectiveStartDate
+    }
+  } else {
+    // Default: Minggu berjalannya (Senin s/d Minggu)
+    effectiveStartDate = currentWeek.startDate
+    effectiveEndDate = currentWeek.endDate
+    singleDate = ''
+  }
+
   const sessionConditions = []
   if (currentSite.id !== 0) {
     sessionConditions.push(eq(dailyActivitySessions.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    sessionConditions.push(inArray(dailyActivitySessions.siteId, scopedSiteIds))
   }
-
-  const effectiveStartDate = params.startDate?.trim() || (params.date ? params.date.trim() : '')
-  const effectiveEndDate = params.endDate?.trim() || (params.date ? params.date.trim() : '')
 
   if (effectiveStartDate && effectiveEndDate) {
     sessionConditions.push(
-      sql`(date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate} and date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate})`
+      sql`(${dailyActivitySessions.workDate} >= ${effectiveStartDate + ' 00:00:00'}::timestamp and ${dailyActivitySessions.workDate} <= ${effectiveEndDate + ' 23:59:59'}::timestamp)`
     )
   } else if (effectiveStartDate) {
     sessionConditions.push(
-      sql`date(${dailyActivitySessions.workDate}) >= ${effectiveStartDate}`
+      sql`${dailyActivitySessions.workDate} >= ${effectiveStartDate + ' 00:00:00'}::timestamp`
     )
   } else if (effectiveEndDate) {
     sessionConditions.push(
-      sql`date(${dailyActivitySessions.workDate}) <= ${effectiveEndDate}`
+      sql`${dailyActivitySessions.workDate} <= ${effectiveEndDate + ' 23:59:59'}::timestamp`
     )
   }
 
@@ -380,7 +645,20 @@ export async function getDailyActivityDashboardData(
       or(
         ilike(employees.name, `%${searchKeyword}%`),
         ilike(employees.employeeSn, `%${searchKeyword}%`),
-        ilike(dailyActivitySessions.summaryRemark, `%${searchKeyword}%`)
+        ilike(dailyActivitySessions.summaryRemark, `%${searchKeyword}%`),
+        inArray(
+          dailyActivitySessions.id,
+          db
+            .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+            .from(dailyActivitySessionTeamMembers)
+            .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+            .where(
+              or(
+                ilike(employees.name, `%${searchKeyword}%`),
+                ilike(employees.employeeSn, `%${searchKeyword}%`)
+              )
+            )
+        )
       )
     )
   }
@@ -462,6 +740,10 @@ export async function getDailyActivityDashboardData(
   // Never bleed sessions from other sites into a specific site view.
   let effectiveSessions = rawSessions
   if (effectiveSessions.length === 0 && currentSite.id === 0 && !params.date && !effectiveStartDate && !effectiveEndDate && !searchKeyword) {
+    const fallbackWhere = [isNull(dailyActivitySessions.deletedAt)]
+    if (isCustomerScoped) {
+      fallbackWhere.push(inArray(dailyActivitySessions.siteId, scopedSiteIds))
+    }
     effectiveSessions = await db
       .select({
         id: dailyActivitySessions.id,
@@ -491,37 +773,133 @@ export async function getDailyActivityDashboardData(
       .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
       .leftJoin(masterDepartments, eq(dailyActivitySessions.departmentId, masterDepartments.id))
       .leftJoin(masterSections, eq(dailyActivitySessions.sectionId, masterSections.id))
-      .where(isNull(dailyActivitySessions.deletedAt))
+      .where(and(...fallbackWhere))
       .orderBy(desc(dailyActivitySessions.workDate), desc(dailyActivitySessions.id))
       .limit(50)
   }
 
-  // 3. Fetch real child items for these sessions
+  // 3. Fetch real child items and team members for these sessions
   const sessionIds = effectiveSessions.map((s) => s.id)
-  const rawItems = sessionIds.length > 0
-    ? await db
-        .select({
-          id: dailyActivitySessionItems.id,
-          sessionId: dailyActivitySessionItems.sessionId,
-          snapshotLabel: dailyActivitySessionItems.snapshotLabel,
-          snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
-          snapshotPayload: dailyActivitySessionItems.snapshotPayload,
-          unitNumber: dailyActivitySessionItems.unitNumber,
-          remark: dailyActivitySessionItems.remark,
-          actualPoints: dailyActivitySessionItems.actualPoints,
-          isChecked: dailyActivitySessionItems.isChecked,
-          startedAt: dailyActivitySessionItems.startedAt,
-          endedAt: dailyActivitySessionItems.endedAt,
-        })
-        .from(dailyActivitySessionItems)
-        .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
-    : []
+  const [rawItems, rawSessionTeamMembers, rawItemTeamMembers] = await Promise.all([
+    sessionIds.length > 0
+      ? db
+          .select({
+            id: dailyActivitySessionItems.id,
+            sessionId: dailyActivitySessionItems.sessionId,
+            snapshotLabel: dailyActivitySessionItems.snapshotLabel,
+            snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
+            unitNumber: dailyActivitySessionItems.unitNumber,
+            remark: dailyActivitySessionItems.remark,
+            actualPoints: dailyActivitySessionItems.actualPoints,
+            isChecked: dailyActivitySessionItems.isChecked,
+            startedAt: dailyActivitySessionItems.startedAt,
+            endedAt: dailyActivitySessionItems.endedAt,
+          })
+          .from(dailyActivitySessionItems)
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+      : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            sessionId: dailyActivitySessionTeamMembers.sessionId,
+            employeeId: dailyActivitySessionTeamMembers.employeeId,
+            employeeSn: employees.employeeSn,
+            name: employees.name,
+            jobTitle: employees.jobTitle,
+            empDept: employees.department,
+            empSection: employees.section,
+            deptName: masterDepartments.name,
+            sectionName: masterSections.name,
+            siteId: employees.siteId,
+          })
+          .from(dailyActivitySessionTeamMembers)
+          .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds))
+      : Promise.resolve([]),
+    sessionIds.length > 0
+      ? db
+          .select({
+            itemId: dailyActivitySessionItemTeamMembers.itemId,
+            sessionId: dailyActivitySessionItems.sessionId,
+            employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+            employeeSn: employees.employeeSn,
+            name: employees.name,
+            jobTitle: employees.jobTitle,
+            empDept: employees.department,
+            empSection: employees.section,
+            deptName: masterDepartments.name,
+            sectionName: masterSections.name,
+            siteId: employees.siteId,
+          })
+          .from(dailyActivitySessionItemTeamMembers)
+          .innerJoin(
+            dailyActivitySessionItems,
+            eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+          )
+          .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+          .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+      : Promise.resolve([]),
+  ])
+
+  // Combine and deduplicate team members across session level and item level
+  const teamMemberKeyMap = new Map<string, (typeof rawSessionTeamMembers)[number]>()
+  for (const tm of rawSessionTeamMembers) {
+    teamMemberKeyMap.set(`${tm.sessionId}_${tm.employeeId}`, tm)
+  }
+  for (const itm of rawItemTeamMembers) {
+    const key = `${itm.sessionId}_${itm.employeeId}`
+    if (!teamMemberKeyMap.has(key)) {
+      teamMemberKeyMap.set(key, {
+        sessionId: itm.sessionId,
+        employeeId: itm.employeeId,
+        employeeSn: itm.employeeSn,
+        name: itm.name,
+        jobTitle: itm.jobTitle,
+        empDept: itm.empDept,
+        empSection: itm.empSection,
+        deptName: itm.deptName,
+        sectionName: itm.sectionName,
+        siteId: itm.siteId,
+      })
+    }
+  }
+  const rawTeamMembers = Array.from(teamMemberKeyMap.values())
+
+  // Build item-to-assigned-employees set for granular task filtering
+  const itemTeamMemberMap = new Map<number, Set<number>>()
+  for (const r of rawItemTeamMembers) {
+    const set = itemTeamMemberMap.get(r.itemId) || new Set<number>()
+    set.add(r.employeeId)
+    itemTeamMemberMap.set(r.itemId, set)
+  }
 
   const itemsBySessionId = new Map<number, typeof rawItems>()
   for (const item of rawItems) {
     const list = itemsBySessionId.get(item.sessionId) || []
     list.push(item)
     itemsBySessionId.set(item.sessionId, list)
+
+    // Also populate itemTeamMemberMap from snapshotPayload if present
+    if (item.snapshotPayload) {
+      try {
+        const payload = JSON.parse(item.snapshotPayload)
+        const pIds = Array.isArray(payload?.itemTeamMemberIds)
+          ? payload.itemTeamMemberIds.map(Number)
+          : []
+        if (pIds.length > 0) {
+          const set = itemTeamMemberMap.get(item.id) || new Set<number>()
+          pIds.forEach((pid: number) => {
+            if (pid && !isNaN(pid)) set.add(pid)
+          })
+          itemTeamMemberMap.set(item.id, set)
+        }
+      } catch {}
+    }
   }
 
   // 3b. Fetch real activities from hero_activities (for self-input / direct activities)
@@ -536,6 +914,7 @@ export async function getDailyActivityDashboardData(
           unitNumber: activities.unitNumber,
           remarks: activities.remarks,
           startTime: activities.startTime,
+          endTime: activities.endTime,
           status: activities.status,
           pointsAwarded: activities.pointsAwarded,
         })
@@ -573,39 +952,53 @@ export async function getDailyActivityDashboardData(
     }
   }
 
+  // 4. Real Employee Counts (Customer-Scoped if applicable)
+  const totalEmployeesWhere = [eq(employees.isActive, true)]
+  if (isCustomerScoped) {
+    totalEmployeesWhere.push(inArray(employees.siteId, scopedSiteIds))
+  }
 
-  // 4. Real Employee Counts
+  const activeEmployeesWhere = [eq(employees.isActive, true)]
+  if (currentSite.id !== 0) {
+    activeEmployeesWhere.push(eq(employees.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    activeEmployeesWhere.push(inArray(employees.siteId, scopedSiteIds))
+  }
+
   const [totalEmployeesRes, activeEmployeesRes] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(employees),
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(employees)
-      .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : undefined),
+    db.select({ count: sql<number>`count(*)` }).from(employees).where(and(...totalEmployeesWhere)),
+    db.select({ count: sql<number>`count(*)` }).from(employees).where(and(...activeEmployeesWhere)),
   ])
 
   const totalEmployeesCount = Number(totalEmployeesRes[0]?.count || 0)
-  const siteEmployeesCount = currentSite.id === 0
+  const siteEmployeesCount = currentSite.id === 0 && !isCustomerScoped
     ? totalEmployeesCount
     : Number(activeEmployeesRes[0]?.count || 0)
 
   // 4b. Real Attendance from hero_attendance_records
-  const targetDateStr = effectiveStartDate || effectiveEndDate || '2026-09-24'
+  const targetDateStr = singleDate || effectiveStartDate || effectiveEndDate || defaultToday
+  const evalDates = getDatesInRange(effectiveStartDate || targetDateStr, effectiveEndDate || targetDateStr)
+  const evalPeriods = Array.from(new Set(evalDates.map((d) => d.slice(0, 7))))
 
   const attendanceConditions = []
   if (effectiveStartDate && effectiveEndDate) {
     attendanceConditions.push(
-      sql`date(${attendanceRecords.eventTime}) >= ${effectiveStartDate} and date(${attendanceRecords.eventTime}) <= ${effectiveEndDate}`
+      sql`${attendanceRecords.eventTime} >= ${effectiveStartDate + ' 00:00:00'}::timestamp and ${attendanceRecords.eventTime} <= ${effectiveEndDate + ' 23:59:59'}::timestamp`
     )
   } else if (effectiveStartDate) {
-    attendanceConditions.push(sql`date(${attendanceRecords.eventTime}) >= ${effectiveStartDate}`)
+    attendanceConditions.push(sql`${attendanceRecords.eventTime} >= ${effectiveStartDate + ' 00:00:00'}::timestamp`)
   } else if (effectiveEndDate) {
-    attendanceConditions.push(sql`date(${attendanceRecords.eventTime}) <= ${effectiveEndDate}`)
+    attendanceConditions.push(sql`${attendanceRecords.eventTime} <= ${effectiveEndDate + ' 23:59:59'}::timestamp`)
   } else {
-    attendanceConditions.push(sql`date(${attendanceRecords.eventTime}) = ${targetDateStr}`)
+    attendanceConditions.push(
+      sql`${attendanceRecords.eventTime} >= ${targetDateStr + ' 00:00:00'}::timestamp and ${attendanceRecords.eventTime} <= ${targetDateStr + ' 23:59:59'}::timestamp`
+    )
   }
 
   if (currentSite.id !== 0) {
     attendanceConditions.push(eq(attendanceRecords.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    attendanceConditions.push(inArray(attendanceRecords.siteId, scopedSiteIds))
   }
 
   const [attendanceCountRes, attendanceEventsRes] = await Promise.all([
@@ -628,23 +1021,62 @@ export async function getDailyActivityDashboardData(
   ])
 
   const attendanceByEmployee = new Map<number, { checkIn: Date | null; checkOut: Date | null }>()
+  const attendanceByEmpAndDate = new Map<string, { checkIn: Date | null; checkOut: Date | null }>()
+
   for (const ev of attendanceEventsRes) {
-    if (!ev.employeeId) continue
-    const curr = attendanceByEmployee.get(ev.employeeId) || { checkIn: null, checkOut: null }
+    if (!ev.employeeId || !ev.eventTime) continue
+    const evTime = new Date(ev.eventTime)
+    let evDateStr = evTime.toISOString().split('T')[0]
     const evType = (ev.eventType || '').toLowerCase()
-    if (evType.includes('in') && ev.eventTime) {
-      if (!curr.checkIn || new Date(ev.eventTime) < curr.checkIn) {
-        curr.checkIn = new Date(ev.eventTime)
+
+    // If morning checkout (< 12:00) without check-in on same day, check if it belongs to previous day's night shift
+    if (evType.includes('out') && evTime.getHours() < 12) {
+      const hasTodayIn = attendanceEventsRes.some(
+        (other) =>
+          other.employeeId === ev.employeeId &&
+          (other.eventType || '').toLowerCase().includes('in') &&
+          new Date(other.eventTime).toISOString().split('T')[0] === evDateStr
+      )
+      if (!hasTodayIn) {
+        const prevDayDate = new Date(evTime.getTime() - 24 * 60 * 60 * 1000)
+        evDateStr = prevDayDate.toISOString().split('T')[0]
       }
-    } else if (evType.includes('out') && ev.eventTime) {
-      if (!curr.checkOut || new Date(ev.eventTime) > curr.checkOut) {
-        curr.checkOut = new Date(ev.eventTime)
+    }
+
+    const dateKey = `${ev.employeeId}-${evDateStr}`
+
+    const curr = attendanceByEmployee.get(ev.employeeId) || { checkIn: null, checkOut: null }
+    const currDate = attendanceByEmpAndDate.get(dateKey) || { checkIn: null, checkOut: null }
+
+    if (evType.includes('in')) {
+      if (!curr.checkIn || evTime < curr.checkIn) {
+        curr.checkIn = evTime
+      }
+      if (!currDate.checkIn || evTime < currDate.checkIn) {
+        currDate.checkIn = evTime
+      }
+    } else if (evType.includes('out')) {
+      if (!curr.checkOut || evTime > curr.checkOut) {
+        curr.checkOut = evTime
+      }
+      if (!currDate.checkOut || evTime > currDate.checkOut) {
+        currDate.checkOut = evTime
       }
     }
     attendanceByEmployee.set(ev.employeeId, curr)
+    attendanceByEmpAndDate.set(dateKey, currDate)
   }
 
-  const realHadirAttendance = Number(attendanceCountRes[0]?.uniqueEmployees || 0)
+  const activeEmployeesOnTargetDate = Array.from(attendanceByEmpAndDate.keys()).filter((key) => {
+    const parts = key.split('-')
+    const dateStr = `${parts[1]}-${parts[2]}-${parts[3]}`
+    return dateStr === targetDateStr
+  }).length
+
+  const realHadirAttendance =
+    activeEmployeesOnTargetDate > 0
+      ? activeEmployeesOnTargetDate
+      : Number(attendanceCountRes[0]?.uniqueEmployees || 0)
   const hadirCount = realHadirAttendance > 0 ? realHadirAttendance : effectiveSessions.length
 
   // 5. Calculate Real KPIs
@@ -711,19 +1143,252 @@ export async function getDailyActivityDashboardData(
     total: siteEmployeesCount,
   }
 
-  // 8. Build Real Employee Activity Rows - Grouped by Employee (100% Real Live DB Data)
-  // If an employee has multiple sessions or activities on the same date, group them into a single row per employee
-  const sessionsByEmployee = new Map<number, typeof effectiveSessions>()
+  // 7b. Query Scheduling Configs & Active Plans for Roster Resolution & Unsubmitted Tracking
+  const v2Conditions = [inArray(timesheetSchedulingPlansV2.period, evalPeriods)]
+  if (currentSite.id !== 0) {
+    v2Conditions.push(eq(timesheetSchedulingPlansV2.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    v2Conditions.push(inArray(timesheetSchedulingPlansV2.siteId, scopedSiteIds))
+  }
+
+  const v1Conditions = [inArray(timesheetSchedulingPlans.period, evalPeriods)]
+  if (currentSite.id !== 0) {
+    v1Conditions.push(eq(timesheetSchedulingPlans.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    v1Conditions.push(inArray(timesheetSchedulingPlans.siteId, scopedSiteIds))
+  }
+
+  const fbConditions = []
+  if (currentSite.id !== 0) {
+    fbConditions.push(eq(timesheetFieldBreakPlans.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    fbConditions.push(inArray(timesheetFieldBreakPlans.siteId, scopedSiteIds))
+  }
+
+  const schedConfigWhere = currentSite.id !== 0
+    ? eq(timesheetSchedulingConfigs.siteId, currentSite.id)
+    : (isCustomerScoped ? inArray(timesheetSchedulingConfigs.siteId, scopedSiteIds) : undefined)
+
+  const [rawSchedulingConfigs, v2Plans, v1Plans, fbPlans] = await Promise.all([
+    db
+      .select({
+        siteId: timesheetSchedulingConfigs.siteId,
+        scheduleType: timesheetSchedulingConfigs.scheduleType,
+        rosterType: timesheetSchedulingConfigs.rosterType,
+        fieldBreakConfig: timesheetSchedulingConfigs.fieldBreakConfig,
+      })
+      .from(timesheetSchedulingConfigs)
+      .where(schedConfigWhere)
+      .catch((err) => {
+        console.error('[daily-activity:timesheetSchedulingConfigs] Query failed:', err)
+        return []
+      }),
+    evalPeriods.length > 0
+      ? db
+          .select({
+            siteId: timesheetSchedulingPlansV2.siteId,
+            period: timesheetSchedulingPlansV2.period,
+            status: timesheetSchedulingPlansV2.status,
+            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+          })
+          .from(timesheetSchedulingPlansV2)
+          .where(and(...v2Conditions))
+          .catch((err) => {
+            console.error('[daily-activity:timesheetSchedulingPlansV2] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    evalPeriods.length > 0
+      ? db
+          .select({
+            siteId: timesheetSchedulingPlans.siteId,
+            period: timesheetSchedulingPlans.period,
+            fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+          })
+          .from(timesheetSchedulingPlans)
+          .where(and(...v1Conditions))
+          .catch((err) => {
+            console.error('[daily-activity:timesheetSchedulingPlans] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    db
+      .select({
+        siteId: timesheetFieldBreakPlans.siteId,
+        employeeId: timesheetFieldBreakPlans.employeeId,
+        fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
+        fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
+      })
+      .from(timesheetFieldBreakPlans)
+      .where(fbConditions.length > 0 ? and(...fbConditions) : undefined)
+      .catch((err) => {
+        console.error('[daily-activity:timesheetFieldBreakPlans] Query failed:', err)
+        return []
+      }),
+  ])
+
+  const schedulingConfigsBySiteId = new Map<number, (typeof rawSchedulingConfigs)[0]>()
+  for (const cfg of rawSchedulingConfigs) {
+    if (cfg.siteId) {
+      schedulingConfigsBySiteId.set(cfg.siteId, cfg)
+    }
+  }
+
+  type SchedRow = { employeeId: number; schedule: string[] }
+  const scheduleBySiteAndPeriod = new Map<string, Map<number, string[]>>()
+
+  for (const plan of v2Plans) {
+    const key = `${plan.siteId}:${plan.period}`
+    const rows =
+      plan.status === 'active' && Array.isArray(plan.activeSchedule) && plan.activeSchedule.length > 0
+        ? (plan.activeSchedule as SchedRow[])
+        : Array.isArray(plan.draftSchedule)
+        ? (plan.draftSchedule as SchedRow[])
+        : []
+    if (!scheduleBySiteAndPeriod.has(key)) {
+      const empMap = new Map<number, string[]>()
+      for (const r of rows) {
+        if (r && r.employeeId && Array.isArray(r.schedule)) {
+          empMap.set(r.employeeId, r.schedule)
+        }
+      }
+      scheduleBySiteAndPeriod.set(key, empMap)
+    }
+  }
+
+  for (const plan of v1Plans) {
+    const key = `${plan.siteId}:${plan.period}`
+    if (!scheduleBySiteAndPeriod.has(key) && Array.isArray(plan.fixedSchedule)) {
+      const empMap = new Map<number, string[]>()
+      for (const r of plan.fixedSchedule as SchedRow[]) {
+        if (r && r.employeeId && Array.isArray(r.schedule)) {
+          empMap.set(r.employeeId, r.schedule)
+        }
+      }
+      scheduleBySiteAndPeriod.set(key, empMap)
+    }
+  }
+
+  const fbByEmployee = new Map<number, Array<{ start: string; end: string }>>()
+  for (const fb of fbPlans) {
+    if (fb.employeeId && fb.fieldBreakDate) {
+      const list = fbByEmployee.get(fb.employeeId) || []
+      list.push({
+        start: String(fb.fieldBreakDate),
+        end: String(fb.fieldBreakEndDate || fb.fieldBreakDate),
+      })
+      fbByEmployee.set(fb.employeeId, list)
+    }
+  }
+
+  // Query approved/submitted SPL (overtime command letters) for overtime tracking
+  const splQuery = employeeIds.length > 0
+    ? await db
+        .select({
+          splId: overtimeCommandLetters.id,
+          workDate: overtimeCommandLetters.workDate,
+          plannedStartAt: overtimeCommandLetters.plannedStartAt,
+          plannedEndAt: overtimeCommandLetters.plannedEndAt,
+          status: overtimeCommandLetters.status,
+          employeeId: overtimeCommandLetterParticipants.employeeId,
+          category: overtimeCommandLetterParticipants.category,
+          overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
+        })
+        .from(overtimeCommandLetterParticipants)
+        .innerJoin(
+          overtimeCommandLetters,
+          eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
+        )
+        .where(
+          and(
+            inArray(overtimeCommandLetterParticipants.employeeId, employeeIds),
+            sql`lower(${overtimeCommandLetters.status}) in ('approved', 'completed', 'submitted')`
+          )
+        )
+        .catch((err) => {
+          console.error('[daily-activity:overtimeCommandLetters] Query failed:', err)
+          return []
+        })
+    : []
+
+  const splByEmployeeAndDate = new Map<string, number>()
+  for (const spl of splQuery) {
+    if (!spl.employeeId || !spl.workDate) continue
+    const splDateStr = new Date(spl.workDate).toISOString().split('T')[0]
+    const key = `${spl.employeeId}-${splDateStr}`
+    let minutes = 0
+    if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
+      minutes = spl.overtimeCreditMinutes
+    } else if (spl.plannedStartAt && spl.plannedEndAt) {
+      const s = new Date(spl.plannedStartAt).getTime()
+      const e = new Date(spl.plannedEndAt).getTime()
+      const diffM = Math.round((e - s) / 60000)
+      if (diffM > 0 && diffM <= 18 * 60) {
+        minutes = diffM
+      }
+    }
+    if (minutes > 0) {
+      const curr = splByEmployeeAndDate.get(key) || 0
+      splByEmployeeAndDate.set(key, curr + minutes)
+    }
+  }
+
+  // 8. Build Real Employee Activity Rows - Grouped by (Employee + WorkDate)
+  // In weekly / date-range view, an employee has distinct daily activities per date.
+  const sessionsByEmployeeAndDate = new Map<string, any[]>()
   for (const s of effectiveSessions) {
-    const list = sessionsByEmployee.get(s.employeeId) || []
-    list.push(s)
-    sessionsByEmployee.set(s.employeeId, list)
+    const sDateStr = normalizeDateToYmdString(s.workDate)
+    const key = `${s.employeeId}_${sDateStr}`
+    const list = sessionsByEmployeeAndDate.get(key) || []
+    list.push({ ...s, isTeamMember: false })
+    sessionsByEmployeeAndDate.set(key, list)
+  }
+
+  // Include team members who participated in these sessions
+  for (const tm of rawTeamMembers) {
+    const origSession = effectiveSessions.find((s) => s.id === tm.sessionId)
+    if (origSession && tm.employeeId !== origSession.employeeId) {
+      const sDateStr = normalizeDateToYmdString(origSession.workDate)
+      const key = `${tm.employeeId}_${sDateStr}`
+      const list = sessionsByEmployeeAndDate.get(key) || []
+      if (!list.some((s) => s.id === origSession.id)) {
+        list.push({
+          ...origSession,
+          employeeId: tm.employeeId,
+          employeeSn: tm.employeeSn,
+          employeeName: tm.name,
+          jobTitle: tm.jobTitle,
+          empDept: tm.empDept,
+          empSection: tm.empSection,
+          deptName: tm.deptName,
+          sectionName: tm.sectionName,
+          siteId: origSession.siteId || tm.siteId,
+          isTeamMember: true,
+          representedByName: origSession.employeeName,
+        })
+        sessionsByEmployeeAndDate.set(key, list)
+      }
+    }
   }
 
   const employeesList: EmployeeActivityRow[] = []
 
-  for (const [, empSessions] of sessionsByEmployee.entries()) {
+  for (const [, empSessions] of sessionsByEmployeeAndDate.entries()) {
+    // Prioritize direct / individual session over team-represented session as the primary anchor
+    empSessions.sort((a, b) => {
+      if (!a.isTeamMember && b.isTeamMember) return -1
+      if (a.isTeamMember && !b.isTeamMember) return 1
+      return (b.id || 0) - (a.id || 0)
+    })
     const firstSession = empSessions[0]
+    const hasOwnSession = empSessions.some((s) => !s.isTeamMember)
+    const hasTeamSession = empSessions.some((s) => s.isTeamMember)
+    const isMultiSession = empSessions.length > 1
+    const multiSessionLabel = isMultiSession
+      ? `${empSessions.length} Sesi (${hasOwnSession && hasTeamSession ? 'Mandiri + Tim' : hasTeamSession ? 'Tim' : 'Mandiri'})`
+      : null
+
     const allTasks: ActivityTaskItem[] = []
     const sessionMetaList: EmployeeSessionMeta[] = []
     const unitSet = new Set<string>()
@@ -731,11 +1396,12 @@ export async function getDailyActivityDashboardData(
     let latestEndTime: Date | null = null
     let latestUpdateTime: Date | null = null
     let totalPoints = 0
+    let totalEffectiveMinutes = 0
 
     // Iterate through all sessions of this employee
     for (const s of empSessions) {
       const sessionChildItems = itemsBySessionId.get(s.id) || []
-      const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : ''
+      const sDateStr = normalizeDateToYmdString(s.workDate)
       const matchedActivities = (sDateStr ? activitiesByEmployeeAndDate.get(`${s.employeeId}-${sDateStr}`) : null) || []
 
       const sessionUnits = new Set<string>()
@@ -757,6 +1423,14 @@ export async function getDailyActivityDashboardData(
 
       if (sessionChildItems.length > 0) {
         for (const item of sessionChildItems) {
+          // If this employee is a team member, filter out items that were specifically assigned to other members
+          if (s.isTeamMember) {
+            const assignedSet = itemTeamMemberMap.get(item.id)
+            if (assignedSet && assignedSet.size > 0 && !assignedSet.has(s.employeeId)) {
+              continue
+            }
+          }
+
           const { photoUrl, photos } = extractPhotosFromPayload(item.snapshotPayload)
           let parsedPayload: any = {}
           try {
@@ -768,11 +1442,13 @@ export async function getDailyActivityDashboardData(
             : (parsedPayload.unitNumber && parsedPayload.unitNumber.trim() !== '' && parsedPayload.unitNumber.trim() !== '-')
             ? parsedPayload.unitNumber.trim()
             : '-'
-          const uNum = normalizeUnit(rawUnit)
+          const itemUnits = splitAndNormalizeUnits(rawUnit)
 
-          if (uNum !== '-') {
-            unitSet.add(uNum)
-            sessionUnits.add(uNum)
+          if (itemUnits.length > 0) {
+            for (const u of itemUnits) {
+              unitSet.add(u)
+              sessionUnits.add(u)
+            }
           }
 
           const itemStart = item.startedAt || s.startedAt
@@ -786,6 +1462,11 @@ export async function getDailyActivityDashboardData(
             if (!latestEndTime || iEnd > latestEndTime) latestEndTime = iEnd
           }
 
+          const itemMins = parseDurationMinutes(itemStart, itemEnd, parsedPayload.duration)
+          if (itemMins > 0) {
+            totalEffectiveMinutes += itemMins
+          }
+
           const durationStr = formatDuration(itemStart, itemEnd, parsedPayload.duration)
           const points = item.actualPoints || 0
           totalPoints += points
@@ -794,54 +1475,114 @@ export async function getDailyActivityDashboardData(
             ? 'Selesai'
             : normalizeStatus(s.status)
 
-          allTasks.push({
-            id: item.id,
-            sessionId: s.id,
-            sessionCode: s.sessionCode,
-            label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
-            groupName: item.snapshotGroupName || undefined,
-            unitNumber: uNum,
-            status: itemStatus,
-            progress: item.isChecked ? 100 : normalizeStatus(s.status) === 'Selesai' ? 100 : 50,
-            startedAt: formatTimeHHmm(itemStart),
-            endedAt: formatTimeHHmm(itemEnd),
-            durationLabel: durationStr,
-            points,
-            remarks: item.remark || parsedPayload.remark || undefined,
-            photoUrl,
-            photos,
-          })
+          if (itemUnits.length > 1) {
+            for (const u of itemUnits) {
+              allTasks.push({
+                id: item.id,
+                sessionId: s.id,
+                sessionCode: s.sessionCode,
+                label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
+                groupName: item.snapshotGroupName || undefined,
+                unitNumber: u,
+                status: itemStatus,
+                progress: item.isChecked ? 100 : normalizeStatus(s.status) === 'Selesai' ? 100 : 50,
+                startedAt: formatTimeHHmm(itemStart),
+                endedAt: formatTimeHHmm(itemEnd),
+                durationLabel: durationStr,
+                points,
+                remarks: item.remark || parsedPayload.remark || undefined,
+                photoUrl,
+                photos,
+              })
+            }
+          } else {
+            allTasks.push({
+              id: item.id,
+              sessionId: s.id,
+              sessionCode: s.sessionCode,
+              label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
+              groupName: item.snapshotGroupName || undefined,
+              unitNumber: itemUnits[0] || normalizeUnit(rawUnit),
+              status: itemStatus,
+              progress: item.isChecked ? 100 : normalizeStatus(s.status) === 'Selesai' ? 100 : 50,
+              startedAt: formatTimeHHmm(itemStart),
+              endedAt: formatTimeHHmm(itemEnd),
+              durationLabel: durationStr,
+              points,
+              remarks: item.remark || parsedPayload.remark || undefined,
+              photoUrl,
+              photos,
+            })
+          }
         }
       } else if (matchedActivities.length > 0) {
         for (const act of matchedActivities) {
-          const uNum = normalizeUnit(act.unitNumber)
-          if (uNum !== '-') {
-            unitSet.add(uNum)
-            sessionUnits.add(uNum)
+          const actUnits = splitAndNormalizeUnits(act.unitNumber)
+          if (actUnits.length > 0) {
+            for (const u of actUnits) {
+              unitSet.add(u)
+              sessionUnits.add(u)
+            }
           }
 
+          const actStart = act.startTime
+          const actEnd = act.endTime
+          if (actStart) {
+            const ast = new Date(actStart)
+            if (!earliestStartTime || ast < earliestStartTime) earliestStartTime = ast
+          }
+          if (actEnd) {
+            const aend = new Date(actEnd)
+            if (!latestEndTime || aend > latestEndTime) latestEndTime = aend
+          }
+
+          const actMins = parseDurationMinutes(actStart, actEnd)
+          if (actMins > 0) {
+            totalEffectiveMinutes += actMins
+          }
 
           const actPhotos = photosByActId.get(act.id) || []
           const actStatus = normalizeStatus(act.status)
           const pts = act.pointsAwarded || 0
           totalPoints += pts
 
-          allTasks.push({
-            id: act.id,
-            sessionId: s.id,
-            sessionCode: s.sessionCode,
-            label: act.title + (act.activityCode ? ` (${act.activityCode})` : ''),
-            unitNumber: uNum,
-            status: actStatus,
-            progress: actStatus === 'Selesai' ? 100 : 50,
-            startedAt: formatTimeHHmm(act.startTime),
-            endedAt: undefined,
-            durationLabel: '-',
-            points: pts,
-            remarks: act.remarks || undefined,
-            photoUrl: actPhotos[0] || null,
-            photos: actPhotos,
-          })
+          if (actUnits.length > 1) {
+            for (const u of actUnits) {
+              allTasks.push({
+                id: act.id,
+                sessionId: s.id,
+                sessionCode: s.sessionCode,
+                label: act.title + (act.activityCode ? ` (${act.activityCode})` : ''),
+                unitNumber: u,
+                status: actStatus,
+                progress: actStatus === 'Selesai' ? 100 : 50,
+                startedAt: formatTimeHHmm(act.startTime),
+                endedAt: formatTimeHHmm(act.endTime),
+                durationLabel: formatDuration(act.startTime, act.endTime),
+                points: pts,
+                remarks: act.remarks || undefined,
+                photoUrl: actPhotos[0] || null,
+                photos: actPhotos,
+              })
+            }
+          } else {
+            allTasks.push({
+              id: act.id,
+              sessionId: s.id,
+              sessionCode: s.sessionCode,
+              label: act.title + (act.activityCode ? ` (${act.activityCode})` : ''),
+              unitNumber: actUnits[0] || normalizeUnit(act.unitNumber),
+              status: actStatus,
+              progress: actStatus === 'Selesai' ? 100 : 50,
+              startedAt: formatTimeHHmm(act.startTime),
+              endedAt: formatTimeHHmm(act.endTime),
+              durationLabel: formatDuration(act.startTime, act.endTime),
+              points: pts,
+              remarks: act.remarks || undefined,
+              photoUrl: actPhotos[0] || null,
+              photos: actPhotos,
+            })
+          }
         }
       } else if (s.summaryRemark && s.summaryRemark.trim()) {
         allTasks.push({
@@ -870,7 +1611,7 @@ export async function getDailyActivityDashboardData(
         status: s.status,
         summaryRemark: s.summaryRemark || '',
         unitNumbers: Array.from(sessionUnits),
-        taskCount: sessionChildItems.length > 0 ? sessionChildItems.length : (matchedActivities.length > 0 ? matchedActivities.length : 1),
+        taskCount: allTasks.filter((t) => t.sessionId === s.id).length || 1,
       })
     }
 
@@ -922,6 +1663,144 @@ export async function getDailyActivityDashboardData(
       progress = status === 'Selesai' ? 100 : status === 'Berjalan' ? 50 : 0
     }
 
+    // Fallback if no task item duration was found: calculate from session timestamps
+    if (totalEffectiveMinutes === 0) {
+      for (const s of empSessions) {
+        if (s.startedAt && (s.submittedAt || s.updatedAt)) {
+          const sStart = new Date(s.startedAt).getTime()
+          const sEnd = new Date(s.submittedAt || s.updatedAt || s.startedAt).getTime()
+          const diffMs = sEnd - sStart
+          if (!Number.isNaN(diffMs) && diffMs > 0 && diffMs <= 18 * 3600 * 1000) {
+            totalEffectiveMinutes += Math.round(diffMs / 60000)
+          }
+        }
+      }
+    }
+
+    // Actual EWH in hours
+    const actualHoursCalc = Math.round((totalEffectiveMinutes / 60) * 10) / 10
+    const ewhActualHours = Number(actualHoursCalc.toFixed(1))
+
+    // Resolve roster schedule code and clocks for this employee
+    const rawYmd = normalizeDateToYmdString(firstSession.workDate)
+    const sDateStr = rawYmd !== 'nodate' ? rawYmd : targetDateStr
+    const sPeriod = sDateStr ? sDateStr.slice(0, 7) : ''
+    const sDay = sDateStr ? parseInt(sDateStr.slice(8, 10), 10) : 0
+    const empSiteId = firstSession.siteId || currentSite.id
+    const siteKey = `${empSiteId}:${sPeriod}`
+    const empSchedules = scheduleBySiteAndPeriod.get(siteKey)
+    const empRosterCode = empSchedules && sDay > 0 ? empSchedules.get(firstSession.employeeId)?.[sDay - 1] : undefined
+    const siteCfg = (empSiteId ? schedulingConfigsBySiteId.get(empSiteId) : undefined) || (currentSite.id ? schedulingConfigsBySiteId.get(currentSite.id) : undefined)
+
+    // Resolve roster clocks and net hours directly from site/roster configuration
+    const rosterClocks = resolveRosterClocksForEmployee({
+      siteConfig: siteCfg,
+      shiftCode: firstSession.shiftCode,
+      rosterScheduleCode: empRosterCode,
+    })
+    const rosterNetHours = computeRosterNetHours(rosterClocks.clockIn, rosterClocks.clockOut)
+
+    // Base normal net working hours:
+    // 1. Mengikuti konfigurasi roster site secara langsung (misal: Balikpapan 08:00 - 17:00 -> 9 jam - 1 jam istirahat = 8 jam kerja net).
+    // 2. Jika pola roster 5:2 (seperti Balikpapan, Head Office, Gresik) -> standar jam kerja normal adalah 8 jam.
+    // 3. Untuk site tambang shift 12 jam (seperti Tabang, BIB, Sangatta 06:00 - 18:00) -> 12 jam - 1 jam istirahat = 11 jam kerja net.
+    let baseNormalHours = rosterNetHours
+    if (baseNormalHours <= 0) {
+      baseNormalHours = (siteCfg?.rosterType === '5:2' || siteCfg?.scheduleType === 'office') ? 8 : 11
+    } else if (siteCfg?.rosterType === '5:2' && baseNormalHours > 8) {
+      baseNormalHours = 8
+    }
+
+    // Check if today is an OFF / Libur / Field Break day in roster
+    const empFbs = fbByEmployee.get(firstSession.employeeId) || []
+    const isFieldBreak = sDateStr ? empFbs.some((range) => sDateStr >= range.start && sDateStr <= range.end) : false
+    const rawRosterCode = (empRosterCode || '').trim().toUpperCase()
+    let isRosterOff = isFieldBreak ||
+      rawRosterCode === 'OFF' ||
+      rawRosterCode === 'LIBUR' ||
+      rawRosterCode === 'FB' ||
+      rawRosterCode === 'CUTI' ||
+      rawRosterCode === 'IJIN'
+
+    // If no explicit roster code in schedule plan, check default roster pattern (5:2 or 6:1)
+    if (!isRosterOff && !empRosterCode && sDateStr) {
+      const dateObj = new Date(`${sDateStr}T00:00:00Z`)
+      const dayOfWeek = dateObj.getUTCDay() // 0 = Sunday, 6 = Saturday
+      const rType = (siteCfg?.rosterType || '5:2').trim()
+      if (rType === '5:2' && (dayOfWeek === 0 || dayOfWeek === 6)) {
+        isRosterOff = true
+      } else if (rType === '6:1' && dayOfWeek === 0) {
+        isRosterOff = true
+      }
+    }
+
+    // Check attendance records for this employee on this date
+    const dateKey = `${firstSession.employeeId}-${sDateStr}`
+    const empAtt = (sDateStr ? attendanceByEmpAndDate.get(dateKey) : null) || attendanceByEmployee.get(firstSession.employeeId)
+
+    // Check for next day checkout if night shift
+    let checkOutEvent = empAtt?.checkOut
+    if (!checkOutEvent && sDateStr) {
+      try {
+        const nextDate = new Date(`${sDateStr}T00:00:00Z`)
+        nextDate.setUTCDate(nextDate.getUTCDate() + 1)
+        const nextDateStr = nextDate.toISOString().split('T')[0]
+        const nextDayAtt = attendanceByEmpAndDate.get(`${firstSession.employeeId}-${nextDateStr}`)
+        if (nextDayAtt?.checkOut) {
+          checkOutEvent = nextDayAtt.checkOut
+        }
+      } catch {}
+    }
+
+    // Determine if employee has a valid checkout for this shift
+    let hasValidCheckout = false
+    let actualAttendanceHours: number | null = null
+
+    if (empAtt?.checkIn && checkOutEvent) {
+      const inMs = new Date(empAtt.checkIn).getTime()
+      const outMs = new Date(checkOutEvent).getTime()
+      const diffMs = outMs - inMs
+      if (diffMs > 0) {
+        const grossHours = diffMs / (3600 * 1000)
+        // Valid shift checkout is between 4 and 18 hours after check-in
+        if (grossHours >= 4 && grossHours <= 18) {
+          hasValidCheckout = true
+          const netHours = Math.max(1, grossHours - 1)
+          actualAttendanceHours = Math.round(netHours * 10) / 10
+        }
+      }
+    }
+
+    // Overtime Calculation (Approved SPL or Real Presence exceeding normal hours)
+    const splMinutes = sDateStr ? (splByEmployeeAndDate.get(`${firstSession.employeeId}-${sDateStr}`) || 0) : 0
+    const splOtHours = Math.round((splMinutes / 60) * 10) / 10
+
+    let overtimeHours = 0
+    let targetHours: number
+
+    if (isRosterOff) {
+      // Jadwal OFF / Libur:
+      // Jam kerja normal = 0. Seluruh durasi kerjanya dihitung dari jam lemburnya (SPL, presensi hari libur, atau aktivitas riil).
+      const presenceOtHours = actualAttendanceHours !== null ? actualAttendanceHours : 0
+      overtimeHours = Math.max(splOtHours, presenceOtHours, ewhActualHours)
+      targetHours = overtimeHours > 0 ? overtimeHours : (actualAttendanceHours || baseNormalHours)
+    } else {
+      // Hari Kerja Normal:
+      // Standar: 8 jam (office) atau 11 jam (site, 12 jam shift - 1 jam istirahat).
+      // Jika karyawan bekerja melebihi jam kerja normal (lembur di luar jam lembur wajib untuk site):
+      // Maka dihitung durasi kerjanya dari jam lemburnya, sehingga target total bertambah seragam (normal + lembur).
+      let presenceOtHours = 0
+      if (hasValidCheckout && actualAttendanceHours !== null && actualAttendanceHours > baseNormalHours) {
+        presenceOtHours = Math.round((actualAttendanceHours - baseNormalHours) * 10) / 10
+      }
+      overtimeHours = Math.max(presenceOtHours, splOtHours)
+      targetHours = baseNormalHours + overtimeHours
+    }
+
+    const ewhTargetHours = Number(targetHours.toFixed(1))
+    const ewhPercentage = ewhTargetHours > 0 ? Math.min(100, Math.round((ewhActualHours / ewhTargetHours) * 100)) : 0
+    const ewhLabel = `${ewhActualHours}/${ewhTargetHours} Jam`
+
     employeesList.push({
       sessionId: firstSession.id,
       employeeDbId: firstSession.employeeId,
@@ -937,15 +1816,12 @@ export async function getDailyActivityDashboardData(
       workDate: formatDateDisplay(firstSession.workDate),
       shift: normalizeShift(firstSession.shiftCode),
       checkInTime: (() => {
-        const empAtt = attendanceByEmployee.get(firstSession.employeeId)
         if (empAtt?.checkIn) return formatTimeHHmm(empAtt.checkIn)
         if (earliestStartTime) return formatTimeHHmm(earliestStartTime)
         return formatTimeHHmm(firstSession.startedAt || firstSession.submittedAt)
       })(),
       checkOutTime: (() => {
-        const empAtt = attendanceByEmployee.get(firstSession.employeeId)
-        if (empAtt?.checkOut) return formatTimeHHmm(empAtt.checkOut)
-        if (latestEndTime) return formatTimeHHmm(latestEndTime)
+        if (hasValidCheckout && checkOutEvent) return formatTimeHHmm(checkOutEvent)
         return '-'
       })(),
       primaryActivity,
@@ -961,14 +1837,38 @@ export async function getDailyActivityDashboardData(
       totalPoints,
       tasks: allTasks,
       sessions: sessionMetaList,
+      ewhActualHours,
+      ewhTargetHours,
+      ewhLabel,
+      ewhPercentage,
+      rosterClockIn: rosterClocks.clockIn,
+      rosterClockOut: rosterClocks.clockOut,
+      isRosterOff,
+      baseNormalHours,
+      overtimeHours,
+      rosterScheduleCode: empRosterCode || (isRosterOff ? 'OFF' : 'NORMAL'),
+      isTeamMember: hasTeamSession && !hasOwnSession,
+      representedByName: hasTeamSession
+        ? (empSessions.find((s) => s.isTeamMember)?.representedByName || null)
+        : null,
+      isMultiSession,
+      multiSessionLabel,
     })
   }
 
+  // Sort by date (descending) so newest activity dates appear first, then by employee name
+  employeesList.sort((a, b) => {
+    const timeA = a.rawWorkDate ? new Date(a.rawWorkDate).getTime() : 0
+    const timeB = b.rawWorkDate ? new Date(b.rawWorkDate).getTime() : 0
+    if (timeB !== timeA) return timeB - timeA
+    return (a.name || '').localeCompare(b.name || '')
+  })
 
   // 9. Real Timeline Activity Events
   const timeline: TimelineActivityEvent[] = effectiveSessions.slice(0, 5).map((s, idx) => {
     const sItems = itemsBySessionId.get(s.id) || []
-    const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : ''
+    const rawDate = normalizeDateToYmdString(s.workDate)
+    const sDateStr = rawDate !== 'nodate' ? rawDate : ''
     const sActs = (sDateStr ? activitiesByEmployeeAndDate.get(`${s.employeeId}-${sDateStr}`) : null) || []
 
     let actName = ''
@@ -1004,7 +1904,8 @@ export async function getDailyActivityDashboardData(
 
   const delayedJobs: DelayedJobItem[] = delayedSessions.slice(0, 5).map((s) => {
     const sItems = itemsBySessionId.get(s.id) || []
-    const sDateStr = s.workDate ? new Date(s.workDate).toISOString().split('T')[0] : ''
+    const rawDate = normalizeDateToYmdString(s.workDate)
+    const sDateStr = rawDate !== 'nodate' ? rawDate : ''
     const sActs = (sDateStr ? activitiesByEmployeeAndDate.get(`${s.employeeId}-${sDateStr}`) : null) || []
 
     let actName = ''
@@ -1050,7 +1951,7 @@ export async function getDailyActivityDashboardData(
       })
       .from(overtimeCommandLetters)
       .innerJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
-      .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : undefined)
+      .where(currentSite.id !== 0 ? eq(employees.siteId, currentSite.id) : (isCustomerScoped ? inArray(employees.siteId, scopedSiteIds) : undefined))
       .limit(3)
       .catch((err) => {
         console.error('[daily-activity:overtimeCommandLetters] Query failed:', err)
@@ -1075,36 +1976,12 @@ export async function getDailyActivityDashboardData(
   for (const s of effectiveSessions) {
     if (s.employeeId) submittedEmpIds.add(s.employeeId)
   }
+  for (const tm of rawTeamMembers) {
+    if (tm.employeeId) submittedEmpIds.add(tm.employeeId)
+  }
   for (const act of rawActivities) {
     if (act.employeeId) submittedEmpIds.add(act.employeeId)
   }
-
-  function getDatesInRange(startStr: string, endStr: string, maxDays = 31): string[] {
-    if (!startStr && !endStr) return ['2026-09-24']
-    const s = startStr || endStr
-    const e = endStr || startStr
-    try {
-      const startDate = new Date(`${s}T00:00:00Z`)
-      const endDate = new Date(`${e}T00:00:00Z`)
-      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-        return [s]
-      }
-      const dates: string[] = []
-      const curr = new Date(startDate)
-      let count = 0
-      while (curr <= endDate && count < maxDays) {
-        dates.push(curr.toISOString().split('T')[0])
-        curr.setUTCDate(curr.getUTCDate() + 1)
-        count++
-      }
-      return dates.length > 0 ? dates : [s]
-    } catch {
-      return [s]
-    }
-  }
-
-  const evalDates = getDatesInRange(effectiveStartDate || targetDateStr, effectiveEndDate || targetDateStr)
-  const evalPeriods = Array.from(new Set(evalDates.map((d) => d.slice(0, 7))))
 
   const employeeWhere = [
     eq(employees.isActive, true),
@@ -1112,144 +1989,44 @@ export async function getDailyActivityDashboardData(
   ]
   if (currentSite.id !== 0) {
     employeeWhere.push(eq(employees.siteId, currentSite.id))
+  } else if (isCustomerScoped) {
+    employeeWhere.push(inArray(employees.siteId, scopedSiteIds))
   }
 
-  const v2Conditions = [inArray(timesheetSchedulingPlansV2.period, evalPeriods)]
-  if (currentSite.id !== 0) {
-    v2Conditions.push(eq(timesheetSchedulingPlansV2.siteId, currentSite.id))
-  }
-
-  const v1Conditions = [inArray(timesheetSchedulingPlans.period, evalPeriods)]
-  if (currentSite.id !== 0) {
-    v1Conditions.push(eq(timesheetSchedulingPlans.siteId, currentSite.id))
-  }
-
-  const fbConditions = []
-  if (currentSite.id !== 0) {
-    fbConditions.push(eq(timesheetFieldBreakPlans.siteId, currentSite.id))
-  }
-
-  const [allActiveEmployees, v2Plans, v1Plans, fbPlans] = await Promise.all([
-    db
-      .select({
-        id: employees.id,
-        employeeSn: employees.employeeSn,
-        name: employees.name,
-        jobTitle: employees.jobTitle,
-        department: employees.department,
-        deptName: masterDepartments.name,
-        section: employees.section,
-        sectionName: masterSections.name,
-        siteId: employees.siteId,
-        siteName: sites.name,
-        rosterType: sql<string>`'5:2'`.as('roster_type'),
-      })
-      .from(employees)
-      .leftJoin(sites, eq(employees.siteId, sites.id))
-      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
-      .where(and(...employeeWhere))
-      .orderBy(employees.name)
-      .catch((err) => {
-        console.error('[daily-activity:employees] Query failed:', err)
-        return []
-      }),
-    evalPeriods.length > 0
-      ? db
-          .select({
-            siteId: timesheetSchedulingPlansV2.siteId,
-            period: timesheetSchedulingPlansV2.period,
-            status: timesheetSchedulingPlansV2.status,
-            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
-            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
-          })
-          .from(timesheetSchedulingPlansV2)
-          .where(and(...v2Conditions))
-          .catch((err) => {
-            console.error('[daily-activity:timesheetSchedulingPlansV2] Query failed:', err)
-            return []
-          })
-      : Promise.resolve([]),
-    evalPeriods.length > 0
-      ? db
-          .select({
-            siteId: timesheetSchedulingPlans.siteId,
-            period: timesheetSchedulingPlans.period,
-            fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
-          })
-          .from(timesheetSchedulingPlans)
-          .where(and(...v1Conditions))
-          .catch((err) => {
-            console.error('[daily-activity:timesheetSchedulingPlans] Query failed:', err)
-            return []
-          })
-      : Promise.resolve([]),
-    db
-      .select({
-        siteId: timesheetFieldBreakPlans.siteId,
-        employeeId: timesheetFieldBreakPlans.employeeId,
-        fieldBreakDate: timesheetFieldBreakPlans.fieldBreakDate,
-        fieldBreakEndDate: timesheetFieldBreakPlans.fieldBreakEndDate,
-      })
-      .from(timesheetFieldBreakPlans)
-      .where(fbConditions.length > 0 ? and(...fbConditions) : undefined)
-      .catch((err) => {
-        console.error('[daily-activity:timesheetFieldBreakPlans] Query failed:', err)
-        return []
-      }),
-  ])
-
-  type SchedRow = { employeeId: number; schedule: string[] }
-  const scheduleBySiteAndPeriod = new Map<string, Map<number, string[]>>()
-
-  for (const plan of v2Plans) {
-    const key = `${plan.siteId}:${plan.period}`
-    const rows =
-      plan.status === 'active' && Array.isArray(plan.activeSchedule) && plan.activeSchedule.length > 0
-        ? (plan.activeSchedule as SchedRow[])
-        : Array.isArray(plan.draftSchedule)
-        ? (plan.draftSchedule as SchedRow[])
-        : []
-    if (!scheduleBySiteAndPeriod.has(key)) {
-      const empMap = new Map<number, string[]>()
-      for (const r of rows) {
-        if (r && r.employeeId && Array.isArray(r.schedule)) {
-          empMap.set(r.employeeId, r.schedule)
-        }
-      }
-      scheduleBySiteAndPeriod.set(key, empMap)
-    }
-  }
-
-  for (const plan of v1Plans) {
-    const key = `${plan.siteId}:${plan.period}`
-    if (!scheduleBySiteAndPeriod.has(key) && Array.isArray(plan.fixedSchedule)) {
-      const empMap = new Map<number, string[]>()
-      for (const r of plan.fixedSchedule as SchedRow[]) {
-        if (r && r.employeeId && Array.isArray(r.schedule)) {
-          empMap.set(r.employeeId, r.schedule)
-        }
-      }
-      scheduleBySiteAndPeriod.set(key, empMap)
-    }
-  }
-
-  const fbByEmployee = new Map<number, Array<{ start: string; end: string }>>()
-  for (const fb of fbPlans) {
-    if (fb.employeeId && fb.fieldBreakDate) {
-      const list = fbByEmployee.get(fb.employeeId) || []
-      list.push({
-        start: String(fb.fieldBreakDate),
-        end: String(fb.fieldBreakEndDate || fb.fieldBreakDate),
-      })
-      fbByEmployee.set(fb.employeeId, list)
-    }
-  }
+  const allActiveEmployees = await db
+    .select({
+      id: employees.id,
+      employeeSn: employees.employeeSn,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      department: employees.department,
+      deptName: masterDepartments.name,
+      section: employees.section,
+      sectionName: masterSections.name,
+      siteId: employees.siteId,
+      siteName: sites.name,
+      rosterType: sql<string>`'5:2'`.as('roster_type'),
+    })
+    .from(employees)
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .where(and(...employeeWhere))
+    .orderBy(employees.name)
+    .catch((err) => {
+      console.error('[daily-activity:employees] Query failed:', err)
+      return []
+    })
 
   const unsubmittedEmployees: UnsubmittedEmployeeRow[] = []
 
   for (const emp of allActiveEmployees) {
     if (submittedEmpIds.has(emp.id)) continue
+
+    // Only Servicemen are required to submit Daily Activities (exclude Technical, PJO, Repairmen, Admin)
+    if (!isServicemanEmployee({ jobTitle: emp.jobTitle, section: emp.sectionName || emp.section, department: emp.deptName || emp.department })) {
+      continue
+    }
 
     let hasWorkingShift = false
     let lastRosterCode = 'DS'
@@ -1342,19 +2119,9 @@ export async function getDailyActivityDashboardData(
     })
   }
 
-  let latestSessionDate = '24 Sep 2026'
-  if (effectiveStartDate && effectiveEndDate) {
-    if (effectiveStartDate === effectiveEndDate) {
-      latestSessionDate = formatDateDisplay(effectiveStartDate)
-    } else {
-      latestSessionDate = `${formatDateDisplay(effectiveStartDate)} - ${formatDateDisplay(effectiveEndDate)}`
-    }
-  } else if (effectiveStartDate) {
-    latestSessionDate = formatDateDisplay(effectiveStartDate)
-  } else if (params.date) {
-    latestSessionDate = formatDateDisplay(params.date)
-  } else if (effectiveSessions[0]?.workDate) {
-    latestSessionDate = formatDateDisplay(effectiveSessions[0].workDate)
+  let latestSessionDate = formatDateDisplay(targetDateStr)
+  if (effectiveStartDate && effectiveEndDate && effectiveStartDate !== effectiveEndDate) {
+    latestSessionDate = `${formatDateDisplay(effectiveStartDate)} - ${formatDateDisplay(effectiveEndDate)}`
   }
 
   return {
@@ -1363,6 +2130,8 @@ export async function getDailyActivityDashboardData(
     sectionsList: allSections,
     currentSite,
     currentDate: latestSessionDate,
+    currentDateIso: targetDateStr,
+    isToday: targetDateStr === defaultToday,
     startDate: effectiveStartDate || undefined,
     endDate: effectiveEndDate || undefined,
     selectedShift: params.shift || 'Semua Shift',

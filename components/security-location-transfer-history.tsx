@@ -48,7 +48,7 @@ function exportTransfersToCsv(data: EmployeeLocationTransferRecord[]) {
   const headers = [
     'Tanggal Pindah',
     'Nama Karyawan',
-    'SN / NIK',
+    'SN',
     'Lokasi Asal',
     'Lokasi Tujuan',
     'Alasan',

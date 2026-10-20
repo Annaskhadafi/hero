@@ -51,7 +51,7 @@ const SITE_DATA: SiteRecipientRow[] = [
   { no: 14, siteName: "CK BIB", category: "HSE", approverName: "Fathurrahman Sufi", approverTitle: "HSE Officer", approverEmail: "77169@chitraparatama.co.id" },
   { no: 15, siteName: "CK BMB", category: "HSE", approverName: "Danny Hangga Irawan", approverTitle: "HSE Officer", approverEmail: "danny.hangga@chitraparatama.co.id" },
   { no: 16, siteName: "CK KIM", category: "HSE", approverName: "Rizky Rahmadani", approverTitle: "HSE Officer", approverEmail: "77477@chitraparatama.co.id" },
-  { no: 17, siteName: "CK MHU", category: "HSE", approverName: "Irfan Rivai Remba", approverTitle: "HSE", approverEmail: "irfan.rifai@chitraparatama.co.id" },
+  { no: 17, siteName: "CK MHU", category: "HSE", approverName: "Ade Saharu", approverTitle: "HSE Officer", approverEmail: "77170@chitraparatama.co.id" },
   { no: 18, siteName: "Vale - Sorowako", category: "HSE", approverName: "Muhammad Wahyu Ichsan", approverTitle: "HSE Officer", approverEmail: "muhammad.w.ichsan@chitraparatama.co.id" },
 
   // 13 Site PJO
@@ -64,7 +64,7 @@ const SITE_DATA: SiteRecipientRow[] = [
   { no: 25, siteName: "Makassar", category: "PJO", approverName: "Apriyanto", approverTitle: "Head of Service MVC", approverEmail: "apriyanto.lastam@chitraparatama.co.id" },
   { no: 26, siteName: "Palembang", category: "PJO", approverName: "Febrial Hariri", approverTitle: "Leader Technical Sumatera", approverEmail: "febrial.hariri@chitraparatama.co.id" },
   { no: 27, siteName: "Pekanbaru", category: "PJO", approverName: "Febrial Hariri", approverTitle: "Leader Technical Sumatera", approverEmail: "febrial.hariri@chitraparatama.co.id" },
-  { no: 28, siteName: "PPA BIB", category: "PJO", approverName: "Muchamat Nurkolis Majid", approverTitle: "Technical Engineer", approverEmail: "m.nurkolis@chitraparatama.co.id" },
+  { no: 28, siteName: "PPA BIB", category: "PJO", approverName: "Revy Andyaksa Saroni", approverTitle: "Technical Engineer", approverEmail: "revy.andyaksa@chitraparatama.co.id" },
   { no: 29, siteName: "Sangatta", category: "PJO", approverName: "Saipudin", approverTitle: "HSE Leader", approverEmail: "saipudin@chitraparatama.co.id" },
   { no: 30, siteName: "Sebamban", category: "PJO", approverName: "Apriyanto", approverTitle: "Head of Service MVC", approverEmail: "apriyanto.lastam@chitraparatama.co.id" },
   { no: 31, siteName: "Tj. Adaro", category: "PJO", approverName: "Tommy Indra Aldiny Rambe", approverTitle: "Technical Leader", approverEmail: "tommy.indra@chitraparatama.co.id" },

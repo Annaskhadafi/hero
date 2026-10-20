@@ -5,7 +5,10 @@ import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infr
 import { and, desc, eq, inArray, sql, gte, lte } from 'drizzle-orm'
 
 export type AttendancePermissionRow = {
-  id: number
+  id: string
+  requestId?: number
+  overrideId?: number
+  employeeId: number
   date: string
   dayName: string
   type: 'Sakit' | 'Terlambat'
@@ -19,7 +22,6 @@ export type AttendancePermissionRow = {
   note: string
   attachment: string
   status: string
-  requestId?: number
 }
 
 export type IzinDashboardKpis = {
@@ -121,6 +123,7 @@ export async function getAttendancePermissionDashboardData(filters: IzinDashboar
   const requests = await db
     .select({
       id: attendancePermissionRequests.id,
+      employeeId: attendancePermissionRequests.employeeId,
       permissionType: attendancePermissionRequests.permissionType,
       startDate: attendancePermissionRequests.startDate,
       endDate: attendancePermissionRequests.endDate,
@@ -149,6 +152,7 @@ export async function getAttendancePermissionDashboardData(filters: IzinDashboar
   const overrides = await db
     .select({
       id: timesheetAttendanceRealOverrides.id,
+      employeeId: timesheetAttendanceRealOverrides.employeeId,
       period: timesheetAttendanceRealOverrides.period,
       day: timesheetAttendanceRealOverrides.day,
       status: timesheetAttendanceRealOverrides.status,
@@ -176,7 +180,9 @@ export async function getAttendancePermissionDashboardData(filters: IzinDashboar
         : readNotePart(row.note, 'Alasan Terlambat:')
 
     return {
-      id: row.id,
+      id: `ovr-${row.id}`,
+      overrideId: row.id,
+      employeeId: row.employeeId,
       date,
       dayName: dayName(date),
       type,
@@ -197,8 +203,9 @@ export async function getAttendancePermissionDashboardData(filters: IzinDashboar
     const startDate = String(row.startDate)
     const type = row.permissionType === 'late' ? 'Terlambat' : 'Sakit'
     return {
-      id: row.id,
+      id: `req-${row.id}`,
       requestId: row.id,
+      employeeId: row.employeeId,
       date: startDate,
       dayName: dayName(startDate),
       type,

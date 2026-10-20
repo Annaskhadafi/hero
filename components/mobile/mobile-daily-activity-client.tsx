@@ -1,6 +1,8 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
+
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
@@ -11,6 +13,7 @@ import {
   CheckCheck,
   CheckCircle2,
   Clock3,
+  Copy,
   Download,
   ExternalLink,
   FileCheck,
@@ -43,16 +46,27 @@ import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { MobileDailyActivityForm } from '@/components/mobile/mobile-daily-activity-form'
 import { MobileActivityLog } from '@/components/mobile/mobile-activity-log'
 import { MobileDailyActivityHistory } from '@/components/mobile/mobile-daily-activity-history'
+import { MobileDailyActivityDrafts } from '@/components/mobile/mobile-daily-activity-drafts'
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 import { MobileSignaturePadDialog } from '@/components/mobile/mobile-signature-pad-dialog'
+import {
+  getActivityDraftIndex,
+  ACTIVITY_DRAFTS_CHANGED_EVENT,
+  createActivityDraftKey,
+  writeDraft,
+  saveActivityDraftIndexEntry,
+  ACTIVITY_DRAFT_STORAGE_KEY,
+} from '@/lib/offline-sync'
 import {
   getDailyActivityApprovalData,
   singleApproveDailyActivityAction,
   singleRevertDailyActivityAction,
   singleRejectDailyActivityAction,
+  cloneDailyActivityToDraftAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
-import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { downloadElementAsPdf, downloadMultiPageElementAsPdf } from '@/lib/pdf-download'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { cn } from '@/lib/utils'
 
 function dateTimeLocalValue(reference: Date) {
@@ -103,6 +117,7 @@ export function MobileDailyActivityClient({
   submitted,
   submittedSpl,
   tabQuery,
+  draftQuery,
   editSessionData,
   approvals,
 }: {
@@ -119,6 +134,7 @@ export function MobileDailyActivityClient({
   submitted?: boolean
   submittedSpl?: boolean
   tabQuery?: string
+  draftQuery?: string
   editSessionData?: any
   approvals?: any
 }) {
@@ -133,9 +149,100 @@ export function MobileDailyActivityClient({
   const [userSignature, setUserSignature] = useState<string | null>(data?.employee?.signatureDataUrl || null)
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const pdfRef = useRef<HTMLDivElement | null>(null)
+  const evidencePageRefs = useRef<(HTMLDivElement | null)[]>([])
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 })
+
+  const evidencePhotos = useMemo(() => {
+    if (!selectedReviewDoc) return []
+    const items = selectedReviewDoc.items || selectedReviewDoc.sessionItems || []
+    const list: Array<{
+      url: string
+      label: string
+      unitNumber?: string
+      remark?: string
+      duration?: string
+      idx: number
+    }> = []
+
+    const cleanUrl = (u: any) => {
+      const str = typeof u === 'string' ? u : u?.url || u?.dataUrl || ''
+      if (!str || typeof str !== 'string' || !str.trim()) return ''
+      return resolveUploadUrl(str.trim(), { absolute: true })
+    }
+
+    items.forEach((it: any, itemIdx: number) => {
+      const urls: string[] = []
+      if (it.photoUrl) {
+        const u = cleanUrl(it.photoUrl)
+        if (u) urls.push(u)
+      }
+      if (Array.isArray(it.photos)) {
+        it.photos.forEach((p: any) => {
+          const u = cleanUrl(p)
+          if (u) urls.push(u)
+        })
+      }
+      if (Array.isArray(it.photoUrls)) {
+        it.photoUrls.forEach((p: any) => {
+          const u = cleanUrl(p)
+          if (u) urls.push(u)
+        })
+      }
+      if (Array.isArray(it.evidenceUrls)) {
+        it.evidenceUrls.forEach((p: any) => {
+          const u = cleanUrl(p)
+          if (u) urls.push(u)
+        })
+      }
+      if (it.snapshotPayload) {
+        try {
+          const parsed = typeof it.snapshotPayload === 'string' ? JSON.parse(it.snapshotPayload) : it.snapshotPayload
+          if (parsed) {
+            if (parsed.photoUrl) {
+              const u = cleanUrl(parsed.photoUrl)
+              if (u) urls.push(u)
+            }
+            if (Array.isArray(parsed.photos)) {
+              parsed.photos.forEach((p: any) => {
+                const u = cleanUrl(p)
+                if (u) urls.push(u)
+              })
+            }
+            if (Array.isArray(parsed.photoUrls)) {
+              parsed.photoUrls.forEach((p: any) => {
+                const u = cleanUrl(p)
+                if (u) urls.push(u)
+              })
+            }
+          }
+        } catch {}
+      }
+
+      const unique = Array.from(new Set(urls.filter(Boolean)))
+      unique.forEach((url) => {
+        list.push({
+          url,
+          label: it.label || it.snapshotLabel || 'Aktivitas',
+          unitNumber: it.unitNumber && it.unitNumber !== '-' ? it.unitNumber : undefined,
+          remark: it.remark || it.remarks || undefined,
+          duration: it.duration || undefined,
+          idx: itemIdx + 1,
+        })
+      })
+    })
+
+    return list
+  }, [selectedReviewDoc])
+
+  const evidencePages = useMemo(() => {
+    const pages: Array<typeof evidencePhotos> = []
+    for (let i = 0; i < evidencePhotos.length; i += 4) {
+      pages.push(evidencePhotos.slice(i, i + 4))
+    }
+    return pages
+  }, [evidencePhotos])
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!scrollContainerRef.current) return
@@ -305,23 +412,115 @@ export function MobileDailyActivityClient({
 
   const handleDownloadPdf = async () => {
     if (!pdfRef.current || !selectedReviewDoc) return
+    setIsActionRunning(true)
     try {
-      await downloadElementAsPdf(pdfRef.current, `DAR-${selectedReviewDoc.sessionCode || selectedReviewDoc.sessionId}.pdf`)
-      toast.success('PDF berhasil diunduh!')
-    } catch (err) {
+      const validEvidencePages = evidencePageRefs.current.filter((el): el is HTMLDivElement => el !== null)
+      const allPages: HTMLElement[] = [pdfRef.current, ...validEvidencePages]
+
+      const originalTransforms = allPages.map((p) => p.style.transform)
+      allPages.forEach((p) => {
+        p.style.transform = 'none'
+      })
+
+      const fileName = `DAR-${selectedReviewDoc.sessionCode || selectedReviewDoc.sessionId}.pdf`
+      try {
+        if (allPages.length > 1) {
+          await downloadMultiPageElementAsPdf(allPages, fileName)
+        } else {
+          await downloadElementAsPdf(pdfRef.current, fileName)
+        }
+        toast.success('PDF berhasil diunduh!')
+      } finally {
+        allPages.forEach((p, idx) => {
+          p.style.transform = originalTransforms[idx]
+        })
+      }
+    } catch (err: any) {
+      console.error('Failed to download PDF:', err)
       toast.error('Gagal mengunduh PDF.')
+    } finally {
+      setIsActionRunning(false)
     }
   }
 
+  const [isMounted, setIsMounted] = useState(false)
+  const [draftsCount, setDraftsCount] = useState<number>(0)
+  const [selectedDraftKey, setSelectedDraftKey] = useState<string | null>(() => draftQuery || null)
+  const [formInstanceId, setFormInstanceId] = useState(0)
+  const [isCloning, setIsCloning] = useState(false)
+
+  const handleCloneActivity = async (sessionId: number) => {
+    try {
+      setIsCloning(true)
+      toast.loading('Menyalin data aktivitas...', { id: 'clone-activity' })
+      const res = await cloneDailyActivityToDraftAction(sessionId)
+      if (!res.success || !res.payload) {
+        throw new Error(res.error || 'Gagal menyalin aktivitas.')
+      }
+
+      const newDraftKey = createActivityDraftKey()
+      writeDraft(newDraftKey, res.payload)
+      saveActivityDraftIndexEntry(newDraftKey, res.payload)
+
+      setSelectedDraftKey(newDraftKey)
+      setFormInstanceId((prev) => prev + 1)
+      setIsReviewOpen(false)
+      setActiveTab('apply')
+      router.push(`/mobile/activity?tab=apply&draft=${encodeURIComponent(newDraftKey)}`)
+
+      toast.success(
+        `Aktivitas berhasil disalin! Tanggal disesuaikan ke hari ini, silakan sesuaikan unit atau tambah aktivitas lalu submit.`,
+        { id: 'clone-activity', duration: 5000 }
+      )
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menduplikasi aktivitas.', { id: 'clone-activity' })
+    } finally {
+      setIsCloning(false)
+    }
+  }
+
+  const handleDraftDeleted = (item: any) => {
+    if (selectedDraftKey === item.localKey || draftQuery === item.localKey) {
+      setSelectedDraftKey(null)
+      setFormInstanceId((prev) => prev + 1)
+      try {
+        window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
+      } catch {}
+      router.replace('/mobile/activity?tab=draft')
+    }
+    setDraftsCount(getActivityDraftIndex().length)
+  }
+
+  useEffect(() => {
+    setIsMounted(true)
+    setDraftsCount(getActivityDraftIndex().length)
+  }, [])
+
+  useEffect(() => {
+    if (draftQuery) {
+      setSelectedDraftKey(draftQuery)
+    }
+  }, [draftQuery])
+
+  useEffect(() => {
+    const updateCount = () => {
+      setDraftsCount(getActivityDraftIndex().length)
+    }
+    updateCount()
+    window.addEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, updateCount)
+    return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, updateCount)
+  }, [])
+
   const [activeTab, setActiveTab] = useState<string>(() => {
     if (tabQuery === 'approval') return 'approval'
+    if (tabQuery === 'draft') return 'draft'
     if (tabQuery === 'active') return 'active'
     if (tabQuery === 'history') return 'history'
     return 'apply'
   })
 
   useEffect(() => {
-    if (tabQuery && ['apply', 'approval', 'active', 'history'].includes(tabQuery)) {
+    if (tabQuery && ['apply', 'draft', 'approval', 'active', 'history'].includes(tabQuery)) {
       setActiveTab(tabQuery)
     }
   }, [tabQuery])
@@ -352,9 +551,6 @@ export function MobileDailyActivityClient({
             {data.activities.length} DAR
           </Badge>
         </div>
-        <p className="text-sm leading-6 font-semibold text-[#486275]">
-          Ajukan, approve, pantau aktivitas harian aktif, dan kelola riwayat DAR tanpa membuka desktop.
-        </p>
       </section>
 
       {/* Sub-Navbar Tabs Bar persis SPL Mobile */}
@@ -363,13 +559,28 @@ export function MobileDailyActivityClient({
         onValueChange={handleTabChange}
         className="w-full space-y-4"
       >
-        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
+        <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
           <TabsTrigger
             value="apply"
             className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs cursor-pointer select-none touch-manipulation"
           >
             <PlusCircle className="size-4 shrink-0 pointer-events-none" />
             <span className="pointer-events-none">Ajukan</span>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="draft"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs relative cursor-pointer select-none touch-manipulation"
+          >
+            <div className="relative flex items-center pointer-events-none">
+              <FileText className="size-4 shrink-0 pointer-events-none" />
+              {isMounted && draftsCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 flex size-4 items-center justify-center rounded-full bg-sky-600 text-[9px] font-black text-white ring-2 ring-white pointer-events-none">
+                  {draftsCount}
+                </span>
+              )}
+            </div>
+            <span className="pointer-events-none">Draft</span>
           </TabsTrigger>
 
           <TabsTrigger
@@ -412,22 +623,50 @@ export function MobileDailyActivityClient({
         </TabsList>
 
         <TabsContent value="apply">
-          <MobileDailyActivityForm
-            key={editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : 'new-form')}
-            employeeId={data.employee.id}
-            employee={data.employee}
-            hierarchy={hierarchy}
-            assignments={data.assignments || []}
-            availableLibrary={data.availableLibrary || []}
-            defaultStartTime={dateTimeLocalValue(new Date())}
-            defaultEndTime={dateTimeLocalValue(new Date(Date.now() + 3600000))}
-            routeChecklist={data.routeChecklist}
-            availableRouteFolders={data.availableRouteFolders || []}
-            standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
-            site={data.site}
-            teamMembers={teamMembers}
-            revisionSessionId={editSessionData?.sessionId || editSessionData?.id || editSessionData?.data?.sessionId || editSessionData?.data?.id || editSessionData?.session?.sessionId || editSessionData?.session?.id || undefined}
-            initialSessionData={editSessionData?.data || editSessionData?.session || editSessionData}
+          {isMounted ? (
+            <MobileDailyActivityForm
+              key={`form-${formInstanceId}-${editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : '')}-${selectedDraftKey || draftQuery || 'form'}`}
+              initialDraftKey={selectedDraftKey || draftQuery || undefined}
+              employeeId={data.employee.id}
+              employee={data.employee}
+              hierarchy={hierarchy}
+              assignments={data.assignments || []}
+              availableLibrary={data.availableLibrary || []}
+              defaultStartTime={dateTimeLocalValue(new Date())}
+              defaultEndTime={dateTimeLocalValue(new Date(Date.now() + 3600000))}
+              routeChecklist={data.routeChecklist}
+              availableRouteFolders={data.availableRouteFolders || []}
+              standaloneOvertimeChecklist={data.standaloneOvertimeChecklist}
+              site={data.site}
+              teamMembers={teamMembers}
+              revisionSessionId={editSessionData?.sessionId || editSessionData?.id || editSessionData?.data?.sessionId || editSessionData?.data?.id || editSessionData?.session?.sessionId || editSessionData?.session?.id || undefined}
+              initialSessionData={editSessionData?.data || editSessionData?.session || editSessionData}
+              onOpenDraftTab={() => handleTabChange('draft')}
+            />
+          ) : (
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-2 rounded-2xl bg-white p-6 shadow-xs text-slate-400">
+              <Loader2 className="size-6 animate-spin text-[#003461]" />
+              <span className="text-xs font-semibold text-slate-500">Menyiapkan formulir aktivitas...</span>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="draft" className="mt-4 space-y-4">
+          <MobileDailyActivityDrafts
+            onSelectLocalDraft={(draftKey) => {
+              setSelectedDraftKey(draftKey)
+              setActiveTab('apply')
+              router.push(`/mobile/activity?tab=apply&draft=${encodeURIComponent(draftKey)}`)
+              toast.success('Memuat draft formulir...')
+            }}
+            onSelectServerDraft={(sessionId) => {
+              setSelectedDraftKey(null)
+              setActiveTab('apply')
+              router.push(`/mobile/activity?tab=apply&edit=${sessionId}`)
+              toast.success('Memuat draft dari server...')
+            }}
+            onDraftCountChange={(count) => setDraftsCount(count)}
+            onDraftDeleted={handleDraftDeleted}
           />
         </TabsContent>
 
@@ -638,6 +877,7 @@ export function MobileDailyActivityClient({
           <MobileDailyActivityHistory
             activities={data.activities}
             onOpenReview={handleOpenReview}
+            onCloneActivity={handleCloneActivity}
           />
         </TabsContent>
       </Tabs>
@@ -755,7 +995,7 @@ export function MobileDailyActivityClient({
                   onMouseUp={handleMouseUpOrLeave}
                   onMouseLeave={handleMouseUpOrLeave}
                   className={cn(
-                    "flex justify-center items-start overflow-x-auto overflow-y-hidden p-2 sm:p-4 w-full max-w-full rounded-xl select-none touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    "flex flex-col items-center overflow-x-auto overflow-y-auto p-2 sm:p-4 w-full max-w-full rounded-xl select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden gap-6",
                     isDragging ? "cursor-grabbing" : "cursor-grab"
                   )}
                 >
@@ -765,7 +1005,9 @@ export function MobileDailyActivityClient({
                     className="relative mx-auto shrink-0 bg-white shadow-lg border border-slate-200 rounded-sm origin-top transition-transform duration-100 w-[210mm] min-h-[297mm]"
                     style={{
                       backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-                      backgroundSize: '100% 100%',
+                      backgroundSize: '210mm 297mm',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundPosition: 'top center',
                       transform: `scale(${0.44 * previewZoom})`,
                       transformOrigin: 'top center',
                       marginBottom: `${Math.max(0, (previewZoom - 1.0) * 160)}mm`,
@@ -774,8 +1016,8 @@ export function MobileDailyActivityClient({
                     <div
                       className="relative z-10 outline-none text-[8.5pt] font-sans leading-tight text-black"
                       style={{
-                        paddingTop: '38mm',
-                        paddingBottom: '35mm',
+                        paddingTop: '40mm',
+                        paddingBottom: '32mm',
                         paddingLeft: '20mm',
                         paddingRight: '20mm',
                         minHeight: '297mm',
@@ -814,18 +1056,48 @@ export function MobileDailyActivityClient({
                             <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
                             <td className="text-black">{[selectedReviewDoc.employee?.department, selectedReviewDoc.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                           </tr>
-                          {selectedReviewDoc.teamMembersSummary ? (
-                            <tr>
-                              <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
-                              <td colSpan={3} className="text-black font-normal">{selectedReviewDoc.teamMembersSummary}</td>
-                            </tr>
-                          ) : null}
-                          {selectedReviewDoc.notes || selectedReviewDoc.summaryRemark ? (
-                            <tr>
-                              <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
-                              <td colSpan={3} className="text-black">{selectedReviewDoc.notes || selectedReviewDoc.summaryRemark}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const items = selectedReviewDoc.items || []
+                            const rawSessionTeam = selectedReviewDoc.teamMembersSummary || (selectedReviewDoc.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
+                            const teamResult = formatActivityTeamGroups(items, rawSessionTeam)
+
+                            if (!teamResult.hasTeams) return null
+
+                            return (
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
+                                <td colSpan={3} className="text-black font-normal py-1.5">
+                                  {teamResult.isSingleTeam ? (
+                                    <span className="text-black font-medium">{teamResult.singleTeamText}</span>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      {teamResult.groups.map((grp, gIdx) => (
+                                        <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                          <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                          <span className="text-slate-900 font-medium">{grp.teamMembers}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })()}
+                          {(() => {
+                            const cleanNotes = (selectedReviewDoc.notes || selectedReviewDoc.summaryRemark || '')
+                              .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+                              .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+                              .replace(/Customer:\s*([^\n;]+)/gi, '')
+                              .trim()
+                            return cleanNotes ? (
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
+                                <td colSpan={3} className="text-black">{cleanNotes}</td>
+                              </tr>
+                            ) : null
+                          })()}
                         </tbody>
                       </table>
 
@@ -855,11 +1127,14 @@ export function MobileDailyActivityClient({
                                         <td className="text-center align-middle">{idx + 1}</td>
                                         <td className="align-middle">
                                           <div className="font-semibold">{it.label || it.snapshotLabel || 'Aktivitas'}</div>
-                                          {(it.unitNumber || it.tireCount != null || it.materialUsed) && (
+                                          {(it.unitNumber || it.tireCount != null || it.materialUsed || it.photoUrl || (Array.isArray(it.photos) && it.photos.length > 0)) && (
                                             <div className="text-[7pt] text-slate-600 flex flex-wrap gap-x-2 mt-0.5">
                                               {it.unitNumber ? <span>Unit: <strong>{it.unitNumber}</strong></span> : null}
                                               {it.tireCount != null ? <span>Tire: <strong>{it.tireCount}</strong></span> : null}
                                               {it.materialUsed ? <span>Mat: <strong>{it.materialUsed}</strong></span> : null}
+                                              {(it.photoUrl || (Array.isArray(it.photos) && it.photos.length > 0)) ? (
+                                                <span className="text-[#003461] font-semibold">📷 Foto Lampiran</span>
+                                              ) : null}
                                             </div>
                                           )}
                                         </td>
@@ -1037,6 +1312,117 @@ export function MobileDailyActivityClient({
                       })()}
                     </div>
                   </div>
+
+                  {/* Evidence Photo Attachment Sheets (Page 2, Page 3, etc.) */}
+                  {evidencePages.map((pagePhotos, pageIdx) => {
+                    const currentPageNumber = 2 + pageIdx
+                    const totalPages = 1 + evidencePages.length
+                    return (
+                      <div
+                        key={`evidence-page-${pageIdx}`}
+                        ref={(el) => {
+                          evidencePageRefs.current[pageIdx] = el
+                        }}
+                        id={`mobile-dar-evidence-sheet-${pageIdx + 1}`}
+                        className="relative mx-auto shrink-0 bg-white shadow-lg border border-slate-200 rounded-sm origin-top transition-transform duration-100 w-[210mm] min-h-[297mm] text-black"
+                        style={{
+                          transform: `scale(${0.44 * previewZoom})`,
+                          transformOrigin: 'top center',
+                          marginBottom: `${Math.max(0, (previewZoom - 1.0) * 160)}mm`,
+                        }}
+                      >
+                        <div
+                          className="relative z-10 p-[15mm] text-[8.5pt] font-sans leading-tight text-black flex flex-col justify-between"
+                          style={{ minHeight: '297mm' }}
+                        >
+                          <div>
+                            {/* Header */}
+                            <div className="flex items-start justify-between border-b-2 border-[#003461] pb-2 mb-3">
+                              <div>
+                                <h1 className="font-bold text-[11pt] uppercase tracking-wide text-[#003461]">
+                                  PT. CHITRA PARATAMA
+                                </h1>
+                                <h2 className="font-bold text-[10pt] uppercase text-slate-800">
+                                  LAMPIRAN BUKTI FOTO PEKERJAAN
+                                </h2>
+                              </div>
+                              <div className="text-right text-[7.5pt] text-slate-500 font-mono">
+                                Halaman {currentPageNumber} dari {totalPages}
+                              </div>
+                            </div>
+
+                            {/* Subheader info box */}
+                            <div className="bg-slate-50 border border-slate-300 rounded px-3 py-1.5 mb-4 text-[7.5pt] flex flex-wrap justify-between gap-y-1">
+                              <div>
+                                <span className="text-slate-500">Kode Sesi: </span>
+                                <strong className="font-mono text-black">{selectedReviewDoc.sessionCode || 'DAR'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-500">Karyawan: </span>
+                                <strong className="text-black">{selectedReviewDoc.employee?.name || '—'}</strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-500">Tanggal: </span>
+                                <strong className="text-black">{formatDate(selectedReviewDoc.workDate)}</strong>
+                              </div>
+                              <div>
+                                <span className="text-slate-500">Total Foto: </span>
+                                <strong className="text-indigo-700">{evidencePhotos.length} Lampiran</strong>
+                              </div>
+                            </div>
+
+                            {/* 2x2 Photo Cards Grid */}
+                            <div className="grid grid-cols-2 gap-4">
+                              {pagePhotos.map((photo, pIdx) => (
+                                <div
+                                  key={pIdx}
+                                  className="border border-slate-300 rounded-sm p-2.5 bg-slate-50 flex flex-col justify-between"
+                                  style={{ height: '110mm' }}
+                                >
+                                  <div className="w-full flex-1 flex items-center justify-center overflow-hidden rounded bg-slate-200 border border-slate-200">
+                                    <img
+                                      src={photo.url}
+                                      alt={photo.label}
+                                      crossOrigin="anonymous"
+                                      className="w-full h-full object-contain"
+                                    />
+                                  </div>
+                                  <div className="mt-2 text-[7.5pt] space-y-0.5">
+                                    <div className="font-bold text-slate-900 line-clamp-1">
+                                      #{photo.idx}. {photo.label}
+                                    </div>
+                                    {photo.unitNumber && (
+                                      <div className="text-slate-700">
+                                        <span className="text-slate-500">Unit / Equipment: </span>
+                                        <strong>{photo.unitNumber}</strong>
+                                      </div>
+                                    )}
+                                    {photo.duration && (
+                                      <div className="text-slate-700">
+                                        <span className="text-slate-500">Durasi: </span>
+                                        <span>{photo.duration}</span>
+                                      </div>
+                                    )}
+                                    {photo.remark && (
+                                      <div className="text-slate-600 italic line-clamp-2">
+                                        <span className="not-italic text-slate-500">Catatan: </span>
+                                        {photo.remark}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Footer */}
+                          <div className="border-t border-slate-300 pt-2 text-center text-[7pt] text-slate-500">
+                            Dokumen Bukti Fisik Pelaksanaan Tugas Lapangan • PT Chitra Paratama
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
 
                 {/* 2. Mobile Action Form & Signature - Positioned directly UNDER PDF Preview */}
@@ -1133,12 +1519,26 @@ export function MobileDailyActivityClient({
                     </div>
                   </div>
 
+                  {/* Buat Ulang Aktivitas Button */}
+                  <Button
+                    type="button"
+                    disabled={isCloning}
+                    onClick={() => {
+                      const sId = selectedReviewDoc?.sessionId || selectedReviewDoc?.id
+                      if (sId) handleCloneActivity(sId)
+                    }}
+                    className="w-full bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200/90 font-bold text-xs h-9 rounded-lg shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 mt-2"
+                  >
+                    {isCloning ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5 text-sky-600" />}
+                    <span>BUAT ULANG AKTIVITAS INI (DUPLIKAT)</span>
+                  </Button>
+
                   {/* Tutup Reviewer Button */}
                   <Button
                     type="button"
                     variant="ghost"
                     onClick={() => setIsReviewOpen(false)}
-                    className="w-full text-xs font-bold h-9 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer mt-2"
+                    className="w-full text-xs font-bold h-9 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer mt-1"
                   >
                     TUTUP REVIEWER
                   </Button>

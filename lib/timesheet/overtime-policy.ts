@@ -23,10 +23,12 @@ export type SiteOvertimeConfig = {
 export type ApprovedSplWindow = {
   id: number
   splNumber: string
+  title?: string
   siteId: number
   employeeId: number
-  plannedStartAt: string
-  plannedEndAt: string
+  workDate?: string | null
+  plannedStartAt?: string | null
+  plannedEndAt?: string | null
   status: string
   category?: 'break' | 'off_day' | 'after_mandatory_ot'
   overtimeCreditMinutes?: number | null
@@ -163,14 +165,17 @@ export function overtimeRuleTotalHours(rule: OvertimeDayRule, shift: OvertimeShi
 }
 
 function normalizeIntervals(value: unknown, fallback: OvertimeInterval[]) {
-  if (!Array.isArray(value) || value.length !== 2) return fallback.map((item) => ({ ...item }))
+  if (!Array.isArray(value)) return fallback.map((item) => ({ ...item }))
   const intervals = value.map((item) => {
     const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {}
-    return { start: String(row.start ?? ''), end: String(row.end ?? '') }
+    const startStr = typeof row.start === 'string' ? row.start.trim() : ''
+    const endStr = typeof row.end === 'string' ? row.end.trim() : ''
+    return { start: startStr, end: endStr }
   })
-  return intervals.every((item) => intervalMinutes(item) > 0)
-    ? intervals
-    : fallback.map((item) => ({ ...item }))
+  while (intervals.length < 2) {
+    intervals.push({ start: '', end: '' })
+  }
+  return intervals.slice(0, 2)
 }
 
 function normalizeShiftKeys(rule: OvertimeDayRule): OvertimeDayRule {
@@ -207,17 +212,30 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
 
 export function validateSiteOvertimeConfig(config: SiteOvertimeConfig) {
   const errors: string[] = []
+  if (!config || typeof config !== 'object') return errors
+  if (!config.enabled) return errors
+
   for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
+    const dayRule = config[dayKey]
+    if (!dayRule) continue
     for (const shiftKey of ['dayShift', 'nightShift'] as const) {
-      const intervals = config[dayKey][shiftKey]
-      if (intervals.length !== 2) errors.push(`${dayKey}.${shiftKey} wajib memiliki 2 sesi.`)
+      const intervals = dayRule[shiftKey]
+      if (!intervals || !Array.isArray(intervals)) continue
+
       for (const interval of intervals) {
-        if (intervalMinutes(interval) <= 0)
+        const hasStart = Boolean(interval?.start && interval.start.trim() !== '')
+        const hasEnd = Boolean(interval?.end && interval.end.trim() !== '')
+        if ((hasStart && !hasEnd) || (!hasStart && hasEnd)) {
+          errors.push(`${dayKey}.${shiftKey} memiliki jam mulai/selesai yang tidak lengkap.`)
+        } else if (hasStart && hasEnd && intervalMinutes(interval) <= 0) {
           errors.push(`${dayKey}.${shiftKey} memiliki rentang jam tidak valid.`)
+        }
       }
+
       const expanded = intervals
         .map(toBaseMinuteInterval)
         .filter((item): item is MinuteInterval => item != null)
+
       for (let left = 0; left < expanded.length; left += 1) {
         for (let right = left + 1; right < expanded.length; right += 1) {
           const a = expanded[left]
@@ -259,6 +277,21 @@ export function classifyOvertimePolicyDay(params: {
       return 'hariKe7'
     }
     if (workingDays > 0 && workingDays % 7 === 6) {
+      return 'hariKe6'
+    }
+  }
+
+  if (params.rosterType === '6:1') {
+    let workingDays = 0
+    for (let i = 0; i <= params.dayIndex; i++) {
+      const code = params.schedule[i]
+      if (code === 'OFF' || code === 'Libur') {
+        workingDays = 0
+      } else {
+        workingDays++
+      }
+    }
+    if (workingDays > 0 && workingDays % 6 === 0) {
       return 'hariKe6'
     }
   }
@@ -430,6 +463,7 @@ function utcDayNumber(value: string) {
 }
 
 function splInterval(window: ApprovedSplWindow, workDate: string): MinuteInterval | null {
+  if (!window.plannedStartAt || !window.plannedEndAt) return null
   const start = zonedDateTimeParts(window.plannedStartAt)
   const end = zonedDateTimeParts(window.plannedEndAt)
   if (!start || !end) return null
@@ -453,7 +487,11 @@ export function calculateConfiguredOvertime(params: {
   if (!attendance) return { ...EMPTY_RESULT }
 
   const isTemplateMode = (params.config.mode ?? 'template') === 'template'
-  const overnight = params.shiftCode === 'NS'
+  const inMin = parseTimeMinutes(params.clockIn)
+  const outMin = parseTimeMinutes(params.clockOut)
+  const overnight =
+    params.shiftCode === 'NS' ||
+    (inMin != null && outMin != null && (outMin < inMin || inMin >= 15 * 60))
   const shiftKey: OvertimeShiftKey = overnight ? 'nightShift' : 'dayShift'
   const fullAttendance = [attendance]
   const rawIntervals = params.config[params.dayKey]?.[shiftKey] ?? []
@@ -463,7 +501,9 @@ export function calculateConfiguredOvertime(params: {
   const autoConfigured = intervalOccurrences(configuredIntervals)
   const autoEligible = (
     isTemplateMode && configuredIntervals.length > 0
-      ? configuredBaseIntervals(configuredIntervals)
+      ? (alignedConfiguredIntervals(configuredIntervals, overnight).length > 0
+          ? alignedConfiguredIntervals(configuredIntervals, overnight)
+          : configuredBaseIntervals(configuredIntervals))
       : intersectSets(fullAttendance, autoConfigured)
   ).map((item) => ({
     ...item,
@@ -561,5 +601,9 @@ export function calculateOvertime(
   params: Parameters<typeof calculateConfiguredOvertime>[0] & { legacyHours: number }
 ): OvertimeCalculationResult {
   if (!params.config.enabled) return legacyOvertimeResult(params.legacyHours)
-  return calculateConfiguredOvertime(params)
+  const configured = calculateConfiguredOvertime(params)
+  if (configured.totalHours === 0 && params.legacyHours > 0) {
+    return legacyOvertimeResult(params.legacyHours)
+  }
+  return configured
 }

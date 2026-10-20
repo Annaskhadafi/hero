@@ -1,5 +1,5 @@
 import { cache } from 'react'
-import { eq, or } from 'drizzle-orm'
+import { eq, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   employees,
@@ -27,20 +27,34 @@ export const getUserMobilePermissions = cache(async function getUserMobilePermis
     return await withDbRetry(async () => {
       await ensureHeroGovernanceSeedData()
 
+      const normalizedEmail = (email || '').trim().toLowerCase()
+      if (!normalizedEmail) {
+        return {}
+      }
+
       const [employee] = await db
         .select({
           accessRole: employees.accessRole,
         })
         .from(employees)
         .leftJoin(authUser, eq(employees.authUserId, authUser.id))
-        .where(or(eq(employees.email, email), eq(authUser.email, email)))
+        .where(
+          or(
+            sql`lower(${employees.email}) = ${normalizedEmail}`,
+            sql`lower(${authUser.email}) = ${normalizedEmail}`
+          )
+        )
         .limit(1)
 
-      const roleName = employee?.accessRole ?? 'Super Admin'
+      const roleName = employee?.accessRole ?? null
+      if (!roleName) {
+        return {}
+      }
+
       const [role] = await db
         .select()
         .from(securityRoles)
-        .where(eq(securityRoles.name, roleName))
+        .where(sql`lower(${securityRoles.name}) = lower(${roleName})`)
         .limit(1)
 
       if (!role) {

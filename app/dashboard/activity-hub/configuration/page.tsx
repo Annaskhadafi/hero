@@ -5,6 +5,9 @@ import {
   resolvePointDisputeAction,
 } from "@/app/dashboard/activity-hub/actions";
 import { ActivityConfigurationManagement } from "@/components/activity-configuration-management";
+import { ActivityModifierCreateForm } from "@/components/activity-modifier-create-form";
+import { ActivityPenaltyEventsTable } from "@/components/activity-penalty-events-table";
+import { ActivityDisputeResolveForm } from "@/components/activity-dispute-resolve-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -106,50 +109,13 @@ export default async function DailyActivityConfigurationPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <form action={manageActivityModifierAction} className="space-y-4 rounded-[1.2rem] border border-border/70 bg-muted/20 p-4">
-              <input type="hidden" name="intent" value="create" />
-              <input type="hidden" name="createdByEmployeeId" value={data.currentEmployee?.id ?? ""} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Label className="grid gap-2">
-                  Site
-                  <select name="siteId" className="h-10 rounded-lg border border-input bg-background px-3 text-sm">
-                    <option value="">Global</option>
-                    {data.sites.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name}
-                      </option>
-                    ))}
-                  </select>
-                </Label>
-                <Label className="grid gap-2">
-                  Multiplier (%)
-                  <Input name="multiplier" type="number" defaultValue={150} />
-                </Label>
-                <Label className="grid gap-2 sm:col-span-2">
-                  Event name
-                  <Input name="eventName" placeholder="Example: Double Point Week" />
-                </Label>
-                <Label className="grid gap-2">
-                  Start date
-                  <Input name="startDate" type="datetime-local" defaultValue={dateTimeLocalValue(new Date())} />
-                </Label>
-                <Label className="grid gap-2">
-                  End date
-                  <Input name="endDate" type="datetime-local" defaultValue={dateTimeLocalValue(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))} />
-                </Label>
-              </div>
-              <Label className="grid gap-2">
-                Description
-                <Textarea name="description" rows={3} placeholder="Purpose of the event modifier and its application limits." />
-              </Label>
-              <Label className="flex items-center gap-3 rounded-xl border border-border/70 bg-background px-3 py-3 text-sm">
-                <input type="checkbox" name="isActive" defaultChecked />
-                Aktifkan modifier
-              </Label>
-              <Button type="submit" className="w-full rounded-2xl">
-                Tambah modifier
-              </Button>
-            </form>
+            <ActivityModifierCreateForm
+              action={manageActivityModifierAction}
+              sites={data.sites}
+              currentEmployeeId={data.currentEmployee?.id ?? ""}
+              defaultStartDate={dateTimeLocalValue(new Date())}
+              defaultEndDate={dateTimeLocalValue(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))}
+            />
 
             <div className="space-y-3">
               {data.modifiers.map((modifier) => (
@@ -246,33 +212,7 @@ export default async function DailyActivityConfigurationPage() {
             <CardDescription>Audit trail penalty otomatis terbaru di Daily Activity System.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Penalty</TableHead>
-                  <TableHead>Points</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.penaltyEvents.map((event) => (
-                  <TableRow key={event.id}>
-                    <TableCell>{event.employeeName}</TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{event.penaltyCode}</p>
-                        <p className="text-xs text-muted-foreground">{event.description}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell>-{event.pointsDeducted}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{event.disputeStatus}</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <ActivityPenaltyEventsTable events={data.penaltyEvents} />
           </CardContent>
         </Card>
         </TabsContent>
@@ -306,34 +246,11 @@ export default async function DailyActivityConfigurationPage() {
                     <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       Proses dispute
                     </summary>
-                    <form action={resolvePointDisputeAction} className="mt-3 grid gap-3">
-                      <input type="hidden" name="disputeId" value={dispute.id} />
-                      <input type="hidden" name="resolvedByEmployeeId" value={data.currentEmployee.id} />
-                      <Label className="grid gap-2 text-sm">
-                        Keputusan
-                        <select
-                          name="decision"
-                          defaultValue="approved"
-                          className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                        >
-                          <option value="approved">Approve dispute dan restore poin</option>
-                          <option value="rejected">Reject dispute</option>
-                        </select>
-                      </Label>
-                      <Label className="grid gap-2 text-sm">
-                        Catatan keputusan
-                        <Textarea
-                          name="resolutionNotes"
-                          rows={3}
-                          placeholder="Write approval/reject reason so audit trail remains clear."
-                          required
-                          minLength={5}
-                        />
-                      </Label>
-                      <Button type="submit" size="sm" className="w-full rounded-xl">
-                        Simpan keputusan
-                      </Button>
-                    </form>
+                    <ActivityDisputeResolveForm
+                      action={resolvePointDisputeAction}
+                      disputeId={dispute.id}
+                      resolvedByEmployeeId={data.currentEmployee.id}
+                    />
                   </details>
                 ) : null}
               </div>

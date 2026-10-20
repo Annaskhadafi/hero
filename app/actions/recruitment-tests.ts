@@ -501,7 +501,68 @@ export async function getTestEntries(testId: number) {
     }
   }
 
-  return entries.map((entry) => ({ ...entry, answers: answersByAssignment.get(entry.id) ?? [] }));
+  // Fetch test results for APM (testId: 8) and AMR (testId: 10)
+  // Matching can be done by candidateId, candidate email, or candidate fullName
+  const relatedAssignments = await db.select({
+    id: hcOnlineTestAssignments.id,
+    testId: hcOnlineTestAssignments.testId,
+    candidateId: hcOnlineTestAssignments.candidateId,
+    status: hcOnlineTestAssignments.status,
+    score: hcOnlineTestAssignments.score,
+    completedAt: hcOnlineTestAssignments.completedAt,
+    candidateFullName: hcCandidates.fullName,
+    candidateEmail: hcCandidates.email,
+  })
+  .from(hcOnlineTestAssignments)
+  .innerJoin(hcCandidates, eq(hcOnlineTestAssignments.candidateId, hcCandidates.id))
+  .where(
+    and(
+      inArray(hcOnlineTestAssignments.testId, [8, 10]),
+      inArray(hcOnlineTestAssignments.status, ["Completed", "Graded"])
+    )
+  )
+  .orderBy(desc(hcOnlineTestAssignments.completedAt), desc(hcOnlineTestAssignments.id));
+
+  // Helper function to normalize name for comparison
+  const normalizeText = (t?: string | null) => (t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  // Attach matched scores (apm, amr) to entries
+  const enrichedEntries = entries.map((entry) => {
+    const candidateName = normalizeText(entry.candidate?.fullName);
+    const candidateEmail = (entry.candidate?.email || "").toLowerCase().trim();
+    const candidateId = entry.candidate?.id;
+
+    // Look for APM (testId 8)
+    const apmMatch = relatedAssignments.find((a) => {
+      if (a.testId !== 8) return false;
+      if (candidateId && a.candidateId === candidateId) return true;
+      if (candidateEmail && a.candidateEmail && candidateEmail === a.candidateEmail.toLowerCase().trim()) return true;
+      if (candidateName && a.candidateFullName && candidateName === normalizeText(a.candidateFullName)) return true;
+      return false;
+    });
+
+    // Look for AMR (testId 10)
+    const amrMatch = relatedAssignments.find((a) => {
+      if (a.testId !== 10) return false;
+      if (candidateId && a.candidateId === candidateId) return true;
+      if (candidateEmail && a.candidateEmail && candidateEmail === a.candidateEmail.toLowerCase().trim()) return true;
+      if (candidateName && a.candidateFullName && candidateName === normalizeText(a.candidateFullName)) return true;
+      return false;
+    });
+
+    return {
+      ...entry,
+      answers: answersByAssignment.get(entry.id) ?? [],
+      testScores: {
+        apm: apmMatch ? apmMatch.score ?? null : null,
+        amr: amrMatch ? amrMatch.score ?? null : null,
+        apmStatus: apmMatch ? apmMatch.status : null,
+        amrStatus: amrMatch ? amrMatch.status : null,
+      },
+    };
+  });
+
+  return enrichedEntries;
 }
 
 export async function updateTestEntry(entryId: number, data: { status: string; score: number | null }) {
@@ -517,6 +578,22 @@ export async function updateTestEntry(entryId: number, data: { status: string; s
 export async function deleteTestEntry(entryId: number) {
   await db.delete(hcOnlineTestAssignments).where(eq(hcOnlineTestAssignments.id, entryId));
   revalidatePath("/dashboard/hc/recruitment/tests");
+}
+
+export async function bulkDeleteTestEntries(entryIds: number[]) {
+  if (!entryIds || entryIds.length === 0) return { count: 0 };
+  await db.delete(hcOnlineTestAssignments).where(inArray(hcOnlineTestAssignments.id, entryIds));
+  revalidatePath("/dashboard/hc/recruitment/tests");
+  return { count: entryIds.length };
+}
+
+export async function bulkUpdateTestEntriesStatus(entryIds: number[], status: string) {
+  if (!entryIds || entryIds.length === 0) return { count: 0 };
+  await db.update(hcOnlineTestAssignments)
+    .set({ status })
+    .where(inArray(hcOnlineTestAssignments.id, entryIds));
+  revalidatePath("/dashboard/hc/recruitment/tests");
+  return { count: entryIds.length };
 }
 
 export async function createOnlineTest(data: { title: string; description: string; timeLimitMinutes: number; passingScore: number }) {

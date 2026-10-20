@@ -3,6 +3,7 @@ import { db } from "@/db"
 import { employees, hrPositions, hrOrgNodes, masterDepartments, masterSections } from "@/db/schema/hero"
 import { centralServiceEmployees } from "@/db/schema/central-service"
 import { getContractReviewActivityTemplates, getContractReviewSettings } from "@/app/actions/contract-review"
+import { getServerSession } from "@/lib/auth-session"
 import { eq, inArray } from "drizzle-orm"
 
 export const metadata = {
@@ -114,7 +115,51 @@ export default async function ContractReviewFormPage() {
     ),
   }
 
+  // Fetch current logged in user to default creator/leader signature
+  const { getUserSignatureAction } = await import("@/app/actions/user-signature")
+  const session = await getServerSession()
+  let currentUser: { name: string; jobTitle: string; signatureDataUrl?: string } | null = null
+  if (session?.user) {
+    let jobTitle = ""
+    let signatureDataUrl = ""
+    if (session.user.email) {
+      const [emp] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          jobTitle: employees.jobTitle,
+          position: hrPositions.levelName,
+        })
+        .from(employees)
+        .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+
+      if (emp) {
+        jobTitle = emp.position || emp.jobTitle || ""
+      }
+      try {
+        const sig = await getUserSignatureAction()
+        if (sig?.success && sig.signatureDataUrl) {
+          signatureDataUrl = sig.signatureDataUrl
+        }
+      } catch {}
+    }
+    currentUser = {
+      name: session.user.name || "",
+      jobTitle: jobTitle || "Leader",
+      signatureDataUrl,
+    }
+  }
+
   return (
-    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} approvalSettings={approvalSettings as any} activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []} masterHeadMap={masterHeadMap} />
+    <ContractReviewClientForm
+      employees={employeeList}
+      orgNodes={orgNodes}
+      approvalSettings={approvalSettings as any}
+      activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []}
+      masterHeadMap={masterHeadMap}
+      currentUser={currentUser}
+    />
   )
 }

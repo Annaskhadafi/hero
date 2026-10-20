@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
 import { useRouter } from 'next/navigation'
 import {
+  Activity,
   AlertTriangle,
   CalendarDays,
   Calculator,
@@ -12,6 +13,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Clock3,
   Download,
   Eye,
@@ -39,6 +41,14 @@ import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -51,6 +61,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { HeroSearchableSelect } from '@/components/templates'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   Select,
@@ -83,8 +94,10 @@ import {
 } from '@/app/dashboard/admin-actions'
 import {
   applyHolidayPolicy,
+  calculatePayrollOvertimeValue,
   canSwapOff,
   classifyOvertimeDay,
+  classifyPayrollAttendanceDay,
   dateKey,
   daysInMonth,
   hoursFromCode,
@@ -99,6 +112,14 @@ import { AttendanceImportPreviewDialog } from '@/components/timesheet/attendance
 import { AttendanceSummaryBar } from '@/components/timesheet/attendance-summary-bar'
 import { AttendanceSourceIndicator } from '@/components/timesheet/attendance-source-indicator'
 import { exportRowsToFile, MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import {
+  exportAttendanceGridToExcel,
+  exportTimesheetWorkspaceTabToExcel,
+  exportTimesheetWorkspaceAllTabsToExcel,
+  type TimesheetExportTab,
+  type TimesheetEmployeeExportRow,
+  type TimesheetDayData,
+} from '@/lib/timesheet/export-attendance-excel'
 import {
   Table,
   TableBody,
@@ -179,11 +200,13 @@ type EmployeeOption = {
   email: string
   employeeSn?: string | null
   role: string
+  jobTitle?: string | null
   departmentId?: number | null
   sectionId?: number | null
   department?: string | null
   section?: string | null
   manpower?: string | null
+  levelName?: string | null
   pointOfHire?: string | null
   workLocation?: string | null
   siteLocation?: string | null
@@ -310,8 +333,8 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
   {
     id: 'overtime_record',
     number: 5,
-    label: 'overtime record',
-    description: 'Lembar catatan detail lembur per karyawan',
+    label: 'OVERTIME RECORD',
+    description: 'Summary Overtime Record per orang (Lembar rincian lembur karyawan)',
   },
   {
     id: 'payable_site_allowance',
@@ -334,6 +357,8 @@ const scheduleTypeLabel = (value: string) => (value === 'office' ? 'Non Shift' :
 type SiteSchedulingConfig = {
   scheduleType: SiteScheduleType
   rosterType: SiteRosterType
+  rosterTypeStaff?: SiteRosterType
+  rosterTypeNonStaff?: SiteRosterType
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
@@ -345,11 +370,18 @@ type SiteSchedulingConfig = {
   dayShiftClockOut: string
   nightShiftClockIn: string
   nightShiftClockOut: string
+  staffDayShiftClockIn?: string
+  staffDayShiftClockOut?: string
+  staffNightShiftClockIn?: string
+  staffNightShiftClockOut?: string
   day6WorkingTimeEnabled: boolean
   day6DayShiftClockIn: string
   day6DayShiftClockOut: string
   day6NightShiftClockIn: string
   day6NightShiftClockOut: string
+  staffDay6WorkingTimeEnabled?: boolean
+  staffDay6DayShiftClockIn?: string
+  staffDay6DayShiftClockOut?: string
   day7WorkingTimeEnabled: boolean
   day7DayShiftClockIn: string
   day7DayShiftClockOut: string
@@ -543,6 +575,8 @@ const codeCycle: ScheduleCode[] = [
 const defaultSiteConfig: SiteSchedulingConfig = {
   scheduleType: 'office',
   rosterType: '5:2',
+  rosterTypeStaff: '5:2',
+  rosterTypeNonStaff: '6:1',
   msaType: 'staff-nonstaff',
   mealsType: 'workday',
   overtimeType: 'five-hour',
@@ -554,11 +588,18 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   dayShiftClockOut: '17:00',
   nightShiftClockIn: '18:00',
   nightShiftClockOut: '06:00',
+  staffDayShiftClockIn: '08:00',
+  staffDayShiftClockOut: '17:00',
+  staffNightShiftClockIn: '18:00',
+  staffNightShiftClockOut: '06:00',
   day6WorkingTimeEnabled: false,
   day6DayShiftClockIn: '08:00',
   day6DayShiftClockOut: '14:00',
   day6NightShiftClockIn: '20:00',
   day6NightShiftClockOut: '02:00',
+  staffDay6WorkingTimeEnabled: false,
+  staffDay6DayShiftClockIn: '08:00',
+  staffDay6DayShiftClockOut: '14:00',
   day7WorkingTimeEnabled: false,
   day7DayShiftClockIn: '08:00',
   day7DayShiftClockOut: '14:00',
@@ -601,11 +642,18 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
     dayShiftClockOut,
     nightShiftClockIn,
     nightShiftClockOut,
+    staffDayShiftClockIn,
+    staffDayShiftClockOut,
+    staffNightShiftClockIn,
+    staffNightShiftClockOut,
     day6WorkingTimeEnabled,
     day6DayShiftClockIn,
     day6DayShiftClockOut,
     day6NightShiftClockIn,
     day6NightShiftClockOut,
+    staffDay6WorkingTimeEnabled,
+    staffDay6DayShiftClockIn,
+    staffDay6DayShiftClockOut,
     day7WorkingTimeEnabled,
     day7DayShiftClockIn,
     day7DayShiftClockOut,
@@ -635,11 +683,20 @@ function serializeSiteConfig(config: SiteSchedulingConfig) {
       dayShiftClockOut,
       nightShiftClockIn,
       nightShiftClockOut,
+      staffDayShiftClockIn,
+      staffDayShiftClockOut,
+      staffNightShiftClockIn,
+      staffNightShiftClockOut,
+      rosterTypeStaff: config.rosterTypeStaff,
+      rosterTypeNonStaff: config.rosterTypeNonStaff,
       day6WorkingTimeEnabled,
       day6DayShiftClockIn,
       day6DayShiftClockOut,
       day6NightShiftClockIn,
       day6NightShiftClockOut,
+      staffDay6WorkingTimeEnabled,
+      staffDay6DayShiftClockIn,
+      staffDay6DayShiftClockOut,
       day7WorkingTimeEnabled,
       day7DayShiftClockIn,
       day7DayShiftClockOut,
@@ -730,6 +787,10 @@ function buildSiteSchedulingConfig(
     ? {
         scheduleType: savedConfig.scheduleType as SiteScheduleType,
         rosterType: savedRosterType ?? '5:2',
+        rosterTypeStaff: (fieldBreakConfig.rosterTypeStaff as SiteRosterType | undefined) ?? '5:2',
+        rosterTypeNonStaff:
+          (fieldBreakConfig.rosterTypeNonStaff as SiteRosterType | undefined) ??
+          (savedRosterType ?? '6:1'),
         msaType: savedConfig.msaType as SiteMsaType,
         mealsType: (savedConfig.mealsType === 'none'
           ? 'none'
@@ -752,6 +813,10 @@ function buildSiteSchedulingConfig(
           '17:00',
         nightShiftClockIn: (fieldBreakConfig.nightShiftClockIn as string | undefined) ?? '18:00',
         nightShiftClockOut: (fieldBreakConfig.nightShiftClockOut as string | undefined) ?? '06:00',
+        staffDayShiftClockIn: (fieldBreakConfig.staffDayShiftClockIn as string | undefined) ?? '08:00',
+        staffDayShiftClockOut: (fieldBreakConfig.staffDayShiftClockOut as string | undefined) ?? '17:00',
+        staffNightShiftClockIn: (fieldBreakConfig.staffNightShiftClockIn as string | undefined) ?? '18:00',
+        staffNightShiftClockOut: (fieldBreakConfig.staffNightShiftClockOut as string | undefined) ?? '06:00',
         day6WorkingTimeEnabled: Boolean(fieldBreakConfig.day6WorkingTimeEnabled ?? false),
         day6DayShiftClockIn:
           (fieldBreakConfig.day6DayShiftClockIn as string | undefined) ?? '08:00',
@@ -761,6 +826,11 @@ function buildSiteSchedulingConfig(
           (fieldBreakConfig.day6NightShiftClockIn as string | undefined) ?? '20:00',
         day6NightShiftClockOut:
           (fieldBreakConfig.day6NightShiftClockOut as string | undefined) ?? '02:00',
+        staffDay6WorkingTimeEnabled: Boolean(fieldBreakConfig.staffDay6WorkingTimeEnabled ?? false),
+        staffDay6DayShiftClockIn:
+          (fieldBreakConfig.staffDay6DayShiftClockIn as string | undefined) ?? '08:00',
+        staffDay6DayShiftClockOut:
+          (fieldBreakConfig.staffDay6DayShiftClockOut as string | undefined) ?? '14:00',
         day7WorkingTimeEnabled: Boolean(fieldBreakConfig.day7WorkingTimeEnabled ?? false),
         day7DayShiftClockIn:
           (fieldBreakConfig.day7DayShiftClockIn as string | undefined) ?? '08:00',
@@ -929,17 +999,51 @@ function normalizeLocation(value: string) {
     .trim()
 }
 
-// Detect staff/non-staff from "Peran" field in User Management
-// "Non Staff ..." = non-staff, "Staff ..." = staff
-// Default: non-staff (mayoritas karyawan lapangan)
-function isStaffRole(role?: string | null): boolean {
-  const r = (role ?? '').toLowerCase().trim()
+// Detect staff/non-staff prioritizing "Level Staff" from User Management, then role and job title
+function isStaffRole(
+  role?: string | null,
+  jobTitle?: string | null,
+  levelName?: string | null
+): boolean {
+  if (levelName) {
+    const lvl = levelName.trim().toLowerCase()
+    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
+      return false
+    }
+    if (
+      lvl.includes('staff') ||
+      lvl.includes('supervisor') ||
+      lvl.includes('spv') ||
+      lvl.includes('manager') ||
+      lvl.includes('coordinator') ||
+      lvl.includes('coord') ||
+      lvl.includes('leader') ||
+      lvl.includes('lead') ||
+      lvl.includes('head') ||
+      lvl.includes('engineer') ||
+      lvl.includes('officer') ||
+      lvl.includes('analyst') ||
+      lvl.includes('executive') ||
+      lvl.includes('bod') ||
+      lvl.includes('director')
+    ) {
+      return true
+    }
+  }
+  const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
+  if (!combined) return false
   // Explicit "non staff" or "non-staff" = non-staff
-  if (r.includes('non staff') || r.includes('non-staff') || r.includes('nonstaff')) return false
+  if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
+  // Explicit field operational positions that are strictly non-staff
+  if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
+    return false
+  }
   // Explicit "staff" without "non" = staff
-  if (r.includes('staff')) return true
-  // Manager/supervisor/admin = staff
-  if (/manager|supervisor|admin|koordinator|coord/i.test(r)) return true
+  if (combined.includes('staff')) return true
+  // Managerial, leadership, engineering, specialist, analytical, administrative = staff
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+    return true
+  }
   // Default: non-staff
   return false
 }
@@ -1023,15 +1127,47 @@ function buildSchedule(
   period: string,
   rosterType: SiteRosterType,
   isStaff?: boolean,
-  rosterCycleStart?: string
+  rosterCycleStart?: string,
+  rosterTypeStaff?: SiteRosterType,
+  rosterTypeNonStaff?: SiteRosterType
 ): ScheduleCode {
+  if (scheduleType === 'hybrid') {
+    if (isStaff) {
+      const staffRoster = rosterTypeStaff || '5:2'
+      if (staffRoster === '13:1') {
+        if (isThirteenOneOffDay(period, day, rosterCycleStart)) return 'OFF'
+        return 'IN'
+      }
+      if (staffRoster === '6:1') {
+        if ((day + employeeIndex) % 7 === 0) return 'OFF'
+        return 'IN'
+      }
+      // default 5:2
+      return isWeekend(period, day) ? 'OFF' : 'IN'
+    } else {
+      const nonStaffRoster = rosterTypeNonStaff || rosterType || '6:1'
+      if (nonStaffRoster === '13:1') {
+        if (isThirteenOneOffDay(period, day, rosterCycleStart)) return 'OFF'
+        return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+      }
+      if (nonStaffRoster === '5:2') {
+        const cycle = (day + employeeIndex * 2) % 7
+        if (cycle === 0 || cycle === 6) return 'OFF'
+        return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+      }
+      // default 6:1
+      if ((day + employeeIndex) % 7 === 0) return 'OFF'
+      return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
+    }
+  }
+
   if (rosterType === '13:1') {
     if (isThirteenOneOffDay(period, day, rosterCycleStart)) return 'OFF'
-    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) return 'IN'
+    if (scheduleType === 'office') return 'IN'
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
   if (rosterType === '5:2') {
-    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) {
+    if (scheduleType === 'office') {
       return isWeekend(period, day) ? 'OFF' : 'IN'
     }
     const cycle = (day + employeeIndex * 2) % 7
@@ -1039,19 +1175,13 @@ function buildSchedule(
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
   if (rosterType === '6:1') {
-    if (scheduleType === 'office' || (scheduleType === 'hybrid' && isStaff)) {
+    if (scheduleType === 'office') {
       return isWeekend(period, day) ? 'OFF' : 'IN'
     }
     if ((day + employeeIndex) % 7 === 0) return 'OFF'
     return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
   }
   if (scheduleType === 'office') return isWeekend(period, day) ? 'OFF' : 'IN'
-  // Hybrid: staff = office schedule, non-staff = shift schedule
-  if (scheduleType === 'hybrid') {
-    if (isStaff) return isWeekend(period, day) ? 'OFF' : 'IN'
-    if ((day + employeeIndex) % 9 === 0) return 'OFF'
-    return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
-  }
   if ((day + employeeIndex) % 9 === 0) return 'OFF'
   return (day + employeeIndex) % 2 === 0 ? 'DS' : 'NS'
 }
@@ -1306,7 +1436,7 @@ function NativeSelect({
   value,
   onValueChange,
   options,
-  placeholder,
+  placeholder = 'Pilih...',
   className = '',
   disabled,
   ariaLabel,
@@ -1320,24 +1450,98 @@ function NativeSelect({
   ariaLabel?: string
 }) {
   return (
-    <select
-      aria-label={ariaLabel}
-      className={`${nativeSelectClass} ${className}`}
+    <Select
+      value={value || ''}
+      onValueChange={onValueChange}
       disabled={disabled}
-      value={value ?? ''}
-      onChange={(event) => onValueChange(event.target.value)}
     >
-      {placeholder ? (
-        <option value="" disabled>
-          {placeholder}
-        </option>
-      ) : null}
-      {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+      <SelectTrigger
+        aria-label={ariaLabel}
+        className={cn('h-10 w-full bg-white text-sm', className)}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem
+            key={option.value}
+            value={option.value}
+            disabled={option.disabled}
+          >
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function SchedulingTableFilterItem({
+  filterKey,
+  placeholder,
+  options,
+  width = 'w-44',
+  ariaLabel,
+}: {
+  filterKey: string
+  placeholder: string
+  options: { value: string; label: string }[]
+  width?: string
+  ariaLabel?: string
+}) {
+  const [val, setVal] = React.useState('')
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleChange = (newVal: string) => {
+    setVal(newVal)
+    if (inputRef.current) {
+      inputRef.current.value = newVal
+      inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+  }
+
+  React.useEffect(() => {
+    const handleReset = () => {
+      setVal('')
+      if (inputRef.current) inputRef.current.value = ''
+    }
+    const handlePreset = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key?: string; value?: string }>
+      if (customEvent.detail?.key !== filterKey) return
+      const nextValue = customEvent.detail.value?.trim() ?? ''
+      setVal(nextValue)
+      if (inputRef.current) {
+        inputRef.current.value = nextValue
+        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+        inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+    window.addEventListener('hero-table-reset-filters', handleReset)
+    window.addEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    return () => {
+      window.removeEventListener('hero-table-reset-filters', handleReset)
+      window.removeEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    }
+  }, [filterKey])
+
+  return (
+    <div className="flex-none relative">
+      <input
+        ref={inputRef}
+        type="hidden"
+        data-table-filter-key={filterKey}
+        value={val}
+        readOnly
+      />
+      <HeroSearchableSelect
+        placeholder={placeholder}
+        options={options}
+        value={val}
+        onChange={handleChange}
+        width={width}
+      />
+    </div>
   )
 }
 
@@ -1590,6 +1794,7 @@ export function SchedulingTimesheetWorkspace({
   }, [fieldBreakSiteId, mode, period, router])
   const [siteScheduleTypes, setSiteScheduleTypes] = useState<Record<string, SiteScheduleType>>({})
   const [siteConfigs, setSiteConfigs] = useState<Record<string, SiteSchedulingConfig>>({})
+  const [isSavingSiteConfig, setIsSavingSiteConfig] = useState(false)
   const [approvalApprovers, setApprovalApprovers] = useState<Record<string, ApprovalApproverDraft>>(
     {}
   )
@@ -1773,30 +1978,71 @@ export function SchedulingTimesheetWorkspace({
     [holidays]
   )
   const site = useMemo(() => sites.find((item) => String(item.id) === siteId), [siteId, sites])
+
+  const resolveCurrentSiteConfig = useCallback(
+    (targetSiteId: string, currentMap?: Record<string, SiteSchedulingConfig>) => {
+      if (currentMap && currentMap[targetSiteId]) return currentMap[targetSiteId]
+      if (siteConfigs[targetSiteId]) return siteConfigs[targetSiteId]
+      return buildSiteSchedulingConfig(
+        targetSiteId,
+        schedulingConfigs,
+        sites,
+        currentEmployeeName,
+        employees
+      )
+    },
+    [siteConfigs, schedulingConfigs, sites, currentEmployeeName, employees]
+  )
+
   const siteConfig = useMemo(() => {
-    if (siteConfigs[siteId]) return siteConfigs[siteId]
-    return buildSiteSchedulingConfig(
-      siteId,
-      schedulingConfigs,
-      sites,
-      currentEmployeeName,
-      employees
-    )
-  }, [siteConfigs, siteId, schedulingConfigs, sites, currentEmployeeName, employees])
+    return resolveCurrentSiteConfig(siteId)
+  }, [resolveCurrentSiteConfig, siteId])
+
+  const getEmployeeSiteConfig = useCallback(
+    (empSiteId: number | null | undefined): SiteSchedulingConfig => {
+      if (empSiteId != null) {
+        return resolveCurrentSiteConfig(String(empSiteId))
+      }
+      if (siteId !== 'all') {
+        return siteConfig
+      }
+      return defaultSiteConfig
+    },
+    [resolveCurrentSiteConfig, siteId, siteConfig]
+  )
   const effectiveSiteClockConfig = useMemo<SiteAttendanceClockConfig>(() => {
-    const savedConfig = schedulingConfigs.find((config) => String(config.siteId) === siteId)
+    const savedConfig = siteConfigs[siteId]
+      ? serializeSiteConfig(siteConfigs[siteId]).dbConfig
+      : schedulingConfigs.find((config) => String(config.siteId) === siteId)
     const clockConfig = resolveSiteAttendanceClockConfig(site, savedConfig)
     return {
       dayShiftClockIn: siteConfig.dayShiftClockIn || clockConfig.dayShiftClockIn,
       nightShiftClockIn: siteConfig.nightShiftClockIn || clockConfig.nightShiftClockIn,
       timezone: siteConfig.timezone || clockConfig.timezone,
+      scheduleType: siteConfig.scheduleType,
+      rosterType: siteConfig.rosterType,
+      rosterTypeStaff: siteConfig.rosterTypeStaff,
+      rosterTypeNonStaff: siteConfig.rosterTypeNonStaff,
+      staffDayShiftClockIn: siteConfig.staffDayShiftClockIn,
+      staffDayShiftClockOut: siteConfig.staffDayShiftClockOut,
+      staffNightShiftClockIn: siteConfig.staffNightShiftClockIn,
+      staffNightShiftClockOut: siteConfig.staffNightShiftClockOut,
     }
   }, [
     site,
     schedulingConfigs,
+    siteConfigs,
     siteId,
+    siteConfig.scheduleType,
+    siteConfig.rosterType,
+    siteConfig.rosterTypeStaff,
+    siteConfig.rosterTypeNonStaff,
     siteConfig.dayShiftClockIn,
     siteConfig.nightShiftClockIn,
+    siteConfig.staffDayShiftClockIn,
+    siteConfig.staffDayShiftClockOut,
+    siteConfig.staffNightShiftClockIn,
+    siteConfig.staffNightShiftClockOut,
     siteConfig.timezone,
   ])
   const siteApprovalSections = useMemo(
@@ -1938,6 +2184,33 @@ export function SchedulingTimesheetWorkspace({
     ) ??
     allowanceVariables[0] ??
     defaultAllowanceVariables[0]
+
+  const getAllowanceRateForEmployee = useCallback(
+    (emp: EmployeeOption) => {
+      const empSite = sites.find((s) => s.id === emp.siteId)
+      const possibleNames = [
+        empSite?.name,
+        emp.locationName,
+        emp.siteLocation,
+        emp.workLocation,
+        site?.name,
+      ]
+        .filter(Boolean)
+        .map((n) => extractSiteNameLocal(n))
+        .filter(Boolean)
+
+      for (const name of possibleNames) {
+        const matched =
+          allowanceVariables.find((item) => item.project === name) ??
+          allowanceVariables.find(
+            (item) => normalizeLocation(item.project) === normalizeLocation(name)
+          )
+        if (matched) return matched
+      }
+      return rate
+    },
+    [allowanceVariables, sites, site?.name, rate]
+  )
   const savedPlan = savedPlans.find(
     (plan) =>
       !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`) &&
@@ -2339,8 +2612,8 @@ export function SchedulingTimesheetWorkspace({
       if (scheduledEmployeeIds.has(employee.id)) return true
       // 3. Has attendance records or overrides in this site for the selected period
       if (siteAttendanceEmployeeIds.has(employee.id)) return true
-      // 4. Fallback matching site location name
-      if (employee.locationName && employee.locationName === selectedSiteExtracted) return true
+      // 4. Fallback matching site location name ONLY for unassigned employees without siteId
+      if (!employee.siteId && employee.locationName && employee.locationName === selectedSiteExtracted) return true
       return false
     })
 
@@ -2442,29 +2715,37 @@ export function SchedulingTimesheetWorkspace({
             return '' as ScheduleCode
           }
 
-          // In schedule builder draft mode, only generate template if explicitly on schedule page
-          const scheduleType = siteScheduleTypes[siteId] ?? 'office'
+          // In schedule builder draft mode, generate roster pattern according to site's configured rosterType
+          const scheduleType = siteConfig.scheduleType || siteScheduleTypes[siteId] || 'office'
+          const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+          const effectiveRosterType =
+            scheduleType === 'hybrid'
+              ? isStaff
+                ? siteConfig.rosterTypeStaff || '5:2'
+                : siteConfig.rosterTypeNonStaff || siteConfig.rosterType || '6:1'
+              : siteConfig.rosterType
+
           const generatedCode = (
-            employeeSavedPlan
-              ? forceDayShift
-                ? 'DS'
-                : buildSchedule(
-                    employeeIndex,
-                    day,
-                    scheduleType,
-                    period,
-                    siteConfig.rosterType,
-                    isStaffRole(employee.role),
-                    (fieldBreakPlansByEmployee.get(employee.id) ?? []).find(
-                      (plan) => plan.onSiteDate
-                    )?.onSiteDate
-                  )
-              : ''
+            forceDayShift
+              ? 'DS'
+              : buildSchedule(
+                  employeeIndex,
+                  day,
+                  scheduleType,
+                  period,
+                  siteConfig.rosterType,
+                  isStaff,
+                  (fieldBreakPlansByEmployee.get(employee.id) ?? []).find(
+                    (plan) => plan.onSiteDate
+                  )?.onSiteDate,
+                  siteConfig.rosterTypeStaff,
+                  siteConfig.rosterTypeNonStaff
+                )
           ) as ScheduleCode
 
           return applyHolidayPolicy(generatedCode, {
-            scheduleType,
-            rosterType: siteConfig.rosterType,
+            scheduleType: scheduleType === 'hybrid' ? (isStaff ? 'office' : 'shift') : scheduleType,
+            rosterType: effectiveRosterType,
             isHoliday: isHoliday(period, day, holidays),
           })
         })
@@ -2479,32 +2760,34 @@ export function SchedulingTimesheetWorkspace({
         const msaDays = schedule.filter((code) => isMsaEligibleDay(code)).length
         const fieldBreakDays = schedule.filter((code) => code === 'FB').length
         const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
-        const staff = isStaffRole(employee.role)
-        const benefitRule = getEmployeeBenefitRule(siteConfig.employeeBenefitConfig, {
+        const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+        const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
+        const empRate = getAllowanceRateForEmployee(employee)
+        const benefitRule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
           manpower: employee.manpower,
           pointOfHire: employee.pointOfHire,
           workLocations: [employee.workLocation, employee.siteLocation, employee.locationName],
         })
         const msa =
-          siteConfig.msaType === 'none' || !benefitRule.msa
+          empSiteConfig.msaType === 'none' || !benefitRule.msa
             ? 0
             : msaDays *
-              (siteConfig.msaType === 'same-all'
-                ? rate.msaNonStaff
+              (empSiteConfig.msaType === 'same-all'
+                ? empRate.msaNonStaff
                 : staff
-                  ? rate.msaStaff
-                  : rate.msaNonStaff)
+                  ? empRate.msaStaff
+                  : empRate.msaNonStaff)
         const mealsBaseDays = mealsWorkDays
         const meals = !benefitRule.meals
           ? 0
-          : mealsBaseDays * (staff ? rate.mealsStaff : rate.mealsNonStaff)
+          : mealsBaseDays * (staff ? empRate.mealsStaff : empRate.mealsNonStaff)
         const overtime =
-          siteConfig.overtimeType === 'none'
+          empSiteConfig.overtimeType === 'none'
             ? 0
             : calculateOvertimeFromVariables(
                 schedule,
                 period,
-                siteConfig.rosterType,
+                empSiteConfig.rosterType,
                 overtimeVariables,
                 holidays
               )
@@ -2542,23 +2825,22 @@ export function SchedulingTimesheetWorkspace({
     [
       days,
       employeeProfiles,
+      deletedSchedulePlanKeys,
       fieldBreakPlansByEmployee,
+      getAllowanceRateForEmployee,
+      getEmployeeSiteConfig,
       holidays,
       mode,
       overtimeVariables,
       overrides,
       period,
-      rate.mealsNonStaff,
-      rate.mealsStaff,
-      rate.msaNonStaff,
-      rate.msaStaff,
+      rate,
       rosterSectionByEmployee,
       rosterSectionCounts,
       savedPlan,
-      siteConfig.employeeBenefitConfig,
-      siteConfig.msaType,
-      siteConfig.overtimeType,
-      siteConfig.rosterType,
+      savedPlans,
+      siteConfig,
+      siteConfigs,
       siteId,
       siteScheduleTypes,
       visibleEmployees,
@@ -2599,7 +2881,9 @@ export function SchedulingTimesheetWorkspace({
         recordSite
           ? resolveSiteAttendanceClockConfig(
               recordSite,
-              schedulingConfigs.find((config) => config.siteId === recordSite.id)
+              siteConfigs[String(recordSite.id)]
+                ? serializeSiteConfig(siteConfigs[String(recordSite.id)]).dbConfig
+                : schedulingConfigs.find((config) => config.siteId === recordSite.id)
             )
           : effectiveSiteClockConfig
       const recordDay = dayFromDate(getLocalDateStr(records[0].eventTime, clockConfig.timezone), period)
@@ -2628,6 +2912,7 @@ export function SchedulingTimesheetWorkspace({
     site,
     sites,
     schedulingConfigs,
+    siteConfigs,
     rows,
     effectiveSiteClockConfig,
     siteId,
@@ -2722,7 +3007,10 @@ export function SchedulingTimesheetWorkspace({
                       className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline"
                       onClick={() => openEmployeeForm(row.employee.id)}
                     >
-                      {row.employee.name}
+                      {row.employee.name}{' '}
+                      <span className="font-normal text-slate-500">
+                        ({row.employee.manpower?.trim() || '-'})
+                      </span>
                     </button>
                   </td>
                   <td className="px-3 py-2 text-center">{row.profile.kimperLv ? '✓' : ''}</td>
@@ -3090,7 +3378,8 @@ export function SchedulingTimesheetWorkspace({
         const siteKey = extractSiteNameLocal(siteItem.location || siteItem.name)
         const siteEmployees = employees.filter(
           (employee) =>
-            String(employee.siteId) === String(siteItem.id) || employee.locationName === siteKey
+            String(employee.siteId) === String(siteItem.id) ||
+            (!employee.siteId && employee.locationName === siteKey)
         )
         const siteRosterPlan = savedPlans.find(
           (plan) =>
@@ -3101,7 +3390,9 @@ export function SchedulingTimesheetWorkspace({
         const siteFieldBreakRows = fieldBreakPlans.filter(
           (plan) => plan.siteId === siteItem.id && plan.period === period
         )
-        const siteConfigRow = schedulingConfigs.find((config) => config.siteId === siteItem.id)
+        const siteConfigRow =
+          siteConfigs[String(siteItem.id)] ??
+          schedulingConfigs.find((config) => config.siteId === siteItem.id)
 
         return {
           site: siteItem,
@@ -3123,6 +3414,7 @@ export function SchedulingTimesheetWorkspace({
       period,
       savedPlans,
       schedulingConfigs,
+      siteConfigs,
       sites,
     ]
   )
@@ -3130,7 +3422,9 @@ export function SchedulingTimesheetWorkspace({
     .filter((plan) => !deletedSchedulePlanKeys.includes(`${plan.siteId}:${plan.period}`))
     .map((plan) => {
       const historySite = sites.find((siteItem) => siteItem.id === plan.siteId)
-      const siteConfigRow = schedulingConfigs.find((config) => config.siteId === plan.siteId)
+      const siteConfigRow =
+        siteConfigs[String(plan.siteId)] ??
+        schedulingConfigs.find((config) => config.siteId === plan.siteId)
 
       return {
         siteId: plan.siteId,
@@ -3579,7 +3873,9 @@ export function SchedulingTimesheetWorkspace({
   async function saveSiteConfig() {
     if (!guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
-    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(siteConfig)
+    const targetConfig = siteConfigs[siteId] ?? resolveCurrentSiteConfig(siteId)
+    const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(targetConfig)
+    setIsSavingSiteConfig(true)
     try {
       const result = await saveSchedulingConfigAction({
         siteId: Number(siteId),
@@ -3588,29 +3884,44 @@ export function SchedulingTimesheetWorkspace({
         pdfConfig,
         allowanceVariables,
         overtimeVariables,
-        approvalSections: siteApprovalSections.map((row) => ({
-          sectionId: row.sectionId,
-          departmentId: row.departmentId,
-          matrixId: row.matrixId,
-          ...(approvalApprovers[row.id] ?? {
-            pjoLeaderId: row.pjoLeaderId,
-            sectionHeadId: row.sectionHeadId,
-            departmentHeadId: row.departmentHeadId,
-          }),
-        })),
+        approvalSections: siteApprovalSections.map((row) => {
+            const approverOverrides = approvalApprovers[row.id]
+            const sectionId = Number(row.sectionId)
+            const departmentId = Number(row.departmentId)
+            if (!sectionId || !departmentId || isNaN(sectionId) || isNaN(departmentId) || sectionId <= 0 || departmentId <= 0) {
+              return null
+            }
+            const pjoId = approverOverrides?.pjoLeaderId ?? row.pjoLeaderId
+            const secHeadId = approverOverrides?.sectionHeadId ?? row.sectionHeadId
+            const deptHeadId = approverOverrides?.departmentHeadId ?? row.departmentHeadId
+            return {
+              sectionId,
+              departmentId,
+              matrixId: row.matrixId ? Number(row.matrixId) : null,
+              pjoLeaderId: pjoId ? Number(pjoId) : null,
+              sectionHeadId: secHeadId ? Number(secHeadId) : null,
+              departmentHeadId: deptHeadId ? Number(deptHeadId) : null,
+            }
+          })
+          .filter((item): item is NonNullable<typeof item> => item != null),
       })
       if (!result.ok) throw new Error(result.error || 'Setting site gagal disimpan.')
-      setRoster(siteConfig.rosterType)
-      setSiteScheduleTypes((current) => ({ ...current, [siteId]: siteConfig.scheduleType }))
+      setSiteConfigs((current) => ({ ...current, [siteId]: targetConfig }))
+      setRoster(targetConfig.rosterType)
+      setSiteScheduleTypes((current) => ({ ...current, [siteId]: targetConfig.scheduleType }))
       setOverrides({})
       setPermanentOverrides({})
       setSelectedCell(null)
-      toast.success('Setting site tersimpan.')
+      const currentSiteName = sites.find((s) => String(s.id) === String(siteId))?.name || `Site #${siteId}`
+      toast.success(`Konfigurasi untuk ${currentSiteName} berhasil disimpan.`)
+      setSiteConfigDialogOpen(false)
       router.refresh()
     } catch (error) {
       toast.error('Setting site gagal disimpan', {
         description: error instanceof Error ? error.message : 'Konfigurasi overtime tidak valid.',
       })
+    } finally {
+      setIsSavingSiteConfig(false)
     }
   }
 
@@ -3618,7 +3929,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       return {
         ...current,
         [siteId]: {
@@ -3633,7 +3944,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       return {
         ...current,
         [siteId]: {
@@ -3670,7 +3981,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Edit SPL policy')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       return {
         ...current,
         [siteId]: {
@@ -3694,7 +4005,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       const intervals = currentConfig.overtimeConfig[dayKey][shiftKey].map((interval, itemIndex) =>
         itemIndex === index ? { ...interval, [field]: value } : interval
       )
@@ -3718,7 +4029,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Reset overtime settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       const overtimeConfig = normalizeSiteOvertimeConfig(DEFAULT_SITE_OVERTIME_CONFIG)
       overtimeConfig.enabled = currentConfig.overtimeConfig.enabled
       return { ...current, [siteId]: { ...currentConfig, overtimeConfig } }
@@ -3733,7 +4044,7 @@ export function SchedulingTimesheetWorkspace({
     if (siteId === 'all') return
 
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       const isThirteenOne = key === 'rosterType' && value === '13:1'
       return {
         ...current,
@@ -3753,7 +4064,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Edit employee benefit settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       return {
         ...current,
         [siteId]: {
@@ -3771,7 +4082,7 @@ export function SchedulingTimesheetWorkspace({
     if (!guardOpenPeriod('Edit quotation billing settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       return {
         ...current,
         [siteId]: {
@@ -3819,7 +4130,7 @@ export function SchedulingTimesheetWorkspace({
   function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[]) {
     if (siteId === 'all') return
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       return {
         ...current,
         [siteId]: {
@@ -3913,7 +4224,7 @@ export function SchedulingTimesheetWorkspace({
       'Rendra Rachman'
 
     setSiteConfigs((current) => {
-      const currentConfig = current[siteId] ?? defaultSiteConfig
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
       let newPdfConfig = { ...currentConfig.pdfConfig }
 
       if (presetKey === 'repair') {
@@ -4405,32 +4716,39 @@ export function SchedulingTimesheetWorkspace({
     printable.document.close()
   }
 
-  function exportAttendanceGrid() {
-    const modeLabel = {
-      attendance: 'Attendance',
-      'checkin-checkout': 'Check In Check Out',
-      'work-hours': 'Attendance Jam Kerja',
-    }[attendanceGridExportMode]
-    const columns = ['Nama', ...days.map((day) => `${day} ${weekdayLabel(period, day)}`)]
-    const rows = displayedAttendanceRows.map((row) => [
-      row.employee.name,
-      ...days.map((day) => {
-        const cell = getAttendanceCell(row.employee.id, day)
-        if (attendanceGridExportMode === 'attendance') return attendanceStatusLabel(cell.status)
-        if (attendanceGridExportMode === 'checkin-checkout') {
-          return cell.clockIn || cell.clockOut
-            ? `${cell.clockIn || '-'} / ${cell.clockOut || '-'}`
-            : '-'
-        }
-        const clockIn = minutesFromTime(cell.clockIn)
-        const clockOut = minutesFromTime(cell.clockOut)
-        if (clockIn == null || clockOut == null) return 0
-        return Number(
-          ((clockOut >= clockIn ? clockOut - clockIn : clockOut + 1440 - clockIn) / 60).toFixed(2)
-        )
-      }),
-    ])
-    exportRowsToFile({ columns, rows, fileName: `${modeLabel} Grid` })
+  async function exportAttendanceGrid(customMode?: 'attendance' | 'checkin-checkout' | 'work-hours') {
+    const activeMode = customMode ?? attendanceGridExportMode
+    try {
+      await exportAttendanceGridToExcel({
+        siteName: site?.name ?? 'Semua Site',
+        period,
+        days,
+        mode: activeMode,
+        rows: displayedAttendanceRows.map((row) => ({
+          employee: {
+            id: row.employee.id,
+            name: row.employee.name,
+            employeeSn: employeeSnLabel(row.employee),
+            role: row.employee.role,
+            section: row.employee.section,
+            department: row.employee.department,
+          },
+          getAttendanceCell: (day: number) => getAttendanceCell(row.employee.id, day),
+          totalHours: row.totalHours,
+        })),
+        weekdayLabel: (p, d) => weekdayLabel(p, d),
+        attendanceStatusLabel: (status) => attendanceStatusLabel(status),
+        holidaysByDay,
+      })
+      const modeLabelMap: Record<string, string> = {
+        attendance: 'Status Kehadiran',
+        'checkin-checkout': 'Jam Masuk & Pulang',
+        'work-hours': 'Durasi Jam Kerja',
+      }
+      toast.success(`Export Excel Visual Grid (${modeLabelMap[activeMode] || activeMode}) berhasil diunduh!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor Excel Attendance: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
 
   function TabExportActions({
@@ -4584,20 +4902,38 @@ export function SchedulingTimesheetWorkspace({
     const rowCode =
       scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
 
+    const empObj = employees.find((e) => e.id === employeeId)
+    const empSiteId =
+      empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName)
+
     let cellClockConfig = effectiveSiteClockConfig
-    if (siteId === 'all') {
-      const empSiteId = employees.find((e) => e.id === employeeId)?.siteId
-      if (empSiteId != null) {
-        const empSite = sites.find((s) => s.id === empSiteId)
-        const empSavedConfig = schedulingConfigs.find((c) => c.siteId === empSiteId)
-        cellClockConfig = resolveSiteAttendanceClockConfig(empSite, empSavedConfig)
+    if (empSiteId != null) {
+      const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && isStaff)
+      cellClockConfig = {
+        dayShiftClockIn:
+          isHybridStaff && empSiteConfig.staffDayShiftClockIn
+            ? empSiteConfig.staffDayShiftClockIn
+            : empSiteConfig.dayShiftClockIn,
+        nightShiftClockIn:
+          isHybridStaff && empSiteConfig.staffNightShiftClockIn
+            ? empSiteConfig.staffNightShiftClockIn
+            : empSiteConfig.nightShiftClockIn,
+        timezone: empSiteConfig.timezone || 'WITA',
+        scheduleType: empSiteConfig.scheduleType,
+        rosterType: empSiteConfig.rosterType,
+        rosterTypeStaff: empSiteConfig.rosterTypeStaff,
+        rosterTypeNonStaff: empSiteConfig.rosterTypeNonStaff,
+        staffDayShiftClockIn: empSiteConfig.staffDayShiftClockIn,
+        staffNightShiftClockIn: empSiteConfig.staffNightShiftClockIn,
       }
     }
     const effectiveTz = cellClockConfig.timezone
 
     if (!manual && !authoritativeAttendance && !real) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig)
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig, isStaff)
       if (
         rosterStatus === 'off' ||
         rosterStatus === 'field_break' ||
@@ -4676,6 +5012,7 @@ export function SchedulingTimesheetWorkspace({
       clockIn,
       scheduleCode: rowCode,
       siteConfig: cellClockConfig,
+      isStaff,
     })
 
     const isLatePending = effectiveStatus === 'present' && punctuality.isLate
@@ -5169,7 +5506,22 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function saveAttendanceReal() {
-    saveAttendanceRealWithData(manualAttendance)
+    let targetData = manualAttendance
+    if (Object.keys(targetData).length === 0 && visibleEmployees.length > 0) {
+      const daysCount = daysInMonth(period)
+      const generated: Record<string, ManualAttendanceCell> = {}
+      for (const emp of visibleEmployees) {
+        for (let day = 1; day <= daysCount; day++) {
+          const cell = getAttendanceCell(emp.id, day)
+          if (cell && cell.status && cell.status !== 'empty') {
+            const key = attendanceKey(emp.id, day)
+            generated[key] = cell
+          }
+        }
+      }
+      targetData = generated
+    }
+    saveAttendanceRealWithData(targetData)
   }
 
   function clearImportedAttendance() {
@@ -5266,7 +5618,7 @@ export function SchedulingTimesheetWorkspace({
   const attendanceConflicts =
     mode === 'attendance'
       ? rows.flatMap((row) => {
-          const staff = isStaffRole(row.employee.role)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
           return row.schedule
             .map((code, index) => {
               const day = index + 1
@@ -5528,48 +5880,101 @@ export function SchedulingTimesheetWorkspace({
       : ''
     const cfgHr = cfg.hrName?.trim() || ''
 
+    const sectionApproval = siteApprovalSections.find((s) => {
+      const sName = (s.sectionName || '').toLowerCase()
+      return normSection && (sName.includes(normSection) || normSection.includes(sName))
+    })
+    const sectionPjo = sectionApproval?.pjoLeaderName?.trim() || ''
+    const sectionApprovedBy = sectionApproval?.departmentHeadName?.trim() || ''
+
+    const isKnownServicePjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('junaidi') || v.includes('apriyanto')
+    }
+
+    const isKnownRepairPjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('ary maulana') || v.includes('ary')
+    }
+
+    const isKnownHsePjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('andi safari')
+    }
+
+    const isKnownTechPjo = (val?: string) => {
+      if (!val) return false
+      const v = val.trim().toLowerCase()
+      return v.includes('abian')
+    }
+
     if (
       normSection.includes('hse') ||
       normSection.includes('safety') ||
       normSection.includes('k3') ||
       normSection.includes('lingkungan')
     ) {
+      const hsePjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) ? cfgPjo : '') ||
+        andiSafari
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fathurrahman,
-        pjoLeader: cfgPjo || andiSafari,
-        approvedBy: cfgApprovedBy || rendra,
+        pjoLeader: hsePjo,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || rendra,
         hrName: cfgHr || kesuma,
       }
     }
 
     if (normSection.includes('repair') || normSection.includes('retread')) {
+      const repairPjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
+          ? cfgPjo
+          : '') ||
+        ary
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || arjun,
-        pjoLeader: cfgPjo || ary,
-        approvedBy: cfgApprovedBy || romy,
+        pjoLeader: repairPjo,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
 
     if (normSection.includes('service') || normSection.includes('servis')) {
       const defaultPjo = isCkSite ? apriyanto : junaidi
+      const servicePjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
+          ? cfgPjo
+          : '') ||
+        defaultPjo
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fauzan,
-        pjoLeader: cfgPjo || defaultPjo,
-        approvedBy: cfgApprovedBy || romy,
+        pjoLeader: servicePjo,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
 
     if (normSection.includes('tech') || normSection.includes('teknis')) {
+      const techPjo =
+        sectionPjo ||
+        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo)
+          ? cfgPjo
+          : '') ||
+        abian
       return {
         ...baseSignatures,
         preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-        pjoLeader: cfgPjo || abian,
-        approvedBy: cfgApprovedBy || romy,
+        pjoLeader: techPjo,
+        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
         hrName: cfgHr || kesuma,
       }
     }
@@ -5577,8 +5982,8 @@ export function SchedulingTimesheetWorkspace({
     return {
       ...baseSignatures,
       preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-      pjoLeader: cfgPjo || baseSignatures.pjoLeader,
-      approvedBy: cfgApprovedBy || baseSignatures.approvedBy,
+      pjoLeader: cfgPjo || sectionPjo || baseSignatures.pjoLeader,
+      approvedBy: cfgApprovedBy || sectionApprovedBy || baseSignatures.approvedBy,
       hrName: cfgHr || baseSignatures.hrName,
     }
   }
@@ -5662,7 +6067,8 @@ export function SchedulingTimesheetWorkspace({
       await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     const employeeSchedule = employeeRow?.schedule ?? []
-    const staff = isStaffRole(employee.role)
+    const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+    const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
     const dayData = buildAttendanceDayData({
       period,
       dayCount,
@@ -5681,39 +6087,51 @@ export function SchedulingTimesheetWorkspace({
         )
       },
     }).map((day) => {
-      const shiftKey = day.scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+      const cell = getAttendanceCell(employee.id, day.day)
+      const inM = cell.clockIn ? minutesFromTime(cell.clockIn) : null
+      const outM = cell.clockOut ? minutesFromTime(cell.clockOut) : null
+      const isNightShift =
+        day.scheduleCode === 'NS' ||
+        (inM != null && outM != null && (outM < inM || inM >= 15 * 60))
+      const shiftKey = isNightShift ? 'nightShift' : 'dayShift'
       const dayKey = classifyOvertimePolicyDay({
         schedule: employeeSchedule,
         dayIndex: day.day - 1,
         isHoliday: day.isHoliday,
-        rosterType: siteConfig.rosterType,
+        rosterType: empSiteConfig.rosterType,
       })
-      const configuredIntervals = siteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
-      const useDay6WorkingTime = dayKey === 'hariKe6' && siteConfig.day6WorkingTimeEnabled
-      const useDay7WorkingTime = dayKey === 'hariKe7' && siteConfig.day7WorkingTimeEnabled
+      const configuredIntervals = empSiteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
+      const useDay6WorkingTime = dayKey === 'hariKe6' && empSiteConfig.day6WorkingTimeEnabled
+      const useDay7WorkingTime = dayKey === 'hariKe7' && empSiteConfig.day7WorkingTimeEnabled
+      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && staff)
+      const standardDayIn = (isHybridStaff && empSiteConfig.staffDayShiftClockIn) || empSiteConfig.dayShiftClockIn
+      const standardDayOut = (isHybridStaff && empSiteConfig.staffDayShiftClockOut) || empSiteConfig.dayShiftClockOut
+      const standardNightIn = (isHybridStaff && empSiteConfig.staffNightShiftClockIn) || empSiteConfig.nightShiftClockIn
+      const standardNightOut = (isHybridStaff && empSiteConfig.staffNightShiftClockOut) || empSiteConfig.nightShiftClockOut
+
       const defaultWorkFrom = useDay7WorkingTime
-        ? day.scheduleCode === 'NS'
-          ? siteConfig.day7NightShiftClockIn
-          : siteConfig.day7DayShiftClockIn
+        ? isNightShift
+          ? empSiteConfig.day7NightShiftClockIn
+          : empSiteConfig.day7DayShiftClockIn
         : useDay6WorkingTime
-          ? day.scheduleCode === 'NS'
-            ? siteConfig.day6NightShiftClockIn
-            : siteConfig.day6DayShiftClockIn
-          : day.scheduleCode === 'NS'
-            ? siteConfig.nightShiftClockIn
-            : siteConfig.dayShiftClockIn
+          ? isNightShift
+            ? empSiteConfig.day6NightShiftClockIn
+            : empSiteConfig.day6DayShiftClockIn
+          : isNightShift
+            ? standardNightIn
+            : standardDayIn
 
       const defaultWorkTo = useDay7WorkingTime
-        ? day.scheduleCode === 'NS'
-          ? siteConfig.day7NightShiftClockOut
-          : siteConfig.day7DayShiftClockOut
+        ? isNightShift
+          ? empSiteConfig.day7NightShiftClockOut
+          : empSiteConfig.day7DayShiftClockOut
         : useDay6WorkingTime
-          ? day.scheduleCode === 'NS'
-            ? siteConfig.day6NightShiftClockOut
-            : siteConfig.day6DayShiftClockOut
-          : day.scheduleCode === 'NS'
-            ? siteConfig.nightShiftClockOut
-            : siteConfig.dayShiftClockOut
+          ? isNightShift
+            ? empSiteConfig.day6NightShiftClockOut
+            : empSiteConfig.day6DayShiftClockOut
+          : isNightShift
+            ? standardNightOut
+            : standardDayOut
 
       const isOffsiteOrAbsent =
         day.status === 'empty' ||
@@ -5722,26 +6140,66 @@ export function SchedulingTimesheetWorkspace({
         day.status === 'absent' ||
         day.status === 'field_break' ||
         day.status === 'standby' ||
+        day.status === 'off' ||
         day.scheduleCode === 'OFF' ||
         day.scheduleCode === 'FB' ||
         day.scheduleCode === 'Libur'
 
       const hasManualClockIn = Boolean(day.clockIn && day.clockIn.trim() !== '')
       const hasManualClockOut = Boolean(day.clockOut && day.clockOut.trim() !== '')
+      const hasRealAttendance = hasManualClockIn || hasManualClockOut || day.status === 'present'
+      const isOffDay =
+        day.status === 'off' ||
+        day.scheduleCode === 'OFF' ||
+        day.scheduleCode === 'FB' ||
+        day.scheduleCode === 'Libur'
+
+      const dateStr = `${period}-${String(day.day).padStart(2, '0')}`
+      const empSpls = (approvedSplByEmployee.get(employee.id) ?? []).filter((w) => {
+        if (w.workDate) {
+          const wStr = typeof w.workDate === 'string' ? w.workDate.slice(0, 10) : new Date(w.workDate).toISOString().slice(0, 10)
+          if (wStr === dateStr) return true
+        }
+        if (w.plannedStartAt) {
+          const pStr = typeof w.plannedStartAt === 'string' ? w.plannedStartAt.slice(0, 10) : new Date(w.plannedStartAt).toISOString().slice(0, 10)
+          if (pStr === dateStr) return true
+        }
+        return false
+      })
+      const splNumbers = Array.from(new Set(empSpls.map((s) => s.splNumber).filter(Boolean)))
+      const splTitles = Array.from(new Set(empSpls.map((s) => s.title).filter(Boolean)))
+      const splDetails = empSpls.map((s) => ({
+        splNumber: s.splNumber,
+        title: s.title,
+        plannedStartAt: s.plannedStartAt || undefined,
+        plannedEndAt: s.plannedEndAt || undefined,
+        status: s.status,
+      }))
 
       return {
         ...day,
-        workingTimeFrom: day.isHoliday || isOffsiteOrAbsent ? '' : defaultWorkFrom,
-        workingTimeTo: day.isHoliday || isOffsiteOrAbsent ? '' : defaultWorkTo,
+        splNumber: splNumbers.join(', '),
+        splTitle: splTitles.join('; '),
+        splDetails,
+        workingTimeFrom:
+          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+            ? ''
+            : (day.clockIn || defaultWorkFrom),
+        workingTimeTo:
+          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+            ? ''
+            : (day.clockOut || defaultWorkTo),
         configuredOvertimeIntervals:
-          isOffsiteOrAbsent && !hasManualClockIn && !hasManualClockOut
+          (isOffsiteOrAbsent && !hasRealAttendance) || (isOffDay && !hasRealAttendance)
             ? []
             : (configuredIntervals as OvertimeInterval[]),
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
       period,
+      employeeId: employee.id,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
@@ -5859,7 +6317,7 @@ export function SchedulingTimesheetWorkspace({
     for (const [dept, sections] of grouped) {
       for (const [section, sectionRows] of sections) {
         for (const row of sectionRows) {
-          const staff = isStaffRole(row.employee.role)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
           // Nilai tiap hari — samakan persis dengan tabel di layar
           const dailyValues = days.map((day) => {
             const code = row.schedule[day - 1] as string
@@ -5888,7 +6346,15 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt') {
               if (staff) return '-'
               if (cell.status !== 'present') {
-                return ['OFF', 'FB', 'Libur', 'Sakit', 'ST'].includes(code) ? code : ''
+                if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
+                if (cell.status === 'standby' || code === 'ST') return 'ST'
+                if (code === 'GD') return 'GD'
+                if (cell.status === 'off' || isRosterOff || code === 'OFF') return 'OFF'
+                if (cell.status === 'sick' || code === 'Sakit') return 'Sakit'
+                if (cell.status === 'leave' || code === 'Izin') return 'Izin'
+                if (cell.status === 'absent') return 'Alpha'
+                if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
+                return ''
               }
               // Prioritize manually saved overtime hours (from attendance override)
               if (
@@ -5908,16 +6374,19 @@ export function SchedulingTimesheetWorkspace({
               )
               if (overtime.totalHours > 0) return String(overtime.totalHours)
               if (overtime.unauthorizedMinutes > 0) return 'SPL'
+              if (code === 'ST') return 'ST'
+              if (code === 'GD') return 'GD'
+              if (code === 'FB' || isFieldBreakDay) return 'FB'
               return ''
             }
             if (view === 'msa') {
-              if (!allowance.rule.msa || siteConfig.msaType === 'none') return '-'
+              if (!allowance.rule.msa || allowance.empSiteConfig.msaType === 'none') return '-'
               if (isFieldBreakDay) return 'FB'
               // Angka polos tanpa separator ribuan agar muat di cell hari yang sempit
               return allowance.msaAmount > 0 ? String(allowance.msaAmount) : '-'
             }
             if (view === 'meals') {
-              if (!allowance.rule.meals || siteConfig.mealsType === 'none') return '-'
+              if (!allowance.rule.meals || allowance.empSiteConfig.mealsType === 'none') return '-'
               if (isFieldBreakDay) return 'FB'
               return allowance.mealsAmount > 0 ? String(allowance.mealsAmount) : '-'
             }
@@ -5969,7 +6438,7 @@ export function SchedulingTimesheetWorkspace({
                 ''
           result.push({
             no,
-            name: row.employee.name,
+            name: `${row.employee.name} (${row.employee.manpower?.trim() || '-'})`,
             sn: row.employee.employeeSn || '',
             loc: rowLoc,
             department: dept,
@@ -6244,8 +6713,8 @@ export function SchedulingTimesheetWorkspace({
         msaAmount: allowance.msaAmount,
         mealsAmount: allowance.mealsAmount,
         specialAllowanceAmount: allowance.specialAllowanceAmount,
-        showMsa: siteConfig.msaType !== 'none' && allowance.rule.msa,
-        showMeals: siteConfig.mealsType !== 'none' && allowance.rule.meals,
+        showMsa: allowance.empSiteConfig.msaType !== 'none' && allowance.rule.msa,
+        showMeals: allowance.empSiteConfig.mealsType !== 'none' && allowance.rule.meals,
         showSpecialAllowance: allowance.rule.specialAllowance,
       }
     })
@@ -6633,7 +7102,8 @@ export function SchedulingTimesheetWorkspace({
     schedule: ScheduleCode[],
     day: number,
     clockIn: string,
-    clockOut: string
+    clockOut: string,
+    rosterType: SiteRosterType = siteConfig.rosterType
   ) {
     const clockInMinutes = minutesFromTime(clockIn)
     const clockOutMinutes = minutesFromTime(clockOut)
@@ -6642,10 +7112,10 @@ export function SchedulingTimesheetWorkspace({
       (clockOutMinutes >= clockInMinutes
         ? clockOutMinutes - clockInMinutes
         : clockOutMinutes + 1440 - clockInMinutes) / 60
-    const dayType = classifyOvertimeDay(schedule, period, day - 1, siteConfig.rosterType, holidays)
+    const dayType = classifyOvertimeDay(schedule, period, day - 1, rosterType, holidays)
     const configured = overtimeVariables.find(
       (item) =>
-        item.roster === siteConfig.rosterType &&
+        item.roster === rosterType &&
         item.dayType === dayType &&
         item.totalHours === totalHours
     )
@@ -6669,62 +7139,123 @@ export function SchedulingTimesheetWorkspace({
       }
     }
 
-    if (staff || siteConfig.overtimeType === 'none') {
+    const empSiteId =
+      employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+
+    if (staff || empSiteConfig.overtimeType === 'none') {
       return legacyOvertimeResult(0)
     }
     const shiftCode = schedule[day - 1] ?? 'IN'
-    const isOff = shiftCode === 'OFF' || shiftCode === 'FB' || shiftCode === 'Libur'
+    const cell = getAttendanceCell(employeeId, day, shiftCode)
+    const cellStatus = cell.status
+    const isOff =
+      shiftCode === 'OFF' ||
+      shiftCode === 'FB' ||
+      shiftCode === 'Libur' ||
+      cellStatus === 'off'
+    const isNonWork =
+      isOff ||
+      cellStatus === 'sick' ||
+      cellStatus === 'leave' ||
+      cellStatus === 'absent' ||
+      cellStatus === 'field_break' ||
+      cellStatus === 'standby' ||
+      cellStatus === 'empty'
     const isHol = isHoliday(period, day, holidays)
-    if (!clockIn && !clockOut && isOff) {
+    if (!clockIn && !clockOut && isNonWork) {
       return legacyOvertimeResult(0)
     }
-    const defaultIn = shiftCode === 'NS' ? siteConfig.nightShiftClockIn : siteConfig.dayShiftClockIn
+    const defaultIn =
+      shiftCode === 'NS' ? empSiteConfig.nightShiftClockIn : empSiteConfig.dayShiftClockIn
     const defaultOut =
-      shiftCode === 'NS' ? siteConfig.nightShiftClockOut : siteConfig.dayShiftClockOut
+      shiftCode === 'NS' ? empSiteConfig.nightShiftClockOut : empSiteConfig.dayShiftClockOut
     const effectiveClockIn = clockIn || defaultIn
     const effectiveClockOut = clockOut || defaultOut
+
+    const inMin = minutesFromTime(effectiveClockIn)
+    const outMin = minutesFromTime(effectiveClockOut)
+    const isOvernightTime =
+      inMin != null && outMin != null && (outMin < inMin || inMin >= 15 * 60)
+    const effectiveShiftCode =
+      shiftCode === 'NS' || isOvernightTime
+        ? 'NS'
+        : shiftCode === 'OFF' || shiftCode === 'FB'
+          ? 'DS'
+          : shiftCode
 
     const dayKey = classifyOvertimePolicyDay({
       schedule,
       dayIndex: day - 1,
       isHoliday: isHoliday(period, day, holidays),
-      rosterType: siteConfig.rosterType,
+      rosterType: empSiteConfig.rosterType,
     })
     const activeConfig = {
-      ...siteConfig.overtimeConfig,
+      ...empSiteConfig.overtimeConfig,
       enabled: true,
     }
     const calculated = calculateOvertime({
       config: activeConfig,
       dayKey,
-      shiftCode,
+      shiftCode: effectiveShiftCode,
       workDate: `${period}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
       splWindows: approvedSplByEmployee.get(employeeId) ?? [],
-      legacyHours: calculateLegacyOvertime(schedule, day, effectiveClockIn, effectiveClockOut),
+      legacyHours: calculateLegacyOvertime(
+        schedule,
+        day,
+        effectiveClockIn,
+        effectiveClockOut,
+        empSiteConfig.rosterType
+      ),
     })
     return { ...calculated, totalHours: roundOvertimeHours(calculated.totalHours) }
   }
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
     const scheduleCode = row.schedule[day - 1] as string
-    const attendanceStatus = getAttendanceCell(row.employee.id, day).status
+    const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+    const attendanceStatus = cell.status
     const isFieldBreakDay =
       scheduleCode === 'FB' ||
       attendanceStatus === 'field_break' ||
       (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
 
-    // Status '-' (empty / cuti / pulang kampung), Sakit, Izin, Alpha tidak mendapatkan MSA atau Meals
+    // Jika Field Break (cuti luar site), tidak ada MSA & Meals
+    if (isFieldBreakDay) {
+      return {
+        eligibleMsa: false,
+        eligibleMeals: false,
+      }
+    }
+
+    // Status '-' (empty / cuti / pulang kampung), Izin, Alpha tidak mendapatkan MSA atau Meals
     if (
       attendanceStatus === 'empty' ||
-      attendanceStatus === 'sick' ||
       attendanceStatus === 'leave' ||
       attendanceStatus === 'absent'
     ) {
       return {
         eligibleMsa: false,
         eligibleMeals: false,
+      }
+    }
+
+    const upperScheduleCode = String(scheduleCode ?? '').trim().toUpperCase()
+
+    // Hadir kerja (present), Sakit di site (sick), atau Standby (ST): selalu berhak MSA & Meals
+    if (
+      attendanceStatus === 'present' ||
+      attendanceStatus === 'sick' ||
+      upperScheduleCode === 'SAKIT' ||
+      upperScheduleCode === 'S' ||
+      upperScheduleCode === 'SD' ||
+      upperScheduleCode === 'ST'
+    ) {
+      return {
+        eligibleMsa: true,
+        eligibleMeals: true,
       }
     }
 
@@ -6735,8 +7266,9 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function getAllowanceAmounts(row: (typeof rows)[number], day: number) {
-    const staff = isStaffRole(row.employee.role)
-    const rule = getEmployeeBenefitRule(siteConfig.employeeBenefitConfig, {
+    const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+    const rule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
       manpower: row.employee.manpower,
       pointOfHire: row.employee.pointOfHire,
       workLocations: [
@@ -6750,32 +7282,33 @@ export function SchedulingTimesheetWorkspace({
     const firstEligibleDay = days.find(
       (candidate) => getAllowanceEligibility(row, candidate).eligibleMsa
     )
+    const empRate = getAllowanceRateForEmployee(row.employee)
     const msaAmount =
-      !rule.msa || !eligibility.eligibleMsa || siteConfig.msaType === 'none'
+      !rule.msa || !eligibility.eligibleMsa || empSiteConfig.msaType === 'none'
         ? 0
-        : siteConfig.msaType === 'same-all'
-          ? rate.msaNonStaff
+        : empSiteConfig.msaType === 'same-all'
+          ? empRate.msaNonStaff
           : staff
-            ? rate.msaStaff
-            : rate.msaNonStaff
+            ? empRate.msaStaff
+            : empRate.msaNonStaff
     const mealsAmount =
-      siteConfig.mealsType === 'none' || !rule.meals || !eligibility.eligibleMeals
+      empSiteConfig.mealsType === 'none' || !rule.meals || !eligibility.eligibleMeals
         ? 0
         : staff
-          ? rate.mealsStaff
-          : rate.mealsNonStaff
+          ? empRate.mealsStaff
+          : empRate.mealsNonStaff
     const specialAllowanceAmount = getSpecialAllowanceAmount(
       rule,
       eligibility.eligibleMsa,
       day === firstEligibleDay
     )
-    return { ...eligibility, rule, msaAmount, mealsAmount, specialAllowanceAmount }
+    return { ...eligibility, rule, msaAmount, mealsAmount, specialAllowanceAmount, empSiteConfig, empRate }
   }
 
   const payrollRows =
     mode === 'payroll'
       ? rows.map((row) => {
-          const staff = isStaffRole(row.employee.role)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
           let msaDays = 0
           let mealsDays = 0
           let msa = 0
@@ -6864,7 +7397,7 @@ export function SchedulingTimesheetWorkspace({
                     day,
                     cell.clockIn,
                     cell.clockOut,
-                    isStaffRole(row.employee.role),
+                    isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName),
                     row.employee.id
                   ).totalHours
                 : 0
@@ -6898,7 +7431,7 @@ export function SchedulingTimesheetWorkspace({
     let totalTlk = 0
     let totalOvertimeHours = 0
     const items = payrollRows.flatMap((row) => {
-      const staff = isStaffRole(row.employee.role)
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
       return days.map((day) => {
         const cell = getAttendanceCell(row.employee.id, day)
         const scheduleCode = row.schedule[day - 1] as string
@@ -6974,6 +7507,484 @@ export function SchedulingTimesheetWorkspace({
         })
       }
     })
+  }
+
+  function buildTimesheetExportRows(targetTab: TimesheetExportTab): TimesheetEmployeeExportRow[] {
+    const sourceRows = displayedAttendanceRows.length > 0 ? displayedAttendanceRows : rows
+    return sourceRows.map((row) => {
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+      const daysData: TimesheetDayData[] = []
+      let attPresent = 0
+      let attOff = 0
+      let attSick = 0
+      let attLeave = 0
+      let attAbsent = 0
+      let attTotalHours = 0
+      let allowanceTotal = 0
+      let overtimeTotal = 0
+      let payrollOvertimeTotal = 0
+      let payrollWorkDaysPresent = 0
+      let payrollOffDaysPresent = 0
+
+      for (const day of days) {
+        const scheduleCode = row.schedule[day - 1] as string
+        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        const isFieldBreakDay =
+          scheduleCode === 'FB' ||
+          cell.status === 'field_break' ||
+          (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+        const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
+        const isHolidayDay = Boolean(holidaysByDay.get(day))
+        const isWorkDay = !isRosterOff
+        const isAbsent =
+          cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
+        const isEmptyWorkDay =
+          isWorkDay && !isHolidayDay && scheduleCode !== 'ST' && cell.status === 'empty'
+        const noAllowance = isAbsent || isEmptyWorkDay || scheduleCode === 'FB'
+        const absentLabel =
+          cell.status === 'leave'
+            ? 'Izin'
+            : cell.status === 'sick'
+              ? 'Sakit'
+              : cell.status === 'absent'
+                ? 'Alpha'
+                : '-'
+
+        const allowance = getAllowanceAmounts(row, day)
+
+        if (targetTab === 'attendance') {
+          let cellHours = 0
+          if (cell.clockIn && cell.clockOut) {
+            const [inH, inM] = cell.clockIn.split(':').map(Number)
+            const [outH, outM] = cell.clockOut.split(':').map(Number)
+            if (!isNaN(inH) && !isNaN(outH)) {
+              let diff = outH * 60 + (outM || 0) - (inH * 60 + (inM || 0))
+              if (diff < 0) diff += 1440
+              cellHours = Math.round((diff / 60) * 10) / 10
+            }
+          } else if (cell.status === 'present') {
+            cellHours = 8.0
+          }
+
+          if (cell.status === 'present') {
+            attPresent++
+            attTotalHours += cellHours
+          } else if (cell.status === 'off' || scheduleCode === 'OFF') {
+            attOff++
+          } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+            attSick++
+          } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+            attLeave++
+          } else if (cell.status === 'absent') {
+            attAbsent++
+          }
+
+          daysData.push({
+            day,
+            status: cell.status,
+            statusLabel: attendanceStatusLabel(cell.status),
+            clockIn: cell.clockIn,
+            clockOut: cell.clockOut,
+            isLate: Boolean(cell.isLatePending),
+            lateMinutes: cell.lateMinutes ?? undefined,
+            isConflict:
+              cell.status === 'present' && ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode),
+            displayVal: attendanceStatusLabel(cell.status),
+          })
+        } else if (targetTab === 'lokasi') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (!allowance.rule.specialAllowance) {
+            displayVal = '-'
+            cellType = 'dash'
+          } else if (isFieldBreakDay && cell.status !== 'present') {
+            displayVal = 'FB'
+            cellType = 'fb'
+          } else if (noAllowance) {
+            displayVal = absentLabel
+            cellType = 'absent'
+          } else {
+            numericVal = allowance.specialAllowanceAmount || 0
+            displayVal = numericVal > 0 ? numericVal : '-'
+            cellType = numericVal > 0 ? 'amount' : 'dash'
+          }
+
+          allowanceTotal += allowance.specialAllowanceAmount || 0
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'msa') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (!allowance.rule.msa || allowance.empSiteConfig.msaType === 'none') {
+            displayVal = '-'
+            cellType = 'dash'
+          } else if (isFieldBreakDay) {
+            displayVal = 'FB'
+            cellType = 'fb'
+          } else {
+            numericVal = allowance.msaAmount || 0
+            displayVal = numericVal > 0 ? numericVal : '-'
+            cellType = numericVal > 0 ? 'amount' : 'dash'
+          }
+
+          if (
+            !isFieldBreakDay &&
+            allowance.rule.msa &&
+            allowance.empSiteConfig.msaType !== 'none'
+          ) {
+            allowanceTotal += allowance.msaAmount || 0
+          }
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'meals') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (!allowance.rule.meals || allowance.empSiteConfig.mealsType === 'none') {
+            displayVal = '-'
+            cellType = 'dash'
+          } else if (isFieldBreakDay) {
+            displayVal = 'FB'
+            cellType = 'fb'
+          } else {
+            numericVal = allowance.mealsAmount || 0
+            displayVal = numericVal > 0 ? numericVal : '-'
+            cellType = numericVal > 0 ? 'amount' : 'dash'
+          }
+
+          if (
+            !isFieldBreakDay &&
+            allowance.rule.meals &&
+            allowance.empSiteConfig.mealsType !== 'none'
+          ) {
+            allowanceTotal += allowance.mealsAmount || 0
+          }
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'ovt') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          if (staff) {
+            displayVal = '-'
+            cellType = 'staff'
+          } else if (cell.status !== 'present') {
+            if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+              displayVal = 'FB'
+              cellType = 'fb'
+            } else if (cell.status === 'standby' || scheduleCode === 'ST') {
+              displayVal = 'ST'
+              cellType = 'st'
+            } else if (scheduleCode === 'GD') {
+              displayVal = 'GD'
+              cellType = 'gd'
+            } else if (cell.status === 'off' || isRosterOff || scheduleCode === 'OFF') {
+              displayVal = 'OFF'
+              cellType = 'off'
+            } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+              displayVal = 'Sakit'
+              cellType = 'sick'
+            } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+              displayVal = 'Izin'
+              cellType = 'leave'
+            } else if (cell.status === 'absent') {
+              displayVal = 'Alpha'
+              cellType = 'absent'
+            } else {
+              displayVal =
+                scheduleCode &&
+                scheduleCode !== 'IN' &&
+                scheduleCode !== 'DS' &&
+                scheduleCode !== 'NS'
+                  ? scheduleCode
+                  : '-'
+              cellType = 'other'
+            }
+          } else {
+            if (
+              cell.overtimeHours !== undefined &&
+              cell.overtimeHours !== null &&
+              cell.overtimeHours > 0
+            ) {
+              numericVal = roundOvertimeHours(cell.overtimeHours as number)
+              displayVal = numericVal
+              cellType = 'ot'
+            } else {
+              const overtime = calculateDayOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff,
+                row.employee.id
+              )
+              if (overtime.totalHours > 0) {
+                numericVal = overtime.totalHours
+                displayVal = overtime.totalHours
+                cellType = 'ot'
+              } else if (overtime.unauthorizedMinutes > 0) {
+                displayVal = 'SPL'
+                cellType = 'spl'
+              } else if (scheduleCode === 'ST') {
+                displayVal = 'ST'
+                cellType = 'st'
+              } else if (scheduleCode === 'GD') {
+                displayVal = 'GD'
+                cellType = 'gd'
+              } else if (scheduleCode === 'FB' || isFieldBreakDay) {
+                displayVal = 'FB'
+                cellType = 'fb'
+              } else {
+                displayVal = '-'
+                cellType = 'dash'
+              }
+            }
+            overtimeTotal += numericVal
+          }
+
+          daysData.push({ day, displayVal, numericVal, cellType })
+        } else if (targetTab === 'payroll_ovt') {
+          let displayVal: string | number = '-'
+          let numericVal = 0
+          let cellType: TimesheetDayData['cellType'] = 'dash'
+
+          const empSiteId =
+            row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))
+          const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+          const empRosterType =
+            empSiteConfig.rosterType ?? siteConfig.rosterType ?? '5:2'
+
+          if (staff) {
+            displayVal = '-'
+            cellType = 'staff'
+          } else if (cell.status !== 'present') {
+            if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+              displayVal = 'FB'
+              cellType = 'fb'
+            } else if (cell.status === 'standby' || scheduleCode === 'ST') {
+              displayVal = 'ST'
+              cellType = 'st'
+            } else if (scheduleCode === 'GD') {
+              displayVal = 'GD'
+              cellType = 'gd'
+            } else if (cell.status === 'off' || isRosterOff || scheduleCode === 'OFF') {
+              displayVal = 'OFF'
+              cellType = 'off'
+            } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+              displayVal = 'Sakit'
+              cellType = 'sick'
+            } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+              displayVal = 'Izin'
+              cellType = 'leave'
+            } else if (cell.status === 'absent') {
+              displayVal = 'Alpha'
+              cellType = 'absent'
+            } else {
+              displayVal =
+                scheduleCode &&
+                scheduleCode !== 'IN' &&
+                scheduleCode !== 'DS' &&
+                scheduleCode !== 'NS'
+                  ? scheduleCode
+                  : '-'
+              cellType = 'other'
+            }
+          } else {
+            // Karyawan hadir (Present)
+            const dayAttendanceType = classifyPayrollAttendanceDay(
+              row.schedule,
+              period,
+              day - 1,
+              empRosterType,
+              holidays
+            )
+            if (dayAttendanceType === 'work') {
+              payrollWorkDaysPresent++
+            } else {
+              payrollOffDaysPresent++
+            }
+
+            let rawOtHours = 0
+            if (
+              cell.overtimeHours !== undefined &&
+              cell.overtimeHours !== null &&
+              cell.overtimeHours > 0
+            ) {
+              rawOtHours = roundOvertimeHours(cell.overtimeHours as number)
+            } else {
+              const overtime = calculateDayOvertime(
+                row.schedule,
+                day,
+                cell.clockIn,
+                cell.clockOut,
+                staff,
+                row.employee.id
+              )
+              if (overtime.totalHours > 0) {
+                rawOtHours = overtime.totalHours
+              }
+            }
+
+            if (rawOtHours > 0) {
+              const calculatedVal = calculatePayrollOvertimeValue(
+                empRosterType,
+                dayAttendanceType,
+                rawOtHours,
+                overtimeVariables
+              )
+              numericVal = roundOvertimeHours(calculatedVal)
+              displayVal = numericVal
+              cellType = 'ot'
+              payrollOvertimeTotal += numericVal
+            } else {
+              displayVal = '-'
+              cellType = 'dash'
+            }
+          }
+
+          daysData.push({ day, displayVal, numericVal, cellType })
+        }
+      }
+
+      return {
+        employee: {
+          id: row.employee.id,
+          name: row.employee.name,
+          employeeSn: employeeSnLabel(row.employee),
+          role: row.employee.role,
+          section: row.employee.section,
+          department: row.employee.department,
+          manpower: row.employee.manpower,
+        },
+        daysData,
+        attendanceSummary: {
+          present: attPresent,
+          off: attOff,
+          sick: attSick,
+          leave: attLeave,
+          absent: attAbsent,
+          totalHours: attTotalHours,
+        },
+        allowanceTotal,
+        overtimeTotal: roundOvertimeHours(overtimeTotal),
+        payrollOvertimeSummary: {
+          totalOvertimeCalculated: roundOvertimeHours(payrollOvertimeTotal),
+          workDaysPresent: payrollWorkDaysPresent,
+          offDaysPresent: payrollOffDaysPresent,
+        },
+      }
+    })
+  }
+
+  const attendanceTabLabel = (
+    view: 'attendance' | 'lokasi' | 'msa' | 'meals' | 'ovt' | 'payroll_ovt'
+  ) => {
+    switch (view) {
+      case 'attendance':
+        return 'Attendance'
+      case 'lokasi':
+        return 'Tunjangan Khusus'
+      case 'msa':
+        return 'MSA'
+      case 'meals':
+        return 'Meals'
+      case 'ovt':
+        return 'Overtime'
+      case 'payroll_ovt':
+        return 'Payroll Overtime'
+    }
+  }
+
+  async function exportTimesheetTab(tab: TimesheetExportTab) {
+    try {
+      const tabRows = buildTimesheetExportRows(tab)
+      if (tabRows.length === 0) {
+        toast.error('Tidak ada data karyawan untuk diekspor.')
+        return
+      }
+
+      let rateText: string | undefined = undefined
+      if (tab === 'lokasi') {
+        const localCfg = siteConfig.employeeBenefitConfig.local
+        const nonLocalCfg = siteConfig.employeeBenefitConfig.nonLocal
+        const localStr = localCfg.specialAllowance
+          ? `Lokal: Rp ${localCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${localCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+          : 'Lokal: Off'
+        const nonLocalStr = nonLocalCfg.specialAllowance
+          ? `Non Lokal: Rp ${nonLocalCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${nonLocalCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+          : 'Non Lokal: Off'
+        rateText = `Rate: ${localStr} · ${nonLocalStr}`
+      } else if (tab === 'msa') {
+        rateText = `Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`
+      } else if (tab === 'meals') {
+        rateText = `Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`
+      }
+
+      await exportTimesheetWorkspaceTabToExcel({
+        tab,
+        siteName: site?.name ?? 'Semua Site',
+        period,
+        days,
+        rows: tabRows,
+        weekdayLabel: (p, d) => weekdayLabel(p, d),
+        holidaysByDay,
+        info: {
+          rateText,
+          project: rate.project,
+        },
+      })
+      toast.success(`Export Excel ${attendanceTabLabel(tab)} berhasil diunduh!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor Excel: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async function exportAllTimesheetTabs() {
+    try {
+      const allTabs: TimesheetExportTab[] = ['attendance', 'lokasi', 'msa', 'meals', 'ovt']
+      const tabsData = allTabs.map((t) => {
+        let rateText: string | undefined = undefined
+        if (t === 'lokasi') {
+          const localCfg = siteConfig.employeeBenefitConfig.local
+          const nonLocalCfg = siteConfig.employeeBenefitConfig.nonLocal
+          const localStr = localCfg.specialAllowance
+            ? `Lokal: Rp ${localCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${localCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+            : 'Lokal: Off'
+          const nonLocalStr = nonLocalCfg.specialAllowance
+            ? `Non Lokal: Rp ${nonLocalCfg.specialAllowanceAmount.toLocaleString('id-ID')}/${nonLocalCfg.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}`
+            : 'Non Lokal: Off'
+          rateText = `Rate: ${localStr} · ${nonLocalStr}`
+        } else if (t === 'msa') {
+          rateText = `Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`
+        } else if (t === 'meals') {
+          rateText = `Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`
+        }
+
+        return {
+          tab: t,
+          rows: buildTimesheetExportRows(t),
+          info: {
+            rateText,
+            project: rate.project,
+          },
+        }
+      })
+
+      await exportTimesheetWorkspaceAllTabsToExcel({
+        siteName: site?.name ?? 'Semua Site',
+        period,
+        days,
+        tabs: tabsData,
+        weekdayLabel: (p, d) => weekdayLabel(p, d),
+        holidaysByDay,
+      })
+      toast.success('Export Excel 5 Tab Lengkap berhasil diunduh!')
+    } catch (err) {
+      toast.error('Gagal mengekspor Excel 5 Tab: ' + (err instanceof Error ? err.message : String(err)))
+    }
   }
 
   const fieldBreakTimelineDays = useMemo(
@@ -7340,32 +8351,34 @@ export function SchedulingTimesheetWorkspace({
           dateFilter={false}
           filters={
             <>
-              <select
-                data-table-filter-key="year"
-                className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-                aria-label="Filter tahun payroll"
-              >
-                <option value="">Semua tahun</option>
-                {payrollHistoryYears.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-              <select
-                data-table-filter-key="month"
-                className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-                aria-label="Filter bulan payroll"
-              >
-                <option value="">Semua bulan</option>
-                {payrollHistoryMonths.map((month) => (
-                  <option key={month} value={month}>
-                    {new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(
+              <SchedulingTableFilterItem
+                filterKey="year"
+                placeholder="Semua tahun"
+                ariaLabel="Filter tahun payroll"
+                options={[
+                  { value: '', label: 'Semua tahun' },
+                  ...payrollHistoryYears.map((year) => ({
+                    value: String(year),
+                    label: String(year),
+                  })),
+                ]}
+                width="w-36"
+              />
+              <SchedulingTableFilterItem
+                filterKey="month"
+                placeholder="Semua bulan"
+                ariaLabel="Filter bulan payroll"
+                options={[
+                  { value: '', label: 'Semua bulan' },
+                  ...payrollHistoryMonths.map((month) => ({
+                    value: String(month),
+                    label: new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(
                       new Date(2000, Number(month) - 1, 1)
-                    )}
-                  </option>
-                ))}
-              </select>
+                    ),
+                  })),
+                ]}
+                width="w-40"
+              />
             </>
           }
         >
@@ -7760,17 +8773,26 @@ export function SchedulingTimesheetWorkspace({
                   {canEdit && (
                     <Button
                       size="sm"
-                      disabled={siteId === 'all' || isFinalized}
-                      onClick={() => {
-                        saveSiteConfig()
-                        setSiteConfigDialogOpen(false)
-                      }}
+                      disabled={siteId === 'all' || isFinalized || isSavingSiteConfig}
+                      onClick={() => void saveSiteConfig()}
                     >
-                      <Save className="mr-2 size-4" /> Simpan Setting
+                      {isSavingSiteConfig ? (
+                        <RefreshCw className="mr-2 size-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-2 size-4" />
+                      )}
+                      Simpan Perubahan
                     </Button>
                   )}
                 </div>
-                <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div
+                  className={cn(
+                    'grid gap-4 p-4',
+                    siteConfig.scheduleType === 'hybrid'
+                      ? 'sm:grid-cols-2 xl:grid-cols-5'
+                      : 'sm:grid-cols-2 xl:grid-cols-4'
+                  )}
+                >
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                       Tipe Shift
@@ -7787,23 +8809,79 @@ export function SchedulingTimesheetWorkspace({
                       ]}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                      Tipe Roster
-                    </Label>
-                    <NativeSelect
-                      value={siteConfig.rosterType}
-                      onValueChange={(value) =>
-                        updateSiteConfig('rosterType', value as SiteRosterType)
-                      }
-                      options={[
-                        { value: '5:2', label: 'Roster 5 : 2' },
-                        { value: '6:1', label: 'Roster 6 : 1' },
-                        { value: '13:1', label: 'Roster 13 : 1' },
-                        { value: 'vale', label: 'Vale Sorowako' },
-                      ]}
-                    />
-                  </div>
+                  {siteConfig.scheduleType === 'hybrid' ? (
+                    <>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                            Roster Staff
+                          </Label>
+                          <Badge
+                            variant="outline"
+                            className="border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] font-normal text-blue-700"
+                          >
+                            Staff (Office)
+                          </Badge>
+                        </div>
+                        <NativeSelect
+                          value={siteConfig.rosterTypeStaff || '5:2'}
+                          onValueChange={(value) =>
+                            updateSiteConfig('rosterTypeStaff', value as SiteRosterType)
+                          }
+                          options={[
+                            { value: '5:2', label: 'Roster 5 : 2' },
+                            { value: '6:1', label: 'Roster 6 : 1' },
+                            { value: '13:1', label: 'Roster 13 : 1' },
+                            { value: 'vale', label: 'Vale Sorowako' },
+                          ]}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                            Roster Non-Staff
+                          </Label>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-200 bg-amber-50 px-1.5 py-0 text-[10px] font-normal text-amber-700"
+                          >
+                            Non-Staff (Shift)
+                          </Badge>
+                        </div>
+                        <NativeSelect
+                          value={siteConfig.rosterTypeNonStaff || siteConfig.rosterType || '6:1'}
+                          onValueChange={(value) => {
+                            updateSiteConfig('rosterTypeNonStaff', value as SiteRosterType)
+                            updateSiteConfig('rosterType', value as SiteRosterType)
+                          }}
+                          options={[
+                            { value: '6:1', label: 'Roster 6 : 1' },
+                            { value: '5:2', label: 'Roster 5 : 2' },
+                            { value: '13:1', label: 'Roster 13 : 1' },
+                            { value: 'vale', label: 'Vale Sorowako' },
+                          ]}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                        Tipe Roster
+                      </Label>
+                      <NativeSelect
+                        value={siteConfig.rosterType}
+                        onValueChange={(value) =>
+                          updateSiteConfig('rosterType', value as SiteRosterType)
+                        }
+                        options={[
+                          { value: '5:2', label: 'Roster 5 : 2' },
+                          { value: '6:1', label: 'Roster 6 : 1' },
+                          { value: '13:1', label: 'Roster 13 : 1' },
+                          { value: 'vale', label: 'Vale Sorowako' },
+                        ]}
+                      />
+                    </div>
+                  )}
                   <div className="space-y-1.5">
                     <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
                       Tipe MSA
@@ -7971,76 +9049,237 @@ export function SchedulingTimesheetWorkspace({
                         </p>
                       </div>
                       <div className="w-full sm:w-56">
-                        <select
-                          className="h-9 w-full rounded-md border border-blue-200 bg-white px-3 py-1 text-sm font-medium text-blue-950 shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                        <HeroSearchableSelect
+                          placeholder="Pilih Timezone"
+                          options={Object.values(INDONESIA_TIMEZONES).map((tz) => ({
+                            value: tz.code,
+                            label: `${tz.code} (${tz.offsetString}) - ${tz.label}`,
+                          }))}
                           value={siteConfig.timezone || 'WITA'}
-                          onChange={(e) =>
-                            updateSiteConfig('timezone', e.target.value as IndonesiaTimezoneCode)
+                          onChange={(val) =>
+                            updateSiteConfig('timezone', val as IndonesiaTimezoneCode)
                           }
-                        >
-                          {Object.values(INDONESIA_TIMEZONES).map((tz) => (
-                            <option key={tz.code} value={tz.code}>
-                              {tz.code} ({tz.offsetString}) - {tz.label}
-                            </option>
-                          ))}
-                        </select>
+                          width="w-full"
+                        />
                       </div>
                     </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Masuk Day Shift (DS / IN)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.dayShiftClockIn}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('dayShiftClockIn', event.target.value)
-                        }}
-                      />
+                  {siteConfig.scheduleType === 'hybrid' ? (
+                    <div className="space-y-4">
+                      {/* Non-Staff Working Time */}
+                      <div className="rounded-xl border border-amber-200/70 bg-amber-50/30 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="flex size-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">
+                              1
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                Working Time Non-Staff (Shift Operasional)
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Jam masuk &amp; pulang untuk karyawan non-staff / mekanik / operator shift.
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-amber-300 bg-amber-100 text-[10px] font-semibold text-amber-800"
+                          >
+                            Non-Staff
+                          </Badge>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk DS / IN
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.dayShiftClockIn}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('dayShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang DS / IN
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.dayShiftClockOut}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('dayShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk NS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.nightShiftClockIn}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('nightShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang NS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.nightShiftClockOut}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('nightShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Staff Working Time */}
+                      <div className="rounded-xl border border-blue-200/70 bg-blue-50/30 p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="flex size-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-800">
+                              2
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                Working Time Staff (Office / Non-Shift)
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Jam masuk &amp; pulang untuk karyawan Staff agar presensi dihitung tepat waktu.
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-blue-300 bg-blue-100 text-[10px] font-semibold text-blue-800"
+                          >
+                            Staff
+                          </Badge>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk Office / DS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffDayShiftClockIn || '08:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffDayShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang Office / DS
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffDayShiftClockOut || '17:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffDayShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Masuk NS (Staff)
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffNightShiftClockIn || '18:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffNightShiftClockIn', event.target.value)
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Jam Pulang NS (Staff)
+                            </Label>
+                            <Input
+                              type="time"
+                              value={siteConfig.staffNightShiftClockOut || '06:00'}
+                              onChange={(event) => {
+                                if (event.target.value)
+                                  updateSiteConfig('staffNightShiftClockOut', event.target.value)
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Pulang Day Shift (DS / IN)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.dayShiftClockOut}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('dayShiftClockOut', event.target.value)
-                        }}
-                      />
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Masuk Day Shift (DS / IN)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.dayShiftClockIn}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('dayShiftClockIn', event.target.value)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Pulang Day Shift (DS / IN)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.dayShiftClockOut}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('dayShiftClockOut', event.target.value)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Masuk Night Shift (NS)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.nightShiftClockIn}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('nightShiftClockIn', event.target.value)
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Jam Pulang Night Shift (NS)
+                        </Label>
+                        <Input
+                          type="time"
+                          value={siteConfig.nightShiftClockOut}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateSiteConfig('nightShiftClockOut', event.target.value)
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Masuk Night Shift (NS)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.nightShiftClockIn}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('nightShiftClockIn', event.target.value)
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                        Jam Pulang Night Shift (NS)
-                      </Label>
-                      <Input
-                        type="time"
-                        value={siteConfig.nightShiftClockOut}
-                        onChange={(event) => {
-                          if (event.target.value)
-                            updateSiteConfig('nightShiftClockOut', event.target.value)
-                        }}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -8367,9 +9606,21 @@ export function SchedulingTimesheetWorkspace({
                   <div className="grid gap-4 xl:grid-cols-3">
                     {(
                       [
-                        ['hariBiasa', 'Hari Biasa', 'OT sebelum dan sesudah jam kerja normal.'],
-                        ['hariLibur', 'Hari Libur', 'Tanggal merah atau schedule OFF/Libur.'],
-                        ['hariKe6', 'Hari ke-6', 'Hari kerja tepat sebelum schedule OFF/Libur.'],
+                        [
+                          'hariBiasa',
+                          'Hari Biasa (H-1 s/d H-5)',
+                          'Hari kerja normal (standar 4 jam OT: 06:00-08:00 & 16:00-18:00).',
+                        ],
+                        [
+                          'hariKe6',
+                          'Hari ke-6 (Sebelum OFF)',
+                          'Hari kerja tepat sebelum schedule OFF (standar 6 jam OT untuk Roster 6:1: 06:00-08:00 & 14:00-18:00).',
+                        ],
+                        [
+                          'hariLibur',
+                          'Hari Libur / OFF',
+                          'Tanggal merah atau penugasan di schedule OFF (standar 11 jam OT: 06:00-12:00 & 13:00-18:00).',
+                        ],
                         ...(siteConfig.rosterType === '13:1'
                           ? [
                               [
@@ -8835,11 +10086,16 @@ export function SchedulingTimesheetWorkspace({
                   <div className="border-border/40 mt-5 flex items-center justify-end gap-3 border-t pt-3">
                     <Button
                       size="sm"
+                      disabled={siteId === 'all' || isFinalized || isSavingSiteConfig}
                       onClick={() => void saveSiteConfig()}
-                      className="gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                      className="gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                     >
-                      <Save className="size-4" />{' '}
-                      Simpan Konfigurasi TTD
+                      {isSavingSiteConfig ? (
+                        <RefreshCw className="size-4 animate-spin" />
+                      ) : (
+                        <Save className="size-4" />
+                      )}
+                      Simpan Perubahan
                     </Button>
                   </div>
                 </div>
@@ -9424,21 +10680,16 @@ export function SchedulingTimesheetWorkspace({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 sm:ml-4">
-                        <select
-                          aria-label="Pilih site"
+                        <HeroSearchableSelect
+                          placeholder="Pilih site"
+                          options={sites.map((item) => ({
+                            value: String(item.id),
+                            label: item.name,
+                          }))}
                           value={siteId}
-                          onChange={(e) => {
-                            const newSiteId = e.target.value
-                            setSiteId(newSiteId)
-                          }}
-                          className="border-border/70 focus:ring-primary h-9 rounded-lg border bg-white px-3 text-xs font-semibold text-slate-900 shadow-2xs focus:ring-1"
-                        >
-                          {sites.map((item) => (
-                            <option key={item.id} value={String(item.id)}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(val) => setSiteId(val)}
+                          width="w-48"
+                        />
                         <Input
                           type="month"
                           aria-label="Pilih bulan"
@@ -9462,7 +10713,6 @@ export function SchedulingTimesheetWorkspace({
                         <Button
                           size="sm"
                           disabled={
-                            !isAttendanceDirty ||
                             isSavingAttendance ||
                             siteId === 'all' ||
                             isFinalized
@@ -9574,66 +10824,206 @@ export function SchedulingTimesheetWorkspace({
                           ? `(${selectedOvertimeEmployeeIds.length})`
                           : ''}
                       </Button>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground hidden text-[11px] font-semibold sm:inline">
-                          Export Grid:
-                        </span>
-                        <NativeSelect
-                          value={attendanceGridExportMode}
-                          onValueChange={(value) =>
-                            setAttendanceGridExportMode(
-                              value as 'attendance' | 'checkin-checkout' | 'work-hours'
-                            )
-                          }
-                          options={[
-                            { value: 'attendance', label: 'Attendance' },
-                            { value: 'checkin-checkout', label: 'Check In / Check Out' },
-                            { value: 'work-hours', label: 'Attendance Jam Kerja' },
-                          ]}
-                          className="h-8.5 min-w-[170px] bg-white text-xs"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={exportAttendanceGrid}
-                          disabled={displayedAttendanceRows.length === 0}
-                          className="h-8.5 bg-white text-xs"
-                          aria-label="Export Excel Grid Attendance"
-                          title="Export Excel Grid Attendance"
-                        >
-                          <FileSpreadsheet className="mr-1.5 size-3.5" />
-                          Export Grid
-                        </Button>
-                      </div>
-                      <TabExportActions
-                        tabTitle="Attendance"
-                        columns={[
-                          'Nama',
-                          'Masuk',
-                          'Belum',
-                          'Sakit',
-                          'Izin',
-                          'Alpha',
-                          'Manual',
-                          'Excel',
-                          'FaceLoc',
-                        ]}
-                        exportRows={rows.map((row) => {
-                          const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
-                          const statuses = cells.map((cell) => cell.status)
-                          return [
-                            row.employee.name,
-                            statuses.filter((status) => status === 'present').length,
-                            statuses.filter((status) => status === 'empty').length,
-                            statuses.filter((status) => status === 'sick').length,
-                            statuses.filter((status) => status === 'leave').length,
-                            statuses.filter((status) => status === 'absent').length,
-                            cells.filter((cell) => cell.source === 'manual').length,
-                            cells.filter((cell) => cell.source === 'excel').length,
-                            cells.filter((cell) => cell.source === 'attendance').length,
-                          ]
-                        })}
-                      />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8.5 rounded-lg bg-white text-xs font-medium gap-1.5 shadow-2xs"
+                            disabled={displayedAttendanceRows.length === 0 && rows.length === 0}
+                          >
+                            <Download className="size-3.5 text-slate-500" />
+                            <span>Ekspor Data</span>
+                            <ChevronDown className="size-3 text-slate-400" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-72">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Export Excel Tab (.xlsx)
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('attendance')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Attendance Grid</span>
+                              <span className="text-[10px] text-muted-foreground">Status visual kehadiran & jam kerja harian</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('lokasi')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Tunjangan Khusus (TU)</span>
+                              <span className="text-[10px] text-muted-foreground">Grid tunjangan lokasi & khusus</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('msa')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">MSA Grid</span>
+                              <span className="text-[10px] text-muted-foreground">Grid tunjangan site allowance</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('meals')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Meals Grid</span>
+                              <span className="text-[10px] text-muted-foreground">Grid uang makan harian</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab('ovt')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Overtime Record</span>
+                              <span className="text-[10px] text-muted-foreground">Grid lembur harian & total jam</span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuItem
+                            onClick={() => void exportAllTimesheetTabs()}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2 bg-blue-50/60 hover:bg-blue-100/70"
+                          >
+                            <FileSpreadsheet className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs text-blue-900">Semua 5 Tab Sekaligus</span>
+                              <span className="text-[10px] text-blue-600/80">1 File Excel lengkap dengan 5 sheet</span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Format Alternatif
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => exportAttendanceGrid('checkin-checkout')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Clock className="size-4 text-slate-500 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Jam Masuk & Pulang</span>
+                              <span className="text-[10px] text-muted-foreground">Grid waktu Clock In & Out harian</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => exportAttendanceGrid('work-hours')}
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Activity className="size-4 text-slate-500 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Durasi Jam Kerja</span>
+                              <span className="text-[10px] text-muted-foreground">Grid total jam kerja aktif per hari</span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Dokumen & Ringkasan
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const columns = [
+                                'Nama',
+                                'Masuk',
+                                'Belum',
+                                'Sakit',
+                                'Izin',
+                                'Alpha',
+                                'Manual',
+                                'Excel',
+                                'FaceLoc',
+                              ]
+                              const exportRows = rows.map((row) => {
+                                const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                                const statuses = cells.map((cell) => cell.status)
+                                return [
+                                  row.employee.name,
+                                  statuses.filter((status) => status === 'present').length,
+                                  statuses.filter((status) => status === 'empty').length,
+                                  statuses.filter((status) => status === 'sick').length,
+                                  statuses.filter((status) => status === 'leave').length,
+                                  statuses.filter((status) => status === 'absent').length,
+                                  cells.filter((cell) => cell.source === 'manual').length,
+                                  cells.filter((cell) => cell.source === 'excel').length,
+                                  cells.filter((cell) => cell.source === 'attendance').length,
+                                ]
+                              })
+                              exportSummaryPdf('Attendance', columns, exportRows)
+                            }}
+                            disabled={rows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileText className="size-4 text-rose-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Ekspor PDF Ringkasan</span>
+                              <span className="text-[10px] text-muted-foreground">Format landscape siap cetak</span>
+                            </div>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const columns = [
+                                'Nama',
+                                'Masuk',
+                                'Belum',
+                                'Sakit',
+                                'Izin',
+                                'Alpha',
+                                'Manual',
+                                'Excel',
+                                'FaceLoc',
+                              ]
+                              const exportRows = rows.map((row) => {
+                                const cells = days.map((day) => getAttendanceCell(row.employee.id, day))
+                                const statuses = cells.map((cell) => cell.status)
+                                return [
+                                  row.employee.name,
+                                  statuses.filter((status) => status === 'present').length,
+                                  statuses.filter((status) => status === 'empty').length,
+                                  statuses.filter((status) => status === 'sick').length,
+                                  statuses.filter((status) => status === 'leave').length,
+                                  statuses.filter((status) => status === 'absent').length,
+                                  cells.filter((cell) => cell.source === 'manual').length,
+                                  cells.filter((cell) => cell.source === 'excel').length,
+                                  cells.filter((cell) => cell.source === 'attendance').length,
+                                ]
+                              })
+                              exportCsv('Attendance', columns, exportRows)
+                            }}
+                            disabled={rows.length === 0}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <Download className="size-4 text-slate-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">Ekspor CSV Ringkasan</span>
+                              <span className="text-[10px] text-muted-foreground">File data rekapitulasi numerik</span>
+                            </div>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </Card>
@@ -10296,23 +11686,22 @@ export function SchedulingTimesheetWorkspace({
                       </p>
                     </div>
                   ) : null}
-                  {/* View title */}
-                  {attendanceView !== 'attendance' ? (
-                    <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                        {attendanceView === 'msa' &&
-                          `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
-                        {attendanceView === 'lokasi' &&
-                          `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
-                        {attendanceView === 'meals' &&
-                          `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
-                        {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
-                      </p>
-                      {attendanceView === 'ovt' ||
-                      attendanceView === 'msa' ||
-                      attendanceView === 'meals' ||
-                      attendanceView === 'lokasi' ? (
-                        <div className="flex items-center gap-2.5">
+                  {/* View title & Actions Bar (All 5 Tabs) */}
+                  <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
+                    <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                      {attendanceView === 'attendance' &&
+                        `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
+                      {attendanceView === 'msa' &&
+                        `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                      {attendanceView === 'lokasi' &&
+                        `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
+                      {attendanceView === 'meals' &&
+                        `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
+                      {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {attendanceView !== 'attendance' ? (
+                        <>
                           <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                             <Switch
                               id="toggle-external-pdf-summary"
@@ -10336,10 +11725,76 @@ export function SchedulingTimesheetWorkspace({
                           >
                             <Download className="mr-2 size-4" /> Download PDF
                           </Button>
-                        </div>
+                        </>
                       ) : null}
+
+                      {/* Export Excel Button with Dropdown for Current Tab or All 5 Tabs */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={displayedAttendanceRows.length === 0}
+                            className="h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100/90 text-emerald-800 border-emerald-300 text-xs font-semibold gap-1.5 shadow-2xs transition-all"
+                            title="Export data ke format Excel (.xlsx)"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <span>Export Excel</span>
+                            <ChevronDown className="size-3 text-emerald-600" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Pilihan Export Excel
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => void exportTimesheetTab(attendanceView)}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">
+                                Tab Ini ({attendanceTabLabel(attendanceView)})
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                Format rapi visual grid .xlsx sesuai tampilan layar
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                          {attendanceView === 'ovt' && (
+                            <DropdownMenuItem
+                              onClick={() => void exportTimesheetTab('payroll_ovt')}
+                              className="cursor-pointer gap-2 py-2 bg-emerald-50/60 hover:bg-emerald-100/80 transition-colors"
+                            >
+                              <FileSpreadsheet className="size-4 text-emerald-700 shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-xs text-emerald-950">
+                                  Payroll Overtime (Sesuai Setup Lembur)
+                                </span>
+                                <span className="text-[10px] text-emerald-700">
+                                  Hitungan lembur payroll + kolom HK & HL masuk
+                                </span>
+                              </div>
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => void exportAllTimesheetTabs()}
+                            className="cursor-pointer gap-2 py-2"
+                          >
+                            <FileSpreadsheet className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-medium text-xs text-foreground">
+                                Semua 5 Tab Sekaligus
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                1 File Excel lengkap dengan 5 sheet terpisah
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                  ) : null}
+                  </div>
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
                     <table className="w-max min-w-[1400px] table-fixed border-separate border-spacing-0 text-xs">
                       <thead>
@@ -10462,9 +11917,12 @@ export function SchedulingTimesheetWorkspace({
                                                 <div className="min-w-0 flex-1">
                                                   <p
                                                     className="truncate text-xs font-semibold text-slate-900"
-                                                    title={row.employee.name}
+                                                    title={`${row.employee.name} (${row.employee.manpower?.trim() || '-'})`}
                                                   >
-                                                    {row.employee.name}
+                                                    {row.employee.name}{' '}
+                                                    <span className="font-normal text-slate-500">
+                                                      ({row.employee.manpower?.trim() || '-'})
+                                                    </span>
                                                   </p>
                                                   <p className="text-muted-foreground truncate text-[10px] font-normal">
                                                     {row.employee.section || row.employee.role}
@@ -10540,7 +11998,7 @@ export function SchedulingTimesheetWorkspace({
                                             scheduleCode === 'FB' ||
                                             scheduleCode === 'Libur' ||
                                             scheduleCode === 'Sakit'
-                                          const staff = isStaffRole(row.employee.role)
+                                          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
 
                                           // MSA/Meals/OVT view
                                           if (attendanceView !== 'attendance') {
@@ -10590,7 +12048,7 @@ export function SchedulingTimesheetWorkspace({
                                             if (attendanceView === 'msa') {
                                               if (
                                                 !allowance.rule.msa ||
-                                                siteConfig.msaType === 'none'
+                                                allowance.empSiteConfig.msaType === 'none'
                                               ) {
                                                 cellValue = '-'
                                                 cellBg = 'bg-slate-50 text-muted-foreground'
@@ -10632,7 +12090,7 @@ export function SchedulingTimesheetWorkspace({
                                             } else if (attendanceView === 'meals') {
                                               if (
                                                 !allowance.rule.meals ||
-                                                siteConfig.mealsType === 'none'
+                                                allowance.empSiteConfig.mealsType === 'none'
                                               ) {
                                                 cellValue = '-'
                                                 cellBg = 'bg-slate-50 text-muted-foreground'
@@ -10650,39 +12108,70 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'bg-white text-foreground'
                                                       : 'bg-slate-50 text-muted-foreground'
                                               }
-                                            } else if (attendanceView === 'ovt') {
-                                              // Overtime hanya untuk Non Staff
-                                              if (staff) {
-                                                cellValue = '-'
-                                                cellBg = 'bg-slate-50 text-muted-foreground'
-                                              } else if (cell.status !== 'present') {
-                                                cellValue = isOff ? scheduleCode : ''
-                                                cellBg = isOff
-                                                  ? 'bg-rose-50 text-rose-700'
-                                                  : isHolidayDay
-                                                    ? 'bg-amber-50 text-amber-700'
-                                                    : ''
-                                              } else {
-                                                const overtime = calculateDayOvertime(
-                                                  row.schedule,
-                                                  day,
-                                                  cell.clockIn,
-                                                  cell.clockOut,
-                                                  staff,
-                                                  row.employee.id
-                                                )
-                                                cellValue =
-                                                  overtime.totalHours > 0
-                                                    ? overtime.totalHours
-                                                    : overtime.unauthorizedMinutes > 0
-                                                      ? 'SPL'
-                                                      : ''
-                                                cellBg =
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? 'bg-orange-100 text-orange-900 font-semibold'
-                                                    : overtime.totalHours > 0
-                                                      ? 'bg-white text-foreground font-semibold'
-                                                      : ''
+                                             } else if (attendanceView === 'ovt') {
+                                               // Overtime hanya untuk Non Staff
+                                               if (staff) {
+                                                 cellValue = '-'
+                                                 cellBg = 'bg-slate-50 text-muted-foreground'
+                                               } else if (cell.status !== 'present') {
+                                                 const isFb = isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB'
+                                                 const isSt = cell.status === 'standby' || scheduleCode === 'ST'
+                                                 const isGd = scheduleCode === 'GD'
+                                                 const isRosterOffDay = isOff || cell.status === 'off' || scheduleCode === 'OFF'
+
+                                                 if (isFb) {
+                                                   cellValue = 'FB'
+                                                   cellBg = 'bg-amber-50 text-amber-800'
+                                                 } else if (isSt) {
+                                                   cellValue = 'ST'
+                                                   cellBg = 'bg-blue-50 text-blue-800'
+                                                 } else if (isGd) {
+                                                   cellValue = 'GD'
+                                                   cellBg = 'bg-purple-50 text-purple-800'
+                                                 } else if (isRosterOffDay) {
+                                                   cellValue = 'OFF'
+                                                   cellBg = 'bg-rose-50 text-rose-700'
+                                                 } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+                                                   cellValue = 'Sakit'
+                                                   cellBg = 'bg-rose-50 text-rose-700'
+                                                 } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
+                                                   cellValue = 'Izin'
+                                                   cellBg = 'bg-blue-50 text-blue-700'
+                                                 } else if (cell.status === 'absent') {
+                                                   cellValue = 'Alpha'
+                                                   cellBg = 'bg-rose-100 text-rose-900'
+                                                 } else {
+                                                   cellValue = scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS' ? scheduleCode : ''
+                                                   cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
+                                                 }
+                                               } else {
+                                                 const overtime = calculateDayOvertime(
+                                                   row.schedule,
+                                                   day,
+                                                   cell.clockIn,
+                                                   cell.clockOut,
+                                                   staff,
+                                                   row.employee.id
+                                                 )
+                                                 if (overtime.totalHours > 0) {
+                                                   cellValue = overtime.totalHours
+                                                   cellBg = 'bg-white text-foreground font-semibold'
+                                                 } else if (overtime.unauthorizedMinutes > 0) {
+                                                   cellValue = 'SPL'
+                                                   cellBg = 'bg-orange-100 text-orange-900 font-semibold'
+                                                 } else if (scheduleCode === 'ST') {
+                                                   cellValue = 'ST'
+                                                   cellBg = 'bg-blue-50 text-blue-800'
+                                                 } else if (scheduleCode === 'GD') {
+                                                   cellValue = 'GD'
+                                                   cellBg = 'bg-purple-50 text-purple-800'
+                                                 } else if (scheduleCode === 'FB' || isFieldBreakDay) {
+                                                   cellValue = 'FB'
+                                                   cellBg = 'bg-amber-50 text-amber-800'
+                                                 } else {
+                                                   cellValue = ''
+                                                   cellBg = ''
+                                                 }
                                                 overtimeMeta =
                                                   overtime.unauthorizedMinutes > 0
                                                     ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`
@@ -10728,10 +12217,30 @@ export function SchedulingTimesheetWorkspace({
                                           const isConflict =
                                             cell.status === 'present' &&
                                             ['OFF', 'Libur', 'Sakit', 'FB'].includes(scheduleCode)
+                                          const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+                                          const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && staff)
+                                          const empSiteClock = {
+                                            dayShiftClockIn:
+                                              isHybridStaff && empSiteConfig.staffDayShiftClockIn
+                                                ? empSiteConfig.staffDayShiftClockIn
+                                                : empSiteConfig.dayShiftClockIn,
+                                            nightShiftClockIn:
+                                              isHybridStaff && empSiteConfig.staffNightShiftClockIn
+                                                ? empSiteConfig.staffNightShiftClockIn
+                                                : empSiteConfig.nightShiftClockIn,
+                                            timezone: empSiteConfig.timezone || 'WITA',
+                                            scheduleType: empSiteConfig.scheduleType,
+                                            rosterType: empSiteConfig.rosterType,
+                                            rosterTypeStaff: empSiteConfig.rosterTypeStaff,
+                                            rosterTypeNonStaff: empSiteConfig.rosterTypeNonStaff,
+                                            staffDayShiftClockIn: empSiteConfig.staffDayShiftClockIn,
+                                            staffNightShiftClockIn: empSiteConfig.staffNightShiftClockIn,
+                                          }
                                           const inferredShift = cell.clockIn
                                             ? inferShiftFromClockInTime(
                                                 cell.clockIn,
-                                                effectiveSiteClockConfig
+                                                empSiteClock,
+                                                staff
                                               )
                                             : null
                                           const expectedShiftCode =
@@ -10865,7 +12374,7 @@ export function SchedulingTimesheetWorkspace({
                                         {/* Total column for MSA/Meals/OVT views */}
                                         {attendanceView !== 'attendance'
                                           ? (() => {
-                                              const staff = isStaffRole(row.employee.role)
+                                              const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
                                               let total = 0
                                               for (const day of days) {
                                                 const cell = getAttendanceCell(row.employee.id, day)
@@ -10984,17 +12493,18 @@ export function SchedulingTimesheetWorkspace({
               dateFilter={false}
               filters={
                 <>
-                  <select
-                    data-table-filter-key="site"
-                    className="border-border/70 h-9 rounded-lg border bg-white px-3 text-sm"
-                  >
-                    <option value="">Semua site</option>
-                    {sites.map((item) => (
-                      <option key={item.id} value={item.name}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
+                  <SchedulingTableFilterItem
+                    filterKey="site"
+                    placeholder="Semua site"
+                    options={[
+                      { value: '', label: 'Semua site' },
+                      ...sites.map((item) => ({
+                        value: item.name,
+                        label: item.name,
+                      })),
+                    ]}
+                    width="w-44"
+                  />
                   <Input
                     type="month"
                     data-table-filter-key="period"
@@ -11470,7 +12980,12 @@ export function SchedulingTimesheetWorkspace({
                             className="border-border/60 sticky left-0 z-30 min-w-[220px] border-r bg-white px-4 py-3 font-semibold shadow-[10px_0_18px_-16px_rgba(15,23,42,0.18)]"
                             style={{ left: 0 }}
                           >
-                            <div className="max-w-[220px] truncate">{row.employee.name}</div>
+                            <div className="max-w-[220px] truncate" title={`${row.employee.name} (${row.employee.manpower?.trim() || '-'})`}>
+                              {row.employee.name}{' '}
+                              <span className="font-normal text-slate-500">
+                                ({row.employee.manpower?.trim() || '-'})
+                              </span>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-medium">{row.sectionLabel || '-'}</div>
@@ -11894,7 +13409,7 @@ export function SchedulingTimesheetWorkspace({
                     (dialogRosterCode === 'NS' && dialogActualShiftCode === 'DS'))
                 const dialogNeedsShiftCheck =
                   dialogIsShiftMismatch || (selectedAttendanceValue.lateMinutes ?? 0) > 60
-                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role || '')
+                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role, selectedAttendanceEmployee?.jobTitle, selectedAttendanceEmployee?.levelName)
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,
@@ -12173,7 +13688,7 @@ export function SchedulingTimesheetWorkspace({
                         <Input
                           id="overtime-hours-override"
                           type="number"
-                          step="1"
+                          step="0.5"
                           min="0"
                           max="24"
                           className="h-9 w-24"
@@ -12184,9 +13699,19 @@ export function SchedulingTimesheetWorkspace({
                         />
                         {draftOvertimeHours !== '' &&
                           Number(draftOvertimeHours) !== defaultOtHours && (
-                            <span className="text-xs font-medium text-amber-600 italic">
-                              (Override)
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-amber-600 italic">
+                                (Override)
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDraftOvertimeHours('')}
+                                className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline hover:no-underline cursor-pointer"
+                                title={`Gunakan hitungan otomatis (${defaultOtHours} jam)`}
+                              >
+                                Gunakan Otomatis ({defaultOtHours}j)
+                              </button>
+                            </div>
                           )}
                       </div>
                       <div className="flex items-center gap-2">

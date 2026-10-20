@@ -66,12 +66,12 @@ export function SearchableSelect({
           variant="outline"
           disabled={disabled}
           className={cn(
-            'border-border/70 text-foreground hover:bg-muted/40 h-9 justify-between rounded-lg border bg-white px-3 text-[13px] font-medium shadow-none',
+            'border-border/70 text-foreground hover:bg-muted/40 h-9 justify-between rounded-lg border bg-white px-3 text-[13px] font-medium shadow-none min-w-0 max-w-full overflow-hidden',
             disabled && 'opacity-60 cursor-not-allowed bg-slate-100/90 text-slate-500',
             widthClassName
           )}
         >
-          <span className="truncate text-left">{selectedLabel}</span>
+          <span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>
           <ChevronDown className="text-muted-foreground size-4 shrink-0" />
         </Button>
       </PopoverTrigger>
@@ -88,6 +88,15 @@ export function SearchableSelect({
               setQuery(val)
               if (allowCustom) {
                 onValueChange(val)
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                if (allowCustom && query.trim()) {
+                  onValueChange(query.trim())
+                  setOpen(false)
+                }
               }
             }}
             placeholder={allowCustom ? `Ketik custom ${label.toLowerCase()} atau pilih preset...` : `Cari ${label.toLowerCase()}...`}
@@ -123,6 +132,20 @@ export function SearchableSelect({
             <span>{placeholder ?? `Semua ${label}`}</span>
             {value ? <X className="text-muted-foreground size-4" /> : null}
           </button>
+
+          {allowCustom && query.trim().length > 0 && !options.some((o) => o.value.toLowerCase() === query.trim().toLowerCase() || o.label.toLowerCase() === query.trim().toLowerCase()) && (
+            <button
+              type="button"
+              className="text-primary hover:bg-blue-100/60 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-semibold bg-blue-50/70 text-blue-700 border border-blue-200 transition-colors"
+              onClick={() => {
+                onValueChange(query.trim())
+                setOpen(false)
+              }}
+            >
+              <Plus className="size-3.5 shrink-0 text-blue-600" />
+              <span className="truncate">Gunakan &quot;{query.trim()}&quot; (Aktivitas Kustom)</span>
+            </button>
+          )}
 
           {filteredOptions.map((option, idx) => {
             const isSelected = option.value === value

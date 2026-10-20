@@ -5,12 +5,24 @@ import { isS3UploadConfigured, getS3ObjectForProxy } from "@/lib/s3-storage";
 import { existsSync, promises as fs } from "fs";
 import { join, resolve } from "path";
 
+import { createHash } from "crypto";
+
 export const dynamic = "force-dynamic";
 
 function isPrivateIpOrHost(urlString: string): boolean {
+  if (!urlString || urlString.startsWith("/") || !urlString.includes("://")) {
+    return false;
+  }
   try {
     const parsed = new URL(urlString);
     const host = parsed.hostname.toLowerCase();
+    if (
+      host.includes("is3.cloudhost.id") ||
+      host.includes("chitraparatama.com") ||
+      host.includes("chitraparatama.co.id")
+    ) {
+      return false;
+    }
     if (
       host === "localhost" ||
       host === "127.0.0.1" ||
@@ -24,7 +36,7 @@ function isPrivateIpOrHost(urlString: string): boolean {
     }
     return false;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -97,8 +109,78 @@ export async function GET(req: NextRequest) {
       filename = decodeURIComponent(filename);
     } catch (_) {}
 
-    // 1. Try S3 storage proxy first if configured
-    if (isS3UploadConfigured()) {
+    const uploadDir = resolve(process.cwd(), "public", "uploads");
+    const publicDir = resolve(process.cwd(), "public");
+    const docCacheDir = join(uploadDir, "cache", "documents");
+    const urlHash = createHash("md5").update(targetUrl).digest("hex");
+    const hashedCachePath = join(docCacheDir, `${urlHash}.bin`);
+
+    // 1. FAST PATH: Try local filesystem and cache FIRST before any network calls
+    const localRelPath = extractLocalUploadPath(targetUrl);
+    if (localRelPath) {
+      const uploadFilePath = join(uploadDir, localRelPath);
+      if (resolve(uploadFilePath).startsWith(uploadDir) && existsSync(uploadFilePath)) {
+        try {
+          buffer = await fs.readFile(uploadFilePath);
+        } catch (err) {
+          console.warn("[document-stream] Local uploads read error:", err);
+        }
+      }
+
+      if (!buffer) {
+        const publicFilePath = join(publicDir, localRelPath);
+        if (resolve(publicFilePath).startsWith(publicDir) && existsSync(publicFilePath)) {
+          try {
+            buffer = await fs.readFile(publicFilePath);
+          } catch (err) {
+            console.warn("[document-stream] Public file read error:", err);
+          }
+        }
+      }
+    }
+
+    if (!buffer && filename) {
+      const filenamePath = join(uploadDir, filename);
+      if (resolve(filenamePath).startsWith(uploadDir) && existsSync(filenamePath)) {
+        try {
+          buffer = await fs.readFile(filenamePath);
+        } catch (err) {
+          console.warn("[document-stream] Local filename read error:", err);
+        }
+      }
+    }
+
+    if (!buffer && existsSync(hashedCachePath)) {
+      try {
+        buffer = await fs.readFile(hashedCachePath);
+      } catch (cacheErr) {
+        console.warn("[document-stream] Cache read error:", cacheErr);
+      }
+    }
+
+    // Helper to persist buffer to local disk cache for instant subsequent reads
+    const persistToCache = async (data: Buffer) => {
+      try {
+        if (!existsSync(docCacheDir)) {
+          await fs.mkdir(docCacheDir, { recursive: true });
+        }
+        await fs.writeFile(hashedCachePath, data);
+
+        if (localRelPath && !localRelPath.includes("..")) {
+          const directLocalPath = join(uploadDir, localRelPath);
+          const directDir = join(uploadDir, ...localRelPath.split("/").slice(0, -1));
+          if (!existsSync(directDir)) {
+            await fs.mkdir(directDir, { recursive: true });
+          }
+          await fs.writeFile(directLocalPath, data);
+        }
+      } catch (persistErr) {
+        console.warn("[document-stream] Cache persist error:", persistErr);
+      }
+    };
+
+    // 2. Try S3 storage proxy if not found on local disk
+    if (!buffer && isS3UploadConfigured()) {
       try {
         // Try direct targetUrl
         let s3Obj = await getS3ObjectForProxy(targetUrl);
@@ -115,48 +197,11 @@ export async function GET(req: NextRequest) {
 
         if (s3Obj?.body) {
           buffer = Buffer.from(s3Obj.body);
+          // Persist to local disk cache
+          persistToCache(buffer).catch(() => {});
         }
       } catch (s3Err) {
         console.warn("[document-stream] S3 proxy error:", s3Err);
-      }
-    }
-
-    // 2. Try local filesystem (public/uploads and public/)
-    if (!buffer) {
-      const uploadDir = resolve(process.cwd(), "public", "uploads");
-      const publicDir = resolve(process.cwd(), "public");
-      const localRelPath = extractLocalUploadPath(targetUrl);
-      if (localRelPath) {
-        const uploadFilePath = join(uploadDir, localRelPath);
-        if (resolve(uploadFilePath).startsWith(uploadDir) && existsSync(uploadFilePath)) {
-          try {
-            buffer = await fs.readFile(uploadFilePath);
-          } catch (err) {
-            console.warn("[document-stream] Local uploads read error:", err);
-          }
-        }
-
-        if (!buffer) {
-          const publicFilePath = join(publicDir, localRelPath);
-          if (resolve(publicFilePath).startsWith(publicDir) && existsSync(publicFilePath)) {
-            try {
-              buffer = await fs.readFile(publicFilePath);
-            } catch (err) {
-              console.warn("[document-stream] Public file read error:", err);
-            }
-          }
-        }
-      }
-
-      if (!buffer && filename) {
-        const filenamePath = join(uploadDir, filename);
-        if (resolve(filenamePath).startsWith(uploadDir) && existsSync(filenamePath)) {
-          try {
-            buffer = await fs.readFile(filenamePath);
-          } catch (err) {
-            console.warn("[document-stream] Local filename read error:", err);
-          }
-        }
       }
     }
 
@@ -245,6 +290,9 @@ export async function GET(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // Persist to local disk cache for instant subsequent loads
+    persistToCache(buffer).catch(() => {});
 
     // Detect actual MIME type from format, extension or magic bytes
     let contentType = "application/octet-stream";

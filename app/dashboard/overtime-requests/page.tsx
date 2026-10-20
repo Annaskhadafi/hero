@@ -2,6 +2,10 @@ import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
 import { db } from '@/db'
 import {
+  activityLibraries,
+  activityRouteGroups,
+  activityRouteItems,
+  activityRouteTemplates,
   employees,
   masterDepartments,
   masterSections,
@@ -15,6 +19,7 @@ import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { OvertimeListingClient, type OvertimeListingRow } from './client'
 import { getOvertimeWorkflowSettings } from './actions'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
+import type { RouteFolder } from '@/lib/daily-activity'
 
 export const metadata = {
   title: 'Overtime Requests Approval - HERO',
@@ -49,7 +54,7 @@ export default async function OvertimeRequestsPage() {
 
   const isSiteAdmin = accessRole === 'site admin'
 
-  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites] = await Promise.all([
+  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -90,7 +95,78 @@ export default async function OvertimeRequestsPage() {
     db.select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId }).from(masterSections),
     db.select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId }).from(masterDepartments),
     db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites),
+    db
+      .select({
+        id: activityLibraries.id,
+        activityCode: activityLibraries.activityCode,
+        activityName: activityLibraries.activityName,
+        category: activityLibraries.category,
+        basePoints: activityLibraries.basePoints,
+        slaHours: activityLibraries.slaHours,
+        requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+      })
+      .from(activityLibraries)
+      .where(eq(activityLibraries.isActive, true))
+      .orderBy(asc(activityLibraries.activityName)),
+    db
+      .select({
+        id: activityRouteTemplates.id,
+        routeCode: activityRouteTemplates.routeCode,
+        routeName: activityRouteTemplates.routeName,
+      })
+      .from(activityRouteTemplates)
+      .where(eq(activityRouteTemplates.isActive, true))
+      .orderBy(asc(activityRouteTemplates.routeName)),
+    db
+      .select({
+        id: activityRouteGroups.id,
+        routeTemplateId: activityRouteGroups.routeTemplateId,
+        groupName: activityRouteGroups.groupName,
+      })
+      .from(activityRouteGroups)
+      .orderBy(asc(activityRouteGroups.sortOrder)),
+    db
+      .select({
+        id: activityRouteItems.id,
+        routeGroupId: activityRouteItems.routeGroupId,
+        libraryActivityId: activityRouteItems.libraryActivityId,
+        itemCode: activityRouteItems.itemCode,
+        itemLabel: activityRouteItems.itemLabel,
+        pointOverride: activityRouteItems.pointOverride,
+        requiresUnit: activityRouteItems.requiresUnit,
+        requiresTime: activityRouteItems.requiresTime,
+        requiresPhoto: activityRouteItems.requiresPhoto,
+      })
+      .from(activityRouteItems)
+      .orderBy(asc(activityRouteItems.sortOrder)),
   ])
+
+  const itemsByGroupId = new Map<number, any[]>()
+  for (const item of routeItemRows || []) {
+    const list = itemsByGroupId.get(item.routeGroupId) || []
+    list.push(item)
+    itemsByGroupId.set(item.routeGroupId, list)
+  }
+
+  const groupsByTemplateId = new Map<number, any[]>()
+  for (const group of routeGroupRows || []) {
+    const list = groupsByTemplateId.get(group.routeTemplateId) || []
+    list.push({
+      id: group.id,
+      groupName: group.groupName,
+      items: itemsByGroupId.get(group.id) || [],
+    })
+    groupsByTemplateId.set(group.routeTemplateId, list)
+  }
+
+  const availableRouteFolders: RouteFolder[] = (routeTemplateRows || [])
+    .map((t) => ({
+      id: t.id,
+      routeCode: t.routeCode,
+      routeName: t.routeName,
+      groups: groupsByTemplateId.get(t.id) || [],
+    }))
+    .filter((t) => t.groups.length > 0)
 
   const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]))
   const sectionHeadByName = new Map(rawSections.map((s) => [s.name.toLowerCase().trim(), s.headEmployeeId]))
@@ -204,6 +280,7 @@ export default async function OvertimeRequestsPage() {
           .select({
             overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
             lineLabel: overtimeCommandLetterItems.lineLabel,
+            lineDescription: overtimeCommandLetterItems.lineDescription,
             targetUnit: overtimeCommandLetterItems.targetUnit,
             estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
             plannedPoints: overtimeCommandLetterItems.plannedPoints,
@@ -244,19 +321,43 @@ export default async function OvertimeRequestsPage() {
 
   const itemsMap = new Map<number, any[]>()
   for (const item of itemsList) {
+    let meta: any = {}
+    try {
+      if (item.lineDescription && item.lineDescription.startsWith('{')) {
+        meta = JSON.parse(item.lineDescription)
+      }
+    } catch {}
+
     const list = itemsMap.get(item.overtimeCommandLetterId) || []
     list.push({
-      lineLabel: item.lineLabel || 'Aktivitas Lembur',
-      targetUnit: item.targetUnit || '—',
-      estimatedMinutes: Number(item.estimatedMinutes) || 60,
+      lineLabel: item.lineLabel || meta.name || 'Aktivitas Lembur',
+      targetUnit: item.targetUnit || meta.unitNumber || '—',
+      estimatedMinutes: Number(item.estimatedMinutes) || Number(meta.duration) || 60,
       plannedPoints: Number(item.plannedPoints) || 0,
+      code: meta.code || '',
+      name: meta.name || item.lineLabel || 'Aktivitas Lembur',
+      unitNumber: meta.unitNumber || item.targetUnit || null,
+      tireCount: meta.tireCount ?? null,
+      materialUsed: meta.materialUsed || null,
+      startTime: meta.startTime || null,
+      endTime: meta.endTime || null,
+      duration: meta.duration || null,
+      remark: meta.remark || (!item.lineDescription?.startsWith('{') ? item.lineDescription : null),
+      photoUrl: meta.photoUrl || meta.photos?.[0] || null,
+      photos: Array.isArray(meta.photos) ? meta.photos : meta.photoUrl ? [meta.photoUrl] : [],
     })
     itemsMap.set(item.overtimeCommandLetterId, list)
   }
 
-  const rows: OvertimeListingRow[] = splRecords.map((r) => {
+  const rows: OvertimeListingRow[] = []
+  for (const r of splRecords) {
     const parts = participantsMap.get(r.id) || []
-    return {
+    const otherParticipantNames = parts
+      .filter((p) => p.employeeName && p.employeeName.toLowerCase() !== (r.requesterName || '').toLowerCase().trim())
+      .map((p) => p.employeeName)
+
+    // 1. Requester / Koordinator Row
+    rows.push({
       id: Number(r.id),
       splNumber: r.splNumber || `SPL-${r.id}`,
       title: r.title || 'Surat Perintah Lembur',
@@ -268,12 +369,46 @@ export default async function OvertimeRequestsPage() {
       requesterName: r.requesterName || 'Pemohon',
       requesterDepartment: r.requesterDepartment || 'Central Services',
       requestNotes: r.requestNotes || null,
-      workerCount: parts.length,
+      workerCount: parts.length > 0 ? parts.length : 1,
+      teamRole: otherParticipantNames.length > 0 ? 'Pemohon' : undefined,
+      teamMembersSummary: otherParticipantNames.length > 0 ? otherParticipantNames.join(', ') : undefined,
       participants: parts,
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
+    })
+
+    // 2. Participant Team Member Rows (e.g. Sanudin, mechanics in the team)
+    for (const p of parts) {
+      if (!p.employeeName || p.employeeName.toLowerCase().trim() === (r.requesterName || '').toLowerCase().trim()) {
+        continue
+      }
+
+      const partnerNames = [
+        r.requesterName,
+        ...parts.filter((other) => other.employeeName !== p.employeeName && other.employeeName !== r.requesterName).map((o) => o.employeeName)
+      ].filter(Boolean).join(', ')
+
+      rows.push({
+        id: Number(r.id),
+        splNumber: r.splNumber || `SPL-${r.id}`,
+        title: r.title || 'Surat Perintah Lembur',
+        workDate: r.workDate ? new Date(r.workDate).toISOString() : new Date().toISOString(),
+        plannedStartAt: r.plannedStartAt ? new Date(r.plannedStartAt).toISOString() : null,
+        plannedEndAt: r.plannedEndAt ? new Date(r.plannedEndAt).toISOString() : null,
+        status: r.status || 'draft',
+        requestedByEmployeeId: p.employeeId ? Number(p.employeeId) : null,
+        requesterName: p.employeeName,
+        requesterDepartment: r.requesterDepartment || 'Central Services',
+        requestNotes: r.requestNotes || null,
+        workerCount: parts.length > 0 ? parts.length : 1,
+        teamRole: 'Anggota Tim',
+        teamMembersSummary: partnerNames || undefined,
+        participants: parts,
+        lineItems: itemsMap.get(r.id) || [],
+        approvals: approvalsMap.get(r.id) || [],
+      })
     }
-  }) as any
+  }
 
   const sanitizedEmployees = (enrichedEmployees || []).map((e) => ({
     id: Number(e.id),
@@ -299,6 +434,8 @@ export default async function OvertimeRequestsPage() {
     <OvertimeListingClient
       rows={rows}
       employees={sanitizedEmployees}
+      activityLibraries={rawActivityLibraries || []}
+      routeFolders={availableRouteFolders || []}
       initialSettings={initialSettings}
       currentEmployeeId={activeEmployee?.id ?? null}
       currentEmployeeEmail={normalizedEmail}

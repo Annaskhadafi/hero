@@ -15,6 +15,8 @@ import {
   dailyActivityApprovals,
   dailyActivityConfigs,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   dailyActivitySessions,
   employees,
   jobAssignments,
@@ -41,26 +43,33 @@ let dailyActivitySeedPromise: Promise<void> | null = null
 
 // Aktivitas library bersifat global (siteIds kosong) atau tersedia untuk site yang
 // terdaftar di kolom siteIds. Jika siteIds berisi -1 (Non Global), maka tidak pernah match ke karyawan manapun (tidak tampil di mobile).
-function librarySiteMatches(siteIdCol: AnyPgColumn, siteIdsCol: AnyPgColumn, employeeSiteId: number | null | undefined) {
+export function librarySiteMatches(siteIdCol: AnyPgColumn, siteIdsCol: AnyPgColumn, employeeSiteId: number | null | undefined) {
+  // Aktivitas yang berstatus Non Global (-1) TIDAK PERNAH match ke karyawan manapun (tidak tampil di mobile)
+  const isNotNonGlobal = and(
+    sql`(${siteIdCol} is null or ${siteIdCol} != -1)`,
+    sql`(${siteIdsCol} is null or not (${siteIdsCol} @> '[-1]'::jsonb))`
+  )
+
+  const isGlobal = and(
+    isNull(siteIdCol),
+    sql`(${siteIdsCol} is null or jsonb_array_length(${siteIdsCol}) = 0)`
+  )
+
   if (employeeSiteId == null) {
-    return and(
-      or(isNull(siteIdCol), sql`${siteIdCol} != -1`),
-      sql`(${siteIdsCol} is null or (jsonb_array_length(${siteIdsCol}) = 0 and not (${siteIdsCol} @> '[-1]'::jsonb)))`
-    )
+    return and(isNotNonGlobal, isGlobal)
   }
-  return or(
-    and(
-      or(isNull(siteIdCol), sql`${siteIdCol} != -1`),
-      sql`(${siteIdsCol} is null or (jsonb_array_length(${siteIdsCol}) = 0 and not (${siteIdsCol} @> '[-1]'::jsonb)))`
-    ),
+
+  const isMatchedSite = or(
     eq(siteIdCol, employeeSiteId),
     sql`${siteIdsCol} @> jsonb_build_array(${employeeSiteId}::integer)`
   )
+
+  return and(isNotNonGlobal, or(isGlobal, isMatchedSite))
 }
 
 // Cocokkan departement: jika departmentId DAN departmentIds sama-sama kosong/null → global (tampilkan).
 // Jika salah satu terisi, cek apakah dept karyawan termasuk di dalamnya.
-function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, employeeDeptId: number | null | undefined) {
+export function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, employeeDeptId: number | null | undefined) {
   if (employeeDeptId == null) {
     // Karyawan tidak punya departemen → hanya tampilkan yang global (kedua kolom kosong/null)
     return and(
@@ -82,7 +91,7 @@ function libraryDeptMatches(deptIdCol: AnyPgColumn, deptIdsCol: AnyPgColumn, emp
 }
 
 // Cocokkan section: sama dengan dept, mendukung legacy single col + JSONB array.
-function librarySectionMatches(secIdCol: AnyPgColumn, secIdsCol: AnyPgColumn, employeeSecId: number | null | undefined) {
+export function librarySectionMatches(secIdCol: AnyPgColumn, secIdsCol: AnyPgColumn, employeeSecId: number | null | undefined) {
   if (employeeSecId == null) {
     return and(
       isNull(secIdCol),
@@ -824,10 +833,10 @@ async function getMatchedRouteChecklistForEmployee(
         itemDescription: activityRouteItems.itemDescription,
         pointOverride: activityRouteItems.pointOverride,
         sortOrder: activityRouteItems.sortOrder,
-        requiresUnit: sql<boolean>`coalesce(${activityRouteItems.requiresUnit}, ${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresUnit: sql<boolean>`(${activityRouteItems.requiresUnit} OR coalesce(${activityLibraries.requiresEquipmentNo}, false))`,
         requiresTime: sql<boolean>`coalesce(${activityRouteItems.requiresTime}, ${activityLibraries.requiresDuration}, false)`,
         requiresRemark: activityRouteItems.requiresRemark,
-        requiresPhoto: sql<boolean>`coalesce(${activityRouteItems.requiresPhoto}, ${activityLibraries.requiresPhoto}, false)`,
+        requiresPhoto: sql<boolean>`(${activityRouteItems.requiresPhoto} OR coalesce(${activityLibraries.requiresPhoto}, false))`,
         requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
         requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
         requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
@@ -841,7 +850,19 @@ async function getMatchedRouteChecklistForEmployee(
       .from(activityRouteItems)
       .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
       .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
-      .where(eq(activityRouteGroups.routeTemplateId, matchedRouteTemplate.id))
+      .where(
+        and(
+          eq(activityRouteGroups.routeTemplateId, matchedRouteTemplate.id),
+          or(
+            isNull(activityRouteItems.libraryActivityId),
+            and(
+              eq(activityLibraries.isActive, true),
+              sql`(${activityLibraries.siteId} is null or ${activityLibraries.siteId} != -1)`,
+              sql`(${activityLibraries.siteIds} is null or not (${activityLibraries.siteIds} @> '[-1]'::jsonb))`
+            )
+          )
+        )
+      )
       .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
     db
       .select({
@@ -1362,6 +1383,10 @@ async function ensureDailyActivityTables() {
 
   await db.execute(sql`
     alter table hero_activity_libraries add column if not exists site_id integer references hero_sites(id) on delete set null;
+    alter table hero_activity_libraries add column if not exists site_ids jsonb default '[]'::jsonb;
+    alter table hero_activity_libraries add column if not exists department_ids jsonb default '[]'::jsonb;
+    alter table hero_activity_libraries add column if not exists section_ids jsonb default '[]'::jsonb;
+    alter table hero_activity_libraries add column if not exists requires_tire_count boolean not null default false;
   `)
 
   await db.execute(sql`
@@ -1693,110 +1718,68 @@ async function ensureDailyActivityTables() {
 
   await db.execute(sql`
     alter table hero_activities add column if not exists library_activity_id integer;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists assignment_id integer;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists source_mode text not null default 'self_input';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists custom_activity_name text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists custom_activity_description text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists submission_time timestamp;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists submission_category text not null default 'on_time';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists equipment_no text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists material_used text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists gps_lat text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists gps_lng text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists gps_valid boolean not null default false;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists photo_count integer not null default 0;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists penalty_deducted integer not null default 0;
-  `)
-  await db.execute(sql`
     alter table hero_activities add column if not exists deleted_at timestamp;
-  `)
-  await db.execute(sql`
-    alter table hero_activities
-    add column if not exists deleted_by_employee_id integer references hero_employees(id) on delete set null;
-  `)
-
-  await db.execute(sql`
+    alter table hero_activities add column if not exists deleted_by_employee_id integer references hero_employees(id) on delete set null;
     alter table hero_approvals add column if not exists points_override integer;
-  `)
-  await db.execute(sql`
     alter table hero_approvals add column if not exists rejection_reason text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_approvals add column if not exists points_override_reason text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_approvals add column if not exists created_at timestamp not null default now();
-  `)
-
-  await db.execute(sql`
     alter table hero_point_events add column if not exists transaction_type text not null default 'reward';
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists source_type text not null default 'activity';
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists source_id integer;
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists balance_after integer;
-  `)
-  await db.execute(sql`
     alter table hero_point_events add column if not exists metadata text not null default '';
-  `)
-  await db.execute(sql`
     alter table hero_daily_activity_session_items add column if not exists tire_count integer not null default 0;
   `)
 }
 
 async function seedDailyActivityReferenceData() {
+  const countsResult = await db.execute(sql`
+    SELECT
+      (SELECT count(*)::int FROM hero_daily_activity_configs) as config_count,
+      (SELECT count(*)::int FROM hero_activity_libraries) as library_count,
+      (SELECT count(*)::int FROM hero_streak_records) as streak_count,
+      (SELECT count(*)::int FROM hero_activity_modifiers) as modifier_count,
+      (SELECT count(*)::int FROM hero_activity_route_templates) as route_count
+  `)
+
+  const countsRow = ((countsResult as any)?.rows?.[0] ?? (countsResult as any)?.[0] ?? {}) as Record<string, number>
+  const configCount = Number(countsRow.config_count ?? 0)
+  const libraryCount = Number(countsRow.library_count ?? 0)
+  const streakCount = Number(countsRow.streak_count ?? 0)
+  const modifierCount = Number(countsRow.modifier_count ?? 0)
+  const routeTemplateCount = Number(countsRow.route_count ?? 0)
+
+  // Fast path: if all core reference tables are already seeded, skip heavy employee & master data loading entirely!
+  if (configCount > 0 && libraryCount > 0 && streakCount > 0 && modifierCount > 0 && routeTemplateCount > 0) {
+    return
+  }
+
   const [
     employeeRows,
     departmentRows,
     sectionRows,
     positionRows,
     siteRows,
-    libraryCount,
-    routeTemplateCount,
-    configCount,
-    streakCount,
-    modifierCount,
   ] = await Promise.all([
     db.select().from(employees).where(eq(employees.isActive, true)).orderBy(asc(employees.id)),
     db.select().from(masterDepartments).orderBy(asc(masterDepartments.id)),
     db.select().from(masterSections).orderBy(asc(masterSections.id)),
     db.select().from(masterPositions).orderBy(asc(masterPositions.id)),
     db.select().from(sites).where(eq(sites.isActive, true)).orderBy(asc(sites.id)),
-    db.select({ count: sql<number>`count(*)::int` }).from(activityLibraries),
-    db.select({ count: sql<number>`count(*)::int` }).from(activityRouteTemplates),
-    db.select({ count: sql<number>`count(*)::int` }).from(dailyActivityConfigs),
-    db.select({ count: sql<number>`count(*)::int` }).from(streakRecords),
-    db.select({ count: sql<number>`count(*)::int` }).from(activityModifiers),
   ])
 
   const creatorEmployee =
@@ -1819,7 +1802,7 @@ async function seedDailyActivityReferenceData() {
     positionRows[0] ??
     null
 
-  if ((libraryCount[0]?.count ?? 0) === 0 && creatorEmployee) {
+  if (libraryCount === 0 && creatorEmployee) {
     await db.insert(activityLibraries).values(
       DEFAULT_LIBRARY_SEEDS.map((item) => ({
         activityCode: item.activityCode,
@@ -1852,7 +1835,7 @@ async function seedDailyActivityReferenceData() {
     )
   }
 
-  if ((configCount[0]?.count ?? 0) === 0) {
+  if (configCount === 0) {
     await db.insert(dailyActivityConfigs).values(
       DEFAULT_CONFIG_SEEDS.map((config) => ({
         siteId: defaultSite?.id ?? null,
@@ -1870,7 +1853,7 @@ async function seedDailyActivityReferenceData() {
     )
   }
 
-  if ((streakCount[0]?.count ?? 0) === 0 && employeeRows.length > 0) {
+  if (streakCount === 0 && employeeRows.length > 0) {
     await db.insert(streakRecords).values(
       employeeRows.slice(0, 8).map((employee, index) => ({
         employeeId: employee.id,
@@ -1884,7 +1867,7 @@ async function seedDailyActivityReferenceData() {
     )
   }
 
-  if ((modifierCount[0]?.count ?? 0) === 0 && creatorEmployee && defaultSite) {
+  if (modifierCount === 0 && creatorEmployee && defaultSite) {
     await db.insert(activityModifiers).values([
       {
         siteId: defaultSite.id,
@@ -1900,7 +1883,7 @@ async function seedDailyActivityReferenceData() {
     ])
   }
 
-  if ((routeTemplateCount[0]?.count ?? 0) === 0 && creatorEmployee) {
+  if (routeTemplateCount === 0 && creatorEmployee) {
     const [libraryRows] = await Promise.all([
       db
         .select({
@@ -2071,14 +2054,16 @@ export async function ensureDailyActivitySeedData() {
   }
 
   dailyActivitySeedPromise = (async () => {
-    await ensureHeroGovernanceSeedData()
-    await ensureDailyActivityTables()
-    await seedDailyActivityReferenceData()
-    globalDailyActivityState.__heroDailyActivitySeedReady = true
-  })().catch((error) => {
-    dailyActivitySeedPromise = null
-    throw error
-  })
+    try {
+      await ensureHeroGovernanceSeedData()
+      await ensureDailyActivityTables()
+      await seedDailyActivityReferenceData()
+      globalDailyActivityState.__heroDailyActivitySeedReady = true
+    } catch (error) {
+      dailyActivitySeedPromise = null
+      console.warn('[daily-activity] ensureDailyActivitySeedData warning:', (error as any)?.message || error)
+    }
+  })()
 
   return dailyActivitySeedPromise
 }
@@ -2181,6 +2166,7 @@ async function getAvailableRouteFoldersForEmployee(
       ...template,
       score: getRouteTemplateScore(template, employee, shiftAliases),
     }))
+    .filter((template) => template.score >= 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score
@@ -2218,10 +2204,10 @@ async function getAvailableRouteFoldersForEmployee(
         itemDescription: activityRouteItems.itemDescription,
         pointOverride: activityRouteItems.pointOverride,
         sortOrder: activityRouteItems.sortOrder,
-        requiresUnit: sql<boolean>`coalesce(${activityRouteItems.requiresUnit}, ${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresUnit: sql<boolean>`(${activityRouteItems.requiresUnit} OR coalesce(${activityLibraries.requiresEquipmentNo}, false))`,
         requiresTime: sql<boolean>`coalesce(${activityRouteItems.requiresTime}, ${activityLibraries.requiresDuration}, false)`,
         requiresRemark: activityRouteItems.requiresRemark,
-        requiresPhoto: sql<boolean>`coalesce(${activityRouteItems.requiresPhoto}, ${activityLibraries.requiresPhoto}, false)`,
+        requiresPhoto: sql<boolean>`(${activityRouteItems.requiresPhoto} OR coalesce(${activityLibraries.requiresPhoto}, false))`,
         requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
         requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
         requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
@@ -2235,7 +2221,21 @@ async function getAvailableRouteFoldersForEmployee(
       .from(activityRouteItems)
       .leftJoin(activityLibraries, eq(activityRouteItems.libraryActivityId, activityLibraries.id))
       .innerJoin(activityRouteGroups, eq(activityRouteItems.routeGroupId, activityRouteGroups.id))
-      .where(inArray(activityRouteGroups.routeTemplateId, templateIds))
+      .where(
+        and(
+          inArray(activityRouteGroups.routeTemplateId, templateIds),
+          or(
+            isNull(activityRouteItems.libraryActivityId),
+            and(
+              eq(activityLibraries.isActive, true),
+              sql`(${activityLibraries.siteId} is null or ${activityLibraries.siteId} != -1)`,
+              sql`(${activityLibraries.siteIds} is null or not (${activityLibraries.siteIds} @> '[-1]'::jsonb))`,
+              libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, employee.departmentId),
+              librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, employee.sectionId)
+            )
+          )
+        )
+      )
       .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
   ])
 
@@ -2320,6 +2320,30 @@ export async function getDailyActivityEmployeeData(
     viewSectionId != null ? eq(employees.sectionId, viewSectionId) : undefined,
   ].filter(Boolean)
   const activityScopePredicate = activityEmployeeScope.length > 0 ? and(...activityEmployeeScope) : sql`true`
+  const sessionScopePredicate =
+    viewScope === 'own'
+      ? or(
+          eq(dailyActivitySessions.employeeId, employee.id),
+          inArray(
+            dailyActivitySessions.id,
+            db
+              .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+              .from(dailyActivitySessionTeamMembers)
+              .where(eq(dailyActivitySessionTeamMembers.employeeId, employee.id))
+          ),
+          inArray(
+            dailyActivitySessions.id,
+            db
+              .select({ sessionId: dailyActivitySessionItems.sessionId })
+              .from(dailyActivitySessionItems)
+              .innerJoin(
+                dailyActivitySessionItemTeamMembers,
+                eq(dailyActivitySessionItems.id, dailyActivitySessionItemTeamMembers.itemId)
+              )
+              .where(eq(dailyActivitySessionItemTeamMembers.employeeId, employee.id))
+          )
+        )
+      : activityScopePredicate
   const maxRowsLimit = options.limit && options.limit > 0 ? options.limit : 100
 
   const [
@@ -2414,7 +2438,7 @@ export async function getDailyActivityEmployeeData(
         })
         .from(dailyActivitySessions)
         .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-        .where(and(activityScopePredicate, isNull(dailyActivitySessions.deletedAt)))
+        .where(and(sessionScopePredicate, isNull(dailyActivitySessions.deletedAt)))
         .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
         .limit(maxRowsLimit),
       db
@@ -2485,7 +2509,10 @@ export async function getDailyActivityEmployeeData(
         .where(
           and(
             eq(activityLibraries.isActive, true),
-            librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, employee.siteId)
+            eq(activityLibraries.isSelfInput, true),
+            librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, employee.siteId),
+            libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, employee.departmentId),
+            librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, employee.sectionId)
           )
         )
         .orderBy(desc(activityLibraries.basePoints), asc(activityLibraries.activityName)),
@@ -2508,7 +2535,7 @@ export async function getDailyActivityEmployeeData(
       : null
 
   const sessionIds = sessionRows.map((s) => s.id)
-  const [sessionItemRows, sessionApprovalRows] = await Promise.all([
+  const [sessionItemRows, sessionApprovalRows, sessionTeamRows] = await Promise.all([
     sessionIds.length > 0
       ? db
           .select({
@@ -2542,6 +2569,42 @@ export async function getDailyActivityEmployeeData(
           .where(inArray(dailyActivityApprovals.sessionId, sessionIds))
           .orderBy(asc(dailyActivityApprovals.stepOrder))
       : Promise.resolve([]),
+    sessionIds.length > 0
+      ? Promise.all([
+          db
+            .select({
+              sessionId: dailyActivitySessionTeamMembers.sessionId,
+              employeeId: dailyActivitySessionTeamMembers.employeeId,
+              employeeName: employees.name,
+              jobTitle: employees.jobTitle,
+            })
+            .from(dailyActivitySessionTeamMembers)
+            .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+            .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds)),
+          db
+            .select({
+              sessionId: dailyActivitySessionItems.sessionId,
+              employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+              employeeName: employees.name,
+              jobTitle: employees.jobTitle,
+            })
+            .from(dailyActivitySessionItemTeamMembers)
+            .innerJoin(
+              dailyActivitySessionItems,
+              eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+            )
+            .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+            .where(inArray(dailyActivitySessionItems.sessionId, sessionIds)),
+        ]).then(([sTeam, iTeam]) => {
+          const map = new Map<string, (typeof sTeam)[number]>()
+          for (const t of sTeam) map.set(`${t.sessionId}_${t.employeeId}`, t)
+          for (const t of iTeam) {
+            const key = `${t.sessionId}_${t.employeeId}`
+            if (!map.has(key)) map.set(key, t)
+          }
+          return Array.from(map.values())
+        })
+      : Promise.resolve([]),
   ])
 
   const itemsBySessionId = new Map<number, typeof sessionItemRows>()
@@ -2558,6 +2621,13 @@ export async function getDailyActivityEmployeeData(
     approvalsBySessionId.set(app.sessionId, list)
   }
 
+  const teamMembersBySessionId = new Map<number, typeof sessionTeamRows>()
+  for (const tm of sessionTeamRows) {
+    const list = teamMembersBySessionId.get(tm.sessionId) ?? []
+    list.push(tm)
+    teamMembersBySessionId.set(tm.sessionId, list)
+  }
+
   const mappedSessionActivities = sessionRows.map((s) => {
     const items = itemsBySessionId.get(s.id) ?? []
     const approvals = approvalsBySessionId.get(s.id) ?? []
@@ -2571,6 +2641,18 @@ export async function getDailyActivityEmployeeData(
     const totalPoints = items.reduce((acc, it) => acc + (it.actualPoints || 5), 0)
     const startTime = firstItem?.startedAt ?? s.workDate
     const endTime = items[items.length - 1]?.endedAt ?? s.workDate
+
+    const teamList = teamMembersBySessionId.get(s.id) ?? []
+    const isTeam = teamList.length > 0 || Boolean(s.summaryRemark && s.summaryRemark.includes('[Team:'))
+    const isMember =
+      s.employeeId !== employee.id &&
+      (teamList.some((t) => t.employeeId === employee.id) ||
+        Boolean(
+          s.summaryRemark &&
+            employee.name &&
+            s.summaryRemark.toLowerCase().includes(employee.name.toLowerCase().trim())
+        ))
+    const teamNames = teamList.map((t) => t.employeeName).filter(Boolean).join(', ')
 
     return {
       id: s.id,
@@ -2598,8 +2680,14 @@ export async function getDailyActivityEmployeeData(
       photoCount: 0,
       remarks: s.summaryRemark || '',
       assignmentId: null,
-      isTeamActivity: false,
-      teamNameList: '',
+      isTeamActivity: isTeam,
+      teamNameList: teamNames,
+      teamMemberCount: teamList.length,
+      teamMembers: teamList.map((t) => ({
+        employeeId: t.employeeId,
+        name: t.employeeName,
+        jobTitle: t.jobTitle,
+      })),
       libraryName: label,
       photos: [] as Array<{ id: number; url: string; caption: string }>,
       durationMinutes: minutesBetween(startTime, endTime),
@@ -2612,9 +2700,10 @@ export async function getDailyActivityEmployeeData(
       pendingApproverName: pendingApp?.approverName ?? (s.status === 'submitted' ? 'Approver L1' : null),
       authorEmployeeId: s.employeeId,
       employeeName: s.employeeName || 'Karyawan',
+      representedByName: isMember ? (s.employeeName || 'Rekan Tim') : null,
       isAuthor: s.employeeId === employee.id,
       isApprover: false,
-      isTeamMember: Boolean(s.summaryRemark && employee.name && s.summaryRemark.toLowerCase().includes(employee.name.toLowerCase().trim())),
+      isTeamMember: isMember,
     }
   })
 
@@ -2709,7 +2798,11 @@ export async function getDailyActivityEmployeeData(
         .where(
           and(
             inArray(activityLibraries.id, uniqueRouteLibraryIds),
-            eq(activityLibraries.isActive, true)
+            eq(activityLibraries.isActive, true),
+            sql`(${activityLibraries.siteId} is null or ${activityLibraries.siteId} != -1)`,
+            sql`(${activityLibraries.siteIds} is null or not (${activityLibraries.siteIds} @> '[-1]'::jsonb))`,
+            libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, employee.departmentId),
+            librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, employee.sectionId)
           )
         )
     : []
@@ -3536,7 +3629,12 @@ export async function getDailyActivityLibraryData(email?: string | null) {
               .filter((name): name is string => Boolean(name))
               .join(', ') || null
           : row.sectionName,
-      children: groupChildrenByCode.get(row.activityCode) ?? [],
+      children:
+        groupChildrenByCode.get(row.activityCode) ??
+        groupChildrenByCode.get(row.activityCode.trim().toLowerCase()) ??
+        groupChildrenByCode.get(row.activityName) ??
+        groupChildrenByCode.get(row.activityName.trim().toLowerCase()) ??
+        [],
     }
   })
 
@@ -3631,10 +3729,10 @@ export async function getDailyActivityRouteBuilderData(email?: string | null) {
         itemDescription: activityRouteItems.itemDescription,
         pointOverride: activityRouteItems.pointOverride,
         sortOrder: activityRouteItems.sortOrder,
-        requiresUnit: sql<boolean>`coalesce(${activityRouteItems.requiresUnit}, ${activityLibraries.requiresEquipmentNo}, false)`,
+        requiresUnit: sql<boolean>`(${activityRouteItems.requiresUnit} OR coalesce(${activityLibraries.requiresEquipmentNo}, false))`,
         requiresTime: sql<boolean>`coalesce(${activityRouteItems.requiresTime}, ${activityLibraries.requiresDuration}, false)`,
         requiresRemark: activityRouteItems.requiresRemark,
-        requiresPhoto: sql<boolean>`coalesce(${activityRouteItems.requiresPhoto}, ${activityLibraries.requiresPhoto}, false)`,
+        requiresPhoto: sql<boolean>`(${activityRouteItems.requiresPhoto} OR coalesce(${activityLibraries.requiresPhoto}, false))`,
         requiresLocationGps: sql<boolean>`coalesce(${activityLibraries.requiresLocationGps}, false)`,
         requiresMaterialUsed: sql<boolean>`coalesce(${activityLibraries.requiresMaterialUsed}, false)`,
         requiresTireCount: sql<boolean>`coalesce(${activityLibraries.requiresTireCount}, false)`,
@@ -3920,6 +4018,7 @@ async function getActivityLibraryGroupChildrenByCode(): Promise<Map<string, Acti
   const childRows = await db
     .select({
       parentCode: activityRouteTemplates.routeCode,
+      parentName: activityRouteTemplates.routeName,
       childId: activityLibraries.id,
       childCode: activityLibraries.activityCode,
       childName: activityLibraries.activityName,
@@ -3933,15 +4032,26 @@ async function getActivityLibraryGroupChildrenByCode(): Promise<Map<string, Acti
 
   const byCode = new Map<string, ActivityLibraryGroupChild[]>()
   for (const rowItem of childRows) {
-    const parentCode = rowItem.parentCode.replace(/^GRP-/, '')
-    const list = byCode.get(parentCode) ?? []
-    if (list.some((child) => child.id === rowItem.childId)) continue
-    list.push({
-      id: rowItem.childId,
-      activityCode: rowItem.childCode,
-      activityName: rowItem.childName,
-    })
-    byCode.set(parentCode, list)
+    const rawCode = rowItem.parentCode.replace(/^GRP-/i, '').trim()
+    const rawName = (rowItem.parentName || '').replace(/^Group:\s*/i, '').trim()
+    const keys = [
+      rawCode,
+      rawCode.toLowerCase(),
+      rawName,
+      rawName.toLowerCase(),
+    ].filter(Boolean)
+
+    for (const key of keys) {
+      const list = byCode.get(key) ?? []
+      if (!list.some((child) => child.id === rowItem.childId)) {
+        list.push({
+          id: rowItem.childId,
+          activityCode: rowItem.childCode,
+          activityName: rowItem.childName,
+        })
+      }
+      byCode.set(key, list)
+    }
   }
   return byCode
 }

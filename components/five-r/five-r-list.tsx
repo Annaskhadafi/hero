@@ -21,7 +21,6 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react'
-import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -169,7 +168,7 @@ export function FiveRList({
         ).toFixed(1)
       : '0.0'
 
-  function exportToExcel() {
+  async function exportToExcel() {
     const exportData = filtered.map((r, idx) => ({
       No: idx + 1,
       'No. Laporan': r.reportNumber,
@@ -194,6 +193,7 @@ export function FiveRList({
       'Level Approval': `Level ${r.currentApprovalLevel}`,
     }))
 
+    const XLSX = await import('xlsx')
     const worksheet = XLSX.utils.json_to_sheet(exportData)
     const workbook = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Laporan 5R')

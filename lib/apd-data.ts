@@ -1,15 +1,29 @@
 import { db } from "@/db";
-import { apdRequests, apdRequestItems, employees, masterDepartments, masterSections, sites, approvals } from "@/db/schema/hero";
+import { apdRequests, apdRequestItems, employees, masterDepartments, masterSections, sites, approvals, masterApd } from "@/db/schema";
 import { eq, desc, and, asc, sql } from "drizzle-orm";
 import { type ApdRequestCategory, APD_ITEMS, type ApproverOption } from "@/lib/apd-status";
 export { APD_ITEMS, type ApproverOption };
+
+export function getRequestedForLabel(requestedFor?: string | null): string {
+  switch (requestedFor?.toLowerCase()) {
+    case "service":
+      return "Service";
+    case "repair":
+      return "Repair";
+    case "self":
+    default:
+      return "Diri sendiri";
+  }
+}
 
 let apdSchemaReady: Promise<void> | null = null;
 
 export function ensureApdRequestSchema() {
   apdSchemaReady ??= db.execute(sql`
     ALTER TABLE hero_apd_requests
-    ADD COLUMN IF NOT EXISTS request_category text NOT NULL DEFAULT 'APD'
+    ADD COLUMN IF NOT EXISTS request_category text NOT NULL DEFAULT 'APD',
+    ADD COLUMN IF NOT EXISTS target_section_id integer REFERENCES hero_master_sections(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS requested_for text NOT NULL DEFAULT 'self';
   `).then(() => undefined).catch((error) => {
     apdSchemaReady = null;
     throw error;
@@ -25,11 +39,14 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
       requestNumber: apdRequests.requestNumber,
       requestDate: apdRequests.requestDate,
       requestCategory: apdRequests.requestCategory,
+      requestedFor: apdRequests.requestedFor,
       status: apdRequests.status,
       notes: apdRequests.notes,
       employeeName: employees.name,
       employeeSn: employees.employeeSn,
       departmentName: masterDepartments.name,
+      sectionId: masterSections.id,
+      sectionName: masterSections.name,
       siteName: sites.name,
       employeeId: apdRequests.employeeId,
       pendingWith: approvals.approverName,
@@ -37,6 +54,7 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
     .from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
     .leftJoin(sites, eq(apdRequests.siteId, sites.id))
     .leftJoin(
       approvals,
@@ -55,6 +73,19 @@ export async function fetchApdRequests(currentEmployeeId?: number) {
   return rows;
 }
 
+export async function fetchMasterSections() {
+  const sections = await db
+    .select({
+      id: masterSections.id,
+      name: masterSections.name,
+      code: masterSections.code,
+    })
+    .from(masterSections)
+    .where(eq(masterSections.isActive, true))
+    .orderBy(asc(masterSections.name));
+  return sections;
+}
+
 export async function fetchApdRequestById(id: number) {
   await ensureApdRequestSchema();
   const [request] = await db
@@ -63,6 +94,8 @@ export async function fetchApdRequestById(id: number) {
       requestNumber: apdRequests.requestNumber,
       requestDate: apdRequests.requestDate,
       requestCategory: apdRequests.requestCategory,
+      requestedFor: apdRequests.requestedFor,
+      targetSectionId: apdRequests.targetSectionId,
       status: apdRequests.status,
       notes: apdRequests.notes,
       signatureUrl: apdRequests.signatureUrl,
@@ -138,15 +171,68 @@ export async function fetchApdRequestById(id: number) {
   return { ...request, items, approvalHistory: resolvedHistory };
 }
 
-export async function fetchApdItemOptions(category: ApdRequestCategory) {
+export type ApdMasterItemDetail = {
+  id: number;
+  code: string;
+  name: string;
+  category: string;
+  unit: string;
+  hasSize: boolean;
+  sizeOptions: string[];
+};
+
+export async function fetchApdMasterDetails(category?: ApdRequestCategory): Promise<ApdMasterItemDetail[]> {
   await ensureApdRequestSchema();
   const rows = await db
-    .select({ itemType: apdRequestItems.itemType })
-    .from(apdRequestItems)
-    .innerJoin(apdRequests, eq(apdRequestItems.requestId, apdRequests.id))
-    .where(eq(apdRequests.requestCategory, category));
+    .select({
+      id: masterApd.id,
+      code: masterApd.code,
+      name: masterApd.name,
+      category: masterApd.category,
+      unit: masterApd.unit,
+      hasSize: masterApd.hasSize,
+      sizeOptions: masterApd.sizeOptions,
+    })
+    .from(masterApd)
+    .where(eq(masterApd.isActive, true))
+    .orderBy(asc(masterApd.code));
 
-  return [...new Set(rows.map((row) => row.itemType.trim().toUpperCase()).filter(Boolean))].sort();
+  const mapped = rows.map((r) => ({
+    ...r,
+    sizeOptions: Array.isArray(r.sizeOptions) ? r.sizeOptions.filter((s): s is string => typeof s === 'string' && Boolean(s.trim())) : [],
+  }));
+
+  if (category) {
+    return mapped.filter((r) => r.category.toUpperCase() === category.toUpperCase());
+  }
+
+  return mapped;
+}
+
+export async function fetchApdItemOptions(category: ApdRequestCategory) {
+  await ensureApdRequestSchema();
+  
+  // Primary source: Master Data APD table (hero_master_apd)
+  const masterRows = await db
+    .select({ name: masterApd.name, category: masterApd.category })
+    .from(masterApd)
+    .where(eq(masterApd.isActive, true));
+
+  let items = masterRows
+    .filter((r) => r.category.toUpperCase() === category.toUpperCase())
+    .map((r) => r.name);
+
+  // Fallback to historic request items if master table has no items for this category
+  if (items.length === 0) {
+    const rows = await db
+      .select({ itemType: apdRequestItems.itemType })
+      .from(apdRequestItems)
+      .innerJoin(apdRequests, eq(apdRequestItems.requestId, apdRequests.id))
+      .where(eq(apdRequests.requestCategory, category));
+    items = rows.map((row) => row.itemType);
+  }
+
+  return [...new Set(items.map((row) => row.trim()).filter(Boolean))].sort();
 }
 
 export async function fetchApproverOptions(): Promise<ApproverOption[]> {

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { desc, eq, asc, and, inArray } from "drizzle-orm";
+import { desc, eq, asc, and, inArray, ne, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -53,15 +53,16 @@ async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): P
 export default async function MobileActivityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string; edit?: string }>;
+  searchParams: Promise<{ submitted?: string; spl?: string; tab?: string; edit?: string; draft?: string }>;
 }) {
   const session = await getServerSession();
   if (!session?.user?.email) redirect("/sign-in");
   const query = await searchParams;
   const submitted = query.submitted === "1";
   const submittedSpl = submitted && query.spl === "1";
-  const tabQuery = query.tab || (query.edit ? 'apply' : undefined);
+  const tabQuery = query.tab || (query.edit || query.draft ? 'apply' : undefined);
   const editSessionId = query.edit;
+  const draftQuery = query.draft;
 
   // Step 1: Core parallel fetch for employee DAR data, DAR approval center, and master references
   const [data, rawSections, rawDepartments, rawSites, approvals] = await Promise.all([
@@ -119,10 +120,9 @@ export default async function MobileActivityPage({
   // Parse edit session ID if present
   let editSessionPromise: Promise<any> = Promise.resolve(null);
   if (editSessionId) {
-    const numericId = editSessionId.replace(/[^0-9]/g, "");
-    const sessionIdVal = numericId && !isNaN(Number(numericId)) && Number(numericId) > 0
-      ? Number(numericId)
-      : editSessionId;
+    const trimmedId = editSessionId.trim();
+    const isPureNumeric = /^\d+$/.test(trimmedId);
+    const sessionIdVal = isPureNumeric ? Number(trimmedId) : trimmedId;
     editSessionPromise = safeQuery(
       () => getDailyActivityApprovalData(sessionIdVal, session.user.email),
       null,
@@ -163,21 +163,25 @@ export default async function MobileActivityPage({
             department: employees.department,
             siteId: employees.siteId,
             sectionId: employees.sectionId,
+            section: employees.section,
+            employeeSn: employees.employeeSn,
             employeeId: employees.employeeSn,
             jobTitle: employees.jobTitle,
+            siteName: sites.name,
           })
           .from(employees)
+          .leftJoin(sites, eq(employees.siteId, sites.id))
+          .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
           .where(
             and(
               eq(employees.isActive, true),
-              data.employee.siteId && data.employee.sectionId
-                ? and(eq(employees.siteId, data.employee.siteId), eq(employees.sectionId, data.employee.sectionId))
-                : data.employee.siteId
-                  ? eq(employees.siteId, data.employee.siteId)
-                  : undefined
+              ne(employees.id, data.employee.id)
             )
           )
-          .orderBy(asc(employees.name)),
+          .orderBy(
+            sql`CASE WHEN ${employees.siteId} = ${data.employee.siteId || 0} THEN 0 ELSE 1 END`,
+            asc(employees.name)
+          ),
       [],
       "teamMembers"
     ),
@@ -238,6 +242,7 @@ export default async function MobileActivityPage({
       submitted={submitted}
       submittedSpl={submittedSpl}
       tabQuery={tabQuery}
+      draftQuery={draftQuery}
       editSessionData={editSessionData}
       approvals={approvals}
     />

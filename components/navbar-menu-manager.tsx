@@ -129,6 +129,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { transformToEmbedUrl } from "@/lib/iframe-embed-helper";
 
 // 50+ Visual Icon Registry categorized for easy selection
 export const ICON_REGISTRY: Record<
@@ -697,7 +698,13 @@ function SortableItem({
             </Badge>
           )}
         </div>
-        <p className="text-xs text-muted-foreground truncate mt-0.5">{item.url}</p>
+        <p className="text-xs text-muted-foreground truncate mt-0.5 font-mono">
+          {item.isIframe ? (
+            <span className="text-slate-400 dark:text-slate-500">•••••••••••••••• (URL Terproteksi)</span>
+          ) : (
+            item.url
+          )}
+        </p>
       </div>
 
       {/* Inline Quick Switches (Tampil & Tab Baru) */}
@@ -710,14 +717,16 @@ function SortableItem({
           />
           <span className="text-[11px] font-medium hidden sm:inline">Tampil</span>
         </label>
-        <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-400 select-none">
-          <Switch
-            checked={item.openInNewTab}
-            onCheckedChange={(checked) => onToggleOpenInNewTab(item, checked)}
-            className="scale-75 origin-right"
-          />
-          <span className="text-[11px] font-medium hidden sm:inline">Tab baru</span>
-        </label>
+        {!item.isIframe && (
+          <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 dark:text-slate-400 select-none">
+            <Switch
+              checked={item.openInNewTab}
+              onCheckedChange={(checked) => onToggleOpenInNewTab(item, checked)}
+              className="scale-75 origin-right"
+            />
+            <span className="text-[11px] font-medium hidden sm:inline">Tab baru</span>
+          </label>
+        )}
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
@@ -1097,6 +1106,7 @@ function MenuFormDialog({
 
   const SelectedIconComp = ICON_REGISTRY[iconName]?.component || IconChecklist;
   const finalSection = useCustomSection ? customSection : section;
+  const embedCheck = useMemo(() => transformToEmbedUrl(url), [url]);
 
   return (
     <>
@@ -1270,18 +1280,54 @@ function MenuFormDialog({
                 </Label>
                 <Switch id="isVisible-switch" checked={isVisible} onCheckedChange={setIsVisible} />
               </div>
-              <div className="flex items-center justify-between">
-                <Label className="cursor-pointer text-xs" htmlFor="openInNewTab-switch">
-                  Buka di tab baru (External Link)
-                </Label>
-                <Switch id="openInNewTab-switch" checked={openInNewTab} onCheckedChange={setOpenInNewTab} />
-              </div>
+              {!isIframe && (
+                <div className="flex items-center justify-between">
+                  <Label className="cursor-pointer text-xs" htmlFor="openInNewTab-switch">
+                    Buka di tab baru (External Link)
+                  </Label>
+                  <Switch id="openInNewTab-switch" checked={openInNewTab} onCheckedChange={setOpenInNewTab} />
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <Label className="cursor-pointer text-xs" htmlFor="isIframe-switch">
                   Buka sebagai Iframe di HERO
                 </Label>
-                <Switch id="isIframe-switch" checked={isIframe} onCheckedChange={setIsIframe} />
+                <Switch
+                  id="isIframe-switch"
+                  checked={isIframe}
+                  onCheckedChange={(val) => {
+                    setIsIframe(val);
+                    if (val) setOpenInNewTab(false);
+                  }}
+                />
               </div>
+
+              {isIframe && (
+                <div className="mt-1 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2">
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    💡 <strong>Bebas Batasan & Terproteksi:</strong> URL asli disembunyikan dan diakses secara aman di dalam sistem HERO.
+                  </div>
+                  {embedCheck.isTransformed && embedCheck.url !== url && (
+                    <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-emerald-800 dark:text-emerald-200">
+                        ✨ Format embed <strong>{embedCheck.platform}</strong> tersedia.
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white border-0 font-medium shrink-0"
+                        onClick={() => {
+                          setUrl(embedCheck.url);
+                          toast.success(`URL dioptimasi ke format embed ${embedCheck.platform}`);
+                        }}
+                      >
+                        Terapkan
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1301,7 +1347,7 @@ function MenuFormDialog({
                   resource,
                   menuArea,
                   isVisible,
-                  openInNewTab,
+                  openInNewTab: isIframe ? false : openInNewTab,
                   isIframe,
                   parentId: parentId && parentId !== "none" ? parseInt(parentId) : null,
                   sortOrder,

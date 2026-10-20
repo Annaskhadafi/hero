@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import {
@@ -9,6 +10,7 @@ import {
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Download,
   Dumbbell,
   FileText,
   FileSignature,
@@ -21,8 +23,11 @@ import {
   ShieldCheck,
   Sparkles,
   Timer,
+  TrendingUp,
   Trophy,
   UserRound,
+  Heart,
+  Store,
   X,
 } from 'lucide-react'
 
@@ -39,6 +44,7 @@ import { mobileActivityDrawerItem } from '@/lib/activity-navigation'
 import { isMobileHrefAllowed, type MobileAllowedLink } from '@/lib/mobile-access'
 import { useMobilePermissions } from '@/components/mobile/permission-provider'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 type NotificationCountResponse = {
   count: number
@@ -133,10 +139,15 @@ export function MobileAppShell({
     { type: 'link', label: 'Service Form', href: '/mobile/service-form', icon: FileSignature, resource: 'service360_service_form' },
     { type: 'link', label: 'ChitraLearning LMS', href: '/mobile/chitralearning', icon: BookOpen, resource: 'chitralearning_lms_workspace' },
     { type: 'link', label: 'Training', href: '/mobile/training', icon: ShieldAlert, resource: 'hc_training_enhanced' },
+    { type: 'link', label: 'Pengajuan Training', href: '/mobile/training/pengajuan', icon: FileText, resource: 'training_pengajuan' },
     { type: 'link', label: 'Wellness', href: '/mobile/wellness', icon: Dumbbell, resource: 'hc_mcu_wellness' },
     { type: 'link', label: 'Leaderboard', href: '/mobile/gamification', icon: Trophy, resource: 'point_setting' },
+    { type: 'link', label: 'Toko Hadiah Poin', href: '/mobile/reward-store', icon: Store, resource: 'point_setting' },
     { type: 'link', label: 'Executive', href: '/mobile/executive', icon: BarChart3, resource: 'ewh_dashboard' },
     { type: 'link', label: 'Cargo Manifest', href: '/mobile/cargo-manifest', icon: Package, resource: 'cargo_manifest' },
+    { type: 'link', label: 'CS Forecast', href: '/mobile/central-service/forecast', icon: TrendingUp, resource: 'cs-forecast' },
+    { type: 'link', label: 'CS Assets', href: '/mobile/central-service/assets', icon: Package, resource: 'central-service-assets' },
+    { type: 'link', label: 'Status Pernikahan', href: '/mobile/central-service/marital-status', icon: Heart, resource: 'central_service_marital_status' },
     { type: 'link', label: 'Profile', href: '/mobile/profile', icon: UserRound },
   ]
 
@@ -293,12 +304,18 @@ export function MobileAppShell({
   }
 
   const [isEmbed, setIsEmbed] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(true)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (window.self !== window.top || window.location.search.includes('embed=1')) {
         setIsEmbed(true)
       }
+      const standalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true ||
+        document.referrer.includes('android-app://')
+      setIsStandalone(standalone)
     }
   }, [])
 
@@ -330,13 +347,16 @@ export function MobileAppShell({
                 >
                   <SheetHeader className="bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(233,246,253,0.88))] px-5 py-5 text-left shadow-[0_14px_30px_rgba(8,32,51,0.08)]">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black tracking-[0.26em] text-[#486275] uppercase">
-                          HERO Mobile
-                        </p>
-                        <SheetTitle className="mt-1 text-xl font-black tracking-tight text-[#082033]">
-                          {userName}
-                        </SheetTitle>
+                      <div className="flex items-center gap-3">
+                        <Image src={resolveUploadUrl('/icon-192.png?v=hero-cat-20261012')} alt="HERO" width={36} height={36} className="size-9 rounded-lg bg-white object-contain" />
+                        <div>
+                          <p className="text-[10px] font-black tracking-[0.26em] text-[#486275] uppercase">
+                            HERO Mobile
+                          </p>
+                          <SheetTitle className="mt-1 text-xl font-black tracking-tight text-[#082033]">
+                            {userName}
+                          </SheetTitle>
+                        </div>
                       </div>
                       <SheetClose asChild>
                         <button
@@ -389,7 +409,35 @@ export function MobileAppShell({
                       )
                     })}
                   </nav>
-                  <div className="px-4 pb-5">
+                  <div className="space-y-2 px-4 pb-5">
+                    {!isStandalone && (
+                      <SheetClose asChild>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const promptEvent = (window as any).__heroDeferredPrompt
+                            if (promptEvent && typeof promptEvent.prompt === 'function') {
+                              try {
+                                await promptEvent.prompt()
+                                const choice = await promptEvent.userChoice
+                                if (choice?.outcome === 'accepted') {
+                                  localStorage.setItem('hero:pwa-installed', 'true')
+                                  setIsStandalone(true)
+                                  return
+                                }
+                              } catch (err) {
+                                console.warn('Native install prompt failed, showing guide dialog:', err)
+                              }
+                            }
+                            window.dispatchEvent(new Event('hero:open-install-prompt'))
+                          }}
+                          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#003461] to-[#005bb5] text-xs font-bold text-white shadow-md shadow-blue-900/10 hover:brightness-110 active:scale-[0.98] transition-all"
+                        >
+                          <Download className="size-4" />
+                          <span>Instal Aplikasi HERO</span>
+                        </button>
+                      </SheetClose>
+                    )}
                     <LogoutButton
                       variant="default"
                       label="Logout"

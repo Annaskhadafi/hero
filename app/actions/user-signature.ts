@@ -4,7 +4,7 @@ import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { asc, eq, ilike, sql } from 'drizzle-orm'
 import { db } from '@/db'
-import { employees } from '@/db/schema/hero'
+import { employees, masterDepartments } from '@/db/schema/hero'
 import { auth } from '@/lib/auth'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
@@ -65,8 +65,10 @@ export async function getUserSignatureAction() {
         signatureRegisteredAt: employees.signatureRegisteredAt,
         name: employees.name,
         employeeSn: employees.employeeSn,
+        departmentName: masterDepartments.name,
       })
       .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
       .where(eq(employees.id, emp.id))
       .limit(1)
 
@@ -80,6 +82,7 @@ export async function getUserSignatureAction() {
       signatureRegisteredAt: finalRegAt,
       employeeName: record?.name || emp.name,
       employeeSn: record?.employeeSn || emp.employeeSn,
+      departmentName: record?.departmentName || 'Human Capital Dept',
     }
   } catch (error: any) {
     console.error('Error fetching user signature:', error)

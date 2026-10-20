@@ -5,6 +5,7 @@ import {
   classifyOvertimePolicyDay,
   normalizeSiteOvertimeConfig,
   overtimeRuleTotalHours,
+  validateSiteOvertimeConfig,
 } from '@/lib/timesheet/overtime-policy'
 
 const activeConfig = normalizeSiteOvertimeConfig({
@@ -73,6 +74,34 @@ describe('scheduling timesheet overtime policy', () => {
     ).toBe('hariKe6')
   })
 
+  it('classifies day 6 for 6:1 roster correctly based on next off day or work streak', () => {
+    const sixOneSchedule = ['DS', 'DS', 'DS', 'DS', 'DS', 'DS', 'OFF']
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: sixOneSchedule,
+        dayIndex: 5,
+        isHoliday: false,
+        rosterType: '6:1',
+      })
+    ).toBe('hariKe6')
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: sixOneSchedule,
+        dayIndex: 4,
+        isHoliday: false,
+        rosterType: '6:1',
+      })
+    ).toBe('hariBiasa')
+    expect(
+      classifyOvertimePolicyDay({
+        schedule: sixOneSchedule,
+        dayIndex: 6,
+        isHoliday: false,
+        rosterType: '6:1',
+      })
+    ).toBe('hariLibur')
+  })
+
   it('counts actual overlap for day and overnight night shifts', () => {
     const day = calculateConfiguredOvertime({
       config: activeConfig,
@@ -101,6 +130,16 @@ describe('scheduling timesheet overtime policy', () => {
       clockOut: '06:00',
     })
     expect(night.totalHours).toBe(4)
+
+    const nightRealistic = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'NS',
+      workDate: '2026-07-01',
+      clockIn: '17:31',
+      clockOut: '05:59',
+    })
+    expect(nightRealistic.totalHours).toBe(4)
   })
 
   it('requires SPL for an OFF day', () => {
@@ -277,5 +316,59 @@ describe('scheduling timesheet overtime policy', () => {
     const pdfWithoutTotal = await generateOvertimeRecordPdf({ ...baseInput, showTotalOvertime: false })
     expect(pdfWithoutTotal).toBeInstanceOf(Uint8Array)
     expect(pdfWithoutTotal.length).toBeGreaterThan(1000)
+
+    // Test with explicit evidenceUrl & verify PDF output structure
+    const pdfWithEvidenceUrl = await generateOvertimeRecordPdf({
+      ...baseInput,
+      employeeId: 42,
+      evidenceUrl: 'https://hero.chitraparatama.co.id/spl-evidence/SPL-001',
+    })
+    expect(pdfWithEvidenceUrl).toBeInstanceOf(Uint8Array)
+    expect(pdfWithEvidenceUrl.length).toBeGreaterThan(1000)
+  })
+
+  it('allows optional empty overtime intervals in site setup and validation', () => {
+    const configWithEmpty = normalizeSiteOvertimeConfig({
+      enabled: true,
+      hariBiasa: {
+        dayShift: [
+          { start: '06:00', end: '08:00' },
+          { start: '', end: '' },
+        ],
+        nightShift: [
+          { start: '', end: '' },
+          { start: '', end: '' },
+        ],
+      },
+    })
+
+    expect(configWithEmpty.hariBiasa.dayShift[1]).toEqual({ start: '', end: '' })
+    expect(configWithEmpty.hariBiasa.nightShift[0]).toEqual({ start: '', end: '' })
+    expect(validateSiteOvertimeConfig(configWithEmpty)).toEqual([])
+
+    const result = calculateConfiguredOvertime({
+      config: configWithEmpty,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '06:00',
+      clockOut: '18:00',
+    })
+    expect(result.totalHours).toBe(2)
+    expect(result.intervals.map((i) => `${i.start}-${i.end}`)).toEqual(['06:00-08:00'])
+
+    const incompleteConfig = normalizeSiteOvertimeConfig({
+      enabled: true,
+      hariBiasa: {
+        dayShift: [
+          { start: '06:00', end: '' },
+          { start: '', end: '' },
+        ],
+      },
+    })
+    const errors = validateSiteOvertimeConfig(incompleteConfig)
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors[0]).toContain('jam mulai/selesai yang tidak lengkap')
   })
 })
+

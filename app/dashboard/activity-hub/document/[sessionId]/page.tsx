@@ -64,6 +64,24 @@ export default async function DailyActivityDocumentPage({
                     <p className="mt-1 text-sm font-semibold text-[#082033]">{item.snapshotLabel}</p>
                     <p className="mt-1 text-sm text-[#486275]">{item.workSummary}</p>
                     
+                    {item.itemPersonnelList && item.itemPersonnelList.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="text-[11px] font-medium text-muted-foreground">Personil:</span>
+                        {item.itemPersonnelList.map((person, pIdx) => (
+                          <span
+                            key={pIdx}
+                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                              person.includes('(PIC)')
+                                ? 'bg-primary/10 text-primary border border-primary/20 font-semibold'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {person}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    
                     {/* Add Image rendering if photoUrl is present */}
                     {item.photoUrl ? (
                       <div className="mt-3">

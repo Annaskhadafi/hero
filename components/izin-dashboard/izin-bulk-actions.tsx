@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Trash2, X, Loader2 } from "lucide-react"
 import { bulkDeleteAttendancePermissionRequests } from "@/app/actions/attendance"
 
+import { toast } from "sonner"
+
 export function IzinBulkDeleteBar({
   selectedIds,
   onClear,
 }: {
-  selectedIds: number[]
+  selectedIds: string[]
   onClear: () => void
 }) {
   const [isPending, startTransition] = useTransition()
@@ -23,10 +25,11 @@ export function IzinBulkDeleteBar({
     startTransition(async () => {
       const result = await bulkDeleteAttendancePermissionRequests(selectedIds)
       if (result.success) {
+        toast.success(result.message || "Data izin berhasil dihapus")
         onClear()
         router.refresh()
       } else {
-        alert(result.error || "Gagal menghapus data.")
+        toast.error(result.error || "Gagal menghapus data.")
       }
     })
   }

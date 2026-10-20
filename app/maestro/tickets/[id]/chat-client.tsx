@@ -266,19 +266,19 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
   const statusCfg = getStatusBanner(ticketStatus, assignedPic?.name)
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-xs">
+    <div className="flex h-full flex-col overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
       {/* Ticket Status Bar & Handover Action */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-5 py-3.5 sm:px-6">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-300 bg-slate-100/90 px-5 py-3 sm:px-6">
+        <div className="flex items-center gap-2.5">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${statusCfg.style}`}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black border ${statusCfg.style}`}
           >
             {statusCfg.icon}
             {statusCfg.label}
           </span>
 
           {ticket.priority === 'urgent' && (
-            <span className="rounded-full bg-rose-50 border border-rose-200/70 px-2.5 py-0.5 text-[10px] font-bold text-rose-700">
+            <span className="rounded-full bg-rose-100 border border-rose-400 px-2.5 py-0.5 text-xs font-black text-rose-950">
               URGENT
             </span>
           )}
@@ -290,7 +290,7 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
             type="button"
             size="sm"
             onClick={() => setIsEscalateModalOpen(true)}
-            className="h-8 gap-1.5 rounded-full bg-amber-500 text-xs font-semibold text-slate-950 hover:bg-amber-400 shadow-2xs transition-colors"
+            className="h-9 gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white px-4 shadow-sm transition-colors cursor-pointer"
           >
             <Headphones className="h-3.5 w-3.5" />
             <span>Minta Bantuan Tim HERO</span>
@@ -300,8 +300,8 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
 
       {/* Resolution Note Alert if Resolved */}
       {ticket.resolutionNotes && (
-        <div className="mx-4 sm:mx-6 my-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/60 p-4 text-xs text-emerald-900 leading-relaxed">
-          <strong className="font-semibold text-emerald-950">Catatan Penyelesaian:</strong> {ticket.resolutionNotes}
+        <div className="mx-4 sm:mx-6 my-3 rounded-xl border-2 border-emerald-400 bg-emerald-100/90 p-3.5 text-xs sm:text-sm text-emerald-950 font-medium leading-relaxed shadow-sm">
+          <strong className="font-black text-emerald-950">Catatan Penyelesaian:</strong> {ticket.resolutionNotes}
         </div>
       )}
 
@@ -310,9 +310,9 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
         {messages.map((msg) => {
           if (msg.senderType === 'system') {
             return (
-              <div key={msg.id} className="flex justify-center my-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100/90 px-3.5 py-1 text-[11px] font-medium text-slate-600 border border-slate-200/60">
-                  <AlertCircle className="h-3 w-3 text-slate-500" />
+              <div key={msg.id} className="flex justify-center my-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-3.5 py-1 text-xs font-bold text-slate-900 border border-slate-300">
+                  <AlertCircle className="h-3.5 w-3.5 text-slate-700" />
                   {msg.message}
                 </span>
               </div>
@@ -331,38 +331,38 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
               {/* Avatar for non-me */}
               {!isMe && (
                 <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black ${
                     isBot
-                      ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 shadow-2xs'
-                      : 'bg-sky-50 border border-sky-200 text-sky-700 shadow-2xs'
+                      ? 'bg-blue-100 border border-blue-300 text-blue-900'
+                      : 'bg-indigo-100 border border-indigo-300 text-indigo-900'
                   }`}
                 >
-                  {isBot ? <Bot className="h-4 w-4 text-indigo-600" /> : <UserCheck className="h-4 w-4 text-sky-600" />}
+                  {isBot ? <Bot className="h-5 w-5" /> : <UserCheck className="h-5 w-5" />}
                 </div>
               )}
 
               <div className={`max-w-[85%] sm:max-w-[75%] space-y-1 ${isMe ? 'items-end' : 'items-start'}`}>
                 {/* Header label above bubble */}
                 <div
-                  className={`flex items-center gap-1.5 text-[11px] ${
-                    isMe ? 'justify-end text-slate-500' : 'text-slate-600'
+                  className={`flex items-center gap-1.5 text-xs ${
+                    isMe ? 'justify-end text-slate-700 font-bold' : 'text-slate-800 font-bold'
                   }`}
                 >
                   {isBot ? (
-                    <span className="inline-flex items-center gap-1 font-semibold text-indigo-700">
-                      <Sparkles className="h-3 w-3" />
-                      Chitra Smart Ticketing
+                    <span className="inline-flex items-center gap-1 font-black text-blue-800">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Chitra AI
                     </span>
                   ) : isAgent ? (
-                    <span className="font-semibold text-sky-800">
+                    <span className="font-black text-indigo-800">
                       {msg.senderEmployee?.name || 'Staf Spesialis HERO'}
-                      <span className="ml-1 text-[10px] font-normal text-slate-400">(HERO)</span>
+                      <span className="ml-1 text-[11px] font-bold text-slate-600">(HERO)</span>
                     </span>
                   ) : (
-                    <span className="font-semibold text-slate-700">Anda</span>
+                    <span className="font-black text-slate-900">Anda</span>
                   )}
 
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[11px] text-slate-600 font-bold">
                     {new Date(msg.createdAt).toLocaleTimeString('id-ID', {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -372,19 +372,19 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
 
                 {/* Bubble Container */}
                 <div
-                  className={`px-4.5 py-3 text-xs leading-relaxed shadow-2xs ${
+                  className={`px-4.5 py-3 text-xs sm:text-sm leading-relaxed transition-all ${
                     isMe
-                      ? 'bg-slate-900 text-white rounded-3xl rounded-tr-xs'
+                      ? 'bg-blue-700 text-white rounded-2xl rounded-tr-xs shadow-sm font-medium'
                       : isBot
-                      ? 'bg-indigo-50/60 text-slate-900 border border-indigo-100/80 rounded-3xl rounded-tl-xs'
-                      : 'bg-white text-slate-900 border border-slate-200/80 rounded-3xl rounded-tl-xs'
+                      ? 'bg-slate-100 text-slate-950 border-2 border-slate-300 rounded-2xl rounded-tl-xs shadow-sm font-semibold'
+                      : 'bg-sky-100/90 text-slate-950 border-2 border-sky-300 rounded-2xl rounded-tl-xs shadow-sm font-semibold'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.message}</p>
 
                   {/* Attachments if any */}
                   {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2 pt-2 border-t border-slate-200/40">
+                    <div className={`mt-2.5 flex flex-wrap gap-1.5 pt-2 border-t ${isMe ? 'border-white/30' : 'border-slate-300'}`}>
                       {msg.attachments.map((att, attIdx) => {
                         const fileUrl = resolveUploadUrl(att.url)
                         const isImg = att.type?.startsWith('image/')
@@ -395,10 +395,10 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
                             href={fileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition ${
                               isMe
-                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                                ? 'bg-white/25 hover:bg-white/35 text-white'
+                                : 'bg-white hover:bg-slate-100 text-slate-950 border border-slate-300 shadow-sm'
                             }`}
                           >
                             {isImg ? (
@@ -407,7 +407,7 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
                               <FileText className="h-3.5 w-3.5" />
                             )}
                             <span className="max-w-[120px] truncate">{att.name}</span>
-                            <Download className="h-3 w-3 opacity-60" />
+                            <Download className="h-3 w-3 opacity-80 ml-0.5" />
                           </a>
                         )
                       })}
@@ -421,13 +421,13 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
 
         {/* AI Typing Indicator */}
         {isSending && (
-          <div className="flex gap-3 items-center text-xs text-indigo-600">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-50 border border-indigo-200 text-indigo-600 animate-pulse">
-              <Bot className="h-4 w-4" />
+          <div className="flex gap-2.5 items-center text-xs text-blue-700">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 border border-blue-300 text-blue-800 animate-pulse">
+              <Bot className="h-5 w-5" />
             </div>
-            <div className="flex items-center gap-1.5 rounded-full bg-indigo-50/80 px-4 py-2 border border-indigo-100 shadow-2xs">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span className="text-xs">Chitra Smart Ticketing sedang memproses tanggapan...</span>
+            <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3.5 py-2 border-2 border-slate-300">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
+              <span className="text-xs font-bold text-slate-800">Chitra AI sedang memproses tanggapan...</span>
             </div>
           </div>
         )}
@@ -436,29 +436,29 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
       </div>
 
       {/* Chat Input Bar */}
-      <div className="border-t border-slate-100 bg-white p-3 sm:p-4">
+      <div className="border-t-2 border-slate-300 bg-white p-3 sm:p-4 rounded-b-2xl">
         {isClosed ? (
-          <div className="rounded-2xl bg-slate-50 p-3 text-center text-xs text-slate-500">
+          <div className="rounded-xl bg-slate-100 border-2 border-slate-300 p-3 text-center text-xs sm:text-sm text-slate-700 font-bold">
             Tiket ini telah ditutup. Jika Anda memiliki kendala baru, silakan buat tiket baru.
           </div>
         ) : (
           <form onSubmit={handleSendMessage} className="space-y-2">
             {/* Attachment preview tags */}
             {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5 px-1">
                 {attachments.map((att, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                    className="flex items-center gap-1.5 rounded-lg border-2 border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-950"
                   >
-                    <Paperclip className="h-3 w-3 text-indigo-600" />
+                    <Paperclip className="h-3.5 w-3.5 text-blue-700" />
                     <span className="max-w-[140px] truncate">{att.name}</span>
                     <button
                       type="button"
                       onClick={() => removeAttachment(idx)}
-                      className="text-slate-400 hover:text-red-500"
+                      className="text-slate-500 hover:text-rose-700 transition"
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))}
@@ -467,13 +467,13 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
 
             <div className="flex items-end gap-2">
               <label
-                className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition shadow-2xs ${
+                className={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-800 hover:bg-slate-100 hover:text-slate-950 transition shadow-sm ${
                   isUploading ? 'opacity-50 pointer-events-none' : ''
                 }`}
                 title="Lampirkan foto atau dokumen"
               >
                 {isUploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-700" />
                 ) : (
                   <Paperclip className="h-4 w-4" />
                 )}
@@ -498,13 +498,13 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
                 }}
                 placeholder="Tulis pesan atau pertanyaan... (Tekan Enter untuk kirim)"
                 rows={1}
-                className="min-h-[40px] max-h-32 flex-1 resize-none text-xs leading-normal py-2.5 rounded-2xl border-slate-200 bg-slate-50/50 focus:bg-white focus:border-slate-300"
+                className="min-h-[44px] max-h-32 flex-1 resize-none text-xs sm:text-sm font-bold leading-normal py-2.5 px-3.5 rounded-xl bg-white border-2 border-slate-300 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-950 shadow-sm"
               />
 
               <Button
                 type="submit"
                 disabled={isSending || isUploading || (!inputMessage.trim() && attachments.length === 0)}
-                className="h-10 w-10 shrink-0 rounded-full bg-slate-900 p-0 text-white hover:bg-slate-800 shadow-2xs"
+                className="h-11 w-11 shrink-0 rounded-xl bg-blue-700 hover:bg-blue-800 p-0 text-white shadow-sm transition-colors cursor-pointer"
               >
                 {isSending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -519,19 +519,19 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
 
       {/* Escalation Confirmation Dialog */}
       <Dialog open={isEscalateModalOpen} onOpenChange={setIsEscalateModalOpen}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-6">
+        <DialogContent className="sm:max-w-md rounded-2xl border-2 border-slate-300 bg-white p-6 sm:p-7 shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-slate-900">
+            <DialogTitle className="text-xl font-black text-slate-950 tracking-tight font-display">
               Alihkan ke Staf Operasional HERO?
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
+            <DialogDescription className="text-xs sm:text-sm text-slate-700 font-semibold mt-1">
               Tiket ini akan dialihkan dari AI Assistant langsung ke antrean tim penanggung jawab HERO
               sesuai site dan kategori ({ticket.category.name}).
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-2">
-            <label className="text-xs font-semibold text-slate-700">
+            <label className="text-xs font-black text-slate-900">
               Alasan Pengalihan (Opsional)
             </label>
             <Textarea
@@ -539,16 +539,16 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
               onChange={(e) => setEscalateReason(e.target.value)}
               placeholder="Contoh: Butuh verifikasi fisik teknisi di lokasi, kendala mendesak..."
               rows={3}
-              className="mt-1.5 text-xs rounded-2xl border-slate-200"
+              className="mt-1.5 text-xs sm:text-sm font-bold rounded-xl bg-white border-2 border-slate-300 text-slate-950 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
             />
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+          <DialogFooter className="gap-2 sm:gap-2.5 pt-3 flex items-center justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={() => setIsEscalateModalOpen(false)}
-              className="h-9 rounded-full px-5 text-xs border-slate-200 hover:bg-slate-100"
+              className="h-10 rounded-xl px-4 text-xs font-bold border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-900 shadow-sm transition-colors cursor-pointer"
             >
               Batal
             </Button>
@@ -556,16 +556,16 @@ export function MaestroTicketChatClient({ ticket, initialMessages, customerUser 
               type="button"
               onClick={handleConfirmEscalate}
               disabled={isEscalating}
-              className="h-9 gap-1.5 rounded-full bg-amber-500 px-5 text-xs font-semibold text-slate-950 hover:bg-amber-400 shadow-2xs"
+              className="h-10 gap-2 rounded-xl bg-amber-600 hover:bg-amber-700 px-5 text-xs font-bold text-white shadow-sm transition-colors cursor-pointer"
             >
               {isEscalating ? (
                 <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Mengalihkan...</span>
                 </>
               ) : (
                 <>
-                  <Headphones className="h-3.5 w-3.5" />
+                  <Headphones className="h-4 w-4" />
                   <span>Ya, Alihkan ke Staf HERO</span>
                 </>
               )}
@@ -581,40 +581,40 @@ function getStatusBanner(status: string, picName?: string) {
   switch (status) {
     case 'bot_active':
       return {
-        label: 'Chitra Smart Ticketing Aktif',
-        style: 'bg-indigo-50/80 text-indigo-700 border border-indigo-200/70',
-        icon: <Bot className="h-3.5 w-3.5 text-indigo-600" />,
+        label: 'Chitra AI Aktif',
+        style: 'bg-indigo-100 text-indigo-950 border border-indigo-400',
+        icon: <Bot className="h-3.5 w-3.5 text-indigo-700" />,
       }
     case 'escalated':
       return {
-        label: 'Dialihkan — Menunggu Konfirmasi Staf HERO',
-        style: 'bg-amber-50/80 text-amber-800 border border-amber-200/70',
+        label: 'Dialihkan — Menunggu Staf HERO',
+        style: 'bg-amber-100 text-amber-950 border border-amber-400',
         icon: <Clock className="h-3.5 w-3.5 text-amber-700" />,
       }
     case 'assigned':
     case 'in_progress':
       return {
         label: picName ? `Ditangani oleh ${picName}` : 'Sedang Ditangani Staf HERO',
-        style: 'bg-sky-50/80 text-sky-800 border border-sky-200/70',
+        style: 'bg-sky-100 text-sky-950 border border-sky-400',
         icon: <UserCheck className="h-3.5 w-3.5 text-sky-700" />,
       }
     case 'resolved':
       return {
         label: 'Tiket Selesai (Resolved)',
-        style: 'bg-emerald-50/80 text-emerald-800 border border-emerald-200/70',
+        style: 'bg-emerald-100 text-emerald-950 border border-emerald-400',
         icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700" />,
       }
     case 'closed':
       return {
         label: 'Tiket Telah Ditutup',
-        style: 'bg-slate-100 text-slate-600 border border-slate-200/70',
-        icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+        style: 'bg-slate-200 text-slate-950 border border-slate-400',
+        icon: <CheckCircle2 className="h-3.5 w-3.5 text-slate-700" />,
       }
     default:
       return {
         label: status,
-        style: 'bg-slate-100 text-slate-700',
-        icon: <AlertCircle className="h-3.5 w-3.5" />,
+        style: 'bg-slate-200 text-slate-950 border border-slate-400',
+        icon: <AlertCircle className="h-3.5 w-3.5 text-slate-700" />,
       }
   }
 }

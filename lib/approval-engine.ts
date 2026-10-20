@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, or } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import {
   approvalMatrices,
@@ -12,6 +12,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { cerNotificationConfigs } from '@/db/schema/cer'
+import { isBumiSuksesindoCustomer } from '@/lib/form-wo-customer'
 
 type ApprovalContext = {
   employeeId: number
@@ -62,6 +63,7 @@ export type ResolvedApprovalStep = {
     | 'apd_admin_cp'
     | 'section_head'
     | 'fallback_manager'
+    | 'direct_select'
     | 'vacant'
   canDelegate: boolean
   slaHours: number
@@ -566,9 +568,89 @@ async function resolveDynamicApproverForRoleOrSection(options: {
   sectionKeywords: string[]
   nodeKeywords?: string[]
   roleKeywords?: string[]
+  preferredName?: string
   defaultLabel: string
 }): Promise<{ id: number | null; name: string; label: string }> {
-  // 1. Try masterSections by sectionKeywords
+  // 1. Try preferredName if supplied
+  if (options.preferredName) {
+    const [emp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(and(ilike(employees.name, `%${options.preferredName}%`), eq(employees.isActive, true)))
+      .limit(1)
+
+    if (emp?.id && emp?.name) {
+      return {
+        id: emp.id,
+        name: emp.name,
+        label: options.defaultLabel || emp.jobTitle || 'Team Billing',
+      }
+    }
+  }
+
+  // Special case for Team Billing: prioritize active Billing employee (Andika Ferdiansyah)
+  const isBilling =
+    options.defaultLabel.toLowerCase().includes('billing') ||
+    options.sectionKeywords.some((kw) => kw.toLowerCase().includes('billing'))
+
+  if (isBilling) {
+    const [billingEmp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .where(
+        and(
+          eq(employees.isActive, true),
+          or(
+            ilike(employees.name, '%andika%ferdiansyah%'),
+            and(ilike(masterSections.name, '%billing%'), ilike(employees.jobTitle, '%billing%')),
+            ilike(employees.jobTitle, '%billing%')
+          )
+        )
+      )
+      .orderBy(
+        sql`CASE WHEN ${employees.name} ILIKE '%Andika%' THEN 0 ELSE 1 END`,
+        asc(employees.id)
+      )
+      .limit(1)
+
+    if (billingEmp?.id && billingEmp?.name) {
+      return {
+        id: billingEmp.id,
+        name: billingEmp.name,
+        label: options.defaultLabel || 'Team Billing',
+      }
+    }
+  }
+
+  // 2. Try roleKeywords / nodeKeywords in employees table
+  const specificRoleTerms = [...(options.roleKeywords || []), ...(options.nodeKeywords || [])]
+  for (const term of specificRoleTerms) {
+    const [emp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(
+        and(
+          or(ilike(employees.jobTitle, `%${term}%`), ilike(employees.name, `%${term}%`)),
+          eq(employees.isActive, true)
+        )
+      )
+      .limit(1)
+
+    if (emp?.id && emp?.name) {
+      return {
+        id: emp.id,
+        name: emp.name,
+        label: emp.jobTitle || options.defaultLabel,
+      }
+    }
+  }
+
+  // 3. Try masterSections by sectionKeywords
   for (const kw of options.sectionKeywords) {
     const [sec] = await db
       .select({
@@ -591,7 +673,7 @@ async function resolveDynamicApproverForRoleOrSection(options: {
     }
   }
 
-  // 2. Try orgChartNodes by nodeKeywords / roleKeywords / sectionKeywords
+  // 4. Try orgChartNodes by nodeKeywords / roleKeywords / sectionKeywords
   const nodeSearchTerms = [
     ...(options.nodeKeywords || []),
     ...(options.roleKeywords || []),
@@ -625,7 +707,7 @@ async function resolveDynamicApproverForRoleOrSection(options: {
     }
   }
 
-  // 3. Try employees table by section or jobTitle
+  // 5. Try employees table by section or jobTitle
   for (const kw of options.sectionKeywords) {
     const [emp] = await db
       .select({
@@ -700,10 +782,13 @@ async function resolveFormWoServiceApprovalRoute(
         defaultLabel: 'Service Operation Others Coord. SPV',
       })
 
+  const isBsi = isBumiSuksesindoCustomer(customerName) || isBumiSuksesindoCustomer(context.siteName)
+
   const billingApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Billing'],
     nodeKeywords: ['Billing', 'Team Billing', 'Billing Team'],
     roleKeywords: ['Billing', 'Billing Coordinator', 'Billing Staff'],
+    preferredName: isBsi ? 'Sugeng Wasiat' : undefined,
     defaultLabel: 'Team Billing',
   })
 
@@ -777,21 +862,25 @@ async function resolveFormWoServiceApprovalRoute(
 }
 
 async function resolveFormWoRepairRetreadApprovalRoute(
-  context: ApprovalContext
+  context: ApprovalContext,
+  customerName?: string
 ): Promise<ApprovalRouteResolution> {
   const steps: ResolvedApprovalStep[] = []
+  const isBsi = isBumiSuksesindoCustomer(customerName) || isBumiSuksesindoCustomer(context.siteName)
 
   const qcApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
     nodeKeywords: ['QC / Leader', 'QC', 'Leader Repair'],
-    roleKeywords: ['QC / Leader', 'QC Staff', 'Leader Repair / Retread Operation'],
+    roleKeywords: ['QC / Leader', 'QC Staff', 'Repair/Retread Planner', 'Leader Repair / Retread Operation'],
+    preferredName: 'Renaldo',
     defaultLabel: 'QC / Leader',
   })
 
   const repairSpvApprover = await resolveDynamicApproverForRoleOrSection({
     sectionKeywords: ['Repair / Retread Operation', 'Repair', 'Retread'],
     nodeKeywords: ['Repair Retread Operation SPV', 'SPV Repair / Retread', 'Repair / Retread Operation SPV'],
-    roleKeywords: ['Leader Repair / Retread Operation', 'Repair / Retread Operation SPV'],
+    roleKeywords: ['Repair Retread Operation SPV', 'Repair / Retread SPV', 'SPV Repair / Retread'],
+    preferredName: 'Ary Maulana',
     defaultLabel: 'Repair Retread Operation SPV',
   })
 
@@ -799,6 +888,7 @@ async function resolveFormWoRepairRetreadApprovalRoute(
     sectionKeywords: ['Billing'],
     nodeKeywords: ['Billing', 'Team Billing', 'Billing Team'],
     roleKeywords: ['Billing', 'Billing Coordinator', 'Billing Staff'],
+    preferredName: isBsi ? 'Sugeng Wasiat' : undefined,
     defaultLabel: 'Team Billing',
   })
 
@@ -887,6 +977,9 @@ async function resolveFormWoRepairRetreadApprovalRoute(
     steps,
   }
 }
+
+
+
 
 
 async function resolveApdApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
@@ -984,7 +1077,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
         131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
         129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
-        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        128: 1375, // CK MHU -> Ade Saharu (HSE Officer)
         140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
       }
       const hseEmpId = hseMap[siteId]
@@ -1033,7 +1126,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         151: 955,  // Makassar -> Apriyanto (Head of Service MVC)
         134: 96,   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
         136: 96,   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
-        149: 1180, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+        149: 1114, // PPA BIB -> Revy Andyaksa Saroni (Technical Engineer)
         127: 1164, // Sangatta -> Saipudin (HSE Leader)
         139: 955,  // Sebamban -> Apriyanto (Head of Service MVC)
         130: 97,   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
@@ -1109,11 +1202,11 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
     // - PJO site -> PJO Leader (1 tahap)
     // ==========================================
     if (adminCpSiteIds.includes(siteId)) {
-      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan (Serviceman)
+      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan (Serviceman / Admin CP Service)
       if (context.sectionId === 29) {
-        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman)
+        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman / Admin CP Repair)
       } else if (context.sectionId === 37) {
-        approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer)
+        approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer / Admin CP Technical)
       }
 
       const [approver] = await db
@@ -1125,7 +1218,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
       if (approver) {
         steps.push({
           stepOrder: stepOrder++,
-          label: approver.jobTitle || 'Serviceman',
+          label: approver.jobTitle || 'Admin CP Approver',
           approverName: approver.name,
           approverEmployeeId: approver.id,
           approverNodeId: null,
@@ -1144,7 +1237,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         133: 1374, // CK BIB -> Fathurrahman Sufi (HSE Officer)
         131: 1285, // CK BMB -> Danny Hangga Irawan (HSE Officer)
         129: 1380, // CK KIM -> Rizky Rahmadani (HSE Officer)
-        128: 1308, // CK MHU -> Irfan Rivai Remba (HSE)
+        128: 1375, // CK MHU -> Ade Saharu (HSE Officer)
         140: 1307, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
       }
       const hseEmpId = hseMap[siteId]
@@ -1184,7 +1277,7 @@ async function resolveApdApprovalRoute(context: ApprovalContext): Promise<Approv
         151: 955,  // Makassar -> Apriyanto (Head of Service MVC)
         134: 96,   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
         136: 96,   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
-        149: 1180, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+        149: 1114, // PPA BIB -> Revy Andyaksa Saroni (Technical Engineer)
         127: 1164, // Sangatta -> Saipudin (HSE Leader)
         139: 955,  // Sebamban -> Apriyanto (Head of Service MVC)
         130: 97,   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)
@@ -1696,10 +1789,78 @@ export async function resolveCerApprovalRoute(
   }
 }
 
+async function resolveMaritalStatusApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
+  const steps: ResolvedApprovalStep[] = [
+    {
+      stepOrder: 1,
+      label: 'Step 1: PJO / HSE / Leader',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'PJO / HSE / Leader',
+      approvalMode: 'single',
+      resolutionSource: 'direct_select',
+      canDelegate: false,
+      slaHours: 0,
+      nodeLabel: 'Step 1: PJO / HSE / Leader',
+      fallbackLabel: 'PJO / HSE / Leader',
+      escalationLabel: null,
+    },
+    {
+      stepOrder: 2,
+      label: 'Step 2: Section Head',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'Section Head',
+      approvalMode: 'single',
+      resolutionSource: 'direct_select',
+      canDelegate: false,
+      slaHours: 0,
+      nodeLabel: 'Step 2: Section Head',
+      fallbackLabel: 'Section Head',
+      escalationLabel: null,
+    },
+    {
+      stepOrder: 3,
+      label: 'Step 3: Human Resources',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'Human Resources',
+      approvalMode: 'single',
+      resolutionSource: 'direct_select',
+      canDelegate: false,
+      slaHours: 0,
+      nodeLabel: 'Step 3: Human Resources',
+      fallbackLabel: 'Human Resources',
+      escalationLabel: null,
+    },
+  ]
+
+  return {
+    matrixId: null,
+    matrixName: 'Default Approval Matrix - Marital Status Request',
+    structureId: null,
+    structureName: 'Standard Marital Status Workflow Structure',
+    transactionType: 'marital_status',
+    warnings: [],
+    steps,
+  }
+}
+
 export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput
 ): Promise<ApprovalRouteResolution> {
   const context = await getApprovalContext(input)
+
+  if (context.transactionType === 'marital_status' || context.transactionType === 'marital-status-request') {
+    return resolveMaritalStatusApprovalRoute(context)
+  }
+
+  if (context.transactionType.startsWith('apd-request')) {
+    return resolveApdApprovalRoute(context)
+  }
 
   const matrixCandidates = await db
     .select({
@@ -1834,11 +1995,12 @@ export async function resolveApprovalRouteForActivity(
         ],
       }
     }
+
     if (context.transactionType === 'form_wo_service_mvc') {
-      return resolveFormWoServiceApprovalRoute(context, 'trakindo')
+      return resolveFormWoServiceApprovalRoute(context, input.customerName || 'trakindo')
     }
     if (context.transactionType === 'form_wo_service_other') {
-      return resolveFormWoServiceApprovalRoute(context, 'other')
+      return resolveFormWoServiceApprovalRoute(context, input.customerName || 'other')
     }
     if (context.transactionType === 'form_wo_service') {
       return resolveFormWoServiceApprovalRoute(context, input.customerName)
@@ -1849,7 +2011,7 @@ export async function resolveApprovalRouteForActivity(
       context.transactionType === 'form_wo_retread' ||
       context.transactionType === 'form_wo_non_repair'
     ) {
-      return resolveFormWoRepairRetreadApprovalRoute(context)
+      return resolveFormWoRepairRetreadApprovalRoute(context, input.customerName)
     }
     if (context.transactionType.startsWith('apd-request')) {
       return resolveApdApprovalRoute(context)
@@ -1992,11 +2154,17 @@ export async function resolveApprovalRouteForActivity(
     const siteId = context.siteId ?? 0
 
     if (adminCpSiteIds.includes(siteId)) {
-      let approverEmpId = 1099 // Default: Muhammad As'ar Fauzan
+      let approverEmpId = 955 // Default fallback: Apriyanto (Service Operation MVC)
       if (context.sectionId === 29) {
-        approverEmpId = 1039 // Arjun Zahiri Mursith (Repairman)
+        approverEmpId = 996 // Ary Maulana (Repair / Retread)
       } else if (context.sectionId === 37) {
         approverEmpId = 1094 // Muhammad Abian Husain (Technical Engineer)
+      } else if (context.sectionId === 33) {
+        approverEmpId = 955 // Apriyanto (Service Operation MVC)
+      } else if (context.sectionId === 34) {
+        approverEmpId = 15 // Junaidi (Service Operation Others)
+      } else if (context.departmentId === 2) {
+        approverEmpId = 972 // Romy Hidayat (Central Services Manager)
       }
 
       const [adminApprover] = await db
@@ -2008,7 +2176,7 @@ export async function resolveApprovalRouteForActivity(
       if (adminApprover) {
         steps[0].approverEmployeeId = adminApprover.id
         steps[0].approverName = adminApprover.name
-        steps[0].label = adminApprover.jobTitle || 'Admin CP Approver'
+        steps[0].label = adminApprover.jobTitle || 'Section Head'
         steps[0].nodeLabel = adminApprover.jobTitle
       }
     }

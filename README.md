@@ -1,6 +1,51 @@
 # HERO - Hub for Employee Reporting & Operations
 
-A modern, full-stack employee management and HR operations platform built with Next.js 15, TypeScript, and PostgreSQL.
+A unified, modern enterprise platform built with Next.js 15, TypeScript, and PostgreSQL for managing operational activities, Human Capital workflows, tire management, and customer self-service through the MAESTRO portal.
+
+---
+
+## 🌟 Key Modules & Architecture
+
+### 1. 🛠️ Operations & Field Activity
+- **Daily Activity Hub:** Real-time reporting of site operational tasks, route checklists, per-activity team assignments, photo attachments, and supervisor review.
+- **Dashboard Utilities (`/dashboard/utilities`):** Quantitative monitoring of physical task output (Tires, Pcs, Work units) and operational durations. **Calculates only approved activities** with interactive multi-site filtering, chronological daily trends, and Excel/CSV matrix exports (by Date, Technician, and Unit).
+- **EWH (Effective Working Hours) & Unit Utility:** Comprehensive tracking of equipment utilization, downtime, losses ratio, and workforce operational effectiveness.
+- **Tire Management:** Digital inspections, jobcard lifecycles, tire scrap analysis, and Ready For Retread (RFR) tracking.
+
+### 2. 🌐 MAESTRO Customer Portal (`maestro.chitraparatama.com`)
+Dedicated multi-tenant customer-facing portal with isolated RBAC and customer-scoped data access:
+- **Helpdesk & Problem Ticketing:** SLA tracking, ticket submission, status updates, and customer-engineer communication.
+- **Customer Daily Activity Visibility:** Real-time transparency of vendor activities conducted across customer mine sites.
+- **Safety Management & PTW:** Customer visibility into safety permits to work and compliance checklists.
+- **Tire Scrap & Inspection Analytics:** Detailed condition reports, scrap reason distributions, and tire inspection logs.
+- **PO & Cargo Tracking:** Logistics milestone tracking and supply chain transparency.
+
+### 3. ✍️ Centralized Dynamic Approval Engine
+- **Universal Multi-Step Approvals:** Unified approval workflow handling Daily Activity Sessions, Overtime (SPL), Leave/Permissions, Training Requests, Safety Permits, APD, and Form WO.
+- **Digital Signatures:** Secure canvas-based signature capture for every approval stage.
+- **Real-Time Notification System:** Notification bell event subscriptions and automated transactional email delivery tracking.
+
+### 4. 👥 Human Capital & Workforce Operations
+- **Roster & Timesheet:** Scheduling, automated shift attendance, and overtime tracking.
+- **Overtime Command Letters (SPL):** Structured overtime requests, shift allocations, and manager approvals.
+- **Training & ISO Certification:** Training applications with full ISO documentation and trainer verification.
+- **MCU & Wellness:** Medical check-up schedules, health records, and wellness tracking.
+- **ChitraLearning LMS:** Interactive corporate learning modules, assessments, and progress tracking.
+
+### 5. 🦺 Quality, Safety & Environment (HSE)
+- **5R Workplace Inspections:** Regular 5R (Ringkas, Rapi, Resik, Rawat, Rajin) audits and photographic scoring.
+- **Safety Permits to Work (PTW):** High-risk task authorizations, risk assessment matrices (HIRADC), and safety sign-offs.
+- **Safety & Emergency Reporting:** Incident logs, immediate hazard alerts, and corrective action workflows.
+
+---
+
+## 📁 Persistent S3 Uploads & Proxy Architecture
+
+To avoid 403 Forbidden errors and expired presigned URLs, all uploads follow a persistent proxy standard:
+- **Proxy Endpoint:** `GET /api/uploads/[...path]` serves files from private S3 CloudHost buckets and Dokploy local persistent mounts (`/mnt/data/one-chitra/uploads`).
+- **Dynamic Resolution:** URLs are resolved dynamically via `resolveUploadUrl()` adapting seamlessly between localhost, Dokploy production, and external notification webhooks.
+
+---
 
 ## 🚀 Quick Start
 
@@ -18,276 +63,88 @@ cp .env.example .env
 # Start database
 npm run db:up
 
-# Initialize database schema
+# Push database schema
 npm run db:push
 
 # Start development server
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000)
+Visit HERO Desktop at [http://localhost:3000](http://localhost:3000) or MAESTRO Portal at [http://maestro.localhost:3000](http://maestro.localhost:3000).
 
-## 📚 Documentation
-
-- **[Development Setup Guide](docs/DEVELOPMENT_SETUP.md)** - Complete onboarding guide for new engineers
-- **[Git Workflow](docs/GIT_WORKFLOW.md)** - Branching strategy, commit conventions, and PR process
-- **[Testing Strategy](docs/TESTING_STRATEGY.md)** - Testing philosophy, tools, and best practices
-- **[API Documentation](docs/)** - API endpoints and usage (coming soon)
+---
 
 ## 🛠️ Tech Stack
 
 ### Core
-- **Framework:** [Next.js 15](https://nextjs.org/) with App Router and Turbopack
-- **Language:** TypeScript 5
+- **Framework:** [Next.js 15](https://nextjs.org/) (App Router, Turbopack, Server Actions)
+- **Language:** TypeScript 5 (Strict Mode)
 - **Database:** PostgreSQL with [Drizzle ORM](https://orm.drizzle.team/)
-- **Authentication:** [Better Auth](https://better-auth.com/)
+- **Authentication:** [Better Auth](https://better-auth.com/) + Session Cookie RBAC
+- **Storage:** S3 CloudHost Object Storage + Dokploy Persistent Mounts
 
-### UI & Styling
+### UI & Presentation
 - **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
-- **Components:** [shadcn/ui](https://ui.shadcn.com/) (40+ components)
+- **Component System:** `@/components/templates` (`HeroDataTable`, `HeroSearchableSelect`, `HeroKpiCard`, `HeroFormDialog`, `HeroDetailModal`, etc.)
 - **Icons:** [Lucide React](https://lucide.dev/), [Tabler Icons](https://tabler.io/icons)
-- **Theme:** Dark mode with [next-themes](https://github.com/pacocoursey/next-themes)
+- **Visualizations:** [Recharts](https://recharts.org/)
 
-### Development Tools
-- **Linting:** ESLint with Next.js config
-- **Formatting:** Prettier with Tailwind plugin
-- **Testing:** Jest + React Testing Library
-- **Type Checking:** TypeScript strict mode
-- **Containerization:** Docker & Docker Compose
+### Testing & Verification
+- **E2E Testing:** Agentic end-to-end testing with Playwright & e2e test runner
+- **Unit & Contract Tests:** Node.js native test runner (`node --test`)
+- **Type Checking:** TypeScript strict mode (`tsc --noEmit`)
+
+---
 
 ## 📋 Available Scripts
 
-### Development
+### Development & Build
 ```bash
 npm run dev              # Start development server
 npm run build            # Build for production
 npm start                # Start production server
+npm run type-check       # Run TypeScript validation
 npm run lint             # Run ESLint
-npm run lint:fix         # Fix ESLint errors
 npm run format           # Format code with Prettier
-npm run type-check       # Run TypeScript type checking
-npm run validate         # Run all checks (format, lint, type-check, test)
+```
+
+### Database Management
+```bash
+npm run db:up            # Start local PostgreSQL container
+npm run db:down          # Stop PostgreSQL container
+npm run db:push          # Sync Drizzle schema to database
+npm run db:generate      # Generate SQL migration files
+npm run db:migrate       # Apply database migrations
+npm run db:studio        # Open Drizzle Studio UI
 ```
 
 ### Testing
 ```bash
-npm test                 # Run tests
-npm run test:watch       # Run tests in watch mode
-npm run test:coverage    # Run tests with coverage
+npm test                 # Run test suite
+npm run test:e2e         # Run Playwright E2E browser tests
+npx e2e run <file>       # Run specific agentic E2E test file
 ```
-
-### Database
-```bash
-npm run db:up            # Start PostgreSQL container
-npm run db:down          # Stop PostgreSQL container
-npm run db:push          # Push schema changes
-npm run db:generate      # Generate migrations
-npm run db:migrate       # Run migrations
-npm run db:studio        # Open Drizzle Studio
-npm run db:reset         # Reset database
-```
-
-### Docker
-```bash
-npm run docker:build     # Build Docker image
-npm run docker:up        # Start full stack
-npm run docker:down      # Stop containers
-npm run docker:logs      # View logs
-```
-
-## 🏗️ Project Structure
-
-```
-hero/
-├── app/                    # Next.js app router
-│   ├── api/               # API routes
-│   ├── dashboard/         # Dashboard pages
-│   └── (auth)/            # Authentication pages
-├── components/            # React components
-│   └── ui/               # shadcn/ui components
-├── db/                    # Database configuration
-│   ├── schema/           # Drizzle schemas
-│   └── migrations/       # Database migrations
-├── lib/                   # Utility functions
-│   ├── auth.ts           # Authentication config
-│   └── utils.ts          # Helper functions
-├── hooks/                 # Custom React hooks
-├── public/               # Static assets
-├── scripts/              # Utility scripts
-├── tests/                # Test files
-├── docs/                 # Documentation
-└── docker/               # Docker configuration
-```
-
-## 🔐 Environment Variables
-
-Create a `.env` file in the root directory:
-
-```env
-# Database
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
-POSTGRES_DB=postgres
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-
-# Authentication
-BETTER_AUTH_SECRET=your_secret_key_here
-BETTER_AUTH_URL=http://localhost:3000
-NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
-```
-
-See `.env.example` for all available options.
-
-## 🧪 Testing
-
-We follow a comprehensive testing strategy:
-
-- **Unit Tests** - Functions, utilities, and components
-- **Integration Tests** - API routes and database operations
-- **Coverage Target** - 70% minimum, 90% for critical paths
-
-```bash
-# Run all tests
-npm test
-
-# Watch mode for development
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
-```
-
-See [Testing Strategy](docs/TESTING_STRATEGY.md) for detailed guidelines.
-
-## 🔄 Git Workflow
-
-We use a simplified Git Flow with conventional commits:
-
-### Branch Types
-- `main` - Production-ready code
-- `feature/*` - New features
-- `fix/*` - Bug fixes
-- `hotfix/*` - Urgent production fixes
-- `docs/*` - Documentation updates
-
-### Commit Convention
-```bash
-feat(scope): add new feature
-fix(scope): resolve bug
-docs: update documentation
-```
-
-See [Git Workflow](docs/GIT_WORKFLOW.md) for complete guidelines.
-
-## 🚢 Deployment
-
-### CI/CD Pipeline
-
-GitHub Actions automatically:
-- Runs linting and type checking
-- Executes test suite
-- Builds the application
-- Deploys to production (on merge to main)
-
-### Deployment Options
-
-1. **Vercel** (Recommended)
-   ```bash
-   vercel
-   ```
-
-2. **Docker**
-   ```bash
-   docker build -t hero .
-   docker run -p 3000:3000 hero
-   ```
-
-3. **VPS/Server**
-   ```bash
-   npm run docker:up
-   ```
-
-See [Development Setup](docs/DEVELOPMENT_SETUP.md) for detailed deployment instructions.
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run validation (`npm run validate`)
-5. Commit your changes (`git commit -m 'feat: add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-See [Git Workflow](docs/GIT_WORKFLOW.md) for detailed contribution guidelines.
-
-## 📝 Code Quality
-
-### Automated Checks
-
-All code must pass:
-- ✅ ESLint (no errors)
-- ✅ Prettier (formatted)
-- ✅ TypeScript (no type errors)
-- ✅ Tests (passing with coverage)
-
-Run all checks:
-```bash
-npm run validate
-```
-
-### Pre-commit Checklist
-
-- [ ] Code is formatted
-- [ ] No linting errors
-- [ ] TypeScript compiles
-- [ ] Tests pass
-- [ ] No console.log statements
-- [ ] Documentation updated
-
-## 🔒 Security
-
-- Never commit `.env` files or secrets
-- Use environment variables for sensitive data
-- Keep dependencies updated (`npm audit`)
-- Follow security best practices
-- Report vulnerabilities privately
-
-## 📄 License
-
-This project is private and proprietary.
-
-## 👥 Team
-
-- **Development Team** - Full-stack development
-- **QA Team** - Testing and quality assurance
-- **DevOps Team** - Infrastructure and deployment
-
-## 📞 Support
-
-- **Documentation** - Check the [docs](docs/) folder
-- **Issues** - [GitHub Issues](https://github.com/Annaskhadafi/hero/issues)
-- **Discussions** - [GitHub Discussions](https://github.com/Annaskhadafi/hero/discussions)
-
-## 🗺️ Roadmap
-
-- [x] Core authentication system
-- [x] User management
-- [x] Department and organization structure
-- [x] Role-based access control
-- [ ] Advanced reporting
-- [ ] Mobile application
-- [ ] API v2
-- [ ] Internationalization
-
-## 📊 Project Status
-
-- **Version:** 0.1.0
-- **Status:** Active Development
-- **Last Updated:** 2026-05-03
 
 ---
 
-Built with ❤️ by the HERO Team
+## 🧪 E2E Verification & Test Credentials
+
+For end-to-end automated testing requiring authentication:
+- **Username / NIK:** `71261`
+- **Password:** `Chitra#71261`
+- Helper utilities are available at `tests/e2e-auth-helper.ts`.
+
+---
+
+## 🔒 Security & Code Standards
+
+- **RBAC Enforcement:** All server actions and API routes strictly enforce role and resource permissions.
+- **Zero Raw Select / Tables:** UI components standardize on `@/components/templates` for tables, searchable selects, and KPI cards with consistent `h-9` control heights.
+- **Data Integrity:** Cascading foreign keys, strict null checks, and immutable audit logs.
+
+---
+
+## 📄 License & Status
+
+- **Status:** Active Production & Development
+- **Copyright:** Proprietary & Confidential - PT Chitra Paratama

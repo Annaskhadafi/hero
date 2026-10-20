@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { employees } from '@/db/schema/hero';
 import { sendWorkflowEmail } from '@/lib/workflow-email';
+import { getPublicAppUrl } from '@/lib/auth-config';
 import { eq } from 'drizzle-orm';
 
 type SummaryDetails = {
@@ -44,7 +45,7 @@ export async function sendSummaryApprovedEmail(summary: SummaryDetails) {
       return;
     }
 
-    const printUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/print/summary/${summary.id}`;
+    const printUrl = `${getPublicAppUrl()}/print/summary/${summary.id}`;
     const primaryTo = primaryEmails[0];
     const extraCc = Array.from(new Set([...primaryEmails.slice(1), ...ccEmails]));
 

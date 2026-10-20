@@ -32,6 +32,8 @@ interface TrainingRow {
   completedYear: number
   expiresAt: Date | string | null
   status: string
+  siteId?: number | null
+  siteName?: string | null
 }
 
 interface EmployeeOption {
@@ -103,6 +105,7 @@ export function TrainingGroupedTable({
       employeeSn: string | null
       role: string | null
       department: string | null
+      siteName?: string | null
       records: TrainingRow[]
     }
   > = {}
@@ -116,6 +119,7 @@ export function TrainingGroupedTable({
         employeeSn: row.employeeSn,
         role: row.role,
         department: row.department,
+        siteName: row.siteName,
         records: [],
       }
     }
@@ -193,7 +197,10 @@ export function TrainingGroupedTable({
                     </div>
                   </TableCell>
                   <TableCell className="align-middle text-sm text-foreground">
-                    {group.department || "–"}
+                    <div>{group.department || "–"}</div>
+                    {group.siteName && (
+                      <span className="text-[11px] text-muted-foreground">{group.siteName}</span>
+                    )}
                   </TableCell>
                   <TableCell className="align-middle text-center">
                     <span className="inline-flex items-center gap-1.5 text-sm font-bold text-foreground">

@@ -61,7 +61,8 @@ export function InterviewFormPdf({
     return score === target ? "✓" : "";
   };
 
-  const interviewers = evaluations.slice(0, 3);
+  const actualEvals = evaluations[0]?.id === 999999 ? evaluations.slice(1) : evaluations;
+  const interviewers = actualEvals.slice(0, 3);
   while (interviewers.length < 3) {
     interviewers.push({
       panelistName: "-",

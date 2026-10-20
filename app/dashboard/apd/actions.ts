@@ -16,7 +16,7 @@ import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { normalizeApdRequestCategory, normalizeApdRequestStatus } from '@/lib/apd-status'
-import { ensureApdRequestSchema } from '@/lib/apd-data'
+import { ensureApdRequestSchema, getRequestedForLabel } from '@/lib/apd-data'
 
 export async function submitApdRequest(formData: FormData) {
   const currentEmployee = await getCurrentEmployee()
@@ -57,8 +57,20 @@ export async function submitApdRequest(formData: FormData) {
 
   const notes = (formData.get('notes') as string) || ''
   const signatureUrl = formData.get('signatureUrl') as string
+  const requestedFor = (formData.get('requestedFor') as string) || 'self'
   const rawRequestId = formData.get('requestId') || formData.get('id')
   const existingId = rawRequestId ? Number(rawRequestId) : null
+
+  let targetSectionId: number | null = null
+  if (requestedFor === 'service') {
+    targetSectionId = 33
+  } else if (requestedFor === 'repair') {
+    targetSectionId = 29
+  } else {
+    const rawTargetSectionId = formData.get('targetSectionId') || formData.get('target_section_id')
+    targetSectionId = rawTargetSectionId ? Number(rawTargetSectionId) : null
+    if (targetSectionId && isNaN(targetSectionId)) targetSectionId = null
+  }
 
   // Use a transaction
   return await db.transaction(async (tx) => {
@@ -82,6 +94,8 @@ export async function submitApdRequest(formData: FormData) {
         .set({
           status: 'pending_approval',
           notes,
+          requestedFor,
+          targetSectionId,
           ...(signatureUrl ? { signatureUrl } : {}),
           updatedAt: new Date(),
         })
@@ -217,6 +231,8 @@ export async function submitApdRequest(formData: FormData) {
         requestNumber,
         employeeId: currentEmployee.id,
         siteId: currentEmployee.siteId ?? 0,
+        targetSectionId: (targetSectionId && !isNaN(targetSectionId)) ? targetSectionId : null,
+        requestedFor,
         requestCategory,
         status: 'pending_approval',
         notes,
@@ -306,12 +322,13 @@ export async function submitApdRequest(formData: FormData) {
       }
       firstStep = steps[0]
     } else {
-      // Standard dynamic matrix resolution
+      // Standard dynamic matrix resolution using targetSectionId if specified
+      const effectiveSectionId = (targetSectionId && !isNaN(targetSectionId)) ? targetSectionId : (currentEmployee.sectionId ?? undefined)
       route = await resolveApprovalRouteForActivity({
         employeeId: currentEmployee.id,
         siteId: currentEmployee.siteId ?? undefined,
         departmentId: currentEmployee.departmentId ?? undefined,
-        sectionId: currentEmployee.sectionId ?? undefined,
+        sectionId: effectiveSectionId,
         activityType: 'apd-request',
         priority: 'Normal',
         overtimeMinutes: 0,
@@ -323,12 +340,23 @@ export async function submitApdRequest(formData: FormData) {
 
     if (firstStep) {
       // 4. Insert approval tracking
+      const [approverEmailRec] = firstStep?.approverEmployeeId
+        ? await tx
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, firstStep.approverEmployeeId))
+        : [null]
+
       await tx.insert(approvals).values({
         apdRequestId: request.id,
+        requestNumber,
         level: 1,
         status: 'pending',
         approverName: firstStep?.approverName ?? 'System',
         approverEmployeeId: firstStep?.approverEmployeeId,
+        approverEmail: approverEmailRec?.email ?? null,
+        activityType: 'apd-request',
+        activityTitle: `Permohonan ${requestCategory} - ${requestNumber}`,
         approvalStepId: firstStep?.approvalMatrixStepId,
         resolutionSource: firstStep?.resolutionSource ?? 'system',
         routeSnapshot: JSON.stringify(route),
@@ -337,39 +365,45 @@ export async function submitApdRequest(formData: FormData) {
       })
 
       // 5. Send Email and Bell Notification if there is an approver
-      if (firstStep?.approverEmployeeId) {
-        const [approverEmailRec] = await tx
-          .select({ email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, firstStep.approverEmployeeId))
-        if (approverEmailRec?.email) {
-          if (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') {
-            sendMaterialToolsRequestSubmittedEmail({
-              employeeName: currentEmployee.name,
-              requestNumber,
-              approverEmail: approverEmailRec.email,
-              approverName: firstStep.approverName,
-              requestType: requestCategory,
-            }).catch(console.error)
+      if (firstStep?.approverEmployeeId && approverEmailRec?.email) {
+        if (requestCategory === 'MATERIAL' || requestCategory === 'TOOLS') {
+          sendMaterialToolsRequestSubmittedEmail({
+            employeeName: currentEmployee.name,
+            requestNumber,
+            approverEmail: approverEmailRec.email,
+            approverName: firstStep.approverName,
+            requestType: requestCategory,
+          }).catch(console.error)
 
-            notifyWorkflowBellRecipients({
-              recipientEmails: [approverEmailRec.email, 'muhammad.akbar@chitraparatama.co.id'],
-              eventType: 'material_tools_request_review',
-              category: 'approval_requests',
-              title: `Review Permintaan ${requestCategory}`,
-              body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda. (CC: Muhammad Taufik Akbar)`,
-              url: `/dashboard/approval`,
-              tagPrefix: 'apd',
-            }).catch(console.error)
-          } else {
-            sendApdRequestSubmittedEmail({
-              employeeName: currentEmployee.name,
-              requestNumber,
-              approverEmail: approverEmailRec.email,
-              approverName: firstStep.approverName,
-              requestType: requestCategory,
-            }).catch(console.error)
-          }
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmailRec.email, 'muhammad.akbar@chitraparatama.co.id'],
+            eventType: 'material_tools_request_review',
+            category: 'approval_requests',
+            title: `Review Permintaan ${requestCategory}`,
+            body: `${currentEmployee.name} mengajukan permintaan ${requestCategory} baru (${requestNumber}) yang membutuhkan persetujuan Anda. (CC: Muhammad Taufik Akbar)`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'apd',
+          }).catch(console.error)
+        } else {
+          const requestedForLabel = getRequestedForLabel(requestedFor)
+          sendApdRequestSubmittedEmail({
+            employeeName: currentEmployee.name,
+            requestNumber,
+            approverEmail: approverEmailRec.email,
+            approverName: firstStep.approverName,
+            requestType: requestCategory,
+            requestedForLabel,
+          }).catch(console.error)
+
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmailRec.email],
+            eventType: 'apd_request_review',
+            category: 'approval_requests',
+            title: `Review Permohonan APD Baru`,
+            body: `${currentEmployee.name} mengajukan permohonan APD (${requestNumber}) untuk ${requestedForLabel} yang memerlukan peninjauan dan persetujuan Anda.`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'apd',
+          }).catch(console.error)
         }
       }
     }

@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 export default async function MaestroRootPage() {
   const session = await getMaestroServerSession()
   if (session) {
-    redirect('/dashboard')
+    redirect('/maestro/activity')
   } else {
-    redirect('/login')
+    redirect('/maestro/login')
   }
 }

@@ -3,7 +3,6 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle } from "lucide-react"
-import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
@@ -58,11 +57,12 @@ export function SioImportDialog({ onSuccess }: { onSuccess: () => void }) {
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const data = ev.target?.result
       if (!data) return
 
       try {
+        const XLSX = await import("xlsx")
         const wb = XLSX.read(data, { type: 'array' })
         const allRows: PreviewRow[] = []
 

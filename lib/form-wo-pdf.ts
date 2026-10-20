@@ -84,8 +84,8 @@ function formatIndoDateTime(val?: string | Date | null): string {
   return `${dateStr} • ${timeStr} WITA`
 }
 
-import { isCiptaKridatamaCustomer } from '@/lib/form-wo-customer'
-export { isCiptaKridatamaCustomer }
+import { isCiptaKridatamaCustomer, isBumiSuksesindoCustomer } from '@/lib/form-wo-customer'
+export { isCiptaKridatamaCustomer, isBumiSuksesindoCustomer }
 
 function extractCleanNote(rawNote: string | null | undefined): string {
   if (!rawNote || !rawNote.trim()) return ''
@@ -903,6 +903,8 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
     note: string | null
   }> = []
 
+  const isBsi = isBumiSuksesindoCustomer(data.customer) || isBumiSuksesindoCustomer(data.site)
+
   if (steps.length > 0) {
     const sortedSteps = [...steps].sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
     approverCols = sortedSteps.map((s, idx) => {
@@ -937,7 +939,14 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
         }
       }
 
-      const name = s.approverName || s.jobTitle || defaultRoleName
+      const isBillingStep = defaultRoleName === 'Team Billing'
+      let name = s.approverName || s.jobTitle || defaultRoleName
+      if (isBsi && isBillingStep && s.status !== 'approved') {
+        if (!s.approverName || s.approverName === 'Team Billing' || s.approverName === 'Andika Ferdiansyah') {
+          name = 'Sugeng Wasiat'
+        }
+      }
+
       const jobTitle = s.jobTitle && s.jobTitle !== 'Approver' ? s.jobTitle : defaultRoleName
       const sigUrl = s.signatureUrl || null
       const date = s.reviewedAt ? formatIndoDateTime(s.reviewedAt) : '-'
@@ -965,7 +974,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
         },
         {
           header: 'DIPERIKSA OLEH',
-          name: 'Team Billing',
+          name: isBsi ? 'Sugeng Wasiat' : 'Team Billing',
           jobTitle: 'Team Billing',
           sigUrl: null,
           date: '-',
@@ -1000,7 +1009,7 @@ export async function generateFormWoPdf(data: FormWoPdfData): Promise<Buffer> {
         },
         {
           header: 'DIPERIKSA OLEH',
-          name: 'Team Billing',
+          name: isBsi ? 'Sugeng Wasiat' : 'Team Billing',
           jobTitle: 'Team Billing',
           sigUrl: null,
           date: '-',

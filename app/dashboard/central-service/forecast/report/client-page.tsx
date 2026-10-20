@@ -21,8 +21,6 @@ import {
 } from '@/components/ui/table'
 import { BarChart3, Search, ArrowUpDown, Download, FileSpreadsheet } from 'lucide-react'
 import { getSapInvoices } from '@/app/actions/central-service-forecast'
-import html2canvas from 'html2canvas-pro'
-import * as XLSX from 'xlsx'
 import {
   BarChart,
   Bar,
@@ -239,7 +237,10 @@ export function ReportClientPage({
   }
   exchangeRate: string
 }) {
-  const [selectedPeriodId, setSelectedPeriodId] = useState(periods[0]?.id?.toString() || '')
+  const [selectedPeriodId, setSelectedPeriodId] = useState(() => {
+    const currentId = findCurrentMonthPeriodId(periods)
+    return currentId || periods[0]?.id?.toString() || ''
+  })
 
   useEffect(() => {
     const currentId = findCurrentMonthPeriodId(periods)
@@ -255,7 +256,12 @@ export function ReportClientPage({
   const [isLoadingSap, setIsLoadingSap] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  const rate = Number(exchangeRate) || 15000
+  const selectedPeriod = useMemo(
+    () => periods.find((p) => p.id?.toString() === selectedPeriodId) || periods[0],
+    [periods, selectedPeriodId]
+  )
+
+  const rate = Number(selectedPeriod?.exchangeRateIdrToUsd || exchangeRate || 15000)
 
   const filtered = useMemo(() => {
     return dailyItems.filter((w: any) => {
@@ -577,7 +583,7 @@ export function ReportClientPage({
       ? [cat.sectionDaily, cat.remarkDaily].filter(Boolean).join(' / ')
       : cat.remarkDaily
 
-  const buildDocSheetRows = (groups: CustomerGroup[]) => {
+  const buildDocSheetRows = (groups: CustomerGroup[], xlsxLib: any) => {
     const headers = [
       'No',
       'Customer',
@@ -639,7 +645,7 @@ export function ReportClientPage({
       ),
       '',
     ])
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows])
+    const ws = xlsxLib.utils.aoa_to_sheet([headers, ...dataRows])
     const mergeCols = [0, 1, 2, 3, 4, 5, 13]
     let currentRow = 1
     groups.forEach((group) => {
@@ -677,6 +683,7 @@ export function ReportClientPage({
   const handleExportJpeg = async () => {
     if (!reportRef.current) return
     try {
+      const html2canvas = (await import('html2canvas-pro')).default
       const canvas = await html2canvas(reportRef.current, {
         scale: 2,
         useCORS: true,
@@ -691,7 +698,8 @@ export function ReportClientPage({
     }
   }
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     const period = periods.find((p) => p.id.toString() === selectedPeriodId)
     const periodLabel = period?.monthYear || 'Export'
@@ -739,8 +747,8 @@ export function ReportClientPage({
       { wch: 15 },
     ]
     XLSX.utils.book_append_sheet(wb, wsRevenue, 'Revenue SAP')
-    XLSX.utils.book_append_sheet(wb, buildDocSheetRows(pendingGrouped), 'Pending Document')
-    XLSX.utils.book_append_sheet(wb, buildDocSheetRows(carryOverGrouped), 'Carry Over')
+    XLSX.utils.book_append_sheet(wb, buildDocSheetRows(pendingGrouped, XLSX), 'Pending Document')
+    XLSX.utils.book_append_sheet(wb, buildDocSheetRows(carryOverGrouped, XLSX), 'Carry Over')
 
     XLSX.writeFile(wb, `daily-report-${periodLabel.replace(/\s/g, '-')}.xlsx`)
   }

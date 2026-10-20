@@ -95,6 +95,9 @@ export const employees = pgTable('hero_employees', {
   manpower: text('manpower').notNull().default('Lokal'),
   gender: text('gender').notNull().default(''),
   maritalStatus: text('marital_status').notNull().default(''),
+  spouseName: text('spouse_name'),
+  marriageDate: date('marriage_date'),
+  residenceStatus: text('residence_status'),
   religion: text('religion').notNull().default(''),
   education: text('education').notNull().default(''),
   birthPlaceDate: text('birth_place_date').notNull().default(''),
@@ -448,6 +451,25 @@ export const dailyActivitySessions = pgTable('hero_daily_activity_sessions', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const dailyActivitySessionTeamMembers = pgTable(
+  'hero_daily_activity_session_team_members',
+  {
+    id: serial('id').primaryKey(),
+    sessionId: integer('session_id')
+      .notNull()
+      .references(() => dailyActivitySessions.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionEmployeeUnique: uniqueIndex(
+      'hero_daily_activity_session_team_members_session_emp_uq'
+    ).on(table.sessionId, table.employeeId),
+  })
+)
+
 export const dailyActivitySessionItems = pgTable('hero_daily_activity_session_items', {
   id: serial('id').primaryKey(),
   sessionId: integer('session_id')
@@ -480,6 +502,25 @@ export const dailyActivitySessionItems = pgTable('hero_daily_activity_session_it
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+export const dailyActivitySessionItemTeamMembers = pgTable(
+  'hero_daily_activity_session_item_team_members',
+  {
+    id: serial('id').primaryKey(),
+    itemId: integer('item_id')
+      .notNull()
+      .references(() => dailyActivitySessionItems.id, { onDelete: 'cascade' }),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    itemEmployeeUnique: uniqueIndex(
+      'hero_daily_activity_session_item_team_members_item_emp_uq'
+    ).on(table.itemId, table.employeeId),
+  })
+)
 
 export const dailyActivitySessionSignoffs = pgTable(
   'hero_daily_activity_session_signoffs',
@@ -625,6 +666,15 @@ export const approvals = pgTable('hero_approvals', {
   apdSummaryId: integer('apd_summary_id'),
   fiveRReportId: integer('five_r_report_id'),
   cerRequestId: integer('cer_request_id'),
+  tireJobcardId: integer('tire_jobcard_id'),
+  maritalStatusRequestId: integer('marital_status_request_id'),
+  approverEmail: text('approver_email'),
+  activityType: text('activity_type'),
+  requestNumber: text('request_number'),
+  activityCode: text('activity_code'),
+  activityTitle: text('activity_title'),
+  formName: text('form_name'),
+  createdBy: integer('created_by'),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),
@@ -888,6 +938,37 @@ export const safetyIncidentSummaryMonthly = pgTable('hero_safety_incident_summar
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
+
+export const safetySiteMonthlySummary = pgTable('hero_safety_site_monthly_summary', {
+  id: serial('id').primaryKey(),
+  siteId: integer('site_id').notNull().references(() => sites.id, { onDelete: 'cascade' }),
+  month: date('month').notNull(),
+
+  // Lagging K3
+  nearmiss: integer('nearmiss').notNull().default(0),
+  propertyDamage: integer('property_damage').notNull().default(0),
+  firstAid: integer('first_aid').notNull().default(0),
+  medicalTreatment: integer('medical_treatment').notNull().default(0),
+  environmental: integer('environmental').notNull().default(0),
+  majorInjury: integer('major_injury').notNull().default(0),
+  fatality: integer('fatality').notNull().default(0),
+
+  // Lagging Health
+  safetyManHours: decimal('safety_man_hours', { precision: 14, scale: 2 }).notNull().default('0'),
+  totalManpower: integer('total_manpower').notNull().default(0),
+  sickEmployeesCount: integer('sick_employees_count').notNull().default(0),
+  lostDaysCount: integer('lost_days_count').notNull().default(0),
+  sickLettersCount: integer('sick_letters_count').notNull().default(0),
+  occupationalDiseasesCount: integer('occupational_diseases_count').notNull().default(0),
+
+  // Catatan & Target
+  incidentNotes: text('incident_notes').notNull().default('Nihil'),
+
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  unqSiteMonth: uniqueIndex('hero_safety_site_monthly_summary_site_month_idx').on(t.siteId, t.month),
+}))
 
 export const safetyIncidentReports = pgTable('hero_safety_incident_reports', {
   id: serial('id').primaryKey(),
@@ -1164,6 +1245,7 @@ export const chitraLearningEnrollments = pgTable(
     finalScore: integer('final_score'),
     isPassed: boolean('is_passed').notNull().default(false),
     dueAt: timestamp('due_at'),
+    cooldownUntil: timestamp('cooldown_until'),
     lastLessonId: integer('last_lesson_id').references(() => chitraLearningLessons.id, {
       onDelete: 'set null',
     }),
@@ -1843,10 +1925,16 @@ export const approvalMatrixSteps = pgTable('hero_approval_matrix_steps', {
 export const formTemplates = pgTable('hero_form_templates', {
   id: serial('id').primaryKey(),
   templateKey: text('template_key').notNull().unique(),
+  slug: text('slug').notNull().default(''),
   category: text('category').notNull(),
   name: text('name').notNull(),
   workflowMode: text('workflow_mode').notNull().default('org_template'),
   description: text('description').notNull().default(''),
+  themeConfigJson: text('theme_config_json').notNull().default('{}'),
+  settingsJson: text('settings_json').notNull().default('{}'),
+  viewCount: integer('view_count').notNull().default(0),
+  startCount: integer('start_count').notNull().default(0),
+  completionCount: integer('completion_count').notNull().default(0),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -1901,6 +1989,7 @@ export const formTemplateFields = pgTable('hero_form_template_fields', {
   configJson: text('config_json').notNull().default(''),
   validationJson: text('validation_json').notNull().default(''),
   optionSourceJson: text('option_source_json').notNull().default(''),
+  logicRulesJson: text('logic_rules_json').notNull().default('[]'),
   isRequired: boolean('is_required').notNull().default(false),
   isHidden: boolean('is_hidden').notNull().default(false),
   sortOrder: integer('sort_order').notNull().default(0),
@@ -2059,13 +2148,22 @@ export const formSubmissions = pgTable('hero_form_submissions', {
   templateVersionId: integer('template_version_id')
     .notNull()
     .references(() => formTemplateVersions.id, { onDelete: 'restrict' }),
-  requesterEmployeeId: integer('requester_employee_id')
-    .notNull()
-    .references(() => employees.id, { onDelete: 'restrict' }),
+  requesterEmployeeId: integer('requester_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
   legacyActivityId: integer('legacy_activity_id').references(() => activities.id, {
     onDelete: 'set null',
   }),
+  respondentName: text('respondent_name').notNull().default(''),
+  respondentEmail: text('respondent_email').notNull().default(''),
+  respondentPhone: text('respondent_phone').notNull().default(''),
+  respondentMetadataJson: text('respondent_metadata_json').notNull().default('{}'),
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  durationSeconds: integer('duration_seconds').notNull().default(0),
+  ipAddress: text('ip_address').notNull().default(''),
+  userAgent: text('user_agent').notNull().default(''),
+  isPublicSubmission: boolean('is_public_submission').notNull().default(false),
   requestNumber: text('request_number').notNull().default(''),
   requestStatus: text('request_status').notNull().default('draft'),
   workflowSnapshot: text('workflow_snapshot').notNull().default(''),
@@ -2086,6 +2184,8 @@ export const formSubmissionValues = pgTable('hero_form_submission_values', {
   fieldKey: text('field_key').notNull(),
   fieldType: text('field_type').notNull(),
   valueText: text('value_text').notNull().default(''),
+  numericValue: integer('numeric_value'),
+  jsonValue: text('json_value').notNull().default(''),
   displayValue: text('display_value').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -2879,6 +2979,15 @@ export const formWoNotificationConfig = pgTable('hero_form_wo_notification_confi
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+export const maritalStatusNotificationConfig = pgTable('hero_marital_status_notification_config', {
+  id: serial('id').primaryKey(),
+  recipientEmails: text('recipient_emails').notNull().default(''),
+  ccEmails: text('cc_emails').notNull().default(''),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+
 export const formWoApprovalSettings = pgTable('hero_form_wo_approval_settings', {
   id: serial('id').primaryKey(),
   trakindoApproverId: integer('trakindo_approver_id').references(() => employees.id, { onDelete: 'set null' }),
@@ -3580,6 +3689,9 @@ export const hcDisciplinaryActions = pgTable('hero_hc_disciplinary_actions', {
   effectiveDate: date('effective_date').notNull(),
   expiryDate: date('expiry_date'), // SP expiry (e.g., SP1 valid 6 months)
   issuedBy: text('issued_by').notNull().default(''),
+  issuerDepartment: text('issuer_department').notNull().default(''),
+  issuerSignature: text('issuer_signature').notNull().default(''),
+  useLetterhead: boolean('use_letterhead').notNull().default(false),
   notes: text('notes').notNull().default(''),
   attachmentUrl: text('attachment_url').notNull().default(''),
   status: text('status').notNull().default('active'), // active, expired, escalated, revoked
@@ -3651,6 +3763,15 @@ export const hcEmployeeContractReviews = pgTable('hero_hc_employee_contract_revi
     }>>()
     .default([]),
 
+  // Online Test Integration
+  testRequired: boolean('test_required').notNull().default(false),
+  testConfigId: integer('test_config_id'),
+  testStatus: text('test_status').notNull().default('none'), // none, pending, in_progress, passed, failed, completed, exempted
+  testFinalScore: integer('test_final_score'),
+  testAttemptCount: integer('test_attempt_count').notNull().default(0),
+  testCompletedAt: timestamp('test_completed_at'),
+  allowApproverCustomization: boolean('allow_approver_customization').notNull().default(true),
+
   status: text('status').notNull().default('draft'), // draft, finalized
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -3698,6 +3819,74 @@ export const hcContractReviewSettings = pgTable('hero_hc_contract_review_setting
   id: serial('id').primaryKey(),
   settingKey: text('setting_key').notNull().unique(),
   settingValue: jsonb('setting_value').notNull().default({}),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+// ─── HC Contract Review Online Test Configuration & Execution ─────────
+
+export const hcContractReviewTestConfigs = pgTable('hero_hc_contract_review_test_configs', {
+  id: serial('id').primaryKey(),
+  sectionId: integer('section_id').references(() => masterSections.id, { onDelete: 'set null' }),
+  sectionName: text('section_name').notNull().default(''),
+  targetSectionIds: jsonb('target_section_ids').$type<number[]>().default([]),
+  targetSectionNames: jsonb('target_section_names').$type<string[]>().default([]),
+  reviewType: text('review_type').notNull().default('all'), // probation, contract, all
+  title: text('title').notNull(),
+  description: text('description').notNull().default(''),
+  durationMinutes: integer('duration_minutes').notNull().default(30),
+  hasPassingGrade: boolean('has_passing_grade').notNull().default(true),
+  passingGrade: integer('passing_grade').notNull().default(75),
+  maxRemedialAttempts: integer('max_remedial_attempts').notNull().default(1),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcContractReviewTestQuestions = pgTable('hero_hc_contract_review_test_questions', {
+  id: serial('id').primaryKey(),
+  configId: integer('config_id')
+    .notNull()
+    .references(() => hcContractReviewTestConfigs.id, { onDelete: 'cascade' }),
+  questionText: text('question_text').notNull(),
+  questionImageUrl: text('question_image_url').notNull().default(''),
+  optionA: text('option_a').notNull(),
+  optionAImageUrl: text('option_a_image_url').notNull().default(''),
+  optionB: text('option_b').notNull(),
+  optionBImageUrl: text('option_b_image_url').notNull().default(''),
+  optionC: text('option_c').notNull().default(''),
+  optionCImageUrl: text('option_c_image_url').notNull().default(''),
+  optionD: text('option_d').notNull().default(''),
+  optionDImageUrl: text('option_d_image_url').notNull().default(''),
+  correctOption: text('correct_option').notNull().default('A'), // A, B, C, D
+  explanation: text('explanation').notNull().default(''),
+  points: integer('points').notNull().default(1),
+  sortOrder: integer('sort_order').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcContractReviewTestAttempts = pgTable('hero_hc_contract_review_test_attempts', {
+  id: serial('id').primaryKey(),
+  configId: integer('config_id')
+    .notNull()
+    .references(() => hcContractReviewTestConfigs.id, { onDelete: 'cascade' }),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  reviewId: integer('review_id').references(() => hcEmployeeContractReviews.id, { onDelete: 'set null' }),
+  attemptNumber: integer('attempt_number').notNull().default(1),
+  accessToken: text('access_token').notNull().unique(),
+  score: integer('score'),
+  totalQuestions: integer('total_questions').notNull().default(0),
+  correctAnswers: integer('correct_answers').notNull().default(0),
+  hasPassingGrade: boolean('has_passing_grade').notNull().default(true),
+  passingGrade: integer('passing_grade').notNull().default(75),
+  status: text('status').notNull().default('pending'), // pending, in_progress, passed, failed, completed
+  answersPayload: jsonb('answers_payload').$type<Record<string, string>>().default({}),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
@@ -4083,8 +4272,10 @@ export const apdRequests = pgTable('hero_apd_requests', {
   siteId: integer('site_id')
     .notNull()
     .references(() => sites.id, { onDelete: 'cascade' }),
+  targetSectionId: integer('target_section_id').references(() => masterSections.id, { onDelete: 'set null' }),
   requestDate: timestamp('request_date').notNull().defaultNow(),
   requestCategory: text('request_category').notNull().default('APD'),
+  requestedFor: text('requested_for').notNull().default('self'),
   status: text('status').notNull().default('pending_approval'),
   notes: text('notes').notNull().default(''),
   signatureUrl: text('signature_url'),
@@ -4384,5 +4575,213 @@ export const sopWinRequestApprovals = pgTable(
     ),
   })
 )
+
+// ─── HC Permohonan Perubahan Rute Penerbangan (Flight Route Change Request) ───
+
+export const hcFlightRouteChangeRequests = pgTable('hero_hc_flight_route_change_requests', {
+  id: serial('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  employeeSn: text('employee_sn').notNull().default(''),
+  requestorName: text('requestor_name').notNull(),
+  jobTitle: text('job_title').notNull().default(''),
+  sectionName: text('section_name').notNull().default(''),
+  departmentName: text('department_name').notNull().default(''),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  siteName: text('site_name').notNull().default(''),
+  originLocation: text('origin_location').notNull().default('Jambi'),
+  requestDate: date('request_date').notNull(),
+  pohLocation: text('poh_location').notNull().default('Balikpapan'),
+  clauseAccepted: boolean('clause_accepted').notNull().default(true),
+  currentStepOrder: integer('current_step_order').notNull().default(1),
+  status: text('status').notNull().default('draft'), // draft, in_progress, approved, rejected
+  rejectionReason: text('rejection_reason').notNull().default(''),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcFlightRouteChangeItems = pgTable('hero_hc_flight_route_change_items', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id')
+    .notNull()
+    .references(() => hcFlightRouteChangeRequests.id, { onDelete: 'cascade' }),
+  flightDate: date('flight_date').notNull(),
+  flightRoute: text('flight_route').notNull(),
+  remark: text('remark').notNull().default('Offsite/ FB'),
+  sortOrder: integer('sort_order').notNull().default(1),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const hcFlightRouteChangeApprovals = pgTable(
+  'hero_hc_flight_route_change_approvals',
+  {
+    id: serial('id').primaryKey(),
+    requestId: integer('request_id')
+      .notNull()
+      .references(() => hcFlightRouteChangeRequests.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(), // 1..5
+    stepKey: text('step_key').notNull(), // applicant, pjo, supervisor, hr_ga_leader, manager
+    roleLabel: text('role_label').notNull(),
+    approverTitle: text('approver_title').notNull().default(''),
+    approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    status: text('status').notNull().default('pending'), // 'pending', 'waiting', 'approved', 'rejected'
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    flightRouteReqStepUnique: uniqueIndex(
+      'hero_hc_flight_route_change_approvals_step_uq'
+    ).on(table.requestId, table.stepOrder),
+  })
+)
+
+export const rewardItems = pgTable('hero_reward_items', {
+  id: serial('id').primaryKey(),
+  code: text('code').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  category: text('category').notNull().default('merchandise'),
+  imageUrl: text('image_url').notNull().default(''),
+  pointsRequired: integer('points_required').notNull(),
+  stockQuantity: integer('stock_quantity').notNull().default(0),
+  tierEligibility: text('tier_eligibility').notNull().default('all'), // 'all' | 'top_10' | 'top_site' | 'year_end_only'
+  eligibleSiteIds: jsonb('eligible_site_ids').$type<number[]>().default([]),
+  eligibleDepartmentIds: jsonb('eligible_department_ids').$type<number[]>().default([]),
+  eligibleSectionIds: jsonb('eligible_section_ids').$type<number[]>().default([]),
+  isYearEndBazaar: boolean('is_year_end_bazaar').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const rewardRedemptions = pgTable('hero_reward_redemptions', {
+  id: serial('id').primaryKey(),
+  redemptionNumber: text('redemption_number').notNull().unique(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  rewardItemId: integer('reward_item_id')
+    .notNull()
+    .references(() => rewardItems.id, { onDelete: 'restrict' }),
+  siteId: integer('site_id').references(() => sites.id, { onDelete: 'set null' }),
+  pointsSpent: integer('points_spent').notNull(),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'delivered' | 'cancelled'
+  requestNote: text('request_note').notNull().default(''),
+  approvedByEmployeeId: integer('approved_by_employee_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  approvalNotes: text('approval_notes').notNull().default(''),
+  deliveryStatus: text('delivery_status').notNull().default('pending'), // 'pending' | 'shipped_to_site' | 'ready_at_site' | 'received'
+  trackingOrReceiptInfo: text('tracking_or_receipt_info').notNull().default(''),
+  isYearEndClaim: boolean('is_year_end_claim').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcTurnoverSettings = pgTable('hero_hc_turnover_settings', {
+  id: serial('id').primaryKey(),
+  year: integer('year').notNull().unique(),
+  initialHeadcount: integer('initial_headcount').notNull().default(0),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const hcTurnoverMovements = pgTable('hero_hc_turnover_movements', {
+  id: serial('id').primaryKey(),
+  movementType: text('movement_type').notNull(), // 'incoming' | 'outgoing'
+  employeeId: integer('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  employeeSn: text('employee_sn').notNull().default(''),
+  name: text('name').notNull(),
+  position: text('position').notNull().default(''),
+  department: text('department').notNull().default(''),
+  section: text('section').notNull().default(''),
+  pointOfHire: text('point_of_hire').notNull().default(''),
+  movementDate: date('movement_date').notNull(),
+  remark: text('remark').notNull(), // 'New Hire' | 'Transfer' | 'Re Hire' | 'Resign' | 'Contract Complete' | 'Terminate' | 'Pension'
+  recruitmentId: integer('recruitment_id'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export type HcTurnoverSetting = typeof hcTurnoverSettings.$inferSelect
+export type NewHcTurnoverSetting = typeof hcTurnoverSettings.$inferInsert
+export type HcTurnoverMovement = typeof hcTurnoverMovements.$inferSelect
+export type NewHcTurnoverMovement = typeof hcTurnoverMovements.$inferInsert
+
+export const trainingRequests = pgTable('hero_training_requests', {
+  id: serial('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  documentCode: text('document_code').notNull().default('F.HR.STD.011.00'),
+  revision: text('revision').notNull().default('00'),
+  requesterEmployeeId: integer('requester_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  requesterName: text('requester_name').notNull(),
+  requesterEmail: text('requester_email').notNull().default(''),
+  requesterDepartment: text('requester_department').notNull().default(''),
+  requesterPosition: text('requester_position').notNull().default(''),
+  participantsType: text('participants_type').notNull().default('employees'), // 'employees' | 'attached_list'
+  participantEmployeeIds: jsonb('participant_employee_ids').default('[]'),
+  participantNames: text('participant_names').notNull().default(''),
+  participantDetails: jsonb('participant_details').default('[]'), // [{ employeeId, name, position, department, location }]
+  jobLevel: text('job_level').notNull().default(''),
+  department: text('department').notNull().default(''),
+  workLocation: text('work_location').notNull().default(''),
+  trainingTitle: text('training_title').notNull(),
+  trainingType: text('training_type').notNull().default('Training'), // 'Training' | 'Seminar' | 'Lokakarya'
+  trainingCategory: text('training_category').notNull().default('External'), // 'Internal' | 'External' | 'In-house' | 'Online'
+  trainingDate: text('training_date').notNull().default(''),
+  trainingVenue: text('training_venue').notNull().default(''),
+  costAmount: text('cost_amount').notNull().default('0'),
+  costCurrency: text('cost_currency').notNull().default('IDR'),
+  costNotes: text('cost_notes').notNull().default(''),
+  providerName: text('provider_name').notNull().default(''),
+  providerContact: text('provider_contact').notNull().default(''),
+  objectives: jsonb('objectives').default('[]'), // array of strings
+  pastTrainings: jsonb('past_trainings').default('[]'), // array of strings
+  attachmentUrl: text('attachment_url'),
+  attachmentName: text('attachment_name'),
+  status: text('status').notNull().default('pending'), // 'draft' | 'pending' | 'approved' | 'rejected'
+  currentStepOrder: integer('current_step_order').notNull().default(1),
+  totalSteps: integer('total_steps').notNull().default(5),
+  isSyncedToRecords: boolean('is_synced_to_records').notNull().default(false),
+  syncedAt: timestamp('synced_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const trainingRequestApprovals = pgTable('hero_training_request_approvals', {
+  id: serial('id').primaryKey(),
+  requestId: integer('request_id')
+    .notNull()
+    .references(() => trainingRequests.id, { onDelete: 'cascade' }),
+  stepOrder: integer('step_order').notNull(),
+  approvalToken: text('approval_token').notNull().unique(),
+  roleLabel: text('role_label').notNull(), // e.g. "Diajukan Oleh", "HR Verifikasi", "Mengetahui (Manager)", "Mengetahui (GOM)", "Menyetujui (Direktur)"
+  approverEmployeeId: integer('approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  approverName: text('approver_name').notNull(),
+  approverEmail: text('approver_email').notNull().default(''),
+  approverTitle: text('approver_title').notNull().default(''),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected' | 'skipped'
+  signatureDataUrl: text('signature_data_url'),
+  remarks: text('remarks').notNull().default(''),
+  approvedAt: timestamp('approved_at'),
+  rejectedAt: timestamp('rejected_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export type TrainingRequest = typeof trainingRequests.$inferSelect
+export type NewTrainingRequest = typeof trainingRequests.$inferInsert
+export type TrainingRequestApproval = typeof trainingRequestApprovals.$inferSelect
+export type NewTrainingRequestApproval = typeof trainingRequestApprovals.$inferInsert
+
 
 

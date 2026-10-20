@@ -9,7 +9,8 @@ import type { TireSizePreset, TirePattern } from '@/db/schema/tire-pattern'
 import Step1ReferenceInput from '@/components/tire-designer/step1-reference-input'
 import Step2TireSize from '@/components/tire-designer/step2-tire-size'
 import Step3PatternCanvas from '@/components/tire-designer/step3-pattern-canvas'
-import Step4ThreeDViewer from '@/components/tire-designer/step4-3d-viewer'
+import dynamic from 'next/dynamic'
+const Step4ThreeDViewer = dynamic(() => import('@/components/tire-designer/step4-3d-viewer'), { ssr: false })
 import Step5WorkDrawing from '@/components/tire-designer/step5-work-drawing'
 import Step6PrintTemplate from '@/components/tire-designer/step6-print-template'
 

@@ -65,10 +65,12 @@ export function DocumentPreviewModal({
     format === "txt" ||
     /\.(md|markdown|txt)$/i.test(filename || url);
 
-  // Route through our dedicated proxy to ensure streaming and bypass cors
-  const streamUrl = `/api/hero-genius/document-stream?url=${encodeURIComponent(
-    url
-  )}&filename=${encodeURIComponent(filename)}&format=${encodeURIComponent(format || "")}`;
+  // Avoid double-wrapping if url is already a document-stream route
+  const streamUrl = url.startsWith("/api/hero-genius/document-stream")
+    ? url
+    : `/api/hero-genius/document-stream?url=${encodeURIComponent(
+        url
+      )}&filename=${encodeURIComponent(filename)}&format=${encodeURIComponent(format || "")}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -103,7 +105,7 @@ export function DocumentPreviewModal({
                 )}
                 {!isImage && !isMarkdown && (
                   <Badge className="bg-white/15 text-white border-none text-[9px] px-1.5 py-0">
-                    PDF Canvas Viewer
+                    PDF Document
                   </Badge>
                 )}
               </div>
@@ -111,6 +113,19 @@ export function DocumentPreviewModal({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const cleanStream = streamUrl.split("#")[0];
+                window.open(`${cleanStream}#toolbar=0&navpanes=0&scrollbar=1`, "_blank");
+              }}
+              className="size-8 p-0 rounded-lg text-white/80 hover:bg-white/20 hover:text-white"
+              title="Buka Dokumen di Tab Baru"
+            >
+              <ExternalLink className="size-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -148,6 +163,9 @@ export function DocumentPreviewModal({
             <PdfCanvasViewer
               url={streamUrl}
               filename={filename}
+              preferNativeViewer={true}
+              hideToolbar={true}
+              hideDownload={true}
               onLoaded={(pages) => setTotalPages(pages)}
               className="h-full w-full"
             />

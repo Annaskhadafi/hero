@@ -1037,10 +1037,11 @@ export function OrgChartV2ClientPage({
   ];
 
   return (
-    <AdminPageShell eyebrow="HC • Org Structure" title="Organization Structure V2" description="Department > Section > Sub-Section berdasarkan relasi master data.">
+    <AdminPageShell>
       <HcWorkspaceBanner
+        badge="HC • ORG STRUCTURE"
         title="Organization Structure V2"
-        description="Hierarchy: Department > Section > Sub-Section. Head dari master data. Tanpa duplikasi nama."
+        description="Department > Section > Sub-Section berdasarkan relasi master data. Head dari master data tanpa duplikasi nama."
         items={[
           { label: "Departemen", value: referenceData.departments.length, tone: "sky" },
           { label: "Section", value: referenceData.sections.length, tone: "emerald" },
@@ -1048,7 +1049,6 @@ export function OrgChartV2ClientPage({
         ]}
       />
       <div className="space-y-6">
-        <EnterpriseScorecards items={scorecards} />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-0">
             <TabsTrigger value="org-chart"><Building2 className="size-4" /> Struktur Organisasi</TabsTrigger>

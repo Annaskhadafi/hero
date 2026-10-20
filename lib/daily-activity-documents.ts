@@ -3,7 +3,9 @@ import { db } from '@/db'
 import {
   dailyActivityApprovals,
   dailyActivitySessionItems,
+  dailyActivitySessionItemTeamMembers,
   dailyActivitySessionSignoffs,
+  dailyActivitySessionTeamMembers,
   dailyActivitySessions,
   employees,
   overtimeCommandLetters,
@@ -97,7 +99,7 @@ export async function getDailyActivitySessionDocumentData(
 
 
 
-  const [itemRows, approvalsRows, signoff] = await Promise.all([
+  const [itemRows, approvalsRows, signoff, itemTeamMemberRows] = await Promise.all([
     db
       .select({
         id: dailyActivitySessionItems.id,
@@ -140,6 +142,19 @@ export async function getDailyActivitySessionDocumentData(
       .where(eq(dailyActivitySessionSignoffs.sessionId, sessionId))
       .limit(1)
       .then((rows) => rows[0] ?? null),
+    db
+      .select({
+        itemId: dailyActivitySessionItemTeamMembers.itemId,
+        employeeId: employees.id,
+        name: employees.name,
+      })
+      .from(dailyActivitySessionItemTeamMembers)
+      .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+      .innerJoin(
+        dailyActivitySessionItems,
+        eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+      )
+      .where(eq(dailyActivitySessionItems.sessionId, sessionId)),
   ])
 
   const isApprover = approvalsRows.some(
@@ -161,20 +176,52 @@ export async function getDailyActivitySessionDocumentData(
       ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee.accessRole)) ||
     currentEmployee.accessRole === 'Super Admin'
 
-  if (header.employeeId !== currentEmployee.id && !canReviewHr && !isApprover && !isAdminOrManager) {
+  const teamMemberRows = await db
+    .select({
+      employeeId: employees.id,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      employeeSn: employees.employeeSn,
+    })
+    .from(dailyActivitySessionTeamMembers)
+    .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+    .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId))
+
+  const isTeamMember =
+    teamMemberRows.some((t) => t.employeeId === currentEmployee.id) ||
+    itemTeamMemberRows.some((t) => t.employeeId === currentEmployee.id)
+
+  if (header.employeeId !== currentEmployee.id && !isTeamMember && !canReviewHr && !isApprover && !isAdminOrManager) {
     return null
   }
 
-  let teamMembersSummary = ''
-  const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
-  if (teamMatch && teamMatch[1]) {
-    const rawMembers = teamMatch[1].trim()
-    const requesterName = (header.employeeName || '').trim().toLowerCase()
-    const otherMembers = rawMembers
-      .split(',')
-      .map((n) => n.trim())
-      .filter((n) => n && n.toLowerCase() !== requesterName)
-    teamMembersSummary = otherMembers.join(', ')
+  const allTeamNames = Array.from(
+    new Set([
+      ...teamMemberRows.map((t) => t.name),
+      ...itemTeamMemberRows.map((t) => t.name),
+    ])
+  )
+  let teamMembersSummary = allTeamNames.join(', ')
+  if (!teamMembersSummary) {
+    const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
+    if (teamMatch && teamMatch[1]) {
+      const rawMembers = teamMatch[1].trim()
+      const requesterName = (header.employeeName || '').trim().toLowerCase()
+      const otherMembers = rawMembers
+        .split(',')
+        .map((n) => n.trim())
+        .filter((n) => n && n.toLowerCase() !== requesterName)
+      teamMembersSummary = otherMembers.join(', ')
+    }
+  }
+
+  const itemTeamMap = new Map<number, string[]>()
+  if (Array.isArray(itemTeamMemberRows)) {
+    itemTeamMemberRows.forEach((r) => {
+      const list = itemTeamMap.get(r.itemId) || []
+      list.push(r.name)
+      itemTeamMap.set(r.itemId, list)
+    })
   }
 
   const checkedItems = itemRows
@@ -207,11 +254,35 @@ export async function getDailyActivitySessionDocumentData(
       const tireCount = Number(parsedPayload?.tireCount ?? (parsedPayload?.requiresTireCount ? 1 : 0)) || 0
       const materialUsed = String(parsedPayload?.materialUsed ?? '').trim()
 
+      const dbItemTeam = itemTeamMap.get(item.id) || []
+      const payloadItemTeam =
+        Array.isArray(parsedPayload?.itemTeamMembers) && parsedPayload.itemTeamMembers.length > 0
+          ? parsedPayload.itemTeamMembers.map((m: any) => m.name || m.employeeName).filter(Boolean)
+          : parsedPayload?.itemTeamMembersSummary
+          ? parsedPayload.itemTeamMembersSummary.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : []
+
+      const combinedItemTeam = Array.from(new Set([...dbItemTeam, ...payloadItemTeam]))
+      const itemTeamMembersSummary = combinedItemTeam.length > 0 ? combinedItemTeam.join(', ') : null
+
+      const requesterName = header.employeeName || 'Karyawan'
+      const otherTeamNames = combinedItemTeam.filter(
+        (name) => name && name.trim().toLowerCase() !== requesterName.trim().toLowerCase()
+      )
+      const itemPersonnelList: string[] =
+        otherTeamNames.length > 0
+          ? [`${requesterName} (PIC)`, ...otherTeamNames]
+          : [`${requesterName} (Mandiri)`]
+      const itemPersonnelSummary = itemPersonnelList.join(', ')
+
       return {
         ...item,
         photoUrl,
         tireCount,
         materialUsed,
+        itemTeamMembersSummary,
+        itemPersonnelList,
+        itemPersonnelSummary,
         durationMinutes,
         durationLabel: formatDurationLabel(durationMinutes),
         dayLabel: header.workDate.toLocaleDateString('id-ID', { weekday: 'long' }),
@@ -226,11 +297,29 @@ export async function getDailyActivitySessionDocumentData(
         endLabel: item.endedAt
           ? item.endedAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
           : '-',
-        workSummary: [item.snapshotLabel, item.unitNumber, item.remark].filter(Boolean).join(' - '),
+        workSummary: [
+          item.snapshotGroupName && !item.snapshotLabel?.includes(`[${item.snapshotGroupName}]`)
+            ? `[${item.snapshotGroupName}] ${item.snapshotLabel}`
+            : item.snapshotLabel,
+          item.unitNumber ? `Unit: ${item.unitNumber}` : '',
+          itemTeamMembersSummary ? `[Tim: ${itemTeamMembersSummary}]` : '',
+          item.remark ? `Ket: ${item.remark}` : '',
+        ]
+          .filter(Boolean)
+          .join(' - '),
       }
     })
 
   const totalDurationMinutes = checkedItems.reduce((total, item) => total + item.durationMinutes, 0)
+
+  const cleanNotes = (header.summaryRemark || '')
+    .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+    .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+    .replace(/Customer:\s*([^\n;]+)/gi, '')
+    .replace(/\s*\|\s*$/, '')
+    .trim()
 
   return {
     sessionId: header.sessionId,
@@ -239,7 +328,9 @@ export async function getDailyActivitySessionDocumentData(
     shiftCode: header.shiftCode,
     status: header.status,
     summaryRemark: header.summaryRemark,
+    notes: cleanNotes,
     teamMembersSummary,
+    teamMemberEmployeeIds: teamMemberRows.map((t) => t.employeeId),
     submittedAt: header.submittedAt,
     monthLabel: header.workDate.toLocaleDateString('id-ID', {
       month: 'long',
@@ -309,6 +400,10 @@ export async function getDailyActivitySessionDocumentData(
       canSignEmployee: header.employeeId === currentEmployee.id,
       canReviewHr,
     },
+    teamMembers: teamMemberRows,
+    isTeamMember,
+    isTeamActivity: teamMemberRows.length > 0 || Boolean(teamMembersSummary),
+    representedByName: isTeamMember ? header.employeeName : null,
   }
 }
 

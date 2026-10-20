@@ -1,12 +1,12 @@
 'use client'
 
 // Universal Centralized Approval Workbench
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
 import {
+  Camera,
   Check,
   CheckCheck,
   CheckCircle2,
@@ -43,6 +43,10 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
 import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
@@ -105,9 +109,16 @@ import {
   addContractReviewAttachment,
 } from '@/app/actions/contract-review'
 import { uploadFile } from '@/app/actions/upload'
+import {
+  approveTrainingRequestStep,
+  rejectTrainingRequestStep,
+} from '@/app/actions/training-requests'
 import { FormWoApprovalDialog } from '@/components/admin/form-wo-approval-dialog'
-import { FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
+import { FormWoDocumentPreviewDialog, FormWoDocumentView } from '@/components/form-wo-document-preview-dialog'
+import { ApdRequestDetailModal } from '@/components/summary/apd-request-detail-modal'
+import { getFormWoDetailAction } from '@/app/actions/form-wo'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
+import { MaritalStatusApprovalDialog } from '@/components/admin/marital-status-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
@@ -129,6 +140,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { MinimalTableShell } from '@/components/ui/minimal-table-shell'
+import { HeroSearchableSelect } from '@/components/templates'
 import {
   Table,
   TableBody,
@@ -184,6 +196,20 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
     } catch (err: any) {
       attempt++
       const errStr = String(err?.message || err?.cause?.message || err || "").toLowerCase()
+      const isStaleAction =
+        errStr.includes("was not found on the server") ||
+        errStr.includes("failed-to-find-server-action")
+      if (isStaleAction) {
+        if (typeof window !== "undefined") {
+          toast.info("Sistem HERO telah diperbarui di server. Memuat ulang halaman untuk menyinkronkan...", {
+            duration: 3000,
+          })
+          setTimeout(() => {
+            window.location.reload()
+          }, 1200)
+        }
+        throw err
+      }
       const isNetworkError =
         errStr.includes("network error") ||
         errStr.includes("failed to fetch") ||
@@ -199,6 +225,75 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
   }
 }
 
+function WorkbenchFilterItem({
+  filterKey,
+  placeholder,
+  options,
+  width = 'w-44',
+}: {
+  filterKey: string
+  placeholder: string
+  options: { value: string; label: string }[]
+  width?: string
+}) {
+  const [val, setVal] = React.useState('')
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  const handleChange = (newVal: string) => {
+    setVal(newVal)
+    if (inputRef.current) {
+      inputRef.current.value = newVal
+      inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+      inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+  }
+
+  React.useEffect(() => {
+    const handleReset = () => {
+      setVal('')
+      if (inputRef.current) {
+        inputRef.current.value = ''
+      }
+    }
+    const handlePreset = (event: Event) => {
+      const customEvent = event as CustomEvent<{ key?: string; value?: string }>
+      if (customEvent.detail?.key !== filterKey) return
+      const nextValue = customEvent.detail.value?.trim() ?? ''
+      setVal(nextValue)
+      if (inputRef.current) {
+        inputRef.current.value = nextValue
+        inputRef.current.dispatchEvent(new Event('input', { bubbles: true }))
+        inputRef.current.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+    }
+    window.addEventListener('hero-table-reset-filters', handleReset)
+    window.addEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    return () => {
+      window.removeEventListener('hero-table-reset-filters', handleReset)
+      window.removeEventListener('hero-table-apply-filter', handlePreset as EventListener)
+    }
+  }, [filterKey])
+
+  return (
+    <div className="flex-none relative">
+      <input
+        ref={inputRef}
+        type="hidden"
+        data-table-filter-key={filterKey}
+        value={val}
+        readOnly
+      />
+      <HeroSearchableSelect
+        placeholder={placeholder}
+        options={options}
+        value={val}
+        onChange={handleChange}
+        width={width}
+      />
+    </div>
+  )
+}
+
 function ApprovalFilterBar({
   sites,
   priorities,
@@ -208,44 +303,50 @@ function ApprovalFilterBar({
   priorities: string[]
   statusOptions: string[]
 }) {
+  const siteOpts = React.useMemo(
+    () => [
+      { value: '', label: 'Semua site' },
+      ...sites.map((s) => ({ value: s, label: s })),
+    ],
+    [sites]
+  )
+
+  const priorityOpts = React.useMemo(
+    () => [
+      { value: '', label: 'Semua prioritas' },
+      ...priorities.map((p) => ({ value: p, label: p })),
+    ],
+    [priorities]
+  )
+
+  const statusOpts = React.useMemo(
+    () => [
+      { value: '', label: 'Semua status' },
+      ...statusOptions.map((s) => ({ value: s, label: s })),
+    ],
+    [statusOptions]
+  )
+
   return (
     <>
-      <select
-        data-table-filter-key="site"
-        defaultValue=""
-        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-      >
-        <option value="">Semua site</option>
-        {sites.map((site) => (
-          <option key={site} value={site}>
-            {site}
-          </option>
-        ))}
-      </select>
-      <select
-        data-table-filter-key="priority"
-        defaultValue=""
-        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-      >
-        <option value="">Semua prioritas</option>
-        {priorities.map((priority) => (
-          <option key={priority} value={priority}>
-            {priority}
-          </option>
-        ))}
-      </select>
-      <select
-        data-table-filter-key="status"
-        defaultValue=""
-        className="bg-surface-container-lowest h-9 rounded-xl border-0 px-3 text-[13px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.1)]"
-      >
-        <option value="">Semua status</option>
-        {statusOptions.map((status) => (
-          <option key={status} value={status}>
-            {status}
-          </option>
-        ))}
-      </select>
+      <WorkbenchFilterItem
+        filterKey="site"
+        placeholder="Semua site"
+        options={siteOpts}
+        width="w-44"
+      />
+      <WorkbenchFilterItem
+        filterKey="priority"
+        placeholder="Semua prioritas"
+        options={priorityOpts}
+        width="w-40"
+      />
+      <WorkbenchFilterItem
+        filterKey="status"
+        placeholder="Semua status"
+        options={statusOpts}
+        width="w-40"
+      />
     </>
   )
 }
@@ -344,6 +445,7 @@ export function InboxTab({
   ptwItems = [],
   contractReviewItems = [],
   sopWinRequestItems = [],
+  trainingRequestItems = [],
   filterCategory,
   viewMode = 'desktop',
 }: {
@@ -354,6 +456,7 @@ export function InboxTab({
   ptwItems?: ApprovalCenterData['ptwInboxItems']
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
+  trainingRequestItems?: any[]
   filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
@@ -373,6 +476,9 @@ export function InboxTab({
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
   const [processedBatchIds, setProcessedBatchIds] = useState<Set<string>>(new Set())
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [isApdModalOpen, setIsApdModalOpen] = useState(false)
+  const [apdModalRequestId, setApdModalRequestId] = useState<number | null>(null)
+  const [isApdSummary, setIsApdSummary] = useState(false)
 
   // Reset pan and zoom when active document changes or modal opens
   useEffect(() => {
@@ -475,6 +581,11 @@ export function InboxTab({
 
   // Document Preview Scaling & Zoom State (Matching Mobile Daily Activity approval)
   const [previewZoom, setPreviewZoom] = useState<number>(1.0)
+
+  // Overtime Evidence & Photos
+  const [isSplEvidenceModalOpen, setIsSplEvidenceModalOpen] = useState(false)
+  const [splEvidenceTargetId, setSplEvidenceTargetId] = useState<number | string | null>(null)
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadSig() {
@@ -669,6 +780,7 @@ export function InboxTab({
       rawContractReview?: (typeof contractReviewItems)[number]
       rawSopWinRequest?: (typeof sopWinRequestItems)[number]
       rawRfr?: (typeof rfrItems)[number]
+      rawTrainingRequest?: (typeof trainingRequestItems)[number]
       rawGeneralGroup?: (typeof groups)[number]
       [key: string]: any
     }> = []
@@ -878,6 +990,21 @@ export function InboxTab({
       }
 
       if (nonFormWoItems.length > 0) {
+        const maritalItems = nonFormWoItems
+          .filter(
+            (i: any) =>
+              i.maritalStatusRequestId != null ||
+              i.activityType === 'Perubahan Status Pernikahan' ||
+              i.activityType === 'Permohonan Status Pernikahan' ||
+              i.activityType === 'marital_status' ||
+              i.title?.toLowerCase().includes('status pernikahan')
+          )
+          .sort((a: any, b: any) => {
+            if (a.status === 'pending' && b.status !== 'pending') return -1;
+            if (a.status !== 'pending' && b.status === 'pending') return 1;
+            return (a.level ?? 1) - (b.level ?? 1);
+          });
+        const maritalItem = maritalItems[0];
         const apdItem = nonFormWoItems.find(
           (i: any) =>
             i.activityType?.toLowerCase().includes('request apd') ||
@@ -890,32 +1017,44 @@ export function InboxTab({
             i.title?.toLowerCase().includes('summary')
         )
 
+        const isMaritalStatus = Boolean(maritalItem)
         const isApd = Boolean(apdItem)
         const isSummary = apdItem?.activityType === 'Summary APD' || apdItem?.title?.toLowerCase().includes('summary')
         const isMaterial = apdItem?.activityType?.toLowerCase().includes('material') || apdItem?.title?.toLowerCase().includes('material')
         const isTools = apdItem?.activityType?.toLowerCase().includes('tools') || apdItem?.title?.toLowerCase().includes('tools')
+        const isJobcard = apdItem?.activityType === 'Jobcard Repair (QC)' || apdItem?.activityType === 'jobcard_qc' || (apdItem?.title || '').toLowerCase().includes('job card') || (apdItem?.title || '').toLowerCase().includes('jobcard')
 
-        const resolvedCategory = isSummary
+        const resolvedCategory = isMaritalStatus
+          ? 'MARITAL_STATUS'
+          : isSummary
           ? 'SUMMARY'
           : isMaterial
           ? 'MATERIAL'
           : isTools
           ? 'TOOLS'
+          : isJobcard
+          ? 'JOBCARD'
           : isApd
           ? 'APD'
           : 'GENERAL'
 
-        const resolvedCategoryLabel = isSummary
+        const resolvedCategoryLabel = isMaritalStatus
+          ? 'Perubahan Status Pernikahan'
+          : isSummary
           ? 'Summary Permintaan Barang'
           : isMaterial
           ? 'Permintaan Material'
           : isTools
           ? 'Permintaan Tools'
+          : isJobcard
+          ? 'Jobcard Repair (QC)'
           : isApd
           ? 'Permintaan APD'
           : 'Form Activity'
 
-        const resolvedDocNumber = isApd
+        const resolvedDocNumber = isMaritalStatus
+          ? ((maritalItem as any)?.requestNumber || `MS-${(maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.approvalId}`)
+          : isApd
           ? (apdItem?.requestNumber ||
               (apdItem?.title?.includes(' - ')
                 ? apdItem.title.split(' - ')[1]
@@ -929,7 +1068,9 @@ export function InboxTab({
               `GRP-${g.id}`)
           : `GRP-${g.id}`
 
-        const resolvedTitle = isApd
+        const resolvedTitle = isMaritalStatus
+          ? ((maritalItem as any)?.title || `Permohonan Status Pernikahan - ${(maritalItem as any)?.requestNumber || ''}`)
+          : isApd
           ? (apdItem?.title || `${resolvedCategoryLabel} - ${g.requesterName}`)
           : `${g.requesterName} - ${nonFormWoItems.length} Item Activity`
 
@@ -942,14 +1083,16 @@ export function InboxTab({
           employeeName: g.requesterName,
           siteName: g.siteName,
           workDate: g.workDate,
-          stepLabel: isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`,
+          stepLabel: isMaritalStatus ? ((maritalItem as any)?.currentStepLabel || 'Menunggu Approval') : (isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`),
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: nonFormWoItems[0]?.dueAt || new Date(),
           submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
-          url: isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#',
-          activityType: isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity')),
-          activityId: apdItem?.activityId ?? Number(g.id),
-          approvalId: apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
+          url: isMaritalStatus ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || 1}` : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#'),
+          activityType: isMaritalStatus ? 'Perubahan Status Pernikahan' : (isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity'))),
+          activityId: (isMaritalStatus ? (maritalItem as any)?.activityId : (apdItem?.activityId)) ?? Number(g.id),
+          maritalStatusRequestId: (maritalItem as any)?.maritalStatusRequestId || null,
+          requestNumber: (maritalItem as any)?.requestNumber || resolvedDocNumber,
+          approvalId: (maritalItem as any)?.approvalId || apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
           approverName: (nonFormWoItems[0] as any)?.approverName || null,
           rawGeneralGroup: {
             ...g,
@@ -980,6 +1123,26 @@ export function InboxTab({
       })
     }
 
+    for (const tr of trainingRequestItems) {
+      list.push({
+        id: `training-request-${tr.approvalId || tr.id}`,
+        category: 'TRAINING_REQUEST',
+        categoryLabel: 'Pengajuan Training',
+        documentNumber: tr.requestNumber,
+        title: `Training: ${tr.trainingTitle}`,
+        employeeName: tr.requesterName,
+        department: tr.requesterDepartment,
+        stepLabel: `${tr.roleLabel} (Step ${tr.stepOrder}/${tr.totalSteps})`,
+        approverName: tr.approverName,
+        dueState: tr.dueState,
+        dueAt: tr.dueAt,
+        submittedAt: tr.submittedAt,
+        url: tr.url,
+        actionLabel: 'Review & Tanda Tangan',
+        rawTrainingRequest: tr,
+      })
+    }
+
     const uncommittedList = processedBatchIds.size > 0 ? list.filter((it) => !processedBatchIds.has(it.id)) : list
 
     const sorted = uncommittedList.sort((a, b) => {
@@ -993,7 +1156,7 @@ export function InboxTab({
     }
 
     return sorted
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, groups, filterCategory, processedBatchIds])
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, groups, filterCategory, processedBatchIds])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -1108,6 +1271,11 @@ export function InboxTab({
           )
         }
       }
+      if (e.data && e.data.type === 'openApdDocument') {
+        setApdModalRequestId(e.data.requestId)
+        setIsApdSummary(false)
+        setIsApdModalOpen(true)
+      }
     }
     window.addEventListener('message', handleIframeMsg)
     return () => window.removeEventListener('message', handleIframeMsg)
@@ -1188,8 +1356,15 @@ export function InboxTab({
     const currentRemark = approvalRemarks[docId] || reason || ''
 
     try {
-      if (currentBatchDoc.category === 'DAILY_ACTIVITY' && currentBatchDoc.rawDaily) {
-        const sessId = currentBatchDoc.rawDaily.sessionId
+      if (currentBatchDoc.category === 'DAILY_ACTIVITY' && (currentBatchDoc.rawDaily || (currentBatchDoc as any).sessionId || (currentBatchDoc as any).id)) {
+        const sessId = Number(
+          (currentBatchDoc.rawDaily as any)?.sessionId ||
+          (currentBatchDoc.rawDaily as any)?.id ||
+          (currentBatchDoc as any)?.sessionId ||
+          (currentBatchDoc as any)?.id ||
+          String(currentBatchDoc.id).replace(/^daily-activity-/, '')
+        )
+        if (!sessId || isNaN(sessId)) throw new Error('ID Sesi Daily Activity tidak valid.')
         if (action === 'approve') {
           const res = await singleApproveDailyActivityAction(sessId, currentRemark)
           if (!res.success) throw new Error(res.error || 'Gagal menyetujui Daily Activity')
@@ -1298,6 +1473,26 @@ export function InboxTab({
           toast.error(`Contract Review #${currentBatchDoc.documentNumber} ditolak.`)
         }
       } else if (
+        currentBatchDoc.category === 'TRAINING_REQUEST' ||
+        Boolean((currentBatchDoc as any).rawTrainingRequest)
+      ) {
+        const rawTr = (currentBatchDoc as any).rawTrainingRequest || {}
+        const token = rawTr.approvalToken || rawTr.approvalId || currentBatchDoc.id.replace('training-request-', '')
+        if (action === 'approve') {
+          const res = await approveTrainingRequestStep(token, {
+            signatureDataUrl: signatureDataUrl || '',
+            remarks: currentRemark || 'Disetujui via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal menyetujui Pengajuan Training')
+          toast.success(`Pengajuan Training #${currentBatchDoc.documentNumber} berhasil disetujui.`)
+        } else {
+          const res = await rejectTrainingRequestStep(token, {
+            remarks: currentRemark ? `Ditolak: ${currentRemark}` : 'Ditolak via Inbox Approval',
+          })
+          if (!res.success) throw new Error(res.error || 'Gagal menolak Pengajuan Training')
+          toast.error(`Pengajuan Training #${currentBatchDoc.documentNumber} ditolak.`)
+        }
+      } else if (
         currentBatchDoc.category === 'QUALITY_5R' ||
         Boolean((currentBatchDoc as any).rawFiveR) ||
         Boolean((currentBatchDoc as any).fiveRReport) ||
@@ -1366,14 +1561,60 @@ export function InboxTab({
         await withActionRetry(() => approveApprovalGroupAction(formData))
         toast.success(`Form WO #${currentBatchDoc.documentNumber} berhasil diproses (${action}).`)
       } else if (
+        currentBatchDoc.category === 'MARITAL_STATUS' ||
+        Boolean((currentBatchDoc as any).rawMaritalStatus) ||
+        Boolean((currentBatchDoc as any).maritalStatusRequestId) ||
+        (currentBatchDoc as any).activityType === 'marital_status' ||
+        (currentBatchDoc as any).activityType === 'Permohonan Status Pernikahan' ||
+        (currentBatchDoc as any).activityType === 'Perubahan Status Pernikahan'
+      ) {
+        const formData = new FormData()
+        if (currentBatchDoc.rawGeneralGroup) {
+          for (const it of currentBatchDoc.rawGeneralGroup.items) {
+            if (it.approvalId) {
+              formData.append('approvalIds', String(it.approvalId))
+            }
+          }
+          formData.append('groupId', currentBatchDoc.rawGeneralGroup.id)
+        } else {
+          const appVal = currentBatchDoc.approvalId || (currentBatchDoc as any).id
+          if (appVal) {
+            formData.append('approvalIds', String(appVal))
+          }
+        }
+        formData.append('decision', action === 'approve' ? 'approved' : action === 'revert' ? 'needs_correction' : 'rejected')
+        formData.append('note', currentRemark || `Keputusan ${action === 'approve' ? 'Menyetujui' : action === 'revert' ? 'Revisi' : 'Ditolak'}`)
+        if (signatureDataUrl) {
+          formData.append('signatureUrl', signatureDataUrl)
+        }
+        await withActionRetry(() => approveApprovalGroupAction(formData))
+        toast.success(`Permohonan Status Pernikahan #${currentBatchDoc.documentNumber} berhasil diproses (${action === 'approve' ? 'Disetujui' : action === 'revert' ? 'Dikembalikan' : 'Ditolak'}).`)
+      } else if (
         (currentBatchDoc.category === 'GENERAL' ||
+          currentBatchDoc.category === 'DAILY_ACTIVITY' ||
+          currentBatchDoc.category === 'GENERAL_ACTIVITY' ||
           currentBatchDoc.category === 'APD' ||
           currentBatchDoc.category === 'MATERIAL' ||
           currentBatchDoc.category === 'TOOLS' ||
-          currentBatchDoc.category === 'SUMMARY') &&
+          currentBatchDoc.category === 'SUMMARY' ||
+          currentBatchDoc.category === 'JOBCARD') &&
         currentBatchDoc.rawGeneralGroup
       ) {
         const grp = currentBatchDoc.rawGeneralGroup
+        if (action === 'revert') {
+          const dailySessionIds = grp.items
+            .map((i: any) => Number(i.sessionId || i.id || i.activityId))
+            .filter((id: number) => !isNaN(id) && id > 0)
+          if (dailySessionIds.length > 0) {
+            await batchRevertDailyActivitySessionsAction(dailySessionIds, currentRemark || 'Dokumen dikembalikan untuk revisi.')
+          }
+          const splIds = grp.items
+            .map((i: any) => Number(i.splId || i.overtimeCommandLetterId))
+            .filter((id: number) => !isNaN(id) && id > 0)
+          if (splIds.length > 0) {
+            await batchRevertOvertimeRequestsAction(splIds, currentRemark || 'SPL dikembalikan.')
+          }
+        }
         const formData = new FormData()
         for (const it of grp.items) {
           if (it.approvalId) {
@@ -1386,8 +1627,10 @@ export function InboxTab({
         if (signatureDataUrl) {
           formData.append('signatureUrl', signatureDataUrl)
         }
-        await withActionRetry(() => approveApprovalGroupAction(formData))
-        toast.success(`Pengajuan #${currentBatchDoc.documentNumber} berhasil diproses.`)
+        if (formData.getAll('approvalIds').length > 0) {
+          await withActionRetry(() => approveApprovalGroupAction(formData))
+        }
+        toast.success(`Pengajuan #${currentBatchDoc.documentNumber} berhasil diproses (${action === 'revert' ? 'Dikembalikan' : action}).`)
       }
 
       setProcessedBatchIds((prev) => new Set([...prev, docId]))
@@ -1412,6 +1655,20 @@ export function InboxTab({
     } catch (e: any) {
       console.error(e)
       const errStr = String(e?.message || e || '').toLowerCase()
+      const isStaleAction =
+        errStr.includes('was not found on the server') ||
+        errStr.includes('failed-to-find-server-action')
+      if (isStaleAction) {
+        toast.info('Sistem HERO telah diperbarui di server (versi aplikasi baru). Memuat ulang halaman untuk menyinkronkan...', {
+          duration: 3000,
+        })
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            window.location.reload()
+          }, 1200)
+        }
+        return
+      }
       const isNetErr = errStr.includes('network') || errStr.includes('failed to fetch') || errStr.includes('econnreset')
       toast.error(isNetErr ? 'Koneksi terputus sementara (Network Error). Silakan klik ulang tombol persetujuan.' : (e.message || 'Terjadi kesalahan saat memproses approval.'))
     } finally {
@@ -1437,7 +1694,7 @@ export function InboxTab({
     let failCount = 0
 
     try {
-      const dailyItems = itemsToProcess.filter(it => it.category === 'DAILY_ACTIVITY' && it.rawDaily)
+      const dailyItems = itemsToProcess.filter(it => it.category === 'DAILY_ACTIVITY' && (it.rawDaily || (it as any).sessionId || (it as any).id))
       const overtimeItems = itemsToProcess.filter(it => it.category === 'OVERTIME' && it.rawOvertime)
       const ptwItems = itemsToProcess.filter(it => it.category === 'PTW' && it.rawPtw)
       const sopWinItems = itemsToProcess.filter(it => it.category === 'SOP_WIN_REQUEST' && it.rawSopWinRequest)
@@ -1462,7 +1719,9 @@ export function InboxTab({
 
       // Daily Activity Batch
       if (dailyItems.length > 0) {
-        const sessionIds = dailyItems.map(it => it.rawDaily!.sessionId)
+        const sessionIds = dailyItems
+          .map(it => Number((it.rawDaily as any)?.sessionId || (it.rawDaily as any)?.id || (it as any).sessionId || (it as any).id || String(it.id).replace(/^daily-activity-/, '')))
+          .filter(id => !isNaN(id) && id > 0)
         const remarkText = reason || (action === 'approve' ? 'Approved' : action === 'revert' ? 'Reverted' : 'Rejected')
         let res: { success: boolean; error?: string } = { success: false }
         if (action === 'approve') {
@@ -1632,6 +1891,21 @@ export function InboxTab({
       }
     } catch (e: any) {
       console.error(e)
+      const errStr = String(e?.message || e || '').toLowerCase()
+      const isStaleAction =
+        errStr.includes('was not found on the server') ||
+        errStr.includes('failed-to-find-server-action')
+      if (isStaleAction) {
+        toast.info('Sistem HERO telah diperbarui di server (versi aplikasi baru). Memuat ulang halaman untuk menyinkronkan...', {
+          duration: 3000,
+        })
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            window.location.reload()
+          }, 1200)
+        }
+        return
+      }
       toast.error(e.message || 'Terjadi kesalahan saat memproses aksi massal.')
     } finally {
       setIsBatchActionRunning(false)
@@ -1677,7 +1951,7 @@ export function InboxTab({
   }
 
   // Export Excel
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const itemsToExport = selectedItems.length > 0 ? selectedItems : allUnifiedItems
     if (itemsToExport.length === 0) {
       toast.warning('Tidak ada data untuk diekspor.')
@@ -1699,6 +1973,7 @@ export function InboxTab({
       'Tanggal Pengajuan': formatDate(it.submittedAt),
     }))
 
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Inbox Approval')
@@ -2041,7 +2316,7 @@ export function InboxTab({
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Batas Waktu:</span>
-                    <span className="font-bold text-slate-700">Due {formatDate(item.dueAt)}</span>
+                    <span className="font-bold text-slate-700">{item.dueState === 'no_sla' ? 'Non SLA' : `Due ${formatDate(item.dueAt)}`}</span>
                   </div>
                 </div>
 
@@ -2315,6 +2590,7 @@ export function InboxTab({
                             item.category === 'MATERIAL' && 'bg-emerald-50 text-emerald-800 border-emerald-200',
                             item.category === 'TOOLS' && 'bg-cyan-50 text-cyan-800 border-cyan-200',
                             item.category === 'SUMMARY' && 'bg-purple-50 text-purple-800 border-purple-200',
+                            item.category === 'MARITAL_STATUS' && 'bg-pink-50 text-pink-700 border-pink-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -2350,7 +2626,9 @@ export function InboxTab({
                     <TableCell className="align-top">
                       <div className="space-y-1">
                         <AdminStatusBadge value={item.dueState} />
-                        <p className="text-muted-foreground text-xs">Due {formatDate(item.dueAt)}</p>
+                        {item.dueState !== 'no_sla' && item.dueState !== 'closed' && (
+                          <p className="text-muted-foreground text-xs">Due {formatDate(item.dueAt)}</p>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="align-top text-right">
@@ -2360,6 +2638,8 @@ export function InboxTab({
                         <FormWoApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : item.category === 'QUALITY_5R' || (item.category === 'GENERAL' && ((item as any).fiveRReport || (item as any).activityType === '5R Audit Report')) ? (
                         <FiveRApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
+                      ) : item.category === 'MARITAL_STATUS' || (item as any).maritalStatusRequestId || (item as any).activityType === 'marital_status' || (item as any).activityType === 'Permohonan Status Pernikahan' || (item as any).activityType === 'Perubahan Status Pernikahan' ? (
+                        <MaritalStatusApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).isReverted ? (
                         <Button
                           size="sm"
@@ -2458,7 +2738,22 @@ export function InboxTab({
               (currentBatchDoc?.category as any) === 'CONTRACT_REVIEW' ||
               Boolean((currentBatchDoc as any)?.rawContractReview)
 
-            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc || isContractReviewDoc
+            const isMaritalStatusDoc =
+              (currentBatchDoc?.category as any) === 'MARITAL_STATUS' ||
+              Boolean((currentBatchDoc as any)?.maritalStatusRequestId) ||
+              Boolean((currentBatchDoc as any)?.rawMaritalStatus) ||
+              Boolean(
+                currentBatchDoc?.rawGeneralGroup?.items?.some(
+                  (i: any) =>
+                    i.maritalStatusRequestId != null ||
+                    i.activityType === 'marital_status' ||
+                    i.activityType === 'Permohonan Status Pernikahan' ||
+                    i.activityType === 'Perubahan Status Pernikahan' ||
+                    i.title?.toLowerCase().includes('status pernikahan')
+                )
+              )
+
+            const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc || isContractReviewDoc || isMaritalStatusDoc
             return (
               <DialogContent
                 showCloseButton={false}
@@ -2734,12 +3029,35 @@ export function InboxTab({
                                 <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
                                 <td className="text-black">{[currentBatchDoc.department, currentBatchDoc.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                               </tr>
-                              {((currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]) ? (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
-                                  <td colSpan={3} className="text-black font-normal">{(currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]}</td>
-                                </tr>
-                              ) : null}
+                              {(() => {
+                                const items = (currentBatchDoc.rawDaily as any)?.items || (currentBatchDoc.rawDaily as any)?.sessionItems || (currentBatchDoc as any)?.items || []
+                                const rawSessionTeam = (currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
+                                const teamResult = formatActivityTeamGroups(items, rawSessionTeam)
+
+                                if (!teamResult.hasTeams) return null
+
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
+                                    <td colSpan={3} className="text-black font-normal py-1.5">
+                                      {teamResult.isSingleTeam ? (
+                                        <span className="text-black font-medium">{teamResult.singleTeamText}</span>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {teamResult.groups.map((grp, gIdx) => (
+                                            <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                              <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                              <span className="text-slate-900 font-medium">
+                                                {grp.teamMembers}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })()}
                             </tbody>
                           </table>
 
@@ -2767,7 +3085,19 @@ export function InboxTab({
                                         return (
                                           <tr key={it.id || idx}>
                                             <td className="text-center align-middle">{idx + 1}</td>
-                                            <td className="align-middle">{it.label || it.snapshotLabel || 'Aktivitas'}</td>
+                                            <td className="align-middle">
+                                              {it.snapshotGroupName || it.group ? (
+                                                <span className="font-semibold text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded text-[10px] mr-1.5 border border-sky-200">
+                                                  {it.snapshotGroupName || it.group}
+                                                </span>
+                                              ) : null}
+                                              <span className="font-medium text-slate-900">{it.label || it.snapshotLabel || 'Aktivitas'}</span>
+                                              {it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-' ? (
+                                                <div className="mt-0.5 text-[7pt] text-slate-600 font-normal">
+                                                  <span className="font-semibold text-slate-800">Tim:</span> {it.itemTeamMembersSummary}
+                                                </div>
+                                              ) : null}
+                                            </td>
                                             <td className="text-center align-middle">{it.duration || '-'}</td>
                                             <td className="text-center font-bold align-middle">{it.points || it.actualPoints || 0}</td>
                                             <td className="text-left text-[7.5pt] align-middle">{it.remark || it.remarks || '-'}</td>
@@ -2964,14 +3294,84 @@ export function InboxTab({
                                   {formatDate(currentBatchDoc.workDate)} ({formatTime(currentBatchDoc.rawOvertime.plannedStartAt)} s.d. {formatTime(currentBatchDoc.rawOvertime.plannedEndAt)})
                                 </td>
                               </tr>
-                              {Boolean((currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes) && (
-                                <tr>
-                                  <td className="font-bold bg-slate-50">Request Notes</td>
-                                  <td colSpan={3}>{(currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes}</td>
-                                </tr>
-                              )}
+                              {(() => {
+                                const raw = (currentBatchDoc.rawOvertime as any).requestNotes || (currentBatchDoc.rawOvertime as any).notes || ''
+                                const cleaned = raw.replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                                if (!cleaned) return null
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50">Request Notes</td>
+                                    <td colSpan={3}>{cleaned}</td>
+                                  </tr>
+                                )
+                              })()}
                             </tbody>
                           </table>
+
+                          {/* Evidence Photos Box */}
+                          {(() => {
+                            const splObj = currentBatchDoc.rawOvertime as any
+                            const rawNotes = splObj.requestNotes || splObj.notes || ''
+                            const headerPhotoMatch = rawNotes.match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+                            const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1] : (splObj.photoUrl || null)
+                            const lineItems = splObj.lineItems || []
+                            const allPhotos: string[] = Array.from(new Set([
+                              ...(headerPhoto ? [headerPhoto] : []),
+                              ...((Array.isArray(splObj.photos) ? splObj.photos : []) as string[]),
+                              ...lineItems.flatMap((it: any) => {
+                                let meta: any = {}
+                                try {
+                                  if (it.lineDescription && it.lineDescription.startsWith('{')) meta = JSON.parse(it.lineDescription)
+                                } catch {}
+                                return Array.isArray(it.photos) ? it.photos : it.photoUrl ? [it.photoUrl] : (meta.photos || (meta.photoUrl ? [meta.photoUrl] : []))
+                              }),
+                            ].filter(Boolean)))
+
+                            if (allPhotos.length === 0) return null
+
+                            return (
+                              <div className="mb-3 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#003461]">
+                                    <Camera className="size-3.5" />
+                                    <span>Foto Bukti SPL ({allPhotos.length} Lampiran)</span>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSplEvidenceTargetId(splObj.splId || splObj.id || currentBatchDoc.id)
+                                      setIsSplEvidenceModalOpen(true)
+                                    }}
+                                    className="h-7 text-[11px] font-bold rounded-lg border-blue-300 text-[#003461] hover:bg-blue-100 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="size-3" />
+                                    Buka Galeri Bukti Full
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                  {allPhotos.map((pUrl, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      onClick={() => setSelectedPreviewImage(resolveUploadUrl(pUrl))}
+                                      className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-slate-300 bg-black/5 hover:border-[#003461] cursor-pointer group shadow-xs transition"
+                                      title="Klik untuk memperbesar"
+                                    >
+                                      <img
+                                        src={resolveUploadUrl(pUrl)}
+                                        alt={`Bukti ${pIdx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                                      />
+                                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                        <ZoomIn className="size-4 text-white drop-shadow-md" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
 
                           {/* Section 2: Workers */}
                           {(() => {
@@ -3020,28 +3420,54 @@ export function InboxTab({
                                 <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 text-[8pt]">
                                   <thead>
                                     <tr className="bg-slate-50 text-center font-bold">
-                                      <th className="w-[8%]">#</th>
-                                      <th className="text-left w-[40%]">Activity</th>
-                                      <th className="w-[18%]">Target</th>
-                                      <th className="w-[14%]">Minutes</th>
-                                      <th className="w-[20%]">Points</th>
+                                      <th className="w-[6%]">#</th>
+                                      <th className="text-left w-[36%]">Activity</th>
+                                      <th className="w-[16%]">Target</th>
+                                      <th className="w-[12%]">Minutes</th>
+                                      <th className="w-[12%]">Points</th>
+                                      <th className="w-[18%]">Foto Bukti</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {lineItems.length === 0 ? (
                                       <tr>
-                                        <td colSpan={5} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
+                                        <td colSpan={6} className="text-center text-slate-400 py-2">Belum ada rincian tugas lembur.</td>
                                       </tr>
                                     ) : (
-                                      lineItems.map((item: any, idx: number) => (
-                                        <tr key={idx}>
-                                          <td className="text-center">{idx + 1}</td>
-                                          <td className="font-medium">{item.lineLabel}</td>
-                                          <td className="text-center">{item.targetUnit || '—'}</td>
-                                          <td className="text-center">{item.estimatedMinutes} m</td>
-                                          <td className="text-center font-bold">{item.plannedPoints} pts</td>
-                                        </tr>
-                                      ))
+                                      lineItems.map((item: any, idx: number) => {
+                                        let meta: any = {}
+                                        try {
+                                          if (item.lineDescription && item.lineDescription.startsWith('{')) {
+                                            meta = JSON.parse(item.lineDescription)
+                                          }
+                                        } catch {}
+                                        const itemPhoto = item.photoUrl || meta.photoUrl || (Array.isArray(item.photos) ? item.photos[0] : (meta.photos?.[0] || null))
+
+                                        return (
+                                          <tr key={idx}>
+                                            <td className="text-center">{idx + 1}</td>
+                                            <td className="font-medium">{item.lineLabel}</td>
+                                            <td className="text-center">{item.targetUnit || '—'}</td>
+                                            <td className="text-center">{item.estimatedMinutes} m</td>
+                                            <td className="text-center font-bold">{item.plannedPoints} pts</td>
+                                            <td className="text-center p-1">
+                                              {itemPhoto ? (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setSelectedPreviewImage(resolveUploadUrl(itemPhoto))}
+                                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 text-[7pt] font-semibold text-[#003461] hover:bg-blue-100 transition cursor-pointer"
+                                                  title="Lihat foto lampiran"
+                                                >
+                                                  <img src={resolveUploadUrl(itemPhoto)} className="size-4 rounded object-cover" />
+                                                  <span>Lihat Foto</span>
+                                                </button>
+                                              ) : (
+                                                <span className="text-[7pt] text-slate-400 italic">—</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        )
+                                      })
                                     )}
                                   </tbody>
                                 </table>
@@ -3098,9 +3524,9 @@ export function InboxTab({
                             </tbody>
                           </table>
 
-                          {/* Section 5: Signatories */}
+                          {/* Section 5: Signatories (2-Grid Pemohon & Leader/PJO) */}
                           <div className="font-bold mb-2 text-[8.5pt]">Signatories</div>
-                          <div className="grid grid-cols-3 gap-x-6 gap-y-4 mb-4 text-center">
+                          <div className="grid grid-cols-2 gap-x-8 gap-y-4 mb-3 text-center">
                             {/* 1. Serviceman / Karyawan */}
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
@@ -3135,16 +3561,16 @@ export function InboxTab({
                               )
                             })()}
 
-                            {/* 2. Leader / Pengawas */}
+                            {/* 2. Leader / PJO */}
                             {(() => {
                               const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
-                              const step2 = approvals.find((s: any) => s.stepOrder === 2)
+                              const step2 = approvals.find((s: any) => s.stepOrder === 2 || s.stepOrder === 3)
                               const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
                               const sigUrl2 = step2?.signatureDataUrl
 
                               return (
                                 <div className="flex flex-col items-center text-center">
-                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
+                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / PJO Signature</div>
                                   <div className="h-16 w-full flex items-center justify-center my-1">
                                     {sigUrl2 ? (
                                       <img src={sigUrl2} alt="TTD" className="max-h-14 max-w-full object-contain" />
@@ -3159,52 +3585,43 @@ export function InboxTab({
                                     )}
                                   </div>
                                   <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                                    {step2?.approverName || 'Leader / Supervisor'}
+                                    {step2?.approverName || 'Leader / PJO Site'}
                                   </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / Supervisor'}</div>
+                                  <div className="text-[7pt] text-slate-600 font-medium">{step2?.stepLabel || 'Leader / PJO'}</div>
                                   <div className="text-[6.5pt] text-slate-400 mt-0.5">
                                     {isApproved2 && step2?.signedAt ? `Waktu TTD: ${formatTimestamp(step2.signedAt)}` : '—'}
                                   </div>
                                 </div>
                               )
                             })()}
-
-                            {/* 3. Section Head */}
-                            {(() => {
-                              const approvals = (currentBatchDoc.rawOvertime as any).approvals || []
-                              const step3 = approvals.find((s: any) => s.stepOrder === 3)
-                              const isApproved3 = step3?.status === 'approved' || Boolean(step3?.signedAt)
-                              const sigUrl3 = step3?.signatureDataUrl
-
-                              return (
-                                <div className="flex flex-col items-center text-center">
-                                  <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
-                                  <div className="h-16 w-full flex items-center justify-center my-1">
-                                    {sigUrl3 ? (
-                                      <img src={sigUrl3} alt="TTD" className="max-h-14 max-w-full object-contain" />
-                                    ) : isApproved3 ? (
-                                      <div className="flex flex-col items-center justify-center text-center">
-                                        <span className="text-[6.5pt] font-bold text-emerald-600">✓ Approved ({formatTimestamp(step3?.signedAt)})</span>
-                                      </div>
-                                    ) : step3?.status === 'reverted' ? (
-                                      <span className="text-amber-600 font-semibold italic text-[7pt]">(Dikembalikan)</span>
-                                    ) : (
-                                      <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
-                                    )}
-                                  </div>
-                                  <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
-                                    {step3?.approverName || 'Section Head'}
-                                  </div>
-                                  <div className="text-[7pt] text-slate-600 font-medium">{step3?.stepLabel || 'Section Head'}</div>
-                                  <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                                    {isApproved3 && step3?.signedAt ? `Waktu TTD: ${formatTimestamp(step3.signedAt)}` : '—'}
-                                  </div>
-                                </div>
-                              )
-                            })()}
                           </div>
 
-                          <div className="text-right text-[7pt] text-slate-400 mt-4">PT Chitra Paratama • HERO Platform</div>
+                          {/* Bottom Info & QR Code */}
+                          <div className="flex items-end justify-between mt-3 pt-1">
+                            <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                              * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              {(() => {
+                                const targetSplId =
+                                  (currentBatchDoc.rawOvertime as any)?.splId ||
+                                  (currentBatchDoc.rawOvertime as any)?.id ||
+                                  (currentBatchDoc.rawOvertime as any)?.documentId ||
+                                  (typeof currentBatchDoc.id === 'string'
+                                    ? currentBatchDoc.id.replace(/^overtime-/, '')
+                                    : currentBatchDoc.id)
+                                return (
+                                  <SplEvidenceQrBox
+                                    splId={targetSplId}
+                                    splNumber={currentBatchDoc.documentNumber}
+                                  />
+                                )
+                              })()}
+                              <div className="text-right text-[7pt] text-slate-500 font-mono mt-0.5">
+                                F.HC.SPL.001.01 • PT Chitra Paratama
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
 
@@ -3992,8 +4409,92 @@ export function InboxTab({
                         )
                       })()}
 
+                      {/* Marital Status Document Preview */}
+                      {isMaritalStatusDoc && (() => {
+                        const msReqId =
+                          (currentBatchDoc as any)?.maritalStatusRequestId ||
+                          (currentBatchDoc as any)?.rawMaritalStatus?.id ||
+                          currentBatchDoc.rawGeneralGroup?.items?.find((i: any) => i.maritalStatusRequestId != null)?.maritalStatusRequestId ||
+                          currentBatchDoc.rawGeneralGroup?.items?.find((i: any) => (i.activityType === 'marital_status' || i.activityType === 'Permohonan Status Pernikahan' || i.activityType === 'Perubahan Status Pernikahan') && i.maritalStatusRequestId != null)?.maritalStatusRequestId ||
+                          (typeof (currentBatchDoc as any)?.id === 'number'
+                            ? (currentBatchDoc as any).id
+                            : Number(String((currentBatchDoc as any)?.id || '').replace(/\D/g, '')))
+                        const printUrl = `/print/central-service/marital-status/${msReqId}?embed=true`
+                        return (
+                          <div className="w-[210mm] h-[297mm] min-h-[297mm] max-h-[297mm] overflow-hidden flex justify-center p-0 m-0">
+                            <iframe
+                              src={printUrl}
+                              className="w-[210mm] min-h-[297mm] h-[297mm] border-0 bg-white shadow-none p-0 m-0 block"
+                              title={`Preview Dokumen Status Pernikahan ${currentBatchDoc.documentNumber}`}
+                              onLoad={(e) => {
+                                const iframe = e.target as HTMLIFrameElement
+                                const sendSig = () => {
+                                  if (signatureDataUrl && iframe?.contentWindow) {
+                                    iframe.contentWindow.postMessage(
+                                      { type: 'previewSignature', dataUrl: signatureDataUrl },
+                                      '*'
+                                    )
+                                  }
+                                }
+                                sendSig()
+                                setTimeout(sendSig, 200)
+                                setTimeout(sendSig, 600)
+                                setTimeout(sendSig, 1200)
+                              }}
+                            />
+                          </div>
+                        )
+                      })()}
+
+                      {/* Jobcard Repair (QC) Document Preview */}
+                      {(currentBatchDoc.category === 'JOBCARD' || (currentBatchDoc as any).activityType === 'Jobcard Repair (QC)' || (currentBatchDoc as any).activityType === 'jobcard_qc') && (
+                        <div>
+                          <div className="text-center mb-3">
+                            <p className="font-bold text-[10pt] text-black mb-0.5 uppercase">PT. CHITRA PARATAMA</p>
+                            <h2 className="font-bold text-[11.5pt] text-black uppercase tracking-wider">
+                              REPAIR JOB CARD (F.INPR.REM.003.00)
+                            </h2>
+                          </div>
+
+                          <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1 text-[8.5pt]">
+                            <tbody>
+                              <tr>
+                                <td colSpan={4} className="font-bold bg-slate-50 text-black py-0.5">Informasi Job Card &amp; Otorisasi QC</td>
+                              </tr>
+                              <tr>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Nomor Job Card</td>
+                                <td className="w-1/4 font-mono font-semibold text-black">{currentBatchDoc.documentNumber || 'JC-DRAFT'}</td>
+                                <td className="w-1/4 font-bold bg-slate-50 text-black">Tanggal Submit</td>
+                                <td className="w-1/4 font-semibold text-black">{formatDate(currentBatchDoc.submittedAt)}</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Serial Number (SN)</td>
+                                <td className="font-mono font-bold text-black">{currentBatchDoc.unitNumber || '-'}</td>
+                                <td className="font-bold bg-slate-50 text-black">Pelanggan / Site</td>
+                                <td className="font-semibold text-black">{currentBatchDoc.customerName || 'PT Kaltim Prima Coal'} ({currentBatchDoc.siteName || 'Workshop Sangatta'})</td>
+                              </tr>
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Nama Pemohon</td>
+                                <td className="font-semibold text-black">{currentBatchDoc.employeeName || 'Teknisi Workshop'}</td>
+                                <td className="font-bold bg-slate-50 text-black">Approver QC / Leader</td>
+                                <td className="font-semibold text-black">{currentBatchDoc.approverName || 'Renaldo'}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+
+                          <div className="p-3 bg-slate-50 border border-slate-300 rounded-lg text-xs space-y-1 mb-3">
+                            <div className="font-bold text-slate-800">Ringkasan Pengajuan:</div>
+                            <div className="text-slate-700">{currentBatchDoc.title || 'Job Card Repair Otorisasi QC'}</div>
+                            {currentBatchDoc.decisionNote && (
+                              <div className="text-slate-600 text-[11px] italic mt-1">Catatan Persetujuan: {currentBatchDoc.decisionNote}</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* General Group (Form Activity) */}
                       {!isApdDoc &&
+                        !isMaritalStatusDoc &&
                         currentBatchDoc.category === 'GENERAL' &&
                         !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) &&
                         !Boolean(
@@ -4346,28 +4847,29 @@ export function InboxTab({
 
                         <div className="space-y-1 text-xs">
                           <label className="text-[11px] font-semibold text-slate-600">Rekomendasi Evaluasi:</label>
-                          <select
+                          <HeroSearchableSelect
+                            placeholder="Pilih Rekomendasi Evaluasi"
+                            options={[
+                              { value: 'contract_extended', label: 'Perpanjangan Masa Kontrak (Contract Extended)' },
+                              { value: 'confirm_permanent', label: 'Pengangkatan Karyawan Tetap (Confirm Permanent)' },
+                              { value: 'terminate_probation', label: 'Pemutusan Masa Percobaan (Terminate Probation)' },
+                              { value: 'contract_ended', label: 'Selesai Kontrak / Tidak Diperpanjang (Contract Ended)' },
+                            ]}
                             value={
                               contractReviewEdits[currentBatchDoc.id]?.recommendation ??
                               rawCr?.recommendation ??
                               'contract_extended'
                             }
-                            onChange={(e) => {
+                            onChange={(val) => {
                               setContractReviewEdits((prev) => ({
                                 ...prev,
                                 [currentBatchDoc.id]: {
                                   ...prev[currentBatchDoc.id],
-                                  recommendation: e.target.value,
+                                  recommendation: val,
                                 },
                               }))
                             }}
-                            className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                          >
-                            <option value="contract_extended">Perpanjangan Masa Kontrak (Contract Extended)</option>
-                            <option value="confirm_permanent">Pengangkatan Karyawan Tetap (Confirm Permanent)</option>
-                            <option value="terminate_probation">Pemutusan Masa Percobaan (Terminate Probation)</option>
-                            <option value="contract_ended">Selesai Kontrak / Tidak Diperpanjang (Contract Ended)</option>
-                          </select>
+                          />
                         </div>
 
                         {(contractReviewEdits[currentBatchDoc.id]?.recommendation ??
@@ -4402,28 +4904,29 @@ export function InboxTab({
                         {((rawCr?.approverRole === 'hr') || (currentBatchDoc as any)?.approverRole === 'hr') && (
                           <div className="space-y-1 text-xs">
                             <label className="text-[11px] font-semibold text-slate-600">Penerbitan Surat (HR):</label>
-                            <select
+                            <HeroSearchableSelect
+                              placeholder="Pilih Penerbitan Surat"
+                              options={[
+                                { value: 'contract_extension', label: 'Surat Perpanjangan Kontrak Kerja' },
+                                { value: 'permanent_confirmation', label: 'Surat Pengangkatan Karyawan Tetap' },
+                                { value: 'unsuccessful_probation', label: 'Surat Pemutusan Hubungan Kerja (Masa Percobaan)' },
+                                { value: 'end_of_contract', label: 'Surat Pemberitahuan Selesai Masa Kontrak' },
+                              ]}
                               value={
                                 contractReviewEdits[currentBatchDoc.id]?.letterIssuance ??
                                 rawCr?.letterIssuance ??
                                 'contract_extension'
                               }
-                              onChange={(e) => {
+                              onChange={(val) => {
                                 setContractReviewEdits((prev) => ({
                                   ...prev,
                                   [currentBatchDoc.id]: {
                                     ...prev[currentBatchDoc.id],
-                                    letterIssuance: e.target.value,
+                                    letterIssuance: val,
                                   },
                                 }))
                               }}
-                              className="w-full h-8 text-xs rounded-lg border border-slate-200 bg-white px-2 font-medium text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                            >
-                              <option value="contract_extension">Surat Perpanjangan Kontrak Kerja</option>
-                              <option value="permanent_confirmation">Surat Pengangkatan Karyawan Tetap</option>
-                              <option value="unsuccessful_probation">Surat Pemutusan Hubungan Kerja (Masa Percobaan)</option>
-                              <option value="end_of_contract">Surat Pemberitahuan Selesai Masa Kontrak</option>
-                            </select>
+                            />
                           </div>
                         )}
                       </div>
@@ -4635,6 +5138,34 @@ export function InboxTab({
             currentCanDownload={(currentBatchDoc.rawSopWinRequest as any).canDownload ?? true}
           />
         )}
+
+        <ApdRequestDetailModal
+          isOpen={isApdModalOpen}
+          onClose={() => setIsApdModalOpen(false)}
+          requestId={apdModalRequestId}
+          isSummary={isApdSummary}
+        />
+
+        <OvertimeEvidenceModal
+          isOpen={isSplEvidenceModalOpen}
+          onClose={() => setIsSplEvidenceModalOpen(false)}
+          splId={splEvidenceTargetId}
+        />
+
+        {/* Quick Lightbox Dialog */}
+        <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+            {selectedPreviewImage && (
+              <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
+                <img
+                  src={selectedPreviewImage}
+                  alt="Foto Bukti SPL"
+                  className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-xl"
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
     </>
   )
 }
@@ -4643,9 +5174,10 @@ function getHistoryItemLinks(item: any) {
   const actId = String(item.activityId || '')
   const actType = String(item.activityType || '').toLowerCase()
   const title = String(item.title || '').toLowerCase()
+  const unitNumber = String(item.unitNumber || '').toLowerCase()
 
   let rawId = ''
-  let viewUrl = '/dashboard/activity-hub'
+  let viewUrl = '/mobile/approval'
   let downloadUrl: string | null = null
 
   if (
@@ -4653,30 +5185,77 @@ function getHistoryItemLinks(item: any) {
     actType.includes('lembur') ||
     actType.includes('overtime') ||
     actType.includes('spl') ||
-    title.includes('spl')
+    title.includes('spl') ||
+    unitNumber.includes('spl')
   ) {
-    rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/mobile/overtime?edit=${rawId}`
+    const splId = (item as any).splId || (item as any).overtimeId || (item as any).documentId
+    rawId = splId ? String(splId) : actId.replace(/^overtime-/, '').split('-')[0]
+    viewUrl = `/mobile/overtime`
     downloadUrl = null
-  } else if (actId.startsWith('daily-') || actType.includes('daily') || title.includes('daily') || title.includes('dar')) {
+  } else if (
+    actId.startsWith('daily-') ||
+    actId.startsWith('das-') ||
+    actType.includes('daily') ||
+    actType.includes('dar') ||
+    actType.includes('das') ||
+    title.includes('daily') ||
+    title.includes('dar') ||
+    title.includes('das-') ||
+    unitNumber.startsWith('das-')
+  ) {
     rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/mobile/activity?edit=${rawId}`
-    downloadUrl = `/api/activity-sessions/${rawId}/pdf`
+    viewUrl = rawId ? `/mobile/activity/document/${rawId}` : `/mobile/activity`
+    downloadUrl = rawId ? `/api/activity-sessions/${rawId}/pdf` : null
   } else if (actId.startsWith('ptw-') || actType.includes('ptw') || title.includes('izin kerja')) {
     rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
     viewUrl = `/mobile/hse/ptw`
-    downloadUrl = `/dashboard/hse/izin-kerja-ptw/${rawId}`
+    downloadUrl = rawId ? `/dashboard/hse/izin-kerja-ptw/${rawId}` : null
   } else if (actId.startsWith('sop-') || actType.includes('sop') || actType.includes('win')) {
     rawId = actId.replace('sop-', '').replace(/[^0-9]/g, '')
     viewUrl = `/mobile/sop-win`
-    downloadUrl = `/api/sop-win/watermarked-pdf?requestId=${rawId}`
+    downloadUrl = rawId ? `/api/sop-win/watermarked-pdf?requestId=${rawId}` : null
   } else if (actId.startsWith('cr-') || actType.includes('contract')) {
     rawId = actId.replace('cr-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/dashboard/human-capital`
+    viewUrl = `/mobile/hc/contract-review`
   } else if (actId.startsWith('rfr-') || actType.includes('rfr')) {
     rawId = actId.replace('rfr-', '').replace(/[^0-9]/g, '')
-    viewUrl = `/dashboard/human-capital`
-    downloadUrl = `/api/hc/rfr/${rawId}/pdf`
+    viewUrl = rawId ? `/mobile/rfr/${rawId}` : `/mobile/rfr`
+    downloadUrl = rawId ? `/api/hc/rfr/${rawId}/pdf` : null
+  } else if (
+    actId.startsWith('form-wo-') ||
+    actId.startsWith('wo-') ||
+    actType.includes('work order') ||
+    actType.includes('form wo') ||
+    actType.includes('wo') ||
+    title.includes('work order') ||
+    title.includes('form wo') ||
+    title.includes('wo service') ||
+    title.includes('wo repair') ||
+    title.includes('wo retread') ||
+    title.includes('frmwo')
+  ) {
+    rawId = actId.replace('form-wo-', '').replace('wo-', '').replace(/[^0-9]/g, '')
+    viewUrl = `/dashboard/repair-retread/form-wo`
+    downloadUrl = rawId ? `/api/form-wo/${rawId}/pdf` : null
+  } else if (
+    actType.includes('apd') ||
+    actType.includes('tools') ||
+    actType.includes('material') ||
+    title.includes('apd') ||
+    title.includes('tools') ||
+    title.includes('material')
+  ) {
+    rawId = actId.replace(/[^0-9]/g, '')
+    const isSummary = actType.includes('summary') || title.includes('summary')
+    viewUrl = isSummary ? `/print/summary/${rawId}` : `/print/apd/${rawId}`
+    downloadUrl = isSummary
+      ? `/print/summary/${rawId}`
+      : actId.startsWith('rfr-') || actType.includes('rfr')
+      ? `/api/hc/rfr/${rawId}/pdf`
+      : `/print/apd/${rawId}`
+  } else if (actType.includes('5r') || title.includes('5r')) {
+    rawId = actId.replace(/[^0-9]/g, '')
+    viewUrl = `/mobile/quality/5r`
   }
 
   return { viewUrl, downloadUrl, rawId }
@@ -4691,12 +5270,26 @@ export function HistoryTab({
   filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
+  const router = useRouter()
   const [selectedHistoryDoc, setSelectedHistoryDoc] = useState<any | null>(null)
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
   const [isLoadingHistoryDoc, setIsLoadingHistoryDoc] = useState(false)
   const [historyDocType, setHistoryDocType] = useState<'spl' | 'daily' | null>(null)
   const [ptwModalPermitId, setPtwModalPermitId] = useState<number | string | null>(null)
   const [isPtwModalOpen, setIsPtwModalOpen] = useState(false)
+
+  // APD & WO Modal States
+  const [selectedWoDoc, setSelectedWoDoc] = useState<any | null>(null)
+  const [isWoModalOpen, setIsWoModalOpen] = useState(false)
+  const [isApdModalOpen, setIsApdModalOpen] = useState(false)
+  const [apdModalRequestId, setApdModalRequestId] = useState<number | null>(null)
+  const [isApdSummary, setIsApdSummary] = useState(false)
+
+  // Overtime Evidence & Photos
+  const [isSplEvidenceModalOpen, setIsSplEvidenceModalOpen] = useState(false)
+  const [splEvidenceTargetId, setSplEvidenceTargetId] = useState<number | string | null>(null)
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null)
+
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [mobileSearchQuery, setMobileSearchQuery] = useState('')
@@ -4737,17 +5330,26 @@ export function HistoryTab({
     const actId = String(item.activityId || '')
     const actType = String(item.activityType || '').toLowerCase()
     const title = String(item.title || '').toLowerCase()
+    const unitNumber = String(item.unitNumber || '').toLowerCase()
+
     const isSpl =
       actId.startsWith('overtime-') ||
       actType.includes('lembur') ||
       actType.includes('overtime') ||
       actType.includes('spl') ||
-      title.includes('spl')
+      title.includes('spl') ||
+      unitNumber.includes('spl')
+
     const isDaily =
       actId.startsWith('daily-') ||
+      actId.startsWith('das-') ||
       actType.includes('daily') ||
+      actType.includes('dar') ||
+      actType.includes('das') ||
       title.includes('daily') ||
-      title.includes('dar')
+      title.includes('dar') ||
+      title.includes('das-') ||
+      unitNumber.startsWith('das-')
 
     const isPtw =
       actId.startsWith('ptw-') ||
@@ -4757,6 +5359,33 @@ export function HistoryTab({
       title.includes('ptw') ||
       title.includes('izin kerja')
 
+    const isApd =
+      actId.startsWith('rfr-') ||
+      actId.startsWith('apd-') ||
+      actType.includes('apd') ||
+      actType.includes('rfr') ||
+      actType.includes('tools') ||
+      actType.includes('material') ||
+      title.includes('apd') ||
+      title.includes('rfr') ||
+      title.includes('tools') ||
+      title.includes('material')
+
+    const isWo =
+      actId.startsWith('form-wo-') ||
+      actId.startsWith('wo-') ||
+      actType.includes('work order') ||
+      actType.includes('form wo') ||
+      actType.includes('wo') ||
+      title.includes('work order') ||
+      title.includes('form wo') ||
+      title.includes('wo service') ||
+      title.includes('wo repair') ||
+      title.includes('wo retread') ||
+      title.includes('frmwo') ||
+      Boolean((item as any).repairFormWoId) ||
+      Boolean((item as any).repairFormWo)
+
     if (isPtw) {
       const rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
       if (!rawId) return
@@ -4765,8 +5394,64 @@ export function HistoryTab({
       return
     }
 
+    if (isApd) {
+      let rawId = (item as any).apdRequestId || (item as any).apdSummaryId || actId.replace('rfr-', '').replace('apd-', '').replace(/[^0-9]/g, '')
+      if (!rawId) rawId = actId.replace(/[^0-9]/g, '')
+      if (!rawId) return
+      const isSummary = actType.includes('summary') || title.includes('summary') || Boolean((item as any).apdSummaryId)
+      setApdModalRequestId(Number(rawId))
+      setIsApdSummary(isSummary)
+      setIsApdModalOpen(true)
+      return
+    }
+
+    if (isWo) {
+      let rawId = (item as any).repairFormWoId || (item as any).repairFormWo?.id
+      if (!rawId) {
+        const cleanedId = actId.replace('form-wo-', '').replace('wo-', '').replace(/[^0-9]/g, '')
+        if (cleanedId) rawId = Number(cleanedId)
+      }
+      const codeMatch = (item.unitNumber || item.title || '').match(/FRMWO\/[A-Z0-9\/_-]+/i) ||
+                        (item.unitNumber || item.title || '').match(/WO\/[A-Z0-9\/_-]+/i)
+      const lookupCode = codeMatch ? codeMatch[0] : (item.unitNumber || item.title || undefined)
+
+      if (item.repairFormWo || (item as any).rawFormWo) {
+        const rawWo = item.repairFormWo || (item as any).rawFormWo
+        setSelectedWoDoc({
+          ...rawWo,
+          noPengajuan: rawWo.noPengajuan || lookupCode || item.title || item.unitNumber,
+          tanggalPengajuan: rawWo.tanggalPengajuan || item.submittedAt,
+          pemohon: rawWo.pemohon || (item as any).employeeName || (item as any).requesterName || '-',
+        })
+        setIsWoModalOpen(true)
+        return
+      }
+
+      toast.loading('Memuat dokumen Work Order...', { id: 'wo-loading' })
+      setSelectedWoDoc(null)
+      try {
+        const numId = rawId ? Number(rawId) : Number(actId.replace(/[^0-9]/g, '')) || 0
+        const res = await getFormWoDetailAction(numId, lookupCode)
+        toast.dismiss('wo-loading')
+        if (res.success && res.data) {
+          setSelectedWoDoc(res.data)
+          setIsWoModalOpen(true)
+        } else {
+          toast.error(res.error || 'Data dokumen Work Order tidak ditemukan.')
+        }
+      } catch (err: any) {
+        toast.dismiss('wo-loading')
+        toast.error(err?.message || 'Gagal memuat dokumen Work Order.')
+      }
+      return
+    }
+
     if (isSpl) {
-      const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+      let rawId = (item as any).splId || (item as any).overtimeId || (item as any).documentId
+      if (!rawId) {
+        const cleaned = actId.replace(/^overtime-/, '')
+        rawId = cleaned.split('-')[0]
+      }
       if (!rawId) return
       setIsHistoryModalOpen(true)
       setIsLoadingHistoryDoc(true)
@@ -4787,16 +5472,27 @@ export function HistoryTab({
       } finally {
         setIsLoadingHistoryDoc(false)
       }
+      return
     } else if (isDaily) {
-      const rawId = actId.replace('daily-', '').replace(/[^0-9]/g, '')
-      if (!rawId) return
+      const itemSessionId = (item as any)?.sessionId || (item as any)?.rawDaily?.sessionId || (item as any)?.session?.id || (item as any)?.id
+      const itemSessionCode = (item as any)?.sessionCode || (item as any)?.rawDaily?.sessionCode || (item as any)?.session?.sessionCode || item.unitNumber
+      const cleanActId = actId.replace(/^daily-activity-/, '').replace(/^daily-/, '')
+      const numericFromId = !isNaN(Number(cleanActId)) && Number(cleanActId) > 0 && Number(cleanActId) < 10000000 ? Number(cleanActId) : null
+      const lookupKey = itemSessionId ? Number(itemSessionId) : (numericFromId ?? (itemSessionCode || cleanActId || actId))
+      if (!lookupKey) return
       setIsHistoryModalOpen(true)
       setIsLoadingHistoryDoc(true)
       setHistoryDocType('daily')
       setSelectedHistoryDoc(null)
       setPreviewZoom(1.0)
       try {
-        const data = await getDailyActivityApprovalData(Number(rawId))
+        let data = await getDailyActivityApprovalData(lookupKey)
+        if (!data && itemSessionCode && String(itemSessionCode) !== String(lookupKey)) {
+          data = await getDailyActivityApprovalData(itemSessionCode)
+        }
+        if (!data && actId && String(actId) !== String(lookupKey)) {
+          data = await getDailyActivityApprovalData(actId)
+        }
         if (!data) {
           toast.error('Data dokumen Daily Activity tidak ditemukan.')
           setIsHistoryModalOpen(false)
@@ -4813,8 +5509,12 @@ export function HistoryTab({
       const { downloadUrl, viewUrl } = getHistoryItemLinks(item)
       if (downloadUrl) {
         window.open(downloadUrl, '_blank')
-      } else if (typeof window !== 'undefined') {
-        window.open(viewUrl, '_blank')
+      } else if (typeof window !== 'undefined' && viewUrl) {
+        if (viewMode === 'mobile') {
+          router.push(viewUrl)
+        } else {
+          window.open(viewUrl, '_blank')
+        }
       }
     }
   }
@@ -4823,17 +5523,27 @@ export function HistoryTab({
     const actId = String(item.activityId || '')
     const actType = String(item.activityType || '').toLowerCase()
     const title = String(item.title || '').toLowerCase()
+    const unitNumber = String(item.unitNumber || '').toLowerCase()
+
     const isSpl =
       actId.startsWith('overtime-') ||
       actType.includes('lembur') ||
       actType.includes('overtime') ||
       actType.includes('spl') ||
-      title.includes('spl')
+      title.includes('spl') ||
+      unitNumber.includes('spl')
+
     const isDaily =
       actId.startsWith('daily-') ||
+      actId.startsWith('das-') ||
       actType.includes('daily') ||
+      actType.includes('dar') ||
+      actType.includes('das') ||
       title.includes('daily') ||
-      title.includes('dar')
+      title.includes('dar') ||
+      title.includes('das-') ||
+      unitNumber.startsWith('das-')
+
     const isPtw =
       actId.startsWith('ptw-') ||
       actType.includes('ptw') ||
@@ -4841,6 +5551,33 @@ export function HistoryTab({
       actType.includes('izin') ||
       title.includes('ptw') ||
       title.includes('izin kerja')
+
+    const isApd =
+      actId.startsWith('rfr-') ||
+      actId.startsWith('apd-') ||
+      actType.includes('apd') ||
+      actType.includes('rfr') ||
+      actType.includes('tools') ||
+      actType.includes('material') ||
+      title.includes('apd') ||
+      title.includes('rfr') ||
+      title.includes('tools') ||
+      title.includes('material')
+
+    const isWo =
+      actId.startsWith('form-wo-') ||
+      actId.startsWith('wo-') ||
+      actType.includes('work order') ||
+      actType.includes('form wo') ||
+      actType.includes('wo') ||
+      title.includes('work order') ||
+      title.includes('form wo') ||
+      title.includes('wo service') ||
+      title.includes('wo repair') ||
+      title.includes('wo retread') ||
+      title.includes('frmwo') ||
+      Boolean((item as any).repairFormWoId) ||
+      Boolean((item as any).repairFormWo)
 
     if (isPtw) {
       const rawId = actId.replace('ptw-', '').replace(/[^0-9]/g, '')
@@ -4858,8 +5595,56 @@ export function HistoryTab({
       }
     }
 
+    if (isApd) {
+      let rawId = (item as any).apdRequestId || (item as any).apdSummaryId || actId.replace('rfr-', '').replace('apd-', '').replace(/[^0-9]/g, '')
+      if (!rawId) rawId = actId.replace(/[^0-9]/g, '')
+      if (rawId) {
+        const isSummary = actType.includes('summary') || title.includes('summary') || Boolean((item as any).apdSummaryId)
+        const pdfUrl = isSummary
+          ? `/print/summary/${rawId}`
+          : actId.startsWith('rfr-') || actType.includes('rfr')
+          ? `/api/hc/rfr/${rawId}/pdf`
+          : `/print/apd/${rawId}`
+        window.open(pdfUrl, '_blank')
+        return
+      }
+    }
+
+    if (isWo) {
+      let rawId = (item as any).repairFormWoId || (item as any).repairFormWo?.id
+      if (!rawId) {
+        const cleanedId = actId.replace('form-wo-', '').replace('wo-', '').replace(/[^0-9]/g, '')
+        if (cleanedId) rawId = Number(cleanedId)
+      }
+      const codeMatch = (item.unitNumber || item.title || '').match(/FRMWO\/[A-Z0-9\/_-]+/i) ||
+                        (item.unitNumber || item.title || '').match(/WO\/[A-Z0-9\/_-]+/i)
+      const lookupCode = codeMatch ? codeMatch[0] : (item.unitNumber || item.title || undefined)
+      const numId = rawId ? Number(rawId) : Number(actId.replace(/[^0-9]/g, '')) || 0
+
+      toast.loading('Menyiapkan file PDF Work Order...', { id: 'wo-pdf-dl' })
+      try {
+        const res = await getFormWoDetailAction(numId, lookupCode)
+        toast.dismiss('wo-pdf-dl')
+        if (res.success && res.data?.id) {
+          window.open(`/api/form-wo/${res.data.id}/pdf`, '_blank')
+        } else {
+          toast.error(res.error || 'Dokumen PDF Work Order tidak ditemukan.')
+        }
+      } catch {
+        toast.dismiss('wo-pdf-dl')
+        if (numId > 0) {
+          window.open(`/api/form-wo/${numId}/pdf`, '_blank')
+        }
+      }
+      return
+    }
+
     if (isSpl) {
-      const rawId = actId.replace('overtime-', '').replace(/[^0-9]/g, '')
+      let rawId = (item as any).splId || (item as any).overtimeId || (item as any).documentId
+      if (!rawId) {
+        const cleaned = actId.replace(/^overtime-/, '')
+        rawId = cleaned.split('-')[0]
+      }
       if (!rawId) return
       toast.loading('Menyiapkan file PDF SPL...', { id: 'pdf-spl-dl' })
       try {
@@ -5018,6 +5803,9 @@ export function HistoryTab({
         } else if (mobileCategoryFilter === 'CONTRACT') {
           const isContract = cat === 'CONTRACT_REVIEW' || actType.includes('contract') || title.includes('contract')
           if (!isContract) return false
+        } else if (mobileCategoryFilter === 'MARITAL') {
+          const isMarital = cat === 'MARITAL_STATUS' || actType.includes('pernikahan') || title.includes('pernikahan')
+          if (!isMarital) return false
         }
       }
 
@@ -5236,14 +6024,82 @@ export function HistoryTab({
                                     : formatDate(doc.workDate)}
                                 </td>
                               </tr>
-                              {Boolean(doc.requestNotes || (doc as any).notes) && (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                                  <td colSpan={3} className="text-black">{doc.requestNotes || (doc as any).notes}</td>
-                                </tr>
-                              )}
+                              {(() => {
+                                const raw = doc.requestNotes || (doc as any).notes || ''
+                                const cleaned = raw.replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                                if (!cleaned) return null
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                                    <td colSpan={3} className="text-black">{cleaned}</td>
+                                  </tr>
+                                )
+                              })()}
                             </tbody>
                           </table>
+
+                          {/* Evidence Photos Box */}
+                          {(() => {
+                            const rawNotes = doc.requestNotes || (doc as any).notes || ''
+                            const headerPhotoMatch = rawNotes.match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+                            const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1] : (doc.photoUrl || (selectedHistoryDoc as any).photoUrl || null)
+                            const allPhotos: string[] = Array.from(new Set([
+                              ...(headerPhoto ? [headerPhoto] : []),
+                              ...((Array.isArray((selectedHistoryDoc as any).photos) ? (selectedHistoryDoc as any).photos : []) as string[]),
+                              ...lineItems.flatMap((it: any) => {
+                                let meta: any = {}
+                                try {
+                                  if (it.lineDescription && it.lineDescription.startsWith('{')) meta = JSON.parse(it.lineDescription)
+                                } catch {}
+                                return Array.isArray(it.photos) ? it.photos : it.photoUrl ? [it.photoUrl] : (meta.photos || (meta.photoUrl ? [meta.photoUrl] : []))
+                              }),
+                            ].filter(Boolean)))
+
+                            if (allPhotos.length === 0) return null
+
+                            return (
+                              <div className="mb-3 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#003461]">
+                                    <Camera className="size-3.5" />
+                                    <span>Foto Bukti SPL ({allPhotos.length} Lampiran)</span>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setSplEvidenceTargetId(doc.id || doc.documentId || (selectedHistoryDoc as any).documentId)
+                                      setIsSplEvidenceModalOpen(true)
+                                    }}
+                                    className="h-7 text-[11px] font-bold rounded-lg border-blue-300 text-[#003461] hover:bg-blue-100 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="size-3" />
+                                    Buka Galeri Bukti Full
+                                  </Button>
+                                </div>
+                                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                                  {allPhotos.map((pUrl, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      onClick={() => setSelectedPreviewImage(resolveUploadUrl(pUrl))}
+                                      className="relative shrink-0 w-20 h-20 rounded-lg overflow-hidden border border-slate-300 bg-black/5 hover:border-[#003461] cursor-pointer group shadow-xs transition"
+                                      title="Klik untuk memperbesar"
+                                    >
+                                      <img
+                                        src={resolveUploadUrl(pUrl)}
+                                        alt={`Bukti ${pIdx + 1}`}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                                      />
+                                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                        <ZoomIn className="size-4 text-white drop-shadow-md" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
 
                           <div className="font-bold mb-1 text-[8pt] text-black">
                             A. Workers ({participants.length} Orang)
@@ -5283,28 +6139,54 @@ export function HistoryTab({
                           <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
                             <thead>
                               <tr className="bg-slate-50 text-center font-bold text-black">
-                                <th className="w-[8%]">#</th>
-                                <th className="text-left w-[44%]">Line Label / Task</th>
-                                <th className="w-[20%]">Target Unit</th>
-                                <th className="w-[14%]">Est. Min</th>
-                                <th className="w-[14%]">Points</th>
+                                <th className="w-[6%]">#</th>
+                                <th className="text-left w-[36%]">Line Label / Task</th>
+                                <th className="w-[16%]">Target Unit</th>
+                                <th className="w-[12%]">Est. Min</th>
+                                <th className="w-[12%]">Points</th>
+                                <th className="w-[18%]">Foto Bukti</th>
                               </tr>
                             </thead>
                             <tbody>
                               {lineItems.length === 0 ? (
                                 <tr>
-                                  <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
+                                  <td colSpan={6} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
                                 </tr>
                               ) : (
-                                lineItems.map((it: any, idx: number) => (
-                                  <tr key={idx}>
-                                    <td className="text-center">{idx + 1}</td>
-                                    <td className="font-medium text-black">{it.lineLabel}</td>
-                                    <td className="text-center text-black">{it.targetUnit || '—'}</td>
-                                    <td className="text-center text-black">{it.estimatedMinutes || 0}m</td>
-                                    <td className="text-center font-bold text-black">{it.plannedPoints || 0}</td>
-                                  </tr>
-                                ))
+                                lineItems.map((it: any, idx: number) => {
+                                  let meta: any = {}
+                                  try {
+                                    if (it.lineDescription && it.lineDescription.startsWith('{')) {
+                                      meta = JSON.parse(it.lineDescription)
+                                    }
+                                  } catch {}
+                                  const itemPhoto = it.photoUrl || meta.photoUrl || (Array.isArray(it.photos) ? it.photos[0] : (meta.photos?.[0] || null))
+
+                                  return (
+                                    <tr key={idx}>
+                                      <td className="text-center">{idx + 1}</td>
+                                      <td className="font-medium text-black">{it.lineLabel}</td>
+                                      <td className="text-center text-black">{it.targetUnit || '—'}</td>
+                                      <td className="text-center text-black">{it.estimatedMinutes || 0}m</td>
+                                      <td className="text-center font-bold text-black">{it.plannedPoints || 0}</td>
+                                      <td className="text-center p-1">
+                                        {itemPhoto ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedPreviewImage(resolveUploadUrl(itemPhoto))}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 text-[7pt] font-semibold text-[#003461] hover:bg-blue-100 transition cursor-pointer"
+                                            title="Lihat foto lampiran"
+                                          >
+                                            <img src={resolveUploadUrl(itemPhoto)} className="size-4 rounded object-cover" />
+                                            <span>Lihat Foto</span>
+                                          </button>
+                                        ) : (
+                                          <span className="text-[7pt] text-slate-400 italic">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  )
+                                })
                               )}
                             </tbody>
                           </table>
@@ -5465,18 +6347,47 @@ export function HistoryTab({
                                 <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
                                 <td className="text-black">{[selectedHistoryDoc.employee?.department, selectedHistoryDoc.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                               </tr>
-                              {selectedHistoryDoc.teamMembersSummary ? (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
-                                  <td colSpan={3} className="text-black font-normal">{selectedHistoryDoc.teamMembersSummary}</td>
-                                </tr>
-                              ) : null}
-                              {selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark ? (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
-                                  <td colSpan={3} className="text-black">{selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark}</td>
-                                </tr>
-                              ) : null}
+                              {(() => {
+                                const teamResult = formatActivityTeamGroups(items, selectedHistoryDoc.teamMembersSummary)
+                                if (!teamResult.hasTeams) return null
+
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
+                                    <td colSpan={3} className="text-black font-normal py-1.5">
+                                      {teamResult.isSingleTeam ? (
+                                        <span className="text-black font-medium">{teamResult.singleTeamText}</span>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {teamResult.groups.map((grp, gIdx) => (
+                                            <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                              <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                              <span className="text-slate-900 font-medium">
+                                                {grp.teamMembers}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })()}
+                              {(() => {
+                                const cleanNotes = (selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark || '')
+                                  .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
+                                  .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+                                  .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+                                  .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
+                                  .replace(/Customer:\s*([^\n;]+)/gi, '')
+                                  .trim()
+                                return cleanNotes ? (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black">Catatan Aktivitas</td>
+                                    <td colSpan={3} className="text-black">{cleanNotes}</td>
+                                  </tr>
+                                ) : null
+                              })()}
                             </tbody>
                           </table>
 
@@ -5500,15 +6411,32 @@ export function HistoryTab({
                                   <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada item aktivitas.</td>
                                 </tr>
                               ) : (
-                                items.map((it: any, idx: number) => (
-                                  <tr key={it.id || idx}>
-                                    <td className="text-center font-mono">{idx + 1}</td>
-                                    <td className="text-left font-medium text-black">{it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}</td>
-                                    <td className="text-center font-mono text-black">{it.duration || (it.actualDurationMinutes ? `${it.actualDurationMinutes}m` : '60m')}</td>
-                                    <td className="text-center font-bold font-mono text-black">{it.points || it.actualPoints || 0} pts</td>
-                                    <td className="text-left text-[7pt] text-slate-600">{it.remark || it.remarks || '—'}</td>
-                                  </tr>
-                                ))
+                                items.map((it: any, idx: number) => {
+                                  const itemTeamSummary = it.itemTeamMembersSummary || (Array.isArray(it.itemTeamMembers) && it.itemTeamMembers.length > 0 ? it.itemTeamMembers.map((m: any) => m.name).join(', ') : null)
+                                  return (
+                                    <tr key={it.id || idx}>
+                                      <td className="text-center font-mono">{idx + 1}</td>
+                                      <td className="text-left font-medium text-black">
+                                        <div>
+                                          {it.snapshotGroupName || it.group ? (
+                                            <span className="inline-block font-bold text-sky-900 bg-sky-100/80 border border-sky-300 rounded px-1.5 py-0.5 text-[9px] mr-1.5 mb-0.5">
+                                              {it.snapshotGroupName || it.group}
+                                            </span>
+                                          ) : null}
+                                          {it.snapshotLabel || it.label || it.activityLabel || it.activityName || 'Aktivitas'}
+                                        </div>
+                                        {itemTeamSummary ? (
+                                          <div className="text-[7pt] text-[#003461] font-bold mt-0.5">
+                                            Kru: {itemTeamSummary}
+                                          </div>
+                                        ) : null}
+                                      </td>
+                                      <td className="text-center font-mono text-black">{it.duration || (it.actualDurationMinutes ? `${it.actualDurationMinutes}m` : '60m')}</td>
+                                      <td className="text-center font-bold font-mono text-black">{it.points || it.actualPoints || 0} pts</td>
+                                      <td className="text-left text-[7pt] text-slate-600">{it.remark || it.remarks || '—'}</td>
+                                    </tr>
+                                  )
+                                })
                               )}
                             </tbody>
                           </table>
@@ -5673,6 +6601,7 @@ export function HistoryTab({
       { id: 'WO', label: 'Form WO' },
       { id: 'SOP', label: 'SOP / WIN' },
       { id: 'CONTRACT', label: 'Contract' },
+      { id: 'MARITAL', label: 'Status Nikah' },
     ]
 
     const statusOptions = [
@@ -5816,10 +6745,26 @@ export function HistoryTab({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1 space-y-1">
-                    <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-                      <FileText className="size-3" />
-                      {item.activityType || 'Dokumen'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                        <FileText className="size-3" />
+                        {item.activityType || 'Dokumen'}
+                      </span>
+                      {item.teamRole === 'Anggota Tim' ? (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-teal-100 text-teal-900 border border-teal-200">
+                          Anggota Tim
+                        </span>
+                      ) : item.teamRole === 'Pemohon' ? (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-900 border border-indigo-200">
+                          Pemohon
+                        </span>
+                      ) : null}
+                      {item.totalPoints !== undefined && item.totalPoints !== null ? (
+                        <span className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200">
+                          +{item.totalPoints} pts
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-sm font-bold text-slate-900 leading-snug">
                       {item.title}
                     </p>
@@ -5834,6 +6779,20 @@ export function HistoryTab({
                 </div>
 
                 <div className="space-y-1 rounded-xl bg-slate-50/80 p-2.5 text-xs">
+                  {item.teamPartner ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">
+                        {item.teamRole === 'Anggota Tim' ? 'Partner Utama:' : 'Anggota Tim:'}
+                      </span>
+                      <span className="font-bold text-slate-700 truncate max-w-[180px]">{item.teamPartner}</span>
+                    </div>
+                  ) : null}
+                  {item.totalItems !== undefined && item.totalItems !== null ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Jumlah Item:</span>
+                      <span className="font-bold text-slate-700">{item.totalItems} item</span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between">
                      <span className="text-slate-500 font-medium">Posisi Terakhir:</span>
                      <span className="font-bold text-slate-700">{(item as any).currentStage || 'Selesai'}</span>
@@ -5877,6 +6836,40 @@ export function HistoryTab({
           onClose={() => setIsPtwModalOpen(false)}
           permitId={ptwModalPermitId}
         />
+
+        <FormWoDocumentPreviewDialog
+          open={isWoModalOpen}
+          onOpenChange={setIsWoModalOpen}
+          doc={selectedWoDoc}
+        />
+
+        <ApdRequestDetailModal
+          isOpen={isApdModalOpen}
+          onClose={() => setIsApdModalOpen(false)}
+          requestId={apdModalRequestId}
+          isSummary={isApdSummary}
+        />
+
+        <OvertimeEvidenceModal
+          isOpen={isSplEvidenceModalOpen}
+          onClose={() => setIsSplEvidenceModalOpen(false)}
+          splId={splEvidenceTargetId}
+        />
+
+        {/* Quick Lightbox Dialog */}
+        <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
+          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+            {selectedPreviewImage && (
+              <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
+                <img
+                  src={selectedPreviewImage}
+                  alt="Foto Bukti SPL"
+                  className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-xl"
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
@@ -5908,7 +6901,9 @@ export function HistoryTab({
                   <TableHead>Status</TableHead>
                   <TableHead>Posisi Terakhir</TableHead>
                   <TableHead>Workflow</TableHead>
-                  <TableHead className="text-center">Aksi</TableHead>
+                  <TableHead>Daftar Manpower (MP)</TableHead>
+                  <TableHead>Total Jam SPL / MP</TableHead>
+                  <TableHead className="text-center" data-export-ignore="true">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -5957,7 +6952,48 @@ export function HistoryTab({
                           </p>
                         </div>
                       </TableCell>
-                      <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
+                      <TableCell
+                        className="align-top"
+                        data-export-value={item.workersListText || item.employeeName || '-'}
+                      >
+                        {item.activityType === 'Surat Lembur (SPL)' ? (
+                          <div className="space-y-1 text-xs min-w-[170px] max-w-[240px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                {item.workers?.length || 0} MP
+                              </span>
+                            </div>
+                            <p
+                              className="text-foreground text-[12px] leading-snug line-clamp-2"
+                              title={item.workersListText || ''}
+                            >
+                              {item.workers && item.workers.length > 0
+                                ? item.workers.map((w: any) => w.employeeName).join(', ')
+                                : '-'}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-foreground text-xs">{item.employeeName || '-'}</span>
+                        )}
+                      </TableCell>
+                      <TableCell
+                        className="align-top"
+                        data-export-value={item.workersHoursText || '-'}
+                      >
+                        {item.activityType === 'Surat Lembur (SPL)' ? (
+                          <div className="space-y-1 text-xs min-w-[130px]">
+                            <p className="font-semibold text-foreground text-[12px]">
+                              {item.durationPerMpLabel || '-'}
+                            </p>
+                            <p className="text-muted-foreground text-[11px]">
+                              Total: {item.totalOvertimeHours || 0} Jam
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="align-top" data-export-ignore="true" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5">
                           {/* Tombol Unduh */}
                           <Button
@@ -6067,6 +7103,40 @@ export function HistoryTab({
         onClose={() => setIsPtwModalOpen(false)}
         permitId={ptwModalPermitId}
       />
+
+      <FormWoDocumentPreviewDialog
+        open={isWoModalOpen}
+        onOpenChange={setIsWoModalOpen}
+        doc={selectedWoDoc}
+      />
+
+      <ApdRequestDetailModal
+        isOpen={isApdModalOpen}
+        onClose={() => setIsApdModalOpen(false)}
+        requestId={apdModalRequestId}
+        isSummary={isApdSummary}
+      />
+
+      <OvertimeEvidenceModal
+        isOpen={isSplEvidenceModalOpen}
+        onClose={() => setIsSplEvidenceModalOpen(false)}
+        splId={splEvidenceTargetId}
+      />
+
+      {/* Quick Lightbox Dialog */}
+      <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
+        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+          {selectedPreviewImage && (
+            <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
+              <img
+                src={selectedPreviewImage}
+                alt="Foto Bukti SPL"
+                className="max-h-[78vh] max-w-full object-contain rounded-lg shadow-xl"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
@@ -6166,6 +7236,7 @@ export function ApprovalWorkbench({
             ptwItems={isDailyOnly ? [] : safeData.ptwInboxItems || []}
             contractReviewItems={isDailyOnly ? [] : safeData.contractReviewInboxItems || []}
             sopWinRequestItems={isDailyOnly ? [] : safeData.sopWinRequestInboxItems || []}
+            trainingRequestItems={isDailyOnly ? [] : safeData.trainingRequestInboxItems || []}
             filterCategory={filterCategory}
           />
         </TabsContent>

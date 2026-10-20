@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Printer, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { isCiptaKridatamaCustomer } from '@/lib/form-wo-customer'
+import { isCiptaKridatamaCustomer, isBumiSuksesindoCustomer } from '@/lib/form-wo-customer'
 
 export interface ServiceItemRow {
   id: string
@@ -321,6 +321,8 @@ export function FormWoDocumentView({
     note: string | null
   }> = []
 
+  const isBsi = isBumiSuksesindoCustomer(doc.customer) || isBumiSuksesindoCustomer(doc.site)
+
   if (steps.length > 0) {
     const sortedSteps = [...steps].sort((a, b) => (a.level ?? 0) - (b.level ?? 0))
     approverCols = sortedSteps.map((s, idx) => {
@@ -360,7 +362,14 @@ export function FormWoDocumentView({
         currentLevel && currentLevel > 0 && currentLevel === stepLevel && s.status !== 'approved'
       )
 
-      const signerName = s.approverName || s.jobTitle || defaultRoleName
+      const isBillingStep = defaultRoleName === 'Team Billing'
+      let signerName = s.approverName || s.jobTitle || defaultRoleName
+      if (isBsi && isBillingStep && s.status !== 'approved') {
+        if (!s.approverName || s.approverName === 'Team Billing' || s.approverName === 'Andika Ferdiansyah') {
+          signerName = 'Sugeng Wasiat'
+        }
+      }
+
       const jobTitle = s.jobTitle && s.jobTitle !== 'Approver' ? s.jobTitle : defaultRoleName
 
       const sigUrl =
@@ -408,7 +417,7 @@ export function FormWoDocumentView({
         {
           key: 'col-2',
           header: 'DIPERIKSA OLEH',
-          signerName: 'Team Billing',
+          signerName: isBsi ? 'Sugeng Wasiat' : 'Team Billing',
           jobTitle: 'Team Billing',
           signatureUrl: currentLevel === 2 && liveSignatureUrl ? liveSignatureUrl : null,
           isApproved: currentLevel === 2 && Boolean(liveSignatureUrl),
@@ -451,7 +460,7 @@ export function FormWoDocumentView({
         {
           key: 'col-3',
           header: 'DIPERIKSA OLEH',
-          signerName: 'Team Billing',
+          signerName: isBsi ? 'Sugeng Wasiat' : 'Team Billing',
           jobTitle: 'Team Billing',
           signatureUrl: currentLevel === 3 && liveSignatureUrl ? liveSignatureUrl : null,
           isApproved: currentLevel === 3 && Boolean(liveSignatureUrl),

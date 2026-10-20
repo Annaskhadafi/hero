@@ -8,6 +8,7 @@ import { asc, eq, inArray } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import { redirect } from "next/navigation"
 import { getCurrentEmployeeAccessRole, isSuperAdminRole } from "@/lib/hero-access"
+import { getServerSession } from "@/lib/auth-session"
 
 export const metadata = {
   title: "Form Contract Review - HC",
@@ -135,7 +136,54 @@ export default async function ContractReviewEditPage({ params, searchParams }: {
     ),
   }
 
+  // Fetch current logged in user
+  const { getUserSignatureAction } = await import("@/app/actions/user-signature")
+  const session = await getServerSession()
+  let currentUser: { name: string; jobTitle: string; signatureDataUrl?: string } | null = null
+  if (session?.user) {
+    let jobTitle = ""
+    let signatureDataUrl = ""
+    if (session.user.email) {
+      const [emp] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          jobTitle: employees.jobTitle,
+          position: hrPositions.levelName,
+        })
+        .from(employees)
+        .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+
+      if (emp) {
+        jobTitle = emp.position || emp.jobTitle || ""
+      }
+      try {
+        const sig = await getUserSignatureAction()
+        if (sig?.success && sig.signatureDataUrl) {
+          signatureDataUrl = sig.signatureDataUrl
+        }
+      } catch {}
+    }
+    currentUser = {
+      name: session.user.name || "",
+      jobTitle: jobTitle || "Leader",
+      signatureDataUrl,
+    }
+  }
+
   return (
-    <ContractReviewClientForm employees={employeeList} orgNodes={orgNodes} initialData={reviewResult.data} approvalSettings={approvalSettings as any} approvalHistory={allApprovals as any[]} activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []} masterHeadMap={masterHeadMap} adminMode={adminMode} />
+    <ContractReviewClientForm
+      employees={employeeList}
+      orgNodes={orgNodes}
+      initialData={reviewResult.data}
+      approvalSettings={approvalSettings as any}
+      approvalHistory={allApprovals as any[]}
+      activityTemplates={activityTemplatesResult.success ? activityTemplatesResult.data : []}
+      masterHeadMap={masterHeadMap}
+      adminMode={adminMode}
+      currentUser={currentUser}
+    />
   )
 }

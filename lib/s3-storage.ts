@@ -70,9 +70,15 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith("face-attendance/") ||
       cleanPath.startsWith("face-attendance-v2/") ||
       cleanPath.startsWith("contract-review-attachment/") ||
-      cleanPath.startsWith("public-career-cv/") ||
+cleanPath.startsWith("public-career-cv/") ||
       cleanPath.startsWith("cer/") ||
-      cleanPath.startsWith("cer-attachments/")
+      cleanPath.startsWith("cer-attachments/") ||
+      cleanPath.startsWith("hrga-kerjasama/") ||
+      cleanPath.startsWith("ga-house-rental/") ||
+      cleanPath.startsWith("hse-osm/") ||
+      cleanPath.startsWith("reward-store/") ||
+      cleanPath.startsWith("training-requests/") ||
+      cleanPath.startsWith("marital-status/")
     ) {
       return cleanPath;
     }
@@ -118,7 +124,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
     }
 
     const knownPrefixMatch = objectPath.match(
-      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv)\/.+)$/i,
+      /(?:^|\/)((?:activity-photos|attendance-photos|profile-photos|upload|uploads|curhat|curhat-attachments|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|lms-materials|lms-covers|chitralearning|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|hse-osm|reward-store|training-requests|marital-status)\/.+)$/i,
     );
 
     if (knownPrefixMatch) {
@@ -206,10 +212,12 @@ function buildS3PublicUrl(key: string) {
 }
 
 export async function uploadProfilePhotoToS3(file: File) {
-  const contentType = file.type || "application/octet-stream";
-  const extension = getObjectExtension(contentType, file.name);
+  const { optimizeUploadFile } = await import("@/lib/server-image-optimization");
+  const fileToUpload = await optimizeUploadFile(file, { maxDimension: 800, quality: 85 });
+  const contentType = fileToUpload.type || "application/octet-stream";
+  const extension = getObjectExtension(contentType, fileToUpload.name);
   const key = `${PROFILE_PHOTO_PREFIX}/${randomUUID()}.${extension}`;
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const buffer = Buffer.from(await fileToUpload.arrayBuffer());
 
   const client = getS3Client();
 
@@ -219,9 +227,9 @@ export async function uploadProfilePhotoToS3(file: File) {
         Bucket: serverEnv.s3BucketName,
         Key: key,
         Body: buffer,
+        ContentLength: buffer.length,
         ContentType: contentType,
         CacheControl: "public, max-age=31536000, immutable",
-        ACL: "public-read",
       }),
     );
   } catch (aclError: any) {
@@ -231,6 +239,7 @@ export async function uploadProfilePhotoToS3(file: File) {
           Bucket: serverEnv.s3BucketName,
           Key: key,
           Body: buffer,
+          ContentLength: buffer.length,
           ContentType: contentType,
           CacheControl: "public, max-age=31536000, immutable",
         }),
@@ -261,27 +270,28 @@ export async function uploadAnyFileToS3(file: File, prefixOverride?: string, abo
         Bucket: serverEnv.s3BucketName,
         Key: key,
         Body: buffer,
+        ContentLength: buffer.length,
         ContentType: contentType,
         CacheControl: "public, max-age=31536000, immutable",
-        ACL: "public-read",
       }),
       { abortSignal },
     );
-  } catch (aclError: any) {
-    // If bucket owner enforced disables ACLs, retry without ACL
-    if (aclError?.name === "AccessControlListNotSupported" || String(aclError?.message || "").includes("ACL")) {
+  } catch (putError: any) {
+    // If standard put failed, retry once with fallback
+    if (putError?.name === "AccessControlListNotSupported" || String(putError?.message || "").includes("ACL") || putError?.name !== "AbortError") {
       await client.send(
         new PutObjectCommand({
           Bucket: serverEnv.s3BucketName,
           Key: key,
           Body: buffer,
+          ContentLength: buffer.length,
           ContentType: contentType,
           CacheControl: "public, max-age=31536000, immutable",
         }),
         { abortSignal },
       );
     } else {
-      throw aclError;
+      throw putError;
     }
   }
 
@@ -327,6 +337,7 @@ export async function uploadBufferToS3(
       Bucket: serverEnv.s3BucketName,
       Key: key,
       Body: buffer,
+      ContentLength: buffer.length,
       ContentType: contentType,
       CacheControl: "private, max-age=86400",
     }),
@@ -377,7 +388,11 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
     return null;
   }
 
-  const primaryKey = resolveS3ObjectKey(objectUrl);
+  const primaryKey =
+    resolveS3ObjectKey(objectUrl) ||
+    (!objectUrl.includes("://")
+      ? objectUrl.trim().replace(/^\/+/, "").replace(/^api\/uploads\//, "")
+      : null);
   if (!primaryKey) {
     return null;
   }

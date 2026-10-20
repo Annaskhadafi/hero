@@ -91,7 +91,7 @@ export default async function CargoManifestPage() {
               <div>
                 <h3 className="text-lg font-semibold">Cargo Manifest</h3>
                 <p className="text-muted-foreground text-sm">
-                  Daftar seluruh dokumen cargo manifest dengan detail item dan status pengiriman.
+                  Daftar dokumen cargo manifest yang terpisah per section (Service Operation & Repair / Retread Operation) serta tampilan keseluruhan.
                 </p>
               </div>
               <div className="flex gap-2">

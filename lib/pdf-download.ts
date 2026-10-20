@@ -107,6 +107,86 @@ export async function generateElementAsPdfBlob(
 
   return pdf.output('blob')
 }
+export async function generateMultiPageElementAsPdfBlob(
+  elements: HTMLElement[],
+  options?: { orientation?: 'portrait' | 'landscape' }
+): Promise<Blob> {
+  if (typeof window === 'undefined') {
+    throw new Error('PDF generation is only supported in the browser.')
+  }
+
+  const [{ jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'),
+    import('html2canvas-pro'),
+  ])
+
+  if (document.fonts?.ready) {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ])
+  }
+
+  const isLandscape = options?.orientation === 'landscape'
+  const pdfWidth = isLandscape ? 297 : 210
+  const pdfHeight = isLandscape ? 210 : 297
+
+  const pdf = new jsPDF({
+    orientation: isLandscape ? 'landscape' : 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  for (let i = 0; i < elements.length; i++) {
+    const el = elements[i]
+    const images = Array.from(el.querySelectorAll('img'))
+    await Promise.all(
+      images.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) resolve()
+            else {
+              img.onload = () => resolve()
+              img.onerror = () => resolve()
+            }
+          })
+      )
+    )
+
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      logging: false,
+      useCORS: true,
+      allowTaint: true,
+      imageTimeout: 15000,
+      backgroundColor: '#ffffff',
+    })
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.98)
+    if (i > 0) {
+      pdf.addPage('a4', isLandscape ? 'landscape' : 'portrait')
+    }
+    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight)
+  }
+
+  return pdf.output('blob')
+}
+
+export async function downloadMultiPageElementAsPdf(
+  elements: HTMLElement[],
+  fileName: string = 'document.pdf',
+  options?: { orientation?: 'portrait' | 'landscape' }
+): Promise<void> {
+  const blob = await generateMultiPageElementAsPdfBlob(elements, options)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
+  document.body.appendChild(a)
+  a.click()
+  if (a.parentNode) a.parentNode.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 export async function downloadElementAsPdf(
   element: HTMLElement,
@@ -120,7 +200,7 @@ export async function downloadElementAsPdf(
   a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
@@ -139,10 +219,24 @@ export async function generateHtmlAsPdfBlob(
   container.style.left = '-9999px'
   container.style.top = '0'
   container.style.width = `${widthMm}mm`
-  container.style.minHeight = `${heightMm}mm`
-  container.style.height = `${heightMm}mm`
   container.style.zIndex = '-9999'
   container.style.backgroundColor = '#ffffff'
+
+  if (innerHtml.includes('class="pdf-page"') || innerHtml.includes("class='pdf-page'")) {
+    container.innerHTML = innerHtml
+    document.body.appendChild(container)
+    try {
+      const pageEls = Array.from(container.querySelectorAll<HTMLElement>('.pdf-page'))
+      if (pageEls.length > 0) {
+        return await generateMultiPageElementAsPdfBlob(pageEls, { orientation: isLandscape ? 'landscape' : 'portrait' })
+      }
+    } finally {
+      document.body.removeChild(container)
+    }
+  }
+
+  container.style.minHeight = `${heightMm}mm`
+  container.style.height = `${heightMm}mm`
   container.style.overflow = 'hidden'
 
   container.innerHTML = `
@@ -160,7 +254,7 @@ export async function generateHtmlAsPdfBlob(
     const target = container.firstElementChild as HTMLElement
     return await generateElementAsPdfBlob(target, { orientation: isLandscape ? 'landscape' : 'portrait' })
   } finally {
-    document.body.removeChild(container)
+    if (container.parentNode) container.parentNode.removeChild(container)
   }
 }
 
@@ -177,7 +271,7 @@ export async function downloadHtmlAsPdf(
   a.download = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
@@ -197,6 +291,6 @@ export async function downloadFilesAsZip(
   a.download = zipFileName.endsWith('.zip') ? zipFileName : `${zipFileName}.zip`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  if (a.parentNode) a.parentNode.removeChild(a)
   URL.revokeObjectURL(url)
 }

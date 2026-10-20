@@ -8,7 +8,7 @@ import {
   employees,
 } from '@/db/schema/hero'
 import { eq, asc } from 'drizzle-orm'
-import { getInternalLmsWorkspaceData } from '@/lib/chitralearning-lms'
+import { getInternalLmsWorkspaceData, formatIndonesianDate } from '@/lib/chitralearning-lms'
 import {
   ArrowLeft,
   Award,
@@ -16,10 +16,12 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Clock,
   FileText,
   HelpCircle,
   Layers,
+  Lock,
   Play,
   Video,
 } from 'lucide-react'
@@ -95,6 +97,12 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
   const isCompleted = !!certificate || (enrollment?.status === 'passed')
   const progress = isCompleted ? 100 : (enrollment?.progress ?? 0)
 
+  const isFailed = enrollment?.status === 'failed'
+  const isCooldown = isFailed && Boolean(
+    enrollment?.cooldownUntil && new Date().getTime() < new Date(enrollment.cooldownUntil).getTime()
+  )
+  const canReEnroll = isFailed && !isCooldown
+
   const totalLessons = lessons.length
   const totalDuration = lessons.reduce((s, l) => s + l.durationMinutes, 0)
   const videoCount = lessons.filter(l => l.lessonType === 'video').length
@@ -108,16 +116,22 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
     sectionsMap.get(key)!.push(lesson)
   }
 
+  // Pretest status check
+  const pretestIndex = lessons.findIndex(l => l.lessonType === 'pretest')
+  const hasPretest = pretestIndex >= 0
+  const pretestCompleted = enrollment?.pretestStatus === 'completed'
+
   // Active lesson for continue button
   let targetLesson = lessons[0]
-  if (enrollment?.lastLessonId) {
+  if (hasPretest && !pretestCompleted) {
+    targetLesson = lessons[pretestIndex]
+  } else if (enrollment?.lastLessonId) {
     const lastIdx = lessons.findIndex(l => l.id === enrollment.lastLessonId)
     if (lastIdx >= 0) {
-      const lastLesson = lessons[lastIdx]
-      if (lastLesson.lessonType === 'pretest' && enrollment.pretestStatus === 'completed' && lastIdx + 1 < lessons.length) {
+      if (lastIdx + 1 < lessons.length) {
         targetLesson = lessons[lastIdx + 1]
       } else {
-        targetLesson = lastLesson
+        targetLesson = lessons[lastIdx]
       }
     }
   }
@@ -231,25 +245,47 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
                 </span>
               </div>
               <div className="divide-y divide-slate-50">
-                {sectionLessons.map((lesson, idx) => (
-                  <div key={lesson.id} className="flex items-center gap-3 px-4 py-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#e9f6fd] text-[10px] font-black text-[#003461]">
-                      {idx + 1}
-                    </span>
-                    {lessonIcon(lesson.lessonType)}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-black text-[#082033] line-clamp-1">{lesson.title}</p>
-                      <p className="text-[9px] font-bold text-[#486275]">{lessonTypeLabel(lesson.lessonType)} · {lesson.durationMinutes}m</p>
-                    </div>
-                    {(!isEnrolled || !isApproved) && idx > 0 && (
-                      <div className="shrink-0 text-[#486275]/40">
-                        <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
+                {sectionLessons.map((lesson, idx) => {
+                  const globalIdx = lessons.findIndex(l => l.id === lesson.id)
+                  const isLocked = !isEnrolled || !isApproved || (hasPretest && !pretestCompleted && globalIdx > pretestIndex)
+                  const lessonUrl = `/mobile/chitralearning/learn/${course.slug}?lessonId=${lesson.id}`
+
+                  if (isLocked) {
+                    return (
+                      <div key={lesson.id} className="flex items-center gap-3 px-4 py-3 opacity-60">
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-400">
+                          {globalIdx >= 0 ? globalIdx + 1 : idx + 1}
+                        </span>
+                        {lessonIcon(lesson.lessonType)}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-[#082033] line-clamp-1">{lesson.title}</p>
+                          <p className="text-[9px] font-bold text-[#486275]">{lessonTypeLabel(lesson.lessonType)} · {lesson.durationMinutes}m</p>
+                        </div>
+                        <div className="shrink-0 text-slate-400">
+                          <Lock className="size-3.5" />
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                    )
+                  }
+
+                  return (
+                    <Link
+                      key={lesson.id}
+                      href={lessonUrl}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-[#f6fbff] active:bg-[#e9f6fd] transition-colors"
+                    >
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#e9f6fd] text-[10px] font-black text-[#003461]">
+                        {globalIdx >= 0 ? globalIdx + 1 : idx + 1}
+                      </span>
+                      {lessonIcon(lesson.lessonType)}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black text-[#082033] line-clamp-1">{lesson.title}</p>
+                        <p className="text-[9px] font-bold text-[#486275]">{lessonTypeLabel(lesson.lessonType)} · {lesson.durationMinutes}m</p>
+                      </div>
+                      <ChevronRight className="size-3.5 shrink-0 text-[#003461]/40" />
+                    </Link>
+                  )
+                })}
               </div>
             </div>
           ))}
@@ -271,7 +307,16 @@ export default async function MobileCourseDetailPage({ params }: { params: Promi
             ✕ Pengajuan ditolak
           </div>
         )}
-        {isEnrolled && isApproved && continueHref && !isCompleted && (
+        {isEnrolled && isApproved && isFailed && isCooldown && (
+          <div className="flex h-14 w-full items-center justify-center gap-2 rounded-[1rem] bg-rose-50 border border-rose-200 px-4 text-xs font-black text-rose-700 shadow-sm text-center">
+            <Lock className="size-4 shrink-0 text-rose-600" />
+            <span>Tidak Lulus · Terkunci s/d {formatIndonesianDate(enrollment?.cooldownUntil)}</span>
+          </div>
+        )}
+        {isEnrolled && isApproved && isFailed && canReEnroll && (
+          <MobileEnrollButton courseId={course.id} slug={course.slug} isReEnroll={true} />
+        )}
+        {isEnrolled && isApproved && continueHref && !isCompleted && !isFailed && (
           <Link
             href={continueHref}
             className="flex h-14 w-full items-center justify-center gap-2 rounded-[1rem] bg-[#003461] text-sm font-black text-white shadow-[0_8px_24px_rgba(0,52,97,0.25)] active:scale-[0.98] transition-transform"

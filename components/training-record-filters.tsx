@@ -12,14 +12,22 @@ type EmployeeOption = {
   employeeSn: string;
   department: string;
   section: string;
+  siteId?: number | null;
+};
+
+type SiteOption = {
+  id: number;
+  name: string;
 };
 
 export function TrainingRecordFilters({
+  sites = [],
   employees,
   departments,
   sections,
   years,
 }: {
+  sites?: SiteOption[];
   employees: EmployeeOption[];
   departments: string[];
   sections: string[];
@@ -28,12 +36,13 @@ export function TrainingRecordFilters({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const selectedSiteId = searchParams.get("siteId") ?? "";
   const selectedEmployeeId = searchParams.get("employeeId") ?? "";
   const selectedDepartment = searchParams.get("department") ?? "";
   const selectedSection = searchParams.get("section") ?? "";
   const selectedYear = searchParams.get("year") ?? "";
 
-  function updateFilter(key: "employeeId" | "department" | "section" | "year", value: string) {
+  function updateFilter(key: "siteId" | "employeeId" | "department" | "section" | "year", value: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
       params.set(key, value);
@@ -59,6 +68,7 @@ export function TrainingRecordFilters({
 
   function resetFilters() {
     const params = new URLSearchParams(searchParams.toString());
+    params.delete("siteId");
     params.delete("employeeId");
     params.delete("department");
     params.delete("section");
@@ -68,13 +78,25 @@ export function TrainingRecordFilters({
   }
 
   const visibleEmployees = employees.filter((employee) => {
-    if (selectedDepartment && employee.department !== selectedDepartment) return false
-    if (selectedSection && employee.section !== selectedSection) return false
-    return true
-  })
+    if (selectedSiteId && `${employee.siteId}` !== selectedSiteId) return false;
+    if (selectedDepartment && employee.department !== selectedDepartment) return false;
+    if (selectedSection && employee.section !== selectedSection) return false;
+    return true;
+  });
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {sites.length > 0 && (
+        <SearchableSelect
+          label="site"
+          value={selectedSiteId}
+          onValueChange={(value) => updateFilter("siteId", value)}
+          placeholder="All sites"
+          options={sites.map((site) => ({ value: String(site.id), label: site.name }))}
+          widthClassName="min-w-[180px]"
+        />
+      )}
+
       <SearchableSelect
         label="karyawan"
         value={selectedEmployeeId}
@@ -116,7 +138,7 @@ export function TrainingRecordFilters({
 
       <Button type="button" variant="outline" onClick={() => applyPreset("current-year")} className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]">Tahun berjalan</Button>
       <Button type="button" variant="outline" onClick={() => updateFilter("department", "Operations")} className="h-9 rounded-lg border-0 bg-white px-3 text-[13px] font-medium normal-case tracking-normal shadow-[inset_0_0_0_1px_rgba(66,71,80,0.12)]">Fokus operasi</Button>
-      {selectedEmployeeId || selectedDepartment || selectedSection || selectedYear ? (
+      {selectedSiteId || selectedEmployeeId || selectedDepartment || selectedSection || selectedYear ? (
         <Button
           type="button"
           variant="ghost"

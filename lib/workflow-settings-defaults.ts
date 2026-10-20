@@ -10,6 +10,8 @@ export type WorkflowApprovalMatrix = {
   managerEmail?: string
   hrName?: string
   hrEmail?: string
+  pjoName?: string
+  pjoEmail?: string
   hoSites?: string[]
 }
 

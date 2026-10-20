@@ -17,6 +17,13 @@ const toneMap: Record<string, string> = {
   proses_order: "bg-sky-100 text-sky-900",
   complete: "bg-emerald-100 text-emerald-900",
   completed: "bg-emerald-100 text-emerald-900",
+  selesai: "bg-emerald-100 text-emerald-900",
+  berjalan: "bg-blue-100 text-blue-900",
+  menunggu: "bg-amber-100 text-amber-900",
+  terlambat: "bg-rose-100 text-rose-900",
+  hadir: "bg-emerald-100 text-emerald-900",
+  belum_check_in: "bg-slate-100 text-slate-800",
+  belum_mengisi: "bg-rose-100 text-rose-900",
   ready_for_payroll: "bg-emerald-100 text-emerald-900",
   needs_correction: "bg-rose-100 text-rose-900",
   needs_revision: "bg-rose-100 text-rose-900",
@@ -28,6 +35,8 @@ const toneMap: Record<string, string> = {
   urgent: "bg-rose-100 text-rose-900",
   active: "bg-emerald-100 text-emerald-900",
   expired: "bg-rose-100 text-rose-900",
+  terminated: "bg-rose-100 text-rose-900",
+  extended: "bg-cyan-100 text-cyan-950",
   inactive: "bg-slate-200 text-slate-900",
   probation: "bg-sky-100 text-sky-900",
   contract: "bg-violet-100 text-violet-900",
@@ -51,6 +60,7 @@ const toneMap: Record<string, string> = {
   overdue: "bg-rose-100 text-rose-900",
   due_soon: "bg-amber-100 text-amber-900",
   on_track: "bg-sky-100 text-sky-900",
+  no_sla: "bg-slate-100 text-slate-800",
   live: "bg-emerald-100 text-emerald-900",
   ready: "bg-emerald-100 text-emerald-900",
   partial: "bg-sky-100 text-sky-900",
@@ -70,7 +80,8 @@ const toneMap: Record<string, string> = {
   before_due: "bg-amber-100 text-amber-900",
 };
 
-function normalize(value: string) {
+function normalize(value?: string | null) {
+  if (!value) return "";
   return value.toLowerCase().replaceAll(" ", "_");
 }
 
@@ -91,6 +102,13 @@ const labelMap: Record<string, string> = {
   proses_order: "Proses Order",
   complete: "Complete",
   completed: "Complete",
+  selesai: "Selesai",
+  berjalan: "Berjalan",
+  menunggu: "Menunggu",
+  terlambat: "Terlambat",
+  hadir: "Hadir",
+  belum_check_in: "Belum Check-In",
+  belum_mengisi: "Belum Mengisi",
   ready_for_payroll: "Siap payroll",
   needs_correction: "Perlu koreksi",
   needs_revision: "Perlu revisi",
@@ -102,6 +120,8 @@ const labelMap: Record<string, string> = {
   urgent: "Mendesak",
   active: "Aktif",
   expired: "Expired",
+  terminated: "Tidak Lanjut Sewa",
+  extended: "Diperpanjang",
   inactive: "Nonaktif",
   probation: "Probation",
   contract: "Kontrak",
@@ -110,7 +130,7 @@ const labelMap: Record<string, string> = {
   healthy: "Aman",
   follow_up: "Perlu tindak lanjut",
   attention: "Perlu perhatian",
-  open: "Terbuka",
+  open: "TERBUKA",
   action_taken: "Ditangani",
   investigating: "Ditinjau",
   closed: "Selesai",
@@ -125,6 +145,7 @@ const labelMap: Record<string, string> = {
   overdue: "Terlambat",
   due_soon: "Segera jatuh tempo",
   on_track: "Sesuai rencana",
+  no_sla: "Non SLA",
   live: "Aktif",
   ready: "Siap",
   partial: "Sebagian siap",
@@ -144,13 +165,26 @@ const labelMap: Record<string, string> = {
   before_due: "Sebelum jatuh tempo",
 };
 
-export function AdminStatusBadge({ value }: { value: string }) {
-  const key = normalize(value);
+export function AdminStatusBadge({
+  value,
+  status,
+  customLabels,
+}: {
+  value?: string | null;
+  status?: string | null;
+  customLabels?: Record<string, string>;
+}) {
+  const actualValue = value ?? status ?? "";
+  const key = normalize(actualValue);
   const className = toneMap[key] ?? "bg-slate-100 text-slate-800";
+  const displayLabel =
+    customLabels?.[key] ??
+    labelMap[key] ??
+    (actualValue ? actualValue.replaceAll("_", " ") : "-");
 
   return (
     <Badge className={`rounded-full border-0 px-3 py-1 font-medium ${className}`}>
-      {labelMap[key] ?? value.replaceAll("_", " ")}
+      {displayLabel}
     </Badge>
   );
 }

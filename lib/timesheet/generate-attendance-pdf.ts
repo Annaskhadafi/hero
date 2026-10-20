@@ -1,4 +1,5 @@
-import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from 'pdf-lib'
+import { PDFDocument, rgb, StandardFonts, PDFString, type PDFPage, type PDFFont } from 'pdf-lib'
+import QRCode from 'qrcode'
 import { type OvertimeCalculationResult, type OvertimeInterval } from '@/lib/timesheet/overtime-policy'
 import {
   drawPdfSignatures,
@@ -6,7 +7,7 @@ import {
   type PdfSignatureNames,
 } from '@/lib/timesheet/pdf-signatures'
 
-type AttendanceDayData = {
+export type AttendanceDayData = {
   day: number
   dayName: string
   status: string
@@ -25,10 +26,22 @@ type AttendanceDayData = {
   showMsa?: boolean
   showMeals?: boolean
   showSpecialAllowance?: boolean
+  splNumber?: string
+  splTitle?: string
+  splStatus?: string
+  splDetails?: Array<{
+    splNumber: string
+    title?: string
+    plannedStartAt?: string
+    plannedEndAt?: string
+    status?: string
+  }>
 }
 
 type OvertimeRecordInput = {
+  documentTitle?: string
   period: string
+  employeeId?: number
   employeeName: string
   employeeSn: string
   department: string
@@ -38,6 +51,8 @@ type OvertimeRecordInput = {
   days: AttendanceDayData[]
   isNonStaff: boolean
   showTotalOvertime?: boolean
+  evidenceUrl?: string
+  appBaseUrl?: string
 }
 
 type SiteAllowanceInput = {
@@ -128,14 +143,15 @@ function drawCell(
     if (opts.wrap) {
       const pad = opts.pad ?? 4
       const maxWidth = Math.max(1, w - pad * 2)
-      const lineHeight = fontSize * 0.9
-      const maxLines = Math.max(1, Math.floor((h - 1) / lineHeight))
+      const effectiveFontSize = fontSize
+      const lineHeight = Math.max(7, effectiveFontSize * 1.15)
+      const maxLines = Math.max(1, Math.floor((h - 2) / lineHeight))
       const lines: string[] = []
       for (const paragraph of cleanText.split('\n')) {
         let line = ''
         for (const word of paragraph.split(/\s+/)) {
           const next = line ? `${line} ${word}` : word
-          if (line && opts.font.widthOfTextAtSize(next, fontSize) > maxWidth) {
+          if (line && opts.font.widthOfTextAtSize(next, effectiveFontSize) > maxWidth) {
             lines.push(line)
             line = word
           } else {
@@ -145,16 +161,15 @@ function drawCell(
         if (line) lines.push(line)
       }
       // Pecah per karakter kata yang masih lebih lebar dari cell
-      // (mis. nominal angka panjang di cell hari yang sempit)
       for (let i = 0; i < lines.length; i++) {
-        if (opts.font.widthOfTextAtSize(lines[i], fontSize) <= maxWidth) continue
+        if (opts.font.widthOfTextAtSize(lines[i], effectiveFontSize) <= maxWidth) continue
         let remainder = lines[i]
         const chunks: string[] = []
         while (remainder.length > 0) {
           let take = 1
           while (
             take < remainder.length &&
-            opts.font.widthOfTextAtSize(remainder.slice(0, take + 1), fontSize) <= maxWidth
+            opts.font.widthOfTextAtSize(remainder.slice(0, take + 1), effectiveFontSize) <= maxWidth
           ) {
             take++
           }
@@ -169,15 +184,18 @@ function drawCell(
         const last = visibleLines.length - 1
         while (
           visibleLines[last].length > 1 &&
-          opts.font.widthOfTextAtSize(`${visibleLines[last]}…`, fontSize) > maxWidth
+          opts.font.widthOfTextAtSize(`${visibleLines[last]}…`, effectiveFontSize) > maxWidth
         ) {
           visibleLines[last] = visibleLines[last].slice(0, -1)
         }
         visibleLines[last] = `${visibleLines[last]}…`
       }
-      const firstY = y + (h + lineHeight * (visibleLines.length - 1)) / 2 - fontSize + 1
+      // Top-align text inside cell bounded safely between top (y + h) and bottom (y)
+      const totalTextH = (visibleLines.length - 1) * lineHeight + effectiveFontSize
+      const topPad = Math.max(2, (h - totalTextH) / 2)
+      const firstY = y + h - topPad - effectiveFontSize
       visibleLines.forEach((line, index) => {
-        const textWidth = opts.font!.widthOfTextAtSize(line, fontSize)
+        const textWidth = opts.font!.widthOfTextAtSize(line, effectiveFontSize)
         const textX =
           opts.align === 'center'
             ? x + (w - textWidth) / 2
@@ -188,7 +206,7 @@ function drawCell(
           x: textX,
           y: firstY - index * lineHeight,
           font: opts.font!,
-          size: fontSize,
+          size: effectiveFontSize,
           color: textColor,
         })
       })
@@ -224,9 +242,29 @@ async function embedLogo(doc: PDFDocument): Promise<{
   height: number
 } | null> {
   try {
-    const response = await fetch('/cp_logo-removebg-preview.png')
-    if (!response.ok) return null
-    const logoBytes = new Uint8Array(await response.arrayBuffer())
+    let logoBytes: Uint8Array | null = null
+    if (typeof window === 'undefined') {
+      try {
+        const fs = await import('fs')
+        const path = await import('path')
+        const filePath = path.join(process.cwd(), 'public', 'cp_logo-removebg-preview.png')
+        if (fs.existsSync(filePath)) {
+          logoBytes = new Uint8Array(fs.readFileSync(filePath))
+        }
+      } catch {
+        // Fallback to fetch
+      }
+    }
+    if (!logoBytes) {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 1000) : null
+      const response = await fetch('/cp_logo-removebg-preview.png', {
+        signal: controller?.signal,
+      })
+      if (timeoutId) clearTimeout(timeoutId)
+      if (!response.ok) return null
+      logoBytes = new Uint8Array(await response.arrayBuffer())
+    }
     const image = await doc.embedPng(logoBytes)
     const scale = 50 / image.height
     return { image, width: image.width * scale, height: 50 }
@@ -247,7 +285,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   const { width } = page.getSize()
   const logo = await embedLogo(doc)
 
-  const LM = 45
+  const LM = 47
   let y = 790
 
   // === LOGO + HEADER ===
@@ -267,7 +305,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     }
   }
   const title1 = 'PT. CHITRA PARATAMA'
-  const title2 = 'OVER TIME RECORD'
+  const title2 = input.documentTitle || 'OVER TIME RECORD'
   page.drawText(title1, { x: centerX(width, title1, fontBold, 14), y, font: fontBold, size: 14 })
   y -= 18
   page.drawText(title2, { x: centerX(width, title2, fontBold, 11), y, font: fontBold, size: 11 })
@@ -287,22 +325,19 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   y -= 15
   page.drawText('Department', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(input.department || input.section, { x: valX, y, font, size: 9 })
+  page.drawText(input.department || input.section, { x: valX, y, font: fontBold, size: 9 })
   y -= 15
   page.drawText('Site', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(input.siteName, { x: valX, y, font, size: 9 })
+  page.drawText(input.siteName, { x: valX, y, font: fontBold, size: 9 })
   y -= 15
   page.drawText('Overtime rate/hours', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
   y -= 22
 
-  // === TABLE ===
+  // === TABLE (9 Columns Authentic Overtime Record matching media_1791434007640.png) ===
   const rowH = 15
-  const showTotal = input.showTotalOvertime !== false
-  const cols = showTotal
-    ? [30, 60, 50, 45, 50, 50, 50, 50, 150]
-    : [30, 60, 50, 45, 50, 50, 0, 50, 200]
+  const cols = [32, 60, 48, 48, 70, 70, 52, 40, 81]
   const totalTableW = cols.reduce((s, c) => s + c, 0)
   const tableStartX = (width - totalTableW) / 2
   const colX: number[] = []
@@ -312,25 +347,26 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     cx += w
   }
 
-  // Header
+  // Header (2 sub-rows)
   const hH = 26
   drawCell(page, colX[0], y - hH, cols[0], hH, {
     text: 'Date',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 7.5,
     align: 'center',
   })
   drawCell(page, colX[1], y - hH, cols[1], hH, {
     text: 'Day',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 7.5,
     align: 'center',
   })
-  // Working Time
+
+  // Working Time Header Group
   drawCell(page, colX[2], y - 13, cols[2] + cols[3], 13, {
     text: 'Working Time',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 7.5,
     align: 'center',
   })
   drawCell(page, colX[2], y - hH, cols[2], 13, {
@@ -345,11 +381,12 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     fontSize: 7,
     align: 'center',
   })
-  // OT
+
+  // Overtime Header Group
   drawCell(page, colX[4], y - 13, cols[4] + cols[5], 13, {
     text: 'Overtime',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 7.5,
     align: 'center',
   })
   drawCell(page, colX[4], y - hH, cols[4], 13, {
@@ -364,36 +401,42 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     fontSize: 7,
     align: 'center',
   })
-  if (showTotal) {
-    drawCell(page, colX[6], y - hH, cols[6], hH, {
-      text: 'Total\nOvertime',
-      font: fontBold,
-      fontSize: 7,
-      align: 'center',
-    })
-  }
+
+  // Total Overtime, WD, Remarks
+  drawCell(page, colX[6], y - hH, cols[6], hH, {
+    text: 'Total Overtime',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
   drawCell(page, colX[7], y - hH, cols[7], hH, {
     text: 'WD',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 7.5,
     align: 'center',
   })
   drawCell(page, colX[8], y - hH, cols[8], hH, {
     text: 'Remarks',
     font: fontBold,
-    fontSize: 7,
+    fontSize: 7.5,
     align: 'center',
   })
+
   y -= hH
 
   // Rows
   let totalOT = 0
+  const showTotal = input.showTotalOvertime ?? true
+
   for (const day of input.days) {
     y -= rowH
     if (y < 90) break
 
     const isOff =
-      day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'FB' ||
+      day.scheduleCode === 'Libur' ||
+      day.status === 'off'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const isAbsent =
@@ -401,23 +444,34 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       day.status === 'leave' ||
       day.status === 'absent' ||
       day.status === 'empty'
-    const hasAttendance = !isAbsent && Boolean(
-      day.clockIn || (day.workingTimeFrom && day.status !== 'empty' && !isOff)
+    const hasManualAttendance = Boolean(
+      (day.clockIn && day.clockIn.trim() !== '') ||
+      (day.clockOut && day.clockOut.trim() !== '') ||
+      day.status === 'present'
     )
+    const hasAttendance =
+      !isAbsent &&
+      (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
     const configuredOvertimeIntervals =
-      day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? []
+      isOff && !hasManualAttendance
+        ? []
+        : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
     const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
 
     const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
-      interval ? `${String(interval.start).replace(':', '.')}-${String(interval.end).replace(':', '.')}` : ''
-    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-    const otTo = formatOvertimeInterval(configuredOvertimeIntervals[1])
+      interval ? `${String(interval.start).replace(':', '.')}` : ''
+    const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
+      interval ? `${String(interval.end).replace(':', '.')}` : ''
 
-    // Compute effective overtime hours
+    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    const otTo = formatOvertimeIntervalEnd(
+      configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+    )
+
     let ot = day.overtime?.totalHours ?? 0
-    if (isAbsent || isStatusWithoutTime || (isOff && !hasAttendance)) {
+    if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
       ot = 0
-    } else if (ot <= 0 && hasOvertimeIntervals) {
+    } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
         const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
@@ -430,7 +484,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }, 0)
     }
 
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)) {
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
       totalOT += ot
     }
 
@@ -441,6 +495,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
         : undefined
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
+    // Col 0: Date
     drawCell(page, colX[0], y, cols[0], rowH, {
       text: String(day.day),
       font,
@@ -449,101 +504,95 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       bgColor,
       color: dayColor,
     })
+    // Col 1: Day
     drawCell(page, colX[1], y, cols[1], rowH, {
       text: day.dayName,
       font,
-      fontSize: 7,
+      fontSize: 7.5,
       align: 'center',
       bgColor,
       color: dayColor,
     })
 
-    if (isStatusWithoutTime) {
-      drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
-      drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
-      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
-      drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (isOff && !hasAttendance && !day.isHoliday && !hasOvertimeIntervals) {
-      drawCell(page, colX[2], y, cols[2], rowH, {
-        text: 'OFF',
+    const shouldRenderWorkTimes =
+      !isAbsent &&
+      !day.isHoliday &&
+      Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
+      !isOff
+    const workFrom = shouldRenderWorkTimes
+      ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
+      : ''
+    const workTo = shouldRenderWorkTimes
+      ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
+      : ''
+    const shouldRenderOtTimes =
+      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+
+    // Col 2-3: Working Time From & To
+    drawCell(page, colX[2], y, cols[2], rowH, {
+      text: isOff && !hasManualAttendance ? 'OFF' : workFrom,
+      font: isOff && !hasManualAttendance ? fontBold : font,
+      fontSize: 7.5,
+      align: 'center',
+      bgColor,
+    })
+    drawCell(page, colX[3], y, cols[3], rowH, {
+      text: workTo,
+      font,
+      fontSize: 7.5,
+      align: 'center',
+      bgColor,
+    })
+
+    // Col 4-5: Overtime From & To
+    drawCell(page, colX[4], y, cols[4], rowH, {
+      text: shouldRenderOtTimes ? otFrom : '',
+      font,
+      fontSize: otFrom.length > 8 ? 6 : 7.5,
+      align: 'center',
+      bgColor,
+    })
+    drawCell(page, colX[5], y, cols[5], rowH, {
+      text: shouldRenderOtTimes ? otTo : '',
+      font,
+      fontSize: otTo.length > 8 ? 6 : 7.5,
+      align: 'center',
+      bgColor,
+    })
+
+    // Col 6: Total Overtime
+    if (showTotal) {
+      drawCell(page, colX[6], y, cols[6], rowH, {
+        text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
         font: fontBold,
         fontSize: 8,
-        align: 'center',
-        bgColor,
-      })
-      drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
-      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
-      drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
-    } else if (hasAttendance || hasOvertimeIntervals || day.isHoliday) {
-      const shouldRenderWorkTimes =
-        !isAbsent &&
-        !day.isHoliday &&
-        Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
-        !isOff
-      const workFrom = shouldRenderWorkTimes
-        ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
-        : ''
-      const workTo = shouldRenderWorkTimes
-        ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
-        : ''
-      const shouldRenderOtTimes =
-        hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasAttendance)
-
-      drawCell(page, colX[2], y, cols[2], rowH, {
-        text: isOff && !hasAttendance ? 'OFF' : workFrom,
-        font: isOff && !hasAttendance ? fontBold : font,
-        fontSize: 8,
-        align: 'center',
-        bgColor,
-      })
-      drawCell(page, colX[3], y, cols[3], rowH, {
-        text: workTo,
-        font,
-        fontSize: 8,
-        align: 'center',
-        bgColor,
-      })
-      drawCell(page, colX[4], y, cols[4], rowH, {
-        text: shouldRenderOtTimes ? otFrom : '',
-        font,
-        fontSize: otFrom.length > 5 ? 6 : 8,
-        align: 'center',
-        bgColor,
-      })
-      drawCell(page, colX[5], y, cols[5], rowH, {
-        text: shouldRenderOtTimes ? otTo : '',
-        font,
-        fontSize: otTo.length > 5 ? 6 : 8,
         align: 'center',
         bgColor,
       })
     } else {
-      drawCell(page, colX[2], y, cols[2], rowH, { bgColor })
-      drawCell(page, colX[3], y, cols[3], rowH, { bgColor })
-      drawCell(page, colX[4], y, cols[4], rowH, { bgColor })
-      drawCell(page, colX[5], y, cols[5], rowH, { bgColor })
+      drawCell(page, colX[6], y, cols[6], rowH, { bgColor })
     }
 
-    if (showTotal) {
-      drawCell(page, colX[6], y, cols[6], rowH, {
-        text: ot > 0 ? String(Math.round(ot * 100) / 100) : '',
-        font: fontBold,
-        fontSize: 8,
-        align: 'center',
-        bgColor,
-      })
-    }
-    drawCell(page, colX[7], y, cols[7], rowH, { bgColor })
+    // Col 7: WD
+    const rawWd = day.status === 'standby' ? 'ST' : day.status === 'field_break' ? 'FB' : day.scheduleCode || ''
+    const wdCode = rawWd === 'OFF' ? '' : rawWd
+    drawCell(page, colX[7], y, cols[7], rowH, {
+      text: wdCode,
+      font,
+      fontSize: 7,
+      align: 'center',
+      bgColor,
+    })
 
+    // Col 8: Remarks
     let remark = ''
-    if (day.overtime?.splNumbers?.length) remark = `SPL ${day.overtime.splNumbers.join(', ')}`
+    if (day.status === 'standby') remark = 'ST'
+    else if (day.status === 'field_break') remark = 'FB'
+    else if (day.isHoliday && day.holidayName) remark = day.holidayName
+    else if (day.status === 'sick') remark = 'SICK'
+    else if (day.status === 'leave') remark = 'IJIN'
+    else if (day.status === 'absent') remark = 'ALPA'
 
-    if (!remark && day.status === 'standby') remark = 'ST'
-    else if (!remark && day.status === 'field_break') remark = 'FB'
-    else if (!remark && day.isHoliday && day.holidayName) remark = day.holidayName
-    else if (!remark && day.status === 'sick') remark = 'SICK'
-    else if (!remark && day.status === 'leave') remark = 'IJIN'
-    else if (!remark && day.status === 'absent') remark = 'ALPA'
     const rc =
       day.status === 'sick'
         ? rgb(0.7, 0.5, 0)
@@ -556,14 +605,13 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       text: remark,
       font,
       fontSize: 6,
-      align: 'left',
-      wrap: true,
-      bgColor,
+      align: 'center',
       color: rc,
+      bgColor,
     })
   }
 
-  // Total
+  // Total Row
   y -= rowH
   const tBg = rgb(0.8, 1, 0.8)
   const tW = cols[0] + cols[1] + cols[2] + cols[3] + cols[4] + cols[5]
@@ -578,20 +626,455 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     drawCell(page, colX[6], y, cols[6], rowH, {
       text: String(Math.round(totalOT * 10) / 10),
       font: fontBold,
-      fontSize: 10,
+      fontSize: 9.5,
       align: 'center',
       bgColor: tBg,
       color: rgb(0, 0.5, 0),
     })
+  } else {
+    drawCell(page, colX[6], y, cols[6], rowH, { bgColor: tBg })
   }
   drawCell(page, colX[7], y, cols[7], rowH, { bgColor: tBg })
   drawCell(page, colX[8], y, cols[8], rowH, { bgColor: tBg })
 
-  // Signatures
+  // Signatures (4 equal columns across printable width, no QR code)
   y -= 30
-  drawPdfSignatures(page, { regular: font, italic: fontItalic }, y, input.signatures)
+  await drawOvertimeRecordSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
 
   return doc.save()
+}
+
+// ============================================================
+// SUMMARY SPL PDF (6 Columns matching user PDF standard)
+// ============================================================
+export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  let page = doc.addPage([595, 842])
+  const { width } = page.getSize()
+  const logo = await embedLogo(doc)
+
+  const LM = 45
+  let y = 790
+
+  // === LOGO + HEADER ===
+  if (logo) {
+    page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
+  }
+  // Customer logo on right side if provided and NOT duplicate
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
+  const title1 = 'PT. CHITRA PARATAMA'
+  const title2 = input.documentTitle || 'SUMMARY SPL'
+  page.drawText(title1, { x: centerX(width, title1, fontBold, 14), y, font: fontBold, size: 14 })
+  y -= 18
+  page.drawText(title2, { x: centerX(width, title2, fontBold, 11), y, font: fontBold, size: 11 })
+  y -= 35
+
+  // === INFO ===
+  const colonX = LM + 110
+  const valX = colonX + 15
+  page.drawText('MONTH', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
+  y -= 15
+  page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.employeeName, { x: valX, y, font: fontBold, size: 9 })
+  y -= 15
+  page.drawText('Department', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.department || input.section, { x: valX, y, font: fontBold, size: 9 })
+  y -= 15
+  page.drawText('Site', { x: LM, y, font, size: 9 })
+  page.drawText(':', { x: colonX, y, font, size: 9 })
+  page.drawText(input.siteName, { x: valX, y, font: fontBold, size: 9 })
+  y -= 22
+
+  // === TABLE (6 Columns SPL Summary matching user screenshot) ===
+  const rowH = 15
+  // cols: Tanggal (32), Hari (60), Jam Lembur Mulai (48), Jam Lembur Selesai (48), Total Lembur (60), Yang Dikerjakan (257)
+  const cols = [32, 60, 48, 48, 60, 257]
+  const totalTableW = cols.reduce((s, c) => s + c, 0)
+  const tableStartX = (width - totalTableW) / 2
+  const colX: number[] = []
+  let cx = tableStartX
+  for (const w of cols) {
+    colX.push(cx)
+    cx += w
+  }
+
+  // Header (2 sub-rows)
+  const hH = 26
+  drawCell(page, colX[0], y - hH, cols[0], hH, {
+    text: 'Tanggal',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+  drawCell(page, colX[1], y - hH, cols[1], hH, {
+    text: 'Hari',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+
+  // Jam Lembur Header Group
+  drawCell(page, colX[2], y - 13, cols[2] + cols[3], 13, {
+    text: 'Jam Lembur',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+  drawCell(page, colX[2], y - hH, cols[2], 13, {
+    text: 'Mulai',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+  drawCell(page, colX[3], y - hH, cols[3], 13, {
+    text: 'Selesai',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+
+  // Total Lembur
+  drawCell(page, colX[4], y - hH, cols[4], hH, {
+    text: 'Total Lembur',
+    font: fontBold,
+    fontSize: 7,
+    align: 'center',
+  })
+
+  // Yang Dikerjakan
+  drawCell(page, colX[5], y - hH, cols[5], hH, {
+    text: 'Yang Dikerjakan',
+    font: fontBold,
+    fontSize: 7.5,
+    align: 'center',
+  })
+
+  y -= hH
+
+  // Rows
+  let totalOT = 0
+  const showTotal = input.showTotalOvertime ?? true
+
+  for (const day of input.days) {
+    const isOff =
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'FB' ||
+      day.scheduleCode === 'Libur' ||
+      day.status === 'off'
+    const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
+    const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
+    const isAbsent =
+      day.status === 'sick' ||
+      day.status === 'leave' ||
+      day.status === 'absent' ||
+      day.status === 'empty'
+    const hasManualAttendance = Boolean(
+      (day.clockIn && day.clockIn.trim() !== '') ||
+      (day.clockOut && day.clockOut.trim() !== '') ||
+      day.status === 'present'
+    )
+    const hasAttendance =
+      !isAbsent &&
+      (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
+    const configuredOvertimeIntervals =
+      isOff && !hasManualAttendance
+        ? []
+        : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
+    const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
+
+    const formatOvertimeInterval = (interval: OvertimeInterval | undefined) =>
+      interval ? `${String(interval.start).replace(':', '.')}` : ''
+    const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
+      interval ? `${String(interval.end).replace(':', '.')}` : ''
+
+    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    const otTo = formatOvertimeIntervalEnd(
+      configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+    )
+
+    let ot = day.overtime?.totalHours ?? 0
+    if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
+      ot = 0
+    } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
+      ot = configuredOvertimeIntervals.reduce((sum, inv) => {
+        if (!inv || !inv.start || !inv.end) return sum
+        const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
+        const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
+        if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        return sum + (endMin - startMin) / 60
+      }, 0)
+    }
+
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+      totalOT += ot
+    }
+
+    const taskDesc = day.splTitle || (ot > 0 ? 'Penugasan Lembur' : '')
+
+    // Hitung tinggi baris dinamis agar deskripsi pekerjaan panjang tidak pernah terpotong / bertumpuk
+    const maxTextW = cols[5] - 8
+    let taskLines = 1
+    if (taskDesc && font) {
+      let linesCount = 0
+      for (const paragraph of taskDesc.split('\n')) {
+        let line = ''
+        for (const word of paragraph.split(/\s+/)) {
+          const test = line ? `${line} ${word}` : word
+          if (line && font.widthOfTextAtSize(test, 6.5) > maxTextW) {
+            linesCount++
+            line = word
+          } else {
+            line = test
+          }
+        }
+        if (line) linesCount++
+      }
+      taskLines = Math.max(1, linesCount)
+    }
+    const dynamicRowH = Math.max(14, taskLines * 8.5 + 5)
+
+    // Jika baris berikutnya melebihi batas bawah halaman, buat halaman baru (halaman 2, 3, dst)
+    if (y - dynamicRowH < 90) {
+      page = doc.addPage([595, 842])
+      y = 790
+
+      // Sub-header halaman lanjutan
+      const titleCont = 'PT. CHITRA PARATAMA — SUMMARY SPL (Lanjutan)'
+      page.drawText(titleCont, { x: centerX(width, titleCont, fontBold, 10), y, font: fontBold, size: 10 })
+      y -= 22
+
+      // Re-draw Table Header
+      drawCell(page, colX[0], y - hH, cols[0], hH, { text: 'Tanggal', font: fontBold, fontSize: 7.5, align: 'center' })
+      drawCell(page, colX[1], y - hH, cols[1], hH, { text: 'Hari', font: fontBold, fontSize: 7.5, align: 'center' })
+      drawCell(page, colX[2], y - 13, cols[2] + cols[3], 13, { text: 'Jam Lembur', font: fontBold, fontSize: 7.5, align: 'center' })
+      drawCell(page, colX[2], y - hH, cols[2], 13, { text: 'Mulai', font: fontBold, fontSize: 7, align: 'center' })
+      drawCell(page, colX[3], y - hH, cols[3], 13, { text: 'Selesai', font: fontBold, fontSize: 7, align: 'center' })
+      drawCell(page, colX[4], y - hH, cols[4], hH, { text: 'Total Lembur', font: fontBold, fontSize: 7, align: 'center' })
+      drawCell(page, colX[5], y - hH, cols[5], hH, { text: 'Yang Dikerjakan', font: fontBold, fontSize: 7.5, align: 'center' })
+
+      y -= hH
+    }
+
+    y -= dynamicRowH
+
+    const bgColor = day.isHoliday
+      ? rgb(1, 1, 0.75)
+      : isSunday || isOff
+        ? rgb(1, 0.93, 0.93)
+        : undefined
+    const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
+
+    // Col 0: Tanggal
+    drawCell(page, colX[0], y, cols[0], dynamicRowH, {
+      text: String(day.day),
+      font,
+      fontSize: 8,
+      align: 'center',
+      bgColor,
+      color: dayColor,
+    })
+    // Col 1: Hari
+    drawCell(page, colX[1], y, cols[1], dynamicRowH, {
+      text: day.dayName,
+      font,
+      fontSize: 7.5,
+      align: 'center',
+      bgColor,
+      color: dayColor,
+    })
+
+    const shouldRenderOtTimes =
+      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+
+    // Col 2-3: Overtime Mulai & Selesai
+    drawCell(page, colX[2], y, cols[2], dynamicRowH, {
+      text: shouldRenderOtTimes ? otFrom : '',
+      font,
+      fontSize: otFrom.length > 8 ? 6 : 7.5,
+      align: 'center',
+      bgColor,
+    })
+    drawCell(page, colX[3], y, cols[3], dynamicRowH, {
+      text: shouldRenderOtTimes ? otTo : '',
+      font,
+      fontSize: otTo.length > 8 ? 6 : 7.5,
+      align: 'center',
+      bgColor,
+    })
+
+    // Col 4: Total Lembur
+    if (showTotal) {
+      drawCell(page, colX[4], y, cols[4], dynamicRowH, {
+        text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
+        font: fontBold,
+        fontSize: 8,
+        align: 'center',
+        bgColor,
+      })
+    } else {
+      drawCell(page, colX[4], y, cols[4], dynamicRowH, { bgColor })
+    }
+
+    // Col 5: Yang Dikerjakan
+    drawCell(page, colX[5], y, cols[5], dynamicRowH, {
+      text: taskDesc,
+      font,
+      fontSize: 6.5,
+      align: 'left',
+      wrap: true,
+      bgColor,
+    })
+  }
+
+  // Jika baris total & tanda tangan tidak cukup di halaman terakhir, pindahkan tanda tangan ke halaman baru
+  if (y - 90 < 50) {
+    page = doc.addPage([595, 842])
+    y = 790
+  }
+
+  // Total Row
+  y -= rowH
+  const tBg = rgb(0.8, 1, 0.8)
+  const tW = cols[0] + cols[1] + cols[2] + cols[3]
+  drawCell(page, colX[0], y, tW, rowH, {
+    text: 'TOTAL',
+    font: fontBold,
+    fontSize: 9,
+    align: 'center',
+    bgColor: tBg,
+  })
+  if (showTotal) {
+    drawCell(page, colX[4], y, cols[4], rowH, {
+      text: String(Math.round(totalOT * 10) / 10),
+      font: fontBold,
+      fontSize: 9.5,
+      align: 'center',
+      bgColor: tBg,
+      color: rgb(0, 0.5, 0),
+    })
+  } else {
+    drawCell(page, colX[4], y, cols[4], rowH, { bgColor: tBg })
+  }
+  drawCell(page, colX[5], y, cols[5], rowH, { bgColor: tBg })
+
+  // Signatures (3 equal columns)
+  y -= 30
+  await drawSummarySplSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
+
+  return doc.save()
+}
+
+async function drawSummarySplSignatures(
+  doc: PDFDocument,
+  page: PDFPage,
+  fonts: { regular: PDFFont; italic: PDFFont; bold: PDFFont },
+  y: number,
+  input: OvertimeRecordInput
+) {
+  const { width } = page.getSize()
+  const names = input.signatures
+
+  const labels: [string, string][] = [
+    ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Pemohon'],
+    ['Approved by:', names.pjoLeader?.trim() || 'Supervisor'],
+    ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || 'Branch Manager / Factory Manager'],
+  ]
+
+  const LM = 45
+  const printableWidth = width - LM * 2
+  const columnWidth = printableWidth / 3
+  const lineWidth = columnWidth - 25
+
+  labels.forEach(([label, name], index) => {
+    const x = LM + index * columnWidth
+    page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
+    page.drawLine({
+      start: { x, y: y - 42 },
+      end: { x: x + lineWidth, y: y - 42 },
+      color: rgb(0.5, 0.5, 0.5),
+      thickness: 0.5,
+    })
+    page.drawText(name || '-', {
+      x,
+      y: y - 54,
+      font: fonts.regular,
+      size: 7,
+      maxWidth: lineWidth,
+    })
+  })
+}
+
+async function drawOvertimeRecordSignatures(
+  doc: PDFDocument,
+  page: PDFPage,
+  fonts: { regular: PDFFont; italic: PDFFont; bold: PDFFont },
+  y: number,
+  input: OvertimeRecordInput
+) {
+  const { width } = page.getSize()
+  const names = input.signatures
+
+  let labels: [string, string][] = []
+  if (names.useExternalOnly) {
+    labels = [
+      ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || input.employeeName || '-'],
+      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
+      ['Approved by:', names.pjoLeader || '-'],
+      ['Diketahui oleh:', names.hrName || '-'],
+    ]
+  } else {
+    labels = [
+      ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
+      ['Approved by:', names.pjoLeader?.trim() || 'Supervisor / Leader'],
+      ['Approved by:', names.approvedBy?.trim() || 'PJO / Manager'],
+      ['Diketahui oleh:', names.hrName?.trim() || 'HC / Admin'],
+    ]
+  }
+
+  const LM = 45
+  const printableWidth = width - LM * 2
+  const columnWidth = printableWidth / 4
+  const lineWidth = columnWidth - 18
+
+  // Draw 4 Equal Signature Columns across page width
+  labels.forEach(([label, name], index) => {
+    const x = LM + index * columnWidth
+    page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
+    page.drawLine({
+      start: { x, y: y - 42 },
+      end: { x: x + lineWidth, y: y - 42 },
+      color: rgb(0.5, 0.5, 0.5),
+      thickness: 0.5,
+    })
+    page.drawText(name || '-', {
+      x,
+      y: y - 54,
+      font: fonts.regular,
+      size: 7,
+      maxWidth: lineWidth,
+    })
+  })
 }
 
 // ============================================================
@@ -792,7 +1275,11 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
     const isFieldBreakDay = fieldBreakDays.has(day.day)
 
     const isOff =
-      day.scheduleCode === 'OFF' || day.scheduleCode === 'Libur' || day.scheduleCode === 'Sakit'
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'Libur' ||
+      day.scheduleCode === 'Sakit' ||
+      day.status === 'off' ||
+      day.status === 'sick'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const bgColor = day.isHoliday
       ? rgb(1, 1, 0.8)
@@ -1065,7 +1552,10 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
 
     const isFb = day.scheduleCode === 'FB' || day.status === 'field_break'
     const isOff =
-      day.scheduleCode === 'OFF' || day.scheduleCode === 'FB' || day.scheduleCode === 'Libur'
+      day.scheduleCode === 'OFF' ||
+      day.scheduleCode === 'FB' ||
+      day.scheduleCode === 'Libur' ||
+      day.status === 'off'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const bgColor = isFb
       ? rgb(0.95, 0.9, 1)
@@ -1410,7 +1900,7 @@ export async function generateSummaryTablePdf(
         cellColor = cRedText
       } else if (text === 'FB') {
         cellBg = cFbBg
-      } else if (text === 'ST') {
+      } else if (text === 'ST' || text === 'GD') {
         cellColor = cBlueText
       } else if (text === 'SPL') {
         cellColor = cRedText

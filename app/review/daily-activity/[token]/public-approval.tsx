@@ -1,5 +1,7 @@
 'use client'
 
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
+
 import { useEffect, useRef, useState, useTransition } from 'react'
 import QRCode from 'qrcode'
 import SignatureCanvas from 'react-signature-canvas'
@@ -68,6 +70,7 @@ type PublicApprovalProps = {
     siteId: number
     teamMembersSummary?: string | null
     splNumber?: string | null
+    summaryRemark?: string | null
   }
   employee: {
     id: number
@@ -91,6 +94,7 @@ type PublicApprovalProps = {
     duration: string
     points: number
     sortOrder: number
+    itemTeamMembersSummary?: string | null
   }>
   allApprovals: Array<{
     id: number
@@ -511,13 +515,33 @@ export function DailyActivityPublicApproval({
             <td>Site: <strong>{site.name || '—'}</strong></td>
             <td>Customer: <strong>{site.customerName || 'PT Chitra Paratama'}</strong></td>
           </tr>
-          {session.teamMembersSummary ? (
-            <tr>
-              <td colSpan={2}>
-                Anggota Tim: <span className="text-black font-normal">{session.teamMembersSummary}</span>
-              </td>
-            </tr>
-          ) : null}
+          {(() => {
+            const items = sessionItems || []
+            const rawSessionTeam = session.teamMembersSummary || (session.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
+            const teamResult = formatActivityTeamGroups(items, rawSessionTeam)
+
+            if (!teamResult.hasTeams) return null
+
+            return (
+              <tr>
+                <td colSpan={2} className="py-1.5">
+                  <div className="font-bold text-black mb-1">Anggota Tim:</div>
+                  {teamResult.isSingleTeam ? (
+                    <span className="text-black font-normal">{teamResult.singleTeamText}</span>
+                  ) : (
+                    <div className="space-y-1 pl-1">
+                      {teamResult.groups.map((grp, gIdx) => (
+                        <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                          <span className="font-bold text-black shrink-0">{grp.prefixLabel}</span>
+                          <span className="text-black font-medium">{grp.teamMembers}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            )
+          })()}
         </tbody>
       </table>
 
@@ -540,7 +564,14 @@ export function DailyActivityPublicApproval({
             (sessionItems || []).map((item, idx) => (
               <tr key={item.id || idx}>
                 <td className="text-center align-middle">{idx + 1}</td>
-                <td className="align-middle">{item.label}</td>
+                <td className="align-middle">
+                  <div className="font-medium text-black">{item.label}</div>
+                  {item.itemTeamMembersSummary && item.itemTeamMembersSummary !== '-' ? (
+                    <div className="mt-0.5 text-[7pt] text-slate-600 font-normal">
+                      <span className="font-semibold text-slate-800">Tim:</span> {item.itemTeamMembersSummary}
+                    </div>
+                  ) : null}
+                </td>
                 <td className="text-center align-middle">{item.duration}</td>
                 <td className="text-center font-bold align-middle">{item.points || 0}</td>
                 <td className="text-left text-[7.5pt] align-middle">{item.remark || '-'}</td>

@@ -1,13 +1,13 @@
 "use client"
 
-import { useRef } from "react"
+import { useRef, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { EnterpriseActionButtons } from "@/components/ui/enterprise-table-kit"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Eye, Pencil, Plus, Camera, Activity, ChevronDown } from "lucide-react"
+import { Eye, Pencil, Plus, Camera, Activity, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -32,28 +32,130 @@ function scoreLabel(score: number) {
 
 export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/tire-inspection", isMobile = false }: { data: any[], access: any, basePath?: string, isMobile?: boolean }) {
   const router = useRouter()
+  const [sortField, setSortField] = useState<string>("inspectionDate")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
+
+  const sortedData = useMemo(() => {
+    if (!sortField) return data
+    return [...data].sort((a, b) => {
+      let aVal = a[sortField]
+      let bVal = b[sortField]
+      if (sortField === "inspectionDate") {
+        aVal = new Date(aVal || 0).getTime()
+        bVal = new Date(bVal || 0).getTime()
+      } else if (sortField === "totalScore") {
+        aVal = Number(aVal || 0)
+        bVal = Number(bVal || 0)
+      } else {
+        aVal = String(aVal || "").toLowerCase()
+        bVal = String(bVal || "").toLowerCase()
+      }
+      if (aVal < bVal) return sortDir === "asc" ? -1 : 1
+      if (aVal > bVal) return sortDir === "asc" ? 1 : -1
+      return 0
+    })
+  }, [data, sortField, sortDir])
 
   const columns = [
     {
       accessorKey: "inspectionDate",
-      header: "Tanggal",
+      header: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+          onClick={() => handleSort("inspectionDate")}
+        >
+          Tanggal
+          {sortField === "inspectionDate" ? (
+            sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+          ) : (
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+          )}
+        </Button>
+      ),
       cell: ({ row }: any) => formatDate(row.original.inspectionDate),
     },
     {
       accessorKey: "siteName",
-      header: "Site",
+      header: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+          onClick={() => handleSort("siteName")}
+        >
+          Site
+          {sortField === "siteName" ? (
+            sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+          ) : (
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+          )}
+        </Button>
+      ),
     },
     {
       accessorKey: "customerName",
-      header: "Customer",
+      header: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+          onClick={() => handleSort("customerName")}
+        >
+          Customer
+          {sortField === "customerName" ? (
+            sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+          ) : (
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+          )}
+        </Button>
+      ),
     },
     {
       accessorKey: "shift",
-      header: "Shift",
+      header: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+          onClick={() => handleSort("shift")}
+        >
+          Shift
+          {sortField === "shift" ? (
+            sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+          ) : (
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+          )}
+        </Button>
+      ),
     },
     {
       accessorKey: "totalScore",
-      header: "Skor",
+      header: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+          onClick={() => handleSort("totalScore")}
+        >
+          Skor
+          {sortField === "totalScore" ? (
+            sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+          ) : (
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+          )}
+        </Button>
+      ),
       cell: ({ row }: any) => {
         const score = Number(row.original.totalScore || 0)
         let variant = "default" as any
@@ -72,7 +174,21 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent"
+          onClick={() => handleSort("status")}
+        >
+          Status
+          {sortField === "status" ? (
+            sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
+          ) : (
+            <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
+          )}
+        </Button>
+      ),
       cell: ({ row }: any) => {
         const handleStatusChange = async (newStatus: string) => {
           try {
@@ -136,7 +252,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
   const parentRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
-    count: data.length,
+    count: sortedData.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 53, // Approx height of TableRow with standard padding
     overscan: 5,
@@ -163,13 +279,13 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
         </div>
 
         {access.canEdit ? (
-          <Button className="h-12 w-full rounded-[1rem] bg-[#003f78] text-white shadow-[0_14px_28px_rgba(0,63,120,0.18)]" onClick={() => router.push(`${basePath}/create`)}>
+          <Button className="h-9 w-full rounded-[1rem] bg-[#003f78] text-white shadow-[0_14px_28px_rgba(0,63,120,0.18)]" onClick={() => router.push(`${basePath}/create`)}>
             <Plus className="size-4" /> Inspeksi Baru
           </Button>
         ) : null}
 
         <section className="grid gap-3">
-          {data.map((row: any, index: number) => {
+          {sortedData.map((row: any, index: number) => {
             const score = Number(row.totalScore || 0)
             return (
               <article key={row.id || index} className="rounded-[1.25rem] bg-white p-4 shadow-[0_14px_32px_rgba(8,32,51,0.08)] ring-1 ring-slate-100/80 hover:shadow-lg transition-all duration-200">
@@ -224,13 +340,13 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="h-10 rounded-xl hover:bg-slate-50" onClick={() => router.push(`${basePath}/detail/${row.id}`)}><Eye className="size-4" /> Detail</Button>
-                  {access.canEdit ? <Button variant="outline" className="h-10 rounded-xl hover:bg-slate-50" onClick={() => router.push(`${basePath}/edit/${row.id}`)}><Pencil className="size-4" /> Edit</Button> : null}
+                  <Button variant="outline" className="h-9 rounded-xl hover:bg-slate-50" onClick={() => router.push(`${basePath}/detail/${row.id}`)}><Eye className="size-4" /> Detail</Button>
+                  {access.canEdit ? <Button variant="outline" className="h-9 rounded-xl hover:bg-slate-50" onClick={() => router.push(`${basePath}/edit/${row.id}`)}><Pencil className="size-4" /> Edit</Button> : null}
                 </div>
               </article>
             )
           })}
-          {data.length === 0 ? (
+          {sortedData.length === 0 ? (
             <div className="rounded-[1.2rem] bg-white p-6 text-center text-sm font-semibold text-[#486275] shadow-[0_14px_32px_rgba(8,32,51,0.08)]">
               Belum ada data inspeksi.
             </div>
@@ -249,7 +365,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
       access={access}
       primaryAction={
         access.canEdit && (
-          <Button onClick={() => router.push(`${basePath}/create`)}>
+          <Button className="h-9" onClick={() => router.push(`${basePath}/create`)}>
             <Plus className="mr-2 h-4 w-4" />
             Inspeksi Baru
           </Button>
@@ -275,7 +391,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
                 </TableRow>
               )}
               {items.map((virtualRow) => {
-                const row = data[virtualRow.index]
+                const row = sortedData[virtualRow.index]
                 return (
                   <TableRow 
                     key={row.id || virtualRow.index} 
@@ -296,7 +412,7 @@ export function TireInspectionClient({ data, access, basePath = "/dashboard/hse/
                   <TableCell colSpan={columns.length} style={{ height: `${after}px` }} className="p-0 border-0" />
                 </TableRow>
               )}
-              {data.length === 0 && (
+              {sortedData.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="text-center py-12 text-muted-foreground">
                     Belum ada data inspeksi.

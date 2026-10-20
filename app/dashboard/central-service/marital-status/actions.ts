@@ -1,0 +1,692 @@
+'use server';
+
+import { db } from '@/db';
+import { maritalStatusRequests, employees, approvals } from '@/db/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { revalidatePath } from 'next/cache';
+import { getCurrentEmployee } from '@/lib/get-current-employee';
+import { ensureMaritalStatusRequestSchema } from '@/lib/marital-status-data';
+import { createNotificationEventForEmployee } from '@/lib/push-notifications';
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center';
+import { resolveApprovalRouteForActivity } from '@/lib/approval-engine';
+import {
+  sendMaritalStatusApprovalRequestedEmail,
+  sendMaritalStatusApprovedEmail,
+  sendMaritalStatusRejectedEmail,
+  sendMaritalStatusRevertedEmail,
+} from '@/lib/marital-status-email';
+
+export interface SubmitMaritalStatusInput {
+  targetEmployeeId?: number;
+  targetMaritalStatus: string;
+  reason: string;
+  marriageDate?: string;
+  spouseName?: string;
+  residenceStatus?: string;
+  dependentsCount?: number;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  approver1Id: number;
+  approver2Id: number;
+  approver3Id?: number;
+  signatureUrl?: string;
+  notes?: string;
+  siteId?: number;
+}
+
+export async function submitMaritalStatusRequestAction(input: SubmitMaritalStatusInput) {
+  try {
+    await ensureMaritalStatusRequestSchema();
+    const currentEmployee = await getCurrentEmployee();
+    if (!currentEmployee) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    if (!input.targetMaritalStatus?.trim()) {
+      return { success: false, error: 'Status Pernikahan Tujuan wajib dipilih.' };
+    }
+
+    if (!input.reason?.trim()) {
+      return { success: false, error: 'Alasan perubahan status pernikahan wajib diisi.' };
+    }
+
+    if (!input.approver1Id || !input.approver2Id) {
+      return { success: false, error: 'Pemeriksa (Level 1) dan Atasan Langsung (Level 2) wajib dipilih.' };
+    }
+
+    const effectiveEmployeeId = input.targetEmployeeId || currentEmployee.id;
+
+    // Fetch employee current profile
+    const [empProfile] = await db
+      .select({
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        maritalStatus: employees.maritalStatus,
+        siteId: employees.siteId,
+      })
+      .from(employees)
+      .where(eq(employees.id, effectiveEmployeeId))
+      .limit(1);
+
+    if (!empProfile) {
+      return { success: false, error: 'Data karyawan tidak ditemukan.' };
+    }
+
+    // Fetch approvers profiles
+    const [app1Profile] = await db
+      .select({ name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, input.approver1Id))
+      .limit(1);
+
+    const [app2Profile] = await db
+      .select({ name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, input.approver2Id))
+      .limit(1);
+
+    const app3Profile = input.approver3Id
+      ? (
+          await db
+            .select({ name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, input.approver3Id))
+            .limit(1)
+        )[0]
+      : null;
+
+    if (!app1Profile || !app2Profile) {
+      return { success: false, error: 'Data pemeriksa / atasan yang dipilih tidak ditemukan.' };
+    }
+
+    // Generate Request Number: MAR-YYYY-0001
+    const currentYear = new Date().getFullYear();
+    const [lastReq] = await db
+      .select({ requestNumber: maritalStatusRequests.requestNumber })
+      .from(maritalStatusRequests)
+      .orderBy(desc(maritalStatusRequests.id))
+      .limit(1);
+
+    let nextSeq = 1;
+    if (lastReq?.requestNumber) {
+      const match = lastReq.requestNumber.match(/MAR-\d{4}-(\d+)/);
+      if (match) {
+        nextSeq = parseInt(match[1], 10) + 1;
+      }
+    }
+    const requestNumber = `MAR-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+
+    const currentMaritalStatus = empProfile.maritalStatus || 'Belum Diisi';
+
+    const [newRequest] = await db
+      .insert(maritalStatusRequests)
+      .values({
+        requestNumber,
+        employeeId: effectiveEmployeeId,
+        submittedByEmployeeId: currentEmployee.id,
+        siteId: input.siteId ?? empProfile.siteId ?? null,
+        currentMaritalStatus,
+        targetMaritalStatus: input.targetMaritalStatus.trim(),
+        reason: input.reason.trim(),
+        marriageDate: input.marriageDate ? new Date(input.marriageDate) : null,
+        spouseName: input.spouseName?.trim() || null,
+        residenceStatus: input.residenceStatus?.trim() || 'Mess / Perumahan On Site',
+        dependentsCount: Number(input.dependentsCount) || 0,
+        attachmentUrl: input.attachmentUrl || null,
+        attachmentName: input.attachmentName || null,
+        status: 'pending_approval',
+        signatureUrl: input.signatureUrl || null,
+        notes: input.notes?.trim() || '',
+      })
+      .returning();
+
+    // Resolve default route snapshot via Approval Engine
+    const resolvedRoute = await resolveApprovalRouteForActivity({
+      employeeId: effectiveEmployeeId,
+      activityType: 'marital_status',
+      priority: 'normal',
+      overtimeMinutes: 0,
+      siteId: input.siteId ?? empProfile.siteId ?? null,
+      transactionType: 'marital_status',
+    });
+    const routeSnapshot = JSON.stringify(resolvedRoute);
+
+    // Create approval steps
+    // Level 1: Mengetahui (PJO / HSE / Leader)
+    await db.insert(approvals).values({
+      maritalStatusRequestId: newRequest.id,
+      activityType: 'marital_status',
+      requestNumber,
+      activityTitle: `Permohonan Status Pernikahan: ${newRequest.requestNumber}`,
+      formName: 'Permohonan Perubahan Status Pernikahan',
+      createdBy: currentEmployee.id,
+      level: 1,
+      approverName: app1Profile.name,
+      approverEmployeeId: input.approver1Id,
+      approverEmail: app1Profile.email,
+      status: 'pending',
+      submittedAt: new Date(),
+      resolutionSource: 'direct_select',
+      routeSnapshot,
+    });
+
+    // Level 2: Menyetujui (Section Head / Atasan Langsung)
+    await db.insert(approvals).values({
+      maritalStatusRequestId: newRequest.id,
+      activityType: 'marital_status',
+      requestNumber,
+      activityTitle: `Permohonan Status Pernikahan: ${newRequest.requestNumber}`,
+      formName: 'Permohonan Perubahan Status Pernikahan',
+      createdBy: currentEmployee.id,
+      level: 2,
+      approverName: app2Profile.name,
+      approverEmployeeId: input.approver2Id,
+      approverEmail: app2Profile.email,
+      status: 'waiting',
+      submittedAt: new Date(),
+      resolutionSource: 'direct_select',
+      routeSnapshot,
+    });
+
+    // Level 3: Menyetujui (Human Resources) - if provided
+    if (input.approver3Id && app3Profile) {
+      await db.insert(approvals).values({
+        maritalStatusRequestId: newRequest.id,
+        activityType: 'marital_status',
+        requestNumber,
+        activityTitle: `Permohonan Status Pernikahan: ${newRequest.requestNumber}`,
+        formName: 'Permohonan Perubahan Status Pernikahan',
+        createdBy: currentEmployee.id,
+        level: 3,
+        approverName: app3Profile.name,
+        approverEmployeeId: input.approver3Id,
+        approverEmail: app3Profile.email,
+        status: 'waiting',
+        submittedAt: new Date(),
+        resolutionSource: 'direct_select',
+        routeSnapshot,
+      });
+    }
+
+    // Send Notification Bell & Email to Level 1 Approver
+    try {
+      if (app1Profile.email) {
+        await createNotificationEventForEmployee({
+          employeeId: input.approver1Id,
+          eventType: 'marital_status_approval_requested',
+          category: 'approval_requests',
+          title: 'Permohonan Perubahan Status Pernikahan',
+          body: `${empProfile.name} mengajukan perubahan status pernikahan (${currentMaritalStatus} ➔ ${input.targetMaritalStatus}).`,
+          url: `/dashboard/approval`,
+        });
+        await notifyWorkflowBellRecipients({
+          recipientEmails: [app1Profile.email],
+          eventType: 'marital_status_approval_requested',
+          category: 'approval_requests',
+          title: 'Permohonan Perubahan Status Pernikahan',
+          body: `${empProfile.name} mengajukan permohonan perubahan status pernikahan baru.`,
+          url: `/dashboard/approval`,
+        });
+        await sendMaritalStatusApprovalRequestedEmail(app1Profile.email, {
+          requestNumber,
+          employeeName: empProfile.name,
+          employeeSn: empProfile.employeeSn,
+          currentMaritalStatus,
+          targetMaritalStatus: input.targetMaritalStatus.trim(),
+          reason: input.reason.trim(),
+          approverName: app1Profile.name,
+          approvalLevel: 1,
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[submitMaritalStatusRequestAction] Notification warning:', notifErr);
+    }
+
+    revalidateMaritalStatusPaths();
+
+    return {
+      success: true,
+      requestNumber: newRequest.requestNumber,
+      id: newRequest.id,
+    };
+  } catch (error: any) {
+    console.error('Error submitting marital status request:', error);
+    return { success: false, error: error.message || 'Gagal mengajukan permohonan perubahan status pernikahan.' };
+  }
+}
+
+export async function approveMaritalStatusStepAction(
+  requestId: number,
+  stepId: number,
+  decisionNote?: string,
+  signatureUrl?: string
+) {
+  try {
+    await ensureMaritalStatusRequestSchema();
+    const currentEmployee = await getCurrentEmployee();
+    if (!currentEmployee) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    let [targetStep] = await db
+      .select()
+      .from(approvals)
+      .where(and(eq(approvals.id, stepId), eq(approvals.maritalStatusRequestId, requestId)))
+      .limit(1);
+
+    if (!targetStep) {
+      const [byStepId] = await db
+        .select()
+        .from(approvals)
+        .where(eq(approvals.id, stepId))
+        .limit(1);
+      targetStep = byStepId;
+    }
+
+    if (!targetStep) {
+      return { success: false, error: 'Langkah persetujuan tidak ditemukan.' };
+    }
+
+    if (targetStep.status !== 'pending') {
+      return { success: false, error: 'Langkah persetujuan ini sudah diproses sebelumnya.' };
+    }
+
+    // Update current step to approved
+    await db
+      .update(approvals)
+      .set({
+        status: 'approved',
+        reviewedAt: new Date(),
+        decisionNote: decisionNote?.trim() || '',
+        ...(signatureUrl && { signatureUrl }),
+      })
+      .where(eq(approvals.id, stepId));
+
+    // Fetch all steps for this request
+    const allSteps = await db
+      .select()
+      .from(approvals)
+      .where(eq(approvals.maritalStatusRequestId, requestId))
+      .orderBy(approvals.level);
+
+    const nextWaitingStep = allSteps.find(
+      (s) => s.level > targetStep.level && (s.status === 'waiting' || s.status === 'pending')
+    );
+
+    const [request] = await db
+      .select()
+      .from(maritalStatusRequests)
+      .where(eq(maritalStatusRequests.id, requestId))
+      .limit(1);
+
+    if (!request) return { success: false, error: 'Permohonan tidak ditemukan.' };
+
+    if (nextWaitingStep && nextWaitingStep.approverEmployeeId) {
+      if (nextWaitingStep.status === 'waiting') {
+        await db
+          .update(approvals)
+          .set({ status: 'pending', submittedAt: new Date() })
+          .where(eq(approvals.id, nextWaitingStep.id));
+      }
+      // Notify Next Level Approver (Section Head or HR)
+      try {
+        if (nextWaitingStep.approverEmail) {
+          const roleTitle = nextWaitingStep.level === 3 ? 'Human Resources' : 'Atasan Langsung';
+          await createNotificationEventForEmployee({
+            employeeId: nextWaitingStep.approverEmployeeId,
+            eventType: 'marital_status_approval_requested',
+            category: 'approval_requests',
+            title: 'Persetujuan Perubahan Status Pernikahan',
+            body: `Permohonan ${request.requestNumber} memerlukan persetujuan ${roleTitle}.`,
+            url: `/dashboard/approval`,
+          });
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [nextWaitingStep.approverEmail],
+            eventType: 'marital_status_approval_requested',
+            category: 'approval_requests',
+            title: 'Persetujuan Perubahan Status Pernikahan',
+            body: `Permohonan ${request.requestNumber} memerlukan persetujuan ${roleTitle}.`,
+            url: `/dashboard/approval`,
+          });
+
+          // Fetch submitter info for email details
+          const [subEmp] = await db
+            .select({ name: employees.name, employeeSn: employees.employeeSn })
+            .from(employees)
+            .where(eq(employees.id, request.employeeId))
+            .limit(1);
+
+          await sendMaritalStatusApprovalRequestedEmail(nextWaitingStep.approverEmail, {
+            requestNumber: request.requestNumber,
+            employeeName: subEmp?.name || 'Karyawan',
+            employeeSn: subEmp?.employeeSn || '-',
+            currentMaritalStatus: request.currentMaritalStatus,
+            targetMaritalStatus: request.targetMaritalStatus,
+            reason: request.reason,
+            approverName: nextWaitingStep.approverName,
+            approvalLevel: nextWaitingStep.level,
+          });
+        }
+      } catch (e) {
+        console.warn(`Notification to Level ${nextWaitingStep.level} failed:`, e);
+      }
+    } else {
+      // All steps completed -> Approved
+      await db
+        .update(maritalStatusRequests)
+        .set({
+          status: 'approved',
+          updatedAt: new Date(),
+        })
+        .where(eq(maritalStatusRequests.id, requestId));
+
+      // Synchronize employee's marital status in hero_employees
+      try {
+        const updatePayload: Record<string, any> = {
+          maritalStatus: request.targetMaritalStatus,
+        };
+        if (request.spouseName) {
+          updatePayload.spouseName = request.spouseName;
+        }
+        if (request.marriageDate) {
+          updatePayload.marriageDate = sql`${new Date(request.marriageDate).toISOString().split('T')[0]}::date`;
+        }
+        if (request.residenceStatus) {
+          updatePayload.residenceStatus = request.residenceStatus;
+        }
+        await db
+          .update(employees)
+          .set(updatePayload)
+          .where(eq(employees.id, request.employeeId));
+      } catch (updateEmpErr) {
+        console.warn('[approveMaritalStatusStepAction] Profile sync warning:', updateEmpErr);
+      }
+
+      // Fetch requester info
+      const [reqEmp] = await db
+        .select({ name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, request.employeeId))
+        .limit(1);
+
+      // Send Notification to Requester
+      try {
+        await createNotificationEventForEmployee({
+          employeeId: request.employeeId,
+          eventType: 'marital_status_request_approved',
+          category: 'approval_requests',
+          title: 'Permohonan Perubahan Status Pernikahan Disetujui',
+          body: `Permohonan ${request.requestNumber} telah disetujui sepenuhnya. Data status pernikahan Anda telah diperbarui menjadi ${request.targetMaritalStatus}.`,
+          url: `/dashboard/central-service/marital-status`,
+        });
+
+        if (reqEmp?.email) {
+          await sendMaritalStatusApprovedEmail(reqEmp.email, {
+            requestNumber: request.requestNumber,
+            employeeName: reqEmp.name,
+            employeeSn: '',
+            currentMaritalStatus: request.currentMaritalStatus,
+            targetMaritalStatus: request.targetMaritalStatus,
+            reason: request.reason,
+          });
+        }
+      } catch (e) {
+        console.warn('Notification to requester failed:', e);
+      }
+    }
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error approving marital status step:', error);
+    return { success: false, error: error.message || 'Gagal menyetujui permohonan.' };
+  }
+}
+
+export async function rejectMaritalStatusStepAction(
+  requestId: number,
+  stepId: number,
+  rejectionReason: string
+) {
+  try {
+    await ensureMaritalStatusRequestSchema();
+    const currentEmployee = await getCurrentEmployee();
+    if (!currentEmployee) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    if (!rejectionReason?.trim()) {
+      return { success: false, error: 'Alasan penolakan wajib diisi.' };
+    }
+
+    // Update step to rejected
+    await db
+      .update(approvals)
+      .set({
+        status: 'rejected',
+        reviewedAt: new Date(),
+        decisionNote: rejectionReason.trim(),
+        rejectionReason: rejectionReason.trim(),
+      })
+      .where(eq(approvals.id, stepId));
+
+    // Set request status to rejected
+    const [request] = await db
+      .update(maritalStatusRequests)
+      .set({
+        status: 'rejected',
+        updatedAt: new Date(),
+      })
+      .where(eq(maritalStatusRequests.id, requestId))
+      .returning();
+
+    if (request) {
+      // Fetch requester info
+      const [reqEmp] = await db
+        .select({ name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, request.employeeId))
+        .limit(1);
+
+      // Notify requester
+      try {
+        await createNotificationEventForEmployee({
+          employeeId: request.employeeId,
+          eventType: 'marital_status_request_rejected',
+          category: 'approval_requests',
+          title: 'Permohonan Perubahan Status Pernikahan Ditolak',
+          body: `Permohonan ${request.requestNumber} tidak disetujui. Catatan: ${rejectionReason}`,
+          url: `/dashboard/central-service/marital-status`,
+        });
+
+        if (reqEmp?.email) {
+          await sendMaritalStatusRejectedEmail(reqEmp.email, {
+            requestNumber: request.requestNumber,
+            employeeName: reqEmp.name,
+            employeeSn: '',
+            currentMaritalStatus: request.currentMaritalStatus,
+            targetMaritalStatus: request.targetMaritalStatus,
+            reason: request.reason,
+            rejectionReason: rejectionReason.trim(),
+          });
+        }
+      } catch (e) {
+        console.warn('Notification to requester failed:', e);
+      }
+    }
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error rejecting marital status step:', error);
+    return { success: false, error: error.message || 'Gagal menolak permohonan.' };
+  }
+}
+
+export async function revertMaritalStatusStepAction(
+  requestId: number,
+  stepId: number,
+  revertReason: string
+) {
+  try {
+    await ensureMaritalStatusRequestSchema();
+    const currentEmployee = await getCurrentEmployee();
+    if (!currentEmployee) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    if (!revertReason?.trim()) {
+      return { success: false, error: 'Alasan pengembalian / revisi wajib diisi.' };
+    }
+
+    // Update step to reverted
+    await db
+      .update(approvals)
+      .set({
+        status: 'reverted',
+        reviewedAt: new Date(),
+        decisionNote: revertReason.trim(),
+        rejectionReason: revertReason.trim(),
+      })
+      .where(eq(approvals.id, stepId));
+
+    // Set request status to reverted
+    const [request] = await db
+      .update(maritalStatusRequests)
+      .set({
+        status: 'reverted',
+        updatedAt: new Date(),
+      })
+      .where(eq(maritalStatusRequests.id, requestId))
+      .returning();
+
+    if (request) {
+      const [reqEmp] = await db
+        .select({ name: employees.name, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, request.employeeId))
+        .limit(1);
+
+      try {
+        await createNotificationEventForEmployee({
+          employeeId: request.employeeId,
+          eventType: 'marital_status_request_rejected',
+          category: 'approval_requests',
+          title: 'Permohonan Perubahan Status Pernikahan Dikembalikan',
+          body: `Permohonan ${request.requestNumber} dikembalikan untuk revisi. Catatan: ${revertReason.trim()}`,
+          url: `/dashboard/central-service/marital-status`,
+        });
+
+        if (reqEmp?.email) {
+          await sendMaritalStatusRevertedEmail(reqEmp.email, {
+            requestNumber: request.requestNumber,
+            employeeName: reqEmp.name,
+            employeeSn: '',
+            currentMaritalStatus: request.currentMaritalStatus,
+            targetMaritalStatus: request.targetMaritalStatus,
+            reason: request.reason,
+            revertReason: revertReason.trim(),
+          });
+        }
+      } catch (e) {
+        console.warn('Notification to requester failed:', e);
+      }
+    }
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error reverting marital status step:', error);
+    return { success: false, error: error.message || 'Gagal mengembalikan permohonan.' };
+  }
+}
+
+export async function deleteMaritalStatusRequestAction(id: number) {
+  try {
+    await ensureMaritalStatusRequestSchema();
+    const currentEmployee = await getCurrentEmployee();
+    if (!currentEmployee) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    // Delete approvals
+    await db.delete(approvals).where(eq(approvals.maritalStatusRequestId, id));
+
+    // Delete request
+    await db.delete(maritalStatusRequests).where(eq(maritalStatusRequests.id, id));
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting marital status request:', error);
+    return { success: false, error: error.message || 'Gagal menghapus permohonan.' };
+  }
+}
+
+export async function updateMarriedEmployeeProfile(payload: {
+  employeeId: number;
+  maritalStatus: string;
+  spouseName?: string;
+  marriageDate?: string | null;
+  residenceStatus?: string;
+  dependentsCount?: number;
+}) {
+  try {
+    const current = await getCurrentEmployee();
+    if (!current) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    await db
+      .update(employees)
+      .set({
+        maritalStatus: payload.maritalStatus.trim(),
+        spouseName: payload.spouseName?.trim() || null,
+        marriageDate: payload.marriageDate ? new Date(payload.marriageDate) as any : null,
+        residenceStatus: payload.residenceStatus?.trim() || null,
+      })
+      .where(eq(employees.id, payload.employeeId));
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating married employee profile:', error);
+    return { success: false, error: error.message || 'Gagal memperbarui profil karyawan.' };
+  }
+}
+
+export async function resetInvalidMaritalStatusAction(employeeId: number) {
+  try {
+    const current = await getCurrentEmployee();
+    if (!current) {
+      return { success: false, error: 'User tidak terautentikasi.' };
+    }
+
+    await db
+      .update(employees)
+      .set({
+        maritalStatus: 'Single',
+        spouseName: null,
+        marriageDate: null,
+        residenceStatus: null,
+      })
+      .where(eq(employees.id, employeeId));
+
+    revalidateMaritalStatusPaths();
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error resetting invalid marital status:', error);
+    return { success: false, error: error.message || 'Gagal mereset status pernikahan.' };
+  }
+}
+
+function revalidateMaritalStatusPaths() {
+  try {
+    revalidatePath('/dashboard/central-service/marital-status');
+    revalidatePath('/mobile/central-service/marital-status');
+    revalidatePath('/dashboard/approval');
+    revalidatePath('/print/central-service/marital-status');
+  } catch (e) {
+    // ignore outside request context
+  }
+}

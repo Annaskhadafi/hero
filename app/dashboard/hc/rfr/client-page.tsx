@@ -16,6 +16,8 @@ import {
   FileCheck,
   Users,
   Pencil,
+  Trash2,
+  Mail,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AdminPageShell } from '@/components/admin-page-shell'
@@ -30,7 +32,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { getRfrDetail } from '@/app/actions/rfr'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { getRfrDetail, deleteRfrRequest, resendRfrApprovalNotification } from '@/app/actions/rfr'
 import { RfrDocumentPreview } from '@/components/rfr-document-preview'
 
 type RfrItem = {
@@ -113,12 +125,52 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
   const [previewDetail, setPreviewDetail] = useState<{ rfr: any; approvals: any[] } | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [deleteTarget, setDeleteTarget] = useState<RfrItem | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    startTransition(async () => {
+      const res = await deleteRfrRequest(deleteTarget.id)
+      setIsDeleting(false)
+      if (res.success) {
+        toast.success(`Dokumen RFR ${deleteTarget.rfrNumber} berhasil dihapus.`)
+        setDeleteTarget(null)
+        if (isDetailOpen && previewDetail?.rfr?.id === deleteTarget.id) {
+          setIsDetailOpen(false)
+        }
+        router.refresh()
+      } else {
+        toast.error(res.error || 'Gagal menghapus dokumen RFR.')
+      }
+    })
+  }
 
   // Calculate stats
   const totalRfr = total
   const pendingCount = initialData.filter((r) => r.status === 'in_progress' && r.currentStepOrder > 1).length
   const approvedCount = initialData.filter((r) => r.status === 'approved').length
   const rejectedCount = initialData.filter((r) => r.status === 'rejected' || (r.status === 'in_progress' && r.currentStepOrder === 1)).length
+
+  const [isResendingEmail, setIsResendingEmail] = useState(false)
+
+  const handleResendEmail = async () => {
+    if (!previewDetail?.rfr?.id) return
+    setIsResendingEmail(true)
+    try {
+      const res = await resendRfrApprovalNotification(previewDetail.rfr.id)
+      if (res.success) {
+        toast.success(res.message || 'Email notifikasi RFR berhasil dikirim ulang!')
+      } else {
+        toast.error(res.error || 'Gagal mengirim ulang email notifikasi.')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem saat kirim email.')
+    } finally {
+      setIsResendingEmail(false)
+    }
+  }
 
   const handlePrint = () => {
     if (previewDetail?.rfr?.id) {
@@ -141,15 +193,11 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
   }
 
   return (
-    <AdminPageShell
-      eyebrow="HC • Recruitment Management"
-      title="Request For Recruitment"
-      description="Kelola formulir permohonan rekrutmen karyawan baru, alur persetujuan berjenjang, dan auto-generate lowongan pekerjaan."
-    >
+    <AdminPageShell>
       {/* 1. HERO WORKSPACE BANNER */}
       <HcWorkspaceBanner
         eyebrow="Recruitment Desk"
-        title="Permohonan Rekrutmen (RFR)"
+        title="Request For Recruitment (RFR)"
         description="Pantau dan kelola seluruh pengajuan kebutuhan tenaga kerja baru lintas departemen dengan alur persetujuan berjenjang."
         items={[
           { label: 'Total RFR', value: totalRfr, tone: 'slate' },
@@ -262,19 +310,18 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
                         </Link>
                       )}
 
-                      {(item.status === 'reverted' || (item.status === 'in_progress' && item.currentStepOrder === 1)) && (
-                        <Link href={`/dashboard/hc/rfr/form?id=${item.id}`}>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2.5 rounded-lg border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs gap-1"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            <span>Revisi</span>
-                          </Button>
-                        </Link>
-                      )}
+                      <Link href={`/dashboard/hc/rfr/form?id=${item.id}`}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-2.5 rounded-lg border-slate-300 hover:bg-slate-50 font-semibold text-xs gap-1 text-slate-700"
+                          title="Edit Dokumen RFR"
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-slate-500" />
+                          <span>{item.status === 'reverted' || (item.status === 'in_progress' && item.currentStepOrder === 1) ? 'Revisi' : 'Edit'}</span>
+                        </Button>
+                      </Link>
 
                       <Button
                         type="button"
@@ -303,6 +350,17 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
                           <Download className="h-4 w-4" />
                         </Button>
                       </a>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteTarget(item)}
+                        disabled={isPending || isDeleting}
+                        className="h-8 w-8 p-0 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                        title="Hapus Dokumen RFR"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -321,7 +379,7 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
               <span>Preview Dokumen: {previewDetail?.rfr?.rfrNumber}</span>
             </DialogTitle>
             <div className="flex items-center gap-2 pr-6">
-              {previewDetail?.rfr?.status !== 'approved' && (
+              {previewDetail?.rfr?.id && (
                 <Link href={`/dashboard/hc/rfr/form?id=${previewDetail?.rfr?.id}`}>
                   <Button size="sm" variant="outline" className="h-8 border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs gap-1.5 rounded-lg">
                     <Pencil className="w-3.5 h-3.5" />
@@ -329,6 +387,20 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
                   </Button>
                 </Link>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (previewDetail?.rfr) {
+                    setDeleteTarget(previewDetail.rfr)
+                  }
+                }}
+                disabled={isDeleting}
+                className="h-8 rounded-lg border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-semibold text-xs gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus</span>
+              </Button>
               {previewDetail?.rfr?.status === 'approved' && (
                 <Link href="/dashboard/hc/recruitment">
                   <Button size="sm" variant="default" className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1.5 rounded-lg">
@@ -336,6 +408,18 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
                     <span>Lihat Lowongan Kerja</span>
                   </Button>
                 </Link>
+              )}
+              {previewDetail?.rfr?.status === 'in_progress' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleResendEmail}
+                  disabled={isResendingEmail}
+                  className="h-8 border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 font-semibold text-xs gap-1.5 rounded-lg"
+                >
+                  <Mail className="w-3.5 h-3.5 text-sky-700" />
+                  <span>{isResendingEmail ? 'Mengirim...' : 'Kirim Ulang Email'}</span>
+                </Button>
               )}
               <Button variant="outline" size="sm" onClick={handlePrint} className="h-8 rounded-lg border-slate-300 font-semibold text-xs gap-1.5">
                 <Printer className="w-3.5 h-3.5" />
@@ -362,6 +446,34 @@ export function RfrClientPage({ initialData, total, page, totalPages }: RfrClien
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 4. MODAL KONFIRMASI HAPUS DOKUMEN RFR */}
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent className="rounded-[1.25rem]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-bold text-slate-900">
+              Hapus Dokumen RFR?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-slate-600">
+              Apakah Anda yakin ingin menghapus permohonan rekrutmen nomor{' '}
+              <span className="font-semibold text-slate-900">{deleteTarget?.rfrNumber}</span> ({deleteTarget?.positionTitle})?
+              Data dokumen dan seluruh riwayat alur persetujuan terkait akan dihapus secara permanen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting} className="rounded-lg">
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold"
+            >
+              {isDeleting ? 'Menghapus...' : 'Ya, Hapus Dokumen'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminPageShell>
   )
 }

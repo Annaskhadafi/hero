@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 type AuthShellProps = {
     title: ReactNode;
@@ -35,9 +37,7 @@ export function AuthShell({
                         <div className="mb-6">
                             {headerBadge ?? (
                                 <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#003461_0%,#004b87_72%,#5a2200_150%)] shadow-[0_18px_40px_rgba(0,52,97,0.35)]">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/10 ring-1 ring-inset ring-white/18">
-                                        <div className="h-4 w-4 rounded-sm border-2 border-white/85" />
-                                    </div>
+                                    <Image src={resolveUploadUrl("/icon-192.png?v=hero-cat-20261012")} alt="HERO" width={40} height={40} className="h-10 w-10 object-contain" />
                                 </div>
                             )}
                         </div>

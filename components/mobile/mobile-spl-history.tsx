@@ -11,6 +11,7 @@ import {
   FileText,
   Loader2,
   Move,
+  Pencil,
   PlusCircle,
   RotateCcw,
   Search,
@@ -25,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { cn } from '@/lib/utils'
 
 export type MobileSplHistoryRow = {
@@ -38,6 +40,12 @@ export type MobileSplHistoryRow = {
   workerNames: string[]
   progressPercent: number
   lineCount: number
+  teamRole?: 'Pemohon' | 'Anggota Tim'
+  teamMembersSummary?: string | null
+  requesterName?: string | null
+  participantName?: string | null
+  totalPoints?: number | null
+  employeeId?: number | null
 }
 
 function fmtDate(d: string | Date | null | undefined): string {
@@ -157,6 +165,7 @@ export function MobileSplHistory({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return
     setIsDragging(true)
     dragStartRef.current = {
       x: e.clientX - panOffset.x,
@@ -185,6 +194,7 @@ export function MobileSplHistory({
   }
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement)?.closest('button, a, input, select, textarea, [data-interactive="true"]')) return
     if (e.touches.length === 2) {
       const t1 = e.touches[0]
       const t2 = e.touches[1]
@@ -376,26 +386,44 @@ export function MobileSplHistory({
       {/* ── List Cards ── */}
       {filtered.slice(0, visible).map((row) => (
         <details
-          key={row.id}
+          key={`${row.id}-${row.participantName || row.workerNames.join('-')}`}
           className="group overflow-hidden rounded-[1.25rem] bg-white shadow-[0_14px_32px_rgba(8,32,51,0.08)] border border-slate-100/80"
         >
           <summary className="flex min-h-12 cursor-pointer list-none items-start justify-between gap-3 p-4">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-black tracking-[0.14em] text-[#486275] uppercase">
                   {row.splNumber}
                 </span>
                 <Badge className={`text-[10px] px-2 py-0.5 ${badgeClass(row.status)}`}>
                   {statusLabel(row)}
                 </Badge>
+                {row.teamRole === 'Anggota Tim' ? (
+                  <Badge className="border-0 bg-teal-100 text-teal-900 text-[9px] font-bold px-1.5 py-0.5">
+                    Anggota Tim
+                  </Badge>
+                ) : row.teamRole === 'Pemohon' ? (
+                  <Badge className="border-0 bg-indigo-100 text-indigo-900 text-[9px] font-bold px-1.5 py-0.5">
+                    Pemohon
+                  </Badge>
+                ) : null}
+                {row.totalPoints !== undefined && row.totalPoints !== null ? (
+                  <Badge className="border-0 bg-emerald-100 text-emerald-900 text-[9px] font-bold px-1.5 py-0.5">
+                    +{row.totalPoints} pts
+                  </Badge>
+                ) : null}
               </div>
-              <p className="mt-1 truncate text-base font-black text-[#082033]">{row.title}</p>
+              <p className="mt-1 truncate text-base font-black text-[#082033]">
+                {row.participantName ? `${row.participantName} • ${row.title}` : row.title}
+              </p>
               <p className="mt-1 text-xs font-semibold text-[#486275]">
                 {new Date(row.workDate).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
               </p>
               <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600">
                 <Users className="size-3.5 text-slate-400 shrink-0" />
-                <span className="truncate">{row.workerNames.join(', ')}</span>
+                <span className="truncate">
+                  {row.teamMembersSummary ? `Partner: ${row.teamMembersSummary}` : row.workerNames.join(', ')}
+                </span>
               </div>
             </div>
             <div className="flex flex-col items-end gap-2 shrink-0">
@@ -416,7 +444,24 @@ export function MobileSplHistory({
             </ol>
 
             <div className="pt-1">
-              {['returned', 'reverted', 'needs_revision', 'draft'].includes(row.status) ? (
+              {row.status === 'draft' ? (
+                <div className="space-y-2">
+                  <Button asChild className="w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs">
+                    <Link href={`/mobile/overtime?tab=apply&edit=${row.id}`}>
+                      <Pencil className="size-4 mr-1.5" /> Lanjutkan Pengisian SPL
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleOpenPdf(row.id)}
+                    className="w-full h-11 rounded-2xl border-slate-300 font-bold text-xs bg-white text-slate-700 shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <FileText className="size-4" />
+                    <span>Lihat &amp; Unduh Dokumen PDF</span>
+                  </Button>
+                </div>
+              ) : ['returned', 'reverted', 'needs_revision'].includes(row.status) ? (
                 <div className="space-y-2">
                   <Button asChild className="w-full h-12 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs">
                     <Link href={`/mobile/overtime?tab=apply&edit=${row.id}`}>
@@ -663,10 +708,10 @@ export function MobileSplHistory({
                     >
                       {/* Header Document */}
                       <div className="text-center mb-3">
-                        <h1 className="font-bold text-[11pt] uppercase text-black leading-tight">
+                        <h1 className="font-bold text-[11.5pt] uppercase text-black leading-tight tracking-wide">
                           SURAT PERINTAH LEMBUR (SPL)
                         </h1>
-                        <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-wide">
+                        <p className="font-semibold text-[8pt] text-slate-700 uppercase tracking-widest mt-0.5">
                           PT CHITRA PARATAMA • HUMAN CAPITAL
                         </p>
                       </div>
@@ -699,12 +744,16 @@ export function MobileSplHistory({
                               {doc.plannedStartDate ? fmtDate(doc.plannedStartDate) : ''} ({doc.plannedStartTime || '17:00'} s.d. {doc.plannedEndTime || '21:00'})
                             </td>
                           </tr>
-                          {doc.requestNotes ? (
-                            <tr>
-                              <td className="font-bold bg-slate-50 text-black">Request Notes</td>
-                              <td colSpan={3} className="text-black">{doc.requestNotes}</td>
-                            </tr>
-                          ) : null}
+                          {(() => {
+                            const cleanedNotes = (doc.requestNotes || '').replace(/\[Foto Bukti SPL\]:\s*\S+/gi, '').trim()
+                            if (!cleanedNotes) return null
+                            return (
+                              <tr>
+                                <td className="font-bold bg-slate-50 text-black">Request Notes</td>
+                                <td colSpan={3} className="text-black">{cleanedNotes}</td>
+                              </tr>
+                            )
+                          })()}
                         </tbody>
                       </table>
 
@@ -752,28 +801,54 @@ export function MobileSplHistory({
                       <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[7.5pt] sm:text-[8pt]">
                         <thead>
                           <tr className="bg-slate-50 text-center font-bold text-black">
-                            <th className="w-[8%]">#</th>
-                            <th className="text-left w-[44%]">Line Label / Task</th>
-                            <th className="w-[20%]">Target Unit</th>
-                            <th className="w-[14%]">Est. Min</th>
-                            <th className="w-[14%]">Points</th>
+                            <th className="w-[6%]">#</th>
+                            <th className="text-left w-[34%]">Activity</th>
+                            <th className="w-[15%]">Target / Unit</th>
+                            <th className="w-[15%]">Waktu</th>
+                            <th className="w-[12%]">Tire / Material</th>
+                            <th className="w-[8%]">Poin</th>
+                            <th className="w-[10%]">Evidence</th>
                           </tr>
                         </thead>
                         <tbody>
                           {lineItems.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
+                              <td colSpan={7} className="py-2 text-slate-400 italic text-center">Belum ada rincian aktivitas.</td>
                             </tr>
                           ) : (
-                            lineItems.map((item: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="text-center">{idx + 1}</td>
-                                <td className="font-medium text-black">{item.lineLabel}</td>
-                                <td className="text-center text-black">{item.targetUnit || '—'}</td>
-                                <td className="text-center text-black">{item.estimatedMinutes || 0}m</td>
-                                <td className="text-center font-bold text-black">{item.plannedPoints || 0}</td>
-                              </tr>
-                            ))
+                            lineItems.map((item: any, idx: number) => {
+                              const actName = item.name || item.lineLabel
+                              const actCode = item.code ? `[${item.code}] ` : ''
+                              const tireMat = [
+                                item.tireCount ? `${item.tireCount} Ban` : null,
+                                item.materialUsed ? item.materialUsed : null,
+                              ].filter(Boolean).join(' • ') || '—'
+                              const timeStr = item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : (item.estimatedMinutes ? `${item.estimatedMinutes} m` : '—')
+                              const hasPhoto = item.photoUrl || (Array.isArray(item.photos) && item.photos.length > 0)
+                              return (
+                                <tr key={idx}>
+                                  <td className="text-center font-mono">{idx + 1}</td>
+                                  <td className="font-medium text-black text-left">
+                                    {actCode ? <strong className="font-mono">{actCode}</strong> : null}
+                                    {actName}
+                                  </td>
+                                  <td className="text-center font-mono text-black">{item.unitNumber || item.targetUnit || '—'}</td>
+                                  <td className="text-center font-mono text-black">{timeStr}</td>
+                                  <td className="text-center text-black">{tireMat}</td>
+                                  <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
+                                  <td className="text-center text-[7pt]">
+                                    {hasPhoto ? (
+                                      <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                    ) : (
+                                      <span className="text-slate-400">—</span>
+                                    )}
+                                    {item.remark && (
+                                      <div className="text-[6.5pt] text-slate-500 truncate max-w-[80px] mx-auto">{item.remark}</div>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })
                           )}
                         </tbody>
                       </table>
@@ -786,11 +861,11 @@ export function MobileSplHistory({
                         <thead>
                           <tr className="bg-slate-50 font-bold text-black">
                             <th className="w-[6%]">#</th>
-                            <th className="text-left w-[20%]">Tahap</th>
-                            <th className="text-left w-[22%]">Approver</th>
+                            <th className="text-left w-[22%]">Tahap</th>
+                            <th className="text-left w-[24%]">Approver</th>
                             <th className="w-[14%]">Status</th>
                             <th className="w-[16%]">Waktu</th>
-                            <th className="text-left w-[22%]">Catatan</th>
+                            <th className="text-left w-[18%]">Catatan</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -802,7 +877,7 @@ export function MobileSplHistory({
                             approvals.map((ap: any, idx: number) => (
                               <tr key={idx}>
                                 <td>{ap.stepOrder || idx + 1}</td>
-                                <td className="text-left font-medium capitalize">{ap.stepLabel || ap.approverRole?.replace(/_/g, ' ') || 'Approver'}</td>
+                                <td className="text-left font-medium capitalize">{ap.stepLabel || (idx === 0 ? 'Pemohon' : 'Leader / PJO')}</td>
                                 <td className="text-left font-semibold text-black">{ap.approverName || '—'}</td>
                                 <td className="capitalize font-semibold text-black">{ap.status || 'Pending'}</td>
                                 <td className="text-[7pt]">{fmtDt(ap.signedAt)}</td>
@@ -813,84 +888,93 @@ export function MobileSplHistory({
                         </tbody>
                       </table>
 
-                      {/* Section 5: Signatories Grid */}
+                      {/* Section 5: Signatories Grid (3 Approvals + QR Code Evidence) */}
                       <div className="font-bold mb-2 text-[8pt] text-black">Signatories</div>
-                      <div className="grid grid-cols-3 gap-3 mb-3 text-center">
-                        {/* 1. Serviceman / Requester */}
+                      <div className="grid grid-cols-4 gap-2 mb-3 text-center items-start">
+                        {/* 1. Dibuat oleh (Serviceman / Pemohon) */}
                         <div className="flex flex-col items-center text-center">
-                          <div className="text-[7pt] text-slate-500 font-semibold mb-1">Employee Signature</div>
-                          <div className="h-14 w-full flex items-center justify-center my-1">
+                          <div className="text-[7pt] text-slate-700 font-bold mb-0.5">Dibuat oleh :</div>
+                          <div className="h-12 w-full flex items-center justify-center my-0.5">
                             {step1?.signatureDataUrl ? (
-                              <img src={step1.signatureDataUrl} alt="TTD Pemohon" className="max-h-12 max-w-full object-contain" />
+                              <img src={step1.signatureDataUrl} alt="TTD Pemohon" className="max-h-11 max-w-full object-contain" />
                             ) : isStep1Signed ? (
-                              <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
-                                <path d="M22 30 C38 32, 60 28, 84 26" />
-                              </svg>
+                              <div className="flex flex-col items-center justify-center">
+                                <span className="font-bold text-emerald-700 text-[7.5pt]">✓ SIGNED</span>
+                                {doc.createdAt && <span className="text-[6pt] text-slate-400">{fmtDate(doc.createdAt)}</span>}
+                              </div>
                             ) : (
-                              <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                              <span className="text-slate-400 italic text-[6.5pt]">(Belum Disetujui)</span>
                             )}
                           </div>
-                          <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                          <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-full truncate">
                             {requester?.name || '—'}
                           </div>
-                          <div className="text-[7pt] text-slate-600 font-medium">Serviceman / Pemohon</div>
-                          <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                            {isStep1Signed && doc.createdAt ? `Waktu Pengajuan: ${fmtDt(doc.createdAt)}` : '—'}
-                          </div>
+                          <div className="text-[6.5pt] text-slate-600 font-medium">Serviceman / Pemohon</div>
                         </div>
 
-                        {/* 2. Leader / Supervisor */}
+                        {/* 2. Approved by (Supervisor / Leader) */}
                         <div className="flex flex-col items-center text-center">
-                          <div className="text-[7pt] text-slate-500 font-semibold mb-1">Leader / Supervisor Signature</div>
-                          <div className="h-14 w-full flex items-center justify-center my-1">
+                          <div className="text-[7pt] text-slate-700 font-bold mb-0.5">Approved by :</div>
+                          <div className="h-12 w-full flex items-center justify-center my-0.5">
                             {step2?.signatureDataUrl ? (
-                              <img src={step2.signatureDataUrl} alt="TTD Leader" className="max-h-12 max-w-full object-contain" />
+                              <img src={step2.signatureDataUrl} alt="TTD Supervisor" className="max-h-11 max-w-full object-contain" />
                             ) : isStep2Signed ? (
-                              <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
-                                <path d="M22 30 C38 32, 60 28, 84 26" />
-                              </svg>
+                              <div className="flex flex-col items-center justify-center">
+                                <span className="font-bold text-emerald-700 text-[7.5pt]">✓ APPROVED</span>
+                                {step2?.signedAt && <span className="text-[6pt] text-slate-400">{fmtDate(step2.signedAt)}</span>}
+                              </div>
                             ) : (
-                              <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                              <span className="text-slate-400 italic text-[6.5pt]">(Belum Disetujui)</span>
                             )}
                           </div>
-                          <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                          <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-full truncate">
                             {step2?.approverName || '—'}
                           </div>
-                          <div className="text-[7pt] text-slate-600 font-medium">Leader / Supervisor</div>
-                          <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                            {isStep2Signed && step2?.signedAt ? `Waktu TTD: ${fmtDt(step2.signedAt)}` : '—'}
-                          </div>
+                          <div className="text-[6.5pt] text-slate-600 font-medium">{step2?.stepLabel || 'Supervisor / Leader'}</div>
                         </div>
 
-                        {/* 3. Section Head / Superior */}
+                        {/* 3. Diketahui oleh (PJO / Bagas / HR) */}
                         <div className="flex flex-col items-center text-center">
-                          <div className="text-[7pt] text-slate-500 font-semibold mb-1">Section Head Signature</div>
-                          <div className="h-14 w-full flex items-center justify-center my-1">
+                          <div className="text-[7pt] text-slate-700 font-bold mb-0.5">Diketahui oleh :</div>
+                          <div className="h-12 w-full flex items-center justify-center my-0.5">
                             {step3?.signatureDataUrl ? (
-                              <img src={step3.signatureDataUrl} alt="TTD Superior" className="max-h-12 max-w-full object-contain" />
+                              <img src={step3.signatureDataUrl} alt="TTD PJO" className="max-h-11 max-w-full object-contain" />
                             ) : isStep3Signed ? (
-                              <svg className="h-10 w-24 text-slate-900" viewBox="0 0 100 40" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 26 C22 10, 32 32, 48 18 C62 6, 68 28, 82 14 C89 8, 92 10, 88 18 C82 24, 72 26, 68 22 C58 16, 48 18, 42 22" />
-                                <path d="M22 30 C38 32, 60 28, 84 26" />
-                              </svg>
+                              <div className="flex flex-col items-center justify-center">
+                                <span className="font-bold text-emerald-700 text-[7.5pt]">✓ APPROVED</span>
+                                {step3?.signedAt && <span className="text-[6pt] text-slate-400">{fmtDate(step3.signedAt)}</span>}
+                              </div>
                             ) : (
-                              <span className="text-slate-400 italic text-[7pt]">(Belum Disetujui)</span>
+                              <span className="text-slate-400 italic text-[6.5pt]">(Belum Disetujui)</span>
                             )}
                           </div>
-                          <div className="mt-1 border-b border-slate-400 pb-0.5 font-bold text-[8pt] text-slate-900 w-[80%] truncate">
+                          <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-full truncate">
                             {step3?.approverName || '—'}
                           </div>
-                          <div className="text-[7pt] text-slate-600 font-medium">Section Head</div>
-                          <div className="text-[6.5pt] text-slate-400 mt-0.5">
-                            {isStep3Signed && step3?.signedAt ? `Waktu TTD: ${fmtDt(step3.signedAt)}` : '—'}
+                          <div className="text-[6.5pt] text-slate-600 font-medium">{step3?.stepLabel || 'PJO / Bagas / HR'}</div>
+                        </div>
+
+                        {/* 4. Digital Evidence QR Code */}
+                        <div className="flex flex-col items-center text-center">
+                          <div className="text-[7pt] text-slate-700 font-bold mb-0.5">Digital Evidence :</div>
+                          <div className="h-12 w-full flex items-center justify-center my-0.5">
+                            <SplEvidenceQrBox splId={doc.id} splNumber={doc.splNumber} />
                           </div>
+                          <div className="mt-0.5 border-b border-slate-400 pb-0.5 font-bold text-[7.5pt] text-slate-900 w-full truncate">
+                            Evidence Gallery
+                          </div>
+                          <div className="text-[6.5pt] text-slate-600 font-medium">Scan / Click to view</div>
                         </div>
                       </div>
 
-                      <div className="text-right text-[7pt] text-slate-500 mt-2 font-mono">
-                        F.HC.SPL.001.01 • PT Chitra Paratama
+                      {/* Bottom Info */}
+                      <div className="flex items-end justify-between mt-3 pt-1 border-t border-slate-200">
+                        <div className="text-[6.5pt] text-slate-500 font-sans max-w-[100mm]">
+                          * Dokumen ini sah dan diterbitkan secara digital oleh HERO System PT Chitra Paratama.
+                        </div>
+                        <div className="text-right text-[7pt] text-slate-500 font-mono mt-0.5">
+                          F.HC.SPL.001.01 • PT Chitra Paratama
+                        </div>
                       </div>
                     </div>
                   </div>

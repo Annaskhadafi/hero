@@ -73,6 +73,30 @@ function dateInputValue(value?: Date | null) {
   return local.toISOString().slice(0, 10)
 }
 
+function timeInputValue(value?: Date | string | null) {
+  if (!value) return ''
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return ''
+    const hours = String(value.getHours()).padStart(2, '0')
+    const mins = String(value.getMinutes()).padStart(2, '0')
+    return `${hours}:${mins}`
+  }
+  const trimmed = String(value).trim()
+  if (/^\d{2}:\d{2}$/.test(trimmed)) return trimmed
+  if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed.slice(0, 5)
+  if (trimmed.includes('T')) {
+    const timePart = trimmed.split('T')[1]
+    return timePart ? timePart.slice(0, 5) : ''
+  }
+  const d = new Date(trimmed)
+  if (!isNaN(d.getTime())) {
+    const hours = String(d.getHours()).padStart(2, '0')
+    const mins = String(d.getMinutes()).padStart(2, '0')
+    return `${hours}:${mins}`
+  }
+  return ''
+}
+
 function dateTimeInputValue(value?: Date | null) {
   if (!value) return ''
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
@@ -193,16 +217,18 @@ export function OvertimeCommandLetterComposer({
           Jam mulai
           <Input
             name="plannedStartAt"
-            type="datetime-local"
-            defaultValue={dateTimeInputValue(defaults?.plannedStartAt ?? null)}
+            type="time"
+            defaultValue={timeInputValue(defaults?.plannedStartAt) || '17:00'}
+            required
           />
         </Label>
         <Label className="grid gap-2">
           Jam selesai
           <Input
             name="plannedEndAt"
-            type="datetime-local"
-            defaultValue={dateTimeInputValue(defaults?.plannedEndAt ?? null)}
+            type="time"
+            defaultValue={timeInputValue(defaults?.plannedEndAt) || '20:00'}
+            required
           />
         </Label>
       </div>

@@ -268,7 +268,7 @@ export function ActivityEvidenceViewer({ data }: { data: EvidenceData }) {
               >
                 {/* Photo Thumbnail */}
                 <div
-                  className="relative aspect-4/3 w-full bg-slate-900 cursor-pointer overflow-hidden"
+                  className="relative aspect-4/3 w-full bg-slate-100 dark:bg-slate-800 cursor-pointer overflow-hidden"
                   onClick={() =>
                     setSelectedImage({
                       url: formatPhotoDisplayUrl(item.photoUrl!),

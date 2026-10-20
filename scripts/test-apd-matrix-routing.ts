@@ -16,7 +16,7 @@ async function main() {
     { label: 'Admin CP - Balikpapan (Site 126), Repair/Retread (Sec 29)', siteId: 126, sectionId: 29, expectedApprover: 'Arjun Zahiri Mursith', expectedJob: 'Repairman' },
     { label: 'Admin CP - Gresik (Site 132), TE (Sec 37)', siteId: 132, sectionId: 37, expectedApprover: 'Muhammad Abian Husain', expectedJob: 'Technical Engineer' },
     { label: 'HSE - CK BIB (Site 133, Sec 33)', siteId: 133, sectionId: 33, expectedApprover: 'Fathurrahman Sufi', expectedJob: 'HSE Officer' },
-    { label: 'HSE - CK MHU (Site 128, Sec 29)', siteId: 128, sectionId: 29, expectedApprover: 'Irfan Rivai Remba', expectedJob: 'HSE' },
+    { label: 'HSE - CK MHU (Site 128, Sec 29)', siteId: 128, sectionId: 29, expectedApprover: 'Ade Saharu', expectedJob: 'HSE Admin' },
     { label: 'HSE - Vale (Site 140, Sec 37)', siteId: 140, sectionId: 37, expectedApprover: 'Muhammad Wahyu Ichsan', expectedJob: 'HSE Officer' },
     { label: 'PJO - AMM Tabang (Site 144, Sec 33)', siteId: 144, sectionId: 33, expectedApprover: 'Singgih Wiyono', expectedJob: 'Technical Engineer' },
     { label: 'PJO - Makassar (Site 151, Sec 29)', siteId: 151, sectionId: 29, expectedApprover: 'Apriyanto', expectedJob: 'Head of Service MVC' },

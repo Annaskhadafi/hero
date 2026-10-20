@@ -12,7 +12,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { getSiteAttendanceClockConfig } from '@/lib/timesheet/site-attendance-punctuality'
-import { checkEmployeeOffDayStatus } from '@/lib/timesheet/attendance-punctuality'
+import { checkEmployeeOffDayStatus, resolveNightShiftCheckoutContext } from '@/lib/timesheet/attendance-punctuality'
 import { getOvertimeWorkflowSettings } from '@/app/dashboard/overtime-requests/actions'
 import { sendOvertimeStepApprovalEmail } from '@/lib/activity-overtime-workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
@@ -58,9 +58,17 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
     const effectiveSiteId = siteId || emp.siteId || 1
     const siteConfig = await getSiteAttendanceClockConfig(effectiveSiteId)
 
-    // Check off-day status
-    const offDayCheck = checkEmployeeOffDayStatus({
+    const nightShiftContext = await resolveNightShiftCheckoutContext({
+      employeeId,
+      siteId: effectiveSiteId,
       eventTime,
+      eventType: 'checked-out',
+    })
+    const evalDate = nightShiftContext.effectiveDate
+
+    // Check off-day status against the effective shift date
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime: evalDate,
       role: emp.role || emp.jobTitle,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,
@@ -68,9 +76,11 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
     })
 
     // Calculate shift end time
-    const isNight = ['ns', 'night', 'malam', 'shift malam', '2', 's2'].includes(
-      String(shiftCode).toLowerCase().trim()
-    )
+    const isNight =
+      nightShiftContext.isNightShiftCheckout ||
+      ['ns', 'night', 'malam', 'shift malam', '2', 's2'].includes(
+        String(shiftCode).toLowerCase().trim()
+      )
 
     // Standard shift end time
     // Day shift standard end: 17:00 (or 9 hours after clock in)
@@ -241,7 +251,11 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
       }
     }
 
-    if (!sectionHeadName && effectiveSiteId) {
+    let approverEmployeeId = directManager?.id ?? null
+    let approverName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
+    let approverEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
+
+    if (!approverEmployeeId && effectiveSiteId) {
       const [siteRow] = await db
         .select({ headEmployeeId: sites.headEmployeeId })
         .from(sites)
@@ -255,34 +269,20 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
           .where(eq(employees.id, siteRow.headEmployeeId))
           .limit(1)
         if (siteEmp) {
-          sectionHeadEmployeeId = siteEmp.id
-          sectionHeadName = siteEmp.name
-          sectionHeadEmail = siteEmp.email || ''
+          approverEmployeeId = siteEmp.id
+          approverName = siteEmp.name
+          approverEmail = siteEmp.email || ''
         }
       }
     }
 
-    let leaderEmployeeId = directManager?.id ?? null
-    let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
-    let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
-
-    if (!leaderEmployeeId && sectionHeadEmployeeId) {
-      leaderEmployeeId = sectionHeadEmployeeId
-      leaderName = sectionHeadName
-      leaderEmail = sectionHeadEmail
-    }
-
-    if (!sectionHeadName) {
-      sectionHeadName = settings.approvalMatrix?.managerName || 'Section Head'
-      sectionHeadEmail = settings.approvalMatrix?.managerEmail || ''
-    }
-    if (!leaderName) {
-      leaderName = 'Leader Lapangan'
+    if (!approverName) {
+      approverName = settings.approvalMatrix?.fieldPicName || settings.approvalMatrix?.pjoName || 'Leader / PJO'
+      approverEmail = settings.approvalMatrix?.fieldPicEmail || settings.approvalMatrix?.pjoEmail || ''
     }
 
     const step1Token = randomUUID()
     const step2Token = randomUUID()
-    const step3Token = randomUUID()
     const now = new Date()
 
     const steps = [
@@ -304,11 +304,11 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
       {
         overtimeCommandLetterId: insertedSpl.id,
         stepOrder: 2,
-        stepLabel: 'Leader / Pengawas',
-        approverRole: 'leader',
-        approverEmployeeId: leaderEmployeeId,
-        approverName: leaderName,
-        approverEmail: leaderEmail,
+        stepLabel: 'Leader / PJO',
+        approverRole: 'leader_or_pjo',
+        approverEmployeeId: approverEmployeeId,
+        approverName: approverName,
+        approverEmail: approverEmail,
         status: 'pending',
         signatureDataUrl: null,
         signedAt: null,
@@ -316,27 +316,12 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
         approvalToken: step2Token,
         createdAt: now,
       },
-      {
-        overtimeCommandLetterId: insertedSpl.id,
-        stepOrder: 3,
-        stepLabel: 'Section Head',
-        approverRole: 'section_head',
-        approverEmployeeId: sectionHeadEmployeeId,
-        approverName: sectionHeadName,
-        approverEmail: sectionHeadEmail,
-        status: 'waiting',
-        signatureDataUrl: null,
-        signedAt: null,
-        remarks: '',
-        approvalToken: step3Token,
-        createdAt: now,
-      },
     ]
 
     await db.insert(overtimeApprovals).values(steps)
 
     // Notify Step 2 Approver (Leader/PJO) immediately
-    if (leaderEmail) {
+    if (approverEmail) {
       try {
         await sendOvertimeStepApprovalEmail({
           documentId: insertedSpl.id,
@@ -345,18 +330,18 @@ export async function checkAndAutoGenerateSplOnCheckout(params: {
           workDate: insertedSpl.workDate,
           employeeName: emp.name,
           requesterName: emp.name,
-          approverName: leaderName,
-          approverEmail: leaderEmail,
-          approvalStep: 'Leader / Pengawas',
+          approverName: approverName,
+          approverEmail: approverEmail,
+          approvalStep: 'Leader / PJO',
           approvalToken: step2Token,
         })
       } catch (emailErr) {
-        console.error('[auto-spl-attendance] Email to leader error:', emailErr)
+        console.error('[auto-spl-attendance] Email to approver error:', emailErr)
       }
     }
 
     try {
-      const recipientEmails = [leaderEmail, emp.email].filter(Boolean) as string[]
+      const recipientEmails = [approverEmail, emp.email].filter(Boolean) as string[]
       if (recipientEmails.length > 0) {
         await notifyWorkflowBellRecipients({
           recipientEmails,

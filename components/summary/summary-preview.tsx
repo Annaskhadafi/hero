@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   FilePenLine,
+  FileText,
   Loader2,
   Maximize2,
   Printer,
@@ -20,7 +21,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { submitSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
-import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL } from '@/lib/summary-constants';
+import { ApdRequestDetailModal } from './apd-request-detail-modal';
+import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL, buildDynamicApdColumns } from '@/lib/summary-constants';
 
 type SummaryData = {
   id: number;
@@ -28,12 +30,20 @@ type SummaryData = {
   status: string;
   generatedAt: Date | null;
   approvedAt: Date | null;
+  periodStart?: Date | string | null;
+  periodEnd?: Date | string | null;
   sectionName: string;
   departmentName: string;
   generatedByName: string;
   generatedByJobTitle?: string;
   targetSite?: string;
   submitterSignatureUrl: string | null;
+  masterCatalog?: Array<{
+    name: string;
+    hasSize?: boolean;
+    isQtyOnly?: boolean;
+    isShoe?: boolean;
+  }>;
   items: Array<{
     employeeName: string;
     employeeSn: string;
@@ -42,6 +52,7 @@ type SummaryData = {
     quantity: number;
     requestType: string;
     remarks?: string;
+    apdRequestId?: number | null;
   }>;
   approvals: Array<{
     id?: number;
@@ -64,6 +75,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const [deleting, setDeleting] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
 
   const handlePrintInPlace = () => {
     setPrinting(true);
@@ -134,24 +146,58 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         sn: item.employeeSn,
         site: formatSiteName(item.siteName),
         remarks: item.remarks || '',
+        apdRequestId: item.apdRequestId || null,
         items: {} as Record<string, any>,
       };
+    }
+    if (item.apdRequestId && !acc[item.employeeName].apdRequestId) {
+      acc[item.employeeName].apdRequestId = item.apdRequestId;
     }
     if (item.remarks && !acc[item.employeeName].remarks) {
       acc[item.employeeName].remarks = item.remarks;
     }
     if (item.itemName === 'Safety Shoes Size') {
-      acc[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
+      const isReqTypeSize = item.requestType && item.requestType !== 'baru' && item.requestType !== 'pergantian';
+      const sizeVal = isReqTypeSize
+        ? item.requestType
+        : (item.remarks && item.remarks !== acc[item.employeeName].remarks ? item.remarks : item.requestType || '');
+      acc[item.employeeName].items[item.itemName] = sizeVal;
     } else {
       acc[item.employeeName].items[item.itemName] = (Number(acc[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
     return acc;
-  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; items: Record<string, any> }>);
+  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }>);
 
-  const employees = Object.values(groupedByEmployee);
+  const employees = Object.values(groupedByEmployee).sort((a, b) => {
+    const siteCmp = (a.site || '').localeCompare(b.site || '', 'id-ID', { sensitivity: 'base' });
+    if (siteCmp !== 0) return siteCmp;
+    return (a.name || '').localeCompare(b.name || '', 'id-ID', { sensitivity: 'base' });
+  });
   const sites = [...new Set(employees.map(e => e.site))];
 
-  const allCols = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
+  const masterList = data.masterCatalog && data.masterCatalog.length > 0
+    ? data.masterCatalog.map(m => ({ name: m.name, hasSize: !!(m as any).isShoe || !!m.hasSize }))
+    : undefined;
+
+  const dynamicQtyCols = masterList
+    ? Array.from(
+        new Set([
+          ...buildDynamicApdColumns(masterList).qtyOnlyCols,
+          ...data.items
+            .map((i) => i.itemName)
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+        ])
+      )
+    : Array.from(
+        new Set([
+          ...QTY_ONLY_COLUMNS,
+          ...data.items
+            .map((i) => i.itemName)
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+        ])
+      );
+
+  const allCols = [...dynamicQtyCols, SAFETY_SHOES_COL];
   const totals: Record<string, number> = {};
   for (const col of allCols) {
     totals[col] = employees.reduce((s, e) => s + (Number(e.items[col]) || 0), 0);
@@ -206,15 +252,31 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
-  const th: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.15' };
-  const td: React.CSSProperties = { border: '1px solid #000', padding: '3px 2px', fontSize: '7pt', textAlign: 'center', lineHeight: '1.2' };
-  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '4px' };
-  const thVert: React.CSSProperties = { ...th, fontSize: '5.8pt', padding: '2px 0px', whiteSpace: 'nowrap', overflow: 'hidden', height: '90px' };
+  const empCount = employees.length;
+  const colCount = dynamicQtyCols.length;
+  const isDense = empCount > 9;
+  const isUltraDense = empCount > 15;
+  const isWideTable = colCount > 20;
+
+  const thFontSize = isWideTable ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
+  const tdFontSize = isWideTable ? '5pt' : isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
+  const itemHeaderFontSize = isWideTable ? '4.2pt' : isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
+  const padV = isUltraDense ? '1px' : isDense ? '1.5px' : '3px';
+  const padH = isWideTable ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
+  const remarksFontSize = isWideTable ? '4.8pt' : isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
+
+  const sigContainerHeight = isUltraDense ? '32px' : isDense ? '38px' : '44px';
+  const sigImgHeight = isUltraDense ? '28px' : isDense ? '34px' : '40px';
+
+  const th: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: thFontSize, background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.1' };
+  const td: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: tdFontSize, textAlign: 'center', lineHeight: '1.1' };
+  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '3px' };
+  const thItem: React.CSSProperties = { ...th, fontSize: itemHeaderFontSize, paddingTop: '1px', paddingBottom: '1px', paddingLeft: '1px', paddingRight: '1px', lineHeight: '1.05', wordBreak: 'break-word', whiteSpace: 'normal', verticalAlign: 'middle' };
 
   const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Standard total rows: 10 rows
-  const targetTotalRows = 10;
+  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items to fit single page
+  const targetTotalRows = isDense ? empCount : 10;
   const displayLimit = Math.max(employees.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - employees.length);
 
@@ -252,6 +314,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
       <div style={{ fontSize: '7.5pt', marginBottom: '8px', lineHeight: '1.3', color: '#111' }}>
         <div><strong>Tanggal Pengajuan:</strong> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</div>
+        {data.periodStart && data.periodEnd && (
+          <div>
+            <strong>Periode Pengajuan:</strong>{' '}
+            {new Date(data.periodStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} s/d{' '}
+            {new Date(data.periodEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        )}
         <div><strong>Department &amp; Lokasi:</strong> {data.departmentName} — {sites.join(', ')}</div>
       </div>
 
@@ -262,16 +331,15 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
             <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
             <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
-            {QTY_ONLY_COLUMNS.map(c => (
-              <th key={c} style={thVert} rowSpan={2}>
-                <div style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', margin: 'auto', maxHeight: '86px', fontSize: '5.8pt', whiteSpace: 'nowrap', lineHeight: '1' }}>
-                  {c}
-                </div>
+            {dynamicQtyCols.map(c => (
+              <th key={c} style={thItem} rowSpan={2}>
+                {c}
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
+            <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
+            <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
           </tr>
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
@@ -284,31 +352,61 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               <td style={td}>{i + 1}</td>
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
               <td style={td}>{e.sn}</td>
-              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
-              {QTY_ONLY_COLUMNS.map(c => (
+              {dynamicQtyCols.map(c => (
                 <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
-              <td style={{ ...tdL, fontSize: '6pt', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'normal', wordBreak: 'break-word' }}>{e.remarks || '—'}</td>
+              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
+              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
+                <div style={{
+                  maxHeight: isUltraDense ? '22px' : isDense ? '28px' : '36px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: '-webkit-box',
+                  WebkitLineClamp: isUltraDense ? 2 : isDense ? 3 : 4,
+                  WebkitBoxOrient: 'vertical',
+                  wordBreak: 'break-word',
+                }}>
+                  {e.remarks || '—'}
+                </div>
+              </td>
+              <td style={{ ...td, padding: '1px' }} className="print:hidden">
+                {e.apdRequestId ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRequestId(e.apdRequestId || null)}
+                    className="inline-flex items-center justify-center gap-1 text-[8px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded shadow-2xs cursor-pointer w-full"
+                    title="Lihat Dokumen Request Karyawan"
+                  >
+                    <FileText className="size-2.5 text-blue-600" />
+                    <span>Dokumen</span>
+                  </button>
+                ) : (
+                  <span className="text-slate-400 text-[8px]">—</span>
+                )}
+              </td>
             </tr>
           ))}
           {Array.from({ length: emptyRowCount }).map((_, i) => (
             <tr key={`e${i}`} style={{ height: '18px' }}>
               <td style={td}>{employees.length + i + 1}</td>
-              {Array.from({ length: QTY_ONLY_COLUMNS.length + 6 }).map((_, j) => (
+              {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
+              <td style={td} className="print:hidden"></td>
             </tr>
           ))}
           <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
-            <td style={td} colSpan={4}>Total Qty</td>
-            {QTY_ONLY_COLUMNS.map(c => (
+            <td style={td} colSpan={3}>Total Qty</td>
+            {dynamicQtyCols.map(c => (
               <td key={c} style={td}>{totals[c] || ''}</td>
             ))}
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
+            <td style={td}>—</td>
+            <td style={td} className="print:hidden">—</td>
           </tr>
         </tbody>
       </table>
@@ -340,13 +438,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         };
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '12px', textAlign: 'center', marginTop: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isUltraDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
             {/* Diajukan Oleh */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diajukan Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
               <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
@@ -375,10 +473,10 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 })();
                 return (
                   <div key={appr.id || idx}>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                       <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                       </div>
                     </div>
                     <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
@@ -394,8 +492,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               })
             ) : (
               <div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Diperiksa Oleh,</div>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                   <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
                 </div>
                 <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>.............</div>
@@ -405,10 +503,10 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
             {/* Disetujui Oleh (Department Head) */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '3px' }}>Disetujui Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '3px', height: '44px' }}>
+              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: '40px', maxWidth: '120px' }} />}
+                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
               <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
@@ -592,6 +690,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           onClose={() => setShowApprovalDialog(false)}
         />
       )}
+
+      {/* APD Request Detail Modal */}
+      <ApdRequestDetailModal
+        isOpen={Boolean(selectedRequestId)}
+        onClose={() => setSelectedRequestId(null)}
+        requestId={selectedRequestId}
+      />
     </div>
   );
 }

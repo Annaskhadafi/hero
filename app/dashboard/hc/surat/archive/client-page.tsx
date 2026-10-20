@@ -9,6 +9,9 @@ import {
   IconArchive,
 } from "@tabler/icons-react";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   CheckCircle2,
   Clock,
   Eye,
@@ -17,6 +20,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
+import { HeroSearchableSelect } from "@/components/templates";
 
 import {
   getLetterArchives,
@@ -180,6 +184,37 @@ export function SuratArchiveClient({
 }) {
   const router = useRouter();
   const [letters, setLetters] = useState<Letter[]>(initialLetters);
+
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDir === 'asc') setSortDir('desc');
+      else { setSortField(null); setSortDir('asc'); }
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedLetters = useMemo<Letter[]>(() => {
+    if (!sortField) return letters;
+    return [...letters].sort((a, b) => {
+      let aVal = (a as any)[sortField] ?? '';
+      let bVal = (b as any)[sortField] ?? '';
+      if (sortField === 'issuedDate' || sortField === 'createdAt') {
+        aVal = aVal ? new Date(aVal).getTime() : 0;
+        bVal = bVal ? new Date(bVal).getTime() : 0;
+      } else {
+        aVal = String(aVal).toLowerCase();
+        bVal = String(bVal).toLowerCase();
+      }
+      if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [letters, sortField, sortDir]);
 
   // View dialog
   const [viewItem, setViewItem] = useState<Letter | null>(null);
@@ -470,17 +505,47 @@ export function SuratArchiveClient({
           <TableHeader>
             <TableRow className="bg-muted/40">
               <TableHead className="w-12 text-center text-[12px] font-semibold">No</TableHead>
-              <TableHead className="text-[12px] font-semibold">Nomor Surat</TableHead>
-              <TableHead className="text-[12px] font-semibold">Tipe</TableHead>
-              <TableHead className="text-[12px] font-semibold">Nama Karyawan</TableHead>
-              <TableHead className="text-[12px] font-semibold">Tanggal</TableHead>
-              <TableHead className="text-[12px] font-semibold">Subjek</TableHead>
-              <TableHead className="text-center text-[12px] font-semibold">Status</TableHead>
+              <TableHead className="text-[12px] font-semibold">
+                <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleSort('letterNumber')}>
+                  Nomor Surat
+                  {sortField === 'letterNumber' ? (sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                </Button>
+              </TableHead>
+              <TableHead className="text-[12px] font-semibold">
+                <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleSort('letterType')}>
+                  Tipe
+                  {sortField === 'letterType' ? (sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                </Button>
+              </TableHead>
+              <TableHead className="text-[12px] font-semibold">
+                <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleSort('employeeName')}>
+                  Nama Karyawan
+                  {sortField === 'employeeName' ? (sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                </Button>
+              </TableHead>
+              <TableHead className="text-[12px] font-semibold">
+                <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleSort('issuedDate')}>
+                  Tanggal
+                  {sortField === 'issuedDate' ? (sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                </Button>
+              </TableHead>
+              <TableHead className="text-[12px] font-semibold">
+                <Button variant="ghost" size="sm" className="-ml-3 h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleSort('subject')}>
+                  Subjek
+                  {sortField === 'subject' ? (sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                </Button>
+              </TableHead>
+              <TableHead className="text-center text-[12px] font-semibold">
+                <Button variant="ghost" size="sm" className="mx-auto h-8 text-xs font-semibold hover:bg-transparent" onClick={() => handleSort('status')}>
+                  Status
+                  {sortField === 'status' ? (sortDir === 'asc' ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />) : <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />}
+                </Button>
+              </TableHead>
               <TableHead className="text-right text-[12px] font-semibold">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {letters.length === 0 ? (
+            {sortedLetters.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={8}
@@ -490,7 +555,7 @@ export function SuratArchiveClient({
                 </TableCell>
               </TableRow>
             ) : (
-              letters.map((letter, index) => (
+              sortedLetters.map((letter, index) => (
                 <TableRow
                   key={letter.id}
                   data-filter-letter-type={letter.letterType}
@@ -839,17 +904,17 @@ export function SuratArchiveClient({
 
               <div className="space-y-2">
                 <Label htmlFor="letter-status">Status Baru</Label>
-                <select
-                  id="letter-status"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                <HeroSearchableSelect
                   value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                >
-                  <option value="draft">Draft</option>
-                  <option value="approved">Disetujui</option>
-                  <option value="printed">Dicetak</option>
-                  <option value="archived">Diarsipkan</option>
-                </select>
+                  onChange={(val) => setNewStatus(val || "")}
+                  options={[
+                    { value: "draft", label: "Draft" },
+                    { value: "approved", label: "Disetujui" },
+                    { value: "printed", label: "Dicetak" },
+                    { value: "archived", label: "Diarsipkan" },
+                  ]}
+                  placeholder="Pilih status baru"
+                />
               </div>
 
               {newStatus === "approved" && (

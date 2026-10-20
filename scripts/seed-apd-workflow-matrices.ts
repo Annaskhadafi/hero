@@ -59,7 +59,7 @@ async function main() {
     { siteId: 133, empId: 1374 }, // CK BIB -> Fathurrahman Sufi (HSE Officer)
     { siteId: 131, empId: 1285 }, // CK BMB -> Danny Hangga Irawan (HSE Officer)
     { siteId: 129, empId: 1380 }, // CK KIM -> Rizky Rahmadani (HSE Officer)
-    { siteId: 128, empId: 1308 }, // CK MHU -> Irfan Rivai Remba (HSE)
+    { siteId: 128, empId: 1375 }, // CK MHU -> Ade Saharu (HSE Officer)
     { siteId: 140, empId: 1307 }, // Vale -> Muhammad Wahyu Ichsan (HSE Officer)
   ]
 
@@ -74,7 +74,7 @@ async function main() {
     { siteId: 151, empId: 955 },  // Makassar -> Apriyanto (Head of Service MVC)
     { siteId: 134, empId: 96 },   // Palembang -> Febrial Hariri (Leader Technical Sumatera)
     { siteId: 136, empId: 96 },   // Pekanbaru -> Febrial Hariri (Leader Technical Sumatera)
-    { siteId: 149, empId: 1180 }, // PPA BIB -> Muchamat Nurkolis Majid (Technical Engineer)
+    { siteId: 149, empId: 1114 }, // PPA BIB -> Revy Andyaksa Saroni (Technical Engineer)
     { siteId: 127, empId: 1164 }, // Sangatta -> Saipudin (HSE Leader)
     { siteId: 139, empId: 955 },  // Sebamban -> Apriyanto (Head of Service MVC)
     { siteId: 130, empId: 97 },   // Tj. Adaro -> Tommy Indra Aldiny Rambe (Technical Leader)

@@ -9,12 +9,14 @@ import {
   dailyActivityApprovals,
   dailyActivitySessions,
   dailyActivitySessionItems,
+  dailyActivitySessionTeamMembers,
+  dailyActivitySessionItemTeamMembers,
   employees,
   masterDepartments,
   masterSections,
   sites,
 } from '@/db/schema/hero'
-import { asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
 import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
@@ -108,7 +110,12 @@ export default async function DailyActivityApprovalListPage() {
 
     const isSiteAdmin = accessRole === 'site admin'
 
-    // Get all sessions with their approval status
+    const sessionConditions = [isNull(dailyActivitySessions.deletedAt)]
+    if (isSiteAdmin && currentEmployee?.siteId) {
+      sessionConditions.push(eq(dailyActivitySessions.siteId, currentEmployee.siteId))
+    }
+
+    // Get latest sessions with their approval status (capped at 300 recent sessions for peak performance)
     const rawSessions = await safeQuery(
       () =>
         db
@@ -130,8 +137,9 @@ export default async function DailyActivityApprovalListPage() {
           .from(dailyActivitySessions)
           .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
           .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
-          .where(isNull(dailyActivitySessions.deletedAt))
-          .orderBy(desc(dailyActivitySessions.id)),
+          .where(and(...sessionConditions))
+          .orderBy(desc(dailyActivitySessions.id))
+          .limit(300),
       [],
       'fetchRawSessions'
     )
@@ -204,8 +212,8 @@ export default async function DailyActivityApprovalListPage() {
 
     const sessionIds = sessions.map((s) => s.sessionId).filter(Boolean)
 
-    // Get all session items and item counts safely
-    const [allItems, itemCounts] = await Promise.all([
+    // Get all session items, item counts, and team members safely
+    const [allItems, itemCounts, allTeamMembers] = await Promise.all([
       sessionIds.length > 0
         ? safeQuery(
             () =>
@@ -245,7 +253,57 @@ export default async function DailyActivityApprovalListPage() {
             'fetchItemCounts'
           )
         : Promise.resolve([]),
+      sessionIds.length > 0
+        ? safeQuery(
+            async () => {
+              const [sessionTms, itemTms] = await Promise.all([
+                db
+                  .select({
+                    sessionId: dailyActivitySessionTeamMembers.sessionId,
+                    employeeId: dailyActivitySessionTeamMembers.employeeId,
+                    employeeName: employees.name,
+                    employeeSn: employees.employeeSn,
+                    department: employees.department,
+                    section: employees.section,
+                    jobTitle: employees.jobTitle,
+                  })
+                  .from(dailyActivitySessionTeamMembers)
+                  .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
+                  .where(inArray(dailyActivitySessionTeamMembers.sessionId, sessionIds)),
+                db
+                  .select({
+                    sessionId: dailyActivitySessionItems.sessionId,
+                    employeeId: dailyActivitySessionItemTeamMembers.employeeId,
+                    employeeName: employees.name,
+                    employeeSn: employees.employeeSn,
+                    department: employees.department,
+                    section: employees.section,
+                    jobTitle: employees.jobTitle,
+                  })
+                  .from(dailyActivitySessionItemTeamMembers)
+                  .innerJoin(
+                    dailyActivitySessionItems,
+                    eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
+                  )
+                  .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
+                  .where(inArray(dailyActivitySessionItems.sessionId, sessionIds)),
+              ])
+              return [...sessionTms, ...itemTms]
+            },
+            [],
+            'fetchAllTeamMembers'
+          )
+        : Promise.resolve([]),
     ])
+
+    const teamMembersBySession = new Map<number, any[]>()
+    for (const tm of allTeamMembers || []) {
+      if (tm?.sessionId) {
+        const list = teamMembersBySession.get(tm.sessionId) || []
+        list.push(tm)
+        teamMembersBySession.set(tm.sessionId, list)
+      }
+    }
 
     const itemsBySession = new Map<number, any[]>()
     for (const item of allItems || []) {
@@ -329,6 +387,7 @@ export default async function DailyActivityApprovalListPage() {
               id: sites.id,
               name: sites.name,
               location: sites.location,
+              headEmployeeId: sites.headEmployeeId,
             })
             .from(sites)
             .where(eq(sites.isActive, true)),
@@ -475,19 +534,79 @@ export default async function DailyActivityApprovalListPage() {
       if (d?.id) deptHeadMap[String(d.id)] = d.headEmployeeId || null
     }
 
-    const rows: SessionApprovalRow[] = (sessions || []).map((s) => {
+    const rows: SessionApprovalRow[] = []
+    for (const s of sessions || []) {
       const teamMatch = (s.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
-      let teamMembersSummary = teamMatch ? teamMatch[1].trim() : undefined
-      if (teamMembersSummary && s.employeeName) {
-        const requesterName = s.employeeName.trim().toLowerCase()
-        const otherMembers = teamMembersSummary
+      let parsedTeamNames: string[] = []
+      if (teamMatch && teamMatch[1]) {
+        parsedTeamNames = teamMatch[1]
           .split(',')
           .map((n) => n.trim())
-          .filter((n) => n && n.toLowerCase() !== requesterName)
-        teamMembersSummary = otherMembers.length > 0 ? otherMembers.join(', ') : undefined
+          .filter((n) => n.length > 0)
       }
 
-      return {
+      const dbTeamMembers = teamMembersBySession.get(s.sessionId) || []
+      const teamList: Array<{
+        employeeId?: number | null
+        employeeName: string
+        employeeSn?: string | null
+        department?: string | null
+        section?: string | null
+        jobTitle?: string | null
+      }> = [...dbTeamMembers]
+
+      // If DB team members is empty but summaryRemark has team names, try to match from employeeList
+      if (teamList.length === 0 && parsedTeamNames.length > 0) {
+        for (const tName of parsedTeamNames) {
+          if (tName.toLowerCase() === (s.employeeName || '').toLowerCase().trim()) continue
+          const matchedEmp = (employeeList || []).find(
+            (e) => (e.name || '').trim().toLowerCase() === tName.toLowerCase()
+          )
+          if (matchedEmp) {
+            teamList.push({
+              employeeId: matchedEmp.id,
+              employeeName: matchedEmp.name,
+              employeeSn: matchedEmp.employeeId,
+              department: matchedEmp.department,
+              section: matchedEmp.section,
+              jobTitle: matchedEmp.jobTitle,
+            })
+          } else {
+            teamList.push({
+              employeeId: null,
+              employeeName: tName,
+              employeeSn: '-',
+              department: s.department,
+              section: s.section,
+              jobTitle: 'Serviceman',
+            })
+          }
+        }
+      }
+
+      // Deduplicate team members uniquely by ID or Name
+      const dedupedTeamMap = new Map<string, typeof teamList[0]>()
+      for (const tm of teamList) {
+        if (!tm?.employeeName) continue
+        const key = tm.employeeId ? `id:${tm.employeeId}` : `name:${tm.employeeName.trim().toLowerCase()}`
+        if (!dedupedTeamMap.has(key)) {
+          dedupedTeamMap.set(key, tm)
+        }
+      }
+      const dedupedTeamList = Array.from(dedupedTeamMap.values())
+
+      const uniqueTeamExceptCreator = dedupedTeamList.filter((tm) => {
+        const isCreatorId = s.employeeId && tm.employeeId && Number(tm.employeeId) === Number(s.employeeId)
+        const isCreatorName = (tm.employeeName || '').trim().toLowerCase() === (s.employeeName || '').trim().toLowerCase()
+        return !isCreatorId && !isCreatorName
+      })
+
+      const mainTeamSummary = uniqueTeamExceptCreator.length > 0
+        ? uniqueTeamExceptCreator.map((tm) => tm.employeeName).join(', ')
+        : undefined
+
+      // 1. Main Submitter Row
+      rows.push({
         sessionId: Number(s.sessionId),
         sessionCode: s.sessionCode || `ACT-${s.sessionId}`,
         workDate: s.workDate ? new Date(s.workDate).toISOString() : null,
@@ -501,13 +620,15 @@ export default async function DailyActivityApprovalListPage() {
         jobTitle: 'Serviceman',
         customerName: 'Default Customer',
         siteName: s.siteName || 'Central Site',
-        teamMembersSummary,
+        teamMembersSummary: mainTeamSummary,
+        teamMembers: uniqueTeamExceptCreator,
+        teamRole: mainTeamSummary ? 'Pemohon' : undefined,
         totalItems: itemCountMap.get(s.sessionId)?.count ?? 0,
         totalPoints: itemCountMap.get(s.sessionId)?.totalPoints ?? 0,
         items: itemsBySession.get(s.sessionId) || [],
         approvals: approvalsBySession.get(s.sessionId) || [],
-      }
-    })
+      })
+    }
 
     const sanitizedEmployees = (employeeList || []).map((e) => ({
       id: Number(e.id),

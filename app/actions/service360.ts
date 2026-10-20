@@ -558,8 +558,23 @@ export async function createQuotation(data: any) {
 
   const resolvedCustomerId = await resolveQuotationCustomerId(customerId, manualCustomerName)
   
+  // Guard against quotationNumber collision if another user created a quotation while this form was open
+  let finalQuotationNumber = (quotationNumber || '').trim()
+  if (!finalQuotationNumber) {
+    finalQuotationNumber = await generateNextQuotationNumber()
+  } else {
+    const [existing] = await db
+      .select({ id: service360Quotations.id })
+      .from(service360Quotations)
+      .where(eq(service360Quotations.quotationNumber, finalQuotationNumber))
+      .limit(1)
+    if (existing) {
+      finalQuotationNumber = await generateNextQuotationNumber()
+    }
+  }
+
   const [quotation] = await db.insert(service360Quotations).values({
-    quotationNumber,
+    quotationNumber: finalQuotationNumber,
     customerId: resolvedCustomerId,
     quotationDate,
     attn,

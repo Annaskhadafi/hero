@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Smartphone, TableProperties, Award, TrendingUp, AlertTriangle, Activity, Layers, BookOpen, UserCheck, FileSpreadsheet, ShieldCheck } from "lucide-react";
+import { Smartphone, TableProperties, Award, TrendingUp, AlertTriangle, Activity, Layers, BookOpen, UserCheck, FileSpreadsheet, ShieldCheck, GraduationCap, CheckCircle2, Clock3, XCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -14,12 +14,17 @@ import { TrainingRecordImportExport } from "@/components/training-record-import-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MinimalTableShell } from "@/components/ui/minimal-table-shell";
+import { HeroKpiCard } from "@/components/templates";
 import { TrainingGroupedTable } from "@/components/training-grouped-table";
 import { getOperationalCrudOptions, getTrainingRecordPageData, getSioCertificationPageData } from "@/lib/hero-admin";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
 import { getServerSession } from "@/lib/auth-session";
 import { SioDatabaseTab } from "@/components/sio-database-tab";
 import { computeAggregates } from "@/lib/sio-certification";
+import { db } from "@/db";
+import { chitraLearningCourses, chitraLearningEnrollments, employees, chitraLearningCertificates, sites } from "@/db/schema/hero";
+import { ChitraLearningProgressTable } from "@/components/chitra-learning-progress-table";
+import { eq, desc, inArray, sql } from "drizzle-orm";
 
 const APP_TIME_ZONE = "Asia/Makassar";
 
@@ -89,6 +94,55 @@ export default async function TrainingRecordsPage({
     getOperationalCrudOptions(),
   ]);
   const scopedEmployeeIds = new Set(data.employeeOptions.map((employee) => employee.id));
+  const lmsRows = scopedEmployeeIds.size === 0 ? [] : await db
+    .select({
+      id: chitraLearningEnrollments.id,
+      employeeId: chitraLearningEnrollments.employeeId,
+      employeeName: employees.name,
+      employeeSn: employees.employeeSn,
+      siteId: employees.siteId,
+      siteName: sites.name,
+      department: employees.department,
+      section: employees.section,
+      courseTitle: chitraLearningCourses.title,
+      courseSlug: chitraLearningCourses.slug,
+      progress: chitraLearningEnrollments.progress,
+      status: chitraLearningEnrollments.status,
+      pretestScore: chitraLearningEnrollments.pretestScore,
+      pretestStatus: chitraLearningEnrollments.pretestStatus,
+      posttestScore: chitraLearningEnrollments.posttestScore,
+      posttestStatus: chitraLearningEnrollments.posttestStatus,
+      posttestAttempts: sql<number>`GREATEST(
+        COALESCE(
+          (
+            SELECT count(*)::int 
+            FROM hero_chitralearning_audit_logs a 
+            WHERE a.course_id = ${chitraLearningEnrollments.courseId} 
+              AND a.employee_id = ${chitraLearningEnrollments.employeeId} 
+              AND a.action = 'quiz_submitted' 
+              AND a.after_value->>'phase' = 'posttest'
+          ),
+          0
+        ),
+        CASE WHEN ${chitraLearningEnrollments.posttestScore} IS NOT NULL THEN 1 ELSE 0 END
+      )`,
+      finalScore: chitraLearningEnrollments.finalScore,
+      isPassed: chitraLearningEnrollments.isPassed,
+      passingScore: chitraLearningCourses.passingScore,
+      startedAt: chitraLearningEnrollments.startedAt,
+      completedAt: chitraLearningEnrollments.completedAt,
+      updatedAt: chitraLearningEnrollments.updatedAt,
+      certificateNumber: chitraLearningCertificates.certificateNumber,
+      certificateIssuedAt: chitraLearningCertificates.issuedAt,
+    })
+    .from(chitraLearningEnrollments)
+    .innerJoin(chitraLearningCourses, eq(chitraLearningEnrollments.courseId, chitraLearningCourses.id))
+    .innerJoin(employees, eq(chitraLearningEnrollments.employeeId, employees.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .leftJoin(chitraLearningCertificates, eq(chitraLearningEnrollments.id, chitraLearningCertificates.enrollmentId))
+    .where(inArray(chitraLearningEnrollments.employeeId, Array.from(scopedEmployeeIds)))
+    .orderBy(desc(chitraLearningEnrollments.updatedAt));
+
   const scopedOptions = {
     ...options,
     employees: options.employees.filter((employee) => scopedEmployeeIds.has(employee.id)),
@@ -96,20 +150,49 @@ export default async function TrainingRecordsPage({
       data.employeeOptions.some((employee) => employee.siteId === site.id)
     ),
   };
+  const selectedSiteId = getSearchParamValue(resolvedSearchParams, "siteId");
   const selectedEmployeeId = getSearchParamValue(resolvedSearchParams, "employeeId");
   const selectedDepartment = getSearchParamValue(resolvedSearchParams, "department");
   const selectedSection = getSearchParamValue(resolvedSearchParams, "section");
   const selectedYear = getSearchParamValue(resolvedSearchParams, "year");
+  const selectedTab = getSearchParamValue(resolvedSearchParams, "tab");
   const referenceDate = startOfDayInAppTimeZone(new Date());
 
   const filteredRows = data.rows.filter((row) => {
+    const matchesSite = !selectedSiteId || `${row.siteId}` === selectedSiteId;
     const matchesEmployee = !selectedEmployeeId || `${row.employeeId}` === selectedEmployeeId;
     const matchesDepartment = !selectedDepartment || row.department === selectedDepartment;
     const matchesSection = !selectedSection || row.section === selectedSection;
     const matchesYear = !selectedYear || `${row.completedYear}` === selectedYear;
 
-    return matchesEmployee && matchesDepartment && matchesSection && matchesYear;
+    return matchesSite && matchesEmployee && matchesDepartment && matchesSection && matchesYear;
   });
+
+  const filteredLmsRows = lmsRows.filter((row) => {
+    const matchesSite = !selectedSiteId || `${row.siteId}` === selectedSiteId;
+    const matchesEmployee = !selectedEmployeeId || `${row.employeeId}` === selectedEmployeeId;
+    const matchesDepartment = !selectedDepartment || row.department === selectedDepartment;
+    const matchesSection = !selectedSection || row.section === selectedSection;
+
+    return matchesSite && matchesEmployee && matchesDepartment && matchesSection;
+  });
+
+  const lmsUniqueEmployees = new Set(filteredLmsRows.map((row) => row.employeeId)).size;
+  const lmsPassed = filteredLmsRows.filter((row) => row.status === "passed").length;
+  const lmsInProgress = filteredLmsRows.filter((row) => row.progress > 0 && row.progress < 100).length;
+  const lmsNotStarted = filteredLmsRows.filter((row) => !row.progress).length;
+  const lmsFailed = filteredLmsRows.filter((row) => row.status === "failed").length;
+  const lmsAverageProgress = filteredLmsRows.length ? Math.round(filteredLmsRows.reduce((sum, row) => sum + row.progress, 0) / filteredLmsRows.length) : 0;
+  const lmsAverageScore = filteredLmsRows.filter((row) => row.posttestScore != null).length
+    ? Math.round(filteredLmsRows.reduce((sum, row) => sum + (row.posttestScore ?? 0), 0) / filteredLmsRows.filter((row) => row.posttestScore != null).length)
+    : 0;
+  const lmsCourseSummary = Array.from(new Map(filteredLmsRows.map((row) => [row.courseTitle, row])).values())
+    .map((course) => {
+      const rows = filteredLmsRows.filter((row) => row.courseTitle === course.courseTitle);
+      return { title: course.courseTitle, total: rows.length, passed: rows.filter((row) => row.status === "passed").length, progress: Math.round(rows.reduce((sum, row) => sum + row.progress, 0) / rows.length) };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
 
   const employeeCoverage = new Set(filteredRows.map((row) => row.employeeId)).size;
   const expiringSoon = filteredRows.filter((row) => {
@@ -198,6 +281,7 @@ export default async function TrainingRecordsPage({
       {/* Global Filter Bar */}
       <div className="mb-5 rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-[0_18px_42px_rgba(8,32,51,0.08)]">
         <TrainingRecordFilters
+          sites={data.siteOptions.length > 0 ? data.siteOptions : options.sites}
           employees={data.employeeOptions}
           departments={data.departmentOptions}
           sections={data.sectionOptions}
@@ -205,7 +289,7 @@ export default async function TrainingRecordsPage({
         />
       </div>
 
-      <Tabs defaultValue="workspace" className="space-y-5">
+      <Tabs defaultValue={selectedTab || "workspace"} className="space-y-5">
         <TabsList className="bg-surface-container-low/50">
           <TabsTrigger value="workspace" className="flex items-center gap-1.5">
             <TableProperties className="size-4" />
@@ -214,6 +298,10 @@ export default async function TrainingRecordsPage({
           <TabsTrigger value="dashboard" className="flex items-center gap-1.5">
             <Activity className="size-4 text-primary" />
             Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="chitra-learning" className="flex items-center gap-1.5">
+            <GraduationCap className="size-4 text-violet-600" />
+            Chitra Learning
           </TabsTrigger>
           <TabsTrigger value="sio" className="flex items-center gap-1.5">
             <ShieldCheck className="size-4 text-primary" />
@@ -275,43 +363,54 @@ export default async function TrainingRecordsPage({
         </TabsContent>
 
         <TabsContent value="dashboard" className="space-y-6 outline-none">
-          {/* Dashboard Quick Stats Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <Award className="size-6 text-emerald-500" />
-                <Badge className="bg-emerald-500/10 text-emerald-600 border-0 hover:bg-emerald-500/10">Aktif</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{validRecordsCount}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Sertifikat Valid & Aktif</p>
-            </Card>
+          {/* Dashboard Quick Stats Grid (HeroKpiCard Standardized) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+            <HeroKpiCard
+              title="Sertifikat Valid"
+              value={validRecordsCount}
+              unit="sertifikat"
+              icon={<Award className="size-5" />}
+              watermarkIcon={<Award className="size-16" />}
+              tone="emerald"
+              variant="colorful"
+              badge="Aktif"
+              description="Sertifikat valid & aktif"
+            />
 
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <AlertTriangle className="size-6 text-amber-500" />
-                <Badge className="bg-amber-500/10 text-amber-600 border-0 hover:bg-amber-500/10">30 Hari</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{expiringSoon}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Segera Expired (Jangka Pendek)</p>
-            </Card>
+            <HeroKpiCard
+              title="Segera Expired"
+              value={expiringSoon}
+              unit="sertifikat"
+              icon={<AlertTriangle className="size-5" />}
+              watermarkIcon={<AlertTriangle className="size-16" />}
+              tone="amber"
+              variant="colorful"
+              badge="30 Hari"
+              description="Segera habis dalam 30 hari"
+            />
 
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <AlertTriangle className="size-6 text-rose-500" />
-                <Badge className="bg-rose-500/10 text-rose-600 border-0 hover:bg-rose-500/10">Expired</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{expiredRecords.length}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Sertifikat Habis Masa Berlaku</p>
-            </Card>
+            <HeroKpiCard
+              title="Habis Masa Berlaku"
+              value={expiredRecords.length}
+              unit="sertifikat"
+              icon={<AlertTriangle className="size-5" />}
+              watermarkIcon={<AlertTriangle className="size-16" />}
+              tone="rose"
+              variant="colorful"
+              badge={expiredRecords.length > 0 ? "Expired" : undefined}
+              description="Sertifikat habis masa berlaku"
+            />
 
-            <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <Layers className="size-6 text-primary" />
-                <Badge className="bg-primary/10 text-primary border-0 hover:bg-primary/10">Total</Badge>
-              </div>
-              <p className="mt-4 text-3xl font-bold text-foreground">{filteredRows.length}</p>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">Total Training Record</p>
-            </Card>
+            <HeroKpiCard
+              title="Total Arsip Training"
+              value={filteredRows.length}
+              unit="arsip"
+              icon={<Layers className="size-5" />}
+              watermarkIcon={<Layers className="size-16" />}
+              tone="blue"
+              variant="colorful"
+              description="Total training record terdata"
+            />
           </div>
 
           {/* Sources and Popular Trainings */}
@@ -448,6 +547,106 @@ export default async function TrainingRecordsPage({
               </div>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="chitra-learning" className="space-y-6 outline-none">
+          {/* LMS Metric Cards (HeroKpiCard Standardized) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
+            <HeroKpiCard
+              title="Total Peserta"
+              value={lmsUniqueEmployees}
+              unit="peserta"
+              icon={<UserCheck className="size-5 text-white" />}
+              watermarkIcon={<UserCheck className="size-16" />}
+              tone="blue"
+              variant="colorful"
+              description="Total peserta LMS terdaftar"
+            />
+
+            <HeroKpiCard
+              title="Lulus"
+              value={lmsPassed}
+              unit="peserta"
+              icon={<CheckCircle2 className="size-5 text-white" />}
+              watermarkIcon={<CheckCircle2 className="size-16" />}
+              tone="emerald"
+              variant="colorful"
+              description="Peserta lulus sertifikasi"
+            />
+
+            <HeroKpiCard
+              title="Sedang Berjalan"
+              value={lmsInProgress}
+              unit="peserta"
+              icon={<Clock3 className="size-5 text-white" />}
+              watermarkIcon={<Clock3 className="size-16" />}
+              tone="amber"
+              variant="colorful"
+              description="Dalam progres pembelajaran"
+            />
+
+            <HeroKpiCard
+              title="Belum Lulus"
+              value={lmsFailed}
+              unit="peserta"
+              icon={<XCircle className="size-5 text-white" />}
+              watermarkIcon={<XCircle className="size-16" />}
+              tone="rose"
+              variant="colorful"
+              description="Perlu remedial post-test"
+            />
+
+            <HeroKpiCard
+              title="Rata-rata Post-test"
+              value={`${lmsAverageScore}%`}
+              icon={<GraduationCap className="size-5 text-white" />}
+              watermarkIcon={<GraduationCap className="size-16" />}
+              tone="purple"
+              variant="colorful"
+              description="Rata-rata evaluasi post-test"
+            />
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-12">
+            <Card className="lg:col-span-4 rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
+              <h4 className="flex items-center gap-2 text-sm font-semibold"><Activity className="size-4 text-blue-600" />Progress Belajar</h4>
+              <p className="mt-1 text-xs text-muted-foreground">Rata-rata kemajuan seluruh enrollment Chitra Learning.</p>
+              <div className="mt-6 flex items-end gap-3"><span className="text-4xl font-bold text-slate-900">{lmsAverageProgress}%</span><span className="mb-1 text-xs text-muted-foreground">selesai</span></div>
+              <Progress value={lmsAverageProgress} className="mt-4 h-3 bg-slate-100" />
+              <div className="mt-5 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-lg bg-emerald-50 p-3"><b className="block text-emerald-700">{lmsPassed}</b>Lulus</div>
+                <div className="rounded-lg bg-amber-50 p-3"><b className="block text-amber-700">{lmsInProgress}</b>Berjalan</div>
+                <div className="rounded-lg bg-slate-50 p-3"><b className="block text-slate-700">{lmsNotStarted}</b>Belum mulai</div>
+              </div>
+            </Card>
+            <Card className="lg:col-span-8 rounded-[1.2rem] border-0 bg-surface-container-lowest p-5 shadow-sm">
+              <h4 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="size-4 text-violet-600" />Course dengan Peserta Terbanyak</h4>
+              <p className="mt-1 text-xs text-muted-foreground">Progress dan rasio kelulusan per course.</p>
+              <div className="mt-5 space-y-4">
+                {lmsCourseSummary.length ? lmsCourseSummary.map((course) => (
+                  <div key={course.title}>
+                    <div className="mb-1 flex items-center justify-between gap-3 text-xs"><span className="truncate font-semibold text-slate-800">{course.title}</span><span className="shrink-0 text-muted-foreground">{course.passed}/{course.total} lulus</span></div>
+                    <Progress value={course.progress} className="h-2 bg-slate-100" />
+                  </div>
+                )) : <p className="py-8 text-center text-sm text-muted-foreground">Belum ada data enrollment Chitra Learning.</p>}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="rounded-[1.2rem] border-0 bg-surface-container-lowest shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <TableProperties className="size-5 text-violet-600" />
+                Hasil dan Progress Peserta
+              </CardTitle>
+              <CardDescription>
+                Ringkasan progres pelatihan per karyawan dari Chitra Learning. Klik &quot;Detail&quot; untuk melihat rincian setiap materi, skor evaluasi, dan sertifikat.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChitraLearningProgressTable rows={filteredLmsRows} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="sio" className="space-y-5 outline-none">

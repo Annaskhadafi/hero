@@ -195,8 +195,8 @@ export function SecurityUserCreateDialog({
               <Input name="fullName" placeholder="Contoh: Budi Santoso" required />
             </label>
             <label className="grid gap-2">
-              <Label>SN / NIK (SAP)</Label>
-              <Input name="employeeSn" placeholder="Masukkan SN/NIK resmi dari SAP" required />
+              <Label>SN (SAP)</Label>
+              <Input name="employeeSn" placeholder="Masukkan SN resmi dari SAP" required />
             </label>
             <label className="grid gap-2">
               <Label>Tahun Masuk</Label>
@@ -412,7 +412,7 @@ export function SecurityUserCreateDialog({
               Data Pengguna / Credential Sudah Ada
             </AlertDialogTitle>
             <AlertDialogDescription className="text-center text-sm text-muted-foreground mt-2">
-              {state.message || "Pengguna dengan NIK atau Email ini sudah terdaftar di sistem."}
+              {state.message || "Pengguna dengan SN atau Email ini sudah terdaftar di sistem."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">

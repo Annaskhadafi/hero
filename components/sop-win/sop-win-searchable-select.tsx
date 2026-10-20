@@ -320,7 +320,7 @@ export function SearchablePicSelect({
             <Search className="absolute left-2.5 top-2 size-3.5 text-slate-400" />
             <Input
               ref={searchInputRef}
-              placeholder="Cari nama PIC, NIK, jabatan, atau departemen..."
+              placeholder="Cari nama PIC, SN, jabatan, atau departemen..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-7.5 rounded-lg pl-8 text-xs"

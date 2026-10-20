@@ -84,11 +84,18 @@ export function normalizeEmployeeBenefitConfig(
 }
 
 export function isLocalEmployee(manpower: string | null | undefined) {
-  return !String(manpower ?? 'Lokal')
+  const normalized = String(manpower ?? 'Lokal')
     .trim()
     .toLowerCase()
     .replace(/[-_]/g, ' ')
-    .startsWith('non ')
+  if (
+    normalized.startsWith('non ') ||
+    normalized.includes('non lokal') ||
+    normalized.includes('non local')
+  ) {
+    return false
+  }
+  return true
 }
 
 function normalizeLocation(value: string | null | undefined) {
@@ -107,11 +114,30 @@ function isSameLocation(left: string, right: string) {
 }
 
 export function isNonLocalEmployee(identity: EmployeeBenefitIdentity) {
+  const manpowerStr = String(identity.manpower ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]/g, ' ')
+
+  // Prioritize explicit non-local manpower status if available
+  if (
+    manpowerStr.startsWith('non ') ||
+    manpowerStr.includes('non lokal') ||
+    manpowerStr.includes('non local')
+  ) {
+    return true
+  }
+
+  // Fallback to pointOfHire vs workLocations comparison
   const pointOfHire = normalizeLocation(identity.pointOfHire)
   const workLocations = (identity.workLocations ?? []).map(normalizeLocation).filter(Boolean)
 
   if (pointOfHire && workLocations.length > 0) {
     return !workLocations.some((location) => isSameLocation(pointOfHire, location))
+  }
+
+  if (manpowerStr.includes('lokal') || manpowerStr.includes('local')) {
+    return false
   }
 
   return !isLocalEmployee(identity.manpower)
@@ -133,7 +159,16 @@ export function isMealsEligibleScheduleCode(
   if (isFieldBreakPeriod) return false
   const code = String(scheduleCode ?? '').trim().toUpperCase()
   if (!code || code === '-' || code === 'FB') return false
-  return code === 'IN' || code === 'DS' || code === 'NS' || code === 'ST' || code === 'OFF'
+  return (
+    code === 'IN' ||
+    code === 'DS' ||
+    code === 'NS' ||
+    code === 'ST' ||
+    code === 'OFF' ||
+    code === 'SAKIT' ||
+    code === 'S' ||
+    code === 'SD'
+  )
 }
 
 export function isMealsEligibleDay(input: {

@@ -1,13 +1,33 @@
 [
   {
+    "title": "Pergantian Status Pernikahan",
+    "url": "/dashboard/central-service/marital-status",
+    "resource": "central_service_marital_status"
+  },
+  {
+    "title": "Master Data APD",
+    "url": "/dashboard/central-service/master-apd",
+    "resource": "central_service_master_apd"
+  },
+  {
     "title": "Tire Site Inspection",
     "url": "/dashboard/hse/tire-inspection",
     "resource": "hse_tire_inspection"
   },
   {
-    "title": "Pengadaan Aset (CER)",
+"title": "Pengadaan Aset (CER)",
     "url": "/dashboard/assets/cer",
     "resource": "cer_request"
+  },
+  {
+    "title": "Analisis Kerusakan Ban (AI)",
+    "url": "/dashboard/hse/tire-damage",
+    "resource": "hse_tire_inspection"
+  },
+  {
+    "title": "Deteksi Kerusakan Ban",
+    "url": "/mobile/hse/tire-damage",
+    "resource": "hse_tire_inspection"
   },
   {
     "title": "Asset Management",
@@ -220,6 +240,11 @@
     "resource": "hse_jsa"
   },
   {
+    "title": "On Spot Monitoring (OSM)",
+    "url": "/dashboard/hse/osm",
+    "resource": "hse_osm"
+  },
+  {
     "title": "Field Break Schedule",
     "url": "/dashboard/scheduling-timesheet/field-break",
     "resource": "scheduling_timesheet_field_break"
@@ -358,6 +383,11 @@
     "title": "RFR (Permohonan Rekrutmen)",
     "url": "/dashboard/hc/rfr",
     "resource": "rfr"
+  },
+  {
+    "title": "Perubahan Rute Penerbangan",
+    "url": "/dashboard/hc/flight-route-change",
+    "resource": "hc_flight_route_change"
   },
   {
     "title": "Schedule v2",

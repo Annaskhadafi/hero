@@ -5,7 +5,8 @@ import { db } from "@/db";
 import { employees, masterDepartments, masterSections } from "@/db/schema/hero";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { fetchApdItemOptions, fetchApdRequestById, fetchApproverOptions } from "@/lib/apd-data";
+import { isSuperAdminRole } from "@/lib/hero-access";
+import { fetchApdItemOptions, fetchApdMasterDetails, fetchApdRequestById, fetchApproverOptions, fetchMasterSections } from "@/lib/apd-data";
 
 export default async function NewApdRequestPage(props: {
   searchParams: Promise<{ category?: string; edit?: string; id?: string }>;
@@ -42,11 +43,26 @@ export default async function NewApdRequestPage(props: {
 
   if (!employeeProfile) return notFound();
 
-  const [toolsOptions, materialOptions, approverOptions] = await Promise.all([
+  const [apdOptions, toolsOptions, materialOptions, masterApdDetails, approverOptions, sectionOptions] = await Promise.all([
+    fetchApdItemOptions("APD"),
     fetchApdItemOptions("TOOLS"),
     fetchApdItemOptions("MATERIAL"),
+    fetchApdMasterDetails(),
     fetchApproverOptions(),
+    fetchMasterSections(),
   ]);
+
+  const isHseUser =
+    Boolean(employeeProfile?.departmentName?.toLowerCase().includes("hse")) ||
+    Boolean(employeeProfile?.sectionName?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("hse")) ||
+    Boolean(currentEmployee.role?.toLowerCase().includes("hse"));
+
+  const canSelectTargetSection =
+    isSuperAdminRole(currentEmployee.accessRole) ||
+    isHseUser ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("admin")) ||
+    Boolean(currentEmployee.accessRole?.toLowerCase().includes("manager"));
 
   const initialItems = existingRequest?.items?.map((item) => ({
     itemType: item.itemType,
@@ -81,8 +97,13 @@ export default async function NewApdRequestPage(props: {
           employeeSn={employeeProfile.employeeSn}
           departmentName={employeeProfile.departmentName}
           sectionName={employeeProfile.sectionName}
-          itemOptions={{ TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          itemOptions={{ APD: apdOptions, TOOLS: toolsOptions, MATERIAL: materialOptions }}
+          masterApdDetails={masterApdDetails}
           approverOptions={approverOptions}
+          sectionOptions={sectionOptions}
+          canSelectTargetSection={canSelectTargetSection}
+          isHseUser={isHseUser}
+          initialRequestedFor={existingRequest?.requestedFor ?? "self"}
           defaultMode={defaultMode}
           requestId={existingRequest?.id}
           initialNotes={existingRequest?.notes || ""}

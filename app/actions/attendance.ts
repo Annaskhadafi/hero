@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/db'
-import { attendanceRecords, employees, masterAttendanceShifts, sites } from '@/db/schema/hero'
+import { attendanceRecords, employees, formSubmissions, masterAttendanceShifts, sites } from '@/db/schema/hero'
 import {
   attendancePermissionRequests,
   timesheetAttendanceRealOverrides,
@@ -11,14 +11,17 @@ import {
   timesheetSchedulingConfigs,
 } from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
+import { getTodayDateString } from '@/lib/indonesia-timezone'
 import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import {
   checkEmployeeOffDayStatus,
+  isStaffRole,
   normalizeSiteAttendanceClockConfig,
   resolveConfiguredShiftClockIn,
+  resolveNightShiftCheckoutContext,
 } from '@/lib/timesheet/attendance-punctuality'
 import {
   getSiteAttendanceClockConfig,
@@ -43,32 +46,56 @@ import {
 } from '@/lib/legacy-approval-engine'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
-import { eq, and, gte, lte, desc, sql, asc, inArray } from 'drizzle-orm'
-import { endOfDay, startOfDay, subHours } from 'date-fns'
+import { eq, and, gte, lte, desc, sql, asc, inArray, ne, ilike } from 'drizzle-orm'
+import { endOfDay, startOfDay, subHours, subDays } from 'date-fns'
 import { addMonths, format, getDaysInMonth } from 'date-fns'
 import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 
 async function ensureEmployeeSite<
   T extends {
     id: number
-    siteId: number
+    siteId: number | null
     siteName: string | null
     workLocation: string | null
   },
 >(employee: T): Promise<T & { siteId: number; siteName: string; workLocation: string }> {
-  if (employee.siteName) {
+  if (employee.siteName && employee.siteId) {
     return {
       ...employee,
+      siteId: employee.siteId,
       siteName: employee.siteName,
       workLocation: employee.workLocation?.trim() || employee.siteName,
     }
   }
 
-  const [existingSite] = await db
-    .select({ id: sites.id, name: sites.name })
-    .from(sites)
-    .where(eq(sites.id, employee.siteId))
-    .limit(1)
+  let existingSite: { id: number; name: string } | undefined
+
+  if (employee.siteId) {
+    const [found] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.id, employee.siteId))
+      .limit(1)
+    existingSite = found
+  }
+
+  if (!existingSite && employee.workLocation) {
+    const [foundByName] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.name, employee.workLocation.trim()))
+      .limit(1)
+    existingSite = foundByName
+  }
+
+  if (!existingSite) {
+    const [firstActive] = await db
+      .select({ id: sites.id, name: sites.name })
+      .from(sites)
+      .where(eq(sites.isActive, true))
+      .limit(1)
+    existingSite = firstActive
+  }
 
   const site =
     existingSite ??
@@ -85,19 +112,28 @@ async function ensureEmployeeSite<
         .returning({ id: sites.id, name: sites.name })
     )[0]
 
-  await db
-    .update(employees)
-    .set({
+  if (site) {
+    await db
+      .update(employees)
+      .set({
+        siteId: site.id,
+        workLocation: employee.workLocation?.trim() || site.name,
+      })
+      .where(eq(employees.id, employee.id))
+
+    return {
+      ...employee,
       siteId: site.id,
+      siteName: site.name,
       workLocation: employee.workLocation?.trim() || site.name,
-    })
-    .where(eq(employees.id, employee.id))
+    }
+  }
 
   return {
     ...employee,
-    siteId: site.id,
-    siteName: site.name,
-    workLocation: employee.workLocation?.trim() || site.name,
+    siteId: employee.siteId || 0,
+    siteName: employee.siteName || 'Unknown Site',
+    workLocation: employee.workLocation || 'Unknown Site',
   }
 }
 
@@ -121,6 +157,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       section: employees.section,
       employeeSn: employees.employeeSn,
@@ -155,6 +193,8 @@ async function getCurrentEmployee() {
       workLocation: employees.workLocation,
       siteId: employees.siteId,
       siteName: sites.name,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       section: employees.section,
       employeeSn: employees.employeeSn,
@@ -230,6 +270,8 @@ async function getCurrentEmployee() {
       jobTitle: employees.jobTitle,
       workLocation: employees.workLocation,
       siteId: employees.siteId,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
       sectionId: employees.sectionId,
       section: employees.section,
       employeeSn: employees.employeeSn,
@@ -372,15 +414,28 @@ async function notifyAttendancePermissionSubmitted(input: {
   endDate: string
   reason: string
   actorEmail?: string
+  targetApprover?: {
+    id: number
+    name: string
+    email: string
+    jobTitle?: string | null
+  } | null
 }) {
-  const approver = await resolveAttendancePermissionApprover({
-    employeeId: input.employeeId,
-    siteId: input.siteId,
-    siteName: input.siteName,
-    sectionId: input.sectionId,
-    sectionName: input.sectionName,
-    jobTitle: input.jobTitle,
-  })
+  const approver = input.targetApprover?.email
+    ? {
+        category: 'Atasan / Leader',
+        approverName: input.targetApprover.name,
+        approverEmail: input.targetApprover.email,
+        approverTitle: input.targetApprover.jobTitle || 'Atasan Langsung',
+      }
+    : await resolveAttendancePermissionApprover({
+        employeeId: input.employeeId,
+        siteId: input.siteId,
+        siteName: input.siteName,
+        sectionId: input.sectionId,
+        sectionName: input.sectionName,
+        jobTitle: input.jobTitle,
+      })
 
   if (!approver?.approverEmail) {
     return
@@ -399,8 +454,8 @@ async function notifyAttendancePermissionSubmitted(input: {
       input.reason ? `Alasan: ${input.reason}` : null,
       `Approver (${approver.category}): ${approver.approverName} (${approver.approverTitle})`,
     ],
-    ctaLabel: 'Buka Dashboard Izin',
-    ctaUrl: getAppUrl('/dashboard/hc/permission'),
+    ctaLabel: 'Buka Inbox Approval',
+    ctaUrl: getAppUrl('/dashboard/approval'),
   })
 
   const hcCcEmails = await getAttendancePermissionHcCcEmails()
@@ -418,6 +473,7 @@ async function notifyAttendancePermissionSubmitted(input: {
       reason: input.reason || '-',
       approverName: approver.approverName,
       approverRole: approver.approverTitle || approver.category,
+      approvalUrl: getAppUrl('/dashboard/approval'),
     },
     fallbackSubject: `Pengajuan ${permissionLabel} baru - ${input.employeeName}`,
     fallbackHtml: emailContent.html,
@@ -644,41 +700,56 @@ async function getMobileRosterCalendar(employeeId: number, siteId: number | null
 }
 
 export async function getAttendancePageData() {
-  const employee = await getCurrentEmployee()
-  const shiftOptions = await getMobileAttendanceShiftOptions(employee?.siteId)
+  try {
+    const employee = await getCurrentEmployee()
+    const shiftOptions = await getMobileAttendanceShiftOptions(employee?.siteId)
 
-  if (!employee) {
+    if (!employee) {
+      return {
+        success: false,
+        employee: null,
+        logs: [],
+        shiftOptions,
+      }
+    }
+
+    const attendanceWindow = getAttendanceQueryWindow()
+
+    const [logs, rosterCalendar] = await Promise.all([
+      db
+        .select()
+        .from(attendanceRecords)
+        .where(
+          and(
+            eq(attendanceRecords.employeeId, employee.id),
+            gte(attendanceRecords.eventTime, attendanceWindow.start),
+            lte(attendanceRecords.eventTime, attendanceWindow.end)
+          )
+        )
+        .orderBy(desc(attendanceRecords.eventTime))
+        .catch((err) => {
+          console.error('[getAttendancePageData:logs] Query error:', err)
+          return []
+        }),
+      getMobileRosterCalendar(employee.id, employee.siteId),
+    ])
+
+    return {
+      success: true,
+      employee,
+      logs,
+      shiftOptions,
+      rosterCalendar,
+    }
+  } catch (err: any) {
+    console.error('getAttendancePageData error:', err)
     return {
       success: false,
       employee: null,
       logs: [],
-      shiftOptions,
+      shiftOptions: [],
+      error: err?.message || 'Failed to load attendance data',
     }
-  }
-
-  const attendanceWindow = getAttendanceQueryWindow()
-
-  const [logs, rosterCalendar] = await Promise.all([
-    db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(
-          eq(attendanceRecords.employeeId, employee.id),
-          gte(attendanceRecords.eventTime, attendanceWindow.start),
-          lte(attendanceRecords.eventTime, attendanceWindow.end)
-        )
-      )
-      .orderBy(desc(attendanceRecords.eventTime)),
-    getMobileRosterCalendar(employee.id, employee.siteId),
-  ])
-
-  return {
-    success: true,
-    employee,
-    logs,
-    shiftOptions,
-    rosterCalendar,
   }
 }
 
@@ -761,12 +832,26 @@ export async function submitAttendance(formData: FormData) {
     }
 
     const eventTime = new Date()
-    const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
-    const offDayCheck = checkEmployeeOffDayStatus({
+    const nightShiftContext = await resolveNightShiftCheckoutContext({
+      employeeId: employee.id,
+      siteId: employee.siteId,
       eventTime,
-      role: employee.role || employee.jobTitle,
+      eventType,
+    })
+    const evalDate = nightShiftContext.effectiveDate
+
+    const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
+    const empLevelName = (employee as Record<string, unknown>).levelName as string | undefined
+    const isStaff = isStaffRole(employee.role, employee.jobTitle, empLevelName)
+    const offDayCheck = checkEmployeeOffDayStatus({
+      eventTime: evalDate,
+      role: employee.role,
+      jobTitle: employee.jobTitle,
+      levelName: empLevelName,
       scheduleType: siteConfig.scheduleType,
       rosterType: siteConfig.rosterType,
+      rosterTypeStaff: siteConfig.rosterTypeStaff,
+      rosterTypeNonStaff: siteConfig.rosterTypeNonStaff,
       timeZone: siteConfig.timezone,
     })
 
@@ -779,6 +864,7 @@ export async function submitAttendance(formData: FormData) {
       eventType,
       eventTime,
       shiftCode,
+      isStaff,
     })
 
     const rawContext = getTrimmedFormValue(formData, 'attendanceContext')
@@ -851,18 +937,134 @@ export async function submitAttendance(formData: FormData) {
   }
 }
 
+export async function getAttendancePermissionApproverCandidates() {
+  const employee = await getCurrentEmployee()
+  if (!employee) {
+    return {
+      defaultApproverId: null,
+      defaultApproverLabel: '',
+      isDirectManager: false,
+      candidates: [] as Array<{ value: string; label: string }>,
+    }
+  }
+
+  // 1. Direct Manager
+  let directManager: { id: number; name: string; jobTitle: string | null; email: string } | null = null
+  if (employee.directManagerId) {
+    const [dm] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+        email: employees.email,
+      })
+      .from(employees)
+      .where(and(eq(employees.id, employee.directManagerId), eq(employees.isActive, true)))
+      .limit(1)
+    if (dm) directManager = dm
+  }
+
+  // 2. Fallback Approver from site logic
+  const fallback = await resolveAttendancePermissionApprover({
+    employeeId: employee.id,
+    siteId: employee.siteId,
+    siteName: employee.siteName,
+    sectionId: employee.sectionId,
+    sectionName: employee.section,
+    jobTitle: employee.jobTitle,
+  })
+
+  let fallbackEmp: { id: number; name: string; jobTitle: string | null } | null = null
+  if (fallback?.approverEmail) {
+    const [fEmp] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(and(ilike(employees.email, fallback.approverEmail.trim()), eq(employees.isActive, true)))
+      .limit(1)
+    if (fEmp) fallbackEmp = fEmp
+  }
+
+  // 3. Query all active colleagues / leaders without arbitrary limit
+  const activeStaff = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
+      siteId: employees.siteId,
+    })
+    .from(employees)
+    .where(and(eq(employees.isActive, true), ne(employees.id, employee.id)))
+    .orderBy(asc(employees.name))
+
+  const candidateMap = new Map<string, { value: string; label: string }>()
+
+  if (directManager) {
+    candidateMap.set(String(directManager.id), {
+      value: String(directManager.id),
+      label: `${directManager.name.toUpperCase()} — (ATASAN LANGSUNG)${directManager.jobTitle ? ` [${directManager.jobTitle}]` : ''}`,
+    })
+  }
+
+  if (fallbackEmp && !candidateMap.has(String(fallbackEmp.id))) {
+    candidateMap.set(String(fallbackEmp.id), {
+      value: String(fallbackEmp.id),
+      label: `${fallbackEmp.name.toUpperCase()} — (${fallback.category || 'PJO / HEAD LOCATION'})`,
+    })
+  }
+
+  // Prioritize same-site colleagues first, then cross-site
+  const sameSiteStaff = activeStaff.filter((st) => st.siteId != null && st.siteId === employee.siteId)
+  const otherStaff = activeStaff.filter((st) => st.siteId == null || st.siteId !== employee.siteId)
+  const sortedStaff = [...sameSiteStaff, ...otherStaff]
+
+  sortedStaff.forEach((st) => {
+    const val = String(st.id)
+    if (!candidateMap.has(val)) {
+      const isSameSite = st.siteId != null && st.siteId === employee.siteId
+      const titleSuffix = st.jobTitle ? ` (${st.jobTitle})` : ''
+      const siteSuffix = isSameSite ? '' : ' • Cross-Site'
+      candidateMap.set(val, {
+        value: val,
+        label: `${st.name}${titleSuffix}${siteSuffix}`,
+      })
+    }
+  })
+
+  const candidates = Array.from(candidateMap.values())
+  const defaultApproverId = directManager
+    ? String(directManager.id)
+    : fallbackEmp
+      ? String(fallbackEmp.id)
+      : candidates[0]?.value ?? null
+
+  const defaultApproverLabel = directManager
+    ? `${directManager.name} (Atasan Langsung)`
+    : fallbackEmp
+      ? `${fallbackEmp.name} (${fallback.category || 'Approver Site'})`
+      : 'Pilih Approver'
+
+  return {
+    defaultApproverId,
+    defaultApproverLabel,
+    isDirectManager: Boolean(directManager),
+    candidates,
+  }
+}
+
 export async function submitAttendancePermission(formData: FormData) {
   try {
     const employee = await getCurrentEmployee()
     if (!employee) return { success: false, error: 'Unauthorized' }
 
     const permissionType = getTrimmedFormValue(formData, 'permissionType')
-    const requestDate = getTrimmedFormValue(formData, 'requestDate')
+    const requestDate = getTrimmedFormValue(formData, 'requestDate') || getTodayDateString()
     const endDate = getTrimmedFormValue(formData, 'endDate') || requestDate
     const sickCategory = getTrimmedFormValue(formData, 'sickCategory')
     const lateReason = getTrimmedFormValue(formData, 'lateReason')
     const returnTime = getTrimmedFormValue(formData, 'returnTime')
     const reason = getTrimmedFormValue(formData, 'reason')
+    const targetApproverIdRaw = getTrimmedFormValue(formData, 'targetApproverId')
     const requestedDays =
       permissionType === 'sick' ? dateRangeDays(requestDate, endDate) : [requestDate]
 
@@ -877,6 +1079,73 @@ export async function submitAttendancePermission(formData: FormData) {
       return {
         success: false,
         error: 'Izin terlambat wajib isi alasan dan jam kembali/masuk kantor.',
+      }
+    }
+
+    let targetApprover: { id: number; name: string; email: string; jobTitle: string | null } | null = null
+
+    if (targetApproverIdRaw && !isNaN(Number(targetApproverIdRaw))) {
+      const [customApprover] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          email: employees.email,
+          jobTitle: employees.jobTitle,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, Number(targetApproverIdRaw)), eq(employees.isActive, true)))
+        .limit(1)
+      if (customApprover) {
+        targetApprover = customApprover
+      }
+    }
+
+    if (!targetApprover && employee.directManagerId) {
+      const [managerEmp] = await db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          email: employees.email,
+          jobTitle: employees.jobTitle,
+        })
+        .from(employees)
+        .where(and(eq(employees.id, employee.directManagerId), eq(employees.isActive, true)))
+        .limit(1)
+      if (managerEmp) {
+        targetApprover = managerEmp
+      }
+    }
+
+    if (!targetApprover) {
+      const fallbackApprover = await resolveAttendancePermissionApprover({
+        employeeId: employee.id,
+        siteId: employee.siteId,
+        siteName: employee.siteName,
+        sectionId: employee.sectionId,
+        sectionName: employee.section,
+        jobTitle: employee.jobTitle,
+      })
+      if (fallbackApprover?.approverEmail) {
+        const [empByEmail] = await db
+          .select({
+            id: employees.id,
+            name: employees.name,
+            email: employees.email,
+            jobTitle: employees.jobTitle,
+          })
+          .from(employees)
+          .where(and(ilike(employees.email, fallbackApprover.approverEmail.trim()), eq(employees.isActive, true)))
+          .limit(1)
+        if (empByEmail) {
+          targetApprover = empByEmail
+        } else {
+          targetApprover = {
+            id: 0,
+            name: fallbackApprover.approverName,
+            email: fallbackApprover.approverEmail,
+            jobTitle: fallbackApprover.approverTitle,
+          }
+        }
       }
     }
 
@@ -959,12 +1228,15 @@ export async function submitAttendancePermission(formData: FormData) {
       siteId: employee.siteId,
       activityType: 'attendance-permission',
       transactionType: 'attendance_permission',
+      targetApproverEmployeeId: targetApprover?.id ? targetApprover.id : undefined,
       referenceId: record.id,
       payloadSnapshot: {
         legacyRecordId: record.id,
         permissionType,
         employeeId: employee.id,
         employeeName: employee.name,
+        targetApproverId: targetApprover?.id || null,
+        targetApproverName: targetApprover?.name || null,
         requestDate,
         endDate: permissionType === 'sick' ? endDate : requestDate,
         reason,
@@ -990,6 +1262,7 @@ export async function submitAttendancePermission(formData: FormData) {
     revalidatePath('/dashboard/scheduling-timesheet/attendance')
     revalidatePath('/dashboard/scheduling-timesheet/permission')
     revalidatePath('/dashboard/hc/permission')
+    revalidatePath('/dashboard/approval')
 
     try {
       await notifyAttendancePermissionSubmitted({
@@ -1006,48 +1279,59 @@ export async function submitAttendancePermission(formData: FormData) {
         endDate: permissionType === 'sick' ? endDate : requestDate,
         reason,
         actorEmail: employee.email,
+        targetApprover,
       })
     } catch (emailError) {
       console.error('Attendance permission submit email error:', emailError)
     }
 
-    try {
-      const approver = await resolveAttendancePermissionApprover({
-        employeeId: employee.id,
-        siteId: employee.siteId,
-        siteName: employee.siteName,
-        sectionId: employee.sectionId,
-        sectionName: employee.section,
-        jobTitle: employee.jobTitle,
-      })
-
-      const hcCcEmails = await getAttendancePermissionHcCcEmails()
-      const bellRecipients = Array.from(
-        new Set(
-          [approver?.approverEmail, ...hcCcEmails].filter(
-            (email): email is string => Boolean(email && email.includes('@'))
-          )
-        )
-      )
-      await notifyAttendancePermissionBell({
-        recipientEmails: bellRecipients,
-        eventType: 'attendance_permission_submitted',
-        title: `Pengajuan ${permissionLabel} baru`,
-        body: `${employee.name} mengirim ${permissionLabel.toLowerCase()} untuk ${formattedRequestDate}.`,
-        url: '/dashboard/hc/permission',
-        metadata: {
-          permissionType,
-          requestDate: formattedRequestDate,
-          employeeName: employee.name,
-          approverName: approver?.approverName,
-          approverCategory: approver?.category,
-        },
-      })
-    } catch (notificationError) {
-      console.error('Attendance permission submit bell error:', notificationError)
+    // 1. Send Bell to Approver (Link: /dashboard/approval)
+    if (targetApprover?.email) {
+      try {
+        await notifyAttendancePermissionBell({
+          recipientEmails: [targetApprover.email],
+          eventType: 'attendance_permission_submitted',
+          title: `Pengajuan ${permissionLabel} baru`,
+          body: `${employee.name} mengirim pengajuan ${permissionLabel.toLowerCase()} untuk ${formattedRequestDate} dan menunggu persetujuan Anda.`,
+          url: '/dashboard/approval',
+          metadata: {
+            permissionType,
+            requestDate: formattedRequestDate,
+            employeeName: employee.name,
+            approverName: targetApprover.name,
+          },
+        })
+      } catch (approverBellErr) {
+        console.error('Attendance permission approver bell error:', approverBellErr)
+      }
     }
 
-    return { success: true, message: 'Izin terkirim. Menunggu approval HR.' }
+    // 2. Send CC Bell to Human Capital (Link: /dashboard/hc/permission)
+    try {
+      const hcCcEmails = await getAttendancePermissionHcCcEmails()
+      if (hcCcEmails.length > 0) {
+        await notifyAttendancePermissionBell({
+          recipientEmails: hcCcEmails,
+          eventType: 'attendance_permission_submitted',
+          title: `[CC HR] Pengajuan ${permissionLabel} baru - ${employee.name}`,
+          body: `${employee.name} mengajukan ${permissionLabel.toLowerCase()} ke ${targetApprover?.name || 'Approver'}. Tembusan untuk monitoring HC.`,
+          url: '/dashboard/hc/permission',
+          metadata: {
+            permissionType,
+            requestDate: formattedRequestDate,
+            employeeName: employee.name,
+            approverName: targetApprover?.name,
+          },
+        })
+      }
+    } catch (hcBellErr) {
+      console.error('Attendance permission HC CC bell error:', hcBellErr)
+    }
+
+    return {
+      success: true,
+      message: `Izin terkirim ke ${targetApprover?.name || 'Approver'}. Menunggu approval (CC ke HR).`,
+    }
   } catch (error) {
     return {
       success: false,
@@ -1061,7 +1345,7 @@ async function getCurrentUserId() {
   return session?.user?.id ?? null
 }
 
-async function applyApprovedPermissionRequest(
+export async function applyApprovedPermissionRequest(
   requestId: number,
   approverNote: string,
   approved: boolean
@@ -1258,70 +1542,76 @@ export async function getMyAttendancePermissionRequests() {
 }
 
 export async function getTodayAttendanceLogs() {
-  const employee = await getCurrentEmployee()
+  try {
+    const employee = await getCurrentEmployee()
 
-  if (!employee) {
-    return { success: false, employee: null, logs: [] }
-  }
-
-  const access = await getCurrentMenuPermission('attendance_records')
-  if (!access.canView) {
-    return { success: false, employee, logs: [] }
-  }
-
-  const attendanceWindow = getAttendanceQueryWindow()
-
-  const conditions = [
-    gte(attendanceRecords.eventTime, attendanceWindow.start),
-    lte(attendanceRecords.eventTime, attendanceWindow.end),
-  ]
-
-  // Apply data scope: global = all records, site = site only, own = self only
-  if (!hasGlobalDataAccess(access)) {
-    if (access.dataScope === 'site') {
-      conditions.push(eq(attendanceRecords.siteId, employee.siteId))
-    } else {
-      // default 'own'
-      conditions.push(eq(attendanceRecords.employeeId, employee.id))
+    if (!employee) {
+      return { success: false, employee: null, logs: [] }
     }
+
+    const access = await getCurrentMenuPermission('attendance_records')
+    if (!access.canView) {
+      return { success: false, employee, logs: [] }
+    }
+
+    // Fetch up to 180 days of historical attendance logs so historical date filters work in Records table
+    const historyStart = subDays(new Date(), 180)
+
+    const conditions = [
+      gte(attendanceRecords.eventTime, historyStart),
+    ]
+
+    // Apply data scope: global = all records, site = site only, own = self only
+    if (!hasGlobalDataAccess(access)) {
+      if (access.dataScope === 'site') {
+        conditions.push(eq(attendanceRecords.siteId, employee.siteId))
+      } else {
+        // default 'own'
+        conditions.push(eq(attendanceRecords.employeeId, employee.id))
+      }
+    }
+
+    const logs = await db
+      .select({
+        id: attendanceRecords.id,
+        employeeId: attendanceRecords.employeeId,
+        siteId: attendanceRecords.siteId,
+        eventType: attendanceRecords.eventType,
+        eventTime: attendanceRecords.eventTime,
+        status: attendanceRecords.status,
+        locationNote: attendanceRecords.locationNote,
+        latitude: attendanceRecords.latitude,
+        longitude: attendanceRecords.longitude,
+        photoUrl: attendanceRecords.photoUrl,
+        // Enrich employee info from hero_employees
+        employeeName: employees.name,
+        employeeEmail: employees.email,
+        siteName: sites.name,
+        workLocation: employees.workLocation,
+      })
+      .from(attendanceRecords)
+      .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
+      .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
+      .where(and(...conditions))
+      .orderBy(desc(attendanceRecords.eventTime))
+      .limit(1000)
+
+    const logsWithPhotoPreview = await Promise.all(
+      logs.map(async (log) => ({
+        ...log,
+        employeeName: log.employeeName ?? employee.name,
+        employeeEmail: log.employeeEmail ?? employee.email,
+        siteName: log.siteName ?? employee.siteName,
+        workLocation: log.workLocation ?? employee.workLocation,
+        photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl).catch(() => log.photoUrl),
+      }))
+    )
+
+    return { success: true, employee, logs: logsWithPhotoPreview }
+  } catch (err: any) {
+    console.error('getTodayAttendanceLogs error:', err)
+    return { success: false, employee: null, logs: [], error: err?.message || 'Failed to fetch logs' }
   }
-
-  const logs = await db
-    .select({
-      id: attendanceRecords.id,
-      employeeId: attendanceRecords.employeeId,
-      siteId: attendanceRecords.siteId,
-      eventType: attendanceRecords.eventType,
-      eventTime: attendanceRecords.eventTime,
-      status: attendanceRecords.status,
-      locationNote: attendanceRecords.locationNote,
-      latitude: attendanceRecords.latitude,
-      longitude: attendanceRecords.longitude,
-      photoUrl: attendanceRecords.photoUrl,
-      // Enrich employee info from hero_employees
-      employeeName: employees.name,
-      employeeEmail: employees.email,
-      siteName: sites.name,
-      workLocation: employees.workLocation,
-    })
-    .from(attendanceRecords)
-    .leftJoin(employees, eq(attendanceRecords.employeeId, employees.id))
-    .leftJoin(sites, eq(attendanceRecords.siteId, sites.id))
-    .where(and(...conditions))
-    .orderBy(desc(attendanceRecords.eventTime))
-
-  const logsWithPhotoPreview = await Promise.all(
-    logs.map(async (log) => ({
-      ...log,
-      employeeName: log.employeeName ?? employee.name,
-      employeeEmail: log.employeeEmail ?? employee.email,
-      siteName: log.siteName ?? employee.siteName,
-      workLocation: log.workLocation ?? employee.workLocation,
-      photoPreviewUrl: await getS3ObjectReadUrl(log.photoUrl),
-    }))
-  )
-
-  return { success: true, employee, logs: logsWithPhotoPreview }
 }
 
 export async function getLiveAttendanceMapData(dateStr?: string) {
@@ -1619,13 +1909,136 @@ export async function getSitesForMap() {
   }
 }
 
-export async function bulkDeleteAttendancePermissionRequests(ids: number[]) {
-  if (!ids.length) return { success: false, error: 'Tidak ada data dipilih.' }
+export async function bulkDeleteAttendancePermissionRequests(ids: (string | number)[]) {
+  if (!ids || !ids.length) return { success: false, error: 'Tidak ada data dipilih.' }
 
   await ensureSchedulingTimesheetTables()
 
-  await db.delete(attendancePermissionRequests).where(inArray(attendancePermissionRequests.id, ids))
+  const requestIds: number[] = []
+  const overrideIds: number[] = []
+
+  for (const rawId of ids) {
+    if (typeof rawId === 'string') {
+      if (rawId.startsWith('req-')) {
+        const reqNum = Number(rawId.slice(4))
+        if (reqNum > 0) requestIds.push(reqNum)
+      } else if (rawId.startsWith('ovr-')) {
+        const ovrNum = Number(rawId.slice(4))
+        if (ovrNum > 0) overrideIds.push(ovrNum)
+      } else {
+        const num = Number(rawId)
+        if (num > 0) {
+          requestIds.push(num)
+          overrideIds.push(num)
+        }
+      }
+    } else if (typeof rawId === 'number' && rawId > 0) {
+      requestIds.push(rawId)
+      overrideIds.push(rawId)
+    }
+  }
+
+  let deletedCount = 0
+
+  // 1. Process requests
+  if (requestIds.length > 0) {
+    const reqRecords = await db
+      .select({
+        id: attendancePermissionRequests.id,
+        employeeId: attendancePermissionRequests.employeeId,
+        startDate: attendancePermissionRequests.startDate,
+        endDate: attendancePermissionRequests.endDate,
+        permissionType: attendancePermissionRequests.permissionType,
+        approvalSubmissionId: attendancePermissionRequests.approvalSubmissionId,
+      })
+      .from(attendancePermissionRequests)
+      .where(inArray(attendancePermissionRequests.id, requestIds))
+
+    if (reqRecords.length > 0) {
+      const validReqIds = reqRecords.map((r) => r.id)
+      await db
+        .delete(attendancePermissionRequests)
+        .where(inArray(attendancePermissionRequests.id, validReqIds))
+
+      deletedCount += validReqIds.length
+
+      const submissionIds = reqRecords
+        .map((r) => r.approvalSubmissionId)
+        .filter((id): id is number => Boolean(id))
+
+      if (submissionIds.length > 0) {
+        await db
+          .delete(formSubmissions)
+          .where(inArray(formSubmissions.id, submissionIds))
+          .catch(() => {})
+      }
+
+      for (const req of reqRecords) {
+        const days =
+          req.permissionType === 'sick'
+            ? dateRangeDays(String(req.startDate), String(req.endDate))
+            : [String(req.startDate)]
+
+        for (const reqDay of days) {
+          const period = periodFromDate(reqDay)
+          const day = dayNumberFromDate(reqDay)
+          if (!period || !day) continue
+
+          await db
+            .delete(timesheetAttendanceRealOverrides)
+            .where(
+              and(
+                eq(timesheetAttendanceRealOverrides.employeeId, req.employeeId),
+                eq(timesheetAttendanceRealOverrides.period, period),
+                eq(timesheetAttendanceRealOverrides.day, day),
+                sql`${timesheetAttendanceRealOverrides.note} ilike 'Izin %'`
+              )
+            )
+        }
+      }
+    }
+  }
+
+  // 2. Process overrides
+  if (overrideIds.length > 0) {
+    const overrideRecords = await db
+      .select({
+        id: timesheetAttendanceRealOverrides.id,
+        employeeId: timesheetAttendanceRealOverrides.employeeId,
+        period: timesheetAttendanceRealOverrides.period,
+        day: timesheetAttendanceRealOverrides.day,
+      })
+      .from(timesheetAttendanceRealOverrides)
+      .where(inArray(timesheetAttendanceRealOverrides.id, overrideIds))
+
+    if (overrideRecords.length > 0) {
+      const validOvrIds = overrideRecords.map((r) => r.id)
+
+      await db
+        .delete(timesheetAttendanceRealOverrides)
+        .where(inArray(timesheetAttendanceRealOverrides.id, validOvrIds))
+
+      deletedCount += validOvrIds.length
+
+      for (const ovr of overrideRecords) {
+        const dateStr = `${ovr.period}-${String(ovr.day).padStart(2, '0')}`
+        await db
+          .delete(attendancePermissionRequests)
+          .where(
+            and(
+              eq(attendancePermissionRequests.employeeId, ovr.employeeId),
+              lte(attendancePermissionRequests.startDate, dateStr),
+              gte(attendancePermissionRequests.endDate, dateStr)
+            )
+          )
+      }
+    }
+  }
 
   revalidatePath('/dashboard/hc/permission')
-  return { success: true, message: `${ids.length} data izin berhasil dihapus.` }
+  revalidatePath('/dashboard/scheduling-timesheet/permission')
+  revalidatePath('/mobile/attendance/permission')
+  revalidatePath('/mobile/attendance')
+
+  return { success: true, message: `Data izin berhasil dihapus.` }
 }

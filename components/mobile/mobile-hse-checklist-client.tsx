@@ -39,6 +39,7 @@ import {
   type ChecklistInputType,
 } from '@/app/actions/hse-checklists'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -545,8 +546,9 @@ export function MobileHseChecklistClient({
     try {
       const uploadedUrls: string[] = []
       for (const file of Array.from(files)) {
+        const fileToUpload = await compressImageFile(file, { maxDimension: 1200, quality: 0.75 })
         const formData = new FormData()
-        formData.append('file', file)
+        formData.append('file', fileToUpload)
         const result = await uploadFile(formData)
         if (result.success && result.url) uploadedUrls.push(result.readableUrl || result.url)
       }

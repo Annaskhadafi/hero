@@ -1,9 +1,7 @@
 import { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { ArrowLeft, Headphones, Plus } from 'lucide-react'
+import { Headphones, Sparkles } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { getMaestroServerSession } from '@/lib/maestro-session'
 import {
   getHelpdeskCategoriesAction,
@@ -33,43 +31,36 @@ export default async function MaestroTicketsPage() {
   ])
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-20">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3.5">
-            <Link
-              href="/dashboard"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 shadow-2xs"
-              title="Kembali ke Dashboard"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 shadow-2xs">
-              <Headphones className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display text-base font-bold tracking-tight text-slate-900">
-                  Helpdesk &amp; Problem Ticketing
-                </span>
-                <span className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                  AI-Powered
-                </span>
+    <div className="w-full pb-20 text-slate-800">
+      {/* Page Intro Banner */}
+      <div className="mx-auto w-full max-w-[1720px] px-3.5 pt-6 sm:px-6 lg:px-8 xl:px-10">
+        <div className="relative overflow-hidden rounded-2xl border-2 border-slate-300 bg-white p-5 sm:p-6 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 border border-blue-300 shadow-xs font-bold shrink-0">
+                <Headphones className="h-6 w-6" />
               </div>
-              <p className="text-[11px] text-slate-400">{session.customer.name}</p>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="font-display text-xl sm:text-2xl font-black tracking-tight text-slate-950">
+                    Helpdesk &amp; Problem Ticketing
+                  </h1>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-950 border border-blue-300 px-2.5 py-0.5 text-xs font-black">
+                    <Sparkles className="size-3 text-blue-700" />
+                    AI-Assisted
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-0.5">
+                  Sampaikan keluhan operasional, kendala teknis, dan pertanyaan ke tim Chitra Paratama.
+                </p>
+              </div>
             </div>
-          </div>
-
-          <div className="text-right hidden sm:block">
-            <span className="text-xs font-bold text-slate-900">{session.user.name}</span>
-            <p className="text-[11px] text-slate-400">{session.user.email}</p>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Container */}
-      <main className="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1720px] px-3.5 pt-6 sm:px-6 lg:px-8 xl:px-10">
         <MaestroTicketsClient
           initialTickets={ticketsResult.data || []}
           categories={categories}

@@ -10,6 +10,8 @@ import { ExpandableList } from "@/components/expandable-list";
 import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settings";
 import { MobileSignatureSection } from "@/components/mobile/mobile-signature-section";
 import { CollapsibleSection } from "@/components/mobile/collapsible-section";
+import { MobileRewardStoreSection } from "@/components/mobile/mobile-reward-store-section";
+import { getRewardStoreData } from "@/app/actions/reward-store";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
 import { user } from "@/db/schema/auth";
@@ -130,7 +132,7 @@ export default async function MobileProfilePage() {
   const hrFkId = hrEmp?.id
 
   // ── Queries ────────────────────────────────────────────────
-  const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords, permissionRequests] = await Promise.all([
+  const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords, permissionRequests, rewardStoreData] = await Promise.all([
     // Points
     empId ? db.select().from(pointEvents).where(inArray(pointEvents.employeeId, employeeIds)).orderBy(desc(pointEvents.createdAt)).limit(50) : [],
 
@@ -173,6 +175,9 @@ export default async function MobileProfilePage() {
           .limit(20)
       } catch { return [] }
     })() : [],
+
+    // Reward Store Data
+    getRewardStoreData(),
   ])
 
   // Contract info
@@ -474,6 +479,31 @@ export default async function MobileProfilePage() {
               ))}
             </ExpandableList>
           )}
+        </Card>
+      </CollapsibleSection>
+
+      {/* ── Reward Store Mobile Link ─────────────────────── */}
+      <CollapsibleSection title="Toko Penukaran Hadiah (Arcade Store)">
+        <Card className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500">
+                <Trophy className="size-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-900">HERO Arcade Reward Store</p>
+                <p className="text-[11px] text-gray-500">
+                  Saldo: <span className="font-semibold text-amber-600">{data.employee.totalPoints.toLocaleString('id-ID')} Pts</span>
+                </p>
+              </div>
+            </div>
+            <a
+              href="/mobile/reward-store"
+              className="inline-flex items-center gap-1 rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-amber-400"
+            >
+              Buka Toko <ExternalLink className="size-3" />
+            </a>
+          </div>
         </Card>
       </CollapsibleSection>
 

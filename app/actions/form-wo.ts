@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, gt, lt, inArray, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, lt, inArray, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -9,6 +9,7 @@ import { approvals, employees } from '@/db/schema/hero'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { repairFormWo, repairWipPo } from '@/db/schema/form-wo'
+import { tireRepairInspections } from '@/db/schema/tire-repair'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
 import {
@@ -19,6 +20,7 @@ import {
 } from '@/lib/form-wo-email'
 import type { FormWoPdfData } from '@/lib/form-wo-pdf'
 import type { WipRepairRecord } from '@/lib/types/wip-repair'
+import { isKpcRecord } from '@/lib/form-wo-customer'
 
 // Form WO Workflow v2 Production Build Trigger
 const FORM_WO_PATH = '/dashboard/repair-retread/form-wo'
@@ -44,87 +46,12 @@ function isWaitingWorkOrder(value: string | null | undefined) {
   return normalizeValue(value).toLowerCase() === 'waiting wo'
 }
 
-// ponytail: singleton guard � avoids repeated DDL & concurrent race conditions
-let _tableEnsured = false
+// ponytail: singleton guard — avoids repeated DDL & concurrent race conditions
+let _tableEnsured = true
 
 async function ensureFormWoTable() {
   if (_tableEnsured) return
-  try {
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS "repair_form_wo" (
-        "id" serial PRIMARY KEY NOT NULL,
-        "id_wo" varchar(100),
-        "tire_sn" varchar(100),
-        "customer" varchar(255),
-        "site" varchar(255),
-        "store_loc" varchar(100),
-        "brand" varchar(100),
-        "pattern" varchar(100),
-        "size" varchar(100),
-        "injury" text,
-        "job_type" varchar(100),
-        "remark" text,
-        "inspect_date" varchar(50),
-        "inspector" varchar(255),
-        "received_date" varchar(50),
-        "receiver" varchar(255),
-        "no_pengajuan" varchar(100) UNIQUE,
-        "tanggal_pengajuan" timestamp DEFAULT now() NOT NULL,
-        "pemohon" varchar(255),
-        "catatan_pengajuan" text,
-        "status_pengajuan" varchar(50) DEFAULT 'pending' NOT NULL,
-        "no_wo_terbit" varchar(100),
-        "tanggal_wo_terbit" timestamp,
-        "sort_order" integer DEFAULT 0 NOT NULL,
-        "created_by" varchar(255),
-        "created_at" timestamp DEFAULT now() NOT NULL,
-        "updated_at" timestamp DEFAULT now() NOT NULL
-      )
-    `)
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS "repair_wip_po" (
-        "id_wo" varchar(100) PRIMARY KEY NOT NULL,
-        "no_po" varchar(255) NOT NULL,
-        "po_date" varchar(50),
-        "updated_at" timestamp DEFAULT now() NOT NULL
-      )
-    `)
-    _tableEnsured = true
-    // Ensure new columns exist (idempotent ALTER)
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "jenis_pengajuan" varchar(50) DEFAULT 'repair' NOT NULL`
-    )
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "deskripsi_pekerjaan" text`
-    )
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "hari" varchar(50)`)
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal" varchar(50)`
-    )
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "total_amount" varchar(100)`
-    )
-    await db.execute(sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "items" text`)
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "no_po" varchar(255)`
-    )
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "tanggal_po" varchar(50)`
-    )
-    await db.execute(
-      sql`ALTER TABLE "repair_form_wo" ADD COLUMN IF NOT EXISTS "submitter_signature_url" text`
-    )
-    await db.execute(
-      sql`ALTER TABLE "repair_wip_po" ADD COLUMN IF NOT EXISTS "po_date" varchar(50)`
-    )
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    if (msg.includes('already exists') || msg.includes('duplicate key')) {
-      _tableEnsured = true
-      return
-    }
-    throw error
-  }
+  _tableEnsured = true
 }
 
 async function generateNoPengajuan(): Promise<string> {
@@ -169,6 +96,10 @@ const formWoCreateSchema = z.object({
   receiver: z.string().optional(),
   pemohon: z.string().optional(),
   catatanPengajuan: z.string().optional(),
+  statusPengajuan: z
+    .enum(['draft', 'pending', 'approved', 'rejected', 'diproses', 'revisi', 'needs_correction'])
+    .optional()
+    .default('pending'),
   createdBy: z.string().optional(),
   hari: z.string().optional(),
   tanggal: z.string().optional(),
@@ -202,7 +133,7 @@ const formWoUpdateSchema = z.object({
   pemohon: z.string().optional(),
   catatanPengajuan: z.string().optional(),
   statusPengajuan: z
-    .enum(['pending', 'approved', 'rejected', 'diproses', 'revisi', 'needs_correction'])
+    .enum(['draft', 'pending', 'approved', 'rejected', 'diproses', 'revisi', 'needs_correction'])
     .optional(),
   noWoTerbit: z.string().optional(),
   noWoCp: z.string().optional(),
@@ -236,61 +167,195 @@ export async function saveWipPo(idWo: string, noPo: string, poDate?: string) {
   }
 }
 
-export async function getWaitingWoFromApi(): Promise<WipRepairRecord[]> {
-  try {
-    const response = await fetch(WIP_REPAIR_API_URL, {
-      next: { revalidate: 300 },
-    })
+export async function clearWaitingWoCache() {
+  waitingWoCache = null
+}
 
-    if (!response.ok) {
-      console.error(`Failed to fetch WIP Repair API: ${response.status}`)
-      return []
-    }
+let waitingWoCache: { data: WipRepairRecord[]; timestamp: number } | null = null
+const WAITING_WO_CACHE_TTL = 3 * 60 * 1000 // 3 minutes cache for fast saves & revalidation
 
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('application/json')) {
-      console.error('Non-JSON response from WIP Repair API')
-      return []
-    }
+export async function getWaitingWoFromApi(
+  forceRefresh = false,
+  group: 'all' | 'camos' | 'kpc' | 'hero' = 'all'
+): Promise<WipRepairRecord[]> {
+  let waitingList: WipRepairRecord[] = []
 
-    const payload = (await response.json()) as { data: WipRepairRecord[] }
-
-    if (!payload || !Array.isArray(payload.data)) {
-      return []
-    }
-
-    // Filter hanya yang "waiting wo"
-    let waitingList = payload.data.filter((item) => isWaitingWorkOrder(item.wo))
-
-    // Merge saved PO numbers & PO dates from database repair_wip_po
+  if (!forceRefresh && waitingWoCache && Date.now() - waitingWoCache.timestamp < WAITING_WO_CACHE_TTL) {
+    waitingList = waitingWoCache.data
+  } else {
     try {
-      await ensureFormWoTable()
-      const savedPoList = await db.select().from(repairWipPo)
-      const poMap = new Map(savedPoList.map((r) => [r.idWo, { noPo: r.noPo, poDate: r.poDate }]))
-      waitingList = waitingList.map((item) => {
-        const saved = poMap.get(item.id_wo)
-        if (saved) {
-          return {
-            ...item,
-            po: saved.noPo ?? '',
-            po_date: saved.poDate ?? '',
+      let apiList: WipRepairRecord[] = []
+      try {
+        const response = await fetch(WIP_REPAIR_API_URL, {
+          next: { revalidate: 300 },
+        })
+
+        if (response.ok) {
+          const contentType = response.headers.get('content-type') || ''
+          if (contentType.includes('application/json')) {
+            const payload = (await response.json()) as { data: WipRepairRecord[] }
+            if (payload && Array.isArray(payload.data)) {
+              apiList = payload.data
+                .filter((item) => isWaitingWorkOrder(item.wo))
+                .map((item) => ({ ...item, is_hero: false, source: 'api' }))
+            }
           }
         }
-        return {
-          ...item,
-          po: item.po ?? '',
-          po_date: item.po_date ?? item.inspect_date ?? '',
-        }
-      })
-    } catch (e) {
-      console.error('Failed to merge saved WIP PO:', e)
-    }
+      } catch (err) {
+        console.error('Failed to fetch external WIP Repair API:', err)
+      }
 
-    return waitingList
-  } catch (error) {
-    console.error('Failed to fetch Waiting WO data', error)
-    return []
+      // Fetch local HERO tire repair inspections from database
+      let heroWipList: WipRepairRecord[] = []
+      try {
+        await ensureFormWoTable()
+        const inspections = await db
+          .select()
+          .from(tireRepairInspections)
+          .orderBy(desc(tireRepairInspections.createdAt))
+
+        const existingFormWos = await db
+          .select({
+            tireSn: repairFormWo.tireSn,
+            idWo: repairFormWo.idWo,
+            noWoTerbit: repairFormWo.noWoTerbit,
+            items: repairFormWo.items,
+          })
+          .from(repairFormWo)
+        const existingSnSet = new Set<string>()
+        for (const f of existingFormWos) {
+          if (f.tireSn) existingSnSet.add(f.tireSn.trim().toLowerCase())
+          if (f.idWo) existingSnSet.add(f.idWo.trim().toLowerCase())
+          if (f.noWoTerbit) existingSnSet.add(f.noWoTerbit.trim().toLowerCase())
+          if (f.items) {
+            try {
+              const parsed = JSON.parse(f.items)
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                  const sn = item.description || item.serialNo || item.tire_sn || item.tireSn
+                  if (sn && typeof sn === 'string') {
+                    existingSnSet.add(sn.trim().toLowerCase())
+                  }
+                  const wo = item.noWoCp || item.id_wo || item.idWo
+                  if (wo && typeof wo === 'string') {
+                    existingSnSet.add(wo.trim().toLowerCase())
+                  }
+                }
+              }
+            } catch {
+              // ignore json parse error
+            }
+          }
+        }
+
+        heroWipList = inspections
+          .filter((insp) => !existingSnSet.has(insp.serialNumber.trim().toLowerCase()))
+          .map((insp) => {
+            const formatDateStr = (d: Date | null | undefined) => {
+              if (!d) return ''
+              try {
+                return d.toISOString().split('T')[0]
+              } catch {
+                return String(d)
+              }
+            }
+            return {
+              id_wo: `HERO-${insp.id}`,
+              wo: 'Waiting WO',
+              job_type: insp.status || 'Repair',
+              status: insp.status || 'Repair',
+              size: insp.tireSize,
+              brand: insp.brand || '-',
+              pattern: insp.pattern || '-',
+              type: insp.typeConstruction || 'RADIAL',
+              nocargo: insp.cargoManifestNo || null,
+              tire_sn: insp.serialNumber,
+              injury: insp.repairDuration || 'R1',
+              remark: insp.remarks || '',
+              customer: insp.customer || 'PT Kaltim Prima Coal',
+              site: insp.customerSite || insp.inspectLocation || 'Sangatta KPC',
+              store_loc: insp.inspectLocation || 'Workshop Sangatta',
+              inspect_date: formatDateStr(insp.dateInspect),
+              inspector: insp.reportBy,
+              createby: insp.reportBy,
+              wo_date: null,
+              received_date: formatDateStr(insp.dateReceived),
+              receiver: insp.reportBy,
+              po: null,
+              bast: null,
+              po_date: null,
+              bast_date: null,
+              invoice: null,
+              invoice_date: null,
+              is_hero: true,
+              source: 'hero',
+            }
+          })
+      } catch (e) {
+        console.error('Failed to query local HERO tire repair inspections:', e)
+      }
+
+      // Local HERO inspections take precedence over external CAMOS API items with the same SN
+      const heroSnSet = new Set(
+        heroWipList.map((item) => (item.tire_sn || '').trim().toLowerCase()).filter(Boolean)
+      )
+      const filteredApiList = apiList.filter(
+        (item) => !heroSnSet.has((item.tire_sn || '').trim().toLowerCase())
+      )
+
+      waitingList = [...heroWipList, ...filteredApiList]
+
+      // Merge saved PO numbers & PO dates from database repair_wip_po
+      try {
+        const savedPoList = await db.select().from(repairWipPo)
+        const poMap = new Map(savedPoList.map((r) => [r.idWo, { noPo: r.noPo, poDate: r.poDate }]))
+        waitingList = waitingList.map((item) => {
+          const saved = poMap.get(item.id_wo)
+          if (saved) {
+            return {
+              ...item,
+              po: saved.noPo ?? '',
+              po_date: saved.poDate ?? '',
+            }
+          }
+          return {
+            ...item,
+            po: item.po ?? '',
+            po_date: item.po_date ?? item.inspect_date ?? '',
+          }
+        })
+      } catch (e) {
+        console.error('Failed to merge saved WIP PO:', e)
+      }
+
+      waitingWoCache = { data: waitingList, timestamp: Date.now() }
+    } catch (error) {
+      console.error('Failed to fetch Waiting WO data', error)
+      waitingList = waitingWoCache?.data || []
+    }
   }
+
+  if (group === 'camos') {
+    return waitingList.filter(
+      (item) => !item.is_hero && item.source !== 'hero' && !item.id_wo?.startsWith('HERO-')
+    )
+  }
+  if (group === 'kpc') {
+    return waitingList.filter(
+      (item) =>
+        (item.is_hero || item.source === 'hero' || item.id_wo?.startsWith('HERO-')) &&
+        isKpcRecord(item)
+    )
+  }
+  if (group === 'hero') {
+    return waitingList.filter(
+      (item) =>
+        (item.is_hero || item.source === 'hero' || item.id_wo?.startsWith('HERO-')) &&
+        !isKpcRecord(item)
+    )
+  }
+
+  return waitingList
 }
 
 export async function getFormWoList() {
@@ -365,6 +430,7 @@ export async function getFormWoStats() {
       .select({ statusPengajuan: repairFormWo.statusPengajuan })
       .from(repairFormWo)
     const total = rows.length
+    const draft = rows.filter((r) => r.statusPengajuan === 'draft').length
     const pending = rows.filter(
       (r) =>
         r.statusPengajuan === 'pending' ||
@@ -374,10 +440,10 @@ export async function getFormWoStats() {
     const approved = rows.filter((r) => r.statusPengajuan === 'approved').length
     const diproses = rows.filter((r) => r.statusPengajuan === 'diproses').length
     const rejected = rows.filter((r) => r.statusPengajuan === 'rejected').length
-    return { total, pending, approved, diproses, rejected }
+    return { total, draft, pending, approved, diproses, rejected }
   } catch (error) {
     console.error('Failed to load Form WO stats', error)
-    return { total: 0, pending: 0, approved: 0, diproses: 0, rejected: 0 }
+    return { total: 0, draft: 0, pending: 0, approved: 0, diproses: 0, rejected: 0 }
   }
 }
 
@@ -390,8 +456,10 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
     const employee = await getCurrentEmployee()
     if (!employee) throw new Error('Unauthorized: Sesi karyawan tidak ditemukan')
 
-    // Wajib tanda tangan digital pemohon sebelum submit
-    if (!parsed.submitterSignatureUrl || !parsed.submitterSignatureUrl.trim()) {
+    const isDraft = parsed.statusPengajuan === 'draft'
+
+    // Wajib tanda tangan digital pemohon sebelum submit jika bukan draft
+    if (!isDraft && (!parsed.submitterSignatureUrl || !parsed.submitterSignatureUrl.trim())) {
       return {
         success: false,
         error: 'Tanda tangan digital pemohon wajib dibubuhkan sebelum mengajukan Form WO.',
@@ -439,13 +507,19 @@ export async function createFormWo(data: z.infer<typeof formWoCreateSchema>) {
         pemohon: finalPemohon,
         hari: finalHari,
         noPengajuan,
-        statusPengajuan: 'pending',
+        statusPengajuan: isDraft ? 'draft' : 'pending',
         sortOrder: 0,
         createdBy: String(employee.id),
         createdAt: new Date(),
         updatedAt: new Date(),
       })
       .returning({ id: repairFormWo.id })
+
+    // JIKA DRAFT: Langsung selesai tanpa proses approval routing atau notifikasi/email!
+    if (isDraft) {
+      safeRevalidatePath(FORM_WO_PATH)
+      return { success: true, noPengajuan, isDraft: true }
+    }
 
     const customerLower = (parsed.customer || '').toLowerCase().trim()
     const isMvc =
@@ -634,6 +708,133 @@ export async function updateFormWo(id: number, data: z.infer<typeof formWoUpdate
         updatedAt: new Date(),
       })
       .where(eq(repairFormWo.id, id))
+
+    // JIKA DRAFT: Langsung selesai tanpa proses approval routing atau notifikasi/email!
+    if (nextStatus === 'draft') {
+      safeRevalidatePath(FORM_WO_PATH)
+      return { success: true, noPengajuan: existing?.noPengajuan, isDraft: true }
+    }
+
+    // JIKA SEBELUMNYA DRAFT DAN SEKARANG DIAJUKAN (STATUS BUKAN DRAFT)
+    if (existing?.statusPengajuan === 'draft' && nextStatus !== 'draft') {
+      const finalSig = parsed.submitterSignatureUrl || existing.submitterSignatureUrl
+      if (!finalSig || !finalSig.trim()) {
+        return {
+          success: false,
+          error: 'Tanda tangan digital pemohon wajib dibubuhkan sebelum mengajukan Form WO.',
+        }
+      }
+
+      const employee = await getCurrentEmployee()
+      if (!employee) throw new Error('Unauthorized: Sesi karyawan tidak ditemukan')
+
+      const isService = (parsed.jenisPengajuan || existing.jenisPengajuan) === 'service'
+      const customerLower = (parsed.customer || existing.customer || '').toLowerCase().trim()
+      const isMvc =
+        customerLower.includes('trakindo') ||
+        customerLower.includes('cipta krida') ||
+        customerLower.includes('ciptakrida') ||
+        customerLower.includes('ckb') ||
+        customerLower.includes('mvc') ||
+        /\bck\b/i.test(customerLower) ||
+        customerLower === 'ck' ||
+        customerLower.startsWith('ck ') ||
+        customerLower.endsWith(' ck') ||
+        customerLower.includes(' ck ') ||
+        customerLower.includes('pt ck') ||
+        customerLower.includes('pt. ck') ||
+        customerLower.includes('pt.ck')
+
+      const transactionType = isService
+        ? isMvc
+          ? 'form_wo_service_mvc'
+          : 'form_wo_service_other'
+        : 'form_wo_repair_retread'
+
+      const route = await resolveApprovalRouteForActivity({
+        employeeId: employee.id,
+        activityType: 'Form WO',
+        priority: 'normal',
+        overtimeMinutes: 0,
+        transactionType,
+        customerName: parsed.customer || existing.customer || '',
+        siteName: parsed.site || existing.site || '',
+      })
+
+      if (route.steps.length > 0) {
+        for (const step of route.steps) {
+          const isStep1 = step.stepOrder === 1
+          const stepStatus: 'pending' | 'waiting' | 'approved' = isStep1 ? 'pending' : 'waiting'
+
+          await db.insert(approvals).values({
+            repairFormWoId: id,
+            level: step.stepOrder,
+            approverName: step.approverName,
+            approverEmployeeId: step.approverEmployeeId,
+            approverNodeId: step.approverNodeId,
+            approvalMatrixId: route.matrixId ?? null,
+            approvalStepId: step.approvalMatrixStepId ?? null,
+            status: stepStatus,
+            reviewedAt: null,
+            signatureUrl: null,
+            submittedAt: new Date(),
+            resolutionSource: step.resolutionSource,
+            routeSnapshot: JSON.stringify({
+              label: step.label,
+              nodeLabel: step.nodeLabel,
+              fallbackLabel: step.fallbackLabel,
+              escalationLabel: step.escalationLabel,
+            }),
+          })
+        }
+
+        const activePendingStep = route.steps.find((s) => s.stepOrder === 1) || route.steps[0]
+        let approverEmail: string | undefined
+        if (activePendingStep && activePendingStep.approverEmployeeId) {
+          const [approverEmp] = await db
+            .select({ email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, activePendingStep.approverEmployeeId))
+            .limit(1)
+          if (approverEmp?.email) {
+            approverEmail = approverEmp.email
+          }
+        }
+
+        const finalPemohon = parsed.pemohon || existing.pemohon || employee.name
+        if (approverEmail) {
+          notifyWorkflowBellRecipients({
+            recipientEmails: [approverEmail],
+            eventType: 'form_wo_review',
+            category: 'approval_requests',
+            title: 'Review Form WO',
+            body: `${finalPemohon} mengajukan Form WO (${existing.noPengajuan}) yang membutuhkan persetujuan Anda (${activePendingStep.label}).`,
+            url: `/dashboard/approval`,
+            tagPrefix: 'form-wo',
+          }).catch(console.error)
+        }
+
+        sendFormWoApprovalRequestEmail({
+          approverEmail,
+          approverName: activePendingStep?.approverName || 'Approver',
+          pemohon: finalPemohon,
+          noPengajuan: existing.noPengajuan || '',
+          customer: parsed.customer || existing.customer || undefined,
+          site: parsed.site || existing.site || undefined,
+          jobType: parsed.jobType || existing.jobType || undefined,
+          tireSn: parsed.tireSn || existing.tireSn || undefined,
+          brand: parsed.brand || existing.brand || undefined,
+          size: parsed.size || existing.size || undefined,
+          totalAmount: parsed.totalAmount || existing.totalAmount || undefined,
+          catatanPengajuan: parsed.catatanPengajuan || existing.catatanPengajuan || undefined,
+          tier: 1,
+        }).catch(console.error)
+      }
+
+      safeRevalidatePath(FORM_WO_PATH)
+      safeRevalidatePath('/dashboard/approval')
+      return { success: true, noPengajuan: existing.noPengajuan }
+    }
 
     // If it was reverted/revisi, re-route directly to the step that requested revision
     if (
@@ -959,7 +1160,7 @@ async function triggerFormWoCompletedPdfNotification(formWoId: number, noWoTerbi
 
 export async function updateFormWoStatus(
   id: number,
-  status: 'pending' | 'approved' | 'rejected' | 'diproses',
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'diproses',
   noWoTerbit?: string
 ) {
   try {
@@ -1087,3 +1288,129 @@ export async function updateWoCpNumber(id: number, noWoCp: string) {
     return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }
   }
 }
+
+export async function getFormWoDetailAction(id: number, lookupCode?: string) {
+  try {
+    await ensureFormWoTable()
+    let row =
+      id > 0
+        ? await db
+            .select()
+            .from(repairFormWo)
+            .where(eq(repairFormWo.id, id))
+            .limit(1)
+            .then((r) => r[0])
+        : undefined
+
+    if (!row && lookupCode) {
+      const cleanCode = lookupCode.trim()
+      row = await db
+        .select()
+        .from(repairFormWo)
+        .where(
+          or(
+            eq(repairFormWo.noPengajuan, cleanCode),
+            sql`${repairFormWo.noPengajuan} ILIKE ${'%' + cleanCode + '%'}`
+          )
+        )
+        .limit(1)
+        .then((r) => r[0])
+    }
+
+    if (!row && id > 0) {
+      const appRow = await db
+        .select({ repairFormWoId: approvals.repairFormWoId })
+        .from(approvals)
+        .where(or(eq(approvals.activityId, id), eq(approvals.id, id)))
+        .limit(1)
+        .then((r) => r[0])
+
+      if (appRow?.repairFormWoId) {
+        row = await db
+          .select()
+          .from(repairFormWo)
+          .where(eq(repairFormWo.id, appRow.repairFormWoId))
+          .limit(1)
+          .then((r) => r[0])
+      }
+    }
+
+    if (!row) {
+      return { success: false, error: 'Form WO tidak ditemukan' }
+    }
+
+    const realId = row.id
+
+    const appRows = await db
+      .select({
+        id: approvals.id,
+        level: approvals.level,
+        approverName: approvals.approverName,
+        approverEmployeeId: approvals.approverEmployeeId,
+        status: approvals.status,
+        reviewedAt: approvals.reviewedAt,
+        signatureUrl: approvals.signatureUrl,
+        decisionNote: approvals.decisionNote,
+        routeSnapshot: approvals.routeSnapshot,
+      })
+      .from(approvals)
+      .where(eq(approvals.repairFormWoId, realId))
+      .orderBy(asc(approvals.level))
+
+    const steps = appRows.map((a) => {
+      let jobTitle = 'Approver'
+      if (a.routeSnapshot) {
+        try {
+          const p = JSON.parse(a.routeSnapshot)
+          jobTitle = p.label || p.nodeLabel || jobTitle
+        } catch {}
+      }
+      return {
+        id: a.id,
+        level: a.level,
+        approverName: a.approverName,
+        approverEmployeeId: a.approverEmployeeId,
+        jobTitle,
+        status: a.status,
+        decision: a.status,
+        reviewedAt: a.reviewedAt,
+        signatureUrl: a.signatureUrl,
+        decisionNote: a.decisionNote,
+      }
+    })
+
+    const doc = {
+      ...row,
+      noPengajuan: row.noPengajuan || `WO-${row.id}`,
+      jenisPengajuan: row.jenisPengajuan || 'repair',
+      hari: row.hari || '-',
+      tanggal: row.tanggal || null,
+      tanggalPengajuan: row.tanggalPengajuan || row.createdAt,
+      pemohon: row.pemohon || '-',
+      pemohonJobTitle: (row as any).pemohonJobTitle || 'Pemohon',
+      customer: row.customer || '-',
+      site: row.site || '-',
+      deskripsiPekerjaan: row.deskripsiPekerjaan || '-',
+      catatanPengajuan: row.catatanPengajuan || null,
+      totalAmount: row.totalAmount || '0',
+      items: row.items || null,
+      noPo: row.noPo || null,
+      tanggalPo: row.tanggalPo || null,
+      tireSn: row.tireSn || null,
+      storeLoc: row.storeLoc || null,
+      brand: row.brand || null,
+      pattern: row.pattern || null,
+      size: row.size || null,
+      noWoCp: (row as any).noWoCp || row.noWoTerbit || null,
+      noWoTerbit: row.noWoTerbit || null,
+      statusPengajuan: row.statusPengajuan || 'pending',
+      steps,
+    }
+
+    return { success: true, data: doc }
+  } catch (error) {
+    console.error('Gagal mengambil detail Form WO:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Terjadi kesalahan' }
+  }
+}
+

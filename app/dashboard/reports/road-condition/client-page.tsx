@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ArrowDownToLine, Download, Eye, ImageIcon, Loader2, MapPin, PenSquare, Plus, RotateCcw, Save, Truck, Trash2, Upload, Wand2 } from 'lucide-react'
+import { ArrowDownToLine, Download, Eye, ImageIcon, Loader2, MapPin, PenSquare, Plus, Presentation, RotateCcw, Save, Truck, Trash2, Upload, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -181,13 +181,71 @@ function revokePhotos(photos: PhotoSlot[]) {
   })
 }
 
-function fileToDataUrl(file: File) {
+async function fileToDataUrl(file: File): Promise<string> {
+  // If in browser and image, resize via canvas to prevent memory issues & huge base64 payloads
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      const isImg = !file.type || file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name)
+      if (isImg) {
+        const objectUrl = URL.createObjectURL(file)
+        try {
+          const img = new Image()
+          await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = () => reject(new Error('Format foto tidak dapat diproses browser.'))
+            img.src = objectUrl
+          })
+
+          const maxDimension = 1280
+          let { width, height } = img
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width)
+              width = maxDimension
+            } else {
+              width = Math.round((width * maxDimension) / height)
+              height = maxDimension
+            }
+          }
+
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.max(1, width)
+          canvas.height = Math.max(1, height)
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height)
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+            if (dataUrl && dataUrl.startsWith('data:image/jpeg')) {
+              return dataUrl
+            }
+          }
+        } finally {
+          URL.revokeObjectURL(objectUrl)
+        }
+      }
+    } catch {
+      // Fallback to FileReader below
+    }
+  }
+
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ''))
     reader.onerror = () => reject(new Error('Gagal membaca file foto.'))
     reader.readAsDataURL(file)
   })
+}
+
+async function urlToDataUrl(url: string): Promise<string> {
+  if (isImageDataUrl(url)) return url
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return url
+    const blob = await res.blob()
+    return await fileToDataUrl(new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' }))
+  } catch {
+    return url
+  }
 }
 
 function formatReportDate(value: string) {
@@ -206,19 +264,34 @@ function scoreTone(score: number) {
 }
 
 function getActiveAssessmentRows(draft: CategoryDraft) {
-  return ROAD_CONDITION_CATEGORIES[draft.categoryKey].criteria.map((criterion) => {
-    const assessment = draft.analysis?.assessments.find((item) => item.criterionId === criterion.id) ?? null
-    const score = assessment ? normalizeRoadConditionScore(assessment.score) : null
-    const template = score ? getRoadConditionAssessmentTemplate(draft.categoryKey, criterion.id, score) : null
+  const category = ROAD_CONDITION_CATEGORIES[draft.categoryKey]
+  if (!category) return []
 
-    return {
+  if (!draft.analysis) {
+    return category.criteria.map((criterion) => ({
       criterion,
-      score,
-      template,
-      description: template?.description ?? assessment?.description ?? '-',
-      recommendation: assessment?.recommendation?.trim() || template?.recommendation || '-',
-    }
-  })
+      score: null,
+      template: null,
+      description: `${criterion.title}: -`,
+      recommendation: '-',
+    }))
+  }
+
+  return category.criteria
+    .filter((criterion) => draft.analysis!.assessments.some((item) => item.criterionId === criterion.id))
+    .map((criterion) => {
+      const assessment = draft.analysis!.assessments.find((item) => item.criterionId === criterion.id)!
+      const score = normalizeRoadConditionScore(assessment.score)
+      const template = getRoadConditionAssessmentTemplate(draft.categoryKey, criterion.id, score)
+
+      return {
+        criterion,
+        score,
+        template,
+        description: assessment.description || template.description || '-',
+        recommendation: assessment.recommendation?.trim() || template.recommendation || '-',
+      }
+    })
 }
 
 function getDraftAverageScore(draft: CategoryDraft) {
@@ -244,16 +317,18 @@ function getDraftPointLabel(draft: CategoryDraft, fallbackIndex: number) {
 }
 
 function isImageDataUrl(value: string) {
-  return value.startsWith('data:image/')
+  return typeof value === 'string' && value.startsWith('data:image/')
 }
 
 function getDataUrlMimeType(value: string) {
-  return value.match(/^data:([^;]+);base64,/)?.[1] || 'image/png'
+  return value.match(/^data:([^;]+);base64,/)?.[1] || 'image/jpeg'
 }
 
 function getPhotoImageUrl(photo: Pick<PhotoSlot, 'previewUrl' | 'dataUrl'>) {
   if (isImageDataUrl(photo.dataUrl)) return photo.dataUrl
   if (isImageDataUrl(photo.previewUrl)) return photo.previewUrl
+  if (typeof photo.dataUrl === 'string' && photo.dataUrl.trim()) return photo.dataUrl.trim()
+  if (typeof photo.previewUrl === 'string' && photo.previewUrl.trim()) return photo.previewUrl.trim()
   return ''
 }
 
@@ -290,13 +365,13 @@ function createDraftsFromHistoryData(data: SavedRoadConditionReportData) {
     const savedPhotos = Array.isArray(draft.photos) ? draft.photos : []
     const photos: PhotoSlot[] = initialPhotos().map((photo, photoIndex) => {
       const savedPhoto = savedPhotos[photoIndex] ?? savedPhotos.find((item) => item.angle === photo.angle)
-      const dataUrl = savedPhoto?.dataUrl && isImageDataUrl(savedPhoto.dataUrl) ? savedPhoto.dataUrl : ''
+      const photoUrl = typeof savedPhoto?.dataUrl === 'string' ? savedPhoto.dataUrl.trim() : ''
 
       return {
         angle: savedPhoto?.angle || photo.angle,
         file: null,
-        previewUrl: dataUrl,
-        dataUrl,
+        previewUrl: photoUrl,
+        dataUrl: photoUrl,
         caption: savedPhoto?.caption || '',
       }
     })
@@ -336,10 +411,12 @@ export function RoadConditionAnalysisClient({
   const [saveStatus, setSaveStatus] = React.useState<AnalysisStatus | null>(null)
   const [savedReportId, setSavedReportId] = React.useState<number | null>(null)
   const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false)
+  const [isGeneratingPptx, setIsGeneratingPptx] = React.useState(false)
   const [deletingHistoryId, setDeletingHistoryId] = React.useState<number | null>(null)
   const [previewHistory, setPreviewHistory] = React.useState<HistoryRow | null>(null)
   const [historyList, setHistoryList] = React.useState<HistoryRow[]>(historyRows)
   const [pdfProgress, setPdfProgress] = React.useState<PdfProgressState | null>(null)
+  const [pptxProgress, setPptxProgress] = React.useState<PdfProgressState | null>(null)
   const draftsRef = React.useRef(drafts)
   const draftSequenceRef = React.useRef(1)
   const pdfAssetCacheRef = React.useRef(new Map<string, string>())
@@ -464,13 +541,14 @@ export function RoadConditionAnalysisClient({
       return
     }
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('File harus berupa gambar.')
+    const isImage = !file.type || file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name)
+    if (!isImage) {
+      toast.error('File harus berupa gambar (JPG, PNG, WebP).')
       return
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 5MB.')
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Ukuran foto terlalu besar. Maksimal 25MB.')
       return
     }
 
@@ -587,11 +665,14 @@ export function RoadConditionAnalysisClient({
     try {
       const photoPayload = await Promise.all(
         draft.photos.map(async (photo) => {
-          const dataUrl = photo.file ? await fileToDataUrl(photo.file) : getPhotoImageUrl(photo)
+          let dataUrl = photo.file ? await fileToDataUrl(photo.file) : getPhotoImageUrl(photo)
+          if (dataUrl && !isImageDataUrl(dataUrl) && (dataUrl.startsWith('http') || dataUrl.startsWith('/'))) {
+            dataUrl = await urlToDataUrl(dataUrl)
+          }
           return {
             angle: photo.angle,
             caption: photo.caption,
-            mimeType: photo.file?.type || getDataUrlMimeType(dataUrl),
+            mimeType: getDataUrlMimeType(dataUrl),
             dataUrl,
           }
         })
@@ -750,6 +831,77 @@ export function RoadConditionAnalysisClient({
     setDrafts(nextDrafts)
   }
 
+  const deleteAssessmentCriterion = (draftId: string, criterionId: string) => {
+    const draft = draftsRef.current.find((d) => d.id === draftId)
+    if (!draft || !draft.analysis) return
+
+    if (draft.analysis.assessments.length <= 1) {
+      toast.error('Minimal harus ada 1 parameter penilaian tersisa.')
+      return
+    }
+
+    const nextAssessments = draft.analysis.assessments.filter((a) => a.criterionId !== criterionId)
+    const nextOverallScore = getRoadConditionOverallScore(nextAssessments)
+
+    const nextDrafts = draftsRef.current.map((d) => {
+      if (d.id !== draftId || !d.analysis) return d
+      return {
+        ...d,
+        analysis: {
+          ...d.analysis,
+          assessments: nextAssessments,
+          overallScore: nextOverallScore,
+        },
+      }
+    })
+
+    draftsRef.current = nextDrafts
+    setDrafts(nextDrafts)
+    void saveReport(nextDrafts, true).catch(() => {})
+    toast.success('Parameter berhasil dihapus dari penilaian.')
+  }
+
+  const restoreAssessmentCriterion = (draftId: string, criterionId: string) => {
+    const draft = draftsRef.current.find((d) => d.id === draftId)
+    if (!draft || !draft.analysis) return
+
+    const category = ROAD_CONDITION_CATEGORIES[draft.categoryKey]
+    const criterion = category.criteria.find((c) => c.id === criterionId)
+    if (!criterion) return
+
+    const defaultScore = 3
+    const template = getRoadConditionAssessmentTemplate(draft.categoryKey, criterionId, defaultScore)
+    const newAssessment: AnalysisAssessment = {
+      criterionId,
+      score: defaultScore,
+      description: template.description,
+      recommendation: template.recommendation,
+    }
+
+    const originalOrder = category.criteria.map((c) => c.id)
+    const combined = [...draft.analysis.assessments, newAssessment]
+    combined.sort((a, b) => originalOrder.indexOf(a.criterionId) - originalOrder.indexOf(b.criterionId))
+
+    const nextOverallScore = getRoadConditionOverallScore(combined)
+
+    const nextDrafts = draftsRef.current.map((d) => {
+      if (d.id !== draftId || !d.analysis) return d
+      return {
+        ...d,
+        analysis: {
+          ...d.analysis,
+          assessments: combined,
+          overallScore: nextOverallScore,
+        },
+      }
+    })
+
+    draftsRef.current = nextDrafts
+    setDrafts(nextDrafts)
+    void saveReport(nextDrafts, true).catch(() => {})
+    toast.success(`Parameter ${criterion.title} berhasil dipulihkan.`)
+  }
+
   const loadHistoryRow = (row: HistoryRow) => {
     const data = row.reportData
     if (!data?.drafts?.length) {
@@ -886,63 +1038,342 @@ export function RoadConditionAnalysisClient({
     pdf.text(`Date: ${formatReportDate(source.reportDate)}`, 22, 117)
   }
 
-  const drawPdfSummary = (pdf: any, source: PdfReportSource, pageWidth: number) => {
-    pdf.setFillColor(255, 255, 255)
-    pdf.rect(0, 0, pageWidth, 167.06, 'F')
-    pdf.setFillColor(246, 248, 252)
-    pdf.rect(0, 0, pageWidth, 167.06, 'F')
-
-    const rows = source.drafts.map((draft, index) => ({
+  const getSourceSummaryData = (source: PdfReportSource) => {
+    const summaryRows = source.drafts.map((draft, index) => ({
       draft,
       pointLabel: getDraftPointLabel(draft, index),
       score: getDraftAverageScore(draft),
     }))
-    const overallScore = rows.length && rows.every((row) => row.score != null)
-      ? rows.reduce((total, row) => total + (row.score ?? 0), 0) / rows.length
-      : null
 
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(15, 23, 42)
-    pdf.setFontSize(22)
-    pdf.text('Report Summary', 12, 18)
-    pdf.setFontSize(9)
-    pdf.setTextColor(71, 85, 105)
-    pdf.text(`${source.siteName} | ${source.customerName} | ${formatReportDate(source.reportDate)}`, 12, 26)
+    const categorySummaryScores = SUMMARY_CATEGORY_ORDER.reduce(
+      (result, categoryKey) => {
+        const rows = summaryRows.filter((row) => row.draft.categoryKey === categoryKey)
+        const scores = rows.map((row) => row.score).filter((score): score is number => score != null)
+        result[categoryKey] =
+          rows.length > 0 && scores.length === rows.length
+            ? scores.reduce((total, score) => total + score, 0) / scores.length
+            : null
+        return result
+      },
+      {} as Record<RoadConditionCategoryKey, number | null>
+    )
 
+    const overallSummaryScore =
+      summaryRows.every((row) => row.score != null) && summaryRows.length > 0
+        ? summaryRows.reduce((total, row) => total + (row.score ?? 0), 0) / summaryRows.length
+        : null
+
+    return { summaryRows, categorySummaryScores, overallSummaryScore }
+  }
+
+  const resolvePhotoDataUrl = async (photo: PhotoSlot): Promise<string> => {
+    if (photo.file) {
+      try {
+        return await fileToDataUrl(photo.file)
+      } catch {
+        // fallback
+      }
+    }
+    if (isImageDataUrl(photo.dataUrl)) return photo.dataUrl
+    if (isImageDataUrl(photo.previewUrl)) return photo.previewUrl
+    if (photo.previewUrl && photo.previewUrl.startsWith('blob:')) {
+      try {
+        const res = await fetch(photo.previewUrl)
+        if (res.ok) {
+          const blob = await res.blob()
+          return await blobToDataUrl(blob)
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return photo.dataUrl || photo.previewUrl || ''
+  }
+
+  const drawPdfStar = (pdf: any, cx: number, cy: number, r: number, fillR = 220, fillG = 38, fillB = 38) => {
+    const points: [number, number][] = []
+    const innerR = r * 0.45
+    for (let i = 0; i < 10; i++) {
+      const radius = i % 2 === 0 ? r : innerR
+      const angle = (i * Math.PI) / 5 - Math.PI / 2
+      points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)])
+    }
+    pdf.setFillColor(fillR, fillG, fillB)
+    const lines: [number, number][] = []
+    for (let i = 1; i < points.length; i++) {
+      lines.push([points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]])
+    }
+    pdf.lines(lines, points[0][0], points[0][1], [1, 1], 'F', true)
+  }
+
+  const drawPdfStars = (
+    pdf: any,
+    cx: number,
+    cy: number,
+    count: number,
+    max = 5,
+    r = 2.4,
+    spacing = 5.2,
+    fillR = 220,
+    fillG = 38,
+    fillB = 38
+  ) => {
+    const clamped = Math.max(0, Math.min(max, Math.round(count)))
+    if (clamped <= 0) return
+    const totalW = (clamped - 1) * spacing
+    const startX = cx - totalW / 2
+    for (let i = 0; i < clamped; i++) {
+      drawPdfStar(pdf, startX + i * spacing, cy, r, fillR, fillG, fillB)
+    }
+  }
+
+  const drawPdfSummary = (pdf: any, source: PdfReportSource, pageWidth: number) => {
+    const pageHeight = (pageWidth * 9) / 16
     pdf.setFillColor(255, 255, 255)
-    pdf.roundedRect(224, 12, 58, 28, 2, 2, 'F')
-    pdf.setTextColor(100, 116, 139)
-    pdf.setFontSize(7)
-    pdf.text('AVERAGE SCORE', 230, 22)
-    pdf.setTextColor(15, 23, 42)
-    pdf.setFontSize(18)
-    pdf.text(`${overallScore?.toFixed(2) ?? '-'}/5`, 230, 34)
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-    const tableY = 50
-    pdf.setFillColor(15, 23, 42)
-    pdf.rect(12, tableY, 270, 9, 'F')
+    // Navy header bar matching preview: "Site Condition Assessment"
+    pdf.setFillColor(26, 54, 93) // #1a365d
+    pdf.rect(0, 0, pageWidth, 11, 'F')
     pdf.setTextColor(255, 255, 255)
-    pdf.setFontSize(8)
-    pdf.text('CATEGORY', 16, tableY + 6)
-    pdf.text('POINT', 78, tableY + 6)
-    pdf.text('SCORE', 224, tableY + 6)
-    pdf.text('STATUS', 250, tableY + 6)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(13)
+    pdf.text('Site Condition Assessment', pageWidth / 2, 7.8, { align: 'center' })
 
-    rows.forEach((row, index) => {
-      const y = tableY + 9 + index * 12
-      const category = ROAD_CONDITION_CATEGORIES[row.draft.categoryKey]
-      pdf.setFillColor(index % 2 === 0 ? 255 : 248, index % 2 === 0 ? 255 : 250, index % 2 === 0 ? 255 : 252)
-      pdf.rect(12, y, 270, 12, 'F')
+    const { summaryRows, categorySummaryScores, overallSummaryScore } = getSourceSummaryData(source)
+
+    // Top table: "DATE | LOADING AREA | HAULING ROAD | DUMPING AREA | AVERAGE | STAR RATING"
+    const topY = 14
+    const topH1 = 6.2
+    const topH2 = 6.5
+    const topH3 = 8.5
+    const startX = 10
+    const colWidths = [42, 45, 45, 45, 45, 55] // total = 277 mm
+
+    // Headers
+    pdf.setFillColor(226, 232, 240) // #e2e8f0
+    pdf.rect(startX, topY, 277, topH1, 'F')
+    pdf.setDrawColor(15, 23, 42) // #0f172a
+    pdf.setLineWidth(0.3)
+
+    const topHeaders = ['DATE', 'LOADING AREA', 'HAULING ROAD', 'DUMPING AREA', 'AVERAGE', 'STAR RATING']
+    let currX = startX
+    topHeaders.forEach((hdr, idx) => {
+      pdf.rect(currX, topY, colWidths[idx], topH1)
       pdf.setTextColor(15, 23, 42)
-      pdf.setFontSize(8)
       pdf.setFont('helvetica', 'bold')
-      pdf.text(category.reportLabel, 16, y + 7)
-      pdf.setFont('helvetica', 'normal')
-      pdf.text(row.pointLabel, 78, y + 7, { maxWidth: 136 })
-      pdf.setFont('helvetica', 'bold')
-      pdf.text(row.score == null ? '-' : row.score.toFixed(2), 224, y + 7)
-      pdf.text(row.score == null ? '-' : `${Math.round((row.score / 5) * 100)}%`, 250, y + 7)
+      pdf.setFontSize(6.5)
+      pdf.text(hdr, currX + colWidths[idx] / 2, topY + 4.2, { align: 'center' })
+      currX += colWidths[idx]
     })
+
+    // Row 1: Values
+    const row1Y = topY + topH1
+    currX = startX
+    const row1Values = [
+      formatReportDate(source.reportDate),
+      formatSummaryPercent(categorySummaryScores.loading_point),
+      formatSummaryPercent(categorySummaryScores.haulroad),
+      formatSummaryPercent(categorySummaryScores.disposal),
+      formatSummaryPercent(overallSummaryScore),
+      formatSummaryScore(overallSummaryScore),
+    ]
+    row1Values.forEach((val, idx) => {
+      pdf.rect(currX, row1Y, colWidths[idx], topH2)
+      pdf.setTextColor(15, 23, 42)
+      pdf.setFont('helvetica', idx === 0 || idx >= 4 ? 'bold' : 'normal')
+      pdf.setFontSize(7)
+      pdf.text(val, currX + colWidths[idx] / 2, row1Y + 4.5, { align: 'center' })
+      currX += colWidths[idx]
+    })
+
+    // Row 2: Site (col 0, text red), Inspector/Customer (cols 1..4), Star Rating (col 5, red stars)
+    const row2Y = row1Y + topH2
+    // Site box
+    pdf.rect(startX, row2Y, colWidths[0], topH3)
+    pdf.setTextColor(220, 38, 38) // red-600
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(8.5)
+    pdf.text(source.siteName || '-', startX + 3, row2Y + 5.5, { maxWidth: colWidths[0] - 6 })
+
+    // Inspector + Customer (spanning cols 1-4 = 180mm)
+    const midW = colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4]
+    pdf.rect(startX + colWidths[0], row2Y, midW, topH3)
+    pdf.setTextColor(15, 23, 42)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    pdf.text(
+      `Inspector: ${source.inspectorName || '-'} · Customer: ${source.customerName || '-'}`,
+      startX + colWidths[0] + midW / 2,
+      row2Y + 5.2,
+      { align: 'center' }
+    )
+
+    // Star rating box (col 5) with red vector stars
+    const starBoxX = startX + colWidths[0] + midW
+    pdf.rect(starBoxX, row2Y, colWidths[5], topH3)
+    if (overallSummaryScore != null) {
+      drawPdfStars(
+        pdf,
+        starBoxX + colWidths[5] / 2,
+        row2Y + topH3 / 2,
+        normalizeRoadConditionScore(overallSummaryScore),
+        5,
+        2.5,
+        5.5,
+        220,
+        38,
+        38
+      )
+    } else {
+      pdf.setTextColor(15, 23, 42)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(8)
+      pdf.text('-', starBoxX + colWidths[5] / 2, row2Y + 5.2, { align: 'center' })
+    }
+
+    // Bottom Detailed Table
+    const bottomY = row2Y + topH3 + 3.5
+    const bCols = [42, 115, 35, 50, 35] // total = 277 mm
+    const bH1 = 5.8
+    pdf.setFillColor(226, 232, 240)
+    pdf.rect(startX, bottomY, 277, bH1, 'F')
+    const bHeaders = ['AREA', 'POINT / SEGMENT', 'AVG', 'STAR RATING', 'POINT*']
+    currX = startX
+    bHeaders.forEach((hdr, idx) => {
+      pdf.rect(currX, bottomY, bCols[idx], bH1)
+      pdf.setTextColor(15, 23, 42)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6.5)
+      pdf.text(hdr, currX + bCols[idx] / 2, bottomY + 4.0, { align: 'center' })
+      currX += bCols[idx]
+    })
+
+    let currentY = bottomY + bH1
+    const availableHeight = 158 - currentY
+    const rowCount =
+      SUMMARY_CATEGORY_ORDER.reduce(
+        (acc, catKey) => acc + 1 + summaryRows.filter((r) => r.draft.categoryKey === catKey).length + 1,
+        0
+      )
+    const itemRowH = Math.max(4.5, Math.min(6.2, availableHeight / Math.max(rowCount, 1)))
+
+    SUMMARY_CATEGORY_ORDER.forEach((catKey) => {
+      const category = ROAD_CONDITION_CATEGORIES[catKey]
+      const rows = summaryRows.filter((r) => r.draft.categoryKey === catKey)
+      if (!rows.length) return
+
+      // Category banner
+      setPdfFill(pdf, category.color)
+      pdf.rect(startX, currentY, 277, itemRowH, 'F')
+      pdf.setDrawColor(15, 23, 42)
+      pdf.rect(startX, currentY, 277, itemRowH)
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(7)
+      pdf.text(SUMMARY_CATEGORY_LABELS[catKey], startX + 3, currentY + itemRowH * 0.68)
+      currentY += itemRowH
+
+      // Item rows
+      rows.forEach((row) => {
+        pdf.setFillColor(255, 255, 255)
+        pdf.rect(startX, currentY, 277, itemRowH, 'F')
+
+        // Col 0: Area
+        pdf.rect(startX, currentY, bCols[0], itemRowH)
+        pdf.setTextColor(15, 23, 42)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setFontSize(6.5)
+        pdf.text(category.label, startX + 3, currentY + itemRowH * 0.68)
+
+        // Col 1: Point label
+        pdf.rect(startX + bCols[0], currentY, bCols[1], itemRowH)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(row.pointLabel, startX + bCols[0] + 3, currentY + itemRowH * 0.68, { maxWidth: bCols[1] - 6 })
+
+        // Col 2: Avg score
+        pdf.rect(startX + bCols[0] + bCols[1], currentY, bCols[2], itemRowH)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text(formatSummaryScore(row.score), startX + bCols[0] + bCols[1] + bCols[2] / 2, currentY + itemRowH * 0.68, { align: 'center' })
+
+        // Col 3: Star rating with red vector stars
+        const starX = startX + bCols[0] + bCols[1] + bCols[2]
+        pdf.rect(starX, currentY, bCols[3], itemRowH)
+        if (row.score != null) {
+          drawPdfStars(
+            pdf,
+            starX + bCols[3] / 2,
+            currentY + itemRowH / 2,
+            normalizeRoadConditionScore(row.score),
+            5,
+            1.8,
+            4.2,
+            220,
+            38,
+            38
+          )
+        } else {
+          pdf.text('-', starX + bCols[3] / 2, currentY + itemRowH * 0.68, { align: 'center' })
+        }
+
+        // Col 4: Point %
+        const pX = starX + bCols[3]
+        pdf.rect(pX, currentY, bCols[4], itemRowH)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(formatSummaryPercent(row.score), pX + bCols[4] / 2, currentY + itemRowH * 0.68, { align: 'center' })
+
+        currentY += itemRowH
+      })
+
+      // Category subtotal row
+      pdf.setFillColor(226, 232, 240)
+      pdf.rect(startX, currentY, 277, itemRowH, 'F')
+
+      // Star rating label spanning cols 0 & 1
+      pdf.rect(startX, currentY, bCols[0] + bCols[1], itemRowH)
+      pdf.setTextColor(15, 23, 42)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6.8)
+      pdf.text('Star Rating', startX + 3, currentY + itemRowH * 0.68)
+
+      // Avg score
+      const catScore = categorySummaryScores[catKey]
+      pdf.rect(startX + bCols[0] + bCols[1], currentY, bCols[2], itemRowH)
+      pdf.text(formatSummaryScore(catScore), startX + bCols[0] + bCols[1] + bCols[2] / 2, currentY + itemRowH * 0.68, { align: 'center' })
+
+      // Stars
+      const sX = startX + bCols[0] + bCols[1] + bCols[2]
+      pdf.rect(sX, currentY, bCols[3], itemRowH)
+      if (catScore != null) {
+        drawPdfStars(
+          pdf,
+          sX + bCols[3] / 2,
+          currentY + itemRowH / 2,
+          normalizeRoadConditionScore(catScore),
+          5,
+          1.8,
+          4.2,
+          220,
+          38,
+          38
+        )
+      } else {
+        pdf.text('-', sX + bCols[3] / 2, currentY + itemRowH * 0.68, { align: 'center' })
+      }
+
+      // Point %
+      const pctX = sX + bCols[3]
+      pdf.rect(pctX, currentY, bCols[4], itemRowH)
+      pdf.text(formatSummaryPercent(catScore), pctX + bCols[4] / 2, currentY + itemRowH * 0.68, { align: 'center' })
+
+      currentY += itemRowH
+    })
+
+    // Slide 2 footer
+    pdf.setTextColor(100, 116, 139)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(6.5)
+    pdf.text(`Slide 2/${source.drafts.length + 3}`, 266, 162)
   }
 
   const drawPdfDetail = (pdf: any, source: PdfReportSource, draft: CategoryDraft, index: number, total: number, pageWidth: number) => {
@@ -973,7 +1404,8 @@ export function RoadConditionAnalysisClient({
       const x = 12 + photoIndex * 92
       pdf.setFillColor(248, 250, 252)
       pdf.roundedRect(x, imageY, imageWidth, imageHeight, 2, 2, 'F')
-      addImageSafe(pdf, getPhotoImageUrl(photo), x + 2, imageY + 2, imageWidth - 4, imageHeight - 4)
+      const imgUrl = photo.dataUrl || getPhotoImageUrl(photo)
+      addImageSafe(pdf, imgUrl, x + 2, imageY + 2, imageWidth - 4, imageHeight - 4)
     })
 
     const tableY = 98
@@ -991,10 +1423,24 @@ export function RoadConditionAnalysisClient({
       const y = tableY + 8 + rowIndex * rowHeight
       pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, rowIndex % 2 === 0 ? 255 : 250, rowIndex % 2 === 0 ? 255 : 252)
       pdf.rect(12, y, 270, rowHeight, 'F')
-      pdf.setTextColor(15, 23, 42)
+
+      // Score badge pill
+      if (row.score) {
+        if (row.score >= 4) pdf.setFillColor(220, 252, 231)
+        else if (row.score === 3) pdf.setFillColor(254, 240, 138)
+        else pdf.setFillColor(254, 226, 226)
+        pdf.roundedRect(15, y + 1.6, 8, rowHeight - 3.2, 1.2, 1.2, 'F')
+        if (row.score >= 4) pdf.setTextColor(21, 128, 61)
+        else if (row.score === 3) pdf.setTextColor(161, 98, 7)
+        else pdf.setTextColor(185, 28, 28)
+      } else {
+        pdf.setTextColor(100, 116, 139)
+      }
       pdf.setFont('helvetica', 'bold')
       pdf.setFontSize(7)
-      pdf.text(String(row.score || '-'), 18, y + 5.5)
+      pdf.text(String(row.score || '-'), 19, y + rowHeight / 2 + 1, { align: 'center' })
+
+      pdf.setTextColor(15, 23, 42)
       pdf.text(row.criterion.title, 37, y + 4.3, { maxWidth: 112 })
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(5.5)
@@ -1043,6 +1489,15 @@ export function RoadConditionAnalysisClient({
       const coverImage = await loadPdfAsset('/cover.png')
       const backCoverImage = await loadPdfAsset('/backcover.png')
 
+      // Ensure all draft photos have resolved data URLs so freshly uploaded photos always render
+      for (const draft of source.drafts) {
+        for (const photo of draft.photos) {
+          if (!photo.dataUrl || !isImageDataUrl(photo.dataUrl)) {
+            photo.dataUrl = await resolvePhotoDataUrl(photo)
+          }
+        }
+      }
+
       setPdfProgress({ mode, label: 'Membuat cover', current: 0.5, total })
       drawPdfCover(pdf, source, coverImage, pageWidth, pageHeight)
       setPdfProgress({ mode, label: 'Cover siap', current: 1, total })
@@ -1077,8 +1532,61 @@ export function RoadConditionAnalysisClient({
     }
   }
 
+  const downloadReportPptx = async (source: PdfReportSource, mode: PdfProgressState['mode'], filename: string) => {
+    setIsGeneratingPptx(true)
+    setPptxProgress({ mode, label: 'Menyiapkan PPTX...', current: 1, total: 3 })
+
+    try {
+      // Pre-resolve draft photos so freshly uploaded photos always render
+      for (const draft of source.drafts) {
+        for (const photo of draft.photos) {
+          if (!photo.dataUrl || !isImageDataUrl(photo.dataUrl)) {
+            photo.dataUrl = await resolvePhotoDataUrl(photo)
+          }
+        }
+      }
+
+      setPptxProgress({ mode, label: 'Memproses slide PPTX...', current: 2, total: 3 })
+      const response = await fetch('/api/reports/road-condition/pptx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(source),
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || `Gagal generate PPTX (${response.status})`)
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = filename
+      anchor.rel = 'noopener'
+      anchor.style.display = 'none'
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+
+      setPptxProgress({ mode, label: 'PPTX siap didownload', current: 3, total: 3 })
+      toast.success('PPTX berhasil didownload.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Gagal generate PPTX.'
+      toast.error(message)
+    } finally {
+      setIsGeneratingPptx(false)
+      setPptxProgress(null)
+    }
+  }
+
   const generateReportPdf = async () => {
     await downloadReportPdf(buildCurrentPdfSource(), 'report', `road-condition-${reportDate}.pdf`)
+  }
+
+  const generateReportPptx = async () => {
+    await downloadReportPptx(buildCurrentPdfSource(), 'report', `road-condition-${reportDate}.pptx`)
   }
 
   const generateHistoryPdf = async (row: HistoryRow) => {
@@ -1088,6 +1596,15 @@ export function RoadConditionAnalysisClient({
       return
     }
     await downloadReportPdf(source, 'history', `road-condition-history-${row.id}.pdf`)
+  }
+
+  const generateHistoryPptx = async (row: HistoryRow) => {
+    const source = buildHistoryPdfSource(row)
+    if (!source?.drafts.length) {
+      toast.error('Data report history belum siap untuk PPTX.')
+      return
+    }
+    await downloadReportPptx(source, 'history', `road-condition-history-${row.id}.pptx`)
   }
 
   const activeAssessmentRows = getActiveAssessmentRows(activeDraft)
@@ -1441,64 +1958,106 @@ export function RoadConditionAnalysisClient({
           </div>
         ) : null}
 
-        {activeDraft.analysis ? (
-          <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
-            <table className="w-full border-collapse text-left text-sm min-w-[500px]">
-              <thead>
-                <tr className="bg-slate-100 text-[11px] uppercase tracking-[0.12em] text-slate-600">
-                  <th className="w-[30%] px-3 py-2">Parameter</th>
-                  <th className="w-[10%] px-3 py-2">Nilai</th>
-                  <th className="w-[35%] px-3 py-2">Deskripsi</th>
-                  <th className="px-3 py-2">Rekomendasi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeAssessmentRows.map((row) => (
-                  <tr key={row.criterion.id} className="border-t border-slate-200 align-top">
-                    <td className="px-3 py-3">
-                      <div className="font-semibold text-slate-950">{row.criterion.title}</div>
-                      <div className="text-xs text-slate-500">{row.criterion.prompt}</div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Select
-                        value={row.score ? String(row.score) : '3'}
-                        onValueChange={(value) => updateAssessmentScore(activeDraft.id, row.criterion.id, value)}
-                      >
-                        <SelectTrigger className="h-9 w-24">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ROAD_CONDITION_SCORE_OPTIONS.map((score) => (
-                            <SelectItem key={score} value={String(score)}>
-                              {score}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-3 py-3 text-sm leading-snug text-slate-700">
-                      <span className="block font-medium text-slate-950">{row.description}</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <Textarea
-                        value={row.recommendation}
-                        onChange={(event) =>
-                          updateAssessmentRecommendation(activeDraft.id, row.criterion.id, event.target.value)
-                        }
-                        onBlur={() =>
-                          saveReport(draftsRef.current, true).catch((error) => {
-                            toast.error(error instanceof Error ? error.message : 'Gagal menyimpan rekomendasi.')
-                          })
-                        }
-                        className="min-h-20 resize-none bg-white text-sm leading-snug"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
+        {activeDraft.analysis ? (() => {
+          const availableCategoryCriteria = activeCategory.criteria
+          const currentCriterionIds = new Set(activeDraft.analysis.assessments.map((a) => a.criterionId))
+          const deletedCriteria = availableCategoryCriteria.filter((c) => !currentCriterionIds.has(c.id))
+
+          return (
+            <div className="space-y-3">
+              {deletedCriteria.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-emerald-300 bg-emerald-50/60 p-2.5 px-3">
+                  <div className="text-xs text-emerald-800 font-medium">
+                    Ada {deletedCriteria.length} parameter yang dihapus dari penilaian point ini.
+                  </div>
+                  <Select onValueChange={(criterionId) => restoreAssessmentCriterion(activeDraft.id, criterionId)}>
+                    <SelectTrigger className="h-8 gap-1.5 text-xs bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50">
+                      <Plus className="size-3.5" />
+                      <span>Pulihkan Parameter ({deletedCriteria.length})</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {deletedCriteria.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          + {c.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
+                <table className="w-full border-collapse text-left text-sm min-w-[540px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-[11px] uppercase tracking-[0.12em] text-slate-600">
+                      <th className="w-[28%] px-3 py-2">Parameter</th>
+                      <th className="w-[10%] px-3 py-2">Nilai</th>
+                      <th className="w-[32%] px-3 py-2">Deskripsi</th>
+                      <th className="px-3 py-2">Rekomendasi</th>
+                      <th className="w-[50px] px-2 py-2 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeAssessmentRows.map((row) => (
+                      <tr key={row.criterion.id} className="border-t border-slate-200 align-top">
+                        <td className="px-3 py-3">
+                          <div className="font-semibold text-slate-950">{row.criterion.title}</div>
+                          <div className="text-xs text-slate-500">{row.criterion.prompt}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Select
+                            value={row.score ? String(row.score) : '3'}
+                            onValueChange={(value) => updateAssessmentScore(activeDraft.id, row.criterion.id, value)}
+                          >
+                            <SelectTrigger className="h-9 w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ROAD_CONDITION_SCORE_OPTIONS.map((score) => (
+                                <SelectItem key={score} value={String(score)}>
+                                  {score}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-3 py-3 text-sm leading-snug text-slate-700">
+                          <span className="block font-medium text-slate-950">{row.description}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <Textarea
+                            value={row.recommendation}
+                            onChange={(event) =>
+                              updateAssessmentRecommendation(activeDraft.id, row.criterion.id, event.target.value)
+                            }
+                            onBlur={() =>
+                              saveReport(draftsRef.current, true).catch((error) => {
+                                toast.error(error instanceof Error ? error.message : 'Gagal menyimpan rekomendasi.')
+                              })
+                            }
+                            className="min-h-20 resize-none bg-white text-sm leading-snug"
+                          />
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-rose-500 hover:bg-rose-50 hover:text-rose-600"
+                            onClick={() => deleteAssessmentCriterion(activeDraft.id, row.criterion.id)}
+                            title="Hapus parameter ini dari penilaian"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })() : (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-medium text-slate-600">
             Jalankan AI pada kategori aktif dulu untuk membuka validasi skor.
           </div>
@@ -1512,10 +2071,25 @@ export function RoadConditionAnalysisClient({
             {drafts.length} point · {drafts.filter((draft) => draft.analysis).length} sudah dianalisis
           </p>
         </div>
-        <Button type="button" onClick={generateReportPdf} disabled={!allAnalyzed || isGeneratingPdf}>
-          {isGeneratingPdf ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-          Generate PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={generateReportPptx}
+            disabled={isGeneratingPdf || isGeneratingPptx}
+          >
+            {isGeneratingPptx ? <Loader2 className="size-4 animate-spin" /> : <Presentation className="size-4 text-orange-600" />}
+            Download PPTX
+          </Button>
+          <Button
+            type="button"
+            onClick={generateReportPdf}
+            disabled={isGeneratingPdf || isGeneratingPptx}
+          >
+            {isGeneratingPdf ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+            Generate PDF
+          </Button>
+        </div>
         {pdfProgress?.mode === 'report' ? (
           <div className="w-full space-y-2">
             <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
@@ -1525,6 +2099,18 @@ export function RoadConditionAnalysisClient({
             <Progress
               value={pdfProgress.total ? (pdfProgress.current / pdfProgress.total) * 100 : 0}
               className="h-2 bg-slate-100 [&>div]:bg-slate-950"
+            />
+          </div>
+        ) : null}
+        {pptxProgress?.mode === 'report' ? (
+          <div className="w-full space-y-2">
+            <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+              <span>{pptxProgress.label}</span>
+              <span>{pptxProgress.total ? Math.round((pptxProgress.current / pptxProgress.total) * 100) : 0}%</span>
+            </div>
+            <Progress
+              value={pptxProgress.total ? (pptxProgress.current / pptxProgress.total) * 100 : 0}
+              className="h-2 bg-slate-100 [&>div]:bg-orange-600"
             />
           </div>
         ) : null}
@@ -1688,7 +2274,7 @@ export function RoadConditionAnalysisClient({
           return (
             <article
               key={draft.id}
-              className="road-condition-slide grid aspect-video grid-rows-[auto_auto_1fr] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
+              className="road-condition-slide relative flex flex-col min-h-[560px] overflow-hidden rounded-[1.1rem] bg-white shadow-[0_18px_48px_rgba(8,32,51,0.12)] ring-1 ring-slate-200"
             >
               <header
                 className="grid gap-1.5 sm:gap-3 px-2 sm:px-5 py-1.5 sm:py-3 text-white md:grid-cols-[1fr_auto]"
@@ -1725,7 +2311,7 @@ export function RoadConditionAnalysisClient({
                 </div>
               </header>
 
-              <section className="grid grid-cols-3 gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-3">
+              <section className="grid grid-cols-3 gap-2 sm:gap-3 px-2.5 sm:px-4 py-2 sm:py-3 shrink-0">
                 {reportPhotos.map((photo, photoIndex) => (
                   <figure key={photoIndex} className="overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-200">
                     {photo.imageUrl ? (
@@ -1739,9 +2325,9 @@ export function RoadConditionAnalysisClient({
                 ))}
               </section>
 
-              <section className="px-2.5 sm:px-4 pb-4 sm:pb-7">
+              <section className="px-2.5 sm:px-4 pb-6 flex-1">
                 <div className="overflow-hidden rounded-lg ring-1 ring-slate-200">
-                <table className="h-full w-full border-collapse text-left text-[8px] sm:text-[9px] lg:text-[10px]">
+                <table className="w-full border-collapse text-left text-[8px] sm:text-[9px] lg:text-[10px]">
                   <thead>
                     <tr className="bg-slate-100 text-[6px] sm:text-[7px] lg:text-[8px] uppercase tracking-[0.12em] text-slate-600">
                       <th className="w-[7%] px-1 sm:px-2 py-0.5 sm:py-1">Nilai</th>
@@ -1783,7 +2369,7 @@ export function RoadConditionAnalysisClient({
                 </div>
               </section>
 
-              <footer className="absolute bottom-1.5 sm:bottom-2 right-2 sm:right-4 text-[7px] sm:text-[8px] lg:text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
+              <footer className="mt-auto px-4 pb-2 pt-1 text-right text-[7px] sm:text-[8px] lg:text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">
                 Slide {slideIndex + 3}/{totalSlides}
               </footer>
             </article>
@@ -1862,7 +2448,17 @@ export function RoadConditionAnalysisClient({
                             <Button type="button" variant="outline" size="icon" title="Lihat detail" onClick={() => setPreviewHistory(row)}>
                               <Eye className="size-3.5" />
                             </Button>
-                            <Button type="button" variant="outline" size="icon" title="Download PDF" onClick={() => generateHistoryPdf(row)} disabled={isGeneratingPdf}>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              title="Download PPTX"
+                              onClick={() => generateHistoryPptx(row)}
+                              disabled={isGeneratingPdf || isGeneratingPptx}
+                            >
+                              {isGeneratingPptx ? <Loader2 className="size-3.5 animate-spin" /> : <Presentation className="size-3.5 text-orange-600" />}
+                            </Button>
+                            <Button type="button" variant="outline" size="icon" title="Download PDF" onClick={() => generateHistoryPdf(row)} disabled={isGeneratingPdf || isGeneratingPptx}>
                               {isGeneratingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
                             </Button>
                             <Button type="button" variant="outline" size="icon" title="Edit report" onClick={() => loadHistoryRow(row)}>
@@ -1891,8 +2487,30 @@ export function RoadConditionAnalysisClient({
 
       <Dialog open={previewHistory !== null} onOpenChange={(open) => { if (!open) setPreviewHistory(null) }}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-auto">
-          <DialogHeader>
+          <DialogHeader className="flex flex-row items-center justify-between gap-3">
             <DialogTitle className="font-display text-lg">Detail History Report #{previewHistory?.id}</DialogTitle>
+            <div className="flex items-center gap-2 pr-6">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => previewHistory && generateHistoryPptx(previewHistory)}
+                disabled={isGeneratingPdf || isGeneratingPptx}
+              >
+                {isGeneratingPptx ? <Loader2 className="size-3.5 animate-spin" /> : <Presentation className="size-3.5 text-orange-600" />}
+                PPTX
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => previewHistory && generateHistoryPdf(previewHistory)}
+                disabled={isGeneratingPdf || isGeneratingPptx}
+              >
+                {isGeneratingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                PDF
+              </Button>
+            </div>
           </DialogHeader>
           {previewHistory?.reportData && (() => {
             const d = previewHistory.reportData

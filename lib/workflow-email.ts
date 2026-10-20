@@ -127,7 +127,7 @@ async function getActiveTransportSettings() {
 }
 
 export function getAppUrl(path = '') {
-  const baseUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  const baseUrl = getPublicAppUrl()
   if (!path) return baseUrl
   return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
 }
@@ -361,6 +361,7 @@ export function buildSopWinWorkflowEmailContent(input: {
 export async function resolveWorkflowTemplateContent(request: WorkflowTemplateContentRequest) {
   const template = await getActiveTemplate(request.templateCode)
   const rawVars = request.variables ?? {}
+  const publicAppUrl = getPublicAppUrl()
 
   const defaultApprovalUrl = getAppUrl('/dashboard/approval')
   const defaultDashboardUrl = getAppUrl('/dashboard')
@@ -447,6 +448,8 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     ? uniqueEmails(splitEmails(request.cc))
     : uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
   const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
+    .replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+
   let rawHtml = template?.htmlContent || request.fallbackHtml || ''
   if (resolvedCategoryBadge && (request.templateCode?.startsWith('apd_request_') || request.templateCode?.startsWith('material_tools_'))) {
     rawHtml = rawHtml.replace(
@@ -454,8 +457,12 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
       `$1{{categoryBadge}}$2`
     )
   }
-  const html = renderTemplate(rawHtml, variables, true)
-  const text = renderTemplate(template?.textContent || request.fallbackText, variables)
+
+  const rawHtmlClean = rawHtml.replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+  const rawTextClean = (template?.textContent || request.fallbackText || '').replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+
+  const html = renderTemplate(rawHtmlClean, variables, true).replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+  const text = renderTemplate(rawTextClean, variables).replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
 
   return {
     template,
@@ -623,7 +630,7 @@ export const ATTENDANCE_SITE_ROUTING_MAP: Record<
   'makassar': { category: 'PJO', approverName: 'Apriyanto', approverEmail: 'apriyanto.lastam@chitraparatama.co.id', approverTitle: 'Head of Service MVC' },
   'palembang': { category: 'PJO', approverName: 'Febrial Hariri', approverEmail: 'febrial.hariri@chitraparatama.co.id', approverTitle: 'Leader Technical Sumatera' },
   'pekanbaru': { category: 'PJO', approverName: 'Febrial Hariri', approverEmail: 'febrial.hariri@chitraparatama.co.id', approverTitle: 'Leader Technical Sumatera' },
-  'ppa bib': { category: 'PJO', approverName: 'Muchamat Nurkolis Majid', approverEmail: 'm.nurkolis@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
+  'ppa bib': { category: 'PJO', approverName: 'Revy Andyaksa Saroni', approverEmail: 'revy.andyaksa@chitraparatama.co.id', approverTitle: 'Technical Engineer' },
   'sangatta': { category: 'PJO', approverName: 'Saipudin', approverEmail: 'saipudin@chitraparatama.co.id', approverTitle: 'HSE Leader' },
   'sebamban': { category: 'PJO', approverName: 'Apriyanto', approverEmail: 'apriyanto.lastam@chitraparatama.co.id', approverTitle: 'Head of Service MVC' },
   'tj. adaro': { category: 'PJO', approverName: 'Tommy Indra Aldiny Rambe', approverEmail: 'tommy.indra@chitraparatama.co.id', approverTitle: 'Technical Leader' },
@@ -632,7 +639,7 @@ export const ATTENDANCE_SITE_ROUTING_MAP: Record<
   'ck bib': { category: 'HSE', approverName: 'Fathurrahman Sufi', approverEmail: '77169@chitraparatama.co.id', approverTitle: 'HSE Officer' },
   'ck bmb': { category: 'HSE', approverName: 'Danny Hangga Irawan', approverEmail: 'danny.hangga@chitraparatama.co.id', approverTitle: 'HSE Officer' },
   'ck kim': { category: 'HSE', approverName: 'Rizky Rahmadani', approverEmail: '77477@chitraparatama.co.id', approverTitle: 'HSE Officer' },
-  'ck mhu': { category: 'HSE', approverName: 'Irfan Rivai Remba', approverEmail: 'irfan.rifai@chitraparatama.co.id', approverTitle: 'HSE' },
+  'ck mhu': { category: 'HSE', approverName: 'Ade Saharu', approverEmail: '77170@chitraparatama.co.id', approverTitle: 'HSE Officer' },
   'vale - sorowako': { category: 'HSE', approverName: 'Muhammad Wahyu Ichsan', approverEmail: 'muhammad.w.ichsan@chitraparatama.co.id', approverTitle: 'HSE Officer' },
 }
 

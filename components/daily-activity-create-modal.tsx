@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Camera,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   Users,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -31,8 +32,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { SearchableSelect } from '@/components/ui/searchable-select'
-import { createDailyActivitySessionAction } from '@/app/dashboard/activity-hub/actions'
+import {
+  createDailyActivitySessionAction,
+  checkTeamMembersExistingDailyActivityAction,
+} from '@/app/dashboard/activity-hub/actions'
 import { uploadFile } from '@/app/actions/upload'
+import { compressImageFile } from '@/lib/client-image-compression'
 import { cn } from '@/lib/utils'
 import type { RouteFolder } from '@/lib/daily-activity'
 
@@ -103,6 +108,19 @@ export function DailyActivityCreateModal({
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<number[]>([])
   const [teamMemberSearchQuery, setTeamMemberSearchQuery] = useState('')
   const [teamMemberPickerOpen, setTeamMemberPickerOpen] = useState(false)
+  const [conflictMembers, setConflictMembers] = useState<Array<{
+    employeeId: number
+    employeeName: string
+    employeeSn?: string | null
+    sessionId: number
+    sessionCode: string
+    workDate: string
+    isAuthor: boolean
+    authorName: string
+    status: string
+  }>>([])
+  const [conflictWarningOpen, setConflictWarningOpen] = useState(false)
+  const [isCheckingConflicts, setIsCheckingConflicts] = useState(false)
 
   // Kamus Aktivitas modal & tree picker
   const [isPickerModalOpen, setIsPickerModalOpen] = useState(false)
@@ -201,6 +219,8 @@ export function DailyActivityCreateModal({
     customPhotoUrl: null,
     items: [],
   })
+
+  const validItemsRef = useRef<any[]>([])
 
   // Initialize form when opened
   useEffect(() => {
@@ -306,11 +326,8 @@ export function DailyActivityCreateModal({
           }
         }
 
-        for (const item of group.items || []) {
-          if (item.libraryActivityId != null) {
-            set.add(String(item.libraryActivityId))
-          }
-        }
+        // Note: Do NOT add item.libraryActivityId to groupedLibraryIdSet.
+        // Individual child activities must remain selectable from the library list.
       }
     }
     return set
@@ -497,15 +514,12 @@ export function DailyActivityCreateModal({
       toast.error('File harus berupa gambar (JPG, PNG, WebP)')
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran foto maksimal 5MB')
-      return
-    }
 
     setIsUploadingPhoto((prev) => ({ ...prev, [targetKey]: true }))
     try {
+      const compressedFile = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
       const formData = new FormData()
-      formData.append('file', file)
+      formData.append('file', compressedFile)
       formData.append('uploadTarget', 'daily_activity')
       const res = await uploadFile(formData)
       if (res.success && (res.readableUrl || res.url)) {
@@ -534,23 +548,28 @@ export function DailyActivityCreateModal({
           }
           toast.success('Foto evidence tersimpan')
         }
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(compressedFile)
       }
     } catch {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64Url = reader.result as string
-        if (typeof targetKey === 'number') {
-          updateItemRow(targetKey, 'photoUrl', base64Url)
-          updateItemRow(targetKey, 'photos', [base64Url])
-        } else if (targetKey === 'custom') {
-          setCreateForm((p) => ({ ...p, customPhotoUrl: base64Url }))
-        } else if (targetKey === 'assigned') {
-          setCreateForm((p) => ({ ...p, assignedPhotoUrl: base64Url }))
+      try {
+        const fallbackCompressed = await compressImageFile(file, { maxDimension: 1000, quality: 0.7, mimeType: 'image/webp' })
+        const reader = new FileReader()
+        reader.onload = () => {
+          const base64Url = reader.result as string
+          if (typeof targetKey === 'number') {
+            updateItemRow(targetKey, 'photoUrl', base64Url)
+            updateItemRow(targetKey, 'photos', [base64Url])
+          } else if (targetKey === 'custom') {
+            setCreateForm((p) => ({ ...p, customPhotoUrl: base64Url }))
+          } else if (targetKey === 'assigned') {
+            setCreateForm((p) => ({ ...p, assignedPhotoUrl: base64Url }))
+          }
+          toast.success('Foto evidence tersimpan')
         }
-        toast.success('Foto evidence tersimpan')
+        reader.readAsDataURL(fallbackCompressed)
+      } catch {
+        toast.error('Gagal mengunggah foto evidence')
       }
-      reader.readAsDataURL(file)
     } finally {
       setIsUploadingPhoto((prev) => ({ ...prev, [targetKey]: false }))
     }
@@ -668,19 +687,47 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           return
         }
         if ((it as any).requiresTireCount && (!it.tireCount || it.tireCount < 1)) {
-          toast.error(`Jumlah tire wajib diisi (minimal 1) untuk "${it.label}"!`)
+          toast.error(`Jumlah pcs / qty wajib diisi (minimal 1) untuk "${it.label}"!`)
           return
         }
         if ((it as any).requiresDuration !== false && (!it.startTime || !it.endTime)) {
           toast.error(`Durasi waktu mulai dan selesai wajib diisi untuk "${it.label}"!`)
           return
         }
-        if ((it as any).requiresPhoto && !it.photoUrl && (!it.photos || it.photos.length === 0)) {
-          toast.error(`Foto dokumentasi wajib diunggah untuk "${it.label}"!`)
-          return
-        }
       }
     }
+
+    const targetTeamIds = isTeamLog ? selectedTeamMemberIds : []
+    if (isTeamLog && targetTeamIds.length > 0) {
+      setIsCheckingConflicts(true)
+      try {
+        const checkRes = await checkTeamMembersExistingDailyActivityAction({
+          employeeIds: targetTeamIds,
+          workDate: createForm.workDate,
+        })
+        if (checkRes.success && checkRes.conflicts && checkRes.conflicts.length > 0) {
+          setConflictMembers(checkRes.conflicts)
+          setConflictWarningOpen(true)
+          setIsCheckingConflicts(false)
+          return
+        }
+      } catch (err) {
+        console.warn('Pre-check conflict error:', err)
+      } finally {
+        setIsCheckingConflicts(false)
+      }
+    }
+
+    validItemsRef.current = validItems
+    await executeSubmit(targetTeamIds)
+  }
+
+  const executeSubmit = async (teamMemberIdsToSubmit?: number[]) => {
+    const finalTeamIds = teamMemberIdsToSubmit !== undefined
+      ? teamMemberIdsToSubmit
+      : (isTeamLog ? selectedTeamMemberIds : [])
+
+    const validItems = validItemsRef.current
 
     setIsCreating(true)
     try {
@@ -696,23 +743,30 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
           superiorName: createForm.superiorName || undefined,
           managerEmployeeId: createForm.managerEmployeeId ? Number(createForm.managerEmployeeId) : undefined,
           managerName: createForm.managerName || undefined,
-          teamMemberEmployeeIds: isTeamLog ? selectedTeamMemberIds : [],
+          teamMemberEmployeeIds: isTeamLog ? finalTeamIds : [],
           customerName: createForm.customerName?.trim() || undefined,
-          notes: createForm.customerName ? `Customer: ${createForm.customerName.trim()}` : undefined,
-          items: validItems.map((it) => ({
-            label: it.label,
-            libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : undefined,
-            unitNumber: it.unitNumber,
-            startedAt: it.startedAt || `${createForm.workDate}T${it.startTime || '08:00'}:00`,
-            endedAt: it.endedAt || `${createForm.workDate}T${it.endTime || '08:30'}:00`,
-            duration: it.duration || '60m',
-            points: it.points || 10,
-            remark: it.remark,
-            materialUsed: it.materialUsed,
-            tireCount: it.tireCount ?? ((it as any).requiresTireCount ? 1 : 0),
-            photoUrl: it.photoUrl || (it.photos?.[0] ?? null),
-            photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
-          })),
+          items: validItems.map((it: any) => {
+            const itemTeamMemberIds = it.itemTeamMemberIds || (isTeamLog ? finalTeamIds : [])
+            const itemTeamMembers = it.itemTeamMembers || employees
+              .filter((e) => itemTeamMemberIds.includes(e.id))
+              .map((e) => ({ id: e.id, name: e.name, employeeSn: e.employeeId || undefined }))
+            return {
+              label: it.label,
+              libraryActivityId: it.libraryActivityId ? Number(it.libraryActivityId) : undefined,
+              unitNumber: it.unitNumber,
+              startedAt: it.startedAt || `${createForm.workDate}T${it.startTime || '08:00'}:00`,
+              endedAt: it.endedAt || `${createForm.workDate}T${it.endTime || '08:30'}:00`,
+              duration: it.duration || '60m',
+              points: it.points || 10,
+              remark: it.remark,
+              materialUsed: it.materialUsed,
+              tireCount: it.tireCount ?? ((it as any).requiresTireCount ? 1 : 0),
+              photoUrl: it.photoUrl || (it.photos?.[0] ?? null),
+              photos: it.photos || (it.photoUrl ? [it.photoUrl] : []),
+              itemTeamMemberIds,
+              itemTeamMembers,
+            }
+          }),
         })
       )
       if (res.success && res.sessionId) {
@@ -755,6 +809,8 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
         })
         setIsTeamLog(false)
         setSelectedTeamMemberIds([])
+        setConflictMembers([])
+        setConflictWarningOpen(false)
         setTeamMemberSearchQuery('')
         onOpenChange(false)
         if (onSuccess) onSuccess(res.sessionId)
@@ -969,7 +1025,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                       <div className="relative">
                         <Search className="absolute left-2.5 top-2.5 size-3.5 text-slate-400" />
                         <Input
-                          placeholder="Cari nama atau NIK..."
+                          placeholder="Cari nama atau SN..."
                           value={teamMemberSearchQuery}
                           onChange={(e) => setTeamMemberSearchQuery(e.target.value)}
                           className="h-8 pl-8 text-xs bg-white"
@@ -1374,7 +1430,6 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                             item.requiresTireCount ? 'Tire' : null,
                             item.requiresMaterialUsed ? 'Material' : null,
                             item.requiresLocationGps ? 'GPS' : null,
-                            item.requiresPhoto ? 'Photo Wajib' : null,
                           ].filter(Boolean)
 
                           return (
@@ -1475,7 +1530,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                             {item.requiresTireCount ? (
                               <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Jumlah Tire <span className="text-red-500 font-bold">*</span></Label>
+                                <Label className="text-xs font-semibold text-slate-700">Jumlah Pcs / Qty <span className="text-red-500 font-bold">*</span></Label>
                                 <Input
                                   type="number"
                                   min={1}
@@ -1488,22 +1543,19 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
 
                             <div className={cn(
                               "rounded-lg border p-2.5 space-y-2 bg-white",
-                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? (item.requiresPhoto ? "border-rose-300 bg-rose-50/30" : "border-amber-200 bg-amber-50/20") : "border-slate-200"
+                              !item.photoUrl && (!item.photos || item.photos.length === 0) ? "border-slate-200 bg-slate-50/20" : "border-slate-200"
                             )}>
                               <div className="flex items-center justify-between">
                                 <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence {item.requiresPhoto ? <span className="text-rose-600 font-bold text-[10px]">(Wajib)</span> : <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>}
+                                  <Camera className="size-3.5 text-slate-500" /> Photo Evidence <span className="text-slate-400 font-normal text-[10px]">(Opsional)</span>
                                 </span>
                                 {item.photoUrl ? (
                                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold">
                                     Foto Terunggah
                                   </Badge>
                                 ) : (
-                                  <span className={cn(
-                                    "text-[10px] font-medium border px-1.5 py-0.5 rounded",
-                                    item.requiresPhoto ? "text-rose-700 bg-rose-50 border-rose-200 font-bold" : "text-slate-500 bg-slate-100 border-slate-200"
-                                  )}>
-                                    {item.requiresPhoto ? "Foto wajib diunggah" : "Foto opsional"}
+                                  <span className="text-[10px] font-medium border px-1.5 py-0.5 rounded text-slate-500 bg-slate-100 border-slate-200">
+                                    Foto opsional
                                   </span>
                                 )}
                               </div>
@@ -1856,7 +1908,7 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
                 <div className="space-y-2 pt-1">
                   <div className="flex items-center gap-1.5 px-1 py-1 text-xs font-bold text-[#486275] uppercase tracking-wider">
                     <Sparkles className="size-3.5 text-amber-500" />
-                    <span>Aktivitas Mandiri / Kamus Lainnya ({standaloneLibraries.length})</span>
+                    <span>Semua Kamus Aktivitas ({standaloneLibraries.length})</span>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1955,6 +2007,90 @@ async function withActionRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 5
               PAKAI {(createForm.items || []).filter((i) => i?.label?.trim()).length} ACTIVITY
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Conflict Warning Dialog when team members already have daily activity */}
+      <Dialog open={conflictWarningOpen} onOpenChange={setConflictWarningOpen}>
+        <DialogContent className="max-w-md bg-white p-5 rounded-2xl shadow-2xl border border-slate-200">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
+                <AlertTriangle className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-sm font-bold text-slate-900">
+                  Peringatan: Anggota Tim Sudah Memiliki Aktivitas
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500 mt-0.5">
+                  Tanggal: <strong className="text-slate-700">{createForm.workDate}</strong>
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <p className="text-slate-600 leading-relaxed">
+              Anggota tim berikut telah tercatat memiliki laporan aktivitas pada tanggal ini:
+            </p>
+            <div className="max-h-48 overflow-y-auto space-y-2 rounded-xl bg-slate-50 p-2.5 border border-slate-200">
+              {conflictMembers.map((c) => (
+                <div key={`${c.employeeId}-${c.sessionId}`} className="flex items-start justify-between gap-2 p-2 rounded-lg bg-white border border-slate-200 shadow-2xs">
+                  <div>
+                    <span className="font-bold text-slate-800 block text-xs">{c.employeeName}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{c.employeeSn || '-'}</span>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline" className="text-[10px] font-semibold bg-amber-50 text-amber-800 border-amber-300">
+                      {c.isAuthor ? 'Laporan Mandiri' : `Tim: ${c.authorName}`}
+                    </Badge>
+                    <span className="text-[10px] text-slate-400 font-mono block mt-0.5">{c.sessionCode}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Jika Anda memilih <strong>Tetap Lanjutkan</strong>, sesi tim ini akan digabungkan (di-merge) ke dalam data harian karyawan terkait di dashboard monitoring tanpa menduplikasi baris.
+            </p>
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setConflictWarningOpen(false)}
+              className="text-xs text-slate-600"
+            >
+              Batal / Ubah
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const conflictIds = conflictMembers.map((c) => c.employeeId)
+                const safeIds = selectedTeamMemberIds.filter((id) => !conflictIds.includes(id))
+                setSelectedTeamMemberIds(safeIds)
+                setConflictWarningOpen(false)
+                executeSubmit(safeIds)
+              }}
+              className="text-xs text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+            >
+              Keluarkan Anggota Tersebut
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setConflictWarningOpen(false)
+                executeSubmit()
+              }}
+              className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+            >
+              Tetap Lanjutkan
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

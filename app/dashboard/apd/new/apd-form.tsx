@@ -16,7 +16,8 @@ import { SignaturePad } from "@/components/signature-pad";
 import { getUserSignatureAction, saveUserSignatureAction } from "@/app/actions/user-signature";
 import { FiveRCameraModal } from "@/components/five-r/five-r-camera-modal";
 import { SearchableEmployeeSelect } from "@/components/searchable-employee-select";
-import { type ApdRequestCategory, APD_ITEMS, type ApproverOption } from "@/lib/apd-status";
+import { type ApdRequestCategory, APD_ITEMS, APD_SIZE_OPTIONS, type ApproverOption } from "@/lib/apd-status";
+import { type ApdMasterItemDetail } from "@/lib/apd-data";
 
 type ApdItemInput = {
   id: string;
@@ -34,8 +35,13 @@ interface ApdRequestFormProps {
   employeeSn: string;
   departmentName: string | null;
   sectionName: string | null;
-  itemOptions: Record<Exclude<ApdRequestCategory, "APD">, string[]>;
+  itemOptions: Record<string, string[]>;
+  masterApdDetails?: ApdMasterItemDetail[];
   approverOptions?: ApproverOption[];
+  sectionOptions?: Array<{ id: number; name: string }>;
+  canSelectTargetSection?: boolean;
+  isHseUser?: boolean;
+  initialRequestedFor?: string;
   defaultMode?: "apd" | "tools" | "material";
   mobileWide?: boolean;
   requestId?: number;
@@ -49,6 +55,7 @@ interface ApdRequestFormProps {
   }>;
   initialApprover1Id?: string;
   initialApprover2Id?: string;
+  initialTargetSectionId?: number | null;
 }
 
 function parsePhotoPreviews(photoUrl?: string | null): string[] {
@@ -62,13 +69,24 @@ function parsePhotoPreviews(photoUrl?: string | null): string[] {
   return [photoUrl].filter(Boolean);
 }
 
+function isSafetyShoesItem(itemType?: string): boolean {
+  if (!itemType) return false;
+  const lower = itemType.trim().toLowerCase();
+  return lower.includes("sepatu") || lower.includes("shoes") || lower.includes("boot");
+}
+
 export function ApdRequestForm({
   employeeName,
   employeeSn,
   departmentName,
   sectionName,
   itemOptions,
+  masterApdDetails = [],
   approverOptions,
+  sectionOptions = [],
+  canSelectTargetSection = false,
+  isHseUser = false,
+  initialRequestedFor = "self",
   defaultMode = "apd",
   mobileWide = false,
   requestId,
@@ -76,10 +94,31 @@ export function ApdRequestForm({
   initialItems,
   initialApprover1Id = "",
   initialApprover2Id = "",
+  initialTargetSectionId = null,
 }: ApdRequestFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [requestMode, setRequestMode] = useState<"apd" | "tools" | "material">(defaultMode);
+
+  const getItemSizeConfig = (itemType: string) => {
+    if (!itemType) return { hasSize: false, sizeOptions: [] as string[] };
+    const matchedMaster = masterApdDetails.find(
+      (m) => m.name.trim().toLowerCase() === itemType.trim().toLowerCase()
+    );
+    if (matchedMaster && matchedMaster.hasSize && matchedMaster.sizeOptions && matchedMaster.sizeOptions.length > 0) {
+      return { hasSize: true, sizeOptions: matchedMaster.sizeOptions };
+    }
+    if (isSafetyShoesItem(itemType) || matchedMaster?.hasSize) {
+      const defaultOpts = (APD_SIZE_OPTIONS as unknown as string[]);
+      return {
+        hasSize: true,
+        sizeOptions: matchedMaster?.sizeOptions && matchedMaster.sizeOptions.length > 0 ? matchedMaster.sizeOptions : defaultOpts,
+      };
+    }
+    return { hasSize: false, sizeOptions: [] as string[] };
+  };
+  const [requestedFor, setRequestedFor] = useState<"self" | "service" | "repair">((initialRequestedFor as any) || "self");
+  const [targetSectionId, setTargetSectionId] = useState<string>(initialTargetSectionId ? String(initialTargetSectionId) : "");
   const [notes, setNotes] = useState(initialNotes);
   const [approver1Id, setApprover1Id] = useState<string>(initialApprover1Id);
   const [approver2Id, setApprover2Id] = useState<string>(initialApprover2Id);
@@ -287,7 +326,11 @@ export function ApdRequestForm({
       submitData.append("notes", notes);
       submitData.append("signatureUrl", signatureUrl);
       submitData.append("requestCategory", requestMode === "apd" ? "APD" : requestMode.toUpperCase());
+      submitData.append("requestedFor", requestedFor);
       submitData.append("items", JSON.stringify(processedItems));
+      if (targetSectionId) {
+        submitData.append("targetSectionId", targetSectionId);
+      }
       if (approver1Id) {
         submitData.append("approver1Id", approver1Id);
       }
@@ -312,47 +355,129 @@ export function ApdRequestForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Card className="border-border shadow-sm bg-muted/50">
-        <CardContent className={mobileWide ? "p-2 sm:p-6" : "p-4 sm:p-6"}>
-          <h3 className="text-sm font-semibold text-foreground mb-4">Informasi Pemohon (Otomatis)</h3>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Tanggal Pengajuan</p>
-              <p className="font-medium text-sm">{today}</p>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <Card className="border-slate-200/80 bg-slate-50/70 shadow-2xs rounded-2xl">
+        <CardContent className={mobileWide ? "p-3.5 sm:p-5" : "p-4 sm:p-5"}>
+          <div className="flex items-center justify-between mb-2.5 border-b border-slate-200/60 pb-2">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Informasi Pemohon & Seksi Target</h3>
+            <span className="text-[10px] font-semibold bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded-full">Otomatis</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4 sm:gap-4">
+            <div>
+              <p className="text-[11px] text-slate-500">Nama Karyawan</p>
+              <p className="font-semibold text-slate-900 truncate">{employeeName}</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Nama Karyawan</p>
-              <p className="font-medium text-sm">{employeeName}</p>
+            <div>
+              <p className="text-[11px] text-slate-500">SN Karyawan</p>
+              <p className="font-semibold text-slate-900">{employeeSn}</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">NIK / SN</p>
-              <p className="font-medium text-sm">{employeeSn}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Departemen / Section</p>
-              <p className="font-medium text-sm">
+            <div>
+              <p className="text-[11px] text-slate-500">Departemen / Section Asal</p>
+              <p className="font-semibold text-slate-900 truncate">
                 {departmentName || "-"} {sectionName ? `/ ${sectionName}` : ""}
               </p>
             </div>
+            <div>
+              <p className="text-[11px] text-slate-500">Tanggal Pengajuan</p>
+              <p className="font-semibold text-slate-900">{today}</p>
+            </div>
           </div>
+
+          {isHseUser && (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/60">
+              <Label className="text-xs font-semibold text-slate-700 block mb-1">
+                Kategori Peruntukan APD <span className="text-rose-500">*</span>
+              </Label>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Pilih kelompok peruntukan untuk mengarahkan barang ke Rekap Summary APD yang sesuai.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRequestedFor("self")}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                    requestedFor === "self"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
+                  }`}
+                >
+                  <span>Internal HSE</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequestedFor("service")}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                    requestedFor === "service"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
+                  }`}
+                >
+                  <span>Manpower Service</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequestedFor("repair")}
+                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs transition-all cursor-pointer ${
+                    requestedFor === "repair"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-medium"
+                  }`}
+                >
+                  <span>Manpower Repair</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                {requestedFor === "self" && "Pengajuan untuk tim Internal HSE. Pesanan akan dikelompokkan ke Summary APD HSE."}
+                {requestedFor === "service" && "Pengajuan untuk operasional Manpower Service. Pesanan akan dikelompokkan ke Summary APD Service."}
+                {requestedFor === "repair" && "Pengajuan untuk operasional Manpower Repair. Pesanan akan dikelompokkan ke Summary APD Repair."}
+              </p>
+            </div>
+          )}
+
+          {canSelectTargetSection && sectionOptions.length > 0 && !isHseUser && (
+            <div className="mt-3.5 pt-3 border-t border-slate-200/60">
+              <Label htmlFor="targetSectionId" className="text-xs font-semibold text-slate-700">
+                Seksi Pemilik / Tujuan APD <span className="text-amber-600 font-normal">(Khusus Admin)</span>
+              </Label>
+              <p className="text-[11px] text-slate-500 mb-1.5">
+                Pilih seksi yang APD-nya dipesankan. Pengajuan akan dirutekan ke Section Head seksi target dan masuk ke Summary APD seksi tersebut.
+              </p>
+              <Select value={targetSectionId} onValueChange={setTargetSectionId}>
+                <SelectTrigger id="targetSectionId" className="h-10 bg-white border-slate-300 text-xs">
+                  <SelectValue placeholder={`Default: Seksi Pemohon (${sectionName || "Seksi Asal"})`} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Default: Seksi Pemohon ({sectionName || "Seksi Asal"})</SelectItem>
+                  {sectionOptions.map((sec) => (
+                    <SelectItem key={sec.id} value={String(sec.id)}>
+                      {sec.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <Card className="border-border shadow-sm">
-        <CardContent className={`${mobileWide ? "p-2" : "p-4"} space-y-6 sm:p-6`}>
-          <div className="flex gap-2 rounded-lg bg-muted p-1" role="tablist" aria-label="Jenis request barang">
+      <Card className="border-slate-200/80 bg-white shadow-2xs rounded-2xl">
+        <CardContent className={`${mobileWide ? "p-3 sm:p-6" : "p-4 sm:p-6"} space-y-5`}>
+          <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1.5" role="tablist" aria-label="Jenis request barang">
             {([
-              ["apd", "Request APD"],
-              ["tools", "Request Tools"],
-              ["material", "Request Material"],
+              ["apd", "APD"],
+              ["tools", "Tools"],
+              ["material", "Material"],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 role="tab"
                 aria-selected={requestMode === value}
-                className={`min-h-12 flex-1 rounded-md px-4 text-sm font-medium transition ${requestMode === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`h-10 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+                  requestMode === value 
+                    ? "bg-white text-blue-700 shadow-xs font-bold" 
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
                 onClick={() => {
                   setRequestMode(value);
                   setItems((prev) => prev.map((item) => ({ ...item, itemType: value === "apd" ? APD_ITEMS[0] : "" })));
@@ -364,33 +489,49 @@ export function ApdRequestForm({
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">
-                {requestMode === "apd" ? "Daftar Item APD" : `Daftar ${requestMode === "tools" ? "Tools" : "Material"}`}
-              </h3>
-              <Button type="button" variant="outline" size="sm" onClick={addItem} className="gap-2">
-                <Plus className="size-4" /> Tambah Item
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                  {requestMode === "apd" ? "Daftar Item APD" : `Daftar ${requestMode === "tools" ? "Tools" : "Material"}`}
+                </h3>
+                <p className="text-xs text-slate-500">Pilih & atur jumlah barang yang diajukan</p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={addItem} className="h-9 gap-1.5 rounded-xl border-slate-200 text-xs font-semibold hover:bg-slate-50">
+                <Plus className="size-3.5 text-blue-600" /> Tambah Item
               </Button>
             </div>
 
             {items.map((item, index) => (
-              <div key={item.id} className="relative rounded-lg border bg-card p-4 shadow-sm">
-                <div className="absolute right-4 top-4">
+              <div key={item.id} className="relative rounded-2xl border border-gray-200/80 bg-white p-4 sm:p-5 shadow-2xs space-y-3.5">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100">
+                    Item #{index + 1}
+                  </span>
                   {items.length > 1 && (
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.id)} className="h-8 w-8 text-destructive">
-                      <Trash2 className="size-4" />
+                    <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.id)} className="h-7 w-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg">
+                      <Trash2 className="size-3.5" />
                     </Button>
                   )}
                 </div>
-                
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>{requestMode === "apd" ? "Jenis APD" : `Barang / ${requestMode === "tools" ? "Tools" : "Material"}`}</Label>
+
+                <div className="space-y-3.5">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-slate-700">{requestMode === "apd" ? "Jenis APD" : `Barang / ${requestMode === "tools" ? "Tools" : "Material"}`}</Label>
                     {requestMode === "apd" ? (
-                      <Select value={item.itemType} onValueChange={(val) => updateItem(item.id, "itemType", val)}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                      <Select
+                        value={item.itemType}
+                        onValueChange={(val) => {
+                          updateItem(item.id, "itemType", val);
+                          if (!isSafetyShoesItem(val)) {
+                            updateItem(item.id, "notes", "");
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"><SelectValue placeholder="Pilih Jenis APD..." /></SelectTrigger>
                         <SelectContent>
-                          {APD_ITEMS.map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                          {(itemOptions.APD && itemOptions.APD.length > 0 ? itemOptions.APD : APD_ITEMS).map((opt) => (
+                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -399,6 +540,7 @@ export function ApdRequestForm({
                           list={`apd-item-options-${requestMode}`}
                           placeholder={`Pilih atau tulis ${requestMode === "tools" ? "tools" : "material"}`}
                           value={item.itemType}
+                          className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
                           onChange={(e) => updateItem(item.id, "itemType", e.target.value.toUpperCase())}
                         />
                         <datalist id={`apd-item-options-${requestMode}`}>
@@ -410,64 +552,137 @@ export function ApdRequestForm({
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Jenis Permintaan</Label>
-                    <Select value={item.requestType} onValueChange={(val) => updateItem(item.id, "requestType", val)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="baru">Baru</SelectItem>
-                        <SelectItem value="pergantian">Pergantian</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Jenis Permintaan</Label>
+                      <Select value={item.requestType} onValueChange={(val) => updateItem(item.id, "requestType", val)}>
+                        <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="baru">Baru</SelectItem>
+                          <SelectItem value="pergantian">Pergantian</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Jumlah</Label>
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        value={item.quantity} 
+                        className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 1)} 
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Jumlah</Label>
-                    <Input 
-                      type="number" 
-                      min="1" 
-                      value={item.quantity} 
-                      onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 1)} 
-                    />
-                  </div>
+                  {requestMode === "apd" ? (
+                    (() => {
+                      const { hasSize, sizeOptions } = getItemSizeConfig(item.itemType);
+                      if (!hasSize && !isSafetyShoesItem(item.itemType)) {
+                        return (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-semibold text-slate-700">Keterangan / Catatan (Opsional)</Label>
+                            <Input
+                              placeholder="Mis: Keterangan tambahan barang"
+                              value={item.notes}
+                              className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
+                              onChange={(e) => updateItem(item.id, "notes", e.target.value)}
+                            />
+                          </div>
+                        );
+                      }
+                      const availableSizes = sizeOptions.length > 0 ? sizeOptions : (APD_SIZE_OPTIONS as unknown as string[]);
+                      const isCustomValue = Boolean(item.notes) && !availableSizes.includes(item.notes);
 
-                  <div className="space-y-2 lg:col-span-1">
-                    <Label>Keterangan/Ukuran</Label>
-                    <Input 
-                      placeholder="Mis: Ukuran 42" 
-                      value={item.notes} 
-                      onChange={(e) => updateItem(item.id, "notes", e.target.value)} 
-                    />
-                  </div>
+                      return (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-slate-700">
+                            {isSafetyShoesItem(item.itemType) ? "Ukuran Sepatu" : "Pilihan Ukuran (Size)"}
+                          </Label>
+                          <div className="space-y-2">
+                            <Select
+                              value={
+                                availableSizes.includes(item.notes)
+                                  ? item.notes
+                                  : item.notes ? "custom" : ""
+                              }
+                              onValueChange={(val) => {
+                                if (val === "custom") {
+                                  updateItem(
+                                    item.id,
+                                    "notes",
+                                    item.notes && !availableSizes.includes(item.notes) ? item.notes : "Custom"
+                                  );
+                                } else {
+                                  updateItem(item.id, "notes", val);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500">
+                                <SelectValue placeholder={`Pilih ${isSafetyShoesItem(item.itemType) ? "Ukuran Sepatu" : "Ukuran"}...`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableSizes.map((sizeOpt) => (
+                                  <SelectItem key={sizeOpt} value={sizeOpt}>
+                                    {sizeOpt}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="custom">Lainnya (Tulis Manual)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {isCustomValue && (
+                              <Input
+                                placeholder="Tulis ukuran manual..."
+                                value={item.notes === "Custom" ? "" : item.notes}
+                                className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
+                                onChange={(e) => updateItem(item.id, "notes", e.target.value)}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Keterangan/Ukuran</Label>
+                      <Input 
+                        placeholder="Mis: Ukuran 42 / Keterangan" 
+                        value={item.notes} 
+                        className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) => updateItem(item.id, "notes", e.target.value)} 
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {item.requestType === "pergantian" && (
-                  <div className="mt-4 space-y-3 rounded-lg border border-dashed border-rose-300 bg-rose-50/40 p-3.5">
+                  <div className="mt-3 space-y-3 rounded-xl border border-dashed border-rose-200 bg-rose-50/30 p-3.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <Label className="text-xs font-semibold text-rose-900 flex items-center gap-1.5">
-                          <AlertCircle className="size-4 text-rose-600" />
+                          <AlertCircle className="size-3.5 text-rose-600" />
                           Foto Bukti Barang Rusak/Lama (Wajib Minimal 3 Foto) <span className="text-rose-600">*</span>
                         </Label>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                        <p className="text-[11px] text-slate-500 mt-0.5">
                           Lampirkan minimal 3 foto jelas (tampak depan, area rusak/aus, dan detail/label barang lama).
                         </p>
                       </div>
-                      <div className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+                      <div className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
                         (item.photoPreviews || []).length >= 3 
                           ? "bg-emerald-100 text-emerald-800 border border-emerald-300" 
                           : "bg-amber-100 text-amber-900 border border-amber-300"
                       }`}>
                         {(item.photoPreviews || []).length >= 3 ? (
                           <>
-                            <CheckCircle2 className="size-3.5 text-emerald-700" />
+                            <CheckCircle2 className="size-3 text-emerald-700" />
                             <span>{(item.photoPreviews || []).length}/3 Foto (Lengkap)</span>
                           </>
                         ) : (
                           <>
-                            <AlertCircle className="size-3.5 text-amber-700" />
+                            <AlertCircle className="size-3 text-amber-700" />
                             <span>{(item.photoPreviews || []).length}/3 Foto (Kurang {3 - (item.photoPreviews || []).length})</span>
                           </>
                         )}
@@ -481,15 +696,15 @@ export function ApdRequestForm({
                         variant="outline"
                         size="sm"
                         onClick={() => setActiveCameraItemId(item.id)}
-                        className="bg-white border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 text-xs font-semibold gap-1.5 shadow-xs"
+                        className="bg-white border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold gap-1.5 rounded-xl h-9 shadow-2xs"
                       >
-                        <Camera className="size-4 text-rose-600" />
-                        Buka Kamera (Foto Langsung)
+                        <Camera className="size-3.5 text-rose-600" />
+                        Foto Langsung (Kamera)
                       </Button>
 
-                      <label className="inline-flex items-center justify-center rounded-md text-xs font-semibold ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-white hover:bg-slate-50 text-slate-700 h-9 px-3 py-2 cursor-pointer gap-1.5 shadow-xs">
-                        <ImageIcon className="size-4 text-slate-600" />
-                        Pilih dari File / Galeri
+                      <label className="inline-flex items-center justify-center rounded-xl text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 h-9 px-3 cursor-pointer gap-1.5 shadow-2xs">
+                        <ImageIcon className="size-3.5 text-slate-600" />
+                        Pilih Galeri / File
                         <input
                           type="file"
                           accept="image/*"
@@ -504,16 +719,16 @@ export function ApdRequestForm({
                     </div>
 
                     {/* Previews grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 pt-1">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 pt-1">
                       {(item.photoPreviews || []).map((previewUrl, pIdx) => (
-                        <div key={pIdx} className="relative group rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs aspect-square flex items-center justify-center">
+                        <div key={pIdx} className="relative group rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs aspect-square flex items-center justify-center">
                           <img
                             src={previewUrl}
                             alt={`Foto ${pIdx + 1}`}
                             className="w-full h-full object-cover"
                           />
-                          <div className="absolute top-1 left-1 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
-                            Foto #{pIdx + 1}
+                          <div className="absolute top-1 left-1 bg-black/70 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md">
+                            #{pIdx + 1}
                           </div>
                           <button
                             type="button"
@@ -530,25 +745,19 @@ export function ApdRequestForm({
                       <button
                         type="button"
                         onClick={() => setActiveCameraItemId(item.id)}
-                        className="border-2 border-dashed border-rose-300 hover:border-rose-400 bg-rose-50/50 hover:bg-rose-50 rounded-md aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-2 text-center shadow-xs text-rose-800"
+                        className="border-2 border-dashed border-rose-300 hover:border-rose-400 bg-rose-50/50 hover:bg-rose-50 rounded-xl aspect-square flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all p-1.5 text-center shadow-2xs text-rose-800"
                       >
-                        <Camera className="size-5 text-rose-600" />
+                        <Camera className="size-4 text-rose-600" />
                         <span className="text-[10px] font-bold">
-                          Ambil Kamera
-                        </span>
-                        <span className="text-[8pt] text-rose-600/70">
-                          (Foto Langsung)
+                          Kamera
                         </span>
                       </button>
 
                       {/* Add photo trigger card: Galeri/File */}
-                      <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white/80 hover:bg-white rounded-md aspect-square flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-2 text-center shadow-xs">
-                        <ImageIcon className="size-5 text-slate-500" />
+                      <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50/50 rounded-xl aspect-square flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all p-1.5 text-center shadow-2xs">
+                        <ImageIcon className="size-4 text-slate-500" />
                         <span className="text-[10px] font-semibold text-slate-700">
-                          Upload File
-                        </span>
-                        <span className="text-[8pt] text-slate-400">
-                          {(item.photoPreviews || []).length < 3 ? `(Wajib ${3 - (item.photoPreviews || []).length} lagi)` : "(Galeri)"}
+                          Upload
                         </span>
                         <input
                           type="file"
@@ -570,18 +779,18 @@ export function ApdRequestForm({
 
           {/* Section: Penyetuju / Approver Selection (Material & Tools) */}
           {(requestMode === "tools" || requestMode === "material") && (
-            <div className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+            <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div>
-                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                     <ShieldCheck className="size-4 text-emerald-600" />
                     Persetujuan / Approver Permohonan
                   </h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-slate-500 mt-0.5">
                     Pilih 2 atasan yang berwenang menyetujui pengajuan {requestMode === "tools" ? "Tools" : "Material"} ini secara berjenjang.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                   Wajib 2 Tingkat
                 </span>
               </div>
@@ -589,38 +798,38 @@ export function ApdRequestForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold text-foreground">
+                    <Label className="text-xs font-semibold text-slate-800">
                       Approver 1 (Atasan Langsung / Pemeriksa) <span className="text-destructive">*</span>
                     </Label>
-                    <span className="text-[10px] bg-muted text-muted-foreground font-medium px-2 py-0.5 rounded">Tahap 1</span>
+                    <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">Tahap 1</span>
                   </div>
                   <SearchableEmployeeSelect
                     employees={approverOptions || []}
                     value={approver1Id}
                     onValueChange={(val) => setApprover1Id(val)}
-                    placeholder="Pilih Atasan Langsung (Nama / NIK)..."
+                    placeholder="Pilih Atasan Langsung (Nama / SN)..."
                     showLabel={false}
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-slate-500">
                     Menerima review pertama di Inbox Approval, Email, dan Bell.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-semibold text-foreground">
+                    <Label className="text-xs font-semibold text-slate-800">
                       Approver 2 (Section Head / Penyetuju Final) <span className="text-destructive">*</span>
                     </Label>
-                    <span className="text-[10px] bg-muted text-muted-foreground font-medium px-2 py-0.5 rounded">Tahap 2</span>
+                    <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">Tahap 2</span>
                   </div>
                   <SearchableEmployeeSelect
                     employees={approverOptions || []}
                     value={approver2Id}
                     onValueChange={(val) => setApprover2Id(val)}
-                    placeholder="Pilih Section Head / Penyetuju (Nama / NIK)..."
+                    placeholder="Pilih Section Head / Penyetuju (Nama / SN)..."
                     showLabel={false}
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-slate-500">
                     Menerima review setelah Approver 1 memberikan persetujuan.
                   </p>
                 </div>
@@ -628,21 +837,26 @@ export function ApdRequestForm({
             </div>
           )}
 
-          <div className="space-y-2">
-            <Label>Catatan Tambahan (Opsional)</Label>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-slate-700">Remarks (Opsional)</Label>
+              <span className="text-[11px] font-medium text-slate-400">{notes.length}/150</span>
+            </div>
             <Textarea 
-              placeholder="Tuliskan catatan tambahan jika ada..." 
+              placeholder="Tuliskan remarks / catatan jika ada (maks. 150 karakter)..." 
               value={notes} 
+              maxLength={150}
               onChange={(e) => setNotes(e.target.value)} 
               rows={3} 
+              className="rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
           <div className="space-y-3 pt-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <Label className="text-sm font-semibold text-foreground">Tanda Tangan Digital (Opsional)</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
+                <Label className="text-xs sm:text-sm font-bold text-slate-900">Tanda Tangan Digital (Opsional)</Label>
+                <p className="text-xs text-slate-500 mt-0.5">
                   Tanda tangan verifikasi pemohon pengajuan barang.
                 </p>
               </div>
@@ -653,7 +867,7 @@ export function ApdRequestForm({
                   variant="outline"
                   size="sm"
                   onClick={() => setIsDrawingCustomSig(true)}
-                  className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1.5 shadow-2xs cursor-pointer"
+                  className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1.5 rounded-lg shadow-2xs cursor-pointer"
                 >
                   <Edit3 className="size-3" /> Ubah / Gambar Manual
                 </Button>
@@ -668,7 +882,7 @@ export function ApdRequestForm({
                     setIsDrawingCustomSig(false);
                     setCustomSignatureDataUrl(null);
                   }}
-                  className="h-7 text-xs border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold gap-1 shadow-2xs cursor-pointer"
+                  className="h-7 text-xs border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold gap-1 rounded-lg shadow-2xs cursor-pointer"
                 >
                   <CheckCircle2 className="size-3 text-emerald-600" /> Gunakan TTD Profil
                 </Button>
@@ -677,7 +891,7 @@ export function ApdRequestForm({
 
             {profileSignature && !isDrawingCustomSig ? (
               <div className="space-y-2">
-                <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-center min-h-[110px] relative shadow-2xs">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 flex items-center justify-center min-h-[110px] relative shadow-2xs">
                   <img
                     src={profileSignature}
                     alt="Tanda Tangan Profil HERO"
@@ -702,7 +916,7 @@ export function ApdRequestForm({
                   height={150}
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-[11px] text-slate-500">
                     Goreskan tanda tangan dengan mouse atau sentuhan jari.
                   </span>
                   {customSignatureDataUrl && (
@@ -725,7 +939,7 @@ export function ApdRequestForm({
                           toast.error(e.message || "Gagal menyimpan ke profil.");
                         }
                       }}
-                      className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1 shadow-2xs cursor-pointer"
+                      className="h-7 text-xs border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 font-semibold gap-1 rounded-lg shadow-2xs cursor-pointer"
                     >
                       <ShieldCheck className="size-3.5 text-indigo-600" /> Simpan ke Profil HERO
                     </Button>
@@ -737,11 +951,11 @@ export function ApdRequestForm({
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-3">
-        <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}>
+      <div className="flex flex-col-reverse sm:flex-row justify-end gap-2.5 pt-1">
+        <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting} className="h-11 rounded-xl px-5 text-slate-700 font-semibold border-slate-200 w-full sm:w-auto">
           Batal
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting} className="h-11 rounded-xl px-6 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm w-full sm:w-auto">
           {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
           Kirim Permohonan
         </Button>

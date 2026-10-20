@@ -39,6 +39,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { OsmMiniMap } from '@/components/ui/osm-mini-map'
+import { getTodayDateString } from '@/lib/indonesia-timezone'
 
 type FlowState =
   | 'idle'
@@ -268,7 +270,7 @@ export function FaceAttendanceV2Client({
 
   const [selectedShift, setSelectedShift] = useState<string>(() => {
     // 1. Check if today's roster specifically specifies NS or DS
-    const todayStr = new Date().toISOString().slice(0, 10)
+    const todayStr = getTodayDateString()
     const todayRoster = rosterCalendar.days.find((d) => d.date === todayStr)
     if (todayRoster?.code) {
       const code = todayRoster.code.toUpperCase()
@@ -1171,25 +1173,14 @@ export function FaceAttendanceV2Client({
                 </div>
               </div>
 
-              {/* ─── REAL OPENSTREETMAP MINI MAP WIDGET ─── */}
+              {/* ─── REAL OPENSTREETMAP MINI MAP WIDGET (Leaflet Native, No Iframe Blocking) ─── */}
               {gps ? (
-                <div className="relative h-32 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                  <iframe
-                    title="Real OpenStreetMap Mini Map"
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    scrolling="no"
-                    marginHeight={0}
-                    marginWidth={0}
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${(gps.longitude - 0.0025).toFixed(5)},${(gps.latitude - 0.0025).toFixed(5)},${(gps.longitude + 0.0025).toFixed(5)},${(gps.latitude + 0.0025).toFixed(5)}&layer=mapnik&marker=${gps.latitude.toFixed(5)},${gps.longitude.toFixed(5)}`}
-                    className="h-full w-full contrast-105 filter"
-                  />
-                  <div className="absolute top-2 left-2 flex items-center gap-2 rounded-lg border border-white/20 bg-slate-900/90 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg">
-                    <span className="size-2 shrink-0 rounded-full bg-emerald-400" />
-                    <span className="max-w-[210px] truncate">📍 {locationName || siteName}</span>
-                  </div>
-                </div>
+                <OsmMiniMap
+                  latitude={gps.latitude}
+                  longitude={gps.longitude}
+                  accuracy={`± ${gps.accuracy} meter`}
+                  className="h-32"
+                />
               ) : (
                 <div className="relative flex min-h-32 flex-col items-center justify-center gap-2 overflow-hidden rounded-xl border border-rose-200 bg-rose-50/60 p-4 text-center">
                   <div className="flex items-center gap-2 text-rose-700 font-bold text-xs">

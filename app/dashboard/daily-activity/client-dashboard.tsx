@@ -1,20 +1,27 @@
 'use client'
 
-import React, { useState, useMemo, useEffect, useTransition } from 'react'
+import React, { useState, useMemo, useEffect, useTransition, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowDownRight,
+  ArrowUp,
+  ArrowUpDown,
   ArrowUpRight,
+  BarChart3,
   Bell,
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   ExternalLink,
   Eye,
+  FileSpreadsheet,
   FileText,
   Filter,
   Image as ImageIcon,
@@ -37,14 +44,17 @@ import {
 import { toast } from 'sonner'
 
 import {
-  DailyActivityDashboardData,
-  EmployeeActivityRow,
-  UnsubmittedEmployeeRow,
-  DelayedJobItem,
-  TimelineActivityEvent,
-} from '@/lib/daily-activity-dashboard'
+  type DailyActivityDashboardData,
+  type EmployeeActivityRow,
+  type UnsubmittedEmployeeRow,
+  type DelayedJobItem,
+  type TimelineActivityEvent,
+  getCurrentWeekRange,
+} from '@/lib/daily-activity-types'
+import { DailyActivityEmployeeAnalyticsModal } from '@/components/daily-activity-employee-analytics-modal'
 import { cn } from '@/lib/utils'
 import { formatPhotoDisplayUrl } from '@/lib/photo-url'
+import { DailyActivityPhotoThumbnail } from '@/components/daily-activity-photo-thumbnail'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -53,6 +63,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from '@/components/ui/hover-card'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +86,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import {
+  HeroKpiCard,
+  HeroSearchableSelect,
+  HeroStatusBadge,
+} from '@/components/templates'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from '@/components/ui/table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { deleteDailyActivityRecordAction } from './actions'
 
 interface ClientDashboardProps {
@@ -104,10 +138,13 @@ export function DailyActivityClientDashboard({
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
 
-  // Top context bar & filters
-  const initialSiteVal = currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId
-    ? String(currentUser.assignedSiteId)
-    : (searchParams.get('siteId') || initialFilters?.siteId || String(initialData.currentSite.id))
+  // 1 Site selection (sesuai permintaan 1 site)
+  const initialSiteId =
+    searchParams.get('siteId') ||
+    initialFilters?.siteId ||
+    String(initialData.currentSite.id)
+
+  const [selectedSiteId, setSelectedSiteId] = useState<string>(initialSiteId)
 
   const initialDeptVal = searchParams.get('dept') ||
     initialFilters?.dept ||
@@ -117,13 +154,34 @@ export function DailyActivityClientDashboard({
     initialFilters?.section ||
     (currentUser?.isSectionHead && currentUser?.assignedSection ? currentUser.assignedSection : 'Semua Section')
 
-  const [selectedSiteId, setSelectedSiteId] = useState<string>(initialSiteVal)
-  const [startDate, setStartDate] = useState<string>(
-    searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || ''
-  )
-  const [endDate, setEndDate] = useState<string>(
-    searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || ''
-  )
+  // Local today ISO string (YYYY-MM-DD)
+  const todayIso = useMemo(() => {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }, [])
+
+  // Running week (Minggu berjalannya) range
+  const currentWeek = useMemo(() => getCurrentWeekRange(), [])
+
+  // Start Date & End Date for range filtering (Default: Minggu berjalannya)
+  const initialStartDate =
+    searchParams.get('startDate') ||
+    (searchParams.get('date') ? searchParams.get('date')! : '') ||
+    initialData.startDate ||
+    currentWeek.startDate
+
+  const initialEndDate =
+    searchParams.get('endDate') ||
+    (searchParams.get('date') ? searchParams.get('date')! : '') ||
+    initialData.endDate ||
+    currentWeek.endDate
+
+  const [startDate, setStartDate] = useState<string>(initialStartDate)
+  const [endDate, setEndDate] = useState<string>(initialEndDate)
+
   const [selectedShift, setSelectedShift] = useState<string>(
     searchParams.get('shift') || initialData.selectedShift
   )
@@ -147,15 +205,28 @@ export function DailyActivityClientDashboard({
 
   // Keep state synchronized whenever URL searchParams or server initialData changes
   useEffect(() => {
-    if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-      setSelectedSiteId(String(currentUser.assignedSiteId))
-    } else {
-      const siteParam = searchParams.get('siteId')
-      setSelectedSiteId(siteParam !== null ? siteParam : String(initialData.currentSite.id))
+    const siteParam = searchParams.get('siteId')
+    if (siteParam) {
+      setSelectedSiteId(siteParam)
+    } else if (initialData.currentSite.id) {
+      setSelectedSiteId(String(initialData.currentSite.id))
     }
 
-    setStartDate(searchParams.get('startDate') || initialData.startDate || searchParams.get('date') || '')
-    setEndDate(searchParams.get('endDate') || initialData.endDate || searchParams.get('date') || '')
+    const urlStart = searchParams.get('startDate')
+    const urlEnd = searchParams.get('endDate')
+    const urlDate = searchParams.get('date')
+
+    if (urlStart && urlEnd) {
+      setStartDate(urlStart)
+      setEndDate(urlEnd)
+    } else if (urlDate) {
+      setStartDate(urlDate)
+      setEndDate(urlDate)
+    } else {
+      if (initialData.startDate) setStartDate(initialData.startDate)
+      if (initialData.endDate) setEndDate(initialData.endDate)
+    }
+
     setSelectedShift(searchParams.get('shift') || initialData.selectedShift || 'Semua Shift')
 
     const deptParam = searchParams.get('dept')
@@ -185,13 +256,48 @@ export function DailyActivityClientDashboard({
     initialData.selectedShift,
     initialData.startDate,
     initialData.endDate,
+    todayIso,
     currentUser,
   ])
 
-  // Pagination states
+  // Pagination & Sorting states
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [unsubmittedPage, setUnsubmittedPage] = useState<number>(1)
   const pageSize = 10
+
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const [unsubmittedSortField, setUnsubmittedSortField] = useState<string | null>(null)
+  const [unsubmittedSortDirection, setUnsubmittedSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else {
+        setSortField(null)
+        setSortDirection('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const handleUnsubmittedSort = (field: string) => {
+    if (unsubmittedSortField === field) {
+      if (unsubmittedSortDirection === 'asc') {
+        setUnsubmittedSortDirection('desc')
+      } else {
+        setUnsubmittedSortField(null)
+        setUnsubmittedSortDirection('asc')
+      }
+    } else {
+      setUnsubmittedSortField(field)
+      setUnsubmittedSortDirection('asc')
+    }
+  }
 
   // Detail Modal state
   const [activeDetailItem, setActiveDetailItem] = useState<{
@@ -199,6 +305,32 @@ export function DailyActivityClientDashboard({
     delayedJob?: DelayedJobItem
     employee?: EmployeeActivityRow
   } | null>(null)
+
+  // Employee EWH & Activity History Analytics Modal state
+  const [analyticsEmployee, setAnalyticsEmployee] = useState<{
+    employeeDbId: number
+    name: string
+    employeeSn: string
+    siteName?: string
+  } | null>(null)
+
+  const handleOpenAnalytics = (emp?: {
+    employeeDbId?: number
+    name?: string
+    employeeId?: string
+    siteName?: string
+  } | null) => {
+    if (!emp || !emp.employeeDbId) {
+      toast.error('Data ID karyawan tidak tersedia untuk analitik')
+      return
+    }
+    setAnalyticsEmployee({
+      employeeDbId: emp.employeeDbId,
+      name: emp.name || 'Karyawan',
+      employeeSn: emp.employeeId || '-',
+      siteName: emp.siteName || initialData.currentSite.name,
+    })
+  }
 
   const [lightboxPhoto, setLightboxPhoto] = useState<{
     url: string
@@ -270,11 +402,58 @@ export function DailyActivityClientDashboard({
     }
   }
 
-  // Sync navigation when filters change
+  const isToday = startDate === todayIso && endDate === todayIso
+  const isCurrentWeek = startDate === currentWeek.startDate && endDate === currentWeek.endDate
+
+  const handleRangeChange = (newStart: string, newEnd: string) => {
+    setStartDate(newStart)
+    setEndDate(newEnd)
+    applyFilters({ startDate: newStart, endDate: newEnd })
+  }
+
+  const handleSetCurrentWeek = () => {
+    const cw = getCurrentWeekRange()
+    handleRangeChange(cw.startDate, cw.endDate)
+  }
+
+  const handleSetToday = () => {
+    handleRangeChange(todayIso, todayIso)
+  }
+
+  const handlePreviousWeek = () => {
+    const baseStart = startDate ? new Date(startDate) : new Date()
+    const baseEnd = endDate ? new Date(endDate) : new Date()
+    baseStart.setDate(baseStart.getDate() - 7)
+    baseEnd.setDate(baseEnd.getDate() - 7)
+    const format = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+    handleRangeChange(format(baseStart), format(baseEnd))
+  }
+
+  const handleNextWeek = () => {
+    const baseStart = startDate ? new Date(startDate) : new Date()
+    const baseEnd = endDate ? new Date(endDate) : new Date()
+    baseStart.setDate(baseStart.getDate() + 7)
+    baseEnd.setDate(baseEnd.getDate() + 7)
+    const format = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+    handleRangeChange(format(baseStart), format(baseEnd))
+  }
+
+  // Sync navigation when filters change (1 Site & Date Range)
   const applyFilters = (overrides?: {
     siteId?: string
     startDate?: string
     endDate?: string
+    date?: string
     shift?: string
     status?: string
     dept?: string
@@ -282,13 +461,13 @@ export function DailyActivityClientDashboard({
     q?: string
     employeeName?: string
   }) => {
-    // If PJO / Leader Lokasi, lock siteId
-    const sId = (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId)
-      ? String(currentUser.assignedSiteId)
-      : (overrides?.siteId !== undefined ? overrides.siteId : selectedSiteId)
+    const resolvedSiteId = overrides?.siteId !== undefined
+      ? overrides.siteId
+      : selectedSiteId
 
-    const sDate = overrides?.startDate !== undefined ? overrides.startDate : startDate
-    const eDate = overrides?.endDate !== undefined ? overrides.endDate : endDate
+    const sStart = overrides?.startDate !== undefined ? overrides.startDate : startDate
+    const sEnd = overrides?.endDate !== undefined ? overrides.endDate : endDate
+    const curDate = overrides?.date !== undefined ? overrides.date : (sStart === sEnd ? sStart : undefined)
     const sh = overrides?.shift !== undefined ? overrides.shift : selectedShift
     const st = overrides?.status !== undefined ? overrides.status : selectedEmployeeStatus
     const dpt = overrides?.dept !== undefined ? overrides.dept : selectedDept
@@ -297,9 +476,17 @@ export function DailyActivityClientDashboard({
     const q = overrides?.q !== undefined ? overrides.q : searchQuery
 
     const params = new URLSearchParams()
-    if (sId && sId !== '0' && sId !== 'all') params.set('siteId', sId)
-    if (sDate) params.set('startDate', sDate)
-    if (eDate) params.set('endDate', eDate)
+    if (resolvedSiteId && resolvedSiteId !== '0') params.set('siteId', resolvedSiteId)
+
+    if (sStart && sEnd && sStart !== sEnd) {
+      params.set('startDate', sStart)
+      params.set('endDate', sEnd)
+    } else if (curDate || (sStart && sStart === sEnd)) {
+      params.set('date', curDate || sStart)
+    } else if (sStart) {
+      params.set('startDate', sStart)
+    }
+
     if (sh && sh !== 'Semua Shift') params.set('shift', sh)
     if (st && st !== 'Semua Status') params.set('status', st)
     if (dpt && dpt !== 'Semua Tim') params.set('dept', dpt)
@@ -315,9 +502,6 @@ export function DailyActivityClientDashboard({
   }
 
   const handleResetFilters = () => {
-    const defaultSite = currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId
-      ? String(currentUser.assignedSiteId)
-      : '0'
     const defaultDpt = currentUser?.isDeptHead && currentUser?.assignedDepartment
       ? currentUser.assignedDepartment
       : 'Semua Tim'
@@ -325,9 +509,10 @@ export function DailyActivityClientDashboard({
       ? currentUser.assignedSection
       : 'Semua Section'
 
-    setSelectedSiteId(defaultSite)
-    setStartDate('')
-    setEndDate('')
+    const cw = getCurrentWeekRange()
+    setSelectedSiteId(String(initialData.currentSite.id))
+    setStartDate(cw.startDate)
+    setEndDate(cw.endDate)
     setSelectedShift('Semua Shift')
     setSelectedDept(defaultDpt)
     setSelectedSection(defaultSec)
@@ -339,12 +524,14 @@ export function DailyActivityClientDashboard({
     setUnsubmittedPage(1)
 
     const params = new URLSearchParams()
-    if (defaultSite !== '0') params.set('siteId', defaultSite)
+    params.set('siteId', String(initialData.currentSite.id))
+    params.set('startDate', cw.startDate)
+    params.set('endDate', cw.endDate)
     if (defaultDpt !== 'Semua Tim') params.set('dept', defaultDpt)
     if (defaultSec !== 'Semua Section') params.set('section', defaultSec)
 
     startTransition(() => {
-      router.push(`/dashboard/daily-activity${params.toString() ? `?${params.toString()}` : ''}`)
+      router.push(`/dashboard/daily-activity?${params.toString()}`)
     })
   }
 
@@ -353,17 +540,9 @@ export function DailyActivityClientDashboard({
     return initialData.employees
       .filter((emp) => !deletedEmployeeKeys.includes(`${emp.employeeDbId}-${emp.sessionId}`))
       .filter((emp) => {
-      if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-        if (emp.siteId !== undefined && emp.siteId !== currentUser.assignedSiteId) {
-          return false
-        }
-      } else if (
-        selectedSiteId !== '0' &&
-        selectedSiteId !== 'all' &&
-        emp.siteId !== undefined &&
-        String(emp.siteId) !== selectedSiteId
-      ) {
-        return false
+      // 1 Site filter: jika ada site terpilih, filter sesuai site
+      if (selectedSiteId && emp.siteId !== undefined) {
+        if (String(emp.siteId) !== selectedSiteId) return false
       }
       if (selectedShift !== 'Semua Shift' && emp.shift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
@@ -385,6 +564,7 @@ export function DailyActivityClientDashboard({
           emp.primaryActivity.toLowerCase().includes(effectiveSearch) ||
           emp.unitTireId.toLowerCase().includes(effectiveSearch) ||
           emp.jobTitle.toLowerCase().includes(effectiveSearch) ||
+          (emp.siteName && emp.siteName.toLowerCase().includes(effectiveSearch)) ||
           (emp.section && emp.section.toLowerCase().includes(effectiveSearch)) ||
           emp.department.toLowerCase().includes(effectiveSearch)
         )
@@ -402,23 +582,14 @@ export function DailyActivityClientDashboard({
     selectedEmployeeStatus,
     searchQuery,
     employeeNameFilter,
-    currentUser,
   ])
 
   // Filter unsubmitted employees (Belum Mengisi, excluding Roster OFF)
   const filteredUnsubmittedEmployees = useMemo(() => {
     return (initialData.unsubmittedEmployees || []).filter((emp) => {
-      if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-        if (emp.siteId !== undefined && emp.siteId !== currentUser.assignedSiteId) {
-          return false
-        }
-      } else if (
-        selectedSiteId !== '0' &&
-        selectedSiteId !== 'all' &&
-        emp.siteId !== undefined &&
-        String(emp.siteId) !== selectedSiteId
-      ) {
-        return false
+      // 1 Site filter: jika ada site terpilih, filter sesuai site
+      if (selectedSiteId && emp.siteId !== undefined) {
+        if (String(emp.siteId) !== selectedSiteId) return false
       }
       if (selectedShift !== 'Semua Shift' && emp.expectedShift !== selectedShift) return false
       if (selectedDept !== 'Semua Tim' && emp.department !== selectedDept) return false
@@ -431,6 +602,7 @@ export function DailyActivityClientDashboard({
           emp.employeeId.toLowerCase().includes(effectiveSearch) ||
           emp.jobTitle.toLowerCase().includes(effectiveSearch) ||
           emp.department.toLowerCase().includes(effectiveSearch) ||
+          (emp.siteName && emp.siteName.toLowerCase().includes(effectiveSearch)) ||
           (emp.section && emp.section.toLowerCase().includes(effectiveSearch)) ||
           emp.rosterCode.toLowerCase().includes(effectiveSearch)
         )
@@ -445,24 +617,10 @@ export function DailyActivityClientDashboard({
     selectedSection,
     searchQuery,
     employeeNameFilter,
-    currentUser,
   ])
 
-  // Available sites list (restricted to assigned site for PJO / Leader Lokasi)
-  const availableSites = useMemo(() => {
-    if (currentUser?.isPjoOrLocationLeader && currentUser?.assignedSiteId) {
-      const match = initialData.sitesList.filter((s) => s.id === currentUser.assignedSiteId)
-      if (match.length > 0) return match
-      return [{
-        id: currentUser.assignedSiteId,
-        name: currentUser.assignedSiteName || 'Site Anda',
-        customerName: '-',
-        pjoName: currentUser.name || null,
-        pjoJobTitle: currentUser.role || null,
-      }]
-    }
-    return initialData.sitesList
-  }, [initialData.sitesList, currentUser])
+  // Available sites list - semua lokasi tersedia untuk semua role, hapus entry "Semua Site" (id:0)
+  const availableSites = initialData.sitesList.filter((s) => s.id !== 0)
 
   // Available sections list from masterSections and employee records
   const availableSections = useMemo(() => {
@@ -492,18 +650,91 @@ export function DailyActivityClientDashboard({
     return list.sort((a, b) => a.localeCompare(b))
   }, [initialData.sectionsList, initialData.employees, initialData.unsubmittedEmployees])
 
+  // Memoized Searchable Select Options
+  const siteOptions = useMemo(
+    () => availableSites.map((s) => ({ value: String(s.id), label: s.name })),
+    [availableSites]
+  )
+
+  const shiftOptions = useMemo(
+    () => [
+      { value: 'Semua Shift', label: 'Semua Shift' },
+      { value: 'Pagi', label: 'Pagi' },
+      { value: 'Siang', label: 'Siang' },
+      { value: 'Malam', label: 'Malam' },
+    ],
+    []
+  )
+
+  const deptOptions = useMemo(
+    () => [
+      { value: 'Semua Tim', label: 'Semua Dept' },
+      ...initialData.departmentsList.map((d) => ({ value: d.name, label: d.name })),
+    ],
+    [initialData.departmentsList]
+  )
+
+  const sectionOptions = useMemo(
+    () => [
+      { value: 'Semua Section', label: 'Semua Section' },
+      ...availableSections.map((sec) => ({ value: sec, label: sec })),
+    ],
+    [availableSections]
+  )
+
+  const employeeStatusOptions = useMemo(
+    () => [
+      { value: 'Semua Status', label: 'Semua Status' },
+      { value: 'Selesai', label: 'Selesai' },
+      { value: 'Berjalan', label: 'Berjalan' },
+      { value: 'Menunggu', label: 'Menunggu' },
+      { value: 'Terlambat', label: 'Terlambat' },
+    ],
+    []
+  )
+
+  // Sorting calculations
+  const sortedEmployees = useMemo(() => {
+    if (!sortField) return filteredEmployees
+    return [...filteredEmployees].sort((a, b) => {
+      let aVal: any = (a as any)[sortField] ?? ''
+      let bVal: any = (b as any)[sortField] ?? ''
+      if (sortField === 'completionRate' || sortField === 'ewh') {
+        aVal = Number(aVal) || 0
+        bVal = Number(bVal) || 0
+      } else {
+        aVal = String(aVal).toLowerCase()
+        bVal = String(bVal).toLowerCase()
+      }
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredEmployees, sortField, sortDirection])
+
+  const sortedUnsubmittedEmployees = useMemo(() => {
+    if (!unsubmittedSortField) return filteredUnsubmittedEmployees
+    return [...filteredUnsubmittedEmployees].sort((a, b) => {
+      const aVal = String((a as any)[unsubmittedSortField] ?? '').toLowerCase()
+      const bVal = String((b as any)[unsubmittedSortField] ?? '').toLowerCase()
+      if (aVal < bVal) return unsubmittedSortDirection === 'asc' ? -1 : 1
+      if (aVal > bVal) return unsubmittedSortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [filteredUnsubmittedEmployees, unsubmittedSortField, unsubmittedSortDirection])
+
   // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize))
+  const totalPages = Math.max(1, Math.ceil(sortedEmployees.length / pageSize))
   const paginatedEmployees = useMemo(() => {
     const start = (currentPage - 1) * pageSize
-    return filteredEmployees.slice(start, start + pageSize)
-  }, [filteredEmployees, currentPage, pageSize])
+    return sortedEmployees.slice(start, start + pageSize)
+  }, [sortedEmployees, currentPage, pageSize])
 
-  const unsubmittedTotalPages = Math.max(1, Math.ceil(filteredUnsubmittedEmployees.length / pageSize))
+  const unsubmittedTotalPages = Math.max(1, Math.ceil(sortedUnsubmittedEmployees.length / pageSize))
   const paginatedUnsubmittedEmployees = useMemo(() => {
     const start = (unsubmittedPage - 1) * pageSize
-    return filteredUnsubmittedEmployees.slice(start, start + pageSize)
-  }, [filteredUnsubmittedEmployees, unsubmittedPage, pageSize])
+    return sortedUnsubmittedEmployees.slice(start, start + pageSize)
+  }, [sortedUnsubmittedEmployees, unsubmittedPage, pageSize])
 
   // Dynamic activity types from real employee activities
   const dynamicActivityTypes = useMemo(() => {
@@ -523,6 +754,7 @@ export function DailyActivityClientDashboard({
       const headers = [
         'Employee ID',
         'Nama Karyawan',
+        'Site',
         'Jabatan',
         'Departemen / Section',
         'Shift Roster',
@@ -534,6 +766,7 @@ export function DailyActivityClientDashboard({
       const rows = filteredUnsubmittedEmployees.map((e) => [
         `"${e.employeeId}"`,
         `"${e.name}"`,
+        `"${e.siteName || initialData.currentSite.name}"`,
         `"${e.jobTitle}"`,
         `"${e.department}${e.section ? ` - ${e.section}` : ''}"`,
         `"${e.rosterCode} (${e.expectedShift})"`,
@@ -559,32 +792,65 @@ export function DailyActivityClientDashboard({
     }
 
     const headers = [
+      'Tanggal',
       'Employee ID',
       'Nama Karyawan',
+      'Site',
       'Jabatan / Tim',
       'Shift',
       'Jam Check-in',
       'Jam Checkout',
-      'Aktivitas Utama',
-      'Unit / Tire ID',
+      'EWH (Efektif/Target)',
+      'EWH (%)',
+      'Aktivitas / Deskripsi',
+      'No. Unit / Equipment',
       'Status Aktivitas',
       'Progres (%)',
       'Update Terakhir',
     ]
 
-    const rows = filteredEmployees.map((e) => [
-      `"${e.employeeId}"`,
-      `"${e.name}"`,
-      `"${e.jobTitle}"`,
-      `"${e.shift}"`,
-      `"${e.checkInTime}"`,
-      `"${e.checkOutTime || '-'}"`,
-      `"${e.primaryActivity}"`,
-      `"${e.unitTireId}"`,
-      `"${e.status}"`,
-      `"${e.progress}%"`,
-      `"${e.lastUpdate}"`,
-    ])
+    const rows: string[][] = []
+    for (const e of filteredEmployees) {
+      if (e.tasks && e.tasks.length > 0) {
+        for (const t of e.tasks) {
+          rows.push([
+            `"${e.workDate || initialData.currentDate || '-'}"`,
+            `"${e.employeeId}"`,
+            `"${e.name}"`,
+            `"${e.siteName || initialData.currentSite.name}"`,
+            `"${e.jobTitle}"`,
+            `"${e.shift}"`,
+            `"${e.checkInTime}"`,
+            `"${e.checkOutTime || '-'}"`,
+            `"${e.ewhActualHours}/${e.ewhTargetHours} Jam"`,
+            `"${e.ewhPercentage}%"`,
+            `"${(t.label || e.primaryActivity).replace(/"/g, '""')}"`,
+            `"${(t.unitNumber && t.unitNumber !== '-' ? t.unitNumber : '-').replace(/"/g, '""')}"`,
+            `"${t.status || e.status}"`,
+            `"${t.progress ?? e.progress}%"`,
+            `"${e.lastUpdate}"`,
+          ])
+        }
+      } else {
+        rows.push([
+          `"${e.workDate || initialData.currentDate || '-'}"`,
+          `"${e.employeeId}"`,
+          `"${e.name}"`,
+          `"${e.siteName || initialData.currentSite.name}"`,
+          `"${e.jobTitle}"`,
+          `"${e.shift}"`,
+          `"${e.checkInTime}"`,
+          `"${e.checkOutTime || '-'}"`,
+          `"${e.ewhActualHours}/${e.ewhTargetHours} Jam"`,
+          `"${e.ewhPercentage}%"`,
+          `"${(e.primaryActivity || '-').replace(/"/g, '""')}"`,
+          `"${(e.unitTireId || '-').replace(/"/g, '""')}"`,
+          `"${e.status}"`,
+          `"${e.progress}%"`,
+          `"${e.lastUpdate}"`,
+        ])
+      }
+    }
 
     const csvContent =
       'data:text/csv;charset=utf-8,\uFEFF' +
@@ -599,6 +865,170 @@ export function DailyActivityClientDashboard({
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+  }
+
+  // Export to formatted Excel (.xlsx) with neat columns
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      if (activeTab === 'unsubmitted') {
+        const data = filteredUnsubmittedEmployees.map((e, idx) => ({
+          'No': idx + 1,
+          'Tanggal': initialData.currentDate || '-',
+          'Employee ID': e.employeeId,
+          'Nama Karyawan': e.name,
+          'Site': e.siteName || initialData.currentSite.name,
+          'Jabatan': e.jobTitle,
+          'Departemen': e.department,
+          'Section': e.section || '-',
+          'Roster & Shift': `${e.rosterCode} (${e.expectedShift})`,
+          'Status Kehadiran': e.attendanceStatus,
+          'Jam Check-In': e.checkInTime || '-',
+          'Status Log': 'Belum Mengisi',
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(data)
+        ws['!cols'] = [
+          { wch: 6 },
+          { wch: 14 },
+          { wch: 16 },
+          { wch: 26 },
+          { wch: 18 },
+          { wch: 22 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 20 },
+          { wch: 18 },
+          { wch: 14 },
+          { wch: 16 },
+        ]
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Belum Mengisi')
+        const filename = `Belum_Isi_Daily_Activity_${initialData.currentSite.name.replace(/\s+/g, '_')}_${initialData.currentDate.replace(/\s+/g, '_')}.xlsx`
+        XLSX.writeFile(wb, filename)
+        toast.success('Laporan Excel berhasil diunduh!')
+        return
+      }
+
+      // Submitted tab - split rows per task/unit so each unit has its own description row
+      const data: any[] = []
+      let rowNumber = 1
+
+      for (const e of filteredEmployees) {
+        if (e.tasks && e.tasks.length > 0) {
+          for (const t of e.tasks) {
+            data.push({
+              'No': rowNumber++,
+              'Tanggal': e.workDate || initialData.currentDate || '-',
+              'Employee ID': e.employeeId,
+              'Nama Karyawan': e.name,
+              'Site': e.siteName || initialData.currentSite.name,
+              'Jabatan / Section': e.jobTitle,
+              'Shift': e.shift,
+              'Jam Check-in': e.checkInTime,
+              'Jam Checkout': e.checkOutTime || '-',
+              'EWH (Efektif)': `${e.ewhActualHours}/${e.ewhTargetHours} Jam`,
+              'EWH (%)': `${e.ewhPercentage}%`,
+              'Aktivitas / Deskripsi': t.label || e.primaryActivity,
+              'No. Unit / Equipment': t.unitNumber && t.unitNumber !== '-' ? t.unitNumber : '-',
+              'Status Aktivitas': t.status || e.status,
+              'Progress (%)': `${t.progress ?? e.progress}%`,
+              'Update Terakhir': e.lastUpdate,
+            })
+          }
+        } else {
+          data.push({
+            'No': rowNumber++,
+            'Tanggal': e.workDate || initialData.currentDate || '-',
+            'Employee ID': e.employeeId,
+            'Nama Karyawan': e.name,
+            'Site': e.siteName || initialData.currentSite.name,
+            'Jabatan / Section': e.jobTitle,
+            'Shift': e.shift,
+            'Jam Check-in': e.checkInTime,
+            'Jam Checkout': e.checkOutTime || '-',
+            'EWH (Efektif)': `${e.ewhActualHours}/${e.ewhTargetHours} Jam`,
+            'EWH (%)': `${e.ewhPercentage}%`,
+            'Aktivitas / Deskripsi': e.primaryActivity,
+            'No. Unit / Equipment': e.unitTireId,
+            'Status Aktivitas': e.status,
+            'Progress (%)': `${e.progress}%`,
+            'Update Terakhir': e.lastUpdate,
+          })
+        }
+      }
+
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 14 },
+        { wch: 16 },
+        { wch: 26 },
+        { wch: 18 },
+        { wch: 24 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 38 },
+        { wch: 22 },
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 18 },
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Daily Activity')
+      const filename = `Daily_Activity_${initialData.currentSite.name.replace(/\s+/g, '_')}_${initialData.currentDate.replace(/\s+/g, '_')}.xlsx`
+      XLSX.writeFile(wb, filename)
+      toast.success('Laporan Excel Daily Activity berhasil diunduh!')
+    } catch (err) {
+      toast.error('Gagal mengekspor data ke Excel.')
+    }
+  }
+
+  // Export specific employee's daily activity items to Excel (.xlsx)
+  const handleExportDetailExcel = async (emp: EmployeeActivityRow) => {
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+
+      const data = emp.tasks.map((t, idx) => ({
+        'No': idx + 1,
+        'Jam Kerja': `${t.startedAt || '-'} - ${t.endedAt || '-'}`,
+        'Durasi': t.durationLabel || '-',
+        'Unit / Equipment': t.unitNumber || '-',
+        'Aktivitas / Tugas': t.label || '-',
+        'Grup / Kategori': t.groupName || '-',
+        'Poin': t.points || 0,
+        'Status': t.status,
+        'Catatan Lapangan': t.remarks || '-',
+        'Link Foto Bukti': t.photoUrl || '-',
+      }))
+
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 18 },
+        { wch: 35 },
+        { wch: 22 },
+        { wch: 10 },
+        { wch: 14 },
+        { wch: 30 },
+        { wch: 35 },
+      ]
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Detail Tugas')
+      const filename = `Detail_Activity_${emp.name.replace(/\s+/g, '_')}_${(emp.workDate || 'Report').replace(/\s+/g, '_')}.xlsx`
+      XLSX.writeFile(wb, filename)
+      toast.success(`Detail tugas ${emp.name} berhasil diekspor ke Excel!`)
+    } catch (err) {
+      toast.error('Gagal mengekspor detail ke Excel.')
+    }
   }
 
   // Export specific employee's daily activity items to CSV
@@ -645,32 +1075,7 @@ export function DailyActivityClientDashboard({
   // Exact Badge Colors matching the mockup
 
   const renderStatusBadge = (status: EmployeeActivityRow['status']) => {
-    switch (status) {
-      case 'Selesai':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#dcfce7] text-[#15803d]">
-            Selesai
-          </span>
-        )
-      case 'Berjalan':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#dbeafe] text-[#1d4ed8]">
-            Berjalan
-          </span>
-        )
-      case 'Menunggu':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fef3c7] text-[#b45309]">
-            Menunggu
-          </span>
-        )
-      case 'Terlambat':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#fee2e2] text-[#b91c1c]">
-            Terlambat
-          </span>
-        )
-    }
+    return <HeroStatusBadge status={status} />
   }
 
   const renderProgressBar = (
@@ -749,7 +1154,7 @@ export function DailyActivityClientDashboard({
               {currentUser?.isSuperAdmin
                 ? 'Hak Akses: Super Admin (Akses Penuh)'
                 : currentUser?.isPjoOrLocationLeader
-                ? `Hak Akses: PJO / Lokasi (${currentUser.assignedSiteName || initialData.currentSite.name})`
+                ? `Hak Akses: PJO / Lokasi Leader`
                 : currentUser?.isDeptHead
                 ? `Hak Akses: Head Dept (${currentUser.assignedDepartment || 'Department'})`
                 : currentUser?.isSectionHead
@@ -763,70 +1168,112 @@ export function DailyActivityClientDashboard({
       {/* ── Secondary Filter Bar Card ── */}
       <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2.5 items-end">
-          {/* Site */}
+          {/* Site / Lokasi (1 Site Sesuai Permintaan) */}
           <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
-              <span>Site</span>
-              {currentUser?.isPjoOrLocationLeader && (
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1 py-0.2 rounded border border-amber-200">
-                  Terkunci
-                </span>
-              )}
+            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+              Site / Lokasi
             </label>
-            <select
-              aria-label="Pilih Site"
+            <HeroSearchableSelect
+              options={siteOptions}
               value={selectedSiteId}
-              disabled={currentUser?.isPjoOrLocationLeader}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedSiteId(val)
-                applyFilters({ siteId: val })
+              onChange={(val) => {
+                const sVal = String(val)
+                setSelectedSiteId(sVal)
+                applyFilters({ siteId: sVal })
               }}
-              className={cn(
-                "w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500",
-                currentUser?.isPjoOrLocationLeader
-                  ? "bg-slate-100 border border-slate-300 text-slate-500 cursor-not-allowed"
-                  : "bg-slate-50 border border-slate-200 text-slate-800 cursor-pointer"
-              )}
-            >
-              {availableSites.map((s) => (
-                <option key={s.id} value={String(s.id)}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Dari Tanggal */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Dari Tanggal</label>
-            <input
-              type="date"
-              aria-label="Pilih Dari Tanggal"
-              value={startDate}
-              onChange={(e) => {
-                const val = e.target.value
-                setStartDate(val)
-                applyFilters({ startDate: val })
-              }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              disabled={isPending}
+              placeholder="Pilih Site / Lokasi"
+              className="w-full text-xs"
             />
           </div>
 
-          {/* Sampai Tanggal */}
-          <div>
-            <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Sampai Tanggal</label>
-            <input
-              type="date"
-              aria-label="Pilih Sampai Tanggal"
-              value={endDate}
-              onChange={(e) => {
-                const val = e.target.value
-                setEndDate(val)
-                applyFilters({ endDate: val })
-              }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+          {/* Periode Operasional (Minggu Berjalan & Date Range) */}
+          <div className="sm:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                Periode Operasional
+              </label>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant={isCurrentWeek ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleSetCurrentWeek}
+                  disabled={isPending}
+                  className={cn(
+                    "h-6 text-[10px] font-bold px-2 py-0 rounded transition-colors cursor-pointer",
+                    isCurrentWeek
+                      ? "bg-blue-600 text-white hover:bg-blue-700 shadow-2xs"
+                      : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                  )}
+                  title="Pilih Minggu Berjalan (Senin - Minggu)"
+                >
+                  Minggu Ini
+                </Button>
+                <Button
+                  type="button"
+                  variant={isToday ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleSetToday}
+                  disabled={isPending}
+                  className={cn(
+                    "h-6 text-[10px] font-bold px-2 py-0 rounded transition-colors cursor-pointer",
+                    isToday
+                      ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-2xs"
+                      : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+                  )}
+                  title="Pilih Hari Ini Saja"
+                >
+                  Hari Ini
+                </Button>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg p-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handlePreviousWeek}
+                disabled={isPending}
+                className="h-9 w-8 p-0 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                title="1 Minggu Sebelumnya"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <input
+                type="date"
+                aria-label="Tanggal Mulai"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyFilters({ startDate: e.currentTarget.value, endDate })
+                }}
+                className="w-1/2 h-9 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-400 font-semibold px-0.5">s/d</span>
+              <input
+                type="date"
+                aria-label="Tanggal Selesai"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyFilters({ startDate, endDate: e.currentTarget.value })
+                }}
+                className="w-1/2 h-9 text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleNextWeek}
+                disabled={isPending}
+                className="h-9 w-8 p-0 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+                title="1 Minggu Berikutnya"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Nama Karyawan */}
@@ -845,7 +1292,7 @@ export function DailyActivityClientDashboard({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters({ employeeName: employeeNameFilter })
                 }}
-                className="h-[33px] pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400 font-normal"
+                className="h-9 pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400 font-normal"
               />
             </div>
           </div>
@@ -853,21 +1300,18 @@ export function DailyActivityClientDashboard({
           {/* Shift */}
           <div>
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">Shift</label>
-            <select
-              aria-label="Pilih Shift"
+            <HeroSearchableSelect
+              options={shiftOptions}
               value={selectedShift}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedShift(val)
-                applyFilters({ shift: val })
+              onChange={(val) => {
+                const sVal = String(val)
+                setSelectedShift(sVal)
+                applyFilters({ shift: sVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Shift">Semua Shift</option>
-              <option value="Pagi">Pagi</option>
-              <option value="Siang">Siang</option>
-              <option value="Malam">Malam</option>
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Shift"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Department/Team */}
@@ -880,23 +1324,18 @@ export function DailyActivityClientDashboard({
                 </span>
               )}
             </label>
-            <select
-              aria-label="Pilih Department atau Tim"
+            <HeroSearchableSelect
+              options={deptOptions}
               value={selectedDept}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedDept(val)
-                applyFilters({ dept: val })
+              onChange={(val) => {
+                const dVal = String(val)
+                setSelectedDept(dVal)
+                applyFilters({ dept: dVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Tim">Semua Dept</option>
-              {initialData.departmentsList.map((d) => (
-                <option key={d.id} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Department"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Section */}
@@ -909,23 +1348,18 @@ export function DailyActivityClientDashboard({
                 </span>
               )}
             </label>
-            <select
-              aria-label="Pilih Section"
+            <HeroSearchableSelect
+              options={sectionOptions}
               value={selectedSection}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedSection(val)
-                applyFilters({ section: val })
+              onChange={(val) => {
+                const secVal = String(val)
+                setSelectedSection(secVal)
+                applyFilters({ section: secVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Section">Semua Section</option>
-              {availableSections.map((secName) => (
-                <option key={secName} value={secName}>
-                  {secName}
-                </option>
-              ))}
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Section"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Employee Status */}
@@ -933,171 +1367,126 @@ export function DailyActivityClientDashboard({
             <label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Employee Status
             </label>
-            <select
-              aria-label="Pilih Status Karyawan"
+            <HeroSearchableSelect
+              options={employeeStatusOptions}
               value={selectedEmployeeStatus}
-              onChange={(e) => {
-                const val = e.target.value
-                setSelectedEmployeeStatus(val)
-                applyFilters({ status: val })
+              onChange={(val) => {
+                const stVal = String(val)
+                setSelectedEmployeeStatus(stVal)
+                applyFilters({ status: stVal })
               }}
-              className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="Semua Status">Semua Status</option>
-              <option value="Selesai">Selesai</option>
-              <option value="Berjalan">Berjalan</option>
-              <option value="Menunggu">Menunggu</option>
-              <option value="Terlambat">Terlambat</option>
-            </select>
+              disabled={isPending}
+              placeholder="Pilih Status"
+              className="w-full text-xs"
+            />
           </div>
 
           {/* Actions: Terapkan Filter & Reset */}
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => applyFilters()}
+              onClick={() => applyFilters({ startDate, endDate })}
               disabled={isPending}
-              className="h-[33px] text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1"
+              className="h-9 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white rounded-lg px-3 gap-1.5 flex-1 cursor-pointer"
             >
-              <Filter className="w-3.5 h-3.5" />
-              Terapkan
+              {isPending ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Filter className="w-3.5 h-3.5" />
+              )}
+              {isPending ? 'Memuat...' : 'Terapkan'}
             </Button>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleResetFilters}
               disabled={isPending}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 transition-colors cursor-pointer"
+              className="h-9 text-xs font-semibold text-slate-600 hover:text-slate-900 border-slate-200 px-3 cursor-pointer"
             >
               Reset
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* ── 5 KPI Metric Cards (100% Real Live Data) ── */}
+      {/* ── 5 KPI Metric Cards (Standard HeroKpiCard) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Card 1: Karyawan Aktif */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Karyawan Aktif</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.karyawanAktif.value}
-                </span>
-                <span className="text-xs text-slate-400">
-                  dari {initialData.kpis.karyawanAktif.total} karyawan
-                </span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.karyawanAktif.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Karyawan Aktif"
+          value={initialData.kpis.karyawanAktif.value}
+          unit={`/ ${initialData.kpis.karyawanAktif.total}`}
+          icon={<Users className="size-5" />}
+          tone="blue"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.karyawanAktif.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description={`dari total ${initialData.kpis.karyawanAktif.total} karyawan`}
+        />
 
-        {/* Card 2: Hadir / Check-in */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Hadir / Check-in</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.hadirCheckIn.value}
-                </span>
-                <span className="text-xs text-slate-400">karyawan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.hadirCheckIn.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Hadir / Check-in"
+          value={initialData.kpis.hadirCheckIn.value}
+          unit="karyawan"
+          icon={<CheckCircle2 className="size-5" />}
+          tone="emerald"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.hadirCheckIn.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Presensi hari ini"
+        />
 
-        {/* Card 3: Aktivitas Selesai */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Aktivitas Selesai</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.aktivitasSelesai.value}
-                </span>
-                <span className="text-xs text-slate-400">pekerjaan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <Settings className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.aktivitasSelesai.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Aktivitas Selesai"
+          value={initialData.kpis.aktivitasSelesai.value}
+          unit="pekerjaan"
+          icon={<Settings className="size-5" />}
+          tone="cyan"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.aktivitasSelesai.change,
+            direction: 'up',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Pekerjaan tuntas"
+        />
 
-        {/* Card 4: Sedang Berjalan */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Sedang Berjalan</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.sedangBerjalan.value}
-                </span>
-                <span className="text-xs text-slate-400">pekerjaan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {initialData.kpis.sedangBerjalan.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Sedang Berjalan"
+          value={initialData.kpis.sedangBerjalan.value}
+          unit="pekerjaan"
+          icon={<Clock className="size-5" />}
+          tone="amber"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.sedangBerjalan.change,
+            direction: 'neutral',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Dalam pengerjaan"
+        />
 
-        {/* Card 5: Terlambat / Belum Update */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-600">Terlambat / Belum Update</p>
-              <div className="mt-1 flex items-baseline gap-1.5">
-                <span className="text-3xl font-bold tracking-tight text-slate-900">
-                  {initialData.kpis.terlambatBelumUpdate.value}
-                </span>
-                <span className="text-xs text-slate-400">karyawan</span>
-              </div>
-            </div>
-            <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center font-bold text-rose-600">
-              <ArrowDownRight className="w-3.5 h-3.5" />{' '}
-              {initialData.kpis.terlambatBelumUpdate.change}
-            </span>
-            <span className="text-slate-400">vs. hari sebelumnya</span>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Terlambat / Belum Update"
+          value={initialData.kpis.terlambatBelumUpdate.value}
+          unit="karyawan"
+          icon={<AlertTriangle className="size-5" />}
+          tone="rose"
+          variant="colorful"
+          trend={{
+            value: initialData.kpis.terlambatBelumUpdate.change,
+            direction: 'down',
+            label: 'vs. hari sebelumnya',
+          }}
+          description="Perlu perhatian"
+        />
       </div>
 
       {/* ── Middle Row: Ringkasan Aktivitas Site & Status Kehadiran Tim ── */}
@@ -1413,37 +1802,47 @@ export function DailyActivityClientDashboard({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') applyFilters({ q: searchQuery })
                 }}
-                className="h-8 pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400"
+                className="h-9 pl-8 text-xs bg-slate-50 border-slate-200 rounded-lg placeholder:text-slate-400"
               />
             </div>
 
             <Button
               variant="outline"
               size="sm"
-              onClick={handleExportCsv}
-              className="h-8 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg"
+              onClick={handleExportExcel}
+              className="h-9 text-xs font-bold text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 gap-1.5 rounded-lg cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              Export rekap
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              Export Excel (.xlsx)
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              className="h-9 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              Export CSV
             </Button>
 
             <Button
               size="sm"
               variant="outline"
               onClick={() => setIsAddActivityModalOpen(true)}
-              className="h-8 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg"
+              className="h-9 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5 rounded-lg cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5 text-blue-600" />
+              <Plus className="w-4 h-4 text-blue-600" />
               Tambah aktivitas
             </Button>
 
             <Button
               asChild
               size="sm"
-              className="h-8 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 rounded-lg"
+              className="h-9 text-xs font-semibold bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 rounded-lg cursor-pointer"
             >
               <Link href="/dashboard/scheduling-timesheet">
-                <Users className="w-3.5 h-3.5" />
+                <Users className="w-4 h-4" />
                 Lihat roster
               </Link>
             </Button>
@@ -1513,167 +1912,460 @@ export function DailyActivityClientDashboard({
         {activeTab === 'submitted' && (
           <>
             {/* Table Content */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
-                    <th className="py-3 px-4">Employee ID</th>
-                <th className="py-3 px-4">Nama Karyawan</th>
-                <th className="py-3 px-4">Jabatan / Tim</th>
-                <th className="py-3 px-4">Shift</th>
-                <th className="py-3 px-4">Jam Presensi</th>
-                <th className="py-3 px-4">Aktivitas Utama</th>
-                <th className="py-3 px-4">Unit / Tire ID</th>
-                <th className="py-3 px-4">Status Aktivitas</th>
-                <th className="py-3 px-4 min-w-[130px]">Progres</th>
-                <th className="py-3 px-4">Update Terakhir</th>
-                <th className="py-3 px-4 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="py-8 text-center text-slate-400">
-                    Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
-                  </td>
-                </tr>
-              ) : (
-                paginatedEmployees.map((emp, idx) => (
-                  <tr
-                    key={`emp-row-${emp.sessionId ?? ''}-${emp.employeeId}-${idx}`}
-                    className="hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="py-3 px-4 font-mono font-medium text-slate-700">
-                      {emp.employeeId}
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setActiveDetailItem({
-                            type: 'employee',
-                            employee: emp,
-                          })
-                        }
-                        className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-left inline-flex items-center gap-1 group cursor-pointer"
-                        title="Klik untuk melihat formulir detail aktivitas harian lengkap"
-                      >
-                        <span>{emp.name}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
-                      </button>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">{emp.jobTitle}</td>
-                    <td className="py-3 px-4 text-slate-600">{emp.shift}</td>
-                    <td className="py-3 px-4 font-mono">
-                      <div className="flex flex-col text-[11px] leading-tight gap-0.5">
-                        <span className="text-slate-900 font-semibold flex items-center gap-1" title="Jam Masuk / Check-in">
-                          <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-                          {emp.checkInTime}
-                        </span>
-                        {emp.checkOutTime && emp.checkOutTime !== '-' && (
-                          <span className="text-slate-400 text-[10px] flex items-center gap-1" title="Jam Pulang / Checkout">
-                            <span className="size-1.5 rounded-full bg-blue-500 inline-block" />
-                            {emp.checkOutTime}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-800 flex items-center flex-wrap gap-1">
-                        <span>{emp.primaryActivity}</span>
-                        {emp.tasksCount > 1 && (
-                          <span
-                            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60"
-                            title={`${emp.tasksCount} aktivitas tercatat`}
-                          >
-                            +{emp.tasksCount - 1} lainnya
-                          </span>
-                        )}
-                        {emp.sessionsCount > 1 && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                            {emp.sessionsCount} sesi
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-600">
-                      {emp.allUnits.length > 0 ? (
-                        <div className="flex flex-wrap items-center gap-1">
-                          {emp.allUnits.slice(0, 2).map((unit) => (
-                            <span
-                              key={unit}
-                              className="bg-slate-100 text-slate-800 font-semibold px-1.5 py-0.5 rounded text-[11px] border border-slate-200"
-                            >
-                              {unit}
-                            </span>
-                          ))}
-                          {emp.allUnits.length > 2 && (
-                            <span className="text-[10px] text-slate-500 font-semibold">
-                              +{emp.allUnits.length - 2} unit
-                            </span>
-                          )}
-                        </div>
+            {/* Table Content */}
+            <Table containerClassName="rounded-none border-0 border-b border-border/70 shadow-none" className="text-xs">
+              <TableHeader>
+                <TableRow className="bg-slate-50/70 border-b border-slate-200/80 hover:bg-slate-50/70">
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('workDate')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Tanggal</span>
+                      {sortField === 'workDate' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
                       ) : (
-                        <span className="text-slate-400">-</span>
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
                       )}
-                    </td>
-                    <td className="py-3 px-4">{renderStatusBadge(emp.status)}</td>
-                    <td className="py-3 px-4">{renderProgressBar(emp.progress, emp.status)}</td>
-                    <td className="py-3 px-4 text-slate-500 whitespace-nowrap">{emp.lastUpdate}</td>
-                    <td className="py-3 px-4 text-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-                          >
-                            <MoreVertical className="w-3.5 h-3.5" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="text-xs">
-                          <DropdownMenuItem
-                            onClick={() =>
-                              setActiveDetailItem({
-                                type: 'employee',
-                                employee: emp,
-                              })
-                            }
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-2 text-blue-600" />
-                            Lihat Formulir Detail
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleExportDetailCsv(emp)}>
-                            <Download className="w-3.5 h-3.5 mr-2 text-emerald-600" />
-                            Ekspor CSV Aktivitas
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href="/dashboard/overtime-requests">
-                              <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" />
-                              Buat SPL Lembur
-                            </Link>
-                          </DropdownMenuItem>
-                          {currentUser?.isSuperAdmin && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setDeletingEmployee(emp)}
-                                className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer"
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('employeeId')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Employee ID</span>
+                      {sortField === 'employeeId' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('name')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Nama Karyawan</span>
+                      {sortField === 'name' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('siteName')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Site</span>
+                      {sortField === 'siteName' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('jobTitle')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Jabatan / Tim</span>
+                      {sortField === 'jobTitle' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('shift')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Shift</span>
+                      {sortField === 'shift' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('clockIn')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Jam Presensi</span>
+                      {sortField === 'clockIn' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('ewh')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>EWH</span>
+                      {sortField === 'ewh' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('primaryActivity')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Aktivitas Utama</span>
+                      {sortField === 'primaryActivity' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('unitTireId')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Unit / Tire ID</span>
+                      {sortField === 'unitTireId' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('status')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Status Aktivitas</span>
+                      {sortField === 'status' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500 min-w-[130px]">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('completionRate')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Progres</span>
+                      {sortField === 'completionRate' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('lastUpdated')}
+                      className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                    >
+                      <span>Update Terakhir</span>
+                      {sortField === 'lastUpdated' ? (
+                        sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                      ) : (
+                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500 text-center">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-slate-100">
+                {paginatedEmployees.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={14} className="py-8 text-center text-slate-400">
+                      Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                    paginatedEmployees.map((emp, idx) => (
+                      <TableRow
+                        key={`emp-row-${emp.sessionId ?? ''}-${emp.employeeId}-${idx}`}
+                        className="hover:bg-slate-50/60 transition-colors"
+                      >
+                        <TableCell className="py-3 px-4 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-800 text-xs">
+                              {emp.workDate || '-'}
+                            </span>
+                            {emp.rawWorkDate && (
+                              <span className="text-[10px] text-slate-400 capitalize">
+                                {new Date(emp.rawWorkDate).toLocaleDateString('id-ID', { weekday: 'long' })}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4 font-mono font-medium text-slate-700">
+                          {emp.employeeId}
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
+                          <div className="flex flex-col items-start gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActiveDetailItem({
+                                  type: 'employee',
+                                  employee: emp,
+                                })
+                              }
+                              className="font-semibold text-blue-600 hover:text-blue-800 hover:underline text-left inline-flex items-center gap-1 group cursor-pointer"
+                              title="Klik untuk melihat formulir detail aktivitas harian lengkap"
+                            >
+                              <span>{emp.name}</span>
+                              <ArrowUpRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-blue-600 transition-opacity" />
+                            </button>
+                            {emp.isMultiSession && emp.multiSessionLabel ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200"
+                                title={`Karyawan memiliki ${emp.sessionsCount} sesi aktivitas pada tanggal ini (semua disatukan dalam baris ini)`}
                               >
-                                <Trash2 className="w-3.5 h-3.5 mr-2 text-rose-600" />
-                                Hapus Aktivitas
-                              </DropdownMenuItem>
-                            </>
+                                <Layers className="w-3 h-3 text-purple-500" />
+                                {emp.multiSessionLabel}
+                              </span>
+                            ) : emp.isTeamMember ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                title={`Diinput bersama / diwakilkan oleh ${emp.representedByName || 'Rekan Tim'}`}
+                              >
+                                <Users className="w-3 h-3 text-indigo-500" />
+                                Tim {emp.representedByName ? `(${emp.representedByName})` : ''}
+                              </span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                            {emp.siteName || initialData.currentSite.name}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-3 px-4 text-slate-600">{emp.jobTitle}</TableCell>
+                        <TableCell className="py-3 px-4 text-slate-600">{emp.shift}</TableCell>
+                        <TableCell className="py-3 px-4 font-mono">
+                          <div className="flex flex-col text-[11px] leading-tight gap-0.5">
+                            <span className="text-slate-900 font-semibold flex items-center gap-1" title="Jam Masuk / Check-in">
+                              <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                              {emp.checkInTime}
+                            </span>
+                            {emp.checkOutTime && emp.checkOutTime !== '-' ? (
+                              <span className="text-slate-400 text-[10px] flex items-center gap-1" title="Jam Pulang / Checkout">
+                                <span className="size-1.5 rounded-full bg-blue-500 inline-block" />
+                                {emp.checkOutTime}
+                              </span>
+                            ) : (
+                              <span
+                                className="text-slate-400 text-[10px] flex items-center gap-1"
+                                title={emp.rosterClockOut ? `Belum Checkout (Jadwal Roster: ${emp.rosterClockIn || '-'}-${emp.rosterClockOut})` : 'Belum Checkout'}
+                              >
+                                <span className="size-1.5 rounded-full bg-amber-400 inline-block" />
+                                -
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAnalytics(emp)}
+                              className={cn(
+                                'group inline-flex items-center gap-1 font-mono font-bold text-xs px-2 py-0.5 rounded border w-fit whitespace-nowrap transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs hover:scale-[1.02]',
+                                emp.ewhPercentage >= 80
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/80 hover:border-emerald-300'
+                                  : emp.ewhPercentage >= 50
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100/80 hover:border-blue-300'
+                                  : emp.ewhActualHours > 0
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/80 hover:border-amber-300'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200/80 hover:border-slate-300'
+                              )}
+                              title="Klik untuk melihat Grafik Tren & Riwayat Analitik EWH Karyawan"
+                            >
+                              <BarChart3 className="w-3 h-3 text-slate-400 group-hover:text-current transition-colors" />
+                              <span>{emp.ewhActualHours}/{emp.ewhTargetHours} Jam</span>
+                            </button>
+                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium pl-0.5 whitespace-nowrap">
+                              <span>{emp.ewhPercentage}% Efektif</span>
+                              {emp.isRosterOff && (
+                                <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  OFF / Lembur
+                                </span>
+                              )}
+                              {!emp.isRosterOff && emp.overtimeHours && emp.overtimeHours > 0 ? (
+                                <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                  +{emp.overtimeHours}j Lembur
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
+                          <div className="font-medium text-slate-800 flex items-center flex-wrap gap-1">
+                            <span>{emp.primaryActivity}</span>
+                            {emp.tasksCount > 1 && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200/60"
+                                title={`${emp.tasksCount} aktivitas tercatat`}
+                              >
+                                +{emp.tasksCount - 1} lainnya
+                              </span>
+                            )}
+                            {emp.sessionsCount > 1 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                                {emp.sessionsCount} sesi
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-3 px-4 font-mono text-slate-600">
+                          {emp.allUnits.length > 0 ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {emp.allUnits.slice(0, 2).map((unit) => (
+                                <span
+                                  key={unit}
+                                  className="bg-slate-100 text-slate-800 font-semibold px-1.5 py-0.5 rounded text-[11px] border border-slate-200"
+                                >
+                                  {unit}
+                                </span>
+                              ))}
+                              {emp.allUnits.length > 2 && (
+                                <HoverCard openDelay={80} closeDelay={150}>
+                                  <HoverCardTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center text-[10px] text-blue-700 hover:text-blue-900 font-semibold bg-blue-50 hover:bg-blue-100 border border-blue-200/80 px-1.5 py-0.5 rounded cursor-pointer transition-colors shadow-2xs"
+                                      title="Arahkan kursor atau klik untuk melihat seluruh unit"
+                                    >
+                                      +{emp.allUnits.length - 2} unit
+                                    </button>
+                                  </HoverCardTrigger>
+                                  <HoverCardContent
+                                    className="w-64 p-3 text-xs shadow-xl bg-white border border-slate-200 z-50 rounded-xl"
+                                    align="start"
+                                    side="top"
+                                  >
+                                    <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-100">
+                                      <div className="flex items-center gap-1.5">
+                                        <Truck className="w-3.5 h-3.5 text-blue-600" />
+                                        <span className="font-bold text-slate-900 text-xs">
+                                          Semua Unit ({emp.allUnits.length})
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400 font-mono">
+                                        {emp.employeeId}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+                                      {emp.allUnits.map((u, i) => (
+                                        <span
+                                          key={i}
+                                          className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-mono font-semibold text-[11px] border border-slate-200/80"
+                                        >
+                                          {u}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </HoverCardContent>
+                                </HoverCard>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
                           )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+                        </TableCell>
+                        <TableCell className="py-3 px-4">{renderStatusBadge(emp.status)}</TableCell>
+                        <TableCell className="py-3 px-4">{renderProgressBar(emp.progress, emp.status)}</TableCell>
+                        <TableCell className="py-3 px-4 text-slate-500 whitespace-nowrap">{emp.lastUpdate}</TableCell>
+                        <TableCell className="py-3 px-4 text-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer rounded-md"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="text-xs">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setActiveDetailItem({
+                                    type: 'employee',
+                                    employee: emp,
+                                  })
+                                }
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                                Lihat Formulir Detail
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleExportDetailCsv(emp)}>
+                                <Download className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                                Ekspor CSV Aktivitas
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleOpenAnalytics(emp)}
+                                className="cursor-pointer"
+                              >
+                                <BarChart3 className="w-3.5 h-3.5 mr-2 text-indigo-600" />
+                                Riwayat &amp; Analitik EWH
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href="/dashboard/overtime-requests">
+                                  <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" />
+                                  Buat SPL Lembur
+                                </Link>
+                              </DropdownMenuItem>
+                              {currentUser?.isSuperAdmin && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setDeletingEmployee(emp)}
+                                    className="text-rose-600 focus:text-rose-700 focus:bg-rose-50 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 mr-2 text-rose-600" />
+                                    Hapus Aktivitas
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
 
-                  </tr>
+                  </TableRow>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
 
         {/* Table Pagination */}
         <div className="p-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
@@ -1690,38 +2382,42 @@ export function DailyActivityClientDashboard({
 
           {totalPages > 1 && (
             <div className="flex items-center gap-1 self-center">
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
               >
-                &lt;
-              </button>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .slice(0, 5)
                 .map((page) => (
-                  <button
+                  <Button
                     key={page}
-                    type="button"
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setCurrentPage(page)}
-                    className={`w-7 h-7 flex items-center justify-center rounded border font-semibold ${
+                    className={cn(
+                      "h-8 w-8 p-0 font-semibold text-xs",
                       currentPage === page
-                        ? 'bg-[#1d72f2] text-white border-blue-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                        ? "bg-[#1d72f2] text-white hover:bg-blue-600 border-blue-600"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
                   >
                     {page}
-                  </button>
+                  </Button>
                 ))}
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40"
               >
-                &gt;
-              </button>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
           )}
         </div>
@@ -1731,115 +2427,232 @@ export function DailyActivityClientDashboard({
     {activeTab === 'unsubmitted' && (
       <>
         {/* Table Content: Belum Mengisi Aktivitas */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50/70 text-slate-500 font-semibold border-b border-slate-200/80">
-                <th className="py-3 px-4">Employee ID</th>
-                <th className="py-3 px-4">Nama Karyawan</th>
-                <th className="py-3 px-4">Jabatan / Tim</th>
-                <th className="py-3 px-4">Shift Roster</th>
-                <th className="py-3 px-4">Status Kehadiran</th>
-                <th className="py-3 px-4">Status Daily Activity</th>
-                <th className="py-3 px-4">Keterangan</th>
-                <th className="py-3 px-4 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedUnsubmittedEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
-                      <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                      <span className="font-semibold text-slate-800 text-sm">
-                        Tidak ada karyawan bertugas yang belum mengisi!
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        Semua karyawan dengan jadwal kerja aktif telah mengisi daily activity. Karyawan dengan status roster OFF / Libur otomatis dikecualikan.
-                      </span>
+        <Table containerClassName="rounded-none border-0 border-b border-border/70 shadow-none" className="text-xs">
+          <TableHeader>
+            <TableRow className="bg-slate-50/70 border-b border-slate-200/80 hover:bg-slate-50/70">
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('employeeId')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Employee ID</span>
+                  {unsubmittedSortField === 'employeeId' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('name')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Nama Karyawan</span>
+                  {unsubmittedSortField === 'name' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('siteName')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Site</span>
+                  {unsubmittedSortField === 'siteName' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('jobTitle')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Jabatan / Tim</span>
+                  {unsubmittedSortField === 'jobTitle' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('expectedShift')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Shift Roster</span>
+                  {unsubmittedSortField === 'expectedShift' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('attendanceStatus')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Status Kehadiran</span>
+                  {unsubmittedSortField === 'attendanceStatus' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('dailyActivityStatus')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Status Daily Activity</span>
+                  {unsubmittedSortField === 'dailyActivityStatus' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => handleUnsubmittedSort('remarks')}
+                  className="inline-flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors group cursor-pointer -ml-1 px-1 py-0.5 rounded hover:bg-slate-100"
+                >
+                  <span>Keterangan</span>
+                  {unsubmittedSortField === 'remarks' ? (
+                    unsubmittedSortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                  ) : (
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead className="py-3 px-4 font-semibold text-slate-500 text-center">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="divide-y divide-slate-100">
+            {paginatedUnsubmittedEmployees.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={9} className="py-12 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <CheckCircle2 className="w-5 h-5" />
                     </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedUnsubmittedEmployees.map((emp, idx) => (
-                  <tr
-                    key={`unsubmitted-row-${emp.employeeDbId}-${emp.employeeId}-${idx}`}
-                    className="hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="py-3 px-4 font-mono font-medium text-slate-700">
-                      {emp.employeeId}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="font-semibold text-slate-900">
-                        {emp.name}
+                    <span className="font-semibold text-slate-800 text-sm">
+                      Tidak ada karyawan bertugas yang belum mengisi!
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Semua karyawan dengan jadwal kerja aktif telah mengisi daily activity. Karyawan dengan status roster OFF / Libur otomatis dikecualikan.
+                    </span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginatedUnsubmittedEmployees.map((emp, idx) => (
+                <TableRow
+                  key={`unsubmitted-row-${emp.employeeDbId}-${emp.employeeId}-${idx}`}
+                  className="hover:bg-slate-50/60 transition-colors"
+                >
+                  <TableCell className="py-3 px-4 font-mono font-medium text-slate-700">
+                    {emp.employeeId}
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="font-semibold text-slate-900">
+                      {emp.name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                      {emp.siteName || initialData.currentSite.name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-slate-600">
+                    <div className="font-medium text-slate-800">{emp.jobTitle}</div>
+                    <div className="text-[11px] text-slate-400">
+                      {emp.department}{emp.section ? ` - ${emp.section}` : ''}
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      {emp.rosterCode} ({emp.expectedShift})
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 font-mono">
+                    {emp.attendanceStatus === 'Hadir' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                        Hadir ({emp.checkInTime})
                       </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600">
-                      <div className="font-medium text-slate-800">{emp.jobTitle}</div>
-                      <div className="text-[11px] text-slate-400">
-                        {emp.department}{emp.section ? ` - ${emp.section}` : ''}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {emp.rosterCode} ({emp.expectedShift})
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        Belum Check-In
                       </span>
-                    </td>
-                    <td className="py-3 px-4 font-mono">
-                      {emp.attendanceStatus === 'Hadir' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-                          Hadir ({emp.checkInTime})
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          Belum Check-In
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-                        <AlertTriangle className="w-3 h-3 text-rose-600" />
-                        Belum Mengisi
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 text-xs">
-                      <span className="text-[11px] text-slate-600 font-medium">
-                        Jadwal Kerja Aktif ({emp.rosterType || '5:2'})
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setIsAddActivityModalOpen(true)}
-                          className="h-7 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 rounded-md gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Input
-                        </Button>
-                        <Button
-                          asChild
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-xs text-slate-500 hover:text-slate-800 px-2"
-                        >
-                          <Link href="/dashboard/scheduling-timesheet" title="Lihat jadwal roster lengkap">
-                            <Users className="w-3.5 h-3.5" />
-                          </Link>
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-3 px-4">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                      <AlertTriangle className="w-3 h-3 text-rose-600" />
+                      Belum Mengisi
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-slate-500 text-xs">
+                    <span className="text-[11px] text-slate-600 font-medium">
+                      Jadwal Kerja Aktif ({emp.rosterType || '5:2'})
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsAddActivityModalOpen(true)}
+                        className="h-8 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-blue-200 rounded-md gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Input
+                      </Button>
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-slate-500 hover:text-slate-800 rounded-md"
+                      >
+                        <Link href="/dashboard/scheduling-timesheet" title="Lihat jadwal roster lengkap">
+                          <Users className="w-4 h-4" />
+                        </Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleOpenAnalytics(emp)}
+                        className="h-8 w-8 p-0 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer rounded-md"
+                        title="Lihat riwayat & analitik EWH karyawan"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
 
         {/* Unsubmitted Table Pagination */}
         <div className="p-3.5 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500">
@@ -1856,38 +2669,42 @@ export function DailyActivityClientDashboard({
 
           {unsubmittedTotalPages > 1 && (
             <div className="flex items-center gap-1 self-center">
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setUnsubmittedPage((p) => Math.max(1, p - 1))}
                 disabled={unsubmittedPage === 1}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
-                &lt;
-              </button>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
               {Array.from({ length: unsubmittedTotalPages }, (_, i) => i + 1)
                 .slice(0, 5)
                 .map((page) => (
-                  <button
+                  <Button
                     key={page}
-                    type="button"
+                    variant={unsubmittedPage === page ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setUnsubmittedPage(page)}
-                    className={`w-7 h-7 flex items-center justify-center rounded border font-semibold ${
+                    className={cn(
+                      "h-8 w-8 p-0 font-semibold text-xs",
                       unsubmittedPage === page
-                        ? 'bg-[#1d72f2] text-white border-blue-600'
-                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
+                        ? "bg-[#1d72f2] text-white hover:bg-blue-600 border-blue-600"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                    )}
                   >
                     {page}
-                  </button>
+                  </Button>
                 ))}
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setUnsubmittedPage((p) => Math.min(unsubmittedTotalPages, p + 1))}
                 disabled={unsubmittedPage === unsubmittedTotalPages}
-                className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                className="h-8 w-8 p-0 border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
               >
-                &gt;
-              </button>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
             </div>
           )}
         </div>
@@ -1954,57 +2771,58 @@ export function DailyActivityClientDashboard({
             </span>
           </div>
 
-          <div className="py-2 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="text-slate-400 font-semibold text-[11px] border-b border-slate-100 pb-2">
-                  <th className="py-2 px-1">Aktivitas</th>
-                  <th className="py-2 px-2">Karyawan / Tim</th>
-                  <th className="py-2 px-2">Alasan</th>
-                  <th className="py-2 px-2">Target Selesai</th>
-                  <th className="py-2 px-1 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
+          <div className="py-2">
+            <Table containerClassName="rounded-none border-0 shadow-none" className="text-xs">
+              <TableHeader>
+                <TableRow className="border-b border-slate-100 hover:bg-transparent">
+                  <TableHead className="py-2 px-1 text-slate-400 font-semibold text-[11px] h-auto">Aktivitas</TableHead>
+                  <TableHead className="py-2 px-2 text-slate-400 font-semibold text-[11px] h-auto">Karyawan / Tim</TableHead>
+                  <TableHead className="py-2 px-2 text-slate-400 font-semibold text-[11px] h-auto">Alasan</TableHead>
+                  <TableHead className="py-2 px-2 text-slate-400 font-semibold text-[11px] h-auto">Target Selesai</TableHead>
+                  <TableHead className="py-2 px-1 text-right text-slate-400 font-semibold text-[11px] h-auto">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-slate-100">
                 {initialData.delayedJobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400">
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-6 text-center text-slate-400">
                       Tidak ada pekerjaan tertunda. Semua aktivitas berjalan tepat waktu.
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ) : (
                   initialData.delayedJobs.map((job) => (
-                    <tr key={job.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-2.5 px-1 font-semibold text-slate-800">{job.activity}</td>
-                      <td className="py-2.5 px-2">
+                    <TableRow key={job.id} className="hover:bg-slate-50/60 transition-colors">
+                      <TableCell className="py-2.5 px-1 font-semibold text-slate-800">{job.activity}</TableCell>
+                      <TableCell className="py-2.5 px-2">
                         <div className="font-semibold text-slate-900">{job.employeeName}</div>
                         <div className="text-[10px] text-slate-400">{job.jobTitle}</div>
-                      </td>
-                      <td className="py-2.5 px-2 text-slate-600 max-w-[130px] truncate" title={job.reason}>
+                      </TableCell>
+                      <TableCell className="py-2.5 px-2 text-slate-600 max-w-[130px] truncate" title={job.reason}>
                         {job.reason}
-                      </td>
-                      <td className="py-2.5 px-2 font-bold text-amber-600 whitespace-nowrap">
+                      </TableCell>
+                      <TableCell className="py-2.5 px-2 font-bold text-amber-600 whitespace-nowrap">
                         {job.targetCompleted}
-                      </td>
-                      <td className="py-2.5 px-1 text-right">
-                        <button
-                          type="button"
+                      </TableCell>
+                      <TableCell className="py-2.5 px-1 text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() =>
                             setActiveDetailItem({
                               type: 'delayed',
                               delayedJob: job,
                             })
                           }
-                          className="font-semibold text-blue-600 hover:text-blue-800 text-xs cursor-pointer"
+                          className="h-7 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 cursor-pointer"
                         >
                           Lihat detail
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           <div className="pt-2 text-right">
@@ -2136,6 +2954,24 @@ export function DailyActivityClientDashboard({
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => handleOpenAnalytics(activeDetailItem.employee)}
+                      className="h-8 px-2.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-sky-200 border-blue-400/40 text-xs font-bold gap-1.5 cursor-pointer"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Analitik &amp; Tren EWH</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExportDetailExcel(activeDetailItem.employee!)}
+                      className="h-8 px-2.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border-emerald-400/40 text-xs font-bold gap-1.5 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Ekspor Excel</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => handleExportDetailCsv(activeDetailItem.employee!)}
                       className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-semibold gap-1.5 cursor-pointer"
                     >
@@ -2208,6 +3044,17 @@ export function DailyActivityClientDashboard({
                     <div>
                       <span className="text-[11px] text-slate-400 block font-medium">Nama Karyawan</span>
                       <span className="font-bold text-slate-900 text-sm">{activeDetailItem.employee.name}</span>
+                      {activeDetailItem.employee.isMultiSession && activeDetailItem.employee.multiSessionLabel ? (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                          <Layers className="w-3 h-3 text-purple-500" />
+                          {activeDetailItem.employee.multiSessionLabel}
+                        </span>
+                      ) : activeDetailItem.employee.isTeamMember ? (
+                        <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          <Users className="w-3 h-3 text-indigo-500" />
+                          Tim {activeDetailItem.employee.representedByName ? `(diwakilkan oleh ${activeDetailItem.employee.representedByName})` : ''}
+                        </span>
+                      ) : null}
                     </div>
                     <div>
                       <span className="text-[11px] text-slate-400 block font-medium">Employee SN</span>
@@ -2252,7 +3099,7 @@ export function DailyActivityClientDashboard({
                           className="font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[11px]"
                           title="Jam Pulang / Checkout"
                         >
-                          Checkout: {activeDetailItem.employee.checkOutTime || '-'}
+                          Checkout: {activeDetailItem.employee.checkOutTime && activeDetailItem.employee.checkOutTime !== '-' ? activeDetailItem.employee.checkOutTime : 'Belum Checkout'}
                         </span>
                       </div>
                     </div>
@@ -2260,6 +3107,45 @@ export function DailyActivityClientDashboard({
                       <span className="text-[11px] text-slate-400 block font-medium">Akumulasi Poin Harian</span>
                       <span className="font-bold text-emerald-600 text-sm font-mono">
                         {activeDetailItem.employee.totalPoints} Poin
+                      </span>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-400 block font-medium">EWH Harian (Efektif)</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAnalytics(activeDetailItem.employee)}
+                          className="text-[10px] font-semibold text-blue-600 hover:text-blue-800 underline inline-flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <BarChart3 className="w-2.5 h-2.5" />
+                          Tren EWH
+                        </button>
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="font-bold text-slate-900 font-mono text-sm">
+                          {activeDetailItem.employee.ewhActualHours}/{activeDetailItem.employee.ewhTargetHours} Jam
+                        </span>
+                        <span
+                          className={cn(
+                            "px-1.5 py-0.5 rounded text-[10px] font-bold border",
+                            activeDetailItem.employee.ewhPercentage >= 80
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : activeDetailItem.employee.ewhPercentage >= 50
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : activeDetailItem.employee.ewhActualHours > 0
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-slate-100 text-slate-600 border-slate-200"
+                          )}
+                        >
+                          {activeDetailItem.employee.ewhPercentage}% Efektif
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        {activeDetailItem.employee.isRosterOff
+                          ? `Hari Libur / OFF (Target dihitung dari ${activeDetailItem.employee.overtimeHours || activeDetailItem.employee.ewhTargetHours} jam lembur)`
+                          : activeDetailItem.employee.overtimeHours && activeDetailItem.employee.overtimeHours > 0
+                          ? `Standar ${activeDetailItem.employee.baseNormalHours || 8} jam normal + ${activeDetailItem.employee.overtimeHours} jam lembur di luar jam reguler`
+                          : `Standar shift normal ${activeDetailItem.employee.baseNormalHours || 8} jam net (1 jam istirahat tidak dihitung)`}
                       </span>
                     </div>
                   </div>
@@ -2390,9 +3276,10 @@ export function DailyActivityClientDashboard({
                               <div className="md:w-36 shrink-0 flex flex-col items-center md:items-end gap-1.5 select-none">
                                 <div className="flex flex-wrap items-center justify-center md:justify-end gap-1.5">
                                   {taskPhotos.map((pUrl, pIdx) => (
-                                    <div
+                                    <DailyActivityPhotoThumbnail
                                       key={`${task.id}-photo-${pIdx}`}
-                                      className="relative w-28 h-20 sm:w-32 sm:h-24 rounded-lg overflow-hidden border border-slate-200 hover:border-sky-500 shadow-2xs hover:shadow-md transition-all bg-slate-900 flex items-center justify-center cursor-pointer group"
+                                      url={pUrl}
+                                      alt={`${task.label} #${pIdx + 1}`}
                                       onClick={() =>
                                         setLightboxPhoto({
                                           url: pUrl,
@@ -2402,22 +3289,7 @@ export function DailyActivityClientDashboard({
                                           remarks: task.remarks,
                                         })
                                       }
-                                    >
-                                      <img
-                                        src={formatPhotoDisplayUrl(pUrl, 400)}
-                                        alt={`${task.label} #${pIdx + 1}`}
-                                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                                        loading="lazy"
-                                        onError={(e) => {
-                                          (e.target as HTMLElement).style.opacity = '0.3'
-                                        }}
-                                      />
-                                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                        <span className="bg-white/95 text-slate-900 rounded-full px-2 py-0.5 text-[10px] font-bold flex items-center gap-1 shadow-sm">
-                                          <ZoomIn className="w-3 h-3 text-blue-600" /> Perbesar
-                                        </span>
-                                      </div>
-                                    </div>
+                                    />
                                   ))}
                                 </div>
                                 <span className="text-[10px] text-sky-700 font-semibold flex items-center gap-1">
@@ -2456,11 +3328,20 @@ export function DailyActivityClientDashboard({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleExportDetailCsv(activeDetailItem.employee!)}
-                    className="gap-1.5 text-xs text-slate-700"
+                    onClick={() => handleExportDetailExcel(activeDetailItem.employee!)}
+                    className="gap-1.5 text-xs text-emerald-800 bg-emerald-50 border-emerald-300 hover:bg-emerald-100 font-bold cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5 text-emerald-600" />
-                    Ekspor Data CSV
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                    Ekspor Excel (.xlsx)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportDetailCsv(activeDetailItem.employee!)}
+                    className="gap-1.5 text-xs text-slate-700 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    Ekspor CSV
                   </Button>
                   <Button asChild size="sm" className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs">
                     <Link href="/dashboard/overtime-requests">
@@ -2493,7 +3374,7 @@ export function DailyActivityClientDashboard({
             <AlertDialogDescription className="text-xs text-slate-600 leading-relaxed">
               Apakah Anda yakin ingin menghapus data aktivitas harian untuk{' '}
               <span className="font-semibold text-slate-900">{deletingEmployee?.name}</span>{' '}
-              (NIK: <span className="font-mono">{deletingEmployee?.employeeId}</span>) pada tanggal{' '}
+              (SN: <span className="font-mono">{deletingEmployee?.employeeId}</span>) pada tanggal{' '}
               <span className="font-medium text-slate-800">{deletingEmployee?.workDate}</span>?
               <br />
               <span className="text-rose-600 font-medium block mt-1">
@@ -2656,6 +3537,18 @@ export function DailyActivityClientDashboard({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Employee EWH & Activity History Analytics Modal ── */}
+      {analyticsEmployee && (
+        <DailyActivityEmployeeAnalyticsModal
+          isOpen={!!analyticsEmployee}
+          onClose={() => setAnalyticsEmployee(null)}
+          employeeDbId={analyticsEmployee.employeeDbId}
+          employeeName={analyticsEmployee.name}
+          employeeSn={analyticsEmployee.employeeSn}
+          siteName={analyticsEmployee.siteName}
+        />
+      )}
     </div>
   )
 }

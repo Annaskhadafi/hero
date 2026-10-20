@@ -29,6 +29,10 @@ import {
   slugifyCourseTitle,
   isLmsAdmin,
   canManageLmsSection,
+  getNextMonthFirstDay,
+  formatIndonesianDate,
+  MAX_POSTTEST_ATTEMPTS,
+  isEnrollmentInCooldown,
 } from "@/lib/chitralearning-lms";
 import { createNotificationEventForEmployee } from "@/lib/push-notifications";
 import { syncLmsToTrainingRecords } from "@/lib/lms-mysql";
@@ -166,18 +170,22 @@ export async function updateCourseSettings(courseId: number, formData: FormData)
   const isAdmin = await isLmsAdmin(session);
   if (!isAdmin) throw new Error("Unauthorized");
 
+  const course = await getCourse(courseId);
+  if (!course) throw new Error("Course tidak ditemukan");
+
   const status = textValue(formData, "status", "draft");
-  const passingScore = numberValue(formData, "passingScore", 80);
+  const passingScore = Math.min(100, Math.max(0, numberValue(formData, "passingScore", 80)));
   const dueDays = numberValue(formData, "dueDays", 30);
   const certificateEnabled = textValue(formData, "certificateEnabled") === "yes";
-  const gradingType = textValue(formData, "gradingType", "posttest_only");
-  const pretestWeight = numberValue(formData, "pretestWeight", 0);
-  const posttestWeight = numberValue(formData, "posttestWeight", 100);
+  const gradingType = textValue(formData, "gradingType", course.gradingType) === "weighted" ? "weighted" : "posttest_only";
+  // Keep post-test-only courses deterministic even when an older form submits stale weights.
+  const pretestWeight = gradingType === "weighted" ? Math.min(100, Math.max(0, formData.has("pretestWeight") ? numberValue(formData, "pretestWeight", course.pretestWeight) : course.pretestWeight)) : 0;
+  const posttestWeight = gradingType === "weighted" ? 100 - pretestWeight : 100;
   const maxRetakesStr = textValue(formData, "maxRetakes");
   const parsedMaxRetakes = parseInt(maxRetakesStr, 10);
-  const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : -1;
-  const enrollmentType = textValue(formData, "enrollmentType", "umum");
-  const targetSection = textValue(formData, "targetSection", "");
+  const maxRetakes = !Number.isNaN(parsedMaxRetakes) ? parsedMaxRetakes : course.maxRetakes;
+  const enrollmentType = textValue(formData, "enrollmentType", course.enrollmentType);
+  const targetSection = textValue(formData, "targetSection", course.targetSection);
 
   await db.update(chitraLearningCourses).set({
     status,
@@ -818,7 +826,7 @@ export async function updateInternalLmsCourseGovernanceAction(formData: FormData
   }
 
   const nextStatus = textValue(formData, "status", course.status) || course.status;
-  const nextPassingScore = numberValue(formData, "passingScore", course.passingScore);
+  const nextPassingScore = Math.min(100, Math.max(0, numberValue(formData, "passingScore", course.passingScore)));
   const nextDueDays = numberValue(formData, "dueDays", course.dueDays);
   const nextCertificateEnabled = formData.get("certificateEnabled") === "on";
 
@@ -1147,8 +1155,9 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
     throw new Error("Course tidak ditemukan");
   }
 
-  // Determine effective maxRetakes: per-lesson quizSettings overrides course-level
-  let effectiveMaxRetakes = course.maxRetakes ?? -1;
+  // Determine effective maxRetakes:
+  // Post-test standard: 3 attempts total (1 initial + 2 retakes -> maxRetakes = 2)
+  let effectiveMaxRetakes = phase === 'posttest' ? 2 : (course.maxRetakes ?? -1);
   let retakeAfterPass = true;
   if (lessonId) {
     const [lesson] = await db
@@ -1158,7 +1167,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       .limit(1);
     const qs = lesson?.quizSettings as Record<string, any> | null;
     if (qs?.limitAttempts && typeof qs.maxAttempts === 'number' && qs.maxAttempts > 0) {
-      effectiveMaxRetakes = qs.maxAttempts - 1; // maxAttempts=3 means 2 retakes (total 3 attempts), so maxRetakes = maxAttempts - 1
+      effectiveMaxRetakes = qs.maxAttempts - 1;
     }
     if (qs?.retakeAfterPass === false) {
       retakeAfterPass = false;
@@ -1167,7 +1176,21 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
 
   const enrollment = await getOrCreateEnrollment(courseId, employee.id);
 
+  // Check if enrollment is currently in failed cooldown
+  if (phase === 'posttest' && isEnrollmentInCooldown(enrollment)) {
+    const cooldownDate = enrollment.cooldownUntil || getNextMonthFirstDay();
+    return {
+      success: false,
+      score: 0,
+      passed: false,
+      maxAttemptsReached: true,
+      cooldownUntil: cooldownDate,
+      message: `Anda belum dapat mengulang Post-Test pada materi ini. Silakan akses kembali mulai tanggal ${formatIndonesianDate(cooldownDate)}.`,
+    };
+  }
+
   // Check if retake is allowed
+  let attemptCount = 0;
   if (effectiveMaxRetakes >= 0) {
     const { sql } = await import('drizzle-orm')
     const { chitraLearningAuditLogs } = await import('@/db/schema/hero')
@@ -1180,9 +1203,17 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
          eq(chitraLearningAuditLogs.action, 'quiz_submitted'),
          sql`CAST(after_value->>'lessonId' AS INTEGER) = ${lessonId || 0}`
       ))
-    const attemptCount = Number(auditRows[0].count)
+    attemptCount = Number(auditRows[0].count)
     if (attemptCount > effectiveMaxRetakes) {
-      throw new Error("Anda telah mencapai batas maksimal percobaan tes.")
+      const cooldownDate = enrollment.cooldownUntil || getNextMonthFirstDay();
+      return {
+        success: false,
+        score: 0,
+        passed: false,
+        maxAttemptsReached: true,
+        cooldownUntil: cooldownDate,
+        message: `Anda telah mencapai batas maksimal percobaan tes. Silakan akses kembali mulai tanggal ${formatIndonesianDate(cooldownDate)}.`,
+      };
     }
   }
 
@@ -1200,7 +1231,12 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       ))
       .limit(1);
     if (prevPassed.length > 0) {
-      throw new Error("Anda sudah lulus tes ini. Pengulangan tidak diizinkan.")
+      return {
+        success: false,
+        score: 0,
+        passed: true,
+        message: "Anda sudah lulus tes ini. Pengulangan tidak diizinkan.",
+      };
     }
   }
   const questions = await db
@@ -1210,8 +1246,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
       lessonId
         ? and(
             eq(chitraLearningQuizQuestions.courseId, courseId),
-            eq(chitraLearningQuizQuestions.lessonId, lessonId),
-            eq(chitraLearningQuizQuestions.testPhase, phase)
+            eq(chitraLearningQuizQuestions.lessonId, lessonId)
           )
         : and(eq(chitraLearningQuizQuestions.courseId, courseId), eq(chitraLearningQuizQuestions.testPhase, phase))
     );
@@ -1256,7 +1291,7 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         pretestStatus: "completed",
         progress,
         finalScore,
-        isPassed: passed,
+        isPassed: enrollment.posttestScore != null && finalScore >= course.passingScore,
         lastLessonId: lessonId || enrollment.lastLessonId,
         updatedAt: new Date(),
       })
@@ -1267,6 +1302,21 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         : score;
     passed = finalScore >= course.passingScore;
 
+    const allCourseLessons = await db
+      .select({ id: chitraLearningLessons.id })
+      .from(chitraLearningLessons)
+      .where(eq(chitraLearningLessons.courseId, courseId))
+      .orderBy(asc(chitraLearningLessons.sectionOrder), asc(chitraLearningLessons.sortOrder), asc(chitraLearningLessons.id));
+    const isLastLesson = !lessonId || (allCourseLessons.length > 0 && allCourseLessons[allCourseLessons.length - 1].id === lessonId);
+    const calculatedLessonProgress = lessonId ? await getLessonProgress(courseId, lessonId) : 100;
+    const newProgress = isLastLesson
+      ? (passed ? 100 : Math.max(enrollment.progress, 80))
+      : Math.max(enrollment.progress, calculatedLessonProgress);
+
+    const isExhaustedAttempts = effectiveMaxRetakes >= 0 && (attemptCount + 1) >= (effectiveMaxRetakes + 1);
+    const shouldLockCooldown = !passed && isExhaustedAttempts && phase === 'posttest';
+    const calculatedCooldownUntil = shouldLockCooldown ? getNextMonthFirstDay() : null;
+
     await db
       .update(chitraLearningEnrollments)
       .set({
@@ -1275,8 +1325,11 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
         score: finalScore,
         finalScore,
         isPassed: passed,
-        status: passed ? "passed" : "failed",
-        progress: passed ? 100 : Math.max(enrollment.progress, 80),
+        status: isLastLesson 
+          ? (passed ? "passed" : "failed") 
+          : (passed ? (enrollment.progress >= 100 ? "passed" : "in_progress") : (shouldLockCooldown ? "failed" : "in_progress")),
+        cooldownUntil: calculatedCooldownUntil ?? (passed ? null : enrollment.cooldownUntil),
+        progress: newProgress,
         lastLessonId: lessonId || enrollment.lastLessonId,
         completedAt: passed ? new Date() : null,
         updatedAt: new Date(),
@@ -1332,10 +1385,15 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
 
   revalidateLms();
 
+  const isExhausted = !passed && effectiveMaxRetakes >= 0 && (attemptCount + 1) >= (effectiveMaxRetakes + 1);
   return {
     success: true,
     score,
     passed,
+    attemptCount: attemptCount + 1,
+    maxAttempts: effectiveMaxRetakes >= 0 ? effectiveMaxRetakes + 1 : -1,
+    maxAttemptsReached: isExhausted,
+    cooldownUntil: isExhausted ? (enrollment.cooldownUntil || getNextMonthFirstDay()) : null,
   };
 }
 
@@ -1701,6 +1759,68 @@ export async function requestInternalLmsEnrollmentAction(formData: FormData) {
     .limit(1);
 
   if (existing) {
+    if (existing.status === 'failed') {
+      const isCooldown = existing.cooldownUntil && new Date().getTime() < new Date(existing.cooldownUntil).getTime();
+      if (isCooldown) {
+        throw new Error(`Anda belum dapat mendaftar ulang kursus ini. Kursus dapat diakses kembali mulai tanggal ${formatIndonesianDate(existing.cooldownUntil)}.`);
+      }
+
+      // Cooldown has ended: reset enrollment to allow fresh re-attempt from beginning
+      const enrollmentType = (course as any).enrollmentType || "umum";
+      const isKhusus = enrollmentType === "khusus";
+
+      await db
+        .update(chitraLearningEnrollments)
+        .set({
+          enrollmentType: "self",
+          approvalStatus: isKhusus ? "pending" : "approved",
+          approvedAt: isKhusus ? null : new Date(),
+          status: "assigned",
+          progress: 0,
+          score: null,
+          pretestScore: null,
+          pretestStatus: "not_started",
+          posttestScore: null,
+          posttestStatus: "not_started",
+          finalScore: null,
+          isPassed: false,
+          dueAt: dueDate(course.dueDays),
+          lastLessonId: null,
+          lastPositionSeconds: 0,
+          startedAt: null,
+          completedAt: null,
+          cooldownUntil: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(chitraLearningEnrollments.id, existing.id));
+
+      // Reset quiz audit logs for this employee and course
+      await db
+        .delete(chitraLearningAuditLogs)
+        .where(and(
+          eq(chitraLearningAuditLogs.employeeId, employee.id),
+          eq(chitraLearningAuditLogs.courseId, courseId),
+          eq(chitraLearningAuditLogs.action, 'quiz_submitted')
+        ));
+
+      if (isKhusus) {
+        try {
+          await sendLmsEnrollmentRequestNotification({
+            employeeName: employee.name,
+            employeeSn: employee.employeeSn ?? '',
+            employeeSection: (employee as any).section ?? '-',
+            courseTitle: course.title,
+            actorEmail: employee.email,
+          });
+        } catch (error) {
+          console.error('[ChitraLearning LMS] enrollment request email failed', error);
+        }
+      }
+
+      revalidateLms();
+      return { success: true, autoApproved: !isKhusus, reEnrolled: true };
+    }
+
     throw new Error("Anda sudah terdaftar atau request sedang pending");
   }
 

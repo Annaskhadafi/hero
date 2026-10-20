@@ -8,6 +8,9 @@ import { canAccessDailyActivityMonitoring, isSuperAdminRole } from '@/lib/hero-a
 import { getDailyActivityDashboardData } from '@/lib/daily-activity-dashboard'
 import { DailyActivityClientDashboard } from './client-dashboard'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export const metadata: Metadata = {
   title: 'Daily Activity - Monitoring PJO & Head | HERO',
   description: 'Monitoring aktivitas harian seluruh karyawan site khusus PJO, Head Section, Head Department, dan Manajemen',
@@ -167,12 +170,9 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
   const assignedSection = sectionHeadSections[0]?.name || emp?.sectionName || emp?.section || null
 
   // 4. Resolve filtering parameters according to role master data rules:
-  // Rule 4: untuk PJO / leader Lokasi filter otomatis hanya melihat lokasi nya saja
-  let effectiveSiteId = resolvedParams.siteId
-  if (isPjoOrLocationLeader && assignedSiteId) {
-    // Strictly lock site to user's assigned location
-    effectiveSiteId = String(assignedSiteId)
-  }
+  // 4. Resolve filtering parameters according to role master data rules:
+  // 1 Site: prioritaskan param URL siteId, jika tidak ada default ke assignedSiteId karyawan
+  const effectiveSiteId = resolvedParams.siteId || (assignedSiteId ? String(assignedSiteId) : undefined)
 
   // Rule 3: untuk Head Departement filter otomatis di Departement tersebut
   let effectiveDept = resolvedParams.dept
@@ -188,7 +188,7 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
 
   const searchKeyword = resolvedParams.employeeName || resolvedParams.q
 
-  // 5. Fetch dashboard data with effective siteId
+  // 5. Fetch dashboard data (strictly 1 site monitoring & running week default)
   const data = await getDailyActivityDashboardData({
     siteId: effectiveSiteId,
     date: resolvedParams.date,
@@ -218,7 +218,7 @@ export default async function DailyActivityPage({ searchParams }: PageProps) {
             assignedSection,
           }}
           initialFilters={{
-            siteId: effectiveSiteId,
+            siteId: String(data.currentSite.id),
             dept: effectiveDept,
             section: effectiveSection,
           }}

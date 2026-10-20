@@ -35,10 +35,13 @@ import {
   Users,
   MapPin,
   ChevronLeft,
+  Camera,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 function formatDateTime(value: string | Date | null | undefined) {
   if (!value) return '-'
@@ -100,6 +103,25 @@ export function OvertimePublicApproval({
   const [isPending, startTransition] = useTransition()
   const [isDownloading, setIsDownloading] = useState(false)
   const [activeView, setActiveView] = useState<'form' | 'preview'>('form')
+  const [selectedEvidenceImage, setSelectedEvidenceImage] = useState<string | null>(null)
+
+  const evidencePhotos = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(data?.photos) ? data.photos : []),
+        ...(data?.photoUrl ? [data.photoUrl] : []),
+        ...(Array.isArray(data?.items)
+          ? data.items.flatMap((it: any) =>
+              Array.isArray(it.photos)
+                ? it.photos
+                : it.photoUrl
+                  ? [it.photoUrl]
+                  : []
+            )
+          : []),
+      ].filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    )
+  )
 
   // Multi-select for participants
   const participants = data?.participants || []
@@ -487,6 +509,38 @@ export function OvertimePublicApproval({
               </div>
             </div>
 
+            {/* Foto Bukti Pengajuan SPL */}
+            {evidencePhotos.length > 0 && (
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Camera className="size-4 text-sky-600" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                      Foto Bukti Pengajuan SPL ({evidencePhotos.length})
+                    </h3>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {evidencePhotos.map((pUrl, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedEvidenceImage(pUrl)}
+                      className="group relative h-16 w-20 cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-slate-50 transition hover:border-sky-400 hover:shadow-md"
+                    >
+                      <img
+                        src={resolveUploadUrl(pUrl)}
+                        alt={`Bukti SPL ${idx + 1}`}
+                        className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
+                        <Eye className="size-4 text-white" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Approval Action Box */}
             {!done && !rejected && !reverted && (
               <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-xs space-y-4">
@@ -637,13 +691,20 @@ export function OvertimePublicApproval({
               }}
             >
               <div className="pt-28 pb-16 px-12 space-y-4">
-                <div className="text-center border-b border-slate-300 pb-2">
-                  <h2 className="text-sm font-black tracking-wider uppercase text-slate-900">
-                    SURAT PERINTAH LEMBUR (SPL)
-                  </h2>
-                  <p className="text-[10px] font-mono font-bold text-slate-600">
-                    Nomor: {data?.splNumber || 'SPL-DRAFT'}
-                  </p>
+                <div className="flex items-start justify-between border-b border-slate-300 pb-2">
+                  <div className="flex-1 text-center pl-14">
+                    <h2 className="text-sm font-black tracking-wider uppercase text-slate-900">
+                      SURAT PERINTAH LEMBUR (SPL)
+                    </h2>
+                    <p className="text-[10px] font-mono font-bold text-slate-600">
+                      Nomor: {data?.splNumber || 'SPL-DRAFT'}
+                    </p>
+                  </div>
+                  {data?.documentId && (
+                    <div className="shrink-0 -mt-2">
+                      <SplEvidenceQrBox splId={data.documentId} splNumber={data.splNumber} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
@@ -818,6 +879,35 @@ export function OvertimePublicApproval({
               {confirmDialog?.actionType === 'reject' ? 'Ya, Tolak' : 'Ya, Kembalikan'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox Modal for Photo Evidence */}
+      <Dialog
+        open={Boolean(selectedEvidenceImage)}
+        onOpenChange={(open) => !open && setSelectedEvidenceImage(null)}
+      >
+        <DialogContent className="max-w-3xl p-3 bg-slate-950/95 border-slate-800 text-white rounded-2xl">
+          {selectedEvidenceImage && (
+            <div className="flex flex-col items-center gap-3">
+              <img
+                src={resolveUploadUrl(selectedEvidenceImage)}
+                alt="Foto Bukti SPL"
+                className="max-h-[75vh] w-auto rounded-xl object-contain shadow-2xl"
+              />
+              <div className="flex items-center justify-between w-full px-2 text-xs text-slate-400">
+                <span>Foto Bukti SPL</span>
+                <a
+                  href={resolveUploadUrl(selectedEvidenceImage)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sky-400 hover:text-sky-300 underline font-semibold"
+                >
+                  Buka Gambar Asli ↗
+                </a>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </main>

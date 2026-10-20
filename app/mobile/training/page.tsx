@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Award, BookOpenCheck, CalendarClock, ShieldAlert } from "lucide-react";
+import { Award, BookOpenCheck, CalendarClock, ShieldAlert, FileText, ArrowRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { getServerSession } from "@/lib/auth-session";
@@ -63,10 +64,38 @@ export default async function MobileTrainingPage() {
   }, new Map());
 
   return (
-    <div className="space-y-5">
-      <section>
-        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">HC Suite</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">Training History</h1>
+    <div className="space-y-4">
+      {/* Top Segmented Tab Switcher */}
+      <div className="flex items-center p-1 bg-slate-200/80 rounded-2xl gap-1">
+        <Link
+          href="/mobile/training"
+          className="flex-1 py-2 text-center text-xs font-bold rounded-xl bg-white text-[#003461] shadow-xs flex items-center justify-center gap-1.5 transition-all"
+        >
+          <BookOpenCheck className="size-4 text-[#003461]" />
+          <span>Riwayat & Sertifikat</span>
+        </Link>
+        <Link
+          href="/mobile/training/pengajuan"
+          className="flex-1 py-2 text-center text-xs font-semibold rounded-xl text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition-all"
+        >
+          <FileText className="size-4 text-slate-500" />
+          <span>Pengajuan Training</span>
+        </Link>
+      </div>
+
+      <section className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#486275]">HC Suite</p>
+          <h1 className="mt-0.5 text-xl font-black tracking-tight text-[#003461]">Training History</h1>
+        </div>
+        <Link
+          href="/mobile/training/pengajuan"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#003461] text-white text-xs font-bold shadow-sm active:scale-95 transition-transform"
+        >
+          <FileText className="size-3.5" />
+          <span>Ajukan</span>
+          <ArrowRight className="size-3" />
+        </Link>
       </section>
 
       <section className="grid grid-cols-3 gap-3">

@@ -14,6 +14,7 @@ import {
   BarChart,
   Trophy,
   ClipboardList,
+  FileCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -57,6 +58,12 @@ const ADMIN_ITEMS = [
     href: '/dashboard/chitralearning-lms/courses/new',
     icon: Hammer,
     color: 'rose',
+  },
+  {
+    title: 'Contract Review Tests',
+    href: '/dashboard/chitralearning-lms/contract-tests',
+    icon: FileCheck,
+    color: 'emerald',
   },
   {
     title: 'Management',

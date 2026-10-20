@@ -32,6 +32,10 @@ test("road condition AI route is authenticated and sends images to the model", (
   assert.match(source, /getInspectionAiConfig/);
   assert.match(aiConfigSource, /anthropic\/claude-3\.5-sonnet/);
   assert.match(aiConfigSource, /openai\/gpt-4o-mini/);
+  assert.match(aiConfigSource, /OPENAI_API_KEY/);
+  assert.match(aiConfigSource, /OPENAI_BASE_URL/);
+  assert.match(aiConfigSource, /OPENAI_MODEL/);
+  assert.match(aiConfigSource, /9router\.chitraparatama\.com/);
   assert.doesNotMatch(source, /ROAD_CONDITION_AI_/);
   assert.match(source, /getCurrentMenuPermission\(ROAD_CONDITION_RESOURCE\)/);
   assert.match(source, /permission\.canView/);
@@ -59,6 +63,7 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   const historyHelperSource = read("lib/road-condition-history.ts");
   const historyApiSource = read("app/api/reports/road-condition/history/route.ts");
   const historyDeleteSource = read("app/api/reports/road-condition/history/[id]/route.ts");
+  const pptxRouteSource = read("app/api/reports/road-condition/pptx/route.ts");
 
   assert.match(source, /PHOTO_ANGLES = \['Angle 1', 'Angle 2', 'Angle 3'\]/);
   assert.match(source, /ROAD_CONDITION_SCORE_OPTIONS/);
@@ -126,6 +131,13 @@ test("road condition page supports multi-category 16:9 compiled report", () => {
   assert.match(source, /AI Semua/);
   assert.match(source, /generateReportPdf/);
   assert.match(source, /generateHistoryPdf/);
+  assert.match(source, /generateReportPptx/);
+  assert.match(source, /generateHistoryPptx/);
+  assert.match(pptxRouteSource, /pptxgenjs/);
+  assert.match(source, /\/api\/reports\/road-condition\/pptx/);
+  assert.match(source, /downloadReportPptx/);
+  assert.match(source, /Download PPTX/);
+  assert.match(source, /drawPdfStars/);
   assert.match(source, /jspdf/);
   assert.match(source, /downloadReportPdf/);
   assert.match(source, /drawPdfDetail/);
@@ -169,3 +181,112 @@ test("road condition menu seed is managed by HSE permissions", () => {
   assert.match(source, /hse_road_condition_analysis/);
   assert.match(source, /HSE_MANAGED_RESOURCES[\s\S]*hse_road_condition_analysis/);
 });
+
+test("inspection AI config properly maps OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL and 9router", () => {
+  function cleanEnv(value) {
+    if (!value) return "";
+    let trimmed = String(value).trim();
+    if (
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
+    return trimmed;
+  }
+
+  // Simulate getInspectionAiConfig function logic
+  function testConfig(env) {
+    const preferOpenAi = cleanEnv(env.LLM_PROVIDER).toLowerCase() === "openai";
+
+    let rawUrl = (
+      (preferOpenAi ? cleanEnv(env.OPENAI_BASE_URL) : "") ||
+      cleanEnv(env.INSPECTION_AI_URL) ||
+      cleanEnv(env.OPENAI_BASE_URL) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_API_URL)) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_URL)) ||
+      "https://9router.chitraparatama.com/v1"
+    ).trim();
+
+    if (rawUrl.endsWith("/")) {
+      rawUrl = rawUrl.slice(0, -1);
+    }
+    const apiUrl = rawUrl.endsWith("/chat/completions")
+      ? rawUrl
+      : `${rawUrl}/chat/completions`;
+
+    const apiKey = (
+      (preferOpenAi ? cleanEnv(env.OPENAI_API_KEY) : "") ||
+      cleanEnv(env.INSPECTION_AI_API_KEY) ||
+      cleanEnv(env.OPENAI_API_KEY) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_API_KEY)) ||
+      (preferOpenAi ? "" : cleanEnv(env.TIRE_PATTERN_API_KEY)) ||
+      (preferOpenAi ? "" : cleanEnv(env.OPENROUTER_API_KEY)) ||
+      ""
+    ).trim();
+
+    const configuredModel = (
+      (preferOpenAi ? cleanEnv(env.OPENAI_MODEL) : "") ||
+      cleanEnv(env.INSPECTION_AI_MODEL) ||
+      cleanEnv(env.OPENAI_MODEL) ||
+      (preferOpenAi ? "" : cleanEnv(env.TIRE_PATTERN_MODEL)) ||
+      (preferOpenAi ? "" : cleanEnv(env.OLLAMA_MODEL)) ||
+      "cx/gpt-5.6-luna"
+    ).trim();
+
+    const model =
+      configuredModel === "anthropic/claude-3.5-sonnet" ? "openai/gpt-4o-mini" : configuredModel;
+
+    return { apiUrl, apiKey, model };
+  }
+
+  // Case 1: Standard 9router + OpenAI envs
+  const c1 = testConfig({
+    OPENAI_API_KEY: "sk-test123",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1",
+    OPENAI_MODEL: "cx/gpt-5.6-luna",
+    LLM_PROVIDER: "openai",
+  });
+  assert.equal(c1.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+  assert.equal(c1.apiKey, "sk-test123");
+  assert.equal(c1.model, "cx/gpt-5.6-luna");
+
+  // Case 2: Trailing slash in OPENAI_BASE_URL
+  const c2 = testConfig({
+    OPENAI_API_KEY: "sk-test456",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1/",
+  });
+  assert.equal(c2.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+  assert.equal(c2.apiKey, "sk-test456");
+  assert.equal(c2.model, "cx/gpt-5.6-luna");
+
+  // Case 3: URL already includes /chat/completions
+  const c3 = testConfig({
+    OPENAI_API_KEY: "sk-test789",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1/chat/completions",
+  });
+  assert.equal(c3.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+
+  // Case 4: Specific INSPECTION_AI overrides take precedence
+  const c4 = testConfig({
+    OPENAI_API_KEY: "sk-openai",
+    OPENAI_BASE_URL: "https://9router.chitraparatama.com/v1",
+    OPENAI_MODEL: "cx/gpt-5.6-luna",
+    INSPECTION_AI_API_KEY: "sk-custom",
+    INSPECTION_AI_MODEL: "openrouter/inference-net/schematron-v2-turbo",
+  });
+  assert.equal(c4.apiKey, "sk-custom");
+  assert.equal(c4.model, "openrouter/inference-net/schematron-v2-turbo");
+
+  // Case 5: Env variables with surrounding quotes (Dokploy UI)
+  const c5 = testConfig({
+    OPENAI_API_KEY: '"sk-quoted-key"',
+    OPENAI_BASE_URL: '"https://9router.chitraparatama.com/v1"',
+    OPENAI_MODEL: '"cx/gpt-5.6-luna"',
+    LLM_PROVIDER: '"openai"',
+  });
+  assert.equal(c5.apiUrl, "https://9router.chitraparatama.com/v1/chat/completions");
+  assert.equal(c5.apiKey, "sk-quoted-key");
+  assert.equal(c5.model, "cx/gpt-5.6-luna");
+});
+

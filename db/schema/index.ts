@@ -148,6 +148,7 @@ export { marketingCampaigns, campaignRecipients, marketingCampaignsRelations, ca
 export { slowMovingProducts, slowMovingProductsRelations } from "./slow-moving-products";
 export { cosmeticTires, cosmeticTiresRelations } from "./cosmetic-tires";
 export { tirePerformanceRecords, tirePerformanceRecordsRelations } from "./tire-performance";
+export { tireRepairInspections, tireRepairPhotos, tireRepairInspectionsRelations, tireRepairPhotosRelations } from "./tire-repair";
 export { rmiRecords, quarterlyExchangeRates, rmiWeights, rmiRecordsRelations, quarterlyExchangeRatesRelations, rmiWeightsRelations } from "./rmi";
 export { repairMasterItems, repairMasterSites } from "./repair-master";
 export { zmc9StockSap, me2lPurchDocsSap, zvendorPoReportSap, salesRevenueSap, salesRevenueSap as historyOrders, coverLetterSigners } from "./sap";
@@ -293,3 +294,32 @@ export * from './helpdesk'
 
 // Capital Expenditure Request (CER) & CapEx Budgets
 export * from './cer'
+
+// APD & Inventory
+export { masterApd } from './apd'
+
+// Marital Status
+export * from './marital-status'
+
+// HSE On the Spot Monitoring (OSM)
+export * from './hse-osm'
+
+// General Affairs - ATK
+export * from './atk'
+
+// General Affairs - Vehicles
+export * from './vehicles'
+
+// Compensation & Benefit (HRGA)
+export * from './compensation'
+
+// User Management & Personalization
+export { userPinnedServices } from './user-management'
+
+
+// HRGA Kerjasama (Rumah Sakit & Siswa PKL)
+export * from './hrga-kerjasama'
+
+// General Affairs - House Rental
+export * from './house-rental'
+

@@ -1,0 +1,32 @@
+Create ONE finished premium Indonesian business presentation slide, landscape 16:9, aim for 3840x2160 high-resolution. This is a screenshot-based product feature overview of the ACTUAL MAESTRO customer portal, not a hypothetical UI mockup.
+INPUTS: five real E2E screenshots: image 1 Daily Activity, image 2 Tire Scrap, image 3 Tire Check, image 4 PO & Cargo Tracking, image 5 Customer Support. Use all five screenshot inserts. Safety & PTW is a sixth text-only feature panel, with no invented screenshot.
+CRITICAL: use the supplied screenshots as embedded screenshot pictures. Preserve their recognizable actual layouts, charts, colors and data. Do not invent replacement dashboards, recolor charts, add imaginary features or fabricate metrics. You may crop surplus whitespace and browser app chrome around useful content for readability. UI details in screenshots are photographic inserts, not text to re-typeset. No laptop or device mockups.
+ART DIRECTION: clean premium enterprise presentation. White and very pale blue background, royal blue #0753e7, deep navy typography #0f172a, restrained cyan/emerald accents. Add subtle low-contrast curved blue linework in outer corners for composition. Crisp generous readable typography, structured spacing, subtle borders, no heavy shadows. Use a purposeful 3-column by 2-row feature gallery occupying most of the slide, six aligned modules: five with large actual screenshot inserts, plus one refined royal-blue text-only Safety & PTW capability panel. Give each a blue numbered label, bold title, screenshot, and two concise lines of feature detail. Customer Support should have an emphasized blue title band and use image 5 as its actual screenshot.
+TOP HEADER: large bold 'MAESTRO™'; subtitle 'Portal Customer Terintegrasi HERO'. A smaller line below: 'Monitoring Aktivitas, Efisiensi, Safety, Transaksi & Reporting Online'. Top-right small 'PT CHITRA PARATAMA'.
+MODULE 01 using input image 1:
+Title 'Daily Activity & Manpower'
+Text 'Presensi, shift & aktivitas teknisi'
+Text 'Progres pekerjaan, filter & ekspor data'
+MODULE 02, NO screenshot: use a beautiful rich royal-blue capability panel with four elegant outline icons for statistics, permit document, hazard observation and safety analysis. Large white readable text, meaningful balanced composition:
+Title 'Safety & PTW'
+Text 'Statistik K3, sertifikasi & izin kerja'
+Text 'Observasi hazard & Job Safety Analysis'
+MODULE 03 using image 2:
+Title 'Tire Scrap Performance'
+Text 'Lifetime, achievement & penyebab scrap'
+Text 'Analisis brand, ukuran & estimasi kerugian'
+MODULE 04 using image 3:
+Title 'Tire Check Monitoring'
+Text 'Pemeriksaan harian & tren low pressure'
+Text 'Rekap equipment & perbandingan site'
+MODULE 05 using image 4:
+Title 'PO & Cargo Tracking'
+Text 'Manifest kargo, PO & surat jalan DO'
+Text 'Status pengiriman & konsinyasi eVHS'
+MODULE 06 using image 5:
+Title 'Customer Support & AI'
+Text 'Tiket per site, kategori, prioritas & lampiran'
+Text 'Asistensi AI, tindak lanjut staf & status tiket'
+BOTTOM FOOTER: slim tasteful royal blue process band with white text: 'CUSTOMER SUPPORT' then 'Ajukan Tiket → Asistensi AI → Tindak Lanjut Staf → Penyelesaian'. Small caption below 'Cuplikan aplikasi dari pengujian E2E • 19 Oktober 2026'. This caption describes screenshot capture, not a claim that the entire support lifecycle was tested.
+Ensure all slide labels accurately spelled and readable. All five screenshots must be visibly different and correctly paired with their feature titles. Prioritize real product evidence and clear feature explanations. Output one full-bleed finished slide image only.
+Updated source account is the actual customer account supplied by the user. Do not print email, password, account credentials or login details anywhere on the slide. Crop account identity footer from screenshots if useful. Do not invent a corporate logo: display PT CHITRA PARATAMA in refined text only. Keep the slide clean and text legible, five genuine screenshot inserts and one blue Safety & PTW explainer panel. Do not add extra claims about uptime, performance, support SLA or verified AI responses.

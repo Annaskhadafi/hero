@@ -39,7 +39,7 @@ export function MobileLmsSelector({
         <option value="">-- Lihat Saya Sendiri --</option>
         {employees.map((emp) => (
           <option key={emp.id} value={emp.id}>
-            {emp.name} ({emp.employeeSn || 'Tanpa NIK'}) - {emp.department || 'Tanpa Dept'}
+            {emp.name} ({emp.employeeSn || 'Tanpa SN'}) - {emp.department || 'Tanpa Dept'}
           </option>
         ))}
       </select>

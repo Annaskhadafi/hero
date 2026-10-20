@@ -186,8 +186,8 @@ export function ApprovalRequestDetails({ item }: { item: ApprovalInboxItem }) {
           </div>
           {(item as any).tireCount ? (
             <div>
-              <dt className="text-xs font-semibold text-[#60788a]">Jumlah Tire</dt>
-              <dd className="mt-0.5 font-bold tabular-nums">{(item as any).tireCount} unit</dd>
+              <dt className="text-xs font-semibold text-[#60788a]">Jumlah Pcs / Qty</dt>
+              <dd className="mt-0.5 font-bold tabular-nums">{(item as any).tireCount}</dd>
             </div>
           ) : null}
           <div className="col-span-2 border-t border-[#d5e5ef] pt-3">

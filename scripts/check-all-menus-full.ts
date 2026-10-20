@@ -1,21 +1,27 @@
-﻿import { db } from "@/db";
+import { db } from "@/db";
 import { navbarMenuItems } from "@/db/schema/hero";
+import { ensureHeroGovernanceSeedData, syncMenuPermissionsMatrix } from "@/lib/hero-admin";
 
-async function checkAllMenus() {
-  const all = await db.select().from(navbarMenuItems);
+async function main() {
+  console.log("Syncing governance seed and permissions matrix...");
+  await ensureHeroGovernanceSeedData();
+  await syncMenuPermissionsMatrix();
   
-  const timesheet = all.filter((m) => m.title.toLowerCase().includes("timesheet"));
-  const cargo = all.filter((m) => m.title.toLowerCase().includes("cargo"));
+  const items = await db.select().from(navbarMenuItems).orderBy(navbarMenuItems.section, navbarMenuItems.sortOrder);
+  console.log("Total menus after sync:", items.length);
   
-  console.log("Timesheet menus found: " + timesheet.length);
-  timesheet.forEach((m) => {
-    console.log("  ID: " + m.id + " | Title: " + m.title + " | Section: " + m.section + " | URL: " + m.url);
-  });
+  const bySection: Record<string, typeof items> = {};
+  for (const item of items) {
+    bySection[item.section] = bySection[item.section] || [];
+    bySection[item.section].push(item);
+  }
   
-  console.log("\nCargo menus found: " + cargo.length);
-  cargo.forEach((m) => {
-    console.log("  ID: " + m.id + " | Title: " + m.title + " | Section: " + m.section + " | URL: " + m.url);
-  });
+  for (const [sec, secItems] of Object.entries(bySection)) {
+    console.log(`\n=== [${sec}] (${secItems.length} items) ===`);
+    secItems.forEach(i => {
+      console.log(`  ${i.sortOrder}. ${i.title} -> ${i.url} (area: ${i.menuArea}, visible: ${i.isVisible})`);
+    });
+  }
 }
 
-checkAllMenus().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });

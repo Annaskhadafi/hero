@@ -92,7 +92,7 @@ function getApiKey(): string | null {
 /**
  * Get valid Authorization header value (API Key or JWT Bearer)
  */
-async function getAuthHeader(): Promise<string> {
+async function getAuthHeader(baseUrlOverride?: string): Promise<string> {
   const apiKey = getApiKey()
   if (apiKey) {
     return apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`
@@ -104,7 +104,7 @@ async function getAuthHeader(): Promise<string> {
   }
 
   const { email, password } = getCredentials()
-  const baseUrl = getBaseUrl()
+  const baseUrl = baseUrlOverride || getBaseUrl()
 
   const res = await fetch(`${baseUrl}/api/v1/auth/login`, {
     method: 'POST',
@@ -862,18 +862,51 @@ export async function rarayPredictTireDamage(params: {
   mimeType: string
   confidenceThreshold?: number
   iouThreshold?: number
+  baseUrlOverride?: string
+  modelEndpoint?: string
+  endpoint?: string
 }): Promise<{ status: 'success' | 'error'; result?: unknown; message?: string }> {
-  const { fileBuffer, fileName, mimeType, confidenceThreshold = 0.25, iouThreshold = 0.45 } = params
+  let dynamicBaseUrl = params.baseUrlOverride || getBaseUrl()
+  let dynamicPrimary = 'tire-demage-onnx'
+  let dynamicFallback = 'tire-demage'
+  let dynamicApiKey = ''
+
+  if (!params.baseUrlOverride) {
+    try {
+      const { getVisionModelSettings } = await import('@/lib/vision-model-settings')
+      const config = await getVisionModelSettings()
+      if (config.baseUrl) dynamicBaseUrl = config.baseUrl.replace(/\/+$/, '')
+      if (config.primaryEndpoint) dynamicPrimary = config.primaryEndpoint
+      if (config.fallbackEndpoint) dynamicFallback = config.fallbackEndpoint
+      if (config.apiKey) dynamicApiKey = config.apiKey
+    } catch {
+      // fallback to environment defaults
+    }
+  }
+
+  const primaryTarget = params.endpoint?.trim() || params.modelEndpoint?.trim() || dynamicPrimary
+  const fallbackTarget = dynamicFallback
+  const confidenceThreshold = params.confidenceThreshold ?? 0.25
+  const iouThreshold = params.iouThreshold ?? 0.45
 
   const predictWithEndpoint = async (endpoint: string, timeoutMs: number) => {
+    const isVideo = params.mimeType.startsWith('video/')
+    const targetSlug = isVideo && !endpoint.endsWith('-video') ? `${endpoint}-video` : endpoint
     const formData = new FormData()
-    formData.append('file', new Blob([new Uint8Array(fileBuffer)], { type: mimeType }), fileName)
+    formData.append('file', new Blob([new Uint8Array(params.fileBuffer)], { type: params.mimeType }), params.fileName)
     formData.append('conf_threshold', String(confidenceThreshold))
     formData.append('iou_threshold', String(iouThreshold))
 
-    return fetch(`${getBaseUrl()}/api/v1/models/endpoints/${endpoint}/predict`, {
+    const headers: Record<string, string> = {
+      Authorization: await getAuthHeader(params.baseUrlOverride),
+    }
+    if (dynamicApiKey) {
+      headers['X-API-Key'] = dynamicApiKey
+    }
+
+    return fetch(`${dynamicBaseUrl}/api/v1/models/endpoints/${targetSlug}/predict`, {
       method: 'POST',
-      headers: { Authorization: await getAuthHeader() },
+      headers,
       body: formData,
       cache: 'no-store',
       signal: AbortSignal.timeout(timeoutMs),
@@ -881,12 +914,12 @@ export async function rarayPredictTireDamage(params: {
   }
 
   try {
-    // ponytail: keep the established model as one compatibility fallback.
     let primary: Response | undefined
     try {
-      primary = await predictWithEndpoint('tire-demage-onnx', 3_000)
+      const primaryTimeout = params.endpoint || params.modelEndpoint ? 60_000 : 3_000
+      primary = await predictWithEndpoint(primaryTarget, primaryTimeout)
     } catch {
-      // The compatibility endpoint below handles unavailable or slow ONNX.
+      // The compatibility endpoint below handles unavailable or slow endpoint
     }
 
     if (primary?.ok) return { status: 'success', result: await primary.json() }
@@ -899,13 +932,20 @@ export async function rarayPredictTireDamage(params: {
       }
     }
 
-    const fallback = await predictWithEndpoint('tire-demage', 120_000)
-    if (fallback.ok) return { status: 'success', result: await fallback.json() }
+    if (fallbackTarget && fallbackTarget !== primaryTarget) {
+      const fallback = await predictWithEndpoint(fallbackTarget, 120_000)
+      if (fallback.ok) return { status: 'success', result: await fallback.json() }
 
-    const details = await fallback.text().catch(() => '')
+      const details = await fallback.text().catch(() => '')
+      return {
+        status: 'error',
+        message: `Vision API error (${fallback.status}): ${details.slice(0, 240)}`,
+      }
+    }
+
     return {
       status: 'error',
-      message: `Vision API error (${fallback.status}): ${details.slice(0, 240)}`,
+      message: `Gagal mendapatkan respon dari endpoint ${primaryTarget}.`,
     }
   } catch (error) {
     return {

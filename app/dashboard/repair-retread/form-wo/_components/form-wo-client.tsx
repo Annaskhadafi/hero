@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState, useTransition, useRef } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
@@ -8,6 +9,7 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +19,8 @@ import {
   Download,
   Eye,
   FilePlus,
+  FileCheck,
+  FileText,
   FileSpreadsheet,
   Filter,
   Layers,
@@ -61,7 +65,7 @@ import type { RepairMasterPriceRecord } from '@/db/schema/repair-master-price'
 import { INITIAL_KPC_CAI, INITIAL_OTHER_CAI } from '@/lib/constants/master-cai-initial'
 import type { CustomerRecord } from '@/app/actions/customer-management'
 import { FormWoDocumentPreviewDialog } from '@/components/form-wo-document-preview-dialog'
-import { isCiptaKridatamaCustomer } from '@/lib/form-wo-customer'
+import { isCiptaKridatamaCustomer, isKpcRecord } from '@/lib/form-wo-customer'
 import {
   ColumnHeaderWithPaste,
   ColumnPasteModal,
@@ -219,6 +223,10 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 const HARI_OPTIONS = ['Senin', 'Selasa', 'Rabu', 'Kamis', "Jum'at", 'Sabtu', 'Minggu']
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
+  draft: {
+    label: 'Draft',
+    cls: 'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium',
+  },
   pending: {
     label: 'Pending',
     cls: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200',
@@ -762,6 +770,7 @@ function CreateOrEditWoDialog({
   editItem,
   prefillWip,
   prefillWipList,
+  availableWipList,
   initialJenis = 'service',
   customerList = [],
   masterPriceList = [],
@@ -772,6 +781,7 @@ function CreateOrEditWoDialog({
   editItem?: FormWoRow | null
   prefillWip?: WipRepairRecord | null
   prefillWipList?: WipRepairRecord[] | null
+  availableWipList?: WipRepairRecord[] | null
   initialJenis?: 'service' | 'repair' | 'retread' | 'non_repair'
   customerList?: CustomerRecord[]
   masterPriceList?: RepairMasterPriceRecord[]
@@ -788,8 +798,9 @@ function CreateOrEditWoDialog({
   const [pemohon, setPemohon] = useState('')
   const [catatanPengajuan, setCatatanPengajuan] = useState('')
   const [statusPengajuan, setStatusPengajuan] = useState<
-    'pending' | 'approved' | 'rejected' | 'diproses'
+    'draft' | 'pending' | 'approved' | 'rejected' | 'diproses'
   >('pending')
+  const [isDraftSaving, setIsDraftSaving] = useState(false)
   const [noWoTerbit, setNoWoTerbit] = useState('')
   const [noPo, setNoPo] = useState('')
   const [tanggalPo, setTanggalPo] = useState('')
@@ -798,6 +809,166 @@ function CreateOrEditWoDialog({
   const [profileSig, setProfileSig] = useState<string | null>(null)
   const [isUsingProfileSig, setIsUsingProfileSig] = useState(true)
   const [isSavingProfileSig, setIsSavingProfileSig] = useState(false)
+
+  const handleHeaderNoWoChange = (val: string) => {
+    setNoWoTerbit(val)
+    if (jenisPengajuan === 'service') {
+      setServiceItems((prev) => prev.map((item) => ({ ...item, noWoCp: val })))
+    } else {
+      setRepairItems((prev) => prev.map((item) => ({ ...item, noWoCp: val })))
+    }
+  }
+
+  const handleHeaderNoPoChange = (val: string) => {
+    setNoPo(val)
+    if (jenisPengajuan === 'service') {
+      setServiceItems((prev) => prev.map((item) => ({ ...item, noPo: val })))
+    } else {
+      setRepairItems((prev) => prev.map((item) => ({ ...item, noPo: val })))
+    }
+  }
+
+  // Tire Multi-Select Picker State
+  const [isTirePickerOpen, setIsTirePickerOpen] = useState(false)
+  const [tirePickerQuery, setTirePickerQuery] = useState('')
+  const [pickerSelectedIds, setPickerSelectedIds] = useState<string[]>([])
+
+  const filteredWipList = useMemo(() => {
+    if (!availableWipList || availableWipList.length === 0) return []
+    const q = tirePickerQuery.toLowerCase().trim()
+    if (!q) return availableWipList
+    return availableWipList.filter((item) => {
+      const sn = (item.tire_sn || '').toLowerCase()
+      const cust = (item.customer || '').toLowerCase()
+      const site = (item.site || '').toLowerCase()
+      const size = (item.size || '').toLowerCase()
+      const store = (item.store_loc || '').toLowerCase()
+      const po = (item.po || '').toLowerCase()
+      return (
+        sn.includes(q) ||
+        cust.includes(q) ||
+        site.includes(q) ||
+        size.includes(q) ||
+        store.includes(q) ||
+        po.includes(q)
+      )
+    })
+  }, [availableWipList, tirePickerQuery])
+
+  const handleTogglePickerId = (id: string) => {
+    setPickerSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    )
+  }
+
+  const handleSelectAllFiltered = () => {
+    const allFilteredIds = filteredWipList.map((i) => i.id_wo || i.tire_sn)
+    setPickerSelectedIds((prev) => Array.from(new Set([...prev, ...allFilteredIds])))
+  }
+
+  const handleDeselectAll = () => {
+    setPickerSelectedIds([])
+  }
+
+  const handleApplySelectedTires = () => {
+    if (pickerSelectedIds.length === 0) {
+      toast.error('Pilih setidaknya 1 tire untuk ditambahkan.')
+      return
+    }
+
+    const selectedWips = (availableWipList || []).filter((item) =>
+      pickerSelectedIds.includes(item.id_wo || item.tire_sn)
+    )
+
+    if (selectedWips.length === 0) return
+
+    if (jenisPengajuan === 'service') {
+      const newServiceRows: ServiceItemRow[] = selectedWips.map((item, idx) => ({
+        id: String(Date.now() + idx + Math.random()),
+        description: item.tire_sn || 'Labour Service',
+        job: item.job_type || '',
+        customer: matchCustomerOption(item.customer || '', allCustomerOptions),
+        site: item.site || '',
+        serialNo: item.tire_sn || '',
+        refNo: item.store_loc || '',
+        noWoCp: noWoTerbit || '',
+        price: '',
+        noPo: item.po || noPo || '',
+        tanggalPo: item.po_date || item.inspect_date || tanggalPo || '',
+      }))
+
+      setServiceItems((prev) => {
+        if (
+          prev.length === 1 &&
+          !prev[0].job &&
+          !prev[0].customer &&
+          !prev[0].site &&
+          !prev[0].serialNo
+        ) {
+          return newServiceRows
+        }
+        return [...prev, ...newServiceRows]
+      })
+    } else {
+      const targetCategory = jenisPengajuan === 'retread' ? 'Retread' : 'Repair'
+      const newRepairRows: RepairItemRow[] = selectedWips.map((item, idx) => {
+        const matchedCust = matchCustomerOption(item.customer || '', allCustomerOptions)
+        const foundPrice = findMatchingMasterPrice(
+          masterPriceList,
+          targetCategory,
+          matchedCust,
+          item.size || '',
+          'R1'
+        )
+        let calcPrice = ''
+        if (foundPrice) {
+          const num = parseFloat(foundPrice.replace(/[^0-9.-]+/g, ''))
+          if (!isNaN(num) && num > 0) calcPrice = num.toLocaleString('en-US')
+          else calcPrice = foundPrice
+        }
+        return {
+          id: String(Date.now() + idx + Math.random()),
+          customer: matchedCust,
+          site: item.site || '',
+          size: item.size || '',
+          description: item.tire_sn || '',
+          brand: item.brand || '',
+          category: 'R1',
+          price: calcPrice,
+          noWoCp: noWoTerbit || '',
+          noPo: item.po || noPo || '',
+          tanggalPo: item.po_date || item.inspect_date || tanggalPo || '',
+          pos: '',
+          noUnit: item.store_loc || '',
+        }
+      })
+
+      setRepairItems((prev) => {
+        if (
+          prev.length === 1 &&
+          !prev[0].description &&
+          !prev[0].customer &&
+          !prev[0].site &&
+          !prev[0].size &&
+          !prev[0].noUnit
+        ) {
+          return newRepairRows
+        }
+        return [...prev, ...newRepairRows]
+      })
+    }
+
+    const firstPo = selectedWips.find((w) => w.po)?.po
+    const firstPoDate = selectedWips.find((w) => w.po_date || w.inspect_date)
+    if (!noPo && firstPo) setNoPo(firstPo)
+    if (!tanggalPo && firstPoDate) {
+      setTanggalPo(firstPoDate.po_date || firstPoDate.inspect_date || '')
+    }
+
+    toast.success(`Berhasil menambahkan ${selectedWips.length} tire ke Form WO.`)
+    setIsTirePickerOpen(false)
+    setPickerSelectedIds([])
+  }
 
   // Multi-item tables
   const [serviceItems, setServiceItems] = useState<ServiceItemRow[]>([
@@ -1429,7 +1600,8 @@ function CreateOrEditWoDialog({
     }
   }
 
-  const handleSubmit = () => {
+  const handleSave = (asDraft: boolean = false) => {
+    setIsDraftSaving(asDraft)
     startTransition(async () => {
       const firstService = serviceItems[0]
       const firstRepair = repairItems[0]
@@ -1442,7 +1614,9 @@ function CreateOrEditWoDialog({
       const headerTanggalPo =
         tanggalPo || (isService ? firstService?.tanggalPo : firstRepair?.tanggalPo)
 
-      // Upload signature if provided
+      // Signature handling:
+      // If user uploaded a physical signature file via picker, upload it.
+      // Otherwise, use submitterSignatureUrl or profileSig directly for instantaneous save!
       let sigUrl = submitterSignatureUrl || undefined
       if (signatureFile && signatureFile.size > 0) {
         try {
@@ -1456,27 +1630,16 @@ function CreateOrEditWoDialog({
         } catch (err) {
           console.error('Signature upload error:', err)
         }
-      } else if (isUsingProfileSig && profileSig && profileSig.startsWith('data:')) {
-        try {
-          const res = await fetch(profileSig)
-          const blob = await res.blob()
-          const file = new File([blob], 'submitter_signature.png', { type: 'image/png' })
-          const { uploadFile } = await import('@/app/actions/upload')
-          const fd = new FormData()
-          fd.append('file', file)
-          const uploadResult = await uploadFile(fd)
-          if (uploadResult && uploadResult.success) {
-            sigUrl = uploadResult.url
-          } else {
-            sigUrl = profileSig
-          }
-        } catch (err) {
-          console.error('Signature upload error:', err)
-          sigUrl = profileSig
-        }
+      } else if (!sigUrl && isUsingProfileSig && profileSig) {
+        sigUrl = profileSig
       }
 
-      if (!editItem && !sigUrl && !submitterSignatureUrl) {
+      const effectiveStatus = asDraft
+        ? 'draft'
+        : (statusPengajuan === 'draft' ? 'pending' : statusPengajuan)
+
+      // TTD hanya wajib saat diajukan (bukan draft)
+      if (!asDraft && !editItem && !sigUrl) {
         toast.error('Tanda tangan digital pemohon wajib diisi sebelum mengajukan Form WO.')
         return
       }
@@ -1486,7 +1649,7 @@ function CreateOrEditWoDialog({
         tanggal: tanggal || undefined,
         pemohon: pemohon || undefined,
         catatanPengajuan: catatanPengajuan || undefined,
-        statusPengajuan,
+        statusPengajuan: effectiveStatus as 'draft' | 'pending' | 'approved' | 'rejected' | 'diproses',
         noWoTerbit: noWoTerbit || undefined,
         noPo: headerNoPo || undefined,
         tanggalPo: headerTanggalPo || undefined,
@@ -1519,9 +1682,13 @@ function CreateOrEditWoDialog({
 
       if (result.success) {
         toast.success(
-          editItem
-            ? 'Form WO berhasil diperbarui.'
-            : `Form WO berhasil dibuat (${result.noPengajuan || ''})`
+          asDraft
+            ? `Draft Form WO berhasil disimpan (${result.noPengajuan || ''})`
+            : editItem
+              ? editItem.statusPengajuan === 'draft'
+                ? `Form WO berhasil diajukan (${result.noPengajuan || ''})`
+                : 'Form WO berhasil diperbarui.'
+              : `Form WO berhasil dibuat (${result.noPengajuan || ''})`
         )
         onOpenChange(false)
         onSuccess()
@@ -1530,6 +1697,8 @@ function CreateOrEditWoDialog({
       }
     })
   }
+
+  const handleSubmit = () => handleSave(false)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1618,6 +1787,53 @@ function CreateOrEditWoDialog({
               </div>
             </div>
 
+            {/* Multi-Select Header Sync Bar for WO & PO Numbers */}
+            <div className="space-y-3 rounded-xl border border-violet-200 bg-gradient-to-r from-violet-50/80 via-indigo-50/70 to-slate-50 p-4 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2 text-xs font-bold text-violet-900 uppercase">
+                  <Tag className="h-4 w-4 text-violet-600" />
+                  <span>Nomor WO & PO (1 Kali Ketik Berlaku Otomatis untuk Semua Tire)</span>
+                </Label>
+                <Badge variant="outline" className="border-violet-300 bg-white text-[11px] font-bold text-violet-800">
+                  {jenisPengajuan === 'service' ? serviceItems.length : repairItems.length} Unit Tire Terhubung
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {/* Single WO Number Input */}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-bold text-slate-700">
+                    Nomor WO / WO Terbit <span className="font-semibold text-violet-600">(Cukup Ketik 1 Kali)</span>
+                  </Label>
+                  <Input
+                    value={noWoTerbit}
+                    onChange={(e) => handleHeaderNoWoChange(e.target.value)}
+                    placeholder="e.g. WO/2026/001 (Otomatis mengisi semua tire)"
+                    className="h-10 border-violet-200 bg-white font-mono text-xs font-bold text-violet-950 shadow-2xs focus:border-violet-500"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Ketik nomor WO 1 kali di sini, otomatis mengisi seluruh tire di tabel bawah.
+                  </span>
+                </div>
+
+                {/* Single PO Number Input */}
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs font-bold text-slate-700">
+                    Nomor PO <span className="font-semibold text-violet-600">(Cukup Ketik 1 Kali)</span>
+                  </Label>
+                  <Input
+                    value={noPo}
+                    onChange={(e) => handleHeaderNoPoChange(e.target.value)}
+                    placeholder="e.g. PO/2026/999 (Otomatis mengisi semua tire)"
+                    className="h-10 border-violet-200 bg-white font-mono text-xs font-bold text-slate-900 shadow-2xs focus:border-violet-500"
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    Ketik nomor PO 1 kali di sini, otomatis mengisi seluruh tire di tabel bawah.
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* Additional Pemohon & Status Fields (PO & No WO Terbit fields removed as requested) */}
             <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
@@ -1636,6 +1852,7 @@ function CreateOrEditWoDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="diproses">Diproses</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
@@ -1769,7 +1986,23 @@ function CreateOrEditWoDialog({
                     : 'Form WO Repair'}
                 )
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {availableWipList && availableWipList.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTirePickerQuery('')
+                      setPickerSelectedIds([])
+                      setIsTirePickerOpen(true)
+                    }}
+                    className="h-8 border-violet-300 bg-violet-50/80 text-xs font-semibold text-violet-800 hover:bg-violet-100 hover:border-violet-400 shadow-2xs"
+                  >
+                    <CheckSquare className="mr-1.5 h-3.5 w-3.5 text-violet-600" />
+                    Pilih Tire (Multi-Select)
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -2269,7 +2502,7 @@ function CreateOrEditWoDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between w-full">
           <Button
             type="button"
             variant="outline"
@@ -2278,14 +2511,48 @@ function CreateOrEditWoDialog({
           >
             Batal
           </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="bg-indigo-600 font-semibold text-white hover:bg-indigo-700"
-          >
-            {isPending ? 'Menyimpan...' : editItem ? 'Simpan Perubahan WO' : 'Simpan Form WO'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleSave(true)}
+              disabled={isPending}
+              className="border-slate-300 text-slate-700 hover:bg-slate-100 font-medium"
+            >
+              {isPending && isDraftSaving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-slate-500" />
+                  Menyimpan Draft...
+                </>
+              ) : (
+                <>
+                  <FileText className="mr-1.5 h-4 w-4 text-slate-500" />
+                  {editItem && editItem.statusPengajuan === 'draft' ? 'Perbarui Draft' : 'Simpan Draft'}
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleSave(false)}
+              disabled={isPending}
+              className="bg-indigo-600 font-semibold text-white hover:bg-indigo-700"
+            >
+              {isPending && !isDraftSaving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin text-white" />
+                  Menyimpan...
+                </>
+              ) : editItem ? (
+                editItem.statusPengajuan === 'draft' ? (
+                  'Ajukan Form WO'
+                ) : (
+                  'Simpan Perubahan WO'
+                )
+              ) : (
+                'Simpan Form WO'
+              )}
+            </Button>
+          </div>
         </DialogFooter>
 
         {/* Single Column Paste Modal */}
@@ -2307,6 +2574,159 @@ function CreateOrEditWoDialog({
           jenisPengajuan={jenisPengajuan}
           onApply={handleApplyTablePaste}
         />
+
+        {/* Multi-Select Tire Picker Modal */}
+        <Dialog open={isTirePickerOpen} onOpenChange={setIsTirePickerOpen}>
+          <DialogContent className="max-h-[90vh] w-[95vw] max-w-4xl overflow-hidden p-0">
+            <DialogHeader className="border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-800">
+                    <CheckSquare className="h-5 w-5 text-violet-600" />
+                    Pilih Tire dari Waiting WO (Multi-Select)
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500">
+                    Pilih satu atau beberapa tire sekaligus dari daftar Waiting WO untuk dimasukkan ke Form WO ini.
+                  </DialogDescription>
+                </div>
+                <Badge className="bg-violet-100 font-bold text-violet-800 border-violet-200">
+                  Terpilih: {pickerSelectedIds.length} Unit
+                </Badge>
+              </div>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-3 p-4">
+              {/* Search & Actions Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="relative min-w-[240px] flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="Cari Serial No, Customer, Site, Size, No Unit..."
+                    value={tirePickerQuery}
+                    onChange={(e) => setTirePickerQuery(e.target.value)}
+                    className="h-9 pl-9 text-xs"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSelectAllFiltered}
+                    className="h-8 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    Pilih Semua ({filteredWipList.length})
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeselectAll}
+                    disabled={pickerSelectedIds.length === 0}
+                    className="h-8 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    Batal Pilih
+                  </Button>
+                </div>
+              </div>
+
+              {/* List Table with Checkboxes */}
+              <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                {filteredWipList.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    Tidak ada data tire yang sesuai pencarian.
+                  </div>
+                ) : (
+                  <Table className="text-xs">
+                    <TableHeader className="sticky top-0 bg-slate-100 font-semibold text-slate-700 z-10">
+                      <TableRow>
+                        <TableHead className="w-10 text-center">
+                          <Checkbox
+                            checked={
+                              filteredWipList.length > 0 &&
+                              filteredWipList.every((i) =>
+                                pickerSelectedIds.includes(i.id_wo || i.tire_sn)
+                              )
+                            }
+                            onCheckedChange={(checked) => {
+                              if (checked) handleSelectAllFiltered()
+                              else handleDeselectAll()
+                            }}
+                          />
+                        </TableHead>
+                        <TableHead>Serial Number</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Site</TableHead>
+                        <TableHead>Size / Brand</TableHead>
+                        <TableHead>No Unit / Loc</TableHead>
+                        <TableHead>PO Ref</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredWipList.map((item) => {
+                        const itemKey = item.id_wo || item.tire_sn
+                        const isSelected = pickerSelectedIds.includes(itemKey)
+                        return (
+                          <TableRow
+                            key={itemKey}
+                            onClick={() => handleTogglePickerId(itemKey)}
+                            className={cn(
+                              'cursor-pointer transition hover:bg-violet-50/50',
+                              isSelected && 'bg-violet-50/80 font-medium'
+                            )}
+                          >
+                            <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => handleTogglePickerId(itemKey)}
+                              />
+                            </TableCell>
+                            <TableCell className="font-mono font-bold text-violet-900">
+                              {item.tire_sn || '-'}
+                            </TableCell>
+                            <TableCell className="font-medium text-slate-700">
+                              {item.customer || '-'}
+                            </TableCell>
+                            <TableCell className="text-slate-600">{item.site || '-'}</TableCell>
+                            <TableCell className="text-slate-600">
+                              {item.size || '-'} {item.brand ? `(${item.brand})` : ''}
+                            </TableCell>
+                            <TableCell className="font-mono text-slate-600">
+                              {item.store_loc || '-'}
+                            </TableCell>
+                            <TableCell className="font-mono text-slate-500">
+                              {item.po || '-'}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="border-t border-slate-100 bg-slate-50/80 px-6 py-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsTirePickerOpen(false)}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleApplySelectedTires}
+                disabled={pickerSelectedIds.length === 0}
+                className="bg-violet-600 font-semibold text-white hover:bg-violet-700"
+              >
+                Tambahkan {pickerSelectedIds.length} Tire Terpilih ke Form WO
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )
@@ -2854,6 +3274,20 @@ function WaitingWoTab({
   const [query, setQuery] = useState('')
   const [poMap, setPoMap] = useState<Record<string, { noPo: string; poDate: string }>>({})
   const [selectedWipIds, setSelectedWipIds] = useState<string[]>([])
+  const [bulkPoInput, setBulkPoInput] = useState('')
+
+  const handleApplyBulkPo = () => {
+    if (!bulkPoInput.trim()) {
+      toast.error('Ketikkan Nomor PO/WO terlebih dahulu.')
+      return
+    }
+    const val = bulkPoInput.trim()
+    selectedWipIds.forEach((idWo) => {
+      handlePoChange(idWo, 'noPo', val)
+      void handlePoBlur(idWo)
+    })
+    toast.success(`Nomor PO/WO '${val}' tersimpan ke ${selectedWipIds.length} unit terpilih!`)
+  }
 
   useEffect(() => {
     const map: Record<string, { noPo: string; poDate: string }> = {}
@@ -3028,7 +3462,24 @@ function WaitingWoTab({
                 Customer: <span className="font-bold text-violet-800">{selectedCustomer}</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-violet-200">
+                <Input
+                  placeholder="Isi No. PO/WO sekaligus..."
+                  value={bulkPoInput}
+                  onChange={(e) => setBulkPoInput(e.target.value)}
+                  className="h-7 w-44 font-mono text-xs border-0 shadow-none focus-visible:ring-0"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleApplyBulkPo}
+                  className="h-7 px-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                >
+                  Set ke {selectedWipIds.length} Unit
+                </Button>
+              </div>
               {canEdit && (
                 <Button
                   type="button"
@@ -3315,7 +3766,7 @@ function DaftarPengajuanTab({
   // Inline Server Actions
   async function handleInlineStatusChange(
     id: number,
-    status: 'pending' | 'diproses' | 'approved' | 'rejected'
+    status: 'draft' | 'pending' | 'diproses' | 'approved' | 'rejected'
   ) {
     const item = data.find((d) => d.id === id)
     if (item) {
@@ -3569,6 +4020,33 @@ function DaftarPengajuanTab({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Top Module Quick Navigation Bar */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit">
+        <Link
+          href="/dashboard/repair-retread/inspection"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-white/60"
+        >
+          <FileCheck className="w-3.5 h-3.5" />
+          <span>Tire Inspection Report</span>
+        </Link>
+
+        <Link
+          href="/dashboard/repair-retread/jobcard"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-white/60"
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>Repair Job Card</span>
+        </Link>
+
+        <Link
+          href="/dashboard/repair-retread/form-wo"
+          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-[#003f78] text-white shadow-xs"
+        >
+          <FilePlus className="w-3.5 h-3.5" />
+          <span>Form WO & WIP</span>
+        </Link>
+      </div>
+
       <Card className="border-border/60 rounded-2xl py-0 shadow-sm">
         <CardContent className="px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4">
@@ -3678,6 +4156,7 @@ function DaftarPengajuanTab({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL_FILTER}>Semua status</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="diproses">Diproses</SelectItem>
                   <SelectItem value="approved">Approved</SelectItem>
@@ -3900,6 +4379,9 @@ function DaftarPengajuanTab({
                               </Badge>
                             </SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="draft" className="text-xs">
+                                Draft
+                              </SelectItem>
                               <SelectItem value="pending" className="text-xs">
                                 Pending
                               </SelectItem>
@@ -6719,8 +7201,10 @@ export function FormWoClient({
     setDeleteDialogOpen(true)
   }
 
+  const router = useRouter()
   function refreshList() {
-    window.location.reload()
+    setActiveTab('pengajuan')
+    router.refresh()
   }
 
   const totalCaiCount =
@@ -6728,21 +7212,72 @@ export function FormWoClient({
       ? masterCaiList.length
       : INITIAL_KPC_CAI.length + INITIAL_OTHER_CAI.length
 
+  const { camosWaitingWoList, kpcWaitingWoList, heroWaitingWoList } = useMemo(() => {
+    const camos: WipRepairRecord[] = []
+    const kpc: WipRepairRecord[] = []
+    const hero: WipRepairRecord[] = []
+
+    ;(waitingWoList || []).forEach((item) => {
+      const isHero = item.is_hero === true || item.source === 'hero' || item.id_wo?.startsWith('HERO-')
+
+      if (!isHero) {
+        // 1. Data eksternal CAMOS API
+        camos.push(item)
+      } else if (isKpcRecord(item)) {
+        // 2. Data HERO khusus KPC
+        kpc.push(item)
+      } else {
+        // 3. Data HERO khusus Non-KPC (site selain KPC)
+        hero.push(item)
+      }
+    })
+
+    return {
+      camosWaitingWoList: camos,
+      kpcWaitingWoList: kpc,
+      heroWaitingWoList: hero,
+    }
+  }, [waitingWoList])
+
   return (
     <>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TabsList className="bg-muted/50 h-10 rounded-xl">
-            <TabsTrigger value="waiting" className="rounded-lg px-5 text-sm font-medium">
-              <ClipboardList className="mr-2 h-4 w-4" />
+          <TabsList className="bg-muted/50 h-10 rounded-xl overflow-x-auto">
+            <TabsTrigger value="waiting" className="rounded-lg px-4 text-sm font-medium">
+              <ClipboardList className="mr-2 h-4 w-4 text-blue-600" />
               Waiting WO
-              {waitingWoList.length > 0 && (
+              {camosWaitingWoList.length > 0 && (
                 <Badge variant="secondary" className="ml-2 rounded-full text-xs">
-                  {waitingWoList.length}
+                  {camosWaitingWoList.length}
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="pengajuan" className="rounded-lg px-5 text-sm font-medium">
+            <TabsTrigger value="waiting_kpc" className="rounded-lg px-4 text-sm font-medium">
+              <ClipboardList className="mr-2 h-4 w-4 text-amber-600" />
+              Waiting WO KPC
+              {kpcWaitingWoList.length > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-2 rounded-full border-amber-300 bg-amber-100 text-xs font-bold text-amber-900"
+                >
+                  {kpcWaitingWoList.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="waiting_hero" className="rounded-lg px-4 text-sm font-medium">
+              <ClipboardList className="mr-2 h-4 w-4 text-emerald-600" />
+              Waiting WO HERO
+              {heroWaitingWoList.length > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-2 rounded-full border-emerald-300 bg-emerald-100 text-xs font-bold text-emerald-900"
+                >
+                  {heroWaitingWoList.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="pengajuan" className="rounded-lg px-4 text-sm font-medium">
               <FilePlus className="mr-2 h-4 w-4" />
               Daftar Form WO
               {initial.length > 0 && (
@@ -6751,14 +7286,14 @@ export function FormWoClient({
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="master_cai" className="rounded-lg px-5 text-sm font-medium">
+            <TabsTrigger value="master_cai" className="rounded-lg px-4 text-sm font-medium">
               <Database className="mr-2 h-4 w-4 text-violet-600" />
               Master Data CAI
               <Badge variant="secondary" className="ml-2 rounded-full text-xs">
                 {totalCaiCount}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="master_price" className="rounded-lg px-5 text-sm font-medium">
+            <TabsTrigger value="master_price" className="rounded-lg px-4 text-sm font-medium">
               <Tag className="mr-2 h-4 w-4 text-emerald-600" />
               Master Price Repair &amp; Retread
               <Badge variant="secondary" className="ml-2 rounded-full text-xs">
@@ -6800,7 +7335,29 @@ export function FormWoClient({
 
         <TabsContent value="waiting">
           <WaitingWoTab
-            data={waitingWoList}
+            data={camosWaitingWoList}
+            onCreateWo={handleCreateWoFromWip}
+            onCreateBulkWo={handleCreateBulkWoFromWip}
+            caiList={masterCaiList}
+            customerList={customerList}
+            canEdit={canEdit}
+          />
+        </TabsContent>
+
+        <TabsContent value="waiting_kpc">
+          <WaitingWoTab
+            data={kpcWaitingWoList}
+            onCreateWo={handleCreateWoFromWip}
+            onCreateBulkWo={handleCreateBulkWoFromWip}
+            caiList={masterCaiList}
+            customerList={customerList}
+            canEdit={canEdit}
+          />
+        </TabsContent>
+
+        <TabsContent value="waiting_hero">
+          <WaitingWoTab
+            data={heroWaitingWoList}
             onCreateWo={handleCreateWoFromWip}
             onCreateBulkWo={handleCreateBulkWoFromWip}
             caiList={masterCaiList}
@@ -6847,6 +7404,7 @@ export function FormWoClient({
         onOpenChange={setCreateDialogOpen}
         prefillWip={selectedWipItem}
         prefillWipList={selectedWipList}
+        availableWipList={waitingWoList}
         initialJenis={createJenis}
         customerList={customerList}
         masterPriceList={masterPriceList}
@@ -6858,6 +7416,7 @@ export function FormWoClient({
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         editItem={selectedFormWo}
+        availableWipList={waitingWoList}
         customerList={customerList}
         masterPriceList={masterPriceList}
         onSuccess={refreshList}

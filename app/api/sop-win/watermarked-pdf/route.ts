@@ -173,6 +173,16 @@ export async function GET(request: Request) {
               const object = await getS3ObjectForProxy(key);
               if (object && object.body) {
                 pdfBuffer = Buffer.from(object.body);
+                try {
+                  const saveTarget = join(publicDir, "uploads", cleanPath);
+                  const dir = join(publicDir, "uploads", ...cleanPath.split("/").slice(0, -1));
+                  if (!existsSync(dir)) {
+                    const { mkdirSync } = await import("fs");
+                    mkdirSync(dir, { recursive: true });
+                  }
+                  const { writeFileSync } = await import("fs");
+                  writeFileSync(saveTarget, pdfBuffer);
+                } catch (_) {}
                 break;
               }
             } catch (err) {

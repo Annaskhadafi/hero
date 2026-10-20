@@ -146,10 +146,10 @@ const hseFieldActions = [
     tone: "bg-[#fff1ea] text-[#8a3d00]",
   },
   {
-    title: "Inspection",
-    description: "Buka daftar safety inspection.",
-    icon: ClipboardCheck,
-    href: "/mobile/hse/inspections",
+    title: "OSM Inspeksi",
+    description: "Pelaksanaan inspeksi lapangan On the Spot Monitoring.",
+    icon: HardHat,
+    href: "/mobile/hse/osm",
     tone: "bg-[#eef7ed] text-[#166534]",
   },
   {
@@ -162,7 +162,7 @@ const hseFieldActions = [
 ];
 
 const hseAdminFeatures = [
-  { title: "Observasi & Emergency", href: "/mobile/hse/observasi-emergency", icon: AlertTriangle, meta: "Catat observasi & insiden lengkap" },
+  { title: "On Spot Monitoring (OSM)", href: "/mobile/hse/osm", icon: HardHat, meta: "Safety inspection" },
   { title: "Incident Report", href: "/mobile/hse/incident-report", icon: AlertTriangle, meta: "Investigasi & laporan" },
   { title: "Corrective Action", href: "/mobile/hse/corrective-action", icon: CheckCircle2, meta: "Follow-up & close-out" },
   { title: "HIRADC", href: "/mobile/hse/hiradc", icon: Flame, meta: "Risk register" },

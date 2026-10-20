@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useActionState, useEffect } from "react"
+import { useState, useActionState, useEffect, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AdminTableCard } from "@/components/admin-table-card"
 import { Button } from "@/components/ui/button"
 import { TableMultiFilter } from "@/components/ui/table-multi-filter"
-import { approveAttendancePermissionRequest, rejectAttendancePermissionRequest } from "@/app/actions/attendance"
+import { approveAttendancePermissionRequest, rejectAttendancePermissionRequest, bulkDeleteAttendancePermissionRequests } from "@/app/actions/attendance"
 import { IzinKpiGrid } from "@/components/izin-dashboard/izin-kpi-grid"
 import { IzinFilterBar } from "@/components/izin-dashboard/izin-filter-bar"
 import { IzinBulkDeleteBar, BulkCheckbox } from "@/components/izin-dashboard/izin-bulk-actions"
@@ -30,6 +31,8 @@ import {
   TrendingUp,
   FileText,
   SlidersHorizontal,
+  Trash2,
+  Loader2,
 } from "lucide-react"
 import type { AttendancePermissionRow, IzinDashboardKpis, IzinDashboardCharts } from "@/lib/attendance-permission-dashboard"
 
@@ -76,8 +79,43 @@ function SectionHeader({
   )
 }
 
+function SingleDeleteButton({ id }: { id: string }) {
+  const [isPending, startTransition] = useTransition()
+  const router = useRouter()
+
+  const handleDelete = () => {
+    if (!confirm("Hapus data izin ini?")) return
+    startTransition(async () => {
+      const result = await bulkDeleteAttendancePermissionRequests([id])
+      if (result.success) {
+        toast.success(result.message || "Data izin berhasil dihapus")
+        router.refresh()
+      } else {
+        toast.error(result.error || "Gagal menghapus data.")
+      }
+    })
+  }
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50"
+      onClick={handleDelete}
+      disabled={isPending}
+      title="Hapus Izin"
+    >
+      {isPending ? (
+        <Loader2 className="size-3.5 animate-spin text-red-600" />
+      ) : (
+        <Trash2 className="size-3.5" />
+      )}
+    </Button>
+  )
+}
+
 export function IzinDashboardTabs({ data }: { data: DashboardData }) {
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [approveState, approveFormAction, approvePending] = useActionState(approveAction, null)
   const [rejectState, rejectFormAction, rejectPending] = useActionState(rejectAction, null)
 
@@ -118,7 +156,7 @@ export function IzinDashboardTabs({ data }: { data: DashboardData }) {
     setSelectedIds(checked ? allIds : [])
   }
 
-  const toggleOne = (id: number, checked: boolean) => {
+  const toggleOne = (id: string, checked: boolean) => {
     setSelectedIds((prev) =>
       checked ? [...prev, id] : prev.filter((i) => i !== id)
     )
@@ -269,20 +307,23 @@ export function IzinDashboardTabs({ data }: { data: DashboardData }) {
               {row.status}
             </span>,
             <EvidenceCell key={`ev-${row.id}`} attachment={row.attachment} />,
-            row.status === 'pending' && row.requestId ? (
-              <div className="flex flex-wrap gap-2" key={`${row.requestId}-actions`}>
-                <form action={approveFormAction} className="flex gap-2">
-                  <input type="hidden" name="id" value={row.requestId} />
-                  <input type="hidden" name="approverNote" value="Approved by HC" />
-                  <Button size="sm" className="h-7 text-xs" disabled={approvePending}>Approve</Button>
-                </form>
-                <form action={rejectFormAction}>
-                  <input type="hidden" name="id" value={row.requestId} />
-                  <input type="hidden" name="approverNote" value="Rejected by HC" />
-                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={rejectPending}>Reject</Button>
-                </form>
-              </div>
-            ) : '-',
+            <div className="flex items-center gap-1.5" key={`actions-${row.id}`}>
+              {row.status === 'pending' && row.requestId ? (
+                <>
+                  <form action={approveFormAction} className="inline-flex gap-1.5">
+                    <input type="hidden" name="id" value={row.requestId} />
+                    <input type="hidden" name="approverNote" value="Approved by HC" />
+                    <Button size="sm" className="h-7 px-2 text-xs" disabled={approvePending}>Approve</Button>
+                  </form>
+                  <form action={rejectFormAction} className="inline-flex">
+                    <input type="hidden" name="id" value={row.requestId} />
+                    <input type="hidden" name="approverNote" value="Rejected by HC" />
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50" disabled={rejectPending}>Reject</Button>
+                  </form>
+                </>
+              ) : null}
+              <SingleDeleteButton id={row.id} />
+            </div>,
           ])}
           rowAttributes={data.rows.map((row) => ({
             'data-date-value': row.date,

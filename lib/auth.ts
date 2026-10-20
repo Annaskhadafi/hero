@@ -24,7 +24,9 @@ export const auth = betterAuth({
     advanced: {
         // Production is served through an HTTPS reverse proxy. Keep the session
         // cookie secure even if an internal/container base URL uses http://.
-        useSecureCookies: process.env.NODE_ENV === "production",
+        useSecureCookies:
+            process.env.NODE_ENV === "production" &&
+            process.env.BETTER_AUTH_URL?.startsWith("https://") === true,
     },
     session: {
         cookieCache: {

@@ -100,7 +100,7 @@ const VALIDATION_FIELDS = [
   ["requiresDuration", "Wajib durasi"],
   ["requiresLocationGps", "Wajib GPS"],
   ["requiresMaterialUsed", "Wajib material"],
-  ["requiresTireCount", "Pilihan jumlah tire"],
+  ["requiresTireCount", "Pilihan jumlah pcs / qty"],
 ] as const;
 
 const BEHAVIOR_FIELDS = [
@@ -140,10 +140,14 @@ export function ActivityLibraryRowActions({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState("");
-  const [isGroupChecked, setIsGroupChecked] = useState((routeGroupMappings[row.id] || []).length > 0);
+  const isRowGroup = Boolean(
+    (row.children && row.children.length > 0) ||
+    (routeGroupMappings[row.id] && routeGroupMappings[row.id].length > 0)
+  );
+  const [isGroupChecked, setIsGroupChecked] = useState(isRowGroup);
   const categoryOptions = CATEGORY_OPTIONS.includes(row.category)
     ? CATEGORY_OPTIONS
     : [row.category, ...CATEGORY_OPTIONS];
@@ -197,7 +201,12 @@ export function ActivityLibraryRowActions({
           onOpenChange={(next) => {
             setOpen(next);
             if (next) {
-              setIsGroupChecked((routeGroupMappings[row.id] || []).length > 0);
+              setIsGroupChecked(
+                Boolean(
+                  (row.children && row.children.length > 0) ||
+                  (routeGroupMappings[row.id] && routeGroupMappings[row.id].length > 0)
+                )
+              );
             }
           }}
         >
@@ -279,6 +288,7 @@ export function ActivityLibraryRowActions({
                   {isGroupChecked ? (
                     <div className="md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-200 space-y-3">
                       <ActivityGroupMemberSelector
+                        key={`group-member-selector-${row.id}-${open}`}
                         existingActivities={existingActivities}
                         currentActivityId={row.id}
                         initialChildIds={(row.children ?? []).map((child) => child.id)}

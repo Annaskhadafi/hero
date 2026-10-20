@@ -78,6 +78,17 @@ type LineItem = {
   estimatedMinutes: number
   plannedPoints: number
   sortOrder: number
+  code?: string
+  name?: string
+  unitNumber?: string | null
+  tireCount?: number | null
+  materialUsed?: string | null
+  startTime?: string | null
+  endTime?: string | null
+  duration?: string | null
+  remark?: string | null
+  photoUrl?: string | null
+  photos?: string[]
 }
 
 type OvertimeApprovalData = {
@@ -98,6 +109,8 @@ type OvertimeApprovalData = {
   participants: Participant[]
   lineItems: LineItem[]
   approvals: ApprovalStep[]
+  photoUrl?: string | null
+  photos?: string[]
   permissions: {
     canApprove: boolean
     canEdit: boolean
@@ -114,7 +127,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     .where(eq(overtimeApprovals.overtimeCommandLetterId, documentId))
     .orderBy(asc(overtimeApprovals.stepOrder))
 
-  if (existingSteps.length >= 3) {
+  if (existingSteps.length >= 2) {
     return
   }
 
@@ -166,107 +179,12 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
         .limit(1)
     : []
 
-  // Resolve section name from masterSections or requester.section
-  let sectionName = requester?.section || ''
-  if (!sectionName && requester?.sectionId) {
-    const [secRow] = await db
-      .select({ name: masterSections.name })
-      .from(masterSections)
-      .where(eq(masterSections.id, requester.sectionId))
-      .limit(1)
-    if (secRow?.name) sectionName = secRow.name
-  }
+  // Resolve PJO / Site Lead (Tahap 2 / Final Approval)
+  let pjoName = ''
+  let pjoEmail = ''
+  let pjoEmployeeId: number | null = null
 
-  // Check if settings.approvalMatrix has a matching section head
-  let sectionHeadName = ''
-  let sectionHeadEmail = ''
-  let sectionHeadEmployeeId: number | null = null
-
-  if (sectionName && settings.approvalMatrix?.sectionHeads) {
-    const secList = Array.isArray(settings.approvalMatrix.sectionHeads)
-      ? settings.approvalMatrix.sectionHeads
-      : Object.values(settings.approvalMatrix.sectionHeads)
-
-    const matched: any = secList.find((sh: any) =>
-      sh.section && (
-        sectionName.toLowerCase().includes(sh.section.toLowerCase()) ||
-        sh.section.toLowerCase().includes(sectionName.toLowerCase())
-      )
-    )
-
-    if (matched && matched.email) {
-      sectionHeadName = matched.name
-      sectionHeadEmail = matched.email
-      const [empMatch] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(sql`LOWER(TRIM(${employees.email})) = ${String(matched.email).trim().toLowerCase()}`)
-        .limit(1)
-      if (empMatch) {
-        sectionHeadEmployeeId = empMatch.id
-        sectionHeadName = empMatch.name || sectionHeadName
-      }
-    }
-  }
-
-  // Fallback to database masterSections headEmployeeId if not matched in workflow settings
-  if (!sectionHeadName && (requester?.sectionId || requester?.section)) {
-    const [sectionRow] = requester.sectionId
-      ? await db
-          .select({ headEmployeeId: masterSections.headEmployeeId })
-          .from(masterSections)
-          .where(eq(masterSections.id, requester.sectionId))
-          .limit(1)
-      : await db
-          .select({ headEmployeeId: masterSections.headEmployeeId })
-          .from(masterSections)
-          .where(sql`LOWER(TRIM(${masterSections.name})) = ${(requester.section || '').trim().toLowerCase()}`)
-          .limit(1)
-
-    if (sectionRow?.headEmployeeId) {
-      const [secEmp] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, sectionRow.headEmployeeId))
-        .limit(1)
-      if (secEmp) {
-        sectionHeadEmployeeId = secEmp.id
-        sectionHeadName = secEmp.name
-        sectionHeadEmail = secEmp.email || ''
-      }
-    }
-  }
-
-  // Fallback to masterDepartments headEmployeeId if still empty
-  if (!sectionHeadName && (requester?.departmentId || requester?.department)) {
-    const [deptRow] = requester.departmentId
-      ? await db
-          .select({ headEmployeeId: masterDepartments.headEmployeeId })
-          .from(masterDepartments)
-          .where(eq(masterDepartments.id, requester.departmentId))
-          .limit(1)
-      : await db
-          .select({ headEmployeeId: masterDepartments.headEmployeeId })
-          .from(masterDepartments)
-          .where(sql`LOWER(TRIM(${masterDepartments.name})) = ${(requester.department || '').trim().toLowerCase()}`)
-          .limit(1)
-
-    if (deptRow?.headEmployeeId) {
-      const [deptEmp] = await db
-        .select({ id: employees.id, name: employees.name, email: employees.email })
-        .from(employees)
-        .where(eq(employees.id, deptRow.headEmployeeId))
-        .limit(1)
-      if (deptEmp) {
-        sectionHeadEmployeeId = deptEmp.id
-        sectionHeadName = deptEmp.name
-        sectionHeadEmail = deptEmp.email || ''
-      }
-    }
-  }
-
-  // Fallback to Site Head / PJO if still empty
-  if (!sectionHeadName && requester?.siteId) {
+  if (requester?.siteId) {
     const [siteRow] = await db
       .select({ headEmployeeId: sites.headEmployeeId })
       .from(sites)
@@ -280,74 +198,80 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
         .where(eq(employees.id, siteRow.headEmployeeId))
         .limit(1)
       if (siteEmp) {
-        sectionHeadEmployeeId = siteEmp.id
-        sectionHeadName = siteEmp.name
-        sectionHeadEmail = siteEmp.email || ''
+        pjoEmployeeId = siteEmp.id
+        pjoName = siteEmp.name
+        pjoEmail = siteEmp.email || ''
       }
     }
   }
 
-  // Resolve leader approver
+  // Fallback to settings approval matrix if available
+  const matrix = (settings?.approvalMatrix || {}) as Record<string, any>
+  if (!pjoName && (matrix.pjoName || matrix.leaderName || matrix.fieldPicName)) {
+    const pjoTarget = matrix.pjoName || matrix.leaderName || matrix.fieldPicName
+    const [empMatch] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email })
+      .from(employees)
+      .where(sql`LOWER(TRIM(${employees.name})) LIKE ${`%${pjoTarget.trim().toLowerCase()}%`}`)
+      .limit(1)
+    if (empMatch) {
+      pjoEmployeeId = empMatch.id
+      pjoName = empMatch.name
+      pjoEmail = empMatch.email || ''
+    }
+  }
+
+  if (!pjoName) {
+    pjoName = matrix.pjoName || matrix.fieldPicName || 'PJO / Site Lead'
+    pjoEmail = matrix.pjoEmail || matrix.fieldPicEmail || ''
+  }
+
+  // Resolve leader approver (Direct Manager or Site PJO)
   let leaderEmployeeId = directManager?.id ?? null
   let leaderName = directManager?.name ?? settings.approvalMatrix?.fieldPicName ?? ''
   let leaderEmail = directManager?.email || settings.approvalMatrix?.fieldPicEmail || ''
 
-  if (!leaderEmployeeId && sectionHeadEmployeeId) {
-    leaderEmployeeId = sectionHeadEmployeeId
-    leaderName = sectionHeadName
-    leaderEmail = sectionHeadEmail
+  if (!leaderEmployeeId && pjoEmployeeId) {
+    leaderEmployeeId = pjoEmployeeId
+    leaderName = pjoName
+    leaderEmail = pjoEmail
   }
 
-  // If section head still empty, fallback to settings.approvalMatrix.managerName or Section Head default
-  if (!sectionHeadName) {
-    sectionHeadName = settings.approvalMatrix?.managerName || 'Section Head'
-    sectionHeadEmail = settings.approvalMatrix?.managerEmail || ''
-  }
   if (!leaderName) {
-    leaderName = 'Leader Lapangan'
+    leaderName = pjoName || 'Leader / PJO'
   }
 
   const step1Token = randomUUID()
   const step2Token = randomUUID()
-  const step3Token = randomUUID()
 
   const now = new Date()
+  const approverEmployeeId = leaderEmployeeId || pjoEmployeeId || null
+  const approverName = leaderName || pjoName || 'Leader / PJO'
+  const approverEmail = leaderEmail || pjoEmail || ''
+
   const steps = [
     {
       stepOrder: 1,
-      stepLabel: 'Karyawan Sign',
+      stepLabel: 'Pemohon / Serviceman',
       approverRole: 'employee',
       employeeId: requester?.id ?? null,
-      name: requester?.name ?? 'Karyawan',
+      name: requester?.name ?? 'Pemohon',
       email: requester?.email || '',
       token: step1Token,
       status: 'approved',
       signatureDataUrl: requester?.signatureDataUrl || null,
       signedAt: now,
-      remarks: 'Auto-approved oleh pemohon saat submit SPL.',
+      remarks: 'Disetujui oleh pemohon saat submit SPL.',
     },
     {
       stepOrder: 2,
-      stepLabel: 'Leader / Pengawas',
-      approverRole: 'leader',
-      employeeId: leaderEmployeeId,
-      name: leaderName,
-      email: leaderEmail,
+      stepLabel: 'Leader / PJO',
+      approverRole: 'leader_or_pjo',
+      employeeId: approverEmployeeId,
+      name: approverName,
+      email: approverEmail,
       token: step2Token,
       status: 'pending',
-      signatureDataUrl: null,
-      signedAt: null,
-      remarks: '',
-    },
-    {
-      stepOrder: 3,
-      stepLabel: 'Section Head',
-      approverRole: 'section_head',
-      employeeId: sectionHeadEmployeeId,
-      name: sectionHeadName,
-      email: sectionHeadEmail,
-      token: step3Token,
-      status: 'waiting',
       signatureDataUrl: null,
       signedAt: null,
       remarks: '',
@@ -377,20 +301,20 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
       })
   }
 
-  // Dispatch initial Step 2 approval email directly to Leader / Pengawas
-  if (leaderEmail) {
+  // Dispatch initial Step 2 approval email directly to Leader / PJO
+  if (approverEmail) {
     sendOvertimeStepApprovalEmail({
       documentId: document.id,
       splNumber: document.splNumber || `SPL-${document.id}`,
       title: document.title || 'Penugasan Lembur Operasional',
       workDate: document.workDate,
-      employeeName: requester?.name || 'Karyawan',
-      requesterName: requester?.name || 'Karyawan',
-      approverName: leaderName,
-      approverEmail: leaderEmail,
-      approvalStep: 'Leader / Pengawas',
+      employeeName: requester?.name || 'Pemohon',
+      requesterName: requester?.name || 'Pemohon',
+      approverName: approverName,
+      approverEmail: approverEmail,
+      approvalStep: 'Leader / PJO',
       approvalToken: step2Token,
-    }).catch((err) => console.error('[ensureOvertimeApprovalsExist] Email error to leader:', err))
+    }).catch((err) => console.error('[ensureOvertimeApprovalsExist] Email error to approver:', err))
   }
 }
 
@@ -460,6 +384,22 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
     (a) => a.status === 'pending' && (a.approverEmployeeId === currentEmployee?.id || ['Super Admin', 'Site Admin', 'HC Manager'].includes(currentEmployee?.accessRole ?? ''))
   )
 
+  const headerPhotoMatch = (document.requestNotes || '').match(/\[Foto Bukti SPL\]:\s*(\S+)/i)
+  const headerPhoto = headerPhotoMatch ? headerPhotoMatch[1].trim() : null
+  const lineItemPhotos = lineItemRows.flatMap((l) => {
+    let meta: any = {}
+    try {
+      if (l.lineDescription && l.lineDescription.startsWith('{')) {
+        meta = JSON.parse(l.lineDescription)
+      }
+    } catch {}
+    return Array.isArray(meta.photos) ? meta.photos : meta.photoUrl ? [meta.photoUrl] : []
+  })
+  const allEvidencePhotos = Array.from(new Set([
+    ...(headerPhoto ? [headerPhoto] : []),
+    ...lineItemPhotos,
+  ].filter(Boolean)))
+
   return {
     documentId: document.id,
     splNumber: document.splNumber,
@@ -471,6 +411,8 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
     requestNotes: document.requestNotes,
     executionNotes: document.executionNotes,
     origin: document.origin,
+    photoUrl: headerPhoto || allEvidencePhotos[0] || null,
+    photos: allEvidencePhotos,
     requestedByEmployeeId: document.requestedByEmployeeId,
     requesterName: requester?.name ?? '',
     requesterDepartment: requester?.department ?? '',
@@ -483,15 +425,34 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
       shiftCode: p.shiftCode,
       rosterType: p.rosterType,
     })),
-    lineItems: lineItemRows.map((l) => ({
-      id: l.id,
-      lineLabel: l.lineLabel,
-      lineDescription: l.lineDescription,
-      targetUnit: l.targetUnit,
-      estimatedMinutes: l.estimatedMinutes,
-      plannedPoints: l.plannedPoints,
-      sortOrder: l.sortOrder,
-    })),
+    lineItems: lineItemRows.map((l) => {
+      let meta: any = {}
+      try {
+        if (l.lineDescription && l.lineDescription.startsWith('{')) {
+          meta = JSON.parse(l.lineDescription)
+        }
+      } catch {}
+      return {
+        id: l.id,
+        lineLabel: l.lineLabel,
+        lineDescription: l.lineDescription,
+        targetUnit: l.targetUnit,
+        estimatedMinutes: l.estimatedMinutes,
+        plannedPoints: l.plannedPoints,
+        sortOrder: l.sortOrder,
+        code: meta.code,
+        name: meta.name || l.lineLabel,
+        unitNumber: meta.unitNumber || null,
+        tireCount: meta.tireCount ?? null,
+        materialUsed: meta.materialUsed || null,
+        startTime: meta.startTime || null,
+        endTime: meta.endTime || null,
+        duration: meta.duration || null,
+        remark: meta.remark || (!l.lineDescription?.startsWith('{') ? l.lineDescription : null),
+        photoUrl: meta.photoUrl || meta.photos?.[0] || null,
+        photos: Array.isArray(meta.photos) ? meta.photos : meta.photoUrl ? [meta.photoUrl] : [],
+      }
+    }),
     approvals: approvalRows.map((a) => ({
       id: a.id,
       stepOrder: a.stepOrder,
@@ -517,16 +478,54 @@ export async function getOvertimeApprovalData(documentId: number | string): Prom
   }
 }
 
-// ── Save Overtime Approval Form ────────────────────────────────────────────
+function parseSplInputDateTime(dateVal?: Date | string | null, timeVal?: Date | string | null): Date {
+  if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal
+  if (typeof timeVal === 'string' && timeVal.trim()) {
+    const trimmedTime = timeVal.trim()
+    // Explicit timezone offset (e.g. ends with Z or +07:00 / +08:00 or -05:00)
+    if (trimmedTime.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(trimmedTime)) {
+      const directDate = new Date(trimmedTime)
+      if (!isNaN(directDate.getTime())) return directDate
+    }
+    // Full ISO-like datetime string without offset (e.g. "2026-10-05T12:00" or "2026-10-05 12:00:00")
+    if (trimmedTime.includes('-') && (trimmedTime.includes('T') || trimmedTime.includes(' '))) {
+      const normalized = trimmedTime.replace(' ', 'T')
+      const formatted = normalized.length === 16 ? `${normalized}:00` : normalized
+      const withTz = `${formatted}+07:00`
+      const parsedWithTz = new Date(withTz)
+      if (!isNaN(parsedWithTz.getTime())) return parsedWithTz
+    }
+    // Time-only string (e.g. "12:00" or "12:00:00")
+    if (trimmedTime.includes(':')) {
+      const baseDateStr = dateVal
+        ? (dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0])
+        : new Date().toISOString().split('T')[0]
+      const cleanTime = trimmedTime.length === 5 ? `${trimmedTime}:00` : trimmedTime
+      const withTz = `${baseDateStr}T${cleanTime}+07:00`
+      const parsed = new Date(withTz)
+      if (!isNaN(parsed.getTime())) return parsed
+    }
+    const directDate = new Date(trimmedTime)
+    if (!isNaN(directDate.getTime())) return directDate
+  }
 
-const saveOvertimeApprovalFormSchema = z.object({
-  documentId: z.coerce.number().int().positive(),
-  itemRemarks: z.record(z.string(), z.string()).optional().default({}),
-  leaderName: z.string().optional().default(''),
-  leaderTitle: z.string().optional().default(''),
-  superiorName: z.string().optional().default(''),
-  superiorTitle: z.string().optional().default(''),
-})
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal
+  if (typeof dateVal === 'string' && dateVal.trim()) {
+    const trimmedDate = dateVal.trim()
+    if (trimmedDate.endsWith('Z') || /[+-]\d{2}(:\d{2})?$/.test(trimmedDate)) {
+      const d = new Date(trimmedDate)
+      if (!isNaN(d.getTime())) return d
+    }
+    if (trimmedDate.includes('-')) {
+      const dOnly = trimmedDate.split('T')[0].split(' ')[0]
+      const d = new Date(`${dOnly}T00:00:00+07:00`)
+      if (!isNaN(d.getTime())) return d
+    }
+    const d = new Date(trimmedDate)
+    if (!isNaN(d.getTime())) return d
+  }
+  return new Date()
+}
 
 export async function saveOvertimeApprovalForm(params: {
   documentId: number
@@ -536,6 +535,7 @@ export async function saveOvertimeApprovalForm(params: {
   plannedStartAt?: string | Date | null
   plannedEndAt?: string | Date | null
   requestNotes?: string
+  photoUrl?: string | null
   status?: string
   participants?: Array<{
     id?: number
@@ -552,6 +552,7 @@ export async function saveOvertimeApprovalForm(params: {
     estimatedMinutes?: number
     plannedPoints?: number
     lineDescription?: string
+    photoUrl?: string
   }>
   itemRemarks?: Record<number, string>
   leaderName?: string
@@ -575,10 +576,20 @@ export async function saveOvertimeApprovalForm(params: {
     const updateData: Record<string, any> = { updatedAt: new Date() }
     if (params.requestedByEmployeeId) updateData.requestedByEmployeeId = params.requestedByEmployeeId
     if (params.title !== undefined) updateData.title = params.title
-    if (params.workDate && !isNaN(new Date(params.workDate).getTime())) updateData.workDate = new Date(params.workDate)
-    if (params.plannedStartAt && !isNaN(new Date(params.plannedStartAt).getTime())) updateData.plannedStartAt = new Date(params.plannedStartAt)
-    if (params.plannedEndAt && !isNaN(new Date(params.plannedEndAt).getTime())) updateData.plannedEndAt = new Date(params.plannedEndAt)
-    if (params.requestNotes !== undefined) updateData.requestNotes = params.requestNotes
+    if (params.workDate) updateData.workDate = parseSplInputDateTime(params.workDate)
+    if (params.plannedStartAt) updateData.plannedStartAt = parseSplInputDateTime(params.workDate, params.plannedStartAt)
+    if (params.plannedEndAt) updateData.plannedEndAt = parseSplInputDateTime(params.workDate, params.plannedEndAt)
+    if (params.requestNotes !== undefined || params.photoUrl) {
+      let notes = params.requestNotes ?? ''
+      if (params.photoUrl) {
+        if (!notes.includes('[Foto Bukti SPL]')) {
+          notes = notes ? `${notes}\n\n[Foto Bukti SPL]: ${params.photoUrl}` : `[Foto Bukti SPL]: ${params.photoUrl}`
+        } else {
+          notes = notes.replace(/\[Foto Bukti SPL\]:\s*\S+/, `[Foto Bukti SPL]: ${params.photoUrl}`)
+        }
+      }
+      updateData.requestNotes = notes
+    }
     if (params.status) updateData.status = params.status
 
     const [existingDoc] = await db
@@ -689,15 +700,35 @@ export async function saveOvertimeApprovalForm(params: {
 
       const itemRows = params.lineItems
         .filter((item) => Boolean(item && item.lineLabel && item.lineLabel.trim()))
-        .map((item, idx) => ({
-          overtimeCommandLetterId: params.documentId,
-          lineLabel: item.lineLabel.trim(),
-          lineDescription: item.lineDescription || '',
-          targetUnit: item.targetUnit || '',
-          estimatedMinutes: Number(item.estimatedMinutes) || 60,
-          plannedPoints: Number(item.plannedPoints) || 10,
-          sortOrder: idx + 1,
-        }))
+        .map((item: any, idx) => {
+          let desc = item.lineDescription || ''
+          if (!desc.startsWith('{')) {
+            const metaPayload = {
+              code: item.code,
+              name: item.name,
+              unitNumber: item.unitNumber,
+              tireCount: item.tireCount,
+              materialUsed: item.materialUsed,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              duration: item.duration,
+              points: item.points || item.plannedPoints,
+              remark: item.remark || desc || '',
+              photoUrl: item.photoUrl,
+              photos: item.photos || (item.photoUrl ? [item.photoUrl] : []),
+            }
+            desc = JSON.stringify(metaPayload)
+          }
+          return {
+            overtimeCommandLetterId: params.documentId,
+            lineLabel: item.lineLabel.trim(),
+            lineDescription: desc,
+            targetUnit: item.targetUnit || '',
+            estimatedMinutes: Number(item.estimatedMinutes) || 60,
+            plannedPoints: Number(item.plannedPoints) || 10,
+            sortOrder: idx + 1,
+          }
+        })
 
       if (itemRows.length > 0) {
         await db.insert(overtimeCommandLetterItems).values(itemRows)
@@ -777,7 +808,7 @@ export async function saveOvertimeApprovalForm(params: {
           .where(
             and(
               eq(overtimeApprovals.overtimeCommandLetterId, params.documentId),
-              sql`LOWER(${overtimeApprovals.approverRole}) IN ('section_head', 'section_head_confirmation')`,
+              sql`LOWER(${overtimeApprovals.approverRole}) IN ('pjo', 'site_lead', 'section_head', 'section_head_confirmation', 'superior')`,
               sql`LOWER(COALESCE(${overtimeApprovals.status}, '')) NOT IN ('approved', 'signed', 'completed')`
             )
           )
@@ -1423,9 +1454,8 @@ export async function generateTestOvertimeApproval() {
     const baseUrl = getPublicAppUrl()
 
     const steps = [
-      { stepOrder: 1, stepLabel: 'Pemohon / Requester', approverRole: 'requester', name: currentEmployee.name, email: testEmail },
-      { stepOrder: 2, stepLabel: 'Leader / Supervisor', approverRole: 'leader', name: 'Leader Operasional', email: testEmail },
-      { stepOrder: 3, stepLabel: 'Section Head', approverRole: 'section_head', name: 'Section Head', email: testEmail },
+      { stepOrder: 1, stepLabel: 'Pemohon / Serviceman', approverRole: 'employee', name: currentEmployee.name, email: testEmail },
+      { stepOrder: 2, stepLabel: 'Leader / PJO', approverRole: 'leader_or_pjo', name: 'Leader / PJO Site', email: testEmail },
     ]
 
     const links: Array<{ step: number; role: string; name: string; url: string }> = []
@@ -1590,6 +1620,7 @@ export async function createOvertimeCommandLetterAction(payload: {
   requestedByEmployeeId?: number | null
   requestNotes?: string
   executionNotes?: string
+  photoUrl?: string | null
   workerParticipants?: Array<{
     employeeId: number
     shiftCode?: string
@@ -1602,6 +1633,20 @@ export async function createOvertimeCommandLetterAction(payload: {
     targetUnit?: string
     estimatedMinutes?: number
     plannedPoints?: number
+    photoUrl?: string
+    // Extended fields from desktop/self-input mode
+    code?: string
+    name?: string
+    unitNumber?: string
+    tireCount?: number
+    materialUsed?: string
+    startTime?: string
+    endTime?: string
+    duration?: string
+    lineDescription?: string
+    remark?: string
+    points?: number
+    photos?: string[]
   }>
   leaderEmployeeId?: number | null
   leaderName?: string | null
@@ -1619,6 +1664,12 @@ export async function createOvertimeCommandLetterAction(payload: {
     const requesterId = payload.requestedByEmployeeId || currentEmp?.id || null
     if (!requesterId) {
       return { success: false as const, error: 'Pilih Pemohon (Requester) terlebih dahulu.' }
+    }
+
+    // Photo is optional - store photoUrl in requestNotes for backward compat if provided
+    let finalRequestNotes = payload.requestNotes || ''
+    if (payload.photoUrl && !finalRequestNotes.includes(payload.photoUrl)) {
+      finalRequestNotes = `[Foto Bukti SPL]: ${payload.photoUrl.trim()}\n${finalRequestNotes}`.trim()
     }
 
     const [requesterEmp] = await db
@@ -1651,30 +1702,10 @@ export async function createOvertimeCommandLetterAction(payload: {
 
     const nextNumber = `${prefix}${String((last?.id || 0) + 1).padStart(4, '0')}`
 
-    const parseDateTime = (dateVal?: Date | string | null, timeVal?: Date | string | null): Date => {
-      if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal
-      if (typeof timeVal === 'string' && timeVal.trim()) {
-        const directDate = new Date(timeVal)
-        if (!isNaN(directDate.getTime()) && timeVal.includes('-')) return directDate
-        const baseDateStr = dateVal
-          ? (dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : String(dateVal).split('T')[0])
-          : new Date().toISOString().split('T')[0]
-        const cleanTime = timeVal.trim().length === 5 ? `${timeVal.trim()}:00` : timeVal.trim()
-        const combined = new Date(`${baseDateStr}T${cleanTime}`)
-        if (!isNaN(combined.getTime())) return combined
-      }
-      if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal
-      if (typeof dateVal === 'string' && dateVal.trim()) {
-        const d = new Date(dateVal)
-        if (!isNaN(d.getTime())) return d
-      }
-      return new Date()
-    }
-
-    const safeWorkDate = payload.workDate ? parseDateTime(payload.workDate) : new Date()
-    const safePlannedStart = parseDateTime(payload.workDate, payload.plannedStartAt)
+    const safeWorkDate = payload.workDate ? parseSplInputDateTime(payload.workDate) : new Date()
+    const safePlannedStart = parseSplInputDateTime(payload.workDate, payload.plannedStartAt)
     const safePlannedEnd = payload.plannedEndAt
-      ? parseDateTime(payload.workDate, payload.plannedEndAt)
+      ? parseSplInputDateTime(payload.workDate, payload.plannedEndAt)
       : new Date(safePlannedStart.getTime() + 4 * 3600 * 1000)
 
     let validDeptId: number | null = null
@@ -1708,7 +1739,7 @@ export async function createOvertimeCommandLetterAction(payload: {
         plannedStartAt: safePlannedStart,
         plannedEndAt: safePlannedEnd,
         status: 'Submitted',
-        requestNotes: payload.requestNotes || '',
+        requestNotes: finalRequestNotes,
         executionNotes: payload.executionNotes || '',
         requestedByEmployeeId: requesterId,
         createdAt: new Date(),
@@ -1748,15 +1779,32 @@ export async function createOvertimeCommandLetterAction(payload: {
     if (payload.lineItems && payload.lineItems.length > 0) {
       const itemsToInsert = payload.lineItems
         .filter((item) => item.lineLabel && item.lineLabel.trim().length > 0)
-        .map((item, idx) => ({
-          overtimeCommandLetterId: inserted.id,
-          lineLabel: item.lineLabel.trim(),
-          targetUnit: item.targetUnit?.trim() || '',
-          estimatedMinutes: Number(item.estimatedMinutes) || 60,
-          plannedPoints: Number(item.plannedPoints) || 0,
-          sortOrder: idx + 1,
-          createdAt: new Date(),
-        }))
+        .map((item: any, idx) => {
+          const metaPayload = {
+            code: item.code,
+            name: item.name,
+            unitNumber: item.unitNumber,
+            tireCount: item.tireCount,
+            materialUsed: item.materialUsed,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            duration: item.duration,
+            points: item.points || item.plannedPoints,
+            remark: item.remark || item.lineDescription || '',
+            photoUrl: item.photoUrl,
+            photos: item.photos || (item.photoUrl ? [item.photoUrl] : []),
+          }
+          return {
+            overtimeCommandLetterId: inserted.id,
+            lineLabel: item.lineLabel.trim(),
+            lineDescription: JSON.stringify(metaPayload),
+            targetUnit: item.targetUnit?.trim() || '',
+            estimatedMinutes: Number(item.estimatedMinutes) || 60,
+            plannedPoints: Number(item.plannedPoints) || 0,
+            sortOrder: idx + 1,
+            createdAt: new Date(),
+          }
+        })
 
       if (itemsToInsert.length > 0) {
         await db.insert(overtimeCommandLetterItems).values(itemsToInsert)
@@ -1771,37 +1819,35 @@ export async function createOvertimeCommandLetterAction(payload: {
       }
     }
 
-    // Ensure or insert sequential approval steps (Step 1 Auto-Approved, Step 2 Pending)
+    // Ensure or insert sequential approval steps (2 steps total: Pemohon -> Leader / PJO -> Selesai)
     if (payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId) {
-      const [validLeader] = payload.leaderEmployeeId
-        ? await db.select({ id: employees.id, name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, payload.leaderEmployeeId)).limit(1)
-        : []
+      const targetApproverId = payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId || null
+      const targetApproverName = payload.leaderName || payload.superiorName || payload.managerName || 'Leader / PJO'
 
-      const [validSuperior] = payload.superiorEmployeeId
-        ? await db.select({ id: employees.id, name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, payload.superiorEmployeeId)).limit(1)
-        : []
-
-      const [validManager] = payload.managerEmployeeId
-        ? await db.select({ id: employees.id, name: employees.name, email: employees.email }).from(employees).where(eq(employees.id, payload.managerEmployeeId)).limit(1)
+      const [validApprover] = targetApproverId
+        ? await db
+            .select({ id: employees.id, name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, targetApproverId))
+            .limit(1)
         : []
 
       const step1Token = randomUUID()
       const step2Token = randomUUID()
-      const step3Token = randomUUID()
       const now = new Date()
 
       const steps = [
         {
           overtimeCommandLetterId: inserted.id,
           stepOrder: 1,
-          stepLabel: 'Karyawan Sign',
+          stepLabel: 'Pemohon / Serviceman',
           approverRole: 'employee',
           approverEmployeeId: requesterId,
-          approverName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
+          approverName: requesterEmp?.name || currentEmp?.name || 'Pemohon',
           approverEmail: requesterEmp?.email || currentEmp?.email || '',
           signatureDataUrl: requesterSig,
           signedAt: now,
-          remarks: 'Auto-approved oleh pemohon saat submit SPL.',
+          remarks: 'Disetujui oleh pemohon saat submit SPL.',
           status: 'approved',
           approvalToken: step1Token,
           createdAt: now,
@@ -1809,31 +1855,16 @@ export async function createOvertimeCommandLetterAction(payload: {
         {
           overtimeCommandLetterId: inserted.id,
           stepOrder: 2,
-          stepLabel: 'Leader / Supervisor',
-          approverRole: 'leader',
-          approverEmployeeId: validLeader?.id ?? payload.leaderEmployeeId ?? null,
-          approverName: payload.leaderName || validLeader?.name || 'Leader Lapangan',
-          approverEmail: validLeader?.email || '',
+          stepLabel: 'Leader / PJO',
+          approverRole: 'leader_or_pjo',
+          approverEmployeeId: validApprover?.id ?? targetApproverId ?? null,
+          approverName: targetApproverName || validApprover?.name || 'Leader / PJO',
+          approverEmail: validApprover?.email || '',
           signatureDataUrl: null,
           signedAt: null,
           remarks: '',
           status: 'pending',
           approvalToken: step2Token,
-          createdAt: now,
-        },
-        {
-          overtimeCommandLetterId: inserted.id,
-          stepOrder: 3,
-          stepLabel: 'Section Head',
-          approverRole: 'section_head',
-          approverEmployeeId: validSuperior?.id ?? payload.superiorEmployeeId ?? null,
-          approverName: payload.superiorName || validSuperior?.name || 'Section Head',
-          approverEmail: validSuperior?.email || '',
-          signatureDataUrl: null,
-          signedAt: null,
-          remarks: '',
-          status: 'waiting',
-          approvalToken: step3Token,
           createdAt: now,
         },
       ]
@@ -1844,19 +1875,19 @@ export async function createOvertimeCommandLetterAction(payload: {
           target: [overtimeApprovals.overtimeCommandLetterId, overtimeApprovals.stepOrder],
         })
 
-      const leaderTargetEmail = validLeader?.email || ''
-      if (leaderTargetEmail) {
+      const approverTargetEmail = validApprover?.email || ''
+      if (approverTargetEmail) {
         try {
           await sendOvertimeStepApprovalEmail({
             documentId: inserted.id,
             splNumber: inserted.splNumber || `SPL-${inserted.id}`,
             title: inserted.title || payload.title || 'Penugasan Lembur Operasional',
             workDate: inserted.workDate,
-            employeeName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
-            requesterName: requesterEmp?.name || currentEmp?.name || 'Karyawan',
-            approverName: payload.leaderName || validLeader?.name || 'Leader Lapangan',
-            approverEmail: leaderTargetEmail,
-            approvalStep: 'Leader / Supervisor',
+            employeeName: requesterEmp?.name || currentEmp?.name || 'Pemohon',
+            requesterName: requesterEmp?.name || currentEmp?.name || 'Pemohon',
+            approverName: targetApproverName || validApprover?.name || 'Leader / PJO',
+            approverEmail: approverTargetEmail,
+            approvalStep: 'Leader / PJO',
             approvalToken: step2Token,
           })
         } catch (err) {
@@ -2948,6 +2979,20 @@ export async function saveOvertimeWorkflowSettings(settings: OvertimeWorkflowSet
   } catch (err: any) {
     console.error('Error saving Overtime workflow settings:', err)
     return { success: false, error: err.message || 'Gagal menyimpan pengaturan.' }
+  }
+}
+
+export async function getOvertimeEvidenceDataAction(idOrSplNumber: number | string) {
+  try {
+    const { getPublicOvertimeEvidenceData } = await import('@/lib/overtime-evidence-data')
+    const data = await getPublicOvertimeEvidenceData(idOrSplNumber)
+    if (!data) {
+      return { success: false as const, error: 'Dokumen SPL tidak ditemukan' }
+    }
+    return { success: true as const, data }
+  } catch (err: any) {
+    console.error('Error fetching overtime evidence data:', err)
+    return { success: false as const, error: err?.message || 'Gagal memuat bukti lembur' }
   }
 }
 
