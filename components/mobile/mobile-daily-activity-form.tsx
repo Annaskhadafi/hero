@@ -1,5 +1,6 @@
-import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 'use client'
+
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'

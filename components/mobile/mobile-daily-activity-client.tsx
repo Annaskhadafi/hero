@@ -1,5 +1,6 @@
-import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 'use client'
+
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import Link from 'next/link'

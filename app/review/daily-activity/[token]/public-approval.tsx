@@ -1,5 +1,6 @@
-import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 'use client'
+
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import QRCode from 'qrcode'
