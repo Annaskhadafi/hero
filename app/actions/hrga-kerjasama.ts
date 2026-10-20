@@ -3,15 +3,36 @@
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
-import { hrgaKerjasamaRs, hrgaPklStudents } from '@/db/schema/hrga-kerjasama'
+import { hrgaKerjasamaRs, hrgaKerjasamaSekolah, hrgaPklStudents } from '@/db/schema/hrga-kerjasama'
 import { employees } from '@/db/schema/hero'
-import { calculateDuration, computePklStatus, computeRsStatus } from '@/lib/hrga-kerjasama-utils'
+import {
+  calculateDuration,
+  computePklStatus,
+  computeRsStatus,
+  computeSekolahStatus,
+} from '@/lib/hrga-kerjasama-utils'
 
 export type KerjasamaRsItem = typeof hrgaKerjasamaRs.$inferSelect
+export type KerjasamaSekolahItem = typeof hrgaKerjasamaSekolah.$inferSelect
 export type PklStudentItem = typeof hrgaPklStudents.$inferSelect
 
 export type KerjasamaRsInput = {
   name: string
+  location: string
+  address?: string
+  startDate?: string | null
+  endDate?: string | null
+  status?: string
+  contactPerson?: string
+  contactPhone?: string
+  contractDocumentUrl?: string | null
+  contractDocumentName?: string | null
+  notes?: string
+}
+
+export type KerjasamaSekolahInput = {
+  name: string
+  institutionType: string // 'SMK', 'SMA', 'Politeknik', 'Universitas', 'Lainnya'
   location: string
   address?: string
   startDate?: string | null
@@ -152,6 +173,133 @@ export async function deleteKerjasamaRs(id: number) {
   } catch (error: any) {
     console.error('deleteKerjasamaRs error:', error)
     return { success: false, error: error.message || 'Gagal menghapus data rumah sakit' }
+  }
+}
+
+// ─── Actions: Kerjasama Sekolah & Perguruan Tinggi ───────────────────────────
+
+export async function getKerjasamaSekolahList(filter?: {
+  search?: string
+  location?: string
+  institutionType?: string
+  status?: string
+}) {
+  try {
+    const conditions = []
+
+    if (filter?.search?.trim()) {
+      const q = `%${filter.search.trim()}%`
+      conditions.push(
+        or(
+          ilike(hrgaKerjasamaSekolah.name, q),
+          ilike(hrgaKerjasamaSekolah.institutionType, q),
+          ilike(hrgaKerjasamaSekolah.location, q),
+          ilike(hrgaKerjasamaSekolah.contactPerson, q),
+          ilike(hrgaKerjasamaSekolah.notes, q)
+        )
+      )
+    }
+
+    if (filter?.institutionType?.trim() && filter.institutionType !== 'ALL') {
+      conditions.push(eq(hrgaKerjasamaSekolah.institutionType, filter.institutionType.trim()))
+    }
+
+    if (filter?.location?.trim() && filter.location !== 'ALL') {
+      conditions.push(eq(hrgaKerjasamaSekolah.location, filter.location.trim()))
+    }
+
+    if (filter?.status?.trim() && filter.status !== 'ALL') {
+      conditions.push(eq(hrgaKerjasamaSekolah.status, filter.status.trim()))
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    const list = await db
+      .select()
+      .from(hrgaKerjasamaSekolah)
+      .where(whereClause)
+      .orderBy(asc(hrgaKerjasamaSekolah.name))
+
+    return { success: true, data: list }
+  } catch (error: any) {
+    console.error('getKerjasamaSekolahList error:', error)
+    return { success: false, error: error.message || 'Gagal memuat data kerjasama sekolah' }
+  }
+}
+
+export async function createKerjasamaSekolah(input: KerjasamaSekolahInput) {
+  try {
+    const computedStatus = computeSekolahStatus(input.startDate, input.endDate, input.status)
+
+    const [created] = await db
+      .insert(hrgaKerjasamaSekolah)
+      .values({
+        name: input.name.trim(),
+        institutionType: input.institutionType?.trim() || 'SMK',
+        location: input.location.trim(),
+        address: input.address?.trim() || '',
+        startDate: input.startDate || null,
+        endDate: input.endDate || null,
+        status: input.status === 'no_partnership' ? 'no_partnership' : computedStatus,
+        contactPerson: input.contactPerson?.trim() || '',
+        contactPhone: input.contactPhone?.trim() || '',
+        contractDocumentUrl: input.contractDocumentUrl || null,
+        contractDocumentName: input.contractDocumentName || null,
+        notes: input.notes?.trim() || '',
+      })
+      .returning()
+
+    revalidatePath('/dashboard/hc/kerjasama')
+    return { success: true, data: created }
+  } catch (error: any) {
+    console.error('createKerjasamaSekolah error:', error)
+    return { success: false, error: error.message || 'Gagal menambah data sekolah mitra' }
+  }
+}
+
+export async function updateKerjasamaSekolah(id: number, input: Partial<KerjasamaSekolahInput>) {
+  try {
+    const updateData: any = { updatedAt: new Date() }
+    if (input.name !== undefined) updateData.name = input.name.trim()
+    if (input.institutionType !== undefined) updateData.institutionType = input.institutionType.trim()
+    if (input.location !== undefined) updateData.location = input.location.trim()
+    if (input.address !== undefined) updateData.address = input.address.trim()
+    if (input.startDate !== undefined) updateData.startDate = input.startDate || null
+    if (input.endDate !== undefined) updateData.endDate = input.endDate || null
+    if (input.contactPerson !== undefined) updateData.contactPerson = input.contactPerson.trim()
+    if (input.contactPhone !== undefined) updateData.contactPhone = input.contactPhone.trim()
+    if (input.contractDocumentUrl !== undefined) updateData.contractDocumentUrl = input.contractDocumentUrl || null
+    if (input.contractDocumentName !== undefined) updateData.contractDocumentName = input.contractDocumentName || null
+    if (input.notes !== undefined) updateData.notes = input.notes.trim()
+
+    if (input.status !== undefined) {
+      updateData.status = input.status
+    } else if (input.startDate !== undefined || input.endDate !== undefined) {
+      updateData.status = computeSekolahStatus(input.startDate, input.endDate)
+    }
+
+    const [updated] = await db
+      .update(hrgaKerjasamaSekolah)
+      .set(updateData)
+      .where(eq(hrgaKerjasamaSekolah.id, id))
+      .returning()
+
+    revalidatePath('/dashboard/hc/kerjasama')
+    return { success: true, data: updated }
+  } catch (error: any) {
+    console.error('updateKerjasamaSekolah error:', error)
+    return { success: false, error: error.message || 'Gagal memperbarui data sekolah mitra' }
+  }
+}
+
+export async function deleteKerjasamaSekolah(id: number) {
+  try {
+    await db.delete(hrgaKerjasamaSekolah).where(eq(hrgaKerjasamaSekolah.id, id))
+    revalidatePath('/dashboard/hc/kerjasama')
+    return { success: true }
+  } catch (error: any) {
+    console.error('deleteKerjasamaSekolah error:', error)
+    return { success: false, error: error.message || 'Gagal menghapus data sekolah mitra' }
   }
 }
 
@@ -296,6 +444,7 @@ export async function deletePklStudent(id: number) {
 export async function getKerjasamaMetrics() {
   try {
     const rsList = await db.select().from(hrgaKerjasamaRs)
+    const sekolahList = await db.select().from(hrgaKerjasamaSekolah)
     const pklList = await db.select().from(hrgaPklStudents)
 
     const rsMetrics = {
@@ -306,6 +455,14 @@ export async function getKerjasamaMetrics() {
       noPartnership: rsList.filter((r) => r.status === 'no_partnership').length,
     }
 
+    const sekolahMetrics = {
+      total: sekolahList.length,
+      active: sekolahList.filter((s) => s.status === 'active').length,
+      expiringSoon: sekolahList.filter((s) => s.status === 'expiring_soon').length,
+      expired: sekolahList.filter((s) => s.status === 'expired').length,
+      noPartnership: sekolahList.filter((s) => s.status === 'no_partnership').length,
+    }
+
     const pklMetrics = {
       total: pklList.length,
       active: pklList.filter((p) => p.status === 'active').length,
@@ -314,13 +471,18 @@ export async function getKerjasamaMetrics() {
     }
 
     const rsLocations = Array.from(new Set(rsList.map((r) => r.location).filter(Boolean))).sort()
+    const sekolahLocations = Array.from(new Set(sekolahList.map((s) => s.location).filter(Boolean))).sort()
+    const sekolahTypes = Array.from(new Set(sekolahList.map((s) => s.institutionType).filter(Boolean))).sort()
     const pklInstitutions = Array.from(new Set(pklList.map((p) => p.institution).filter(Boolean))).sort()
 
     return {
       success: true,
       rsMetrics,
+      sekolahMetrics,
       pklMetrics,
       rsLocations,
+      sekolahLocations,
+      sekolahTypes,
       pklInstitutions,
     }
   } catch (error: any) {
@@ -329,8 +491,11 @@ export async function getKerjasamaMetrics() {
       success: false,
       error: error.message || 'Gagal menghitung metrik kerjasama',
       rsMetrics: { total: 0, active: 0, expiringSoon: 0, expired: 0, noPartnership: 0 },
+      sekolahMetrics: { total: 0, active: 0, expiringSoon: 0, expired: 0, noPartnership: 0 },
       pklMetrics: { total: 0, active: 0, completed: 0, upcoming: 0 },
       rsLocations: [],
+      sekolahLocations: [],
+      sekolahTypes: [],
       pklInstitutions: [],
     }
   }

@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  School,
   Sparkles,
   Trash2,
   Upload,
@@ -29,12 +30,16 @@ import { toast } from 'sonner'
 
 import {
   type KerjasamaRsItem,
+  type KerjasamaSekolahItem,
   type PklStudentItem,
   createKerjasamaRs,
+  createKerjasamaSekolah,
   createPklStudent,
   deleteKerjasamaRs,
+  deleteKerjasamaSekolah,
   deletePklStudent,
   updateKerjasamaRs,
+  updateKerjasamaSekolah,
   updatePklStudent,
 } from '@/app/actions/hrga-kerjasama'
 import {
@@ -62,11 +67,15 @@ import { cn } from '@/lib/utils'
 
 interface KerjasamaClientProps {
   initialRsList: KerjasamaRsItem[]
+  initialSekolahList: KerjasamaSekolahItem[]
   initialPklList: PklStudentItem[]
   initialMetrics: {
     rsMetrics: { total: number; active: number; expiringSoon: number; expired: number; noPartnership: number }
+    sekolahMetrics: { total: number; active: number; expiringSoon: number; expired: number; noPartnership: number }
     pklMetrics: { total: number; active: number; completed: number; upcoming: number }
     rsLocations: string[]
+    sekolahLocations: string[]
+    sekolahTypes: string[]
     pklInstitutions: string[]
   }
   employees: { id: number; name: string; employeeSn: string; department: string | null; section: string | null }[]
@@ -80,11 +89,26 @@ const RS_STATUS_LABELS: Record<string, string> = {
   no_partnership: 'Belum Ada Kerjasama',
 }
 
+const SEKOLAH_STATUS_LABELS: Record<string, string> = {
+  active: 'Aktif',
+  expiring_soon: 'Segera Berakhir',
+  expired: 'Kedaluwarsa',
+  no_partnership: 'Belum Ada Kerjasama',
+}
+
 const PKL_STATUS_LABELS: Record<string, string> = {
   active: 'Aktif (Berjalan)',
   completed: 'Selesai',
   upcoming: 'Akan Datang',
 }
+
+const INSTITUTION_TYPE_OPTIONS = [
+  { value: 'SMK', label: 'SMK (Sekolah Menengah Kejuruan)' },
+  { value: 'SMA', label: 'SMA / MA' },
+  { value: 'Politeknik', label: 'Politeknik / Vokasi' },
+  { value: 'Universitas', label: 'Universitas / Institut' },
+  { value: 'Lainnya', label: 'Lainnya' },
+]
 
 function sortPklList(list: PklStudentItem[]): PklStudentItem[] {
   const getWeight = (status: string) => {
@@ -101,13 +125,15 @@ function sortPklList(list: PklStudentItem[]): PklStudentItem[] {
 
 export function KerjasamaClient({
   initialRsList,
+  initialSekolahList,
   initialPklList,
   initialMetrics,
   employees,
   canManage,
 }: KerjasamaClientProps) {
-  const [activeTab, setActiveTab] = React.useState<'rs' | 'pkl'>('rs')
+  const [activeTab, setActiveTab] = React.useState<'rs' | 'sekolah' | 'pkl'>('rs')
   const [rsList, setRsList] = React.useState<KerjasamaRsItem[]>(initialRsList)
+  const [sekolahList, setSekolahList] = React.useState<KerjasamaSekolahItem[]>(initialSekolahList)
   const [pklList, setPklList] = React.useState<PklStudentItem[]>(() => sortPklList(initialPklList))
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
@@ -117,9 +143,29 @@ export function KerjasamaClient({
   const [rsDetailItem, setRsDetailItem] = React.useState<KerjasamaRsItem | null>(null)
   const [rsDeletingItem, setRsDeletingItem] = React.useState<KerjasamaRsItem | null>(null)
 
-  // RS Form State
   const [rsForm, setRsForm] = React.useState({
     name: '',
+    location: '',
+    address: '',
+    startDate: '',
+    endDate: '',
+    status: 'active',
+    contactPerson: '',
+    contactPhone: '',
+    contractDocumentUrl: '',
+    contractDocumentName: '',
+    notes: '',
+  })
+
+  // ─── Sekolah State & Modals ───────────────────────────────────────────────────
+  const [sekolahDialogOpen, setSekolahDialogOpen] = React.useState(false)
+  const [sekolahEditingItem, setSekolahEditingItem] = React.useState<KerjasamaSekolahItem | null>(null)
+  const [sekolahDetailItem, setSekolahDetailItem] = React.useState<KerjasamaSekolahItem | null>(null)
+  const [sekolahDeletingItem, setSekolahDeletingItem] = React.useState<KerjasamaSekolahItem | null>(null)
+
+  const [sekolahForm, setSekolahForm] = React.useState({
+    name: '',
+    institutionType: 'SMK',
     location: '',
     address: '',
     startDate: '',
@@ -138,7 +184,6 @@ export function KerjasamaClient({
   const [pklDetailItem, setPklDetailItem] = React.useState<PklStudentItem | null>(null)
   const [pklDeletingItem, setPklDeletingItem] = React.useState<PklStudentItem | null>(null)
 
-  // PKL Form State
   const [pklForm, setPklForm] = React.useState({
     name: '',
     institution: '',
@@ -151,59 +196,26 @@ export function KerjasamaClient({
     notes: '',
   })
 
-  // Mentor options
+  // ─── Mentor Select Options (Active Employees) ────────────────────────────────
   const mentorSelectOptions = React.useMemo(() => {
     return employees.map((emp) => ({
       value: String(emp.id),
-      label: `${emp.name} (${emp.employeeSn})`,
-      description: emp.department ? `${emp.department}${emp.section ? ` - ${emp.section}` : ''}` : undefined,
+      label: `${emp.name} (${emp.employeeSn || '-'}) - ${emp.department || 'Umum'}`,
     }))
   }, [employees])
 
-  // RS Location Options
-  const rsLocationOptions = React.useMemo(() => {
-    const locs = Array.from(new Set(rsList.map((r) => r.location).filter(Boolean))).sort()
-    return locs.map((loc) => ({ value: loc, label: loc }))
-  }, [rsList])
-
-  // PKL Institution Options
-  const pklInstitutionOptions = React.useMemo(() => {
-    const insts = Array.from(new Set(pklList.map((p) => p.institution).filter(Boolean))).sort()
-    return insts.map((inst) => ({ value: inst, label: inst }))
-  }, [pklList])
-
-  // KPIs
-  const rsKpi = React.useMemo(() => {
-    return {
-      total: rsList.length,
-      active: rsList.filter((r) => r.status === 'active').length,
-      expiringSoon: rsList.filter((r) => r.status === 'expiring_soon').length,
-      expired: rsList.filter((r) => r.status === 'expired').length,
-      noPartnership: rsList.filter((r) => r.status === 'no_partnership').length,
-    }
-  }, [rsList])
-
-  const pklKpi = React.useMemo(() => {
-    return {
-      total: pklList.length,
-      active: pklList.filter((p) => p.status === 'active').length,
-      completed: pklList.filter((p) => p.status === 'completed').length,
-      upcoming: pklList.filter((p) => p.status === 'upcoming').length,
-    }
-  }, [pklList])
-
-  // ─── RS Handlers ─────────────────────────────────────────────────────────────
+  // ─── Handlers: RS ─────────────────────────────────────────────────────────────
 
   const handleOpenRsDialog = (item?: KerjasamaRsItem) => {
     if (item) {
       setRsEditingItem(item)
       setRsForm({
-        name: item.name,
-        location: item.location,
+        name: item.name || '',
+        location: item.location || '',
         address: item.address || '',
         startDate: item.startDate || '',
         endDate: item.endDate || '',
-        status: item.status,
+        status: item.status || 'active',
         contactPerson: item.contactPerson || '',
         contactPhone: item.contactPhone || '',
         contractDocumentUrl: item.contractDocumentUrl || '',
@@ -229,63 +241,40 @@ export function KerjasamaClient({
     setRsDialogOpen(true)
   }
 
-  const handleSaveRs = async () => {
+  const handleSaveRs = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     if (!rsForm.name.trim()) {
       toast.error('Nama Rumah Sakit / Klinik wajib diisi')
       return
     }
     if (!rsForm.location.trim()) {
-      toast.error('Lokasi kota wajib diisi')
+      toast.error('Lokasi faskes wajib diisi')
       return
     }
 
     setIsSubmitting(true)
     try {
       if (rsEditingItem) {
-        const res = await updateKerjasamaRs(rsEditingItem.id, {
-          name: rsForm.name,
-          location: rsForm.location,
-          address: rsForm.address,
-          startDate: rsForm.startDate || null,
-          endDate: rsForm.endDate || null,
-          status: rsForm.status,
-          contactPerson: rsForm.contactPerson,
-          contactPhone: rsForm.contactPhone,
-          contractDocumentUrl: rsForm.contractDocumentUrl || null,
-          contractDocumentName: rsForm.contractDocumentName || null,
-          notes: rsForm.notes,
-        })
+        const res = await updateKerjasamaRs(rsEditingItem.id, rsForm)
         if (res.success && res.data) {
-          setRsList((prev) => prev.map((item) => (item.id === rsEditingItem.id ? res.data! : item)))
-          toast.success('Data Kerjasama Rumah Sakit berhasil diperbarui')
+          toast.success('Data rumah sakit berhasil diperbarui')
+          setRsList((prev) => prev.map((item) => (item.id === res.data!.id ? res.data! : item)))
           setRsDialogOpen(false)
         } else {
           toast.error(res.error || 'Gagal memperbarui data')
         }
       } else {
-        const res = await createKerjasamaRs({
-          name: rsForm.name,
-          location: rsForm.location,
-          address: rsForm.address,
-          startDate: rsForm.startDate || null,
-          endDate: rsForm.endDate || null,
-          status: rsForm.status,
-          contactPerson: rsForm.contactPerson,
-          contactPhone: rsForm.contactPhone,
-          contractDocumentUrl: rsForm.contractDocumentUrl || null,
-          contractDocumentName: rsForm.contractDocumentName || null,
-          notes: rsForm.notes,
-        })
+        const res = await createKerjasamaRs(rsForm)
         if (res.success && res.data) {
+          toast.success('Rumah sakit mitra berhasil ditambahkan')
           setRsList((prev) => [...prev, res.data!].sort((a, b) => a.name.localeCompare(b.name)))
-          toast.success('Data Kerjasama Rumah Sakit berhasil ditambahkan')
           setRsDialogOpen(false)
         } else {
           toast.error(res.error || 'Gagal menambahkan data')
         }
       }
-    } catch (e: any) {
-      toast.error(e.message || 'Terjadi kesalahan sistem')
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem')
     } finally {
       setIsSubmitting(false)
     }
@@ -297,8 +286,8 @@ export function KerjasamaClient({
     try {
       const res = await deleteKerjasamaRs(rsDeletingItem.id)
       if (res.success) {
+        toast.success(`Data "${rsDeletingItem.name}" berhasil dihapus`)
         setRsList((prev) => prev.filter((item) => item.id !== rsDeletingItem.id))
-        toast.success(`Data ${rsDeletingItem.name} berhasil dihapus`)
         setRsDeletingItem(null)
       } else {
         toast.error(res.error || 'Gagal menghapus data')
@@ -310,36 +299,128 @@ export function KerjasamaClient({
     }
   }
 
-  // ─── PKL Handlers ────────────────────────────────────────────────────────────
+  // ─── Handlers: Sekolah ────────────────────────────────────────────────────────
+
+  const handleOpenSekolahDialog = (item?: KerjasamaSekolahItem) => {
+    if (item) {
+      setSekolahEditingItem(item)
+      setSekolahForm({
+        name: item.name || '',
+        institutionType: item.institutionType || 'SMK',
+        location: item.location || '',
+        address: item.address || '',
+        startDate: item.startDate || '',
+        endDate: item.endDate || '',
+        status: item.status || 'active',
+        contactPerson: item.contactPerson || '',
+        contactPhone: item.contactPhone || '',
+        contractDocumentUrl: item.contractDocumentUrl || '',
+        contractDocumentName: item.contractDocumentName || '',
+        notes: item.notes || '',
+      })
+    } else {
+      setSekolahEditingItem(null)
+      setSekolahForm({
+        name: '',
+        institutionType: 'SMK',
+        location: '',
+        address: '',
+        startDate: '',
+        endDate: '',
+        status: 'active',
+        contactPerson: '',
+        contactPhone: '',
+        contractDocumentUrl: '',
+        contractDocumentName: '',
+        notes: '',
+      })
+    }
+    setSekolahDialogOpen(true)
+  }
+
+  const handleSaveSekolah = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!sekolahForm.name.trim()) {
+      toast.error('Nama Sekolah / Perguruan Tinggi wajib diisi')
+      return
+    }
+    if (!sekolahForm.location.trim()) {
+      toast.error('Lokasi kota/kabupaten wajib diisi')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      if (sekolahEditingItem) {
+        const res = await updateKerjasamaSekolah(sekolahEditingItem.id, sekolahForm)
+        if (res.success && res.data) {
+          toast.success('Data sekolah mitra berhasil diperbarui')
+          setSekolahList((prev) => prev.map((item) => (item.id === res.data!.id ? res.data! : item)))
+          setSekolahDialogOpen(false)
+        } else {
+          toast.error(res.error || 'Gagal memperbarui data')
+        }
+      } else {
+        const res = await createKerjasamaSekolah(sekolahForm)
+        if (res.success && res.data) {
+          toast.success('Sekolah mitra berhasil ditambahkan')
+          setSekolahList((prev) => [...prev, res.data!].sort((a, b) => a.name.localeCompare(b.name)))
+          setSekolahDialogOpen(false)
+        } else {
+          toast.error(res.error || 'Gagal menambahkan data')
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDeleteSekolah = async () => {
+    if (!sekolahDeletingItem) return
+    setIsSubmitting(true)
+    try {
+      const res = await deleteKerjasamaSekolah(sekolahDeletingItem.id)
+      if (res.success) {
+        toast.success(`Data "${sekolahDeletingItem.name}" berhasil dihapus`)
+        setSekolahList((prev) => prev.filter((item) => item.id !== sekolahDeletingItem.id))
+        setSekolahDeletingItem(null)
+      } else {
+        toast.error(res.error || 'Gagal menghapus data')
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Terjadi kesalahan')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // ─── Handlers: PKL ────────────────────────────────────────────────────────────
 
   const handleOpenPklDialog = (item?: PklStudentItem) => {
     if (item) {
       setPklEditingItem(item)
-      const mentorParts = item.mentorName.split('/').map((s) => s.trim().toLowerCase())
-      const matchedIds = employees
-        .filter((emp) =>
-          mentorParts.some(
-            (part) =>
-              emp.name.toLowerCase().includes(part) ||
-              part.includes(emp.name.toLowerCase()) ||
-              emp.employeeSn.includes(part)
-          )
-        )
-        .map((emp) => emp.id)
 
-      if (item.mentorEmployeeId && !matchedIds.includes(item.mentorEmployeeId)) {
-        matchedIds.push(item.mentorEmployeeId)
+      let parsedIds: number[] = []
+      if (item.mentorEmployeeId) {
+        parsedIds = [item.mentorEmployeeId]
+      } else if (item.mentorName) {
+        const names = item.mentorName.split('/').map((s) => s.trim().toLowerCase())
+        parsedIds = employees
+          .filter((emp) => names.some((n) => emp.name.toLowerCase().includes(n)))
+          .map((emp) => emp.id)
       }
 
       setPklForm({
-        name: item.name,
-        institution: item.institution,
-        major: item.major,
-        startDate: item.startDate,
-        endDate: item.endDate,
-        mentorName: item.mentorName,
-        mentorEmployeeIds: matchedIds,
-        status: item.status,
+        name: item.name || '',
+        institution: item.institution || '',
+        major: item.major || '',
+        startDate: item.startDate || '',
+        endDate: item.endDate || '',
+        mentorName: item.mentorName || '',
+        mentorEmployeeIds: parsedIds,
+        status: item.status || 'active',
         notes: item.notes || '',
       })
     } else {
@@ -359,9 +440,10 @@ export function KerjasamaClient({
     setPklDialogOpen(true)
   }
 
-  const handleSavePkl = async () => {
+  const handleSavePkl = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     if (!pklForm.name.trim()) {
-      toast.error('Nama Siswa / Mahasiswa wajib diisi')
+      toast.error('Nama Siswa PKL / Mahasiswa wajib diisi')
       return
     }
     if (!pklForm.institution.trim()) {
@@ -373,57 +455,59 @@ export function KerjasamaClient({
       return
     }
     if (!pklForm.startDate || !pklForm.endDate) {
-      toast.error('Periode tanggal mulai dan selesai wajib diisi')
+      toast.error('Tanggal mulai dan berakhir PKL wajib dipilih')
       return
     }
-    if (!pklForm.mentorName.trim()) {
+    if (pklForm.endDate < pklForm.startDate) {
+      toast.error('Tanggal berakhir tidak boleh lebih awal dari tanggal mulai')
+      return
+    }
+    if (!pklForm.mentorName.trim() && pklForm.mentorEmployeeIds.length === 0) {
       toast.error('Pembimbing Industri wajib dipilih')
       return
     }
 
+    let finalMentorName = pklForm.mentorName.trim()
+    if (pklForm.mentorEmployeeIds.length > 0) {
+      const selectedEmp = employees.filter((e) => pklForm.mentorEmployeeIds.includes(e.id))
+      finalMentorName = selectedEmp.map((e) => e.name).join(' / ')
+    }
+
     setIsSubmitting(true)
     try {
+      const payload = {
+        name: pklForm.name.trim(),
+        institution: pklForm.institution.trim(),
+        major: pklForm.major.trim(),
+        startDate: pklForm.startDate,
+        endDate: pklForm.endDate,
+        mentorName: finalMentorName,
+        mentorEmployeeId: pklForm.mentorEmployeeIds[0] || null,
+        status: pklForm.status,
+        notes: pklForm.notes.trim(),
+      }
+
       if (pklEditingItem) {
-        const res = await updatePklStudent(pklEditingItem.id, {
-          name: pklForm.name,
-          institution: pklForm.institution,
-          major: pklForm.major,
-          startDate: pklForm.startDate,
-          endDate: pklForm.endDate,
-          mentorName: pklForm.mentorName,
-          mentorEmployeeId: pklForm.mentorEmployeeIds[0] || null,
-          status: pklForm.status,
-          notes: pklForm.notes,
-        })
+        const res = await updatePklStudent(pklEditingItem.id, payload)
         if (res.success && res.data) {
-          setPklList((prev) => sortPklList(prev.map((item) => (item.id === pklEditingItem.id ? res.data! : item))))
-          toast.success('Data Siswa PKL berhasil diperbarui')
+          toast.success('Data siswa PKL berhasil diperbarui')
+          setPklList((prev) => sortPklList(prev.map((item) => (item.id === res.data!.id ? res.data! : item))))
           setPklDialogOpen(false)
         } else {
           toast.error(res.error || 'Gagal memperbarui data')
         }
       } else {
-        const res = await createPklStudent({
-          name: pklForm.name,
-          institution: pklForm.institution,
-          major: pklForm.major,
-          startDate: pklForm.startDate,
-          endDate: pklForm.endDate,
-          mentorName: pklForm.mentorName,
-          mentorEmployeeId: pklForm.mentorEmployeeIds[0] || null,
-          status: pklForm.status,
-          notes: pklForm.notes,
-        })
+        const res = await createPklStudent(payload)
         if (res.success && res.data) {
-          setPklList((prev) => sortPklList([res.data!, ...prev]))
-          toast.success('Data Siswa PKL berhasil ditambahkan')
+          toast.success('Siswa PKL berhasil ditambahkan')
+          setPklList((prev) => sortPklList([...prev, res.data!]))
           setPklDialogOpen(false)
         } else {
           toast.error(res.error || 'Gagal menambahkan data')
         }
       }
-    } catch (e: any) {
-      toast.error(e.message || 'Terjadi kesalahan sistem')
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem')
     } finally {
       setIsSubmitting(false)
     }
@@ -435,8 +519,8 @@ export function KerjasamaClient({
     try {
       const res = await deletePklStudent(pklDeletingItem.id)
       if (res.success) {
+        toast.success(`Data siswa "${pklDeletingItem.name}" berhasil dihapus`)
         setPklList((prev) => prev.filter((item) => item.id !== pklDeletingItem.id))
-        toast.success(`Data ${pklDeletingItem.name} berhasil dihapus`)
         setPklDeletingItem(null)
       } else {
         toast.error(res.error || 'Gagal menghapus data')
@@ -518,83 +602,298 @@ export function KerjasamaClient({
           badgeTone = 'bg-rose-100 text-rose-900 border-rose-200'
         }
 
-        return <Badge className={cn('text-xs font-medium border px-2 py-0.5', badgeTone)}>{label}</Badge>
+        return (
+          <Badge variant="outline" className={cn('text-xs font-semibold px-2 py-0.5', badgeTone)}>
+            {label}
+          </Badge>
+        )
       },
     },
     {
       key: 'contact',
       header: 'Kontak PIC',
-      render: (row) => {
-        if (!row.contactPerson && !row.contactPhone) {
-          return <span className="text-xs text-muted-foreground italic">-</span>
-        }
-        return (
-          <div className="flex flex-col text-xs">
-            {row.contactPerson && <span className="font-medium text-foreground">{row.contactPerson}</span>}
-            {row.contactPhone && (
-              <span className="text-muted-foreground flex items-center gap-1">
-                <Phone className="size-3 text-slate-400" /> {row.contactPhone}
-              </span>
-            )}
-          </div>
-        )
-      },
+      render: (row) => (
+        <div className="flex flex-col text-xs">
+          <span className="font-medium text-foreground">{row.contactPerson || '-'}</span>
+          {row.contactPhone && (
+            <span className="text-muted-foreground flex items-center gap-1 mt-0.5">
+              <Phone className="size-3 text-slate-400" />
+              {row.contactPhone}
+            </span>
+          )}
+        </div>
+      ),
     },
     {
       key: 'document',
-      header: 'PKS / Dokumen',
+      header: 'Dokumen MOU',
       align: 'center',
       render: (row) => {
         if (!row.contractDocumentUrl) {
           return <span className="text-xs text-muted-foreground italic">-</span>
         }
         return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a
-                  href={resolveUploadUrl(row.contractDocumentUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-medium border border-blue-200 transition-colors"
-                >
-                  <FileText className="size-3.5" />
-                  Lihat Berkas
-                </a>
-              </TooltipTrigger>
-              <TooltipContent>Buka berkas PKS {row.contractDocumentName || row.name}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <a
+            href={resolveUploadUrl(row.contractDocumentUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium"
+          >
+            <FileText className="size-3.5" />
+            <span>Lihat PKS</span>
+          </a>
         )
       },
     },
     {
-      key: 'notes',
-      header: 'Keterangan',
+      key: 'actions',
+      header: 'Aksi',
+      align: 'right',
       render: (row) => (
-        <span className="text-xs text-muted-foreground line-clamp-2 max-w-[200px]" title={row.notes}>
-          {row.notes || '-'}
-        </span>
+        <div className="flex items-center justify-end gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-slate-600 hover:text-slate-900"
+                  onClick={() => setRsDetailItem(row)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Lihat Detail</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {canManage && (
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-blue-600 hover:text-blue-900"
+                      onClick={() => handleOpenRsDialog(row)}
+                    >
+                      <Edit className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit Rumah Sakit</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-rose-600 hover:text-rose-900"
+                      onClick={() => setRsDeletingItem(row)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Hapus</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+        </div>
       ),
     },
   ]
 
-  const rsFilters: HeroTableFilter[] = [
+  // ─── Columns Def: Sekolah & Perguruan Tinggi ─────────────────────────────────
+
+  const sekolahColumns: HeroColumnDef<KerjasamaSekolahItem>[] = [
+    {
+      key: 'index',
+      header: 'No',
+      width: '50px',
+      align: 'center',
+      render: (_, idx) => <span className="text-xs text-muted-foreground font-medium">{idx + 1}</span>,
+    },
+    {
+      key: 'name',
+      header: 'Nama Sekolah / Perguruan Tinggi',
+      sortable: true,
+      searchable: true,
+      render: (row) => {
+        let typeBadgeTone = 'bg-blue-50 text-blue-700 border-blue-200'
+        if (row.institutionType === 'SMA') typeBadgeTone = 'bg-indigo-50 text-indigo-700 border-indigo-200'
+        if (row.institutionType === 'Politeknik') typeBadgeTone = 'bg-purple-50 text-purple-700 border-purple-200'
+        if (row.institutionType === 'Universitas') typeBadgeTone = 'bg-cyan-50 text-cyan-700 border-cyan-200'
+
+        return (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span
+                className="font-semibold text-sm text-foreground hover:underline cursor-pointer"
+                onClick={() => setSekolahDetailItem(row)}
+              >
+                {row.name}
+              </span>
+              <Badge variant="outline" className={cn('text-[10px] font-medium px-1.5 py-0 h-4', typeBadgeTone)}>
+                {row.institutionType || 'SMK'}
+              </Badge>
+            </div>
+            {row.address && <span className="text-xs text-muted-foreground line-clamp-1">{row.address}</span>}
+          </div>
+        )
+      },
+    },
     {
       key: 'location',
-      label: 'Lokasi Kota',
-      options: [{ value: 'ALL', label: 'Semua Lokasi' }, ...rsLocationOptions],
+      header: 'Lokasi',
+      sortable: true,
+      render: (row) => (
+        <div className="flex items-center gap-1.5 text-xs text-slate-700">
+          <MapPin className="size-3.5 text-slate-400 shrink-0" />
+          <span>{row.location}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'period',
+      header: 'Periode MOU',
+      render: (row) => {
+        if (!row.startDate && !row.endDate) {
+          return <span className="text-xs text-muted-foreground italic">-</span>
+        }
+        return (
+          <div className="flex flex-col text-xs">
+            <span className="font-medium text-foreground">
+              {row.startDate ? new Date(row.startDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+              {' s/d '}
+              {row.endDate ? new Date(row.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+            </span>
+          </div>
+        )
+      },
     },
     {
       key: 'status',
-      label: 'Status Kontrak',
-      options: [
-        { value: 'ALL', label: 'Semua Status' },
-        { value: 'active', label: 'Aktif' },
-        { value: 'expiring_soon', label: 'Segera Berakhir' },
-        { value: 'expired', label: 'Kedaluwarsa' },
-        { value: 'no_partnership', label: 'Belum Ada Kerjasama' },
-      ],
+      header: 'Status Kerjasama',
+      sortable: true,
+      align: 'center',
+      render: (row) => {
+        let badgeTone = 'bg-slate-100 text-slate-800'
+        let label = SEKOLAH_STATUS_LABELS[row.status] || row.status
+
+        if (row.status === 'active') {
+          badgeTone = 'bg-emerald-100 text-emerald-900 border-emerald-200'
+        } else if (row.status === 'expiring_soon') {
+          badgeTone = 'bg-amber-100 text-amber-900 border-amber-200'
+        } else if (row.status === 'expired') {
+          badgeTone = 'bg-rose-100 text-rose-900 border-rose-200'
+        }
+
+        return (
+          <Badge variant="outline" className={cn('text-xs font-semibold px-2 py-0.5', badgeTone)}>
+            {label}
+          </Badge>
+        )
+      },
+    },
+    {
+      key: 'contact',
+      header: 'PIC Sekolah',
+      render: (row) => (
+        <div className="flex flex-col text-xs">
+          <span className="font-medium text-foreground">{row.contactPerson || '-'}</span>
+          {row.contactPhone && (
+            <span className="text-muted-foreground flex items-center gap-1 mt-0.5">
+              <Phone className="size-3 text-slate-400" />
+              {row.contactPhone}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'document',
+      header: 'Berkas MOU',
+      align: 'center',
+      render: (row) => {
+        if (!row.contractDocumentUrl) {
+          return <span className="text-xs text-muted-foreground italic">-</span>
+        }
+        return (
+          <a
+            href={resolveUploadUrl(row.contractDocumentUrl)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline font-medium"
+          >
+            <FileText className="size-3.5" />
+            <span>Lihat MOU</span>
+          </a>
+        )
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      align: 'right',
+      render: (row) => (
+        <div className="flex items-center justify-end gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-slate-600 hover:text-slate-900"
+                  onClick={() => setSekolahDetailItem(row)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Lihat Detail</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {canManage && (
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-blue-600 hover:text-blue-900"
+                      onClick={() => handleOpenSekolahDialog(row)}
+                    >
+                      <Edit className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit Sekolah</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-rose-600 hover:text-rose-900"
+                      onClick={() => setSekolahDeletingItem(row)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Hapus</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+        </div>
+      ),
     },
   ]
 
@@ -615,10 +914,13 @@ export function KerjasamaClient({
       searchable: true,
       render: (row) => (
         <div className="flex flex-col">
-          <span className="font-semibold text-sm text-foreground hover:underline cursor-pointer" onClick={() => setPklDetailItem(row)}>
+          <span
+            className="font-semibold text-sm text-foreground hover:underline cursor-pointer"
+            onClick={() => setPklDetailItem(row)}
+          >
             {row.name}
           </span>
-          <span className="text-xs text-muted-foreground">{row.major}</span>
+          <span className="text-xs text-muted-foreground line-clamp-1">{row.major}</span>
         </div>
       ),
     },
@@ -627,16 +929,15 @@ export function KerjasamaClient({
       header: 'Asal Sekolah / Kampus',
       sortable: true,
       render: (row) => (
-        <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium">
-          <GraduationCap className="size-3.5 text-blue-600 shrink-0" />
-          <span>{row.institution}</span>
+        <div className="flex items-center gap-1.5 text-xs text-slate-700">
+          <GraduationCap className="size-3.5 text-slate-400 shrink-0" />
+          <span className="font-medium">{row.institution}</span>
         </div>
       ),
     },
     {
       key: 'period',
-      header: 'Periode PKL',
-      sortable: true,
+      header: 'Masa PKL',
       render: (row) => (
         <div className="flex flex-col text-xs">
           <span className="font-medium text-foreground">
@@ -644,27 +945,19 @@ export function KerjasamaClient({
             {' s/d '}
             {new Date(row.endDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
           </span>
+          <span className="text-[11px] text-muted-foreground">
+            {row.durationDisplay || `${row.durationMonths} Bulan ${row.durationDays} Hari`}
+          </span>
         </div>
-      ),
-    },
-    {
-      key: 'duration',
-      header: 'Durasi PKL',
-      align: 'center',
-      render: (row) => (
-        <Badge variant="outline" className="text-xs font-semibold bg-slate-50 text-slate-700 border-slate-200">
-          {row.durationDisplay || `${row.durationMonths} Bulan ${row.durationDays} Hari`}
-        </Badge>
       ),
     },
     {
       key: 'mentor',
       header: 'Pembimbing Industri',
-      sortable: true,
       render: (row) => (
-        <div className="flex items-center gap-1.5 text-xs text-slate-700">
-          <User className="size-3.5 text-slate-400 shrink-0" />
-          <span className="font-medium text-foreground">{row.mentorName}</span>
+        <div className="flex items-center gap-1 text-xs">
+          <User className="size-3 text-slate-400 shrink-0" />
+          <span className="text-slate-700 font-medium">{row.mentorName || '-'}</span>
         </div>
       ),
     },
@@ -674,45 +967,157 @@ export function KerjasamaClient({
       sortable: true,
       align: 'center',
       render: (row) => {
-        let badgeClass = 'bg-emerald-100 text-emerald-900 border-emerald-200'
-        let label = 'Aktif (Berjalan)'
+        let badgeTone = 'bg-slate-100 text-slate-800'
+        let label = PKL_STATUS_LABELS[row.status] || row.status
 
-        if (row.status === 'completed') {
-          badgeClass = 'bg-rose-100 text-rose-900 border-rose-200'
-          label = 'Selesai'
+        if (row.status === 'active') {
+          badgeTone = 'bg-emerald-100 text-emerald-900 border-emerald-200'
+        } else if (row.status === 'completed') {
+          badgeTone = 'bg-rose-100 text-rose-900 border-rose-200'
         } else if (row.status === 'upcoming') {
-          badgeClass = 'bg-amber-100 text-amber-900 border-amber-200'
-          label = 'Akan Datang'
+          badgeTone = 'bg-amber-100 text-amber-900 border-amber-200'
         }
 
-        return <Badge className={cn('text-xs font-medium border px-2 py-0.5', badgeClass)}>{label}</Badge>
+        return (
+          <Badge variant="outline" className={cn('text-xs font-semibold px-2 py-0.5', badgeTone)}>
+            {label}
+          </Badge>
+        )
       },
     },
     {
-      key: 'notes',
-      header: 'Keterangan',
+      key: 'actions',
+      header: 'Aksi',
+      align: 'right',
       render: (row) => (
-        <span className="text-xs text-muted-foreground line-clamp-1 max-w-[180px]" title={row.notes}>
-          {row.notes || '-'}
-        </span>
+        <div className="flex items-center justify-end gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-slate-600 hover:text-slate-900"
+                  onClick={() => setPklDetailItem(row)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Lihat Biodata</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {canManage && (
+            <>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-blue-600 hover:text-blue-900"
+                      onClick={() => handleOpenPklDialog(row)}
+                    >
+                      <Edit className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit Siswa</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-rose-600 hover:text-rose-900"
+                      onClick={() => setPklDeletingItem(row)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Hapus</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+        </div>
       ),
+    },
+  ]
+
+  // ─── Filters Config ──────────────────────────────────────────────────────────
+
+  const rsFilters: HeroTableFilter[] = [
+    {
+      key: 'status',
+      title: 'Status Kontrak',
+      options: [
+        { label: 'Semua Status', value: 'ALL' },
+        { label: 'Aktif', value: 'active' },
+        { label: 'Segera Berakhir', value: 'expiring_soon' },
+        { label: 'Kedaluwarsa', value: 'expired' },
+        { label: 'Belum Ada Kerjasama', value: 'no_partnership' },
+      ],
+    },
+    {
+      key: 'location',
+      title: 'Lokasi Kota',
+      options: [
+        { label: 'Semua Kota', value: 'ALL' },
+        ...initialMetrics.rsLocations.map((loc) => ({ label: loc, value: loc })),
+      ],
+    },
+  ]
+
+  const sekolahFilters: HeroTableFilter[] = [
+    {
+      key: 'institutionType',
+      title: 'Jenjang Institusi',
+      options: [
+        { label: 'Semua Jenjang', value: 'ALL' },
+        ...INSTITUTION_TYPE_OPTIONS.map((opt) => ({ label: opt.label, value: opt.value })),
+      ],
+    },
+    {
+      key: 'status',
+      title: 'Status Kerjasama',
+      options: [
+        { label: 'Semua Status', value: 'ALL' },
+        { label: 'Aktif', value: 'active' },
+        { label: 'Segera Berakhir', value: 'expiring_soon' },
+        { label: 'Kedaluwarsa', value: 'expired' },
+        { label: 'Belum Ada Kerjasama', value: 'no_partnership' },
+      ],
+    },
+    {
+      key: 'location',
+      title: 'Lokasi Kota',
+      options: [
+        { label: 'Semua Kota', value: 'ALL' },
+        ...initialMetrics.sekolahLocations.map((loc) => ({ label: loc, value: loc })),
+      ],
     },
   ]
 
   const pklFilters: HeroTableFilter[] = [
     {
-      key: 'institution',
-      label: 'Asal Sekolah / Kampus',
-      options: [{ value: 'ALL', label: 'Semua Sekolah' }, ...pklInstitutionOptions],
+      key: 'status',
+      title: 'Status Pelaksanaan',
+      options: [
+        { label: 'Semua Status', value: 'ALL' },
+        { label: 'Aktif (Berjalan)', value: 'active' },
+        { label: 'Selesai', value: 'completed' },
+        { label: 'Akan Datang', value: 'upcoming' },
+      ],
     },
     {
-      key: 'status',
-      label: 'Status PKL',
+      key: 'institution',
+      title: 'Asal Sekolah',
       options: [
-        { value: 'ALL', label: 'Semua Status' },
-        { value: 'active', label: 'Aktif (Berjalan)' },
-        { value: 'completed', label: 'Selesai' },
-        { value: 'upcoming', label: 'Akan Datang' },
+        { label: 'Semua Sekolah', value: 'ALL' },
+        ...initialMetrics.pklInstitutions.map((inst) => ({ label: inst, value: inst })),
       ],
     },
   ]
@@ -729,7 +1134,7 @@ export function KerjasamaClient({
             <div>
               <h1 className="text-xl font-bold tracking-tight text-foreground">Menu Kerjasama HRGA</h1>
               <p className="text-xs md:text-sm text-muted-foreground">
-                Kemitraan Rumah Sakit & Faskes serta pembinaan Siswa/Mahasiswa PKL & Magang
+                Kemitraan Rumah Sakit & Faskes, Sekolah Mitra, serta pembinaan Siswa/Mahasiswa PKL
               </p>
             </div>
           </div>
@@ -737,7 +1142,7 @@ export function KerjasamaClient({
 
         {canManage && (
           <div className="flex items-center gap-2">
-            {activeTab === 'rs' ? (
+            {activeTab === 'rs' && (
               <Button
                 size="sm"
                 onClick={() => handleOpenRsDialog()}
@@ -746,7 +1151,18 @@ export function KerjasamaClient({
                 <Plus className="size-4" />
                 Tambah Rumah Sakit
               </Button>
-            ) : (
+            )}
+            {activeTab === 'sekolah' && (
+              <Button
+                size="sm"
+                onClick={() => handleOpenSekolahDialog()}
+                className="h-9 gap-1.5 bg-[#0753e7] hover:bg-[#0644bd] text-white shadow-sm"
+              >
+                <Plus className="size-4" />
+                Tambah Sekolah Mitra
+              </Button>
+            )}
+            {activeTab === 'pkl' && (
               <Button
                 size="sm"
                 onClick={() => handleOpenPklDialog()}
@@ -760,8 +1176,12 @@ export function KerjasamaClient({
         )}
       </div>
 
-      {/* ─── Tabs Switcher ────────────────────────────────────────────────────── */}
-      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'rs' | 'pkl')} className="space-y-6">
+      {/* ─── Tabs Switcher: RS -> Sekolah -> PKL ───────────────────────────────── */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => setActiveTab(val as 'rs' | 'sekolah' | 'pkl')}
+        className="space-y-6"
+      >
         <TabsList className="bg-muted/60 p-1 border">
           <TabsTrigger value="rs" className="gap-2 h-8 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Building2 className="size-4 text-blue-600" />
@@ -770,221 +1190,167 @@ export function KerjasamaClient({
               {rsList.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="pkl" className="gap-2 h-8 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+          <TabsTrigger value="sekolah" className="gap-2 h-8 data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <GraduationCap className="size-4 text-emerald-600" />
-            <span>Siswa PKL & Magang</span>
+            <span>Kerjasama Sekolah</span>
             <Badge variant="secondary" className="ml-1 text-[11px] px-1.5 py-0 h-4 bg-emerald-100 text-emerald-800">
+              {sekolahList.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="pkl" className="gap-2 h-8 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Users className="size-4 text-indigo-600" />
+            <span>Siswa PKL & Magang</span>
+            <Badge variant="secondary" className="ml-1 text-[11px] px-1.5 py-0 h-4 bg-indigo-100 text-indigo-800">
               {pklList.length}
             </Badge>
           </TabsTrigger>
         </TabsList>
 
-        {/* ─── TAB 1: RUMAH SAKIT ────────────────────────────────────────────── */}
+        {/* ─── TAB 1: RUMAH SAKIT ─────────────────────────────────────────────── */}
         <TabsContent value="rs" className="space-y-6 mt-0">
-          {/* RS KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <HeroKpiCard
-              title="Total Provider RS / Lab"
-              value={rsKpi.total}
-              icon={<Building2 className="size-5" />}
+              title="Total Rumah Sakit Mitra"
+              value={rsList.length}
+              icon={Building2}
               tone="blue"
-              description="Tersebar di 7 kota/kabupaten"
+              description="Faskes terdaftar di sistem"
             />
             <HeroKpiCard
-              title="Kontrak Aktif"
-              value={rsKpi.active}
-              icon={<CheckCircle2 className="size-5" />}
+              title="Kerjasama Aktif"
+              value={rsList.filter((r) => r.status === 'active').length}
+              icon={FileCheck2}
               tone="emerald"
-              description="Masa berlaku PKS valid"
+              description="Perjanjian kerjasama berjalan"
             />
             <HeroKpiCard
               title="Segera Berakhir"
-              value={rsKpi.expiringSoon}
-              icon={<Clock className="size-5" />}
+              value={rsList.filter((r) => r.status === 'expiring_soon').length}
+              icon={Clock}
               tone="amber"
-              description="Jatuh tempo < 60 hari"
+              description="Sisa masa berlaku ≤ 60 hari"
             />
             <HeroKpiCard
-              title="Belum Ada Kerjasama"
-              value={rsKpi.noPartnership}
-              icon={<HeartHandshake className="size-5" />}
-              tone="purple"
-              description="Tahap penjajakan / prospek"
+              title="Belum Ada PKS / Kedaluwarsa"
+              value={rsList.filter((r) => r.status === 'no_partnership' || r.status === 'expired').length}
+              icon={HeartHandshake}
+              tone="rose"
+              description="Perlu follow-up kemitraan"
             />
           </div>
 
-          {/* RS Data Table */}
-          <HeroDataTable
-            data={rsList}
-            columns={rsColumns}
-            idField="id"
-            title="Daftar Kerjasama Fasilitas Kesehatan & Rumah Sakit"
-            description="Informasi masa berlaku PKS, kontak faskes, serta berkas kontrak"
-            searchPlaceholder="Cari nama RS, lokasi kota, atau kontak..."
-            searchKeys={['name', 'location', 'contactPerson', 'notes']}
-            filters={rsFilters}
-            exportFileName="Kerjasama_Rumah_Sakit_HERO"
-            pdfTitle="Daftar Kerjasama Rumah Sakit & Faskes PT Chitra Paratama"
-            renderRowActions={(row) => (
-              <div className="flex items-center justify-end gap-1">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
-                        onClick={() => setRsDetailItem(row)}
-                      >
-                        <Eye className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Detail RS</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                {canManage && (
-                  <>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-600 hover:text-amber-600 hover:bg-amber-50"
-                            onClick={() => handleOpenRsDialog(row)}
-                          >
-                            <Edit className="size-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Edit Data</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50"
-                            onClick={() => setRsDeletingItem(row)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Hapus</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </>
-                )}
-              </div>
-            )}
-          />
+          <div className="bg-white rounded-xl border p-4 shadow-sm">
+            <HeroDataTable
+              data={rsList}
+              columns={rsColumns}
+              filters={rsFilters}
+              searchableKeys={['name', 'location', 'contactPerson']}
+              defaultPageSize={15}
+              enableSorting
+              enableExport
+              exportFilename={`Data_Kerjasama_RS_${format(new Date(), 'yyyyMMdd')}`}
+              emptyTitle="Belum Ada Data Kerjasama Rumah Sakit"
+              emptyDescription="Silakan tambahkan data rumah sakit atau klinik mitra kesehatan."
+            />
+          </div>
         </TabsContent>
 
-        {/* ─── TAB 2: SISWA PKL ──────────────────────────────────────────────── */}
-        <TabsContent value="pkl" className="space-y-6 mt-0">
-          {/* PKL KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* ─── TAB 2: SEKOLAH & PERGURUAN TINGGI ───────────────────────────────── */}
+        <TabsContent value="sekolah" className="space-y-6 mt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <HeroKpiCard
-              title="Total Siswa / Mahasiswa"
-              value={pklKpi.total}
-              icon={<Users className="size-5" />}
+              title="Total Sekolah Mitra"
+              value={sekolahList.length}
+              icon={GraduationCap}
               tone="blue"
-              description="Dari 7 instansi pendidikan"
+              description="Institusi pendidikan terdaftar"
             />
             <HeroKpiCard
-              title="Sedang Berjalan (Aktif)"
-              value={pklKpi.active}
-              icon={<CheckCircle2 className="size-5" />}
+              title="Kerjasama Aktif"
+              value={sekolahList.filter((s) => s.status === 'active').length}
+              icon={FileCheck2}
               tone="emerald"
-              description="Menjalani program PKL di HERO"
+              description="MOU / PKS aktif berjalan"
             />
             <HeroKpiCard
-              title="Telah Selesai"
-              value={pklKpi.completed}
-              icon={<FileCheck2 className="size-5" />}
+              title="Segera Berakhir"
+              value={sekolahList.filter((s) => s.status === 'expiring_soon').length}
+              icon={Clock}
+              tone="amber"
+              description="Sisa masa berlaku ≤ 60 hari"
+            />
+            <HeroKpiCard
+              title="Kedaluwarsa / Prospek"
+              value={sekolahList.filter((s) => s.status === 'expired' || s.status === 'no_partnership').length}
+              icon={Building2}
               tone="rose"
-              description="Periode magang rampung"
-            />
-            <HeroKpiCard
-              title="Akan Datang (Upcoming)"
-              value={pklKpi.upcoming}
-              icon={<Calendar className="size-5" />}
-              tone="cyan"
-              description="Menunggu jadwal mulai"
+              description="Perlu perpanjangan / review"
             />
           </div>
 
-          {/* PKL Data Table */}
-          <HeroDataTable
-            data={pklList}
-            columns={pklColumns}
-            idField="id"
-            title="Daftar Siswa & Mahasiswa Praktik Kerja Lapangan (PKL)"
-            description="Monitoring durasi magang, pembimbing industri, dan status penyelesaian"
-            searchPlaceholder="Cari siswa, asal sekolah, jurusan, atau pembimbing..."
-            searchKeys={['name', 'institution', 'major', 'mentorName', 'notes']}
-            filters={pklFilters}
-            exportFileName="Data_Siswa_PKL_HERO"
-            pdfTitle="Daftar Siswa & Mahasiswa PKL PT Chitra Paratama"
-            renderRowActions={(row) => (
-              <div className="flex items-center justify-end gap-1">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
-                        onClick={() => setPklDetailItem(row)}
-                      >
-                        <Eye className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Detail Siswa</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+          <div className="bg-white rounded-xl border p-4 shadow-sm">
+            <HeroDataTable
+              data={sekolahList}
+              columns={sekolahColumns}
+              filters={sekolahFilters}
+              searchableKeys={['name', 'location', 'institutionType', 'contactPerson']}
+              defaultPageSize={15}
+              enableSorting
+              enableExport
+              exportFilename={`Data_Kerjasama_Sekolah_${format(new Date(), 'yyyyMMdd')}`}
+              emptyTitle="Belum Ada Data Kerjasama Sekolah"
+              emptyDescription="Klik tombol 'Tambah Sekolah Mitra' untuk menambahkan data kerjasama sekolah atau perguruan tinggi."
+            />
+          </div>
+        </TabsContent>
 
-                {canManage && (
-                  <>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-600 hover:text-amber-600 hover:bg-amber-50"
-                            onClick={() => handleOpenPklDialog(row)}
-                          >
-                            <Edit className="size-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Edit Data</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+        {/* ─── TAB 3: SISWA PKL ───────────────────────────────────────────────── */}
+        <TabsContent value="pkl" className="space-y-6 mt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <HeroKpiCard
+              title="Total Siswa PKL"
+              value={pklList.length}
+              icon={Users}
+              tone="blue"
+              description="Siswa & mahasiswa terdaftar"
+            />
+            <HeroKpiCard
+              title="PKL Sedang Berjalan"
+              value={pklList.filter((p) => p.status === 'active').length}
+              icon={Sparkles}
+              tone="emerald"
+              description="Aktif praktik di HERO"
+            />
+            <HeroKpiCard
+              title="Akan Datang"
+              value={pklList.filter((p) => p.status === 'upcoming').length}
+              icon={Clock}
+              tone="amber"
+              description="Jadwal PKL mendatang"
+            />
+            <HeroKpiCard
+              title="Selesai PKL"
+              value={pklList.filter((p) => p.status === 'completed').length}
+              icon={CheckCircle2}
+              tone="rose"
+              description="Praktik telah tuntas (paling bawah)"
+            />
+          </div>
 
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-600 hover:text-rose-600 hover:bg-rose-50"
-                            onClick={() => setPklDeletingItem(row)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Hapus</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </>
-                )}
-              </div>
-            )}
-          />
+          <div className="bg-white rounded-xl border p-4 shadow-sm">
+            <HeroDataTable
+              data={pklList}
+              columns={pklColumns}
+              filters={pklFilters}
+              searchableKeys={['name', 'institution', 'major', 'mentorName']}
+              defaultPageSize={15}
+              enableSorting
+              enableExport
+              exportFilename={`Data_Siswa_PKL_${format(new Date(), 'yyyyMMdd')}`}
+              emptyTitle="Belum Ada Data Siswa PKL"
+              emptyDescription="Silakan tambahkan data siswa atau mahasiswa magang baru."
+            />
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -1042,7 +1408,7 @@ export function KerjasamaClient({
             <HeroFormField label="Tanggal Mulai Kontrak (Start Date)">
               <HeroDatePicker
                 value={rsForm.startDate}
-                onChange={(d) => setRsForm((prev) => ({ ...prev, startDate: d ? format(d, "yyyy-MM-dd") : "" }))}
+                onChange={(d) => setRsForm((prev) => ({ ...prev, startDate: d ? format(d, 'yyyy-MM-dd') : '' }))}
                 placeholder="Pilih tanggal mulai"
               />
             </HeroFormField>
@@ -1050,7 +1416,7 @@ export function KerjasamaClient({
             <HeroFormField label="Tanggal Berakhir Kontrak (End Date)">
               <HeroDatePicker
                 value={rsForm.endDate}
-                onChange={(d) => setRsForm((prev) => ({ ...prev, endDate: d ? format(d, "yyyy-MM-dd") : "" }))}
+                onChange={(d) => setRsForm((prev) => ({ ...prev, endDate: d ? format(d, 'yyyy-MM-dd') : '' }))}
                 placeholder="Pilih tanggal berakhir"
               />
             </HeroFormField>
@@ -1099,6 +1465,127 @@ export function KerjasamaClient({
         </div>
       </HeroFormDialog>
 
+      {/* ─── MODAL: FORM SEKOLAH MITRA ──────────────────────────────────────── */}
+      <HeroFormDialog
+        open={sekolahDialogOpen}
+        onOpenChange={setSekolahDialogOpen}
+        title={sekolahEditingItem ? 'Edit Data Kerjasama Sekolah' : 'Tambah Kerjasama Sekolah'}
+        description="Lengkapi detail institusi pendidikan mitra, jenjang, masa berlaku MOU, dan kontak PIC"
+        onSubmit={handleSaveSekolah}
+        isSubmitting={isSubmitting}
+        maxWidth="2xl"
+      >
+        <div className="space-y-4">
+          <HeroFormField label="Nama Sekolah / Perguruan Tinggi" required>
+            <HeroInput
+              placeholder="Nama Sekolah atau Perguruan Tinggi"
+              value={sekolahForm.name}
+              onChange={(e) => setSekolahForm((prev) => ({ ...prev, name: e.target.value }))}
+            />
+          </HeroFormField>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <HeroFormField label="Jenjang Institusi" required>
+              <HeroSearchableSelect
+                value={sekolahForm.institutionType}
+                onChange={(val) => setSekolahForm((prev) => ({ ...prev, institutionType: val }))}
+                options={INSTITUTION_TYPE_OPTIONS}
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Lokasi Kota / Kabupaten" required>
+              <HeroInput
+                placeholder="Kota atau Kabupaten"
+                value={sekolahForm.location}
+                onChange={(e) => setSekolahForm((prev) => ({ ...prev, location: e.target.value }))}
+              />
+            </HeroFormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <HeroFormField label="Status Kerjasama">
+              <HeroSearchableSelect
+                value={sekolahForm.status}
+                onChange={(val) => setSekolahForm((prev) => ({ ...prev, status: val }))}
+                options={[
+                  { value: 'active', label: 'Aktif (Otomatis berdasarkan tanggal)' },
+                  { value: 'no_partnership', label: 'Belum Ada Kerjasama (Tahap Prospek)' },
+                  { value: 'expiring_soon', label: 'Segera Berakhir' },
+                  { value: 'expired', label: 'Kedaluwarsa' },
+                ]}
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Alamat Lengkap (Opsional)">
+              <HeroInput
+                placeholder="Jalan, kelurahan, atau kecamatan"
+                value={sekolahForm.address}
+                onChange={(e) => setSekolahForm((prev) => ({ ...prev, address: e.target.value }))}
+              />
+            </HeroFormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <HeroFormField label="Tanggal Mulai MOU (Start Date)">
+              <HeroDatePicker
+                value={sekolahForm.startDate}
+                onChange={(d) => setSekolahForm((prev) => ({ ...prev, startDate: d ? format(d, 'yyyy-MM-dd') : '' }))}
+                placeholder="Pilih tanggal mulai"
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Tanggal Berakhir MOU (End Date)">
+              <HeroDatePicker
+                value={sekolahForm.endDate}
+                onChange={(d) => setSekolahForm((prev) => ({ ...prev, endDate: d ? format(d, 'yyyy-MM-dd') : '' }))}
+                placeholder="Pilih tanggal berakhir"
+              />
+            </HeroFormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <HeroFormField label="Nama PIC / Kontak Sekolah">
+              <HeroInput
+                placeholder="Nama PIC Sekolah"
+                value={sekolahForm.contactPerson}
+                onChange={(e) => setSekolahForm((prev) => ({ ...prev, contactPerson: e.target.value }))}
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Nomor Telepon / WhatsApp">
+              <HeroInput
+                placeholder="Nomor Telepon / WhatsApp"
+                value={sekolahForm.contactPhone}
+                onChange={(e) => setSekolahForm((prev) => ({ ...prev, contactPhone: e.target.value }))}
+              />
+            </HeroFormField>
+          </div>
+
+          <HeroFormField label="Berkas Dokumen MOU / PKS (PDF)">
+            <HeroFileUpload
+              value={sekolahForm.contractDocumentUrl}
+              accept=".pdf,.doc,.docx"
+              maxSizeMb={10}
+              onChange={(url) =>
+                setSekolahForm((prev) => ({
+                  ...prev,
+                  contractDocumentUrl: url || '',
+                }))
+              }
+            />
+          </HeroFormField>
+
+          <HeroFormField label="Catatan / Keterangan Khusus">
+            <HeroTextarea
+              placeholder="Catatan tambahan atau keterangan"
+              value={sekolahForm.notes}
+              onChange={(e) => setSekolahForm((prev) => ({ ...prev, notes: e.target.value }))}
+              rows={2}
+            />
+          </HeroFormField>
+        </div>
+      </HeroFormDialog>
+
       {/* ─── MODAL: FORM SISWA PKL ──────────────────────────────────────────── */}
       <HeroFormDialog
         open={pklDialogOpen}
@@ -1140,7 +1627,7 @@ export function KerjasamaClient({
             <HeroFormField label="Tanggal Mulai PKL" required>
               <HeroDatePicker
                 value={pklForm.startDate}
-                onChange={(d) => setPklForm((prev) => ({ ...prev, startDate: d ? format(d, "yyyy-MM-dd") : "" }))}
+                onChange={(d) => setPklForm((prev) => ({ ...prev, startDate: d ? format(d, 'yyyy-MM-dd') : '' }))}
                 placeholder="Tanggal mulai"
               />
             </HeroFormField>
@@ -1148,16 +1635,13 @@ export function KerjasamaClient({
             <HeroFormField label="Tanggal Berakhir PKL" required>
               <HeroDatePicker
                 value={pklForm.endDate}
-                onChange={(d) => setPklForm((prev) => ({ ...prev, endDate: d ? format(d, "yyyy-MM-dd") : "" }))}
+                onChange={(d) => setPklForm((prev) => ({ ...prev, endDate: d ? format(d, 'yyyy-MM-dd') : '' }))}
                 placeholder="Tanggal berakhir"
               />
             </HeroFormField>
           </div>
 
-          <HeroFormField
-            label="Pembimbing Industri"
-            required
-          >
+          <HeroFormField label="Pembimbing Industri" required>
             <HeroSearchableSelect
               isMulti
               value={pklForm.mentorEmployeeIds.map(String)}
@@ -1263,6 +1747,87 @@ export function KerjasamaClient({
         </HeroDetailModal>
       )}
 
+      {/* ─── MODAL: DETAIL SEKOLAH MITRA ────────────────────────────────────── */}
+      {sekolahDetailItem && (
+        <HeroDetailModal
+          open={!!sekolahDetailItem}
+          onOpenChange={(open) => !open && setSekolahDetailItem(null)}
+          title={sekolahDetailItem.name}
+          subtitle={`${sekolahDetailItem.institutionType} • ${sekolahDetailItem.location}`}
+          statusBadge={
+            <Badge
+              className={cn(
+                'text-xs font-semibold px-2.5 py-0.5',
+                sekolahDetailItem.status === 'active'
+                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                  : sekolahDetailItem.status === 'expiring_soon'
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : sekolahDetailItem.status === 'expired'
+                  ? 'bg-rose-100 text-rose-900 border-rose-300'
+                  : 'bg-slate-100 text-slate-800 border-slate-300'
+              )}
+            >
+              {SEKOLAH_STATUS_LABELS[sekolahDetailItem.status] || sekolahDetailItem.status}
+            </Badge>
+          }
+          onEdit={() => {
+            const item = sekolahDetailItem
+            setSekolahDetailItem(null)
+            handleOpenSekolahDialog(item)
+          }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Jenjang Institusi</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">{sekolahDetailItem.institutionType}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Kota / Lokasi</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">{sekolahDetailItem.location}</p>
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-xs text-muted-foreground font-medium">Alamat</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">{sekolahDetailItem.address || '-'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Periode MOU</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">
+                {sekolahDetailItem.startDate
+                  ? `${new Date(sekolahDetailItem.startDate).toLocaleDateString('id-ID')} s/d ${new Date(sekolahDetailItem.endDate!).toLocaleDateString('id-ID')}`
+                  : 'Belum ada masa kerjasama'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Kontak PIC / Telepon</p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">
+                {sekolahDetailItem.contactPerson || '-'}{' '}
+                {sekolahDetailItem.contactPhone ? `(${sekolahDetailItem.contactPhone})` : ''}
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              <p className="text-xs text-muted-foreground font-medium">Keterangan Tambahan</p>
+              <p className="text-sm text-foreground mt-0.5 bg-muted/30 p-2.5 rounded border">
+                {sekolahDetailItem.notes || 'Tidak ada catatan tambahan.'}
+              </p>
+            </div>
+            {sekolahDetailItem.contractDocumentUrl && (
+              <div className="md:col-span-2 pt-2 border-t">
+                <p className="text-xs text-muted-foreground font-medium mb-1.5">Berkas MOU / PKS</p>
+                <a
+                  href={resolveUploadUrl(sekolahDetailItem.contractDocumentUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition-colors"
+                >
+                  <FileText className="size-4" />
+                  Unduh / Lihat Dokumen ({sekolahDetailItem.contractDocumentName || 'MOU.pdf'})
+                </a>
+              </div>
+            )}
+          </div>
+        </HeroDetailModal>
+      )}
+
       {/* ─── MODAL: DETAIL SISWA PKL ────────────────────────────────────────── */}
       {pklDetailItem && (
         <HeroDetailModal
@@ -1343,6 +1908,19 @@ export function KerjasamaClient({
         tone="destructive"
         isProcessing={isSubmitting}
         onConfirm={handleDeleteRs}
+      />
+
+      {/* ─── MODAL: CONFIRM DELETE SEKOLAH ──────────────────────────────────── */}
+      <HeroConfirmDialog
+        open={!!sekolahDeletingItem}
+        onOpenChange={(open) => !open && setSekolahDeletingItem(null)}
+        title="Hapus Data Kerjasama Sekolah"
+        description={`Apakah Anda yakin ingin menghapus data "${sekolahDeletingItem?.name}"? Tindakan ini tidak dapat dibatalkan.`}
+        confirmLabel="Ya, Hapus Data"
+        cancelLabel="Batal"
+        tone="destructive"
+        isProcessing={isSubmitting}
+        onConfirm={handleDeleteSekolah}
       />
 
       {/* ─── MODAL: CONFIRM DELETE PKL ──────────────────────────────────────── */}

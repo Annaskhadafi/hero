@@ -3,6 +3,7 @@ import {
   getActiveEmployeesForMentor,
   getKerjasamaMetrics,
   getKerjasamaRsList,
+  getKerjasamaSekolahList,
   getPklStudentsList,
 } from '@/app/actions/hrga-kerjasama'
 import { getCurrentEmployee } from '@/lib/get-current-employee'
@@ -11,7 +12,7 @@ import { KerjasamaClient } from './kerjasama-client'
 
 export const metadata = {
   title: 'Kerjasama HRGA | HERO',
-  description: 'Manajemen kemitraan Rumah Sakit & Faskes serta pembinaan Siswa/Mahasiswa PKL di PT Chitra Paratama',
+  description: 'Manajemen kemitraan Rumah Sakit & Faskes, Sekolah Mitra, serta pembinaan Siswa/Mahasiswa PKL di PT Chitra Paratama',
 }
 
 export default async function KerjasamaPage() {
@@ -21,8 +22,9 @@ export default async function KerjasamaPage() {
   const permission = await getCurrentMenuPermission('hc_kerjasama')
   const isSuper = isSuperAdminRole(currentEmployee.accessRole)
 
-  const [rsRes, pklRes, metricsRes, employeesRes] = await Promise.all([
+  const [rsRes, sekolahRes, pklRes, metricsRes, employeesRes] = await Promise.all([
     getKerjasamaRsList(),
+    getKerjasamaSekolahList(),
     getPklStudentsList(),
     getKerjasamaMetrics(),
     getActiveEmployeesForMentor(),
@@ -34,11 +36,15 @@ export default async function KerjasamaPage() {
     <div className="flex-1 p-4 md:p-6 w-full space-y-6">
       <KerjasamaClient
         initialRsList={rsRes.data || []}
+        initialSekolahList={sekolahRes.data || []}
         initialPklList={pklRes.data || []}
         initialMetrics={{
           rsMetrics: metricsRes.rsMetrics,
+          sekolahMetrics: metricsRes.sekolahMetrics,
           pklMetrics: metricsRes.pklMetrics,
           rsLocations: metricsRes.rsLocations || [],
+          sekolahLocations: metricsRes.sekolahLocations || [],
+          sekolahTypes: metricsRes.sekolahTypes || [],
           pklInstitutions: metricsRes.pklInstitutions || [],
         }}
         employees={employeesRes.data || []}

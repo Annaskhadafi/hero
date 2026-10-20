@@ -19,6 +19,25 @@ export const hrgaKerjasamaRs = pgTable('hero_hrga_kerjasama_rs', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
+// ─── HRGA Kerjasama Sekolah & Perguruan Tinggi ───
+export const hrgaKerjasamaSekolah = pgTable('hero_hrga_kerjasama_sekolah', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  institutionType: text('institution_type').notNull().default('SMK'), // 'SMK', 'SMA', 'Politeknik', 'Universitas', 'Lainnya'
+  location: text('location').notNull(),
+  address: text('address').notNull().default(''),
+  startDate: date('start_date'),
+  endDate: date('end_date'),
+  status: text('status').notNull().default('active'), // 'active', 'expiring_soon', 'expired', 'no_partnership'
+  contactPerson: text('contact_person').notNull().default(''),
+  contactPhone: text('contact_phone').notNull().default(''),
+  contractDocumentUrl: text('contract_document_url'),
+  contractDocumentName: text('contract_document_name'),
+  notes: text('notes').notNull().default(''),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 // ─── HRGA Data Siswa & Mahasiswa PKL / Magang ───
 export const hrgaPklStudents = pgTable('hero_hrga_pkl_students', {
   id: serial('id').primaryKey(),

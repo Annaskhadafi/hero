@@ -57,3 +57,11 @@ export function computeRsStatus(
   }
   return 'active'
 }
+
+export function computeSekolahStatus(
+  startDateStr?: string | null,
+  endDateStr?: string | null,
+  manualStatus?: string
+): 'active' | 'expiring_soon' | 'expired' | 'no_partnership' {
+  return computeRsStatus(startDateStr, endDateStr, manualStatus)
+}
