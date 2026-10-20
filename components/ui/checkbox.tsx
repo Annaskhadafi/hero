@@ -10,6 +10,28 @@ function Checkbox({
   className,
   ...props
 }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    const isChecked = props.checked === true || props.defaultChecked === true
+    return (
+      <span
+        data-slot="checkbox"
+        className={cn(
+          "peer border-input dark:bg-input/30 size-4 shrink-0 rounded-[4px] border shadow-xs inline-flex items-center justify-center",
+          isChecked && "bg-primary text-primary-foreground border-primary",
+          className
+        )}
+      >
+        {isChecked && <CheckIcon className="size-3.5" />}
+      </span>
+    )
+  }
+
   return (
     <CheckboxPrimitive.Root
       data-slot="checkbox"

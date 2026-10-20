@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
-  serverExternalPackages: ['face-api.js', 'pptxgenjs'],
+  serverExternalPackages: ['face-api.js', 'pptxgenjs', 'libheif-js', 'heic-decode'],
   experimental: {
     optimizePackageImports: [
       'lucide-react',

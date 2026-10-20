@@ -71,6 +71,7 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith("face-attendance-v2/") ||
       cleanPath.startsWith("contract-review-attachment/") ||
       cleanPath.startsWith("hrga-kerjasama/") ||
+      cleanPath.startsWith("ga-house-rental/") ||
       cleanPath.startsWith("public-career-cv/") ||
       cleanPath.startsWith("hse-osm/") ||
       cleanPath.startsWith("reward-store/") ||

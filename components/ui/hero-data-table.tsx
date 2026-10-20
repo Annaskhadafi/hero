@@ -88,7 +88,8 @@ export type HeroTableFilterOption = {
 
 export type HeroTableFilter = {
   key: string
-  label: string
+  label?: string
+  title?: string
   options: HeroTableFilterOption[]
   isMulti?: boolean
 }
@@ -96,11 +97,12 @@ export type HeroTableFilter = {
 export interface HeroDataTableProps<T> {
   data: T[]
   columns: HeroColumnDef<T>[]
-  idField: keyof T
+  idField?: keyof T
   title?: string
   description?: string
   searchPlaceholder?: string
   searchKeys?: (keyof T)[]
+  searchableKeys?: (keyof T)[]
   filters?: HeroTableFilter[]
   activeFilters?: Record<string, string | string[]>
   onFilterChange?: (key: string, value: string | string[]) => void
@@ -111,11 +113,16 @@ export interface HeroDataTableProps<T> {
   importFields?: AdminImportField[]
   importTitle?: string
   exportFileName?: string
+  exportFilename?: string
   pdfTitle?: string
   renderRowActions?: (row: T) => React.ReactNode
   headerActions?: React.ReactNode
   loading?: boolean
   emptyMessage?: string
+  emptyTitle?: string
+  emptyDescription?: string
+  enableSorting?: boolean
+  enableExport?: boolean
   showSelection?: boolean
   showPagination?: boolean
   defaultPageSize?: number
@@ -124,11 +131,12 @@ export interface HeroDataTableProps<T> {
 export function HeroDataTable<T extends Record<string, any>>({
   data,
   columns,
-  idField,
+  idField = 'id' as keyof T,
   title,
   description,
   searchPlaceholder = 'Cari data...',
   searchKeys,
+  searchableKeys,
   filters = [],
   activeFilters: externalActiveFilters,
   onFilterChange: externalOnFilterChange,
@@ -139,15 +147,24 @@ export function HeroDataTable<T extends Record<string, any>>({
   importFields,
   importTitle = 'Import Data',
   exportFileName = 'data-export',
+  exportFilename,
   pdfTitle = 'Laporan Data Operasional HERO',
   renderRowActions,
   headerActions,
   loading = false,
-  emptyMessage = 'Tidak ada data ditemukan.',
+  emptyMessage,
+  emptyTitle,
+  emptyDescription,
+  enableSorting = true,
+  enableExport = true,
   showSelection = true,
   showPagination = true,
   defaultPageSize = 10,
 }: HeroDataTableProps<T>) {
+  const effectiveSearchKeys = searchKeys || searchableKeys
+  const effectiveEmptyMessage = emptyMessage || emptyTitle || emptyDescription || 'Tidak ada data ditemukan.'
+  const effectiveExportFileName = exportFilename || exportFileName || 'data-export'
+
   // Local search state
   const [searchQuery, setSearchQuery] = React.useState('')
 
@@ -202,8 +219,8 @@ export function HeroDataTable<T extends Record<string, any>>({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim()
       result = result.filter((row) => {
-        if (searchKeys && searchKeys.length > 0) {
-          return searchKeys.some((k) => String(row[k] ?? '').toLowerCase().includes(q))
+        if (effectiveSearchKeys && effectiveSearchKeys.length > 0) {
+          return effectiveSearchKeys.some((k) => String(row[k] ?? '').toLowerCase().includes(q))
         }
         // Fallback: search all columns
         return columns.some((col) => {
@@ -261,21 +278,41 @@ export function HeroDataTable<T extends Record<string, any>>({
     return filteredData.slice(start, start + pageSize)
   }, [filteredData, currentPage, pageSize, showPagination])
 
+  // Safe Row ID resolver
+  const getRowId = React.useCallback(
+    (row: T, index?: number): string => {
+      if (idField && row[idField] !== undefined && row[idField] !== null) {
+        return String(row[idField]);
+      }
+      if (row.id !== undefined && row.id !== null) {
+        return String(row.id);
+      }
+      if (row.uuid !== undefined && row.uuid !== null) {
+        return String(row.uuid);
+      }
+      if (row.code !== undefined && row.code !== null) {
+        return String(row.code);
+      }
+      return index !== undefined ? `row-${index}` : String(Math.random());
+    },
+    [idField]
+  );
+
   // Selection Logic
   const allCurrentPageSelected =
     paginatedData.length > 0 &&
-    paginatedData.every((row) => selectedIds.has(String(row[idField])))
+    paginatedData.every((row, idx) => selectedIds.has(getRowId(row, idx)))
 
   const isIndeterminate =
-    paginatedData.some((row) => selectedIds.has(String(row[idField]))) &&
+    paginatedData.some((row, idx) => selectedIds.has(getRowId(row, idx))) &&
     !allCurrentPageSelected
 
   const toggleSelectAllCurrentPage = () => {
     const next = new Set(selectedIds)
     if (allCurrentPageSelected) {
-      paginatedData.forEach((row) => next.delete(String(row[idField])))
+      paginatedData.forEach((row, idx) => next.delete(getRowId(row, idx)))
     } else {
-      paginatedData.forEach((row) => next.add(String(row[idField])))
+      paginatedData.forEach((row, idx) => next.add(getRowId(row, idx)))
     }
     setSelectedIds(next)
   }
@@ -295,8 +332,8 @@ export function HeroDataTable<T extends Record<string, any>>({
   }
 
   const selectedRows = React.useMemo(() => {
-    return data.filter((row) => selectedIds.has(String(row[idField])))
-  }, [data, selectedIds, idField])
+    return data.filter((row, idx) => selectedIds.has(getRowId(row, idx)))
+  }, [data, selectedIds, getRowId])
 
   // Sorting Handler
   const handleSort = (key: string) => {
@@ -603,12 +640,12 @@ export function HeroDataTable<T extends Record<string, any>>({
                     colSpan={columns.length + (showSelection ? 1 : 0) + (renderRowActions ? 1 : 0)}
                     className="h-32 text-center text-sm text-slate-500"
                   >
-                    {emptyMessage}
+                    {effectiveEmptyMessage}
                   </TableCell>
                 </TableRow>
               ) : (
                 paginatedData.map((row, index) => {
-                  const id = String(row[idField])
+                  const id = getRowId(row, index)
                   const isSelected = selectedIds.has(id)
 
                   return (
@@ -904,7 +941,7 @@ function SearchableTableFilterDropdown({
           )}
         >
           <Filter className="text-muted-foreground size-3.5" />
-          <span>{filter.label}</span>
+          <span>{filter.label || filter.title || filter.key}</span>
           {selectedCount > 0 && (
             <span className="bg-primary text-primary-foreground flex size-4 items-center justify-center rounded-full text-[10px] font-bold">
               {selectedCount}
@@ -920,7 +957,7 @@ function SearchableTableFilterDropdown({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Cari ${filter.label}...`}
+            placeholder={`Cari ${filter.label || filter.title || filter.key}...`}
             className="h-8 rounded-md pl-7 text-xs"
           />
         </div>
