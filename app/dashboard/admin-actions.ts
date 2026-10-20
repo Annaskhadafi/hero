@@ -993,13 +993,27 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   const actorUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
   const updated = await db.transaction(async (tx) => {
+    const [existingPlan] = await tx
+      .select({ status: timesheetSchedulingPlansV2.status })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .limit(1)
+
+    const isAlreadyActive = existingPlan?.status === 'active'
+
     const [updatedPlan] = await tx
       .insert(timesheetSchedulingPlansV2)
       .values({
         siteId: payload.siteId,
         period: payload.period,
-        status: 'draft',
+        status: isAlreadyActive ? 'active' : 'draft',
         draftSchedule: draftRows,
+        activeSchedule: isAlreadyActive ? draftRows : [],
         createdByUserId: actorUserId,
         updatedByUserId: actorUserId,
         createdAt: now,
@@ -1009,6 +1023,7 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
         target: [timesheetSchedulingPlansV2.siteId, timesheetSchedulingPlansV2.period],
         set: {
           draftSchedule: draftRows,
+          ...(isAlreadyActive ? { activeSchedule: draftRows } : {}),
           updatedByUserId: actorUserId,
           updatedAt: now,
         },

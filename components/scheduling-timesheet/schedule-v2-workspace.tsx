@@ -850,6 +850,7 @@ export function ScheduleV2Workspace({
       setLastSavedTime(timeStr)
       updateLocalPlan({ draftSchedule: targetRows, updatedAt: result.updatedAt })
       announceFieldBreakSync(editorPlan.siteId, editorPlan.period)
+      router.refresh()
       if (isManual) {
         toast.success('Draft Schedule V2 tersimpan di database')
         router.refresh()

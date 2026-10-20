@@ -28,7 +28,7 @@ export function normalizeAttendanceStatus(value?: string | null): AttendanceCell
   if (normalized === 'gb' || normalized === 'fb' || normalized.includes('fieldbreak'))
     return 'field_break'
   if (normalized.includes('sakit') || normalized.includes('sick')) return 'sick'
-  if (normalized.includes('izin') || normalized.includes('leave') || normalized.includes('cuti'))
+  if (normalized === 'al' || normalized.includes('annualleave') || normalized.includes('cutitahunan') || normalized.includes('izin') || normalized.includes('leave') || normalized.includes('cuti'))
     return 'leave'
   if (
     normalized.includes('alpha') ||
@@ -47,7 +47,7 @@ export function attendanceStatusLabel(status: AttendanceCellStatus) {
   if (status === 'absent') return 'Alpha'
   if (status === 'off') return 'OFF'
   if (status === 'standby') return 'ST'
-  if (status === 'field_break') return 'GB'
+  if (status === 'field_break') return 'FB'
   return '-'
 }
 

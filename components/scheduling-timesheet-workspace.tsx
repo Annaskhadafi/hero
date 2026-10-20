@@ -1329,14 +1329,15 @@ function attendanceKey(employeeId: number, day: number) {
   return `${employeeId}-${day}`
 }
 
-function attendanceCellClass(status: AttendanceCellStatus) {
+function attendanceCellClass(status: AttendanceCellStatus, scheduleCode?: string) {
+  if (scheduleCode === 'AL') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 font-bold'
   if (status === 'present') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200'
   if (status === 'sick') return 'bg-amber-100 text-amber-950 ring-1 ring-amber-200'
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
   if (status === 'off') return 'bg-slate-200 text-slate-700 ring-1 ring-slate-300'
   if (status === 'standby') return 'bg-violet-100 text-violet-950 ring-1 ring-violet-200'
-  if (status === 'field_break') return 'bg-purple-100 text-purple-950 ring-1 ring-purple-200'
+  if (status === 'field_break') return 'bg-purple-100 text-purple-950 ring-1 ring-purple-200 font-bold'
   return 'bg-slate-50 text-slate-400 ring-1 ring-slate-200'
 }
 
@@ -5005,8 +5006,27 @@ export function SchedulingTimesheetWorkspace({
       }
     } else if (!effectiveStatus || effectiveStatus === 'empty') {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      if (rosterStatus === 'off') {
-        effectiveStatus = clockIn ? 'present' : 'off'
+      if (
+        rosterStatus === 'off' ||
+        rosterStatus === 'field_break' ||
+        rosterStatus === 'leave' ||
+        rosterStatus === 'standby'
+      ) {
+        effectiveStatus = clockIn ? 'present' : rosterStatus
+      }
+    }
+
+    // Jika tidak ada absensi fisik (clock-in / clock-out) dan tidak ada override manual,
+    // maka status kehadiran wajib mengikuti jadwal roster yang diset (FB, AL/Cuti, OFF, ST)
+    if (!isManual && !clockIn && !clockOut) {
+      const rosterStatus = normalizeAttendanceStatus(rowCode)
+      if (
+        rosterStatus === 'field_break' ||
+        rosterStatus === 'leave' ||
+        rosterStatus === 'off' ||
+        rosterStatus === 'standby'
+      ) {
+        effectiveStatus = rosterStatus
       }
     }
 
@@ -6972,7 +6992,7 @@ export function SchedulingTimesheetWorkspace({
       { Status: 'Izin', Keterangan: 'Cell biru.' },
       { Status: 'Alpha', Keterangan: 'Cell rose.' },
       { Status: 'ST', Keterangan: 'Standby.' },
-      { Status: 'GB', Keterangan: 'Field Break.' },
+      { Status: 'FB', Keterangan: 'Field Break.' },
       { Status: '-', Keterangan: 'Kosong / belum ada data.' },
     ]
     const XLSX = await import('xlsx')
@@ -11634,7 +11654,7 @@ export function SchedulingTimesheetWorkspace({
                           { key: 'leave', label: 'Izin' },
                           { key: 'absent', label: 'Alpha' },
                           { key: 'off', label: 'OFF' },
-                          { key: 'gb', label: 'GB (Field Break)' },
+                          { key: 'fb', label: 'FB (Field Break)' },
                         ].map((f) => (
                           <button
                             key={f.key}
@@ -12279,7 +12299,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
                                                       : isHolidayDay
                                                         ? attendanceHolidayCellClass
-                                                        : attendanceCellClass(cell.status)
+                                                        : attendanceCellClass(cell.status, scheduleCode)
                                                 } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                                 onClick={() =>
                                                   multiSelectAttendance
@@ -12329,7 +12349,7 @@ export function SchedulingTimesheetWorkspace({
                                                     ) : null}
                                                   </span>
                                                 ) : (
-                                                  <span>{attendanceStatusLabel(cell.status)}</span>
+                                                  <span>{scheduleCode === 'AL' && (!cell.clockIn && !cell.clockOut) ? 'AL' : cell.status === 'field_break' ? 'FB' : attendanceStatusLabel(cell.status)}</span>
                                                 )}
                                                 {cell.clockIn || cell.clockOut ? (
                                                   <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
@@ -13623,7 +13643,7 @@ export function SchedulingTimesheetWorkspace({
                             { value: 'present', label: 'Masuk' },
                             { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
                             { value: 'standby', label: 'Standby (ST)' },
-                            { value: 'field_break', label: 'Field Break (GB)' },
+                            { value: 'field_break', label: 'Field Break (FB)' },
                             { value: 'sick', label: 'Sakit' },
                             { value: 'leave', label: 'Izin' },
                             { value: 'absent', label: 'Alpha' },

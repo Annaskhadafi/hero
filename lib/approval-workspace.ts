@@ -3977,8 +3977,8 @@ export async function getApprovalCenterData(
         ),
       ])
 
-  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals, allOtParticipants, allDaTeamMembers, allDaSessionItems] = skipHistory
-    ? [[], [], [], [], [], [], []]
+  const [allDaApprovals, allOtApprovals, allPtwApprovals, allSopWinApprovals, allOtParticipants, allDaTeamMembers, allDaSessionItems, allOtItems] = skipHistory
+    ? [[], [], [], [], [], [], [], []]
     : await Promise.all([
         safeQuery(
           () =>
@@ -4116,7 +4116,26 @@ export async function getApprovalCenterData(
           [],
           "allDaSessionItems"
         ),
+        safeQuery(
+          () =>
+            db
+              .select({
+                splId: overtimeCommandLetterItems.overtimeCommandLetterId,
+                estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+              })
+              .from(overtimeCommandLetterItems),
+          [],
+          "allOtItems"
+        ),
       ])
+
+  const splItemsMinutes = new Map<number, number>()
+  for (const item of allOtItems) {
+    if (item.splId && item.estimatedMinutes) {
+      const prev = splItemsMinutes.get(item.splId) || 0
+      splItemsMinutes.set(item.splId, prev + item.estimatedMinutes)
+    }
+  }
 
   const daApprovalsBySessionId = new Map<number, typeof allDaApprovals>()
   const daSessionIdsWhereUserApprover = new Set<number>()
@@ -4447,10 +4466,20 @@ export async function getApprovalCenterData(
       }
     }
 
-    const defaultDurationHours =
+    let defaultDurationHours =
       plannedStart && plannedEnd && plannedEnd > plannedStart
         ? Math.round(((plannedEnd - plannedStart) / (1000 * 60 * 60)) * 10) / 10
         : 0
+
+    // Jika durasi terhitung > 6 jam (seperti shift kerja 05:00-18:00), ambil durasi riil pekerjaan dari task item atau batas lembur
+    if (defaultDurationHours > 6) {
+      const itemMins = splItemsMinutes.get(ot.id) || 0
+      if (itemMins > 0) {
+        defaultDurationHours = Math.round((itemMins / 60) * 10) / 10
+      } else {
+        defaultDurationHours = Math.max(1, defaultDurationHours - 8)
+      }
+    }
 
     const rawParticipants = otParticipantsBySplId.get(ot.id) || []
     const detailedParticipants = rawParticipants.map((p) => {
@@ -4458,11 +4487,9 @@ export async function getApprovalCenterData(
       if (p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0) {
         hours = Math.round((p.overtimeCreditMinutes / 60) * 10) / 10
       } else {
-        // Jika durasi melebihi 8 jam (jam kerja shift), ambil selisih lemburnya
-        let actualOtHours = defaultDurationHours > 8 ? Math.max(1, defaultDurationHours - 8) : defaultDurationHours
         const empRoster = p.rosterType || '5:2'
         const isOffDay = ot.workDate && [0, 6].includes(new Date(ot.workDate).getDay())
-        hours = calculatePayrollOvertimeValue(empRoster, isOffDay ? 'off' : 'work', actualOtHours)
+        hours = calculatePayrollOvertimeValue(empRoster, isOffDay ? 'off' : 'work', defaultDurationHours)
       }
       return {
         employeeId: p.employeeId,
