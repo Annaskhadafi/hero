@@ -61,15 +61,15 @@ export async function loginToHero(
     await submitButton.click();
   }
 
-  // Wait for login processing and redirect
-  for (let i = 0; i < 20; i++) {
+  // Wait for login processing and redirect away from /sign-in
+  for (let i = 0; i < 25; i++) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     try {
-      const isSigningIn = await screen
-        .getByRole('button', { name: /Signing in|SIGNING IN|Log In/i })
+      const isLoggingIn = await screen
+        .getByRole('button', { name: /Masuk\.\.\.|Signing in|SIGNING IN|Log In/i })
         .isVisible()
         .catch(() => false);
-      if (!isSigningIn) break;
+      if (!isLoggingIn && i >= 3) break;
     } catch {
       break;
     }

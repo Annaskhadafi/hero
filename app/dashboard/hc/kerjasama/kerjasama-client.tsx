@@ -1243,6 +1243,7 @@ export function KerjasamaClient({
             <HeroDataTable
               data={rsList}
               columns={rsColumns}
+              idField="id"
               filters={rsFilters}
               searchableKeys={['name', 'location', 'contactPerson']}
               defaultPageSize={15}
@@ -1292,6 +1293,7 @@ export function KerjasamaClient({
             <HeroDataTable
               data={sekolahList}
               columns={sekolahColumns}
+              idField="id"
               filters={sekolahFilters}
               searchableKeys={['name', 'location', 'institutionType', 'contactPerson']}
               defaultPageSize={15}
@@ -1341,6 +1343,7 @@ export function KerjasamaClient({
             <HeroDataTable
               data={pklList}
               columns={pklColumns}
+              idField="id"
               filters={pklFilters}
               searchableKeys={['name', 'institution', 'major', 'mentorName']}
               defaultPageSize={15}

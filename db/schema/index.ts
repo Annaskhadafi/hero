@@ -316,3 +316,6 @@ export { userPinnedServices } from './user-management'
 
 // HRGA Kerjasama (Rumah Sakit & Siswa PKL)
 export * from './hrga-kerjasama'
+
+// General Affairs - House Rental
+export * from './house-rental'

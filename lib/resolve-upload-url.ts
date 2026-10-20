@@ -44,6 +44,7 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
       "face-attendance-v2/",
       "contract-review-attachment/",
       "hrga-kerjasama/",
+      "ga-house-rental/",
       "public-career-cv/",
       "hse-osm/",
       "reward-store/",

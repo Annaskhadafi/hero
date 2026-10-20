@@ -1177,6 +1177,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affairs (GA)',
+    title: 'House Rental',
+    url: '/dashboard/ga/house-rental',
+    iconName: 'home',
+    resource: 'ga_house_rental',
+    sortOrder: 15.5,
+    isVisible: true,
+    openInNewTab: false,
+  },
 
   // HRGA - Rekrutmen
   {
