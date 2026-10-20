@@ -25,6 +25,7 @@ import { AttendanceNotificationSettingsPanel } from "@/components/attendance-not
 import { FormWoNotificationSettingsPanel } from "@/components/form-wo-notification-settings-panel";
 import { MinePermitReminderSettingsPanel } from "@/components/mine-permit-reminder-settings-panel";
 import { CsForecastDailyReportSettingsPanel } from "@/components/cs-forecast-daily-report-settings-panel";
+import { CerNotificationSettingsPanel } from "@/components/cer-notification-settings-panel";
 import { EmailSmtpSettingsPanel } from "@/components/email-smtp-settings-panel";
 import { EmailTemplateSettingsPanel } from "@/components/email-template-settings-panel";
 import { PwaPushSettingsPanel } from "@/components/pwa-push-settings-panel";
@@ -44,6 +45,7 @@ import {
 } from "@/components/ui/table";
 import { getNotificationCenterData } from "@/lib/approval-blueprint";
 import { getServerSession } from "@/lib/auth-session";
+import { getCerNotificationConfig } from "@/lib/cer-email";
 import {
   getEmailDeliveryLogsData,
   getEmailSmtpSettingsData,
@@ -129,7 +131,7 @@ export default async function EmailSettingsPage() {
     redirect("/dashboard");
   }
 
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, cerConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -142,6 +144,7 @@ export default async function EmailSettingsPage() {
     getCsForecastDailyReportConfigData(),
     getApdNotificationConfigData(),
     getFormWoNotificationConfigData(),
+    getCerNotificationConfig(),
     getActiveEmployeesForSelect(),
     getServerSession(),
   ]);
@@ -224,6 +227,10 @@ export default async function EmailSettingsPage() {
             <BarChart3 className="size-4" />
             CS Forecast
           </TabsTrigger>
+          <TabsTrigger value="cer">
+            <FileText className="size-4" />
+            Pengadaan Aset (CER)
+          </TabsTrigger>
           <TabsTrigger value="bell">
             <Bell className="size-4" />
             Bell
@@ -290,6 +297,10 @@ export default async function EmailSettingsPage() {
             template={templates.find((t) => t.templateCode === 'cs_forecast_daily_report') ?? null}
             employees={employees}
           />
+        </TabsContent>
+
+        <TabsContent value="cer">
+          <CerNotificationSettingsPanel config={cerConfig} employees={employees} />
         </TabsContent>
 
         <TabsContent value="bell">

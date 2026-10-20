@@ -3397,6 +3397,15 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     transactionType: 'five_r_report',
     sourceType: 'Matrix',
   },
+  {
+    key: 'cer-request',
+    name: 'Pengadaan Aset (CER)',
+    pageTitle: 'Pengadaan Aset (CER)',
+    pageUrl: '/dashboard/assets/cer',
+    templateKey: 'cer-request',
+    transactionType: 'cer_request',
+    sourceType: 'Matrix',
+  },
 ] as const
 
 function dateIso(value: Date | null | undefined) {

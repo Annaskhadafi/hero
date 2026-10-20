@@ -257,6 +257,17 @@ export async function getMenuPermissionForRole(
     }
   }
 
+  if (resource === 'cer_request') {
+    return {
+      roleName: roleName || 'User',
+      canView: true,
+      canEdit: true,
+      canDelete: isSuperAdminRole(roleName),
+      canSelectAll: isLeadershipOrManagerialRole(roleName),
+      dataScope: 'own',
+    }
+  }
+
   if (resource.startsWith('scheduling_timesheet_')) {
     const [parentPermission] = await db
       .select({

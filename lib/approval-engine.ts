@@ -11,6 +11,7 @@ import {
   orgNodeAssignments,
   sites,
 } from '@/db/schema/hero'
+import { cerNotificationConfigs } from '@/db/schema/cer'
 
 type ApprovalContext = {
   employeeId: number
@@ -90,6 +91,7 @@ type ResolveApprovalRouteInput = {
   siteName?: string | null
   sectionId?: number | null
   departmentId?: number | null
+  assetCategory?: string | null
   at?: Date
 }
 
@@ -1487,6 +1489,213 @@ function resolveNodeStep(
   } satisfies ResolvedApprovalStep
 }
 
+export async function resolveCerApprovalRoute(
+  context: ApprovalContext,
+  assetCategory?: string | null
+): Promise<ApprovalRouteResolution> {
+  const steps: ResolvedApprovalStep[] = []
+  let stepOrder = 1
+
+  // 1. Reporting Chain / Direct Manager up to Manager
+  const [applicant] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      jobTitle: employees.jobTitle,
+      directManagerId: employees.directManagerId,
+      departmentId: employees.departmentId,
+    })
+    .from(employees)
+    .where(eq(employees.id, context.employeeId))
+
+  let directManager: { id: number; name: string; jobTitle: string | null } | null = null
+  if (applicant?.directManagerId) {
+    const [mgr] = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(eq(employees.id, applicant.directManagerId))
+    if (mgr) directManager = mgr
+  }
+
+  // If applicant has a direct manager who is not GM/Director, add Direct Manager / Atasan Langsung
+  if (
+    directManager &&
+    !directManager.jobTitle?.toLowerCase().includes('director') &&
+    !directManager.jobTitle?.toLowerCase().includes('general manager')
+  ) {
+    steps.push({
+      stepOrder: stepOrder++,
+      label: `Atasan Langsung (${directManager.name})`,
+      approverName: directManager.name,
+      approverEmployeeId: directManager.id,
+      approverNodeId: null,
+      approvalMatrixStepId: null,
+      approvalMode: 'single',
+      resolutionSource: 'matrix',
+      canDelegate: true,
+      slaHours: 24,
+    })
+  }
+
+  // 2. Technical Validation IT (Bima - IT Supervisor) if IT Device
+  const cat = (assetCategory || context.activityType || '').toLowerCase()
+  const isItDevice =
+    cat.includes('it') ||
+    cat.includes('device') ||
+    cat.includes('laptop') ||
+    cat.includes('printer') ||
+    cat.includes('komputer') ||
+    cat.includes('pc')
+  if (isItDevice) {
+    let itApprover: { id: number | null; name: string } = {
+      id: null,
+      name: 'Bima (Supervisor IT)',
+    }
+    try {
+      const [cfg] = await db.select().from(cerNotificationConfigs).limit(1)
+      if (cfg?.itBimaEmail) {
+        const [emp] = await db
+          .select({ id: employees.id, name: employees.name })
+          .from(employees)
+          .where(eq(employees.email, cfg.itBimaEmail))
+        if (emp) {
+          itApprover = { id: emp.id, name: emp.name }
+        }
+      }
+    } catch {
+      // fallback to default
+    }
+    steps.push({
+      stepOrder: stepOrder++,
+      label: `Technical Validation IT (${itApprover.name})`,
+      approverName: itApprover.name,
+      approverEmployeeId: itApprover.id,
+      approverNodeId: null,
+      approvalMatrixStepId: null,
+      approvalMode: 'single',
+      resolutionSource: 'matrix',
+      canDelegate: false,
+      slaHours: 24,
+    })
+  }
+
+  // 3. Department Manager (if not applicant themselves and not direct manager)
+  if (applicant?.departmentId) {
+    const deptManagers = await db
+      .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.departmentId, applicant.departmentId),
+          ilike(employees.jobTitle, '%manager%'),
+          eq(employees.isActive, true)
+        )
+      )
+
+    const mgr = deptManagers.find((m) => !m.jobTitle?.toLowerCase().includes('general manager'))
+    if (mgr && mgr.id !== applicant.id && mgr.id !== directManager?.id) {
+      steps.push({
+        stepOrder: stepOrder++,
+        label: `Department Manager (${mgr.name})`,
+        approverName: mgr.name,
+        approverEmployeeId: mgr.id,
+        approverNodeId: null,
+        approvalMatrixStepId: null,
+        approvalMode: 'single',
+        resolutionSource: 'matrix',
+        canDelegate: true,
+        slaHours: 24,
+      })
+    }
+  }
+
+  // 4. Budget Validator (Finance)
+  let budgetValidator: { id: number | null; name: string } = {
+    id: 1341, // Amama Ira Amalia Priyono
+    name: 'Amama Ira Amalia Priyono (Budget Validator)',
+  }
+  try {
+    const [cfg] = await db.select().from(cerNotificationConfigs).limit(1)
+    if (cfg?.budgetValidatorEmail) {
+      const [emp] = await db
+        .select({ id: employees.id, name: employees.name })
+        .from(employees)
+        .where(eq(employees.email, cfg.budgetValidatorEmail))
+      if (emp) {
+        budgetValidator = { id: emp.id, name: `${emp.name} (Budget Validator)` }
+      }
+    }
+  } catch {
+    // fallback
+  }
+  steps.push({
+    stepOrder: stepOrder++,
+    label: `Budget Validator (${budgetValidator.name})`,
+    approverName: budgetValidator.name,
+    approverEmployeeId: budgetValidator.id,
+    approverNodeId: null,
+    approvalMatrixStepId: null,
+    approvalMode: 'single',
+    resolutionSource: 'matrix',
+    canDelegate: false,
+    slaHours: 24,
+  })
+
+  // 5. General Manager (Person Sihaloho, id: 940)
+  const [gm] = await db
+    .select({ id: employees.id, name: employees.name })
+    .from(employees)
+    .where(and(ilike(employees.jobTitle, '%general manager%'), eq(employees.isActive, true)))
+    .limit(1)
+
+  const gmName = gm?.name ?? 'Person Sihaloho (General Manager)'
+  const gmId = gm?.id ?? 940
+  steps.push({
+    stepOrder: stepOrder++,
+    label: `General Manager (${gmName})`,
+    approverName: gmName,
+    approverEmployeeId: gmId,
+    approverNodeId: null,
+    approvalMatrixStepId: null,
+    approvalMode: 'single',
+    resolutionSource: 'matrix',
+    canDelegate: true,
+    slaHours: 48,
+  })
+
+  // 6. Director (Hidayat Rahman, id: 10) - Mandatory for all CapEx
+  const [dir] = await db
+    .select({ id: employees.id, name: employees.name })
+    .from(employees)
+    .where(and(ilike(employees.jobTitle, '%director%'), eq(employees.isActive, true)))
+    .limit(1)
+
+  const dirName = dir?.name ?? 'Hidayat Rahman (Director)'
+  const dirId = dir?.id ?? 10
+  steps.push({
+    stepOrder: stepOrder++,
+    label: `Director (${dirName})`,
+    approverName: dirName,
+    approverEmployeeId: dirId,
+    approverNodeId: null,
+    approvalMatrixStepId: null,
+    approvalMode: 'single',
+    resolutionSource: 'matrix',
+    canDelegate: false,
+    slaHours: 48,
+  })
+
+  return {
+    matrixId: null,
+    matrixName: 'Standard CER Approval Matrix (CapEx Engine)',
+    structureId: null,
+    structureName: null,
+    transactionType: 'cer_request',
+    warnings: [],
+    steps,
+  }
+}
+
 export async function resolveApprovalRouteForActivity(
   input: ResolveApprovalRouteInput
 ): Promise<ApprovalRouteResolution> {
@@ -1644,6 +1853,9 @@ export async function resolveApprovalRouteForActivity(
     }
     if (context.transactionType.startsWith('apd-request')) {
       return resolveApdApprovalRoute(context)
+    }
+    if (context.transactionType === 'cer_request') {
+      return resolveCerApprovalRoute(context, input.assetCategory)
     }
 
     const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [

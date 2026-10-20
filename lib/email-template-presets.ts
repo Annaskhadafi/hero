@@ -3916,6 +3916,228 @@ Demikian pemberitahuan ini disampaikan. Terima kasih.`,
       duration: '2 jam',
     },
   })),
+  {
+    name: 'Pengajuan CER Baru Membutuhkan Approval',
+    templateCode: 'cer_request_submitted',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[CER Approval] Permohonan Baru {{cerNumber}} - {{subject}} ({{applicantName}})',
+    htmlContent: '',
+    textContent: `Yth. Bapak/Ibu Approver,
+
+Terdapat permohonan pengadaan aset modal (CER) baru yang membutuhkan persetujuan Anda:
+
+- No. CER: {{cerNumber}}
+- Subject: {{subject}}
+- Pemohon: {{applicantName}}
+- Site / Dept: {{siteName}} / {{departmentName}}
+- Estimasi Biaya: Rp {{totalEstimatedPrice}}
+- Tahap Approval: {{approvalStep}}
+
+Silakan tinjau dan lakukan persetujuan melalui tautan berikut:
+{{approvalLink}}
+
+Terima kasih,
+Sistem HERO PT Chitra Paratama`,
+    description: 'Notifikasi email & bell untuk approver saat permohonan CER baru diajukan.',
+    variables: ['cerNumber', 'subject', 'applicantName', 'siteName', 'departmentName', 'totalEstimatedPrice', 'approvalStep', 'approvalLink'],
+    sampleValues: {
+      cerNumber: 'CER/CP/BPN/10/2026/001',
+      subject: 'Pengadaan Laptop Developer untuk Central Services',
+      applicantName: 'Mochamad Annas Khadafi',
+      siteName: 'BALIKPAPAN',
+      departmentName: 'CENTRAL SERVICES',
+      totalEstimatedPrice: '25.000.000',
+      approvalStep: 'Atasan Langsung',
+      approvalLink: 'https://hero.chitraparatama.com/dashboard/approval',
+    },
+  },
+  {
+    name: 'Pengajuan CER Perlu Revisi (Reverted)',
+    templateCode: 'cer_revision_requested',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester',
+    ccEmail: '',
+    subject: '[CER Revisi] Permohonan {{cerNumber}} Memerlukan Perbaikan - {{subject}}',
+    htmlContent: '',
+    textContent: `Yth. {{applicantName}},
+
+Permohonan pengadaan aset modal (CER) {{cerNumber}} dikembalikan untuk diperbaiki (Reverted):
+
+- No. CER: {{cerNumber}}
+- Subject: {{subject}}
+- Direvert Oleh: {{revertedByName}}
+- Catatan Revisi: {{revertNote}}
+
+Silakan perbarui form CER Anda melalui tautan di bawah ini:
+{{editLink}}
+
+Setelah Anda submit ulang, pengajuan akan langsung diteruskan kembali ke {{revertedByName}}.
+
+Terima kasih,
+Sistem HERO PT Chitra Paratama`,
+    description: 'Notifikasi permintaan revisi form CER kepada pemohon dari approver.',
+    variables: ['cerNumber', 'subject', 'applicantName', 'revertedByName', 'revertNote', 'editLink'],
+    sampleValues: {
+      cerNumber: 'CER/CP/BPN/10/2026/001',
+      subject: 'Pengadaan Laptop Developer',
+      applicantName: 'Mochamad Annas Khadafi',
+      revertedByName: 'Amama Ira (Budget Validator)',
+      revertNote: 'Mohon lampirkan spesifikasi teknis lengkap dan minimal 2 penawaran vendor pembanding.',
+      editLink: 'https://hero.chitraparatama.com/dashboard/assets/cer',
+    },
+  },
+  {
+    name: 'Pengajuan CER Telah Diperbaiki (Resubmitted)',
+    templateCode: 'cer_resubmitted',
+    templateType: 'Approval',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'approver',
+    ccEmail: '',
+    subject: '[CER Resubmitted] Permohonan {{cerNumber}} Telah Diperbaiki - {{subject}}',
+    htmlContent: '',
+    textContent: `Yth. Bapak/Ibu Approver,
+
+Pemohon {{applicantName}} telah memperbaiki dan mengirimkan kembali permohonan CER {{cerNumber}}:
+
+- No. CER: {{cerNumber}}
+- Subject: {{subject}}
+- Pemohon: {{applicantName}}
+
+Silakan tinjau kembali berkas perbaikan dan lakukan keputusan approval di tautan berikut:
+{{approvalLink}}
+
+Terima kasih,
+Sistem HERO PT Chitra Paratama`,
+    description: 'Notifikasi kepada approver yang meminta revisi saat form CER di-resubmit pemohon.',
+    variables: ['cerNumber', 'subject', 'applicantName', 'approvalLink'],
+    sampleValues: {
+      cerNumber: 'CER/CP/BPN/10/2026/001',
+      subject: 'Pengadaan Laptop Developer',
+      applicantName: 'Mochamad Annas Khadafi',
+      approvalLink: 'https://hero.chitraparatama.com/dashboard/approval',
+    },
+  },
+  {
+    name: 'Pengajuan CER Full Approved (Dokumen Resmi Terbit)',
+    templateCode: 'cer_full_approved',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'procurement,requester',
+    ccEmail: 'evo.dwi@chitraparatama.com',
+    subject: '[CER Full Approved] {{cerNumber}} - {{subject}} (Dokumen Terbit)',
+    htmlContent: '',
+    textContent: `Yth. Tim Procurement & Pemohon ({{applicantName}}),
+
+Permohonan Pengadaan Aset Modal (CER) telah disetujui penuh (Full Approved) hingga tingkat Direksi:
+
+- No. CER: {{cerNumber}}
+- Subject: {{subject}}
+- Pemohon: {{applicantName}}
+- Site: {{siteName}}
+- Total Nilai Pengadaan: Rp {{totalEstimatedPrice}}
+- Rekomendasi Vendor: {{vendorName}}
+
+Dokumen resmi CER bertanda tangan digital terlampir pada email ini.
+Tim Procurement dapat segera memproses Purchase Order (PO) dan pengadaan aset.
+
+Tautan detail: {{viewLink}}
+
+Terima kasih,
+Sistem HERO PT Chitra Paratama`,
+    description: 'Pengiriman dokumen PDF CER resmi ke Procurement dan Pemohon, CC Evo Dwi saat Full Approved.',
+    variables: ['cerNumber', 'subject', 'applicantName', 'siteName', 'totalEstimatedPrice', 'vendorName', 'pdfDownloadUrl', 'viewLink'],
+    sampleValues: {
+      cerNumber: 'CER/CP/BPN/10/2026/001',
+      subject: 'Pengadaan Laptop Developer',
+      applicantName: 'Mochamad Annas Khadafi',
+      siteName: 'BALIKPAPAN',
+      totalEstimatedPrice: '25.000.000',
+      vendorName: 'PT Bhinneka Mentari Dimensi',
+      pdfDownloadUrl: 'https://hero.chitraparatama.com/api/uploads/cer/sample.pdf',
+      viewLink: 'https://hero.chitraparatama.com/dashboard/assets/cer',
+    },
+  },
+  {
+    name: 'Konfirmasi Penerimaan Fisik Aset CER',
+    templateCode: 'cer_asset_received',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'procurement',
+    ccEmail: 'evo.dwi@chitraparatama.com',
+    subject: '[Aset Diterima] Konfirmasi Fisik {{cerNumber}} - {{subject}} di {{siteName}}',
+    htmlContent: '',
+    textContent: `Yth. Tim Procurement & Management,
+
+Pemohon {{applicantName}} telah mengonfirmasi penerimaan fisik barang untuk pengadaan CER {{cerNumber}}:
+
+- No. CER: {{cerNumber}}
+- Subject: {{subject}}
+- Tanggal Terima: {{receivedDate}}
+- Lokasi Site: {{siteName}}
+- Catatan Fisik / Kondisi: {{receiverNotes}}
+
+Aset telah teregistrasi ke Asset Management HERO untuk pembuatan stiker QR dan penerbitan BAST.
+
+Tautan detail: {{viewLink}}
+
+Terima kasih,
+Sistem HERO PT Chitra Paratama`,
+    description: 'Notifikasi konfirmasi penerimaan fisik barang dari pemohon ke Procurement & CC Evo Dwi.',
+    variables: ['cerNumber', 'subject', 'applicantName', 'siteName', 'receivedDate', 'receiverNotes', 'viewLink'],
+    sampleValues: {
+      cerNumber: 'CER/CP/BPN/10/2026/001',
+      subject: 'Pengadaan Laptop Developer',
+      applicantName: 'Mochamad Annas Khadafi',
+      siteName: 'BALIKPAPAN',
+      receivedDate: '02 Oktober 2026',
+      receiverNotes: 'Barang diterima lengkap dan berfungsi normal, segel utuh.',
+      viewLink: 'https://hero.chitraparatama.com/dashboard/assets/cer',
+    },
+  },
+  {
+    name: 'BAST Serah Terima Aset Selesai Diterbitkan',
+    templateCode: 'cer_bast_completed',
+    templateType: 'Notification',
+    deliveryChannel: 'email,bell,pwa_push',
+    recipientScope: 'requester',
+    ccEmail: 'adila@chitraparatama.com,bagas@chitraparatama.com',
+    subject: '[BAST Aset] Berita Acara Serah Terima {{bastNumber}} - {{cerNumber}}',
+    htmlContent: '',
+    textContent: `Yth. {{applicantName}} & Tim General Affairs (GA),
+
+Dokumen Berita Acara Serah Terima (BAST) untuk pengadaan aset CER {{cerNumber}} telah resmi ditandatangani dan diterbitkan:
+
+- No. BAST: {{bastNumber}}
+- No. CER: {{cerNumber}}
+- Perihal: {{subject}}
+- Penyerah (GA): {{gaName}}
+- Penerima (User): {{applicantName}}
+- Tanggal Serah Terima: {{handoverDate}}
+
+Salinan dokumen resmi BAST bertanda tangan digital terlampir pada email ini.
+Mohon menjaga dan merawat aset perusahaan sesuai prosedur yang berlaku.
+
+Tautan detail: {{viewLink}}
+
+Terima kasih,
+General Affairs & Asset Management - PT Chitra Paratama`,
+    description: 'Pengiriman salinan PDF BAST resmi ke Pemohon, CC GA (Adila & Bagas).',
+    variables: ['bastNumber', 'cerNumber', 'subject', 'applicantName', 'gaName', 'handoverDate', 'pdfDownloadUrl', 'viewLink'],
+    sampleValues: {
+      bastNumber: 'BAST/CP/BPN/10/2026/001',
+      cerNumber: 'CER/CP/BPN/10/2026/001',
+      subject: 'Pengadaan Laptop Developer',
+      applicantName: 'Mochamad Annas Khadafi',
+      gaName: 'Adila Tri Arizona (GA)',
+      handoverDate: '02 Oktober 2026',
+      pdfDownloadUrl: 'https://hero.chitraparatama.com/api/uploads/cer/sample-bast.pdf',
+      viewLink: 'https://hero.chitraparatama.com/dashboard/assets/cer',
+    },
+  },
 ]
 function escapeEmailHtml(value: string) {
   return value
@@ -4057,6 +4279,7 @@ function inferTemplateFeature(templateCode: string) {
     ['mcu_', 'HC Recruitment'],
     ['hr_counseling_', 'HR Counseling'],
     ['form_wo_', 'Repair & Retread'],
+    ['cer_', 'Capital Expenditure (CER)'],
   ]
   return prefixes.find(([prefix]) => templateCode.startsWith(prefix))?.[1] ?? 'Custom'
 }
@@ -4273,6 +4496,7 @@ const TEMPLATE_FEATURE_PREFIXES: [string, string][] = [
   ["rfr_", "HC Recruitment (RFR)"],
   ["form_wo_", "Central Services (Form WO)"],
   ["sop_win_request_", "SOP / WIN / POL"],
+  ["cer_", "Capital Expenditure (CER)"],
 ];
 
 export function getTemplateFeature(templateCode: string): string {

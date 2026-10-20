@@ -511,6 +511,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'Central Service',
     groupLabel: 'Assets',
+    title: 'Pengadaan Aset (CER)',
+    url: '/dashboard/assets/cer',
+    iconName: 'file-text',
+    resource: 'cer_request',
+    sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Assets',
     title: 'Asset Management',
     url: '/dashboard/central-service/assets',
     iconName: 'database',
@@ -4500,6 +4512,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       'tire_service',
       'overtime_requests',
       'approval_inbox',
+      'cer_request',
     ].includes(resource)
   ) {
     return {
@@ -8541,4 +8554,7 @@ export async function getExecutiveHighlights() {
     topPerformer,
   }
 }
+
+export { getCerNotificationConfig as getCerNotificationConfigData } from '@/lib/cer-email'
+
 // End of hero-admin helper module

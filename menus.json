@@ -5,6 +5,11 @@
     "resource": "hse_tire_inspection"
   },
   {
+    "title": "Pengadaan Aset (CER)",
+    "url": "/dashboard/assets/cer",
+    "resource": "cer_request"
+  },
+  {
     "title": "Asset Management",
     "url": "/dashboard/central-service/assets",
     "resource": "central-service-assets"

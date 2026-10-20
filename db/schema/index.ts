@@ -290,3 +290,6 @@ export * from './safety-induction'
 
 // Helpdesk & Ticketing
 export * from './helpdesk'
+
+// Capital Expenditure Request (CER) & CapEx Budgets
+export * from './cer'

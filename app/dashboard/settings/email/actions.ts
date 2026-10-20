@@ -17,6 +17,7 @@ import {
   hseSafetyNotificationConfig,
   notificationChannelSettings,
 } from "@/db/schema/hero";
+import { cerNotificationConfigs } from "@/db/schema/cer";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
 import { EMAIL_TEMPLATE_PRESET_MAP, EMAIL_TEMPLATE_PRESETS } from "@/lib/email-template-presets";
 import { getServerSession } from "@/lib/auth-session";
@@ -160,6 +161,16 @@ const csForecastDailyReportSchema = z.object({
   ccEmails: z.string().trim().default(""),
   sendTimes: z.string().trim().min(1, "Jam kirim wajib diisi."),
   isActive: z.preprocess((value) => value === "true" || value === true, z.boolean()),
+});
+
+const cerNotificationSchema = z.object({
+  procurementEmail: z.string().trim().default("procurement@chitraparatama.com"),
+  evoDwiEmail: z.string().trim().default("evo.dwi@chitraparatama.com"),
+  gaAdilaEmail: z.string().trim().default("adila@chitraparatama.com"),
+  gaBagasEmail: z.string().trim().default("bagas@chitraparatama.com"),
+  itBimaEmail: z.string().trim().default("bima@chitraparatama.com"),
+  budgetValidatorEmail: z.string().trim().default("budget.controller@chitraparatama.com"),
+  isActive: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()),
 });
 
 async function filterEmailsFromUserManagement(raw: string) {
@@ -1322,6 +1333,63 @@ export async function runCsForecastDailyReportTickAction(): Promise<EmailSetting
       status: "error",
       message:
         error instanceof Error ? error.message : "Gagal mengeksekusi schedule tick.",
+    };
+  }
+}
+
+export async function saveCerNotificationConfigAction(
+  _state: EmailSettingsActionState = INITIAL_STATE,
+  formData: FormData,
+): Promise<EmailSettingsActionState> {
+  await ensureHeroGovernanceSeedData();
+
+  const parsed = cerNotificationSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Konfigurasi penerima CER belum valid.",
+    };
+  }
+
+  try {
+    const [existing] = await db
+      .select({ id: cerNotificationConfigs.id })
+      .from(cerNotificationConfigs)
+      .limit(1);
+
+    const values = {
+      procurementEmail: parsed.data.procurementEmail,
+      evoDwiEmail: parsed.data.evoDwiEmail,
+      gaAdilaEmail: parsed.data.gaAdilaEmail,
+      gaBagasEmail: parsed.data.gaBagasEmail,
+      itBimaEmail: parsed.data.itBimaEmail,
+      budgetValidatorEmail: parsed.data.budgetValidatorEmail,
+      isActive: parsed.data.isActive,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await db
+        .update(cerNotificationConfigs)
+        .set(values)
+        .where(eq(cerNotificationConfigs.id, existing.id));
+    } else {
+      await db.insert(cerNotificationConfigs).values(values);
+    }
+
+    revalidatePath("/dashboard/settings/email");
+    revalidatePath("/dashboard/assets/cer");
+
+    return {
+      status: "success",
+      message: "Pengaturan penerima email CER berhasil disimpan.",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error ? error.message : "Gagal menyimpan pengaturan penerima CER.",
     };
   }
 }

@@ -33,6 +33,8 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "face-attendance-v2",
   "contract-review-attachment",
   "public-career-cv",
+  "cer",
+  "cer-attachments",
 ])
 
 function getContentType(fileName: string) {
@@ -164,6 +166,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `mcu-referral-letters/${fileName}`,
       `mcu-results/${fileName}`,
       `offering-letters/${fileName}`,
+      `cer/${fileName}`,
+      `cer-attachments/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {

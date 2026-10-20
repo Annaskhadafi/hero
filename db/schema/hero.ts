@@ -624,6 +624,7 @@ export const approvals = pgTable('hero_approvals', {
   repairFormWoId: integer('repair_form_wo_id'),
   apdSummaryId: integer('apd_summary_id'),
   fiveRReportId: integer('five_r_report_id'),
+  cerRequestId: integer('cer_request_id'),
   level: integer('level').notNull(),
   approverName: text('approver_name').notNull(),
   approverEmployeeId: integer('approver_employee_id'),
