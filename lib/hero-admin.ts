@@ -1127,6 +1127,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'Layanan & Personalia',
+    title: 'Kerjasama',
+    url: '/dashboard/hc/kerjasama',
+    iconName: 'handshake',
+    resource: 'hc_kerjasama',
+    sortOrder: 12.5,
+    isVisible: true,
+    openInNewTab: false,
+  },
 
   // HRGA - General Affairs (GA)
   {

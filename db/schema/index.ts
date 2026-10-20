@@ -312,3 +312,7 @@ export * from './compensation'
 
 // User Management & Personalization
 export { userPinnedServices } from './user-management'
+
+
+// HRGA Kerjasama (Rumah Sakit & Siswa PKL)
+export * from './hrga-kerjasama'

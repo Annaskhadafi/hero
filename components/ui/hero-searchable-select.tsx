@@ -108,15 +108,15 @@ export function HeroSearchableSelect({
               {activeValues.length === 0 ? (
                 <span className="text-muted-foreground truncate">{placeholder}</span>
               ) : isMulti ? (
-                <div className="flex flex-wrap items-center gap-1">
-                  {selectedOptions.map((opt) => (
+                <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto py-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  {selectedOptions.map((opt, idx) => (
                     <span
-                      key={opt.value}
-                      className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200"
+                      key={`${opt.value}-${idx}`}
+                      className="inline-flex shrink-0 max-w-[240px] items-center gap-1.5 rounded-md bg-blue-50/90 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200/80 shadow-2xs"
                     >
-                      <span>{opt.label}</span>
+                      <span className="truncate">{opt.label}</span>
                       <X
-                        className="size-3 cursor-pointer hover:text-blue-900"
+                        className="size-3 shrink-0 cursor-pointer text-blue-500 hover:text-blue-900 hover:bg-blue-100 rounded-xs"
                         onClick={(e) => {
                           e.stopPropagation()
                           handleSelect(opt.value)
@@ -176,12 +176,12 @@ export function HeroSearchableSelect({
                 Tidak ada opsi yang cocok.
               </div>
             ) : (
-              filteredOptions.map((opt) => {
+              filteredOptions.map((opt, idx) => {
                 const isSelected = activeValues.includes(opt.value)
 
                 return (
                   <div
-                    key={opt.value}
+                    key={`${opt.value}-${idx}`}
                     onClick={() => handleSelect(opt.value)}
                     className={cn(
                       'flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-xs transition-colors',

@@ -37,6 +37,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "reward-store",
   "training-requests",
   "marital-status",
+  "hrga-kerjasama",
 ])
 
 function getContentType(fileName: string) {
@@ -212,7 +213,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "contract-review-attachment" ||
     path[0] === "reward-store" ||
     path[0] === "training-requests" ||
-    path[0] === "hse-osm"
+    path[0] === "hse-osm" ||
+    path[0] === "hrga-kerjasama"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {
@@ -298,6 +300,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `training-requests/${fileName}`,
       `marital-status/${fileName}`,
       `hse-osm/${fileName}`,
+      `hrga-kerjasama/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {
