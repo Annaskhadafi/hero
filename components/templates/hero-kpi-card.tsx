@@ -181,6 +181,19 @@ export function HeroKpiCard({
   const isClickable = Boolean(onClick)
   const styles = toneStyles[tone] || toneStyles.blue
 
+  const resolveIconNode = (ic: any) => {
+    if (!ic) return null
+    if (React.isValidElement(ic)) return ic
+    if (typeof ic === 'function' || (typeof ic === 'object' && ic !== null && ('$typeof' in ic || 'render' in ic))) {
+      const Comp = ic as React.ElementType
+      return <Comp />
+    }
+    return ic
+  }
+
+  const resolvedIcon = resolveIconNode(icon)
+  const resolvedWatermark = resolveIconNode(watermarkIcon) || resolvedIcon
+
   const isSolid = variant === 'solid'
   const isOutline = variant === 'outline'
 
@@ -203,14 +216,14 @@ export function HeroKpiCard({
       )}
     >
       {/* Decorative Watermark Icon in background */}
-      {(watermarkIcon || icon) && (
+      {resolvedWatermark && (
         <div
           className={cn(
             'pointer-events-none absolute -right-3 -bottom-3 size-24 opacity-[0.07] transition-transform duration-300 group-hover:scale-110 group-hover:opacity-[0.11] [&_svg]:size-full',
             isSolid ? 'text-white' : styles.watermarkColor
           )}
         >
-          {watermarkIcon || icon}
+          {resolvedWatermark}
         </div>
       )}
 
@@ -240,7 +253,7 @@ export function HeroKpiCard({
           </div>
 
           {/* Prominent Colored Icon Badge */}
-          {icon && (
+          {resolvedIcon && (
             <div
               className={cn(
                 'flex size-11 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-105 [&_svg]:size-5.5',
@@ -249,7 +262,7 @@ export function HeroKpiCard({
                   : cn(styles.iconBg, styles.iconText, styles.iconShadow)
               )}
             >
-              {icon}
+              {resolvedIcon}
             </div>
           )}
         </div>

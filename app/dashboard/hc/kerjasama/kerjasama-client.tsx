@@ -1212,28 +1212,28 @@ export function KerjasamaClient({
             <HeroKpiCard
               title="Total Rumah Sakit Mitra"
               value={rsList.length}
-              icon={Building2}
+              icon={<Building2 className="size-5" />}
               tone="blue"
               description="Faskes terdaftar di sistem"
             />
             <HeroKpiCard
               title="Kerjasama Aktif"
               value={rsList.filter((r) => r.status === 'active').length}
-              icon={FileCheck2}
+              icon={<FileCheck2 className="size-5" />}
               tone="emerald"
               description="Perjanjian kerjasama berjalan"
             />
             <HeroKpiCard
               title="Segera Berakhir"
               value={rsList.filter((r) => r.status === 'expiring_soon').length}
-              icon={Clock}
+              icon={<Clock className="size-5" />}
               tone="amber"
               description="Sisa masa berlaku ≤ 60 hari"
             />
             <HeroKpiCard
               title="Belum Ada PKS / Kedaluwarsa"
               value={rsList.filter((r) => r.status === 'no_partnership' || r.status === 'expired').length}
-              icon={HeartHandshake}
+              icon={<HeartHandshake className="size-5" />}
               tone="rose"
               description="Perlu follow-up kemitraan"
             />
@@ -1261,28 +1261,28 @@ export function KerjasamaClient({
             <HeroKpiCard
               title="Total Sekolah Mitra"
               value={sekolahList.length}
-              icon={GraduationCap}
+              icon={<GraduationCap className="size-5" />}
               tone="blue"
               description="Institusi pendidikan terdaftar"
             />
             <HeroKpiCard
               title="Kerjasama Aktif"
               value={sekolahList.filter((s) => s.status === 'active').length}
-              icon={FileCheck2}
+              icon={<FileCheck2 className="size-5" />}
               tone="emerald"
               description="MOU / PKS aktif berjalan"
             />
             <HeroKpiCard
               title="Segera Berakhir"
               value={sekolahList.filter((s) => s.status === 'expiring_soon').length}
-              icon={Clock}
+              icon={<Clock className="size-5" />}
               tone="amber"
               description="Sisa masa berlaku ≤ 60 hari"
             />
             <HeroKpiCard
               title="Kedaluwarsa / Prospek"
               value={sekolahList.filter((s) => s.status === 'expired' || s.status === 'no_partnership').length}
-              icon={Building2}
+              icon={<Building2 className="size-5" />}
               tone="rose"
               description="Perlu perpanjangan / review"
             />
@@ -1310,28 +1310,28 @@ export function KerjasamaClient({
             <HeroKpiCard
               title="Total Siswa PKL"
               value={pklList.length}
-              icon={Users}
+              icon={<Users className="size-5" />}
               tone="blue"
               description="Siswa & mahasiswa terdaftar"
             />
             <HeroKpiCard
               title="PKL Sedang Berjalan"
               value={pklList.filter((p) => p.status === 'active').length}
-              icon={Sparkles}
+              icon={<Sparkles className="size-5" />}
               tone="emerald"
               description="Aktif praktik di HERO"
             />
             <HeroKpiCard
               title="Akan Datang"
               value={pklList.filter((p) => p.status === 'upcoming').length}
-              icon={Clock}
+              icon={<Clock className="size-5" />}
               tone="amber"
               description="Jadwal PKL mendatang"
             />
             <HeroKpiCard
               title="Selesai PKL"
               value={pklList.filter((p) => p.status === 'completed').length}
-              icon={CheckCircle2}
+              icon={<CheckCircle2 className="size-5" />}
               tone="rose"
               description="Praktik telah tuntas (paling bawah)"
             />
