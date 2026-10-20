@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { OsmMiniMap } from '@/components/ui/osm-mini-map'
+import { getTodayDateString } from '@/lib/indonesia-timezone'
 
 type FlowState =
   | 'idle'
@@ -269,7 +270,7 @@ export function FaceAttendanceV2Client({
 
   const [selectedShift, setSelectedShift] = useState<string>(() => {
     // 1. Check if today's roster specifically specifies NS or DS
-    const todayStr = new Date().toISOString().slice(0, 10)
+    const todayStr = getTodayDateString()
     const todayRoster = rosterCalendar.days.find((d) => d.date === todayStr)
     if (todayRoster?.code) {
       const code = todayRoster.code.toUpperCase()

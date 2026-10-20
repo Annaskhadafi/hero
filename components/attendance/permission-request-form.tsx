@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import { cn } from '@/lib/utils'
+import { getTodayDateString } from '@/lib/indonesia-timezone'
 
 export type ApproverCandidateData = {
   defaultApproverId: string | null
@@ -34,8 +35,8 @@ export function PermissionRequestForm({
 }: PermissionRequestFormProps) {
   const router = useRouter()
   const [type, setType] = useState('sick')
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => getTodayDateString())
+  const [endDate, setEndDate] = useState(() => getTodayDateString())
   const [sickCategory, setSickCategory] = useState('Demam')
   const [lateReason, setLateReason] = useState('Keperluan Keluarga')
   const [returnTime, setReturnTime] = useState('')
@@ -49,6 +50,13 @@ export function PermissionRequestForm({
     initialApproverData?.defaultApproverId ?? ''
   )
   const [isLoadingApprovers, setIsLoadingApprovers] = useState(!initialApproverData)
+
+  // Ensure client date is synced with device timezone to prevent UTC boundary shifts in the morning
+  useEffect(() => {
+    const clientToday = getTodayDateString()
+    setDate((prev) => (!prev ? clientToday : prev))
+    setEndDate((prev) => (!prev ? clientToday : prev))
+  }, [])
 
   useEffect(() => {
     if (!initialApproverData) {

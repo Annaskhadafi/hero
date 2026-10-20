@@ -45,6 +45,7 @@ import {
 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { toast } from 'sonner'
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 import { downloadElementAsPdf, downloadHtmlAsPdf, generateElementAsPdfBlob, generateHtmlAsPdfBlob, downloadFilesAsZip } from '@/lib/pdf-download'
 import { compressImageFile } from '@/lib/client-image-compression'
 
@@ -2863,13 +2864,29 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                           <td>Site: {currentBatchDoc.siteName || '—'}</td>
                           <td>Customer: {currentBatchDoc.customerName || '—'}</td>
                         </tr>
-                        {currentBatchDoc.teamMembersSummary ? (
+                        {(() => {
+                        const teamResult = formatActivityTeamGroups(currentBatchDoc.items, currentBatchDoc.teamMembersSummary)
+                        if (!teamResult.hasTeams) return null
+                        return (
                           <tr>
                             <td colSpan={2}>
-                              Anggota Tim: <span className="text-black font-normal">{currentBatchDoc.teamMembersSummary}</span>
+                              Anggota Tim:{' '}
+                              {teamResult.isSingleTeam ? (
+                                <span className="text-black font-normal">{teamResult.singleTeamText}</span>
+                              ) : (
+                                <div className="space-y-1 mt-1">
+                                  {teamResult.groups.map((grp, gIdx) => (
+                                    <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                      <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                      <span className="text-slate-900 font-medium">{grp.teamMembers}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                           </tr>
-                        ) : null}
+                        )
+                      })()}
                       </tbody>
                     </table>
 
@@ -3348,13 +3365,29 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                           <td>Site: <strong>{previewTarget.siteName || '—'}</strong></td>
                           <td>Customer: <strong>{previewTarget.customerName || 'Default Customer'}</strong></td>
                         </tr>
-                        {previewTarget.teamMembersSummary ? (
+                        {(() => {
+                        const teamResult = formatActivityTeamGroups(previewTarget.items, previewTarget.teamMembersSummary)
+                        if (!teamResult.hasTeams) return null
+                        return (
                           <tr>
                             <td colSpan={2}>
-                              Anggota Tim: <span className="text-black font-normal">{previewTarget.teamMembersSummary}</span>
+                              Anggota Tim:{' '}
+                              {teamResult.isSingleTeam ? (
+                                <span className="text-black font-normal">{teamResult.singleTeamText}</span>
+                              ) : (
+                                <div className="space-y-1 mt-1">
+                                  {teamResult.groups.map((grp, gIdx) => (
+                                    <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                      <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                      <span className="text-slate-900 font-medium">{grp.teamMembers}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                           </tr>
-                        ) : null}
+                        )
+                      })()}
                       </tbody>
                     </table>
 

@@ -349,3 +349,31 @@ export function getTimezoneDayBoundaries(date: Date, timezone?: string | null): 
   const startOfNextDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
   return { startOfDay, startOfNextDay }
 }
+
+/**
+ * Returns today's date formatted as YYYY-MM-DD in the specified Indonesian timezone
+ * (or user's local browser timezone if in browser), preventing UTC day boundary shifts in the morning.
+ */
+export function getTodayDateString(timezone?: string | null): string {
+  try {
+    let tz = normalizeIndonesiaTimezone(timezone).iana
+    if (!timezone && typeof window !== 'undefined') {
+      const clientTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      if (clientTz && clientTz !== 'UTC' && clientTz !== 'Etc/UTC') {
+        tz = clientTz
+      }
+    }
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date())
+  } catch {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+}

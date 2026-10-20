@@ -1,3 +1,4 @@
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 'use client'
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
@@ -1056,34 +1057,26 @@ export function MobileDailyActivityClient({
                           </tr>
                           {(() => {
                             const items = selectedReviewDoc.items || []
-                            const hasItemTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-')
                             const rawSessionTeam = selectedReviewDoc.teamMembersSummary || (selectedReviewDoc.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
+                            const teamResult = formatActivityTeamGroups(items, rawSessionTeam)
 
-                            if (!hasItemTeams && !rawSessionTeam && items.length === 0) return null
+                            if (!teamResult.hasTeams) return null
 
                             return (
                               <tr>
                                 <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
                                 <td colSpan={3} className="text-black font-normal py-1.5">
-                                  {items.length > 0 ? (
-                                    <div className="space-y-1">
-                                      {items.map((it: any, idx: number) => {
-                                        const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
-                                        const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
-                                          ? it.itemTeamMembersSummary
-                                          : (hasAnyItemSpecific ? '-' : (rawSessionTeam || '-'));
-                                        return (
-                                          <div key={it.id || idx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
-                                            <span className="font-bold text-slate-900 shrink-0">{idx + 1}.</span>
-                                            <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-slate-900 font-medium'}>
-                                              {itemTeam}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
+                                  {teamResult.isSingleTeam ? (
+                                    <span className="text-black font-medium">{teamResult.singleTeamText}</span>
                                   ) : (
-                                    <span className="text-black">{rawSessionTeam || '-'}</span>
+                                    <div className="space-y-1">
+                                      {teamResult.groups.map((grp, gIdx) => (
+                                        <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                          <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                          <span className="text-slate-900 font-medium">{grp.teamMembers}</span>
+                                        </div>
+                                      ))}
+                                    </div>
                                   )}
                                 </td>
                               </tr>

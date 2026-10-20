@@ -1,5 +1,7 @@
 'use client'
 
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
+
 import { useState, useTransition, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -1061,33 +1063,25 @@ export function DailyActivityApprovalForm({
           </tr>
           {(() => {
             const items = itemsList || []
-            const hasItemTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-')
+            const teamResult = formatActivityTeamGroups(items, currentTeamMembersSummary)
 
-            if (!hasItemTeams && !currentTeamMembersSummary && items.length === 0) return null
+            if (!teamResult.hasTeams) return null
 
             return (
               <tr>
                 <td colSpan={2} className="py-1.5">
                   <div className="font-bold text-black mb-1">Anggota Tim:</div>
-                  {items.length > 0 ? (
-                    <div className="space-y-1 pl-1">
-                      {items.map((it: any, idx: number) => {
-                        const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
-                        const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
-                          ? it.itemTeamMembersSummary
-                          : (hasAnyItemSpecific ? '-' : (currentTeamMembersSummary || '-'));
-                        return (
-                          <div key={it.id || idx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
-                            <span className="font-bold text-black shrink-0">{idx + 1}.</span>
-                            <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-black font-medium'}>
-                              {itemTeam}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                  {teamResult.isSingleTeam ? (
+                    <span className="text-black font-normal">{teamResult.singleTeamText}</span>
                   ) : (
-                    <span className="text-black font-normal">{currentTeamMembersSummary || '-'}</span>
+                    <div className="space-y-1 pl-1">
+                      {teamResult.groups.map((grp, gIdx) => (
+                        <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                          <span className="font-bold text-black shrink-0">{grp.prefixLabel}</span>
+                          <span className="text-black font-medium">{grp.teamMembers}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </td>
               </tr>

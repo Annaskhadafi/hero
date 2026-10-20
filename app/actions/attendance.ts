@@ -11,6 +11,7 @@ import {
   timesheetSchedulingConfigs,
 } from '@/db/schema/timesheet'
 import { uploadFile } from '@/app/actions/upload'
+import { getTodayDateString } from '@/lib/indonesia-timezone'
 import { auth } from '@/lib/auth'
 import { getActiveAttendanceShiftOptions } from '@/lib/master-data'
 import { getS3ObjectReadUrl } from '@/lib/s3-storage'
@@ -1057,7 +1058,7 @@ export async function submitAttendancePermission(formData: FormData) {
     if (!employee) return { success: false, error: 'Unauthorized' }
 
     const permissionType = getTrimmedFormValue(formData, 'permissionType')
-    const requestDate = getTrimmedFormValue(formData, 'requestDate')
+    const requestDate = getTrimmedFormValue(formData, 'requestDate') || getTodayDateString()
     const endDate = getTrimmedFormValue(formData, 'endDate') || requestDate
     const sickCategory = getTrimmedFormValue(formData, 'sickCategory')
     const lateReason = getTrimmedFormValue(formData, 'lateReason')

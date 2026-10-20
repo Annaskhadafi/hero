@@ -46,6 +46,7 @@ import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence
 import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
+import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
 import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
@@ -3031,33 +3032,27 @@ export function InboxTab({
                               {(() => {
                                 const items = (currentBatchDoc.rawDaily as any)?.items || (currentBatchDoc.rawDaily as any)?.sessionItems || (currentBatchDoc as any)?.items || []
                                 const rawSessionTeam = (currentBatchDoc.rawDaily as any)?.teamMembersSummary || (currentBatchDoc as any)?.teamMembersSummary || ((currentBatchDoc.rawDaily as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1] || ((currentBatchDoc as any)?.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)?.[1]
-                                const hasTeams = items.some((it: any) => it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-') || Boolean(rawSessionTeam)
+                                const teamResult = formatActivityTeamGroups(items, rawSessionTeam)
 
-                                if (!hasTeams && items.length === 0) return null
+                                if (!teamResult.hasTeams) return null
 
                                 return (
                                   <tr>
                                     <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
                                     <td colSpan={3} className="text-black font-normal py-1.5">
-                                      {items.length > 0 ? (
-                                        <div className="space-y-1">
-                                          {items.map((it: any, idx: number) => {
-                                            const hasAnyItemSpecific = items.some((x: any) => x.itemTeamMembersSummary && x.itemTeamMembersSummary !== '-')
-                                            const itemTeam = it.itemTeamMembersSummary && it.itemTeamMembersSummary !== '-'
-                                              ? it.itemTeamMembersSummary
-                                              : (hasAnyItemSpecific ? '-' : (rawSessionTeam || '-'));
-                                            return (
-                                              <div key={it.id || idx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
-                                                <span className="font-bold text-slate-900 shrink-0">{idx + 1}.</span>
-                                                <span className={itemTeam === '-' ? 'text-slate-400 italic' : 'text-slate-900 font-medium'}>
-                                                  {itemTeam}
-                                                </span>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
+                                      {teamResult.isSingleTeam ? (
+                                        <span className="text-black font-medium">{teamResult.singleTeamText}</span>
                                       ) : (
-                                        <span className="text-black">{rawSessionTeam || '-'}</span>
+                                        <div className="space-y-1">
+                                          {teamResult.groups.map((grp, gIdx) => (
+                                            <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                              <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                              <span className="text-slate-900 font-medium">
+                                                {grp.teamMembers}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
                                       )}
                                     </td>
                                   </tr>
@@ -6352,12 +6347,32 @@ export function HistoryTab({
                                 <td className="font-bold bg-slate-50 text-black">Dept / Section</td>
                                 <td className="text-black">{[selectedHistoryDoc.employee?.department, selectedHistoryDoc.employee?.section].filter(Boolean).join(' / ') || 'Central Services'}</td>
                               </tr>
-                              {selectedHistoryDoc.teamMembersSummary ? (
-                                <tr>
-                                  <td className="font-bold bg-slate-50 text-black">Anggota Tim</td>
-                                  <td colSpan={3} className="text-black font-normal">{selectedHistoryDoc.teamMembersSummary}</td>
-                                </tr>
-                              ) : null}
+                              {(() => {
+                                const teamResult = formatActivityTeamGroups(items, selectedHistoryDoc.teamMembersSummary)
+                                if (!teamResult.hasTeams) return null
+
+                                return (
+                                  <tr>
+                                    <td className="font-bold bg-slate-50 text-black align-top py-1.5">Anggota Tim</td>
+                                    <td colSpan={3} className="text-black font-normal py-1.5">
+                                      {teamResult.isSingleTeam ? (
+                                        <span className="text-black font-medium">{teamResult.singleTeamText}</span>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {teamResult.groups.map((grp, gIdx) => (
+                                            <div key={gIdx} className="text-[8pt] flex items-start gap-1.5 leading-snug">
+                                              <span className="font-bold text-slate-900 shrink-0">{grp.prefixLabel}</span>
+                                              <span className="text-slate-900 font-medium">
+                                                {grp.teamMembers}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )
+                              })()}
                               {(() => {
                                 const cleanNotes = (selectedHistoryDoc.notes || selectedHistoryDoc.summaryRemark || '')
                                   .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
