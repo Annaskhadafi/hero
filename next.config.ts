@@ -76,7 +76,7 @@ const nextConfig: NextConfig = {
       // Increase timeout: DAR submit involves photo uploads + DB writes + email — default 5s is too short on mobile
       // Next.js 15 uses `serverActions.timeoutSeconds` — ponytail: upgrade when stable
     },
-    cpus: process.platform === 'win32' ? 1 : 2,
+    cpus: 1,
   },
   async headers() {
     return [

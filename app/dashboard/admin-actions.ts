@@ -8818,7 +8818,12 @@ export async function manageSecurityUserAction(
     if (payload.intent === 'reset-face') {
       await db
         .update(employees)
-        .set({ faceEmbedding: null, faceRegisteredAt: null })
+        .set({
+          faceEmbedding: null,
+          faceRegisteredAt: null,
+          faceRarayId: null,
+          faceRarayRegisteredAt: null,
+        })
         .where(eq(employees.id, employee.id))
 
       const actorEmail = await getCurrentActorEmail()
@@ -11233,6 +11238,8 @@ export async function deleteFaceEmbeddingAction(employeeId: number) {
     .set({
       faceEmbedding: null,
       faceRegisteredAt: null,
+      faceRarayId: null,
+      faceRarayRegisteredAt: null,
     })
     .where(eq(employees.id, employeeId))
 
