@@ -95,3 +95,74 @@ export type PendingSummaryRequest = {
   suggestedRemarks: string;
 };
 
+/**
+ * Default Cut-Off Summary APD:
+ * Dari tanggal 6 sampai tanggal 6 berikutnya.
+ * Jika hari ini >= 6 (misal 20 Okt), start = 6 Okt, end = 6 Nov.
+ * Jika hari ini < 6 (misal 3 Okt), start = 6 Sep, end = 6 Okt.
+ */
+export function getDefaultApdSummaryDateRange(refDate: Date = new Date()): { startDate: string; endDate: string } {
+  const year = refDate.getFullYear();
+  const month = refDate.getMonth();
+  const day = refDate.getDate();
+
+  let startYear = year;
+  let startMonth = month;
+  let endYear = year;
+  let endMonth = month;
+
+  if (day >= 6) {
+    startYear = year;
+    startMonth = month;
+    if (month === 11) {
+      endYear = year + 1;
+      endMonth = 0;
+    } else {
+      endYear = year;
+      endMonth = month + 1;
+    }
+  } else {
+    if (month === 0) {
+      startYear = year - 1;
+      startMonth = 11;
+    } else {
+      startYear = year;
+      startMonth = month - 1;
+    }
+    endYear = year;
+    endMonth = month;
+  }
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const formatYMD = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
+
+  return {
+    startDate: formatYMD(startYear, startMonth, 6),
+    endDate: formatYMD(endYear, endMonth, 6),
+  };
+}
+
+/**
+ * Periode sebelumnya (Tanggal 6 s/d 6 bulan lalu)
+ */
+export function getPreviousApdSummaryDateRange(refDate: Date = new Date()): { startDate: string; endDate: string } {
+  const current = getDefaultApdSummaryDateRange(refDate);
+  const parts = current.startDate.split('-').map(Number);
+  const startRef = new Date(parts[0], parts[1] - 1, 1);
+  startRef.setMonth(startRef.getMonth() - 1);
+  return getDefaultApdSummaryDateRange(startRef);
+}
+
+/**
+ * Periode 1 s/d Akhir Bulan Kalender Ini
+ */
+export function getCalendarMonthApdSummaryDateRange(refDate: Date = new Date()): { startDate: string; endDate: string } {
+  const year = refDate.getFullYear();
+  const month = refDate.getMonth();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    startDate: `${year}-${pad(month + 1)}-01`,
+    endDate: `${year}-${pad(month + 1)}-${pad(lastDay)}`,
+  };
+}

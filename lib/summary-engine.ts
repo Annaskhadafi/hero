@@ -45,6 +45,11 @@ export async function ensureSummarySchema() {
       ADD COLUMN IF NOT EXISTS master_apd_id integer;
     `);
     await db.execute(sql`
+      ALTER TABLE hero_apd_summaries
+      ADD COLUMN IF NOT EXISTS period_start timestamp,
+      ADD COLUMN IF NOT EXISTS period_end timestamp;
+    `);
+    await db.execute(sql`
       UPDATE hero_apd_summary_items
       SET remarks = request_type
       WHERE item_name = 'Safety Shoes Size'
@@ -152,6 +157,8 @@ export async function getSectionsWithApprovedRequests() {
     createdAt: apdSummaries.createdAt,
     updatedAt: apdSummaries.updatedAt,
     approvedAt: apdSummaries.approvedAt,
+    periodStart: apdSummaries.periodStart,
+    periodEnd: apdSummaries.periodEnd,
     itemCount: sql<number>`count(${apdSummaryItems.id})::int`,
     distinctRequests: sql<number>`count(distinct ${apdSummaryItems.apdRequestId})::int`,
   }).from(apdSummaries)
@@ -179,6 +186,8 @@ export async function getSectionsWithApprovedRequests() {
     summaryStatus: string | null;
     summaryId: number | null;
     summaryNumber: string | null;
+    periodStart?: Date | null;
+    periodEnd?: Date | null;
     latestActivityAt: Date | null;
   }> = [];
 
@@ -211,6 +220,8 @@ export async function getSectionsWithApprovedRequests() {
       summaryStatus: sum.status,
       summaryId: sum.id,
       summaryNumber: sum.summaryNumber,
+      periodStart: sum.periodStart,
+      periodEnd: sum.periodEnd,
       latestActivityAt,
     });
   }
@@ -313,7 +324,7 @@ export async function getSectionsWithApprovedRequests() {
   });
 }
 
-export async function getPendingRequestsForSection(sectionId: number, targetSite: string): Promise<PendingSummaryRequest[]> {
+export async function getPendingRequestsForSection(sectionId: number, targetSite: string, dateRange?: { startDate?: string; endDate?: string }): Promise<PendingSummaryRequest[]> {
   await ensureSummarySchema();
 
   const isValeQuery = targetSite === 'VALE' 
@@ -336,6 +347,24 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 
   const assignedRequestIds = new Set(activeSummaryRows.map(r => r.apdRequestId).filter(Boolean));
 
+  const pendingConditions = [
+    sectionFilter,
+    inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
+    sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
+    sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
+    isValeQuery,
+  ];
+
+  if (dateRange?.startDate) {
+    const start = new Date(`${dateRange.startDate}T00:00:00.000Z`);
+    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) >= ${start}`);
+  }
+
+  if (dateRange?.endDate) {
+    const end = new Date(`${dateRange.endDate}T23:59:59.999Z`);
+    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
+  }
+
   const approvedRequests = await db.select({
     requestId: apdRequests.id,
     requestNumber: apdRequests.requestNumber,
@@ -352,13 +381,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(
-      sectionFilter,
-      inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-      sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-      sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
-      isValeQuery
-    ))
+    .where(and(...pendingConditions))
     .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   const results: PendingSummaryRequest[] = [];
@@ -426,6 +449,12 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     });
   }
 
+  results.sort((a, b) => {
+    const siteCmp = (a.siteName || '').localeCompare(b.siteName || '', 'id-ID', { sensitivity: 'base' });
+    if (siteCmp !== 0) return siteCmp;
+    return (a.employeeName || '').localeCompare(b.employeeName || '', 'id-ID', { sensitivity: 'base' });
+  });
+
   return results;
 }
 
@@ -437,6 +466,8 @@ export type GenerateSummaryOptions = {
   }>;
   manualEntries?: ManualSummaryEntry[];
   defaultRemarks?: string;
+  periodStart?: string | Date | null;
+  periodEnd?: string | Date | null;
 };
 
 export async function generateSummary(
@@ -484,6 +515,12 @@ export async function generateSummary(
   } else if (options?.selectedRequests && options.selectedRequests.length === 0) {
     approvedRequests = [];
   }
+
+  approvedRequests.sort((a, b) => {
+    const siteCmp = (a.siteName || '').localeCompare(b.siteName || '', 'id-ID', { sensitivity: 'base' });
+    if (siteCmp !== 0) return siteCmp;
+    return (a.employeeName || '').localeCompare(b.employeeName || '', 'id-ID', { sensitivity: 'base' });
+  });
 
   const manualEntries = options?.manualEntries || [];
 
@@ -669,7 +706,13 @@ export async function generateSummary(
   const savedSectionId = isServiceCombined ? 33 : sectionId;
 
   const [summary] = await db.insert(apdSummaries).values({
-    summaryNumber, sectionId: savedSectionId, targetSite, status: 'draft', generatedByEmployeeId,
+    summaryNumber,
+    sectionId: savedSectionId,
+    targetSite,
+    status: 'draft',
+    generatedByEmployeeId,
+    periodStart: options?.periodStart ? new Date(options.periodStart) : null,
+    periodEnd: options?.periodEnd ? new Date(options.periodEnd) : null,
   }).returning();
 
   for (const item of summaryItems) {
@@ -1487,6 +1530,8 @@ export async function getSummaryDetails(summaryId: number) {
     status: apdSummaries.status,
     generatedAt: apdSummaries.generatedAt,
     approvedAt: apdSummaries.approvedAt,
+    periodStart: apdSummaries.periodStart,
+    periodEnd: apdSummaries.periodEnd,
     generatedByEmployeeId: apdSummaries.generatedByEmployeeId,
     submitterSignatureUrl: apdSummaries.submitterSignatureUrl,
     sectionName: masterSections.name,
@@ -1505,7 +1550,7 @@ export async function getSummaryDetails(summaryId: number) {
 
   const items = await db.select().from(apdSummaryItems)
     .where(eq(apdSummaryItems.summaryId, summaryId))
-    .orderBy(asc(apdSummaryItems.employeeName));
+    .orderBy(asc(apdSummaryItems.siteName), asc(apdSummaryItems.employeeName));
 
   const masterCatalog = await db.select().from(masterApd).where(eq(masterApd.isActive, true)).orderBy(asc(masterApd.code));
   const masterById = new Map(masterCatalog.map(m => [m.id, m]));

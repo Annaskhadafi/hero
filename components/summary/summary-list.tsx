@@ -37,6 +37,8 @@ export type SectionWithSummary = {
   summaryStatus: string | null;
   summaryId: number | null;
   summaryNumber?: string | null;
+  periodStart?: Date | string | null;
+  periodEnd?: Date | string | null;
   createdAt?: Date | null;
   latestActivityAt?: Date | null;
 };
@@ -380,6 +382,11 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                         </div>
                         {section.code && (
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5">Kode: {section.code}</div>
+                        )}
+                        {section.periodStart && section.periodEnd && (
+                          <div className="text-[10px] text-blue-600 font-medium mt-0.5">
+                            Periode: {new Date(section.periodStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - {new Date(section.periodEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-3.5">

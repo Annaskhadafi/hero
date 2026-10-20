@@ -14,6 +14,8 @@ export const apdSummaries = pgTable('hero_apd_summaries', {
   submitterSignatureUrl: text('submitter_signature_url'),
   generatedAt: timestamp('generated_at'),
   approvedAt: timestamp('approved_at'),
+  periodStart: timestamp('period_start'),
+  periodEnd: timestamp('period_end'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

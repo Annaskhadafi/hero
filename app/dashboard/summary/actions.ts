@@ -16,9 +16,13 @@ import { db } from '@/db';
 import { employees, sites, masterSections, masterDepartments, employeeAssets } from '@/db/schema/hero';
 import { eq, and, asc, ilike, desc } from 'drizzle-orm';
 
-export async function getPendingRequestsAction(sectionId: number, targetSite: string) {
+export async function getPendingRequestsAction(
+  sectionId: number,
+  targetSite: string,
+  dateRange?: { startDate?: string; endDate?: string }
+) {
   try {
-    const requests = await getPendingRequestsForSection(sectionId, targetSite);
+    const requests = await getPendingRequestsForSection(sectionId, targetSite, dateRange);
     return { success: true, requests };
   } catch (error: any) {
     console.error('Get pending requests error:', error);

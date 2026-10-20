@@ -34,6 +34,9 @@ import {
   SAFETY_SHOES_COL,
   QTY_ONLY_COLUMNS,
   APD_ITEM_COLUMNS,
+  getDefaultApdSummaryDateRange,
+  getPreviousApdSummaryDateRange,
+  getCalendarMonthApdSummaryDateRange,
   type PendingSummaryRequest,
   type PendingSummaryRequestItem,
   type ManualSummaryEntry,
@@ -101,6 +104,11 @@ export function SummaryGeneratorModal({
   const [shoeSizeMap, setShoeSizeMap] = useState<Record<number, string>>({});
   const [globalRemarks, setGlobalRemarks] = useState('');
 
+  // Date Range state for APD summary cut-off
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [activePreset, setActivePreset] = useState<'active_cutoff' | 'prev_cutoff' | 'calendar_month' | 'all'>('active_cutoff');
+
   // Manual employee entry states
   const [isAddManualOpen, setIsAddManualOpen] = useState(false);
   const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
@@ -115,30 +123,18 @@ export function SummaryGeneratorModal({
   const [manualRemarks, setManualRemarks] = useState('');
   const [masterApdItems, setMasterApdItems] = useState<string[]>(COMMON_APD_ITEMS);
 
-  // Fetch pending requests and master APD items when modal opens
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let isMounted = true;
-    getMasterApdListAction('APD', true).then((res) => {
-      if (isMounted && res.success && res.data && res.data.length > 0) {
-        setMasterApdItems(res.data.map((i) => i.name));
-      }
-    });
+  const loadRequests = (start?: string, end?: string) => {
     setLoading(true);
-    setIsAddManualOpen(false);
-    setSelectedManualEmp(null);
-
-    getPendingRequestsAction(section.id, section.targetSite)
+    getPendingRequestsAction(section.id, section.targetSite, {
+      startDate: start || undefined,
+      endDate: end || undefined,
+    })
       .then((res) => {
-        if (!isMounted) return;
         if (res.success && res.requests) {
           setRequests(res.requests);
-          // Default: select all
           const allIds = new Set(res.requests.map((r) => r.requestId));
           setSelectedIds(allIds);
 
-          // Initialize maps
           const initRemarks: Record<number, string> = {};
           const initSize: Record<number, string> = {};
 
@@ -154,18 +150,68 @@ export function SummaryGeneratorModal({
         }
       })
       .catch((err) => {
-        if (isMounted) {
-          toast.error(err.message || 'Terjadi kesalahan sistem');
-        }
+        toast.error(err.message || 'Terjadi kesalahan sistem');
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        setLoading(false);
       });
+  };
 
-    return () => {
-      isMounted = false;
-    };
+  // Fetch pending requests and master APD items when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    getMasterApdListAction('APD', true).then((res) => {
+      if (res.success && res.data && res.data.length > 0) {
+        setMasterApdItems(res.data.map((i) => i.name));
+      }
+    });
+
+    const defaultRange = getDefaultApdSummaryDateRange();
+    setStartDate(defaultRange.startDate);
+    setEndDate(defaultRange.endDate);
+    setActivePreset('active_cutoff');
+    setIsAddManualOpen(false);
+    setSelectedManualEmp(null);
+
+    loadRequests(defaultRange.startDate, defaultRange.endDate);
   }, [isOpen, section.id, section.targetSite]);
+
+  const handleStartDateChange = (val: string) => {
+    setStartDate(val);
+    setActivePreset('all');
+    loadRequests(val, endDate);
+  };
+
+  const handleEndDateChange = (val: string) => {
+    setEndDate(val);
+    setActivePreset('all');
+    loadRequests(startDate, val);
+  };
+
+  const applyPreset = (preset: 'active_cutoff' | 'prev_cutoff' | 'calendar_month' | 'all') => {
+    setActivePreset(preset);
+    if (preset === 'active_cutoff') {
+      const range = getDefaultApdSummaryDateRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      loadRequests(range.startDate, range.endDate);
+    } else if (preset === 'prev_cutoff') {
+      const range = getPreviousApdSummaryDateRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      loadRequests(range.startDate, range.endDate);
+    } else if (preset === 'calendar_month') {
+      const range = getCalendarMonthApdSummaryDateRange();
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+      loadRequests(range.startDate, range.endDate);
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+      loadRequests('', '');
+    }
+  };
 
   // Load available employees when manual form is toggled
   const handleOpenManualForm = async () => {
@@ -303,17 +349,24 @@ export function SummaryGeneratorModal({
     toast.info('Baris manual dihapus');
   };
 
-  // Filtered requests by search
+  // Filtered requests by search and sorted by site then employee name
   const filteredRequests = useMemo(() => {
-    if (!search.trim()) return requests;
-    const lower = search.toLowerCase();
-    return requests.filter(
-      (r) =>
-        r.employeeName.toLowerCase().includes(lower) ||
-        r.employeeSn.toLowerCase().includes(lower) ||
-        r.requestNumber.toLowerCase().includes(lower) ||
-        r.siteName.toLowerCase().includes(lower)
-    );
+    let result = requests;
+    if (search.trim()) {
+      const lower = search.toLowerCase();
+      result = requests.filter(
+        (r) =>
+          r.employeeName.toLowerCase().includes(lower) ||
+          r.employeeSn.toLowerCase().includes(lower) ||
+          r.requestNumber.toLowerCase().includes(lower) ||
+          r.siteName.toLowerCase().includes(lower)
+      );
+    }
+    return [...result].sort((a, b) => {
+      const siteCmp = (a.siteName || '').localeCompare(b.siteName || '', 'id-ID', { sensitivity: 'base' });
+      if (siteCmp !== 0) return siteCmp;
+      return (a.employeeName || '').localeCompare(b.employeeName || '', 'id-ID', { sensitivity: 'base' });
+    });
   }, [requests, search]);
 
   // Filtered available employees for manual addition
@@ -426,6 +479,8 @@ export function SummaryGeneratorModal({
         selectedRequests: regularSelectedPayload,
         manualEntries: manualEntriesPayload,
         defaultRemarks: globalRemarks,
+        periodStart: startDate || null,
+        periodEnd: endDate || null,
       });
 
       if (res.success && 'summaryId' in res && res.summaryId) {
@@ -480,6 +535,89 @@ export function SummaryGeneratorModal({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Date Range & Preset Filter Bar */}
+        <div className="px-6 py-2.5 bg-slate-50/90 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              Periode Pengajuan:
+            </span>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="h-8 text-xs w-36 px-2 bg-white dark:bg-slate-900"
+              />
+              <span className="text-slate-400 font-medium">s/d</span>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => handleEndDateChange(e.target.value)}
+                className="h-8 text-xs w-36 px-2 bg-white dark:bg-slate-900"
+              />
+            </div>
+            <span className="text-[11px] text-slate-500 hidden sm:inline">
+              (Filter tgl request APD karyawan)
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyPreset('active_cutoff')}
+              className={`h-7 px-2.5 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'active_cutoff'
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Tgl 6 s/d 6 Aktif
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyPreset('prev_cutoff')}
+              className={`h-7 px-2.5 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'prev_cutoff'
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Tgl 6 s/d 6 Lalu
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => applyPreset('calendar_month')}
+              className={`h-7 px-2.5 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'calendar_month'
+                  ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400'
+              }`}
+            >
+              Bulan Ini
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => applyPreset('all')}
+              className={`h-7 px-2 text-[11px] rounded-lg transition-colors ${
+                activePreset === 'all'
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Semua
+            </Button>
+          </div>
         </div>
 
         {/* Filter & Action Toolbar */}
@@ -859,7 +997,13 @@ export function SummaryGeneratorModal({
                             )}
                           </div>
                           <div className="text-[11px] font-mono text-slate-500">{req.employeeSn}</div>
-                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">{req.requestNumber}</div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span>{req.requestNumber}</span>
+                            <span>&bull;</span>
+                            <span className="text-slate-600 dark:text-slate-300 font-sans font-medium">
+                              {req.requestDate ? new Date(req.requestDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-3 px-3">
                           <Badge variant="outline" className="text-[10px] font-medium bg-slate-50 dark:bg-slate-800">

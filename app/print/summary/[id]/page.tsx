@@ -56,7 +56,11 @@ export default async function PrintSummaryPage({
       grouped[item.employeeName].items[item.itemName] = (Number(grouped[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
   }
-  const emps = Object.values(grouped);
+  const emps = Object.values(grouped).sort((a, b) => {
+    const siteCmp = (a.site || '').localeCompare(b.site || '', 'id-ID', { sensitivity: 'base' });
+    if (siteCmp !== 0) return siteCmp;
+    return (a.name || '').localeCompare(b.name || '', 'id-ID', { sensitivity: 'base' });
+  });
 
   const masterList = data.masterCatalog && data.masterCatalog.length > 0
     ? data.masterCatalog.map(m => ({ name: m.name, hasSize: !!m.hasSize }))
@@ -179,6 +183,13 @@ export default async function PrintSummaryPage({
 
       <div style={{ fontSize: '7.5pt', marginBottom: '8px', lineHeight: '1.3', color: '#111' }}>
         <div><strong>Tanggal Pengajuan:</strong> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</div>
+        {data.periodStart && data.periodEnd && (
+          <div>
+            <strong>Periode Pengajuan:</strong>{' '}
+            {new Date(data.periodStart).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} s/d{' '}
+            {new Date(data.periodEnd).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+        )}
         <div><strong>Department &amp; Lokasi:</strong> {data.departmentName} — {sites.join(', ')}</div>
       </div>
 
@@ -189,13 +200,13 @@ export default async function PrintSummaryPage({
             <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
             <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
             <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             {dynamicQtyCols.map(c => (
               <th key={c} style={thItem} rowSpan={2}>
                 {c}
               </th>
             ))}
             <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
+            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
             <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
           </tr>
@@ -210,12 +221,12 @@ export default async function PrintSummaryPage({
               <td style={td}>{i + 1}</td>
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
               <td style={td}>{e.sn}</td>
-              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               {dynamicQtyCols.map(c => (
                 <td key={c} style={td}>{e.items[c] || ''}</td>
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
                 <div style={{
                   maxHeight: isUltraDense ? '22px' : isDense ? '28px' : '36px',
@@ -273,11 +284,12 @@ export default async function PrintSummaryPage({
             </tr>
           ))}
           <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
-            <td style={td} colSpan={4}>Total Qty</td>
+            <td style={td} colSpan={3}>Total Qty</td>
             {dynamicQtyCols.map(c => (
               <td key={c} style={td}>{totals[c] || ''}</td>
             ))}
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
+            <td style={td}>—</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
             <td style={td} className="print:hidden">—</td>
