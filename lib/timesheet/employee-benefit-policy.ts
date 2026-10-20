@@ -149,7 +149,7 @@ export function isMsaEligibleDay(
 ) {
   if (isFieldBreakPeriod) return false
   const code = String(scheduleCode ?? '').trim().toUpperCase()
-  return Boolean(code) && code !== '-' && code !== 'FB'
+  return Boolean(code) && code !== '-' && code !== 'FB' && code !== 'AL'
 }
 
 export function isMealsEligibleScheduleCode(
@@ -158,7 +158,7 @@ export function isMealsEligibleScheduleCode(
 ) {
   if (isFieldBreakPeriod) return false
   const code = String(scheduleCode ?? '').trim().toUpperCase()
-  if (!code || code === '-' || code === 'FB') return false
+  if (!code || code === '-' || code === 'FB' || code === 'AL') return false
   return (
     code === 'IN' ||
     code === 'DS' ||

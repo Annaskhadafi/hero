@@ -584,7 +584,7 @@ export async function saveSchedulingTimesheetPlanAction(
   return { ok: true }
 }
 
-const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB', 'ST'])
+const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB', 'ST', 'AL'])
 const scheduleV2RowSchema = z.object({
   employeeId: z.number().int().positive(),
   schedule: z.array(scheduleV2CodeSchema),
@@ -1941,7 +1941,7 @@ async function getSchedulingPeriodReadiness(siteId: number, period: string) {
           or(
             and(
               eq(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
-              inArray(timesheetPayrollSnapshotItems.scheduleCode, ['OFF', 'FB'])
+              inArray(timesheetPayrollSnapshotItems.scheduleCode, ['OFF', 'FB', 'AL'])
             ),
             and(
               eq(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),

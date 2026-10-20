@@ -4236,6 +4236,12 @@ export async function getApprovalCenterData(
     }
   }
 
+  const isSuperAdmin = Boolean(
+    currentEmployee &&
+    (['Super Admin', 'Site Admin', 'Admin', 'HC Manager'].includes(currentEmployee.accessRole ?? '') ||
+     ['Super Admin', 'Site Admin', 'Admin', 'HC Manager'].includes((currentEmployee as any).role ?? ''))
+  )
+
   // ─── Daily Activity History ──────────────────────────────────────────────────────
   for (const s of allDaSessions) {
     const isUserApprover = daSessionIdsWhereUserApprover.has(s.id)
@@ -4246,7 +4252,7 @@ export async function getApprovalCenterData(
       (employeeEmailNorm && normalizeMatchValue(s.employeeEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(s.employeeName) === normalizedEmployeeName)
 
-    const isUserInvolved = isUserCreator || isUserTeamMember || isUserApprover
+    const isUserInvolved = isSuperAdmin || isUserCreator || isUserTeamMember || isUserApprover
 
     if (!isUserInvolved) continue
 
@@ -4404,7 +4410,7 @@ export async function getApprovalCenterData(
       (employeeEmailNorm && normalizeMatchValue(ot.requesterEmail) === employeeEmailNorm) ||
       (normalizedEmployeeName && normalizeMatchValue(ot.requesterName) === normalizedEmployeeName)
 
-    const isUserInvolved = isUserCreator || isUserParticipant || isUserApprover
+    const isUserInvolved = isSuperAdmin || isUserCreator || isUserParticipant || isUserApprover
 
     if (!isUserInvolved) continue
 
@@ -4429,7 +4435,16 @@ export async function getApprovalCenterData(
       : 'Dalam proses review'
 
     const plannedStart = ot.plannedStartAt ? new Date(ot.plannedStartAt).getTime() : 0
-    const plannedEnd = ot.plannedEndAt ? new Date(ot.plannedEndAt).getTime() : 0
+    let plannedEnd = ot.plannedEndAt ? new Date(ot.plannedEndAt).getTime() : 0
+
+    // Handle overnight shifts or cross-midnight / timezone date offset where plannedEnd <= plannedStart
+    if (plannedStart && plannedEnd && plannedEnd <= plannedStart) {
+      const nextDayEnd = plannedEnd + 24 * 3600 * 1000
+      if (nextDayEnd > plannedStart && (nextDayEnd - plannedStart) <= 24 * 3600 * 1000) {
+        plannedEnd = nextDayEnd
+      }
+    }
+
     const defaultDurationHours =
       plannedStart && plannedEnd && plannedEnd > plannedStart
         ? Math.round(((plannedEnd - plannedStart) / (1000 * 60 * 60)) * 10) / 10
@@ -4573,6 +4588,7 @@ export async function getApprovalCenterData(
   // ─── PTW History ─────────────────────────────────────────────────────────────────
   for (const ptw of allPtwPermits) {
     const isUserInvolved =
+      isSuperAdmin ||
       ptw.applicantId === currentEmployee?.id ||
       normalizeMatchValue(ptw.applicantEmail) === normalizedEmail ||
       (employeeEmailNorm && normalizeMatchValue(ptw.applicantEmail) === employeeEmailNorm) ||

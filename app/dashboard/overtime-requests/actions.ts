@@ -579,6 +579,12 @@ export async function saveOvertimeApprovalForm(params: {
     if (params.workDate) updateData.workDate = parseSplInputDateTime(params.workDate)
     if (params.plannedStartAt) updateData.plannedStartAt = parseSplInputDateTime(params.workDate, params.plannedStartAt)
     if (params.plannedEndAt) updateData.plannedEndAt = parseSplInputDateTime(params.workDate, params.plannedEndAt)
+    if (updateData.plannedStartAt && updateData.plannedEndAt && updateData.plannedEndAt <= updateData.plannedStartAt) {
+      const nextDayEnd = new Date(updateData.plannedEndAt.getTime() + 24 * 3600 * 1000)
+      if (nextDayEnd > updateData.plannedStartAt) {
+        updateData.plannedEndAt = nextDayEnd
+      }
+    }
     if (params.requestNotes !== undefined || params.photoUrl) {
       let notes = params.requestNotes ?? ''
       if (params.photoUrl) {
@@ -1704,9 +1710,16 @@ export async function createOvertimeCommandLetterAction(payload: {
 
     const safeWorkDate = payload.workDate ? parseSplInputDateTime(payload.workDate) : new Date()
     const safePlannedStart = parseSplInputDateTime(payload.workDate, payload.plannedStartAt)
-    const safePlannedEnd = payload.plannedEndAt
+    let safePlannedEnd = payload.plannedEndAt
       ? parseSplInputDateTime(payload.workDate, payload.plannedEndAt)
       : new Date(safePlannedStart.getTime() + 4 * 3600 * 1000)
+
+    if (safePlannedStart && safePlannedEnd && safePlannedEnd <= safePlannedStart) {
+      const nextDayEnd = new Date(safePlannedEnd.getTime() + 24 * 3600 * 1000)
+      if (nextDayEnd > safePlannedStart) {
+        safePlannedEnd = nextDayEnd
+      }
+    }
 
     let validDeptId: number | null = null
     if (requesterEmp?.departmentId) {

@@ -1900,6 +1900,9 @@ export async function generateSummaryTablePdf(
         cellColor = cRedText
       } else if (text === 'FB') {
         cellBg = cFbBg
+      } else if (text === 'AL') {
+        cellBg = rgb(0.82, 0.98, 0.90)
+        cellColor = rgb(0.02, 0.37, 0.27)
       } else if (text === 'ST' || text === 'GD') {
         cellColor = cBlueText
       } else if (text === 'SPL') {

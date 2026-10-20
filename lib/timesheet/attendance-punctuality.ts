@@ -460,7 +460,7 @@ export function checkEmployeeOffDayStatus(input: {
 
   let isOffDay = false
 
-  if (['OFF', 'FB', 'LIBUR', 'SAKIT', 'CUTI'].includes(code)) {
+  if (['OFF', 'FB', 'AL', 'LIBUR', 'SAKIT', 'CUTI'].includes(code)) {
     isOffDay = true
   } else if (['IN', 'DS', 'NS', 'PAGI', 'MALAM'].includes(code)) {
     isOffDay = false

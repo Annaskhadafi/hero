@@ -102,7 +102,8 @@ export function normalizeScheduleV2ImportCode(value: unknown): ScheduleV2Code | 
     return 'DS'
   if (['NS', 'NG', 'N', 'NIGHT', 'NIGHTSHIFT', 'MALAM', 'SHIFT2'].includes(code)) return 'NS'
   if (['OFF', 'O', 'LIBUR', 'REST', 'RDO'].includes(code)) return 'OFF'
-  if (['FB', 'FIELDBREAK', 'CT', 'CUTI', 'LEAVE', 'AL'].includes(code)) return 'FB'
+  if (['AL', 'ANNUALLEAVE', 'CUTITAHUNAN'].includes(code)) return 'AL'
+  if (['FB', 'FIELDBREAK', 'CT', 'CUTI', 'LEAVE'].includes(code)) return 'FB'
   return null
 }
 

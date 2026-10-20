@@ -1315,6 +1315,10 @@ export function buildTimesheetWorksheet(
               cellVal = 'FB'
               bg = TIMESHEET_PALETTE.fbBg
               text = TIMESHEET_PALETTE.fbText
+            } else if (dayData.displayVal === 'AL' || rawVal === 'AL') {
+              cellVal = 'AL'
+              bg = 'D1FAE5'
+              text = '065F46'
             } else if (status === 'standby' || dayData.displayVal === 'ST') {
               cellVal = 'ST'
               bg = TIMESHEET_PALETTE.stBg

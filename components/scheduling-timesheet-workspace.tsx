@@ -344,7 +344,7 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
   },
 ]
 
-type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'Libur' | 'Sakit' | 'Emergency'
+type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'AL' | 'Libur' | 'Sakit' | 'Emergency'
 type SiteScheduleType = 'shift' | 'office' | 'hybrid'
 type SiteRosterType = '5:2' | '6:1' | '13:1' | 'vale'
 type DefaultShiftType = 'day-shift' | 'night-shift'
@@ -568,6 +568,7 @@ const codeCycle: ScheduleCode[] = [
   'OFF',
   'FB',
   'ST',
+  'AL',
   'Libur',
   'Sakit',
   'Emergency',
@@ -1194,6 +1195,7 @@ function codeClass(code: ScheduleCode) {
   if (code === 'OFF') return 'bg-rose-100 text-rose-700 hover:bg-rose-200'
   if (code === 'FB') return 'bg-amber-100 text-amber-900 hover:bg-amber-200'
   if (code === 'ST') return 'bg-purple-100 text-purple-900 hover:bg-purple-200'
+  if (code === 'AL') return 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
   if (code === 'Libur') return 'bg-slate-100 text-slate-700'
   if (code === 'Sakit') return 'bg-fuchsia-100 text-fuchsia-800 hover:bg-fuchsia-200'
   return 'bg-pink-100 text-pink-800 hover:bg-pink-200'
@@ -5625,7 +5627,7 @@ export function SchedulingTimesheetWorkspace({
               const cell = getAttendanceCell(row.employee.id, day)
               // Non-staff are allowed to attend on OFF/Libur days (5:2 roster / overtime)
               const isDisallowedConflict = staff
-                ? ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
+                ? ['OFF', 'FB', 'AL', 'Sakit', 'Libur'].includes(code)
                 : ['Sakit'].includes(code)
               return cell.status === 'present' && isDisallowedConflict
                 ? {
@@ -6377,6 +6379,7 @@ export function SchedulingTimesheetWorkspace({
               if (code === 'ST') return 'ST'
               if (code === 'GD') return 'GD'
               if (code === 'FB' || isFieldBreakDay) return 'FB'
+              if (code === 'AL') return 'AL'
               return ''
             }
             if (view === 'msa') {
@@ -6406,7 +6409,7 @@ export function SchedulingTimesheetWorkspace({
               total += allowance.specialAllowanceAmount
               continue
             }
-            const isFbPeriod = code === 'FB' || cell.status === 'field_break'
+            const isFbPeriod = code === 'FB' || code === 'AL' || cell.status === 'field_break'
             if (isFbPeriod && (view === 'msa' || view === 'meals')) continue
             if (view === 'ovt' && cell.status !== 'present') continue
             if (view === 'msa') total += allowance.msaAmount
@@ -13581,7 +13584,7 @@ export function SchedulingTimesheetWorkspace({
                           disabled={isFinalized || isSavingSchedule}
                           className="h-9 w-[150px] bg-white"
                           options={(savedPlan?.sourceVersion === 'v2'
-                            ? ['', 'OFF', 'DS', 'NS', 'FB', 'ST']
+                            ? ['', 'OFF', 'DS', 'NS', 'FB', 'ST', 'AL']
                             : codeCycle
                           ).map((code) => ({
                             value: code,
