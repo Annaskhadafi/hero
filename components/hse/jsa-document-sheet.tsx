@@ -1,4 +1,5 @@
 import * as React from 'react'
+import Image from 'next/image'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 export interface JsaDocumentData {
@@ -98,20 +99,38 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
     >
       <div className="flex-1 flex flex-col">
         {/* ============================================================== */}
-        {/* HEADER DOKUMEN RESMI (BERSIH, FORMAL & NON-BRANDED)            */}
+        {/* KOP SURAT RESMI (LOGO CHITRA KIRI, JUDUL TENGAH, KODE KANAN)   */}
         {/* ============================================================== */}
-        <div className="flex items-end justify-between pb-2 mb-3 border-b-2 border-black">
-          <div className="flex-1">
-            <h1 className="font-extrabold text-[14pt] uppercase tracking-wider text-black leading-tight">
-              JOB SAFETY ANALYSIS (JSA)
+        <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-black">
+          {/* Logo Chitra di Kiri */}
+          <div className="w-36 text-left shrink-0">
+            <Image
+              src="/cp_logo-removebg-preview.png"
+              alt="Logo PT Chitra Paratama"
+              width={140}
+              height={46}
+              className="h-11 w-auto object-contain"
+              priority
+            />
+          </div>
+
+          {/* Judul & Subtitle di Tengah */}
+          <div className="flex-1 text-center px-3">
+            <h1 className="font-extrabold text-[12pt] uppercase tracking-wider text-black leading-tight">
+              PT. CHITRA PARATAMA
             </h1>
-            <p className="font-semibold text-[7.5pt] text-gray-700 uppercase tracking-wide mt-0.5">
-              ANALISIS KESELAMATAN & KESEHATAN KERJA • HEALTH, SAFETY & ENVIRONMENT
+            <h2 className="font-bold text-[13.5pt] uppercase tracking-wider text-black leading-tight mt-0.5">
+              JOB SAFETY ANALYSIS (JSA)
+            </h2>
+            <p className="font-semibold text-[7.5pt] text-gray-700 tracking-wider uppercase mt-0.5">
+              HEALTH, SAFETY & ENVIRONMENT DEPARTMENT
             </p>
           </div>
-          <div className="text-right">
-            <div className="border border-black px-2.5 py-1 text-center bg-gray-50">
-              <div className="text-[6.5pt] uppercase font-bold text-gray-600">Kode Formulir</div>
+
+          {/* Kode Formulir di Kanan */}
+          <div className="w-36 text-right shrink-0 flex justify-end">
+            <div className="border border-black px-2.5 py-1 text-right bg-gray-50 rounded-sm">
+              <div className="text-[6.5pt] uppercase font-bold text-gray-600">No. Formulir</div>
               <div className="font-mono font-bold text-[8pt] text-black">F.HSE.SFT-014.01|1</div>
             </div>
           </div>
@@ -388,7 +407,7 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
 
         {/* Footer Dokumen */}
         <div className="flex justify-between items-center text-gray-600 text-[6.5pt] pt-1 border-t border-gray-300">
-          <div>Health, Safety & Environment Management System</div>
+          <div>PT. Chitra Paratama — Health, Safety & Environment Management System</div>
           <div>Dokumen ini sah dan mengikat selama pekerjaan berlangsung</div>
           <div className="font-mono font-bold text-black">F.HSE.SFT-014.01|1</div>
         </div>

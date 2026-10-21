@@ -7,10 +7,10 @@ test('verify JSA print PDF layout matches official HERO Kop Surat and fits clean
   await new Promise((resolve) => setTimeout(resolve, 3000));
   await expect(browser.locator('body')).toBeVisible();
 
-  // 2. Verify Header elements (Neutral HSE form without company branding)
+  // 2. Verify Kop Surat elements (Official Kop with Chitra Paratama logo & title)
+  await expect(screen.getByText(/PT\. CHITRA PARATAMA/i).first()).toBeVisible();
   await expect(screen.getByText(/JOB SAFETY ANALYSIS \(JSA\)/i).first()).toBeVisible();
   await expect(screen.getByText(/F\.HSE\.SFT-014\.01\|1/i).first()).toBeVisible();
-  await expect(browser.locator('text="PT. CHITRA PARATAMA"')).toHaveCount(0);
 
   // 3. Verify Metadata
   await expect(screen.getByText(/Pemasangan & Pengujian Trial SPM Hauling di Unit/i).first()).toBeVisible();
