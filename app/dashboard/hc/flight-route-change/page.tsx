@@ -66,6 +66,7 @@ import {
   getFlightRouteChangeListAction,
   getFlightRouteEmployeesListAction,
   rejectFlightRouteChangeAction,
+  revertFlightRouteChangeAction,
 } from '@/app/actions/flight-route-change'
 
 type FlightRouteRequest = {
@@ -112,8 +113,16 @@ type FlightRouteApproval = {
 }
 
 type DetailsData = FlightRouteRequest & {
+  notes?: string
   items: FlightRouteItem[]
   approvals: FlightRouteApproval[]
+  actor?: {
+    id: number
+    email: string
+    name: string
+    role: string
+    signatureUrl: string | null
+  } | null
 }
 
 type ApproverStepForm = {
@@ -177,6 +186,7 @@ export default function FlightRouteChangePage() {
 
   // Create Modal state
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editingDraftId, setEditingDraftId] = useState<number | null>(null)
   const [requestorName, setRequestorName] = useState('')
   const [employeeSn, setEmployeeSn] = useState('')
   const [jobTitle, setJobTitle] = useState('')
@@ -380,22 +390,26 @@ export default function FlightRouteChangePage() {
     }, 600)
   }
 
-  const handleCreateSubmit = async () => {
+  const handleCreateSubmit = async (isDraft = false) => {
     if (!requestorName.trim()) {
       toast.error('Nama pemohon wajib diisi.')
       return
     }
-    if (items.some((it) => !it.flightRoute.trim())) {
-      toast.error('Seluruh rute penerbangan wajib diisi.')
-      return
-    }
-    if (!clauseAccepted) {
-      toast.error('Anda wajib menyetujui klausul pemotongan gaji selisih tiket POH.')
-      return
+    if (!isDraft) {
+      if (items.some((it) => !it.flightRoute.trim())) {
+        toast.error('Seluruh rute penerbangan wajib diisi.')
+        return
+      }
+      if (!clauseAccepted) {
+        toast.error('Anda wajib menyetujui klausul pemotongan gaji selisih tiket POH.')
+        return
+      }
     }
 
     startTransition(async () => {
       const res = await createFlightRouteChangeAction({
+        requestId: editingDraftId || undefined,
+        isDraft,
         employeeId: selectedEmpId ? Number(selectedEmpId) : undefined,
         employeeSn,
         requestorName,
@@ -413,13 +427,66 @@ export default function FlightRouteChangePage() {
       })
 
       if (res.ok) {
-        toast.success(`Surat Permohonan (${res.requestNumber}) berhasil diajukan!`)
+        toast.success(
+          isDraft
+            ? `Draft Permohonan (${res.requestNumber}) berhasil disimpan!`
+            : `Surat Permohonan (${res.requestNumber}) berhasil diajukan!`
+        )
         setCreateDialogOpen(false)
+        setEditingDraftId(null)
         loadData()
       } else {
         toast.error(res.error || 'Gagal membuat permohonan.')
       }
     })
+  }
+
+  const handleEditDraft = async (req: FlightRouteRequest) => {
+    setEditingDraftId(req.id)
+    setDetailsLoading(true)
+    const res = await getFlightRouteChangeDetailsAction(req.id)
+    setDetailsLoading(false)
+    if (res.ok && res.data) {
+      const d = res.data as DetailsData
+      setSelectedEmpId(d.employeeId ? String(d.employeeId) : '')
+      setRequestorName(d.requestorName || '')
+      setEmployeeSn(d.employeeSn || '')
+      setJobTitle(d.jobTitle || '')
+      setSectionName(d.sectionName || '')
+      setDepartmentName(d.departmentName || '')
+      setSiteName(d.siteName || '')
+      setRequestDate(d.requestDate || new Date().toISOString().slice(0, 10))
+      setOriginLocation(d.originLocation || '')
+      setPohLocation(d.pohLocation || 'Balikpapan')
+      setClauseAccepted(d.clauseAccepted !== false)
+      setNotes(d.notes || '')
+      if (d.items && d.items.length > 0) {
+        setItems(
+          d.items.map((it) => ({
+            id: it.id,
+            flightDate: it.flightDate,
+            flightRoute: it.flightRoute,
+            remark: it.remark,
+          }))
+        )
+      }
+      if (d.approvals && d.approvals.length > 0) {
+        setApproverSteps(
+          d.approvals.map((s) => ({
+            stepOrder: s.stepOrder,
+            stepKey: s.stepKey,
+            roleLabel: s.roleLabel,
+            approverTitle: s.approverTitle,
+            approverName: s.approverName,
+            approverEmployeeId: s.approverEmployeeId,
+            approverEmail: s.approverEmail,
+          }))
+        )
+      }
+      setCreateDialogOpen(true)
+    } else {
+      toast.error('Gagal memuat data draft.')
+    }
   }
 
   const handleApproveStep = async (stepOrder: number) => {
@@ -437,6 +504,33 @@ export default function FlightRouteChangePage() {
         loadData()
       } else {
         toast.error(res.error || 'Gagal memproses approval.')
+      }
+    })
+  }
+
+  const handleRevertStep = async (stepOrder: number) => {
+    if (!selectedId) return
+    if (!approvalNotes.trim()) {
+      toast.error('Catatan alasan pengembalian / instruksi revisi wajib diisi.')
+      return
+    }
+    startTransition(async () => {
+      const res = await revertFlightRouteChangeAction({
+        requestId: selectedId,
+        stepOrder,
+        remarks: approvalNotes,
+      })
+      if (res.ok) {
+        toast.success(
+          stepOrder <= 2
+            ? 'Permohonan berhasil dikembalikan ke Pemohon (Draft revisi).'
+            : `Permohonan berhasil dikembalikan ke Step ${stepOrder - 1}.`
+        )
+        setApprovalNotes('')
+        loadDetails(selectedId)
+        loadData()
+      } else {
+        toast.error(res.error || 'Gagal mengembalikan permohonan.')
       }
     })
   }
@@ -480,6 +574,7 @@ export default function FlightRouteChangePage() {
   const stats = useMemo(() => {
     return {
       total: requests.length,
+      draft: requests.filter((r) => r.status === 'draft').length,
       inProgress: requests.filter((r) => r.status === 'in_progress').length,
       approved: requests.filter((r) => r.status === 'approved').length,
       rejected: requests.filter((r) => r.status === 'rejected').length,
@@ -488,6 +583,13 @@ export default function FlightRouteChangePage() {
 
   const getStatusBadge = (status: string, currentStep: number) => {
     switch (status) {
+      case 'draft':
+        return (
+          <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-300 gap-1 font-semibold text-xs py-0.5">
+            <FileText className="size-3.5 text-slate-500" />
+            Draft
+          </Badge>
+        )
       case 'approved':
         return (
           <Badge className="bg-emerald-500 hover:bg-emerald-600 text-white gap-1 font-semibold text-xs py-0.5">
@@ -534,6 +636,7 @@ export default function FlightRouteChangePage() {
         <div className="flex items-center gap-2">
           <Button
             onClick={() => {
+              setEditingDraftId(null)
               setCreateDialogOpen(true)
             }}
             className="gap-1.5 bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs h-9 shadow-xs cursor-pointer"
@@ -545,13 +648,20 @@ export default function FlightRouteChangePage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
         <HeroKpiCard
           title="Total Permohonan"
           value={stats.total}
           description="Seluruh pengajuan rute"
           tone="blue"
           icon={<Plane className="size-5 text-blue-600" />}
+        />
+        <HeroKpiCard
+          title="Draft Tersimpan"
+          value={stats.draft}
+          description="Belum diajukan"
+          tone="cyan"
+          icon={<FileText className="size-5 text-sky-600" />}
         />
         <HeroKpiCard
           title="Dalam Proses (Step 1-5)"
@@ -602,6 +712,7 @@ export default function FlightRouteChangePage() {
               className="text-xs h-9 rounded-md border border-input bg-background px-3 py-1 font-medium focus:ring-1 focus:ring-ring"
             >
               <option value="all">Semua Status</option>
+              <option value="draft">Draft Tersimpan</option>
               <option value="in_progress">Dalam Proses (Step 1-5)</option>
               <option value="approved">Disetujui (Approved)</option>
               <option value="rejected">Ditolak (Rejected)</option>
@@ -735,19 +846,32 @@ export default function FlightRouteChangePage() {
                     </TableCell>
                     <TableCell className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            loadDetails(row.id)
-                            setReviewActiveTab('detail')
-                          }}
-                          className="h-8 gap-1.5 text-xs font-semibold cursor-pointer"
-                          title="Review Permohonan & 5-Step Approval"
-                        >
-                          <UserCheck className="size-3.5 text-blue-600" />
-                          Review
-                        </Button>
+                        {row.status === 'draft' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditDraft(row)}
+                            className="h-8 gap-1.5 text-xs font-semibold cursor-pointer bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300"
+                            title="Lanjutkan / Edit Draft Permohonan"
+                          >
+                            <FileText className="size-3.5 text-amber-600" />
+                            Edit Draft
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              loadDetails(row.id)
+                              setReviewActiveTab('detail')
+                            }}
+                            className="h-8 gap-1.5 text-xs font-semibold cursor-pointer"
+                            title="Review Permohonan & 5-Step Approval"
+                          >
+                            <UserCheck className="size-3.5 text-blue-600" />
+                            Review
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="secondary"
@@ -1250,32 +1374,48 @@ export default function FlightRouteChangePage() {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5 shrink-0">
+          <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2.5 shrink-0">
             <Button
               variant="outline"
-              onClick={() => setCreateDialogOpen(false)}
+              onClick={() => {
+                setCreateDialogOpen(false)
+                setEditingDraftId(null)
+              }}
               className="h-9 text-xs font-semibold"
             >
               Batal
             </Button>
-            <Button
-              id="submit-flight-route-btn"
-              onClick={handleCreateSubmit}
-              disabled={isPending}
-              className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs h-9 gap-1.5 shadow-xs cursor-pointer"
-            >
-              {isPending ? (
-                <>
-                  <RefreshCw className="size-3.5 animate-spin" />
-                  Memproses...
-                </>
-              ) : (
-                <>
-                  <Plane className="size-3.5" />
-                  Ajukan Permohonan Rute
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                id="save-draft-flight-route-btn"
+                onClick={() => handleCreateSubmit(true)}
+                disabled={isPending}
+                className="h-9 text-xs font-semibold gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 cursor-pointer"
+              >
+                <FileText className="size-3.5" />
+                Simpan Draft
+              </Button>
+              <Button
+                id="submit-flight-route-btn"
+                onClick={() => handleCreateSubmit(false)}
+                disabled={isPending}
+                className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs h-9 gap-1.5 shadow-xs cursor-pointer"
+              >
+                {isPending ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Memproses...
+                  </>
+                ) : (
+                  <>
+                    <Plane className="size-3.5" />
+                    {editingDraftId ? 'Kirim Permohonan (Final)' : 'Ajukan Permohonan Rute'}
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1502,39 +1642,158 @@ export default function FlightRouteChangePage() {
                 </div>
 
                 {/* Approval Actions Panel */}
-                {details.status === 'in_progress' && (
-                  <div className="rounded-lg border border-amber-300 bg-amber-50/80 p-4 space-y-3">
-                    <h4 className="font-bold text-xs text-amber-950 uppercase tracking-wider">
-                      Panel Persetujuan (Step {details.currentStepOrder}/5)
-                    </h4>
-                    <Textarea
-                      placeholder="Masukkan catatan persetujuan / revisi penolakan..."
-                      value={approvalNotes}
-                      onChange={(e) => setApprovalNotes(e.target.value)}
-                      rows={2}
-                      className="text-xs bg-white"
-                    />
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleApproveStep(details.currentStepOrder)}
-                        disabled={isPending}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 text-xs"
-                      >
-                        Setujui Step {details.currentStepOrder}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleRejectStep(details.currentStepOrder)}
-                        disabled={isPending}
-                        className="text-xs"
-                      >
-                        Tolak
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                {(() => {
+                  if (details.status === 'draft') {
+                    return (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-4 space-y-2.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-bold text-amber-950">
+                            <FileText className="size-4 text-amber-700" />
+                            <span>Dokumen Masih Berstatus Draft</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedId(null)
+                              handleEditDraft(details)
+                            }}
+                            className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold gap-1.5 cursor-pointer shadow-2xs"
+                          >
+                            <FileText className="size-3.5" />
+                            Lanjutkan / Edit Draft
+                          </Button>
+                        </div>
+                        <p className="text-amber-900 leading-relaxed">
+                          Dokumen ini belum diajukan ke approver. Anda dapat mengedit rute perjalanan, melengkapi data, dan mengajukannya kapan saja.
+                        </p>
+                      </div>
+                    )
+                  }
+
+                  if (details.status === 'approved') {
+                    return (
+                      <div className="rounded-xl border border-emerald-300 bg-emerald-50/80 p-4 space-y-1.5 text-xs">
+                        <div className="flex items-center gap-2 font-bold text-emerald-950">
+                          <CheckCircle2 className="size-4 text-emerald-600" />
+                          <span>Permohonan Telah Disetujui Penuh (Approved)</span>
+                        </div>
+                        <p className="text-emerald-800 leading-relaxed">
+                          Seluruh 5 tahap persetujuan telah ditandatangani dan diverifikasi. Dokumen ini sah untuk diterbitkan tiket penerbangan.
+                        </p>
+                      </div>
+                    )
+                  }
+
+                  if (details.status === 'rejected') {
+                    return (
+                      <div className="rounded-xl border border-rose-300 bg-rose-50/80 p-4 space-y-1.5 text-xs">
+                        <div className="flex items-center gap-2 font-bold text-rose-950">
+                          <XCircle className="size-4 text-rose-600" />
+                          <span>Permohonan Ditolak (Rejected)</span>
+                        </div>
+                        <p className="text-rose-800 leading-relaxed">
+                          Alasan penolakan: "{details.rejectionReason || 'Tidak ada catatan penolakan.'}"
+                        </p>
+                      </div>
+                    )
+                  }
+
+                  if (details.status === 'in_progress') {
+                    const currentStep = details.approvals.find((s) => s.stepOrder === details.currentStepOrder)
+                    const currentActor = details.actor
+                    const isAuthorized = Boolean(
+                      currentActor &&
+                        currentStep &&
+                        (currentActor.role === 'superadmin' ||
+                          currentActor.role === 'admin' ||
+                          (currentStep.approverEmployeeId && currentStep.approverEmployeeId === currentActor.id) ||
+                          (currentStep.approverEmail &&
+                            currentActor.email &&
+                            currentStep.approverEmail.toLowerCase() === currentActor.email.toLowerCase()))
+                    )
+
+                    if (!isAuthorized) {
+                      return (
+                        <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4 space-y-2 text-xs">
+                          <div className="flex items-center gap-2 font-bold text-sky-950">
+                            <Clock className="size-4 text-sky-600" />
+                            <span>Menunggu Persetujuan Step {details.currentStepOrder}/5</span>
+                          </div>
+                          <p className="text-sky-900 leading-relaxed">
+                            Giliran persetujuan saat ini berada pada:{' '}
+                            <strong className="text-sky-950">{currentStep?.approverName || 'Approver'}</strong> (
+                            {currentStep?.roleLabel} — {currentStep?.approverTitle}).
+                          </p>
+                          <p className="text-[11px] text-sky-700/80 italic">
+                            Hanya approver yang bersangkutan atau administrator yang dapat menyetujui, mengembalikan, atau menolak dokumen ini.
+                          </p>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-4 space-y-3.5 shadow-2xs">
+                        <div className="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                          <h4 className="font-bold text-xs text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                            <UserCheck className="size-4 text-amber-700" />
+                            Panel Persetujuan (Step {details.currentStepOrder}/5)
+                          </h4>
+                          <Badge className="bg-amber-600 text-white text-[10px]">
+                            {currentStep?.roleLabel}: {currentStep?.approverTitle}
+                          </Badge>
+                        </div>
+
+                        <div>
+                          <Label className="text-[11px] font-semibold text-amber-950 mb-1 block">
+                            Catatan Keputusan (Opsional untuk Setuju, Wajib untuk Tolak / Revert):
+                          </Label>
+                          <Textarea
+                            placeholder="Tuliskan catatan persetujuan, instruksi revisi pengembalian, atau alasan penolakan..."
+                            value={approvalNotes}
+                            onChange={(e) => setApprovalNotes(e.target.value)}
+                            rows={2}
+                            className="text-xs bg-white border-amber-200"
+                          />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApproveStep(details.currentStepOrder)}
+                            disabled={isPending}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 text-xs font-semibold h-9 gap-1.5 shadow-xs cursor-pointer w-full sm:w-auto"
+                          >
+                            <CheckCircle2 className="size-3.5" />
+                            Setujui Step {details.currentStepOrder}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRevertStep(details.currentStepOrder)}
+                            disabled={isPending}
+                            className="text-xs font-semibold h-9 gap-1.5 border-amber-400 text-amber-900 bg-amber-100/60 hover:bg-amber-200/70 cursor-pointer w-full sm:w-auto"
+                            title={details.currentStepOrder <= 2 ? 'Kembalikan ke Pemohon untuk revisi draft' : `Kembalikan ke Step ${details.currentStepOrder - 1} untuk koreksi`}
+                          >
+                            <RotateCcw className="size-3.5 text-amber-700" />
+                            {details.currentStepOrder <= 2 ? 'Kembalikan ke Pemohon' : `Kembalikan ke Step ${details.currentStepOrder - 1}`}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleRejectStep(details.currentStepOrder)}
+                            disabled={isPending}
+                            className="text-xs font-semibold h-9 gap-1.5 cursor-pointer w-full sm:w-auto"
+                          >
+                            <XCircle className="size-3.5" />
+                            Tolak
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  return null
+                })()}
 
                 {/* Bottom Action Bar */}
                 <div className="pt-2 flex items-center gap-2">

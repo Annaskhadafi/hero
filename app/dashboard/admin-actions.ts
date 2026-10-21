@@ -4782,6 +4782,78 @@ async function applyApprovalDecision(params: {
     }
   }
 
+  // Flight Route Change approval handling
+  if (
+    approval.rawActivityType === 'flight_route_change' ||
+    approval.rawActivityType === 'flight-route-change' ||
+    approval.rawActivityType === 'Permohonan Perubahan Rute Penerbangan' ||
+    (approval as any).flightRouteRequestId != null ||
+    (approval as any).formName?.toLowerCase().includes('perubahan rute') ||
+    (approval as any).activityTitle?.toLowerCase().includes('perubahan rute')
+  ) {
+    const {
+      approveFlightRouteChangeAction,
+      rejectFlightRouteChangeAction,
+      revertFlightRouteChangeAction,
+    } = await import('@/app/actions/flight-route-change')
+    const { hcFlightRouteChangeRequests } = await import('@/db/schema/hero')
+
+    const [appRow] = await db
+      .select({
+        id: approvals.id,
+        flightRouteRequestId: approvals.flightRouteRequestId,
+        level: approvals.level,
+        requestNumber: approvals.requestNumber,
+      })
+      .from(approvals)
+      .where(eq(approvals.id, params.approvalId))
+      .limit(1)
+
+    let reqId = appRow?.flightRouteRequestId || null
+
+    if (!reqId && appRow?.requestNumber) {
+      const [byNum] = await db
+        .select({ id: hcFlightRouteChangeRequests.id })
+        .from(hcFlightRouteChangeRequests)
+        .where(eq(hcFlightRouteChangeRequests.requestNumber, appRow.requestNumber))
+        .limit(1)
+      if (byNum) reqId = byNum.id
+    }
+
+    if (reqId) {
+      const stepOrder = appRow?.level || 2
+      if (params.decision === 'approved') {
+        const res = await approveFlightRouteChangeAction({
+          requestId: reqId,
+          stepOrder,
+          remarks: params.note,
+          signatureDataUrl: resolvedSignatureUrl || undefined,
+        })
+        if (!res.ok) throw new Error(res.error || 'Gagal menyetujui permohonan perubahan rute.')
+      } else if (
+        (params.decision as string) === 'reverted' ||
+        (params.decision as string) === 'revert' ||
+        (params.decision as string) === 'needs_revision' ||
+        (params.decision as string) === 'needs_correction'
+      ) {
+        const res = await revertFlightRouteChangeAction({
+          requestId: reqId,
+          stepOrder,
+          remarks: params.note,
+        })
+        if (!res.ok) throw new Error(res.error || 'Gagal mengembalikan permohonan perubahan rute.')
+      } else {
+        const res = await rejectFlightRouteChangeAction({
+          requestId: reqId,
+          stepOrder,
+          remarks: params.note,
+        })
+        if (!res.ok) throw new Error(res.error || 'Gagal menolak permohonan perubahan rute.')
+      }
+      return true
+    }
+  }
+
 
 
   // Summary APD approval handling

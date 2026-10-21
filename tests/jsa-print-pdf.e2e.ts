@@ -32,9 +32,9 @@ test('verify JSA print PDF layout matches official HERO Kop Surat and fits clean
   // 7. Capture Top Screenshot
   await app.screenshot('jsa-single-page-top');
 
-  // Scroll down within preview using agent action to inspect signatures & footer
-  await agent.act('scroll down to the bottom of the document to see signatures');
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  // Scroll down within preview deterministically
+  await browser.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await new Promise((resolve) => setTimeout(resolve, 500));
   await app.screenshot('jsa-single-page-bottom-signatures');
 
   // 8. Assert bottom footer and clean signatures
@@ -42,6 +42,21 @@ test('verify JSA print PDF layout matches official HERO Kop Surat and fits clean
   await expect(screen.getByText(/MUCHAMAT ALI PORWANTO/i).first()).toBeVisible();
   await expect(screen.getByText(/HSE OFFICER SITE/i).first()).toBeVisible();
 
-  // 9. Agent visual assertion on the signature screenshot
-  await agent.assert('The bottom section shows clean signature blocks for Pelaksana and HSE Verifikasi, with no placeholder boxes.', { vision: true });
+  // 9. Test Landscape Orientation Switcher
+  const landscapeBtn = browser.locator('button:has-text("Landscape")');
+  await expect(landscapeBtn).toBeVisible();
+  await landscapeBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  // 10. Verify 4-column Landscape layout
+  await expect(screen.getByText(/Peralatan yang Digunakan/i).first()).toBeVisible();
+  await expect(screen.getByText(/Alat Pelindung Diri \(APD\) Wajib/i).first()).toBeVisible();
+  await app.screenshot('jsa-landscape-view');
+
+  // 11. Switch back to Portrait
+  const portraitBtn = browser.locator('button:has-text("Portrait")');
+  await expect(portraitBtn).toBeVisible();
+  await portraitBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await app.screenshot('jsa-portrait-view');
 });

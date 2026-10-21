@@ -119,6 +119,7 @@ import { ApdRequestDetailModal } from '@/components/summary/apd-request-detail-m
 import { getFormWoDetailAction } from '@/app/actions/form-wo'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
 import { MaritalStatusApprovalDialog } from '@/components/admin/marital-status-approval-dialog'
+import { FlightRouteChangeApprovalDialog } from '@/components/admin/flight-route-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
@@ -2591,6 +2592,7 @@ export function InboxTab({
                             item.category === 'TOOLS' && 'bg-cyan-50 text-cyan-800 border-cyan-200',
                             item.category === 'SUMMARY' && 'bg-purple-50 text-purple-800 border-purple-200',
                             item.category === 'MARITAL_STATUS' && 'bg-pink-50 text-pink-700 border-pink-200',
+                            item.category === 'FLIGHT_ROUTE' && 'bg-sky-50 text-sky-700 border-sky-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -2640,6 +2642,8 @@ export function InboxTab({
                         <FiveRApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : item.category === 'MARITAL_STATUS' || (item as any).maritalStatusRequestId || (item as any).activityType === 'marital_status' || (item as any).activityType === 'Permohonan Status Pernikahan' || (item as any).activityType === 'Perubahan Status Pernikahan' ? (
                         <MaritalStatusApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
+                      ) : item.category === 'FLIGHT_ROUTE' || (item as any).flightRouteRequestId || (item as any).activityType === 'flight_route_change' || (item as any).activityType === 'Permohonan Perubahan Rute Penerbangan' ? (
+                        <FlightRouteChangeApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).isReverted ? (
                         <Button
                           size="sm"

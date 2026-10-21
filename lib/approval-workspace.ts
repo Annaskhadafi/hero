@@ -43,6 +43,7 @@ import {
   notificationDeliveries,
   trainingRequests,
   trainingRequestApprovals,
+  hcFlightRouteChangeRequests,
 } from '@/db/schema/hero'
 import { apdSummaries } from '@/db/schema/apd-summary'
 import { tireRepairJobcards } from '@/db/schema/tire-repair'
@@ -115,6 +116,7 @@ type ApprovalRecordRow = {
   signatureUrl?: string | null
   fiveRReport?: typeof fiveRReports.$inferSelect | null
   maritalStatusRequestId?: number | null
+  flightRouteRequestId?: number | null
 }
 
 type RawApprovalRecordRow = {
@@ -162,6 +164,7 @@ type RawApprovalRecordRow = {
   apdSummaryId?: number | null
   fiveRReportId?: number | null
   maritalStatusRequestId?: number | null
+  flightRouteRequestId?: number | null
   photoUrl?: string | null
   signatureUrl?: string | null
 }
@@ -640,6 +643,20 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           .where(inArray(maritalStatusRequests.id, maritalStatusIds))
   const maritalStatusMap = new Map(maritalStatusRows.map((row) => [row.id, row]))
 
+  const flightRouteIds = Array.from(
+    new Set(
+      rawRows.map((row) => row.flightRouteRequestId).filter((value): value is number => value != null)
+    )
+  )
+  const flightRouteRows =
+    flightRouteIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(hcFlightRouteChangeRequests)
+          .where(inArray(hcFlightRouteChangeRequests.id, flightRouteIds))
+  const flightRouteMap = new Map(flightRouteRows.map((row) => [row.id, row]))
+
   const requesterIds = Array.from(
     new Set(
       rawRows
@@ -652,6 +669,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.auditorId) ??
             (row.repairFormWoId == null ? null : (repairWoMap.get(row.repairFormWoId)?.createdBy ? Number(repairWoMap.get(row.repairFormWoId)?.createdBy) : null)) ??
             (row.maritalStatusRequestId == null ? null : maritalStatusMap.get(row.maritalStatusRequestId)?.employeeId) ??
+            (row.flightRouteRequestId == null ? null : flightRouteMap.get(row.flightRouteRequestId)?.employeeId) ??
             row.approverEmployeeId
         )
         .filter((value): value is number => value != null && !isNaN(value) && Number.isInteger(value))
@@ -666,7 +684,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             row.submissionSiteId ??
             (row.apdRequestId == null ? null : apdMap.get(row.apdRequestId)?.siteId) ??
             (row.fiveRReportId == null ? null : fiveRMap.get(row.fiveRReportId)?.siteId) ??
-            (row.maritalStatusRequestId == null ? null : maritalStatusMap.get(row.maritalStatusRequestId)?.siteId)
+            (row.maritalStatusRequestId == null ? null : maritalStatusMap.get(row.maritalStatusRequestId)?.siteId) ??
+            (row.flightRouteRequestId == null ? null : flightRouteMap.get(row.flightRouteRequestId)?.siteId)
         )
         .filter((value): value is number => value != null)
     )
@@ -804,6 +823,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const apd = row.apdRequestId == null ? null : (apdMap.get(row.apdRequestId) ?? null)
     const summary = row.apdSummaryId == null ? null : (summaryMap.get(row.apdSummaryId) ?? null)
     const msReq = row.maritalStatusRequestId == null ? null : (maritalStatusMap.get(row.maritalStatusRequestId) ?? null)
+    const flightReq = row.flightRouteRequestId == null ? null : (flightRouteMap.get(row.flightRouteRequestId) ?? null)
     const plannedItems =
       splId == null ? [] : splItemRows.filter((item) => item.overtimeCommandLetterId === splId)
     const sessionItems =
@@ -881,7 +901,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       row.submittedAt
     const effectiveCreatedAt = rawCreated ? new Date(rawCreated) : new Date()
     const requestId =
-      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.apdSummaryId ?? row.maritalStatusRequestId ?? row.approvalId
+      row.approvalActivityId ?? row.submissionId ?? row.apdRequestId ?? row.apdSummaryId ?? row.maritalStatusRequestId ?? row.flightRouteRequestId ?? row.approvalId
     const titleFromSnapshot =
       typeof preview.title === 'string'
         ? preview.title
@@ -910,14 +930,18 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         ? fiveR.status
         : msReq != null
           ? msReq.status
-          : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
+          : flightReq != null
+            ? flightReq.status
+            : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
 
     const effectiveActivityType =
       fiveR != null
         ? '5R Audit Report'
         : row.maritalStatusRequestId != null || msReq != null
           ? 'Perubahan Status Pernikahan'
-          : row.approvalActivityId != null
+          : row.flightRouteRequestId != null || flightReq != null
+            ? 'Permohonan Perubahan Rute Penerbangan'
+            : row.approvalActivityId != null
           ? (row.activityType ?? 'Daily Activity')
           : row.submissionId != null
             ? (row.templateName ?? 'Workflow')
@@ -936,6 +960,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       title = `Laporan 5R: ${fiveR.reportNumber} – ${fiveR.picAreaName}`
     } else if (msReq != null) {
       title = `Permohonan Status Pernikahan - ${msReq.requestNumber}`
+    } else if (flightReq != null) {
+      title = `Permohonan Perubahan Rute: ${flightReq.requestNumber} – ${flightReq.requestorName}`
     } else if (spl?.title) {
       title = spl.title
     } else if (row.repairFormWoId != null) {
@@ -961,6 +987,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedRemarks = `Audit 5R (${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}/100`
     } else if (msReq != null) {
       resolvedRemarks = `Pergantian status dari ${msReq.currentMaritalStatus} ke ${msReq.targetMaritalStatus}. Alasan: ${msReq.reason}`
+    } else if (flightReq != null) {
+      resolvedRemarks = `Perubahan rute tujuan POH ${flightReq.pohLocation}. Asal: ${flightReq.originLocation}`
     } else if (spl?.requestNotes) {
       resolvedRemarks = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
@@ -978,6 +1006,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       resolvedDescription = `Laporan 5R ${fiveR.picAreaName} (Periode ${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}`
     } else if (msReq != null) {
       resolvedDescription = `Pergantian status dari ${msReq.currentMaritalStatus} ke ${msReq.targetMaritalStatus}. Alasan: ${msReq.reason}`
+    } else if (flightReq != null) {
+      resolvedDescription = `Perubahan rute ${flightReq.requestNumber} (${flightReq.requestorName})`
     } else if (spl?.requestNotes) {
       resolvedDescription = spl.requestNotes
     } else if (currentRepairWo?.deskripsiPekerjaan) {
@@ -1040,12 +1070,18 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       approvalId: row.approvalId,
       activityId: requestId,
       submissionId: row.submissionId,
-      requestNumber: msReq?.requestNumber || fiveR?.reportNumber || spl?.splNumber || row.requestNumber,
+      requestNumber: flightReq?.requestNumber || msReq?.requestNumber || fiveR?.reportNumber || spl?.splNumber || row.requestNumber,
       formName:
-        fiveR ? '5R Audit Report' : msReq ? 'Perubahan Status Pernikahan' : ((row as any).rawFormName || row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)')),
+        flightReq ? 'Permohonan Perubahan Rute Penerbangan' : fiveR ? '5R Audit Report' : msReq ? 'Perubahan Status Pernikahan' : ((row as any).rawFormName || row.templateName || (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)')),
       approvalStepId: row.approvalStepId,
       level: row.level,
-      status: fiveR
+      status: flightReq
+        ? (flightReq.status === 'rejected'
+            ? 'rejected'
+            : flightReq.status === 'approved'
+            ? 'approved'
+            : row.status)
+        : fiveR
         ? (fiveR.status === 'rejected'
             ? 'rejected'
             : fiveR.status === 'needs_revision'
@@ -1079,6 +1115,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       routeSnapshot: row.routeSnapshot,
       decisionNote: row.decisionNote,
       activityCode:
+        flightReq?.requestNumber ||
         msReq?.requestNumber ||
         fiveR?.reportNumber ||
         spl?.splNumber ||
@@ -1089,7 +1126,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       activityTitle: title,
       unitNumber: resolvedUnitNumber,
       tireCount: (row as any).tireCount || (typeof payload.tireCount === 'number' ? payload.tireCount : parseInt(String(payload.tireCount || 0), 10) || 0),
-      activityStatus: msReq ? msReq.status : (fiveR ? fiveR.status : requestStatus),
+      activityStatus: flightReq ? flightReq.status : (msReq ? msReq.status : (fiveR ? fiveR.status : requestStatus)),
       priority: row.priority || priorityFromSnapshot || 'Normal',
       remarks: resolvedRemarks,
       startTime: effectiveStartTime,
@@ -1103,7 +1140,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       siteName: resolvedSiteName,
       photoUrl: photoUrls[0] || null,
       requestKindLabel:
-        msReq ? 'Perubahan Status Pernikahan' : fiveR ? '5R Audit' : spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
+        flightReq ? 'Perubahan Rute' : msReq ? 'Perubahan Status Pernikahan' : fiveR ? '5R Audit' : spl?.origin === 'employee_request' ? 'Pengajuan' : spl ? 'Perintah' : effectiveActivityType,
       description: resolvedDescription,
       dailyActivityStatus:
         sessions.length === 0
@@ -1125,6 +1162,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       signatureUrl: row.signatureUrl || null,
       fiveRReport: fiveR,
       maritalStatusRequestId: row.maritalStatusRequestId,
+      flightRouteRequestId: row.flightRouteRequestId,
     } satisfies ApprovalRecordRow
   })
 }
@@ -1142,6 +1180,9 @@ function getSlaHours(row: ApprovalRecordRow, route: ApprovalRouteResolution | nu
 }
 
 function getCurrentStepLabel(row: ApprovalRecordRow, route: ApprovalRouteResolution | null) {
+  if (row.activityType === 'flight_route_change' || row.flightRouteRequestId != null || row.formName?.includes('Perubahan Rute')) {
+    return row.level === 1 ? 'Step 1: Diajukan Oleh' : row.level === 2 ? 'Step 2: Mengetahui (PJO)' : row.level === 3 ? 'Step 3: Mengetahui (Supervisor)' : row.level === 4 ? 'Step 4: Mengetahui (HR GA Leader)' : 'Step 5: Menyetujui (Manager)'
+  }
   if (row.activityType === 'marital_status' || row.maritalStatusRequestId != null || row.formName?.includes('Status Pernikahan')) {
     return row.level === 1 ? 'Step 1: PJO / HSE / Leader' : 'Step 2: Section Head'
   }
@@ -1430,6 +1471,7 @@ async function fetchApprovalRows(options?: { onlyActivities?: boolean; onlyPendi
       apdSummaryId: approvals.apdSummaryId,
       fiveRReportId: approvals.fiveRReportId,
       maritalStatusRequestId: approvals.maritalStatusRequestId,
+      flightRouteRequestId: approvals.flightRouteRequestId,
       tireJobcardId: approvals.tireJobcardId,
       jobcardSn: tireRepairJobcards.serialNumber,
       jobcardTireSize: tireRepairJobcards.tireSize,
@@ -3602,13 +3644,16 @@ export async function getApprovalCenterData(
         fiveRReport?: typeof fiveRReports.$inferSelect | null
         fiveRReportId?: number | null
         maritalStatusRequestId?: number | null
+        flightRouteRequestId?: number | null
       }>
     }
   >()
 
   for (const item of inboxRows) {
     const groupKey =
-      item.maritalStatusRequestId != null
+      item.flightRouteRequestId != null
+        ? `flight-route-${item.flightRouteRequestId}`
+        : item.maritalStatusRequestId != null
         ? `marital-status-${item.maritalStatusRequestId}`
         : (item as any).fiveRReportId != null
         ? `five-r-${(item as any).fiveRReportId}`
@@ -3689,6 +3734,7 @@ export async function getApprovalCenterData(
       fiveRReport: item.fiveRReport ?? null,
       fiveRReportId: (item as any).fiveRReportId ?? item.fiveRReport?.id ?? null,
       maritalStatusRequestId: (item as any).maritalStatusRequestId ?? null,
+      flightRouteRequestId: (item as any).flightRouteRequestId ?? null,
     })
     inboxGroupsMap.set(groupKey, group)
   }
@@ -4869,6 +4915,9 @@ export async function getApprovalCenterData(
       trainingRequestCount: trainingRequestInboxItems.length,
       maritalStatusCount: inboxRows.filter(
         (item) => item.maritalStatusRequestId != null || item.activityType === 'Perubahan Status Pernikahan'
+      ).length,
+      flightRouteCount: inboxRows.filter(
+        (item) => item.flightRouteRequestId != null || item.activityType === 'Permohonan Perubahan Rute Penerbangan' || item.activityType === 'flight_route_change'
       ).length,
       generalActivityCount: inboxRows.length,
     },

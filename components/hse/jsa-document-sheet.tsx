@@ -36,6 +36,7 @@ export interface JsaDocumentData {
 
 interface JsaDocumentSheetProps {
   data: JsaDocumentData
+  orientation?: 'portrait' | 'landscape'
   className?: string
 }
 
@@ -65,7 +66,8 @@ function getRiskLevelLabel(riskLevel?: string | null): string {
   return 'RENDAH (LOW / L)'
 }
 
-export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps) {
+export function JsaDocumentSheet({ data, orientation = 'portrait', className = '' }: JsaDocumentSheetProps) {
+  const isLandscape = orientation === 'landscape'
   const { steps = [] } = data
   const equipmentUsed = Array.isArray(data.equipmentUsed) ? data.equipmentUsed.filter(Boolean) : []
   const requirements = Array.isArray(data.requirements) ? data.requirements.filter(Boolean) : []
@@ -100,14 +102,18 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
 
   return (
     <div
-      className={`pdf-wrapper bg-white shadow-xl print:shadow-none w-[210mm] max-w-[210mm] min-h-[297mm] print:min-h-0 print:h-full p-8 print:p-0 text-[8pt] font-sans mx-auto text-black box-border flex flex-col justify-between ${className}`}
+      className={`pdf-wrapper bg-white shadow-xl print:shadow-none ${
+        isLandscape
+          ? 'w-[297mm] max-w-[297mm] min-h-[210mm] print:min-h-0 print:h-full p-6 print:p-0 text-[7.5pt]'
+          : 'w-[210mm] max-w-[210mm] min-h-[297mm] print:min-h-0 print:h-full p-8 print:p-0 text-[8pt]'
+      } font-sans mx-auto text-black box-border flex flex-col justify-between ${className}`}
       style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
     >
       <div className="flex-1 flex flex-col">
         {/* ============================================================== */}
         {/* KOP SURAT RESMI (LOGO CHITRA KIRI, JUDUL TENGAH, KODE KANAN)   */}
         {/* ============================================================== */}
-        <div className="flex items-center justify-between pb-2 mb-2 border-b-2 border-black">
+        <div className={`flex items-center justify-between ${isLandscape ? 'pb-1.5 mb-1.5' : 'pb-2 mb-2'} border-b-2 border-black`}>
           {/* Logo Chitra di Kiri */}
           <div className="w-36 text-left shrink-0">
             <Image
@@ -145,7 +151,7 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
         {/* ============================================================== */}
         {/* INFORMASI DOKUMEN & DETAIL PEKERJAAN                           */}
         {/* ============================================================== */}
-        <div className="grid grid-cols-2 gap-2 mb-2 text-[7.5pt]">
+        <div className={`grid grid-cols-2 gap-2 ${isLandscape ? 'mb-1.5 text-[7pt]' : 'mb-2 text-[7.5pt]'}`}>
           {/* Kolom Kiri: Informasi Dokumen */}
           <table className="w-full border-collapse border border-black text-[7.5pt]">
             <tbody>
@@ -220,7 +226,7 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
         {/* ============================================================== */}
         {/* PERSYARATAN KESELAMATAN (HANYA ITEM DICENTANG, FORMAL & BERSIH)*/}
         {/* ============================================================== */}
-        <div className="border border-black mb-2 text-[7.5pt]">
+        <div className={`border border-black ${isLandscape ? 'mb-1.5 text-[7pt]' : 'mb-2 text-[7.5pt]'}`}>
           <div className="bg-gray-100 border-b border-black px-2 py-0.5 flex items-center justify-between">
             <span className="font-bold text-black uppercase text-[7pt] tracking-wide">
               Persyaratan Keselamatan & Pengendalian Risiko
@@ -233,15 +239,16 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
             </div>
           </div>
 
-          <div className="grid grid-cols-2 divide-x divide-black">
-            {/* Bagian Kiri: Peralatan & Keperluan */}
-            <div className="p-2 space-y-1.5">
-              <div>
-                <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
+          {isLandscape ? (
+            /* 4 Kolom Khusus Landscape: Rapi, Padat, Tidak Membuang Ruang Vertikal */
+            <div className="grid grid-cols-4 divide-x divide-black text-[7pt]">
+              {/* Kolom 1: Peralatan */}
+              <div className="p-1.5 space-y-1">
+                <div className="font-bold text-black text-[6.5pt] uppercase">
                   Peralatan yang Digunakan:
                 </div>
                 {equipmentUsed.length > 0 ? (
-                  <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                  <ul className="list-disc list-inside space-y-0.5 text-black pl-0.5">
                     {equipmentUsed.map((item, idx) => (
                       <li key={idx} className="font-medium">
                         {item}
@@ -249,16 +256,17 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-gray-500 italic text-[7pt]">— Tidak ada peralatan khusus yang dicentang</p>
+                  <p className="text-gray-500 italic text-[6.5pt]">— Tidak ada peralatan khusus</p>
                 )}
               </div>
 
-              <div className="pt-1.5 border-t border-gray-300">
-                <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
+              {/* Kolom 2: Keperluan Khusus */}
+              <div className="p-1.5 space-y-1">
+                <div className="font-bold text-black text-[6.5pt] uppercase">
                   Keperluan Khusus:
                 </div>
                 {requirements.length > 0 ? (
-                  <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                  <ul className="list-disc list-inside space-y-0.5 text-black pl-0.5">
                     {requirements.map((item, idx) => (
                       <li key={idx} className="font-medium">
                         {item}
@@ -266,19 +274,17 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-gray-500 italic text-[7pt]">— Standar / Tidak ada keperluan khusus</p>
+                  <p className="text-gray-500 italic text-[6.5pt]">— Standar Umum</p>
                 )}
               </div>
-            </div>
 
-            {/* Bagian Kanan: APD/PPE & Permit */}
-            <div className="p-2 space-y-1.5">
-              <div>
-                <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
-                  Alat Pelindung Diri (APD / PPE) Wajib:
+              {/* Kolom 3: APD / PPE */}
+              <div className="p-1.5 space-y-1">
+                <div className="font-bold text-black text-[6.5pt] uppercase">
+                  Alat Pelindung Diri (APD) Wajib:
                 </div>
                 {ppeRequirements.length > 0 ? (
-                  <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                  <ul className="list-disc list-inside space-y-0.5 text-black pl-0.5">
                     {ppeRequirements.map((item, idx) => (
                       <li key={idx} className="font-medium">
                         {item}
@@ -286,16 +292,17 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-gray-500 italic text-[7pt]">— APD Standar Umum</p>
+                  <p className="text-gray-500 italic text-[6.5pt]">— APD Standar Umum</p>
                 )}
               </div>
 
-              <div className="pt-1.5 border-t border-gray-300">
-                <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
-                  Surat Izin Kerja (Work Permit):
+              {/* Kolom 4: Surat Izin Kerja (Permit) */}
+              <div className="p-1.5 space-y-1">
+                <div className="font-bold text-black text-[6.5pt] uppercase">
+                  Surat Izin Kerja (Permit):
                 </div>
                 {permits.length > 0 ? (
-                  <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                  <ul className="list-disc list-inside space-y-0.5 text-black pl-0.5">
                     {permits.map((item, idx) => (
                       <li key={idx} className="font-medium">
                         {item}
@@ -303,27 +310,104 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-gray-500 italic text-[7pt]">— Tidak memerlukan izin kerja khusus (Permit)</p>
+                  <p className="text-gray-500 italic text-[6.5pt]">— Tidak ada permit khusus</p>
                 )}
               </div>
             </div>
-          </div>
+          ) : (
+            /* 2 Kolom Standar Portrait */
+            <div className="grid grid-cols-2 divide-x divide-black">
+              {/* Bagian Kiri: Peralatan & Keperluan */}
+              <div className="p-2 space-y-1.5">
+                <div>
+                  <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
+                    Peralatan yang Digunakan:
+                  </div>
+                  {equipmentUsed.length > 0 ? (
+                    <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                      {equipmentUsed.map((item, idx) => (
+                        <li key={idx} className="font-medium">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500 italic text-[7pt]">— Tidak ada peralatan khusus yang dicentang</p>
+                  )}
+                </div>
+
+                <div className="pt-1.5 border-t border-gray-300">
+                  <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
+                    Keperluan Khusus:
+                  </div>
+                  {requirements.length > 0 ? (
+                    <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                      {requirements.map((item, idx) => (
+                        <li key={idx} className="font-medium">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500 italic text-[7pt]">— Standar / Tidak ada keperluan khusus</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Bagian Kanan: APD/PPE & Permit */}
+              <div className="p-2 space-y-1.5">
+                <div>
+                  <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
+                    Alat Pelindung Diri (APD / PPE) Wajib:
+                  </div>
+                  {ppeRequirements.length > 0 ? (
+                    <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                      {ppeRequirements.map((item, idx) => (
+                        <li key={idx} className="font-medium">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500 italic text-[7pt]">— APD Standar Umum</p>
+                  )}
+                </div>
+
+                <div className="pt-1.5 border-t border-gray-300">
+                  <div className="font-bold text-black text-[7pt] uppercase mb-0.5">
+                    Surat Izin Kerja (Work Permit):
+                  </div>
+                  {permits.length > 0 ? (
+                    <ul className="list-disc list-inside space-y-0.5 text-black pl-1 text-[7pt]">
+                      {permits.map((item, idx) => (
+                        <li key={idx} className="font-medium">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-gray-500 italic text-[7pt]">— Tidak memerlukan izin kerja khusus (Permit)</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ============================================================== */}
         {/* TABEL URUTAN PEKERJAAN (MONOCHROME & TAJAM)                    */}
         {/* ============================================================== */}
-        <div className="mb-2">
+        <div className={isLandscape ? 'mb-1.5' : 'mb-2'}>
           <table className="w-full border-collapse border border-black text-[7pt]">
             <thead>
               <tr className="bg-gray-100 text-black font-bold uppercase text-center border-b border-black">
                 <th className="border border-black p-1 w-6 text-center">No</th>
-                <th className="border border-black p-1 w-[23%] text-left">Urutan Pekerjaan</th>
-                <th className="border border-black p-1 w-[18%] text-left">Potensi Bahaya</th>
-                <th className="border border-black p-1 w-[18%] text-left">Konsekuensi Bahaya</th>
-                <th className="border border-black p-1 w-[25%] text-left">Tindakan Kontrol / Pencegahan</th>
-                <th className="border border-black p-1 w-11 text-center">Risiko</th>
-                <th className="border border-black p-1 w-14 text-center">Pelaksana</th>
+                <th className={`border border-black p-1 text-left ${isLandscape ? 'w-[22%]' : 'w-[23%]'}`}>Urutan Pekerjaan</th>
+                <th className={`border border-black p-1 text-left ${isLandscape ? 'w-[19%]' : 'w-[18%]'}`}>Potensi Bahaya</th>
+                <th className={`border border-black p-1 text-left ${isLandscape ? 'w-[19%]' : 'w-[18%]'}`}>Konsekuensi Bahaya</th>
+                <th className={`border border-black p-1 text-left ${isLandscape ? 'w-[25%]' : 'w-[25%]'}`}>Tindakan Kontrol / Pencegahan</th>
+                <th className={`border border-black p-1 text-center ${isLandscape ? 'w-12' : 'w-11'}`}>Risiko</th>
+                <th className={`border border-black p-1 text-center ${isLandscape ? 'w-20' : 'w-14'}`}>Pelaksana</th>
               </tr>
             </thead>
             <tbody>

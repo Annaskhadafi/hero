@@ -667,6 +667,7 @@ export const approvals = pgTable('hero_approvals', {
   fiveRReportId: integer('five_r_report_id'),
   tireJobcardId: integer('tire_jobcard_id'),
   maritalStatusRequestId: integer('marital_status_request_id'),
+  flightRouteRequestId: integer('flight_route_request_id'),
   approverEmail: text('approver_email'),
   activityType: text('activity_type'),
   requestNumber: text('request_number'),
@@ -4595,6 +4596,7 @@ export const hcFlightRouteChangeRequests = pgTable('hero_hc_flight_route_change_
   currentStepOrder: integer('current_step_order').notNull().default(1),
   status: text('status').notNull().default('draft'), // draft, in_progress, approved, rejected
   rejectionReason: text('rejection_reason').notNull().default(''),
+  revertedFromStepOrder: integer('reverted_from_step_order'),
   notes: text('notes').notNull().default(''),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
