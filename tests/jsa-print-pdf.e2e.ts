@@ -29,9 +29,19 @@ test('verify JSA print PDF layout matches official HERO Kop Surat and fits clean
   await expect(screen.getByText(/Verifikasi Departemen HSE/i).first()).toBeVisible();
   await expect(browser.locator('text="TERVERIFIKASI SISTEM"')).toHaveCount(0);
 
-  // 7. Capture Screenshot of Optimized JSA PDF
-  await app.screenshot('jsa-optimized-pdf-layout');
+  // 7. Capture Top Screenshot
+  await app.screenshot('jsa-single-page-top');
 
-  // 8. Agent visual assertion
-  await agent.assert('The JSA document displays the JSA title, form code F.HSE.SFT-014.01|1, checked safety requirements, work steps table without empty rows, and signatures block.', { vision: true });
+  // Scroll down within preview using agent action to inspect signatures & footer
+  await agent.act('scroll down to the bottom of the document to see signatures');
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await app.screenshot('jsa-single-page-bottom-signatures');
+
+  // 8. Assert bottom footer and clean signatures
+  await expect(screen.getByText(/PT\. Chitra Paratama — Health, Safety & Environment Management System/i).first()).toBeVisible();
+  await expect(screen.getByText(/MUCHAMAT ALI PORWANTO/i).first()).toBeVisible();
+  await expect(screen.getByText(/HSE OFFICER SITE/i).first()).toBeVisible();
+
+  // 9. Agent visual assertion on the signature screenshot
+  await agent.assert('The bottom section shows clean signature blocks for Pelaksana and HSE Verifikasi, with no placeholder boxes.', { vision: true });
 });
