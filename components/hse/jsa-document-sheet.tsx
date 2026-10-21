@@ -19,6 +19,7 @@ export interface JsaDocumentData {
     executorDate?: string
     verifierName?: string
     verifierDate?: string
+    verifierUrl?: string
   }> | null
   createdAt?: string | Date | null
   updatedAt?: string | Date | null
@@ -76,6 +77,7 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
     executorDate?: string
     verifierName?: string
     verifierDate?: string
+    verifierUrl?: string
   }>
 
   const creatorName =
@@ -85,6 +87,10 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
 
   const resolvedExecutorSignature = signatures.executorUrl
     ? resolveUploadUrl(signatures.executorUrl)
+    : null
+
+  const resolvedVerifierSignature = signatures.verifierUrl
+    ? resolveUploadUrl(signatures.verifierUrl)
     : null
 
   const formattedDate = formatDateIndo(data.createdAt)
@@ -390,10 +396,17 @@ export function JsaDocumentSheet({ data, className = '' }: JsaDocumentSheetProps
                 Verifikasi Departemen HSE / Pengawas
               </div>
               <div className="h-14 flex items-center justify-center my-1">
-                <div className="border border-black bg-gray-50 px-3 py-1 text-center">
-                  <div className="text-[7pt] font-bold text-black font-mono tracking-wider">[ TERVERIFIKASI SISTEM ]</div>
-                  <div className="text-[6pt] text-gray-600 uppercase font-semibold">Pengawas / HSE Site</div>
-                </div>
+                {resolvedVerifierSignature ? (
+                  <img
+                    src={resolvedVerifierSignature}
+                    alt="TTD Verifikasi HSE"
+                    className="max-h-14 max-w-[140px] object-contain grayscale"
+                  />
+                ) : (
+                  <div className="w-36 border-b border-dotted border-black h-10 flex items-end justify-center pb-1 text-[7pt] text-gray-400 italic">
+                    ( Tanda Tangan )
+                  </div>
+                )}
               </div>
               <div className="text-center pt-1 border-t border-gray-300">
                 <p className="font-bold text-[8pt] text-black uppercase">

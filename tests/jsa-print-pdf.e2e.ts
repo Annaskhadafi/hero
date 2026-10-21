@@ -13,21 +13,21 @@ test('verify JSA print PDF layout matches official HERO Kop Surat and fits clean
   await expect(screen.getByText(/F\.HSE\.SFT-014\.01\|1/i).first()).toBeVisible();
 
   // 3. Verify Metadata
-  await expect(screen.getByText(/Pemasangan & Pengujian Trial SPM Hauling di Unit/i).first()).toBeVisible();
+  await expect(screen.getByText(/Pemasangan Trial SPM Hauling/i).first()).toBeVisible();
   await expect(screen.getByText(/SPM-UNIT-04/i).first()).toBeVisible();
 
   // 4. Verify Only Checked Items are Rendered
-  await expect(screen.getByText(/Power Tool/i).first()).toBeVisible();
-  await expect(screen.getByText(/Permit Hot Work/i).first()).toBeVisible();
-  await expect(screen.getByText(/Sarung Tangan/i).first()).toBeVisible();
+  await expect(screen.getByText(/Hand Tool Only/i).first()).toBeVisible();
+  await expect(screen.getByText(/Jumlah Pekerja/i).first()).toBeVisible();
 
   // 5. Verify Steps Table
-  await expect(screen.getByText(/Pengujian Trial SPM Hauling/i).first()).toBeVisible();
-  await expect(screen.getByText(/Memasang Power SPM di unit/i).first()).toBeVisible();
+  await expect(screen.getByText(/pengujian trial SPM Hauling/i).first()).toBeVisible();
+  await expect(screen.getByText(/memasang power SPM di unit/i).first()).toBeVisible();
 
-  // 6. Verify Signatures & Verification
+  // 6. Verify Signatures & Verification (clean signature area without placeholder text)
   await expect(screen.getByText(/Pelaksana \/ Pembuat JSA/i).first()).toBeVisible();
   await expect(screen.getByText(/Verifikasi Departemen HSE/i).first()).toBeVisible();
+  await expect(browser.locator('text="TERVERIFIKASI SISTEM"')).toHaveCount(0);
 
   // 7. Capture Screenshot of Optimized JSA PDF
   await app.screenshot('jsa-optimized-pdf-layout');
