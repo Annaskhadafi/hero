@@ -140,7 +140,11 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     db
       .select({
         id: heroEmployees.id,
+        siteId: heroEmployees.siteId,
         workLocation: heroEmployees.workLocation,
+        jobTitle: heroEmployees.jobTitle,
+        section: heroEmployees.section,
+        role: heroEmployees.role,
         siteName: sites.name,
         siteLocation: sites.location,
       })
@@ -196,6 +200,9 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
 
   // Count active employees per canonical location from User Management (hero_employees)
   const employeeCountsByLocation: Record<string, number> = {}
+  const serviceCountsByLocation: Record<string, number> = {}
+  const repairCountsByLocation: Record<string, number> = {}
+
   for (const emp of activeEmployees) {
     const rawLoc = emp.workLocation || emp.siteName || emp.siteLocation || ""
     if (!rawLoc) continue
@@ -203,6 +210,23 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     employeeCountsByLocation[canonLoc] = (employeeCountsByLocation[canonLoc] || 0) + 1
     if (emp.workLocation) employeeCountsByLocation[emp.workLocation] = (employeeCountsByLocation[emp.workLocation] || 0) + 1
     if (emp.siteName) employeeCountsByLocation[emp.siteName] = (employeeCountsByLocation[emp.siteName] || 0) + 1
+
+    const jt = (emp.jobTitle || "").toLowerCase()
+    const sec = (emp.section || "").toLowerCase()
+    const isService = jt.includes("serviceman") || jt.includes("service") || sec.includes("service")
+    const isRepair = jt.includes("repairman") || jt.includes("repair") || sec.includes("repair") || sec.includes("retread")
+
+    if (isService) {
+      serviceCountsByLocation[canonLoc] = (serviceCountsByLocation[canonLoc] || 0) + 1
+      if (emp.workLocation) serviceCountsByLocation[emp.workLocation] = (serviceCountsByLocation[emp.workLocation] || 0) + 1
+      if (emp.siteName) serviceCountsByLocation[emp.siteName] = (serviceCountsByLocation[emp.siteName] || 0) + 1
+    }
+
+    if (isRepair) {
+      repairCountsByLocation[canonLoc] = (repairCountsByLocation[canonLoc] || 0) + 1
+      if (emp.workLocation) repairCountsByLocation[emp.workLocation] = (repairCountsByLocation[emp.workLocation] || 0) + 1
+      if (emp.siteName) repairCountsByLocation[emp.siteName] = (repairCountsByLocation[emp.siteName] || 0) + 1
+    }
   }
 
   // Sync employee counts in monthlyManHours and manHours with User Management data
@@ -286,7 +310,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
 
   // Populate safeTarget (always) and initialManHours (only in legacy per-site mode) from safetyManHours table
   for (const mhRow of manHours) {
-    // Skip the global key row — it is handled separately as globalStartData
+    // Skip the global key row â€” it is handled separately as globalStartData
     if (mhRow.workLocation === "__GLOBAL_START_DATA__") continue
 
     const canonName = locationMapping[mhRow.workLocation] || mhRow.workLocation
@@ -460,7 +484,18 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     monthlyManHours,
     siteManHoursSummary,
     globalStartData,
-    masterSites: masterSitesList,
+    masterSites: masterSitesList.map((site) => {
+      const canonName = locationMapping[site.name] || site.name
+      const totalMp = employeeCountsByLocation[canonName] ?? employeeCountsByLocation[site.name] ?? 0
+      const serviceMp = serviceCountsByLocation[canonName] ?? serviceCountsByLocation[site.name] ?? 0
+      const repairMp = repairCountsByLocation[canonName] ?? repairCountsByLocation[site.name] ?? 0
+      return {
+        ...site,
+        totalManpower: totalMp,
+        manpowerService: serviceMp,
+        manpowerRepair: repairMp,
+      }
+    }),
     weeklyActivities,
     inspections,
     inductions,

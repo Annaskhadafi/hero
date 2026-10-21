@@ -4,7 +4,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { AlertOctagon, AlertTriangle, ExternalLink, MapPin, ShieldCheck, Users, Clock, Settings2 } from 'lucide-react'
+import {
+  AlertOctagon,
+  AlertTriangle,
+  Clock,
+  ExternalLink,
+  Map,
+  MapPin,
+  Mountain,
+  Satellite,
+  Settings2,
+  ShieldCheck,
+  Users,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -60,6 +72,10 @@ export type SiteMapData = {
   location?: string | null
   geoLatitude?: string | null
   geoLongitude?: string | null
+  totalManpower?: number
+  manpowerService?: number
+  manpowerRepair?: number
+  totalIncidents?: number
   summary?: {
     nearmiss: number
     propertyDamage: number
@@ -70,6 +86,9 @@ export type SiteMapData = {
     fatality: number
     safetyManHours: number | string
     totalManpower: number
+    manpowerService?: number
+    manpowerRepair?: number
+    totalIncidents?: number
     sickEmployeesCount: number
     lostDaysCount: number
     sickLettersCount: number
@@ -251,13 +270,28 @@ export function SiteSafetyMapInner({
           .filter((s) => s.hasCoords)
           .map((site) => {
             const sum = site.summary
+            const totalMp = site.totalManpower ?? sum?.totalManpower ?? 0
+            const serviceMp = site.manpowerService ?? sum?.manpowerService ?? 0
+            const repairMp = site.manpowerRepair ?? sum?.manpowerRepair ?? 0
+            const totalIncidentsVal =
+              site.totalIncidents ??
+              sum?.totalIncidents ??
+              ((sum?.fatality ?? 0) +
+                (sum?.majorInjury ?? 0) +
+                (sum?.propertyDamage ?? 0) +
+                (sum?.nearmiss ?? 0) +
+                (sum?.environmental ?? 0) +
+                (sum?.firstAid ?? 0) +
+                (sum?.medicalTreatment ?? 0))
+
             const hasSevere = (sum?.fatality ?? 0) > 0 || (sum?.majorInjury ?? 0) > 0
             const hasMinor =
               (sum?.nearmiss ?? 0) > 0 ||
               (sum?.propertyDamage ?? 0) > 0 ||
               (sum?.firstAid ?? 0) > 0 ||
               (sum?.medicalTreatment ?? 0) > 0 ||
-              (sum?.environmental ?? 0) > 0
+              (sum?.environmental ?? 0) > 0 ||
+              totalIncidentsVal > 0
 
             const statusType: 'zero' | 'warning' | 'danger' = hasSevere
               ? 'danger'
@@ -286,8 +320,8 @@ export function SiteSafetyMapInner({
                   </div>
                 </Tooltip>
 
-                <Popup className="safety-map-popup" minWidth={260} maxWidth={320}>
-                  <div className="p-1 space-y-3">
+                <Popup className="safety-map-popup" minWidth={270} maxWidth={320}>
+                  <div className="p-1 space-y-2.5">
                     <div className="border-b pb-2">
                       <div className="flex items-center justify-between gap-2">
                         <h4 className="font-bold text-sm text-slate-900 leading-tight">
@@ -307,7 +341,41 @@ export function SiteSafetyMapInner({
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60">
+                      {/* 1. Total Manpower (Featured Full Width) */}
+                      <div className="col-span-2 rounded-lg bg-blue-50/80 p-2 border border-blue-200/80 flex items-center justify-between shadow-2xs">
+                        <div>
+                          <span className="text-[10px] text-blue-700 uppercase tracking-wider block font-bold">
+                            Total Manpower
+                          </span>
+                          <span className="font-extrabold text-slate-900 text-sm tabular-nums">
+                            {totalMp.toLocaleString('id-ID')} <span className="text-[11px] font-normal text-slate-600">org</span>
+                          </span>
+                        </div>
+                        <Users className="size-4 text-blue-600" />
+                      </div>
+
+                      {/* 2. Manpower Service */}
+                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
+                          Manpower Service
+                        </span>
+                        <span className="font-bold text-slate-900 text-sm tabular-nums">
+                          {serviceMp.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-500">org</span>
+                        </span>
+                      </div>
+
+                      {/* 3. Manpower Repair */}
+                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60 shadow-2xs">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
+                          Manpower Repair
+                        </span>
+                        <span className="font-bold text-slate-900 text-sm tabular-nums">
+                          {repairMp.toLocaleString('id-ID')} <span className="text-[10px] font-normal text-slate-500">org</span>
+                        </span>
+                      </div>
+
+                      {/* 4. Safe Man Hours */}
+                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60 shadow-2xs">
                         <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
                           Safe Man Hours
                         </span>
@@ -315,44 +383,21 @@ export function SiteSafetyMapInner({
                           {Number(sum?.safetyManHours ?? 0).toLocaleString('id-ID')}
                         </span>
                       </div>
-                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60">
-                        <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
-                          Manpower
-                        </span>
-                        <span className="font-bold text-slate-900 text-sm tabular-nums">
-                          {sum?.totalManpower ?? 0} <span className="text-[10px] font-normal">org</span>
-                        </span>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60">
+
+                      {/* 5. Total Insiden */}
+                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60 shadow-2xs">
                         <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
                           Total Insiden
                         </span>
                         <span
                           className={`font-bold text-sm tabular-nums ${
-                            (sum?.fatality ?? 0) +
-                              (sum?.majorInjury ?? 0) +
-                              (sum?.propertyDamage ?? 0) +
-                              (sum?.nearmiss ?? 0) >
-                            0
-                              ? 'text-rose-600'
-                              : 'text-emerald-700'
+                            totalIncidentsVal > 0 ? 'text-rose-600' : 'text-emerald-700'
                           }`}
                         >
-                          {(sum?.fatality ?? 0) +
-                            (sum?.majorInjury ?? 0) +
-                            (sum?.propertyDamage ?? 0) +
-                            (sum?.nearmiss ?? 0) +
-                            (sum?.environmental ?? 0) +
-                            (sum?.firstAid ?? 0) +
-                            (sum?.medicalTreatment ?? 0)}
-                        </span>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 p-2 border border-slate-200/60">
-                        <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-medium">
-                          Pekerja Sakit
-                        </span>
-                        <span className="font-bold text-slate-900 text-sm tabular-nums">
-                          {sum?.sickEmployeesCount ?? 0} <span className="text-[10px] font-normal">org</span>
+                          {totalIncidentsVal.toLocaleString('id-ID')}{' '}
+                          <span className="text-[10px] font-normal text-slate-500">
+                            {totalIncidentsVal > 0 ? 'kasus' : ''}
+                          </span>
                         </span>
                       </div>
                     </div>
@@ -381,33 +426,36 @@ export function SiteSafetyMapInner({
             size="sm"
             variant={mapLayer === 'osm' ? 'default' : 'ghost'}
             onClick={() => setMapLayer('osm')}
-            className={`h-7 px-2.5 text-xs font-semibold ${
+            className={`h-7 px-2.5 text-xs font-semibold gap-1.5 ${
               mapLayer === 'osm' ? 'bg-[#1e40af] text-white' : 'text-slate-700 hover:text-slate-900'
             }`}
           >
-            🗺️ Standar
+            <Map className="size-3.5" />
+            Standar
           </Button>
           <Button
             type="button"
             size="sm"
             variant={mapLayer === 'satelit' ? 'default' : 'ghost'}
             onClick={() => setMapLayer('satelit')}
-            className={`h-7 px-2.5 text-xs font-semibold ${
+            className={`h-7 px-2.5 text-xs font-semibold gap-1.5 ${
               mapLayer === 'satelit' ? 'bg-[#1e40af] text-white' : 'text-slate-700 hover:text-slate-900'
             }`}
           >
-            🛰️ Satelit
+            <Satellite className="size-3.5" />
+            Satelit
           </Button>
           <Button
             type="button"
             size="sm"
             variant={mapLayer === 'topo' ? 'default' : 'ghost'}
             onClick={() => setMapLayer('topo')}
-            className={`h-7 px-2.5 text-xs font-semibold ${
+            className={`h-7 px-2.5 text-xs font-semibold gap-1.5 ${
               mapLayer === 'topo' ? 'bg-[#1e40af] text-white' : 'text-slate-700 hover:text-slate-900'
             }`}
           >
-            ⛰️ Topo
+            <Mountain className="size-3.5" />
+            Topo
           </Button>
         </div>
 
