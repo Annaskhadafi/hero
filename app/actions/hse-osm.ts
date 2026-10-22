@@ -23,6 +23,7 @@ import {
 import { auth } from '@/lib/auth'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import type { HseOsmFindingStatus, HseOsmRiskLevel, HseOsmFindingCondition } from '@/lib/hse-osm-constants'
+import { sendHseOsmFindingNotifications, resolvePicArea } from '@/lib/hse-osm-notifications'
 
 export type OsmTeamMemberInput = {
   employeeId?: number | null
@@ -80,6 +81,7 @@ export type OsmFilterOptions = {
   dateTo?: string | null
   limit?: number
   offset?: number
+  reportTab?: 'all' | 'created' | 'received' | 'assigned' | null
 }
 
 async function getActorEmployee() {
@@ -268,7 +270,8 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
 
 export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
   try {
-    const { siteId, status, focusItemId, search, dateFrom, dateTo, limit = 50, offset = 0 } = options
+    const actor = await getActorEmployee()
+    const { siteId, status, focusItemId, search, dateFrom, dateTo, limit = 50, offset = 0, reportTab } = options
 
     const conditions = [isNull(heroHseOsmSessions.deletedAt)]
 
@@ -386,8 +389,43 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
         ticketStatus = 'CLOSED'
       }
 
+      const isLocked = session.status === 'SUBMITTED' || session.status === 'COMPLETED'
+      const progressPercent = totalFindings > 0 ? Math.round((closedCount / totalFindings) * 1000) / 10 : (isLocked ? 100 : 0)
+
+      const actorEmailNorm = (actor?.sessionUser?.email || '').toLowerCase()
+      const actorBadge = actor?.employee?.employeeSn || ''
+      const actorId = actor?.employee?.id
+      const actorSiteId = actor?.employee?.siteId
+      const picInfo = resolvePicArea(session.locationArea)
+
+      const isCreatedByMe = Boolean(
+        (session.createdBy && actorEmailNorm && session.createdBy.toLowerCase() === actorEmailNorm) ||
+        (session.leadBadgeNumber && actorBadge && session.leadBadgeNumber === actorBadge) ||
+        (session.leadEmployeeId && actorId && session.leadEmployeeId === actorId)
+      )
+
+      const isReceivedByArea = Boolean(
+        !isCreatedByMe && (
+          (session.siteId && actorSiteId && session.siteId === actorSiteId) ||
+          (picInfo.picEmail.toLowerCase() === actorEmailNorm)
+        )
+      )
+
+      const isAssigned = Boolean(
+        (openCount > 0 || processedCount > 0) && (
+          isReceivedByArea ||
+          picInfo.picEmail.toLowerCase() === actorEmailNorm ||
+          isCreatedByMe
+        )
+      )
+
       return {
         ...session,
+        isLocked,
+        progressPercent,
+        isCreatedByMe,
+        isReceivedByArea,
+        isAssigned,
         ticketStatus,
         findingsSummary: {
           total: totalFindings,
@@ -402,13 +440,28 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       }
     })
 
-    let filteredData = sessionData
-    if (status && status !== 'ALL') {
-      const target = status.toUpperCase().replace('_', ' ')
-      filteredData = sessionData.filter((s) => s.ticketStatus === target || s.status === status)
+    const tabCounts = {
+      created: sessionData.filter((s) => s.isCreatedByMe).length,
+      received: sessionData.filter((s) => s.isReceivedByArea).length,
+      assigned: sessionData.filter((s) => s.isAssigned).length,
+      total: sessionData.length,
     }
 
-    return { success: true, data: filteredData }
+    let filteredData = sessionData
+    if (reportTab === 'created') {
+      filteredData = sessionData.filter((s) => s.isCreatedByMe)
+    } else if (reportTab === 'received') {
+      filteredData = sessionData.filter((s) => s.isReceivedByArea)
+    } else if (reportTab === 'assigned') {
+      filteredData = sessionData.filter((s) => s.isAssigned)
+    }
+
+    if (status && status !== 'ALL') {
+      const target = status.toUpperCase().replace('_', ' ')
+      filteredData = filteredData.filter((s) => s.ticketStatus === target || s.status === status)
+    }
+
+    return { success: true, data: filteredData, tabCounts }
   } catch (error: any) {
     console.error('getHseOsmSessions error:', error)
     return { success: false, error: error?.message || 'Gagal mengambil data sesi OSM' }
@@ -495,6 +548,7 @@ export async function getHseOsmSessionById(id: number) {
       success: true,
       data: {
         ...session,
+        isLocked: session.status === 'SUBMITTED' || session.status === 'COMPLETED',
         teamMembers,
         findings,
       },
@@ -641,6 +695,10 @@ export async function createHseOsmFinding(
       return { success: false, error: 'Sesi OSM tidak ditemukan' }
     }
 
+    if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
+      return { success: false, error: 'Laporan OSM telah disubmit dan terkunci. Tidak dapat menambah temuan baru.' }
+    }
+
     const findingNumber = await generateFindingNumber()
     const now = new Date()
     const currentDate = now.toISOString().split('T')[0]
@@ -716,6 +774,15 @@ export async function submitHseOsmAction(
 
     if (!finding) {
       return { success: false, error: 'Temuan tidak ditemukan' }
+    }
+
+    const [sessionRow] = await db.select({ status: heroHseOsmSessions.status }).from(heroHseOsmSessions).where(eq(heroHseOsmSessions.id, finding.sessionId)).limit(1)
+    if (sessionRow?.status === 'SUBMITTED' || sessionRow?.status === 'COMPLETED') {
+      return { success: false, error: 'Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi.' }
+    }
+
+    if (finding.status !== 'OPEN') {
+      return { success: false, error: 'Tindak lanjut hanya dapat dilakukan pada temuan yang berstatus OPEN.' }
     }
 
     const [updatedFinding] = await db
@@ -904,3 +971,68 @@ export async function updateHseOsmFindingPhotos(
   }
 }
 
+
+export async function submitHseOsmSession(sessionId: number) {
+  try {
+    const actor = await getActorEmployee()
+    const [session] = await db
+      .select()
+      .from(heroHseOsmSessions)
+      .where(and(eq(heroHseOsmSessions.id, sessionId), isNull(heroHseOsmSessions.deletedAt)))
+      .limit(1)
+
+    if (!session) {
+      return { success: false, error: 'Sesi OSM tidak ditemukan.' }
+    }
+
+    if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
+      return { success: false, error: 'Sesi OSM sudah pernah disubmit dan terkunci.' }
+    }
+
+    const findings = await db
+      .select()
+      .from(heroHseOsmFindings)
+      .where(and(eq(heroHseOsmFindings.sessionId, sessionId), isNull(heroHseOsmFindings.deletedAt)))
+
+    if (findings.length < 3) {
+      return {
+        success: false,
+        error: `Minimal 3 hasil inspeksi baru agar dapat di-Submit (saat ini baru ${findings.length} temuan).`,
+      }
+    }
+
+    const now = new Date()
+    const [updatedSession] = await db
+      .update(heroHseOsmSessions)
+      .set({
+        status: 'SUBMITTED',
+        updatedAt: now,
+      })
+      .where(eq(heroHseOsmSessions.id, sessionId))
+      .returning()
+
+    // Kirim notifikasi email ke PIC Area & CC sesuai tingkat risiko (Slide 7 & 8)
+    const emailResult = await sendHseOsmFindingNotifications(sessionId)
+
+    // Notify bell
+    if (actor?.sessionUser?.email) {
+      await notifyWorkflowBellRecipients({
+        recipientEmails: [actor.sessionUser.email],
+        eventType: 'HSE_OSM_SESSION_SUBMITTED',
+        category: 'hse_alerts',
+        title: 'Laporan OSM Berhasil Disubmit',
+        body: `Laporan OSM ${session.sessionNumber} (${session.locationArea}) berhasil disubmit dan terkunci dengan ${findings.length} temuan.`,
+        url: '/mobile/hse/osm',
+      }).catch(() => null)
+    }
+
+    safeRevalidatePath('/dashboard/hse/osm')
+    safeRevalidatePath('/mobile/hse/osm')
+    safeRevalidatePath('/mobile/hse')
+
+    return { success: true, data: updatedSession, emailNotifications: emailResult }
+  } catch (error: any) {
+    console.error('submitHseOsmSession error:', error)
+    return { success: false, error: error?.message || 'Gagal melakukan submit laporan OSM.' }
+  }
+}

@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Activity,
   ArrowLeft,
   Building2,
   Calendar,
   Camera,
   CheckCircle2,
   ChevronRight,
+  ClipboardList,
   Clock,
   Compass,
   Crosshair,
@@ -23,12 +25,15 @@ import {
   Image as ImageIcon,
   ImageOff,
   Loader2,
+  Lock,
   MapPin,
   Maximize2,
   Plus,
   RefreshCw,
   Search,
+  Send,
   ShieldAlert,
+  SlidersHorizontal,
   ShieldCheck,
   Trash2,
   UploadCloud,
@@ -57,6 +62,7 @@ import {
   getHseOsmSessionById,
   getHseOsmSessions,
   submitHseOsmAction,
+  submitHseOsmSession,
   syncHseOsmOfflineBatch,
   updateHseOsmFindingPhotos,
   verifyHseOsmFinding,
@@ -81,7 +87,43 @@ type MobileHseOsmClientProps = {
   initialData: any;
 };
 
-type ViewMode = "hub" | "monitoring_list" | "create_wizard" | "session_detail";
+type ViewMode = "hub" | "monitoring" | "reports" | "monitoring_list" | "create_wizard" | "session_detail";
+
+
+function CircularProgressRing({ percent, size = 48, strokeWidth = 4 }: { percent: number; size?: number; strokeWidth?: number }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (Math.min(100, Math.max(0, percent)) / 100) * circumference;
+
+  return (
+    <div className="relative inline-flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+      <svg className="rotate-[-90deg]" width={size} height={size}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          className="stroke-slate-100 dark:stroke-slate-800"
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          className="stroke-blue-600 dark:stroke-blue-500 transition-all duration-500 ease-in-out"
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          fill="transparent"
+        />
+      </svg>
+      <span className="absolute text-[10px] font-bold text-foreground">
+        {percent.toFixed(1)}%
+      </span>
+    </div>
+  );
+}
 
 export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const router = useRouter();
@@ -91,6 +133,10 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [reportActiveTab, setReportActiveTab] = useState<"created" | "received" | "assigned">("created");
+  const [tabCounts, setTabCounts] = useState({ created: 0, received: 0, assigned: 0, total: 0 });
+  const [isSubmittingInspection, setIsSubmittingInspection] = useState(false);
+
 
   // Live GPS state
   const [liveGeo, setLiveGeo] = useState<{ lat: string; lng: string; acc: string; message: string }>({
@@ -396,6 +442,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
       const res = await getHseOsmSessions({ limit: 50 });
       if (res.success && res.data) {
         setSessions(res.data);
+        if ((res as any).tabCounts) setTabCounts((res as any).tabCounts);
       }
       const resMetrics = await getHseOsmDashboardData();
       if (resMetrics.success && resMetrics.metrics) {
@@ -409,7 +456,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   }
 
   useEffect(() => {
-    if (currentView === "monitoring_list" || currentView === "hub") {
+    if (currentView === "monitoring_list" || currentView === "reports" || currentView === "monitoring" || currentView === "hub") {
       loadSessions();
     }
   }, [currentView]);
@@ -688,11 +735,43 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
 
       alert("Sesi On the Spot Monitoring berhasil dibuat!");
       await loadSessions();
-      setCurrentView("monitoring_list");
+      await handleOpenDetail(res.data.id);
     } catch (err: any) {
       setWizardError(err?.message || "Terjadi kesalahan saat submit.");
     } finally {
       setIsSubmittingWizard(false);
+    }
+  }
+
+
+  async function handleSubmitInspection() {
+    if (!activeSessionDetail) return;
+    const count = activeSessionDetail.findings?.length || 0;
+    if (count < 3) {
+      alert(`Minimal 3 hasil inspeksi baru agar dapat di-Submit. Saat ini baru terdapat ${count} temuan.`);
+      return;
+    }
+
+    const confirmed = confirm(
+      "Apakah Anda yakin ingin melakukan Submit laporan inspeksi ini?\n\nSetelah Submit, laporan akan TERKUNCI dan tidak dapat diedit lagi. Notifikasi email akan otomatis dikirim ke PIC Area & tembusan."
+    );
+    if (!confirmed) return;
+
+    setIsSubmittingInspection(true);
+    try {
+      const res = await submitHseOsmSession(activeSessionDetail.id);
+      if (!res.success) {
+        alert(res.error || "Gagal melakukan submit laporan.");
+        return;
+      }
+
+      alert("Laporan OSM berhasil disubmit! Laporan telah terkunci dan notifikasi email berhasil diproses.");
+      await handleOpenDetail(activeSessionDetail.id);
+      await loadSessions();
+    } catch (err: any) {
+      alert(`Terjadi kesalahan: ${err?.message || "Gagal submit laporan."}`);
+    } finally {
+      setIsSubmittingInspection(false);
     }
   }
 
@@ -875,9 +954,9 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            {/* Action 1: Monitoring */}
+            {/* Action 1: Monitoring (Slide 2) */}
             <button
-              onClick={() => setCurrentView("monitoring_list")}
+              onClick={() => setCurrentView("monitoring")}
               className="flex flex-col items-center justify-center p-3.5 rounded-xl border bg-white dark:bg-slate-900 shadow-xs hover:border-amber-500 active:scale-95 transition-all text-center gap-2"
             >
               <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shadow-2xs">
@@ -886,9 +965,12 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
               <span className="text-xs font-semibold text-foreground">Monitoring</span>
             </button>
 
-            {/* Action 2: Report */}
+            {/* Action 2: Report -> OSM Reports (Slide 3) */}
             <button
-              onClick={() => setCurrentView("monitoring_list")}
+              onClick={() => {
+                setReportActiveTab("created");
+                setCurrentView("reports");
+              }}
               className="flex flex-col items-center justify-center p-3.5 rounded-xl border bg-white dark:bg-slate-900 shadow-xs hover:border-blue-500 active:scale-95 transition-all text-center gap-2"
             >
               <div className="size-10 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center shadow-2xs">
@@ -969,10 +1051,10 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
         </div>
 
         {/* Floating Action Button "+ New OSM" */}
-        <div className="fixed bottom-6 right-6 z-30">
+        <div className="fixed bottom-20 inset-x-0 max-w-[430px] mx-auto pointer-events-none px-4 flex justify-end z-40">
           <Button
             onClick={startNewOsm}
-            className="size-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl flex items-center justify-center p-0 active:scale-95 transition-transform"
+            className="pointer-events-auto size-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl flex items-center justify-center p-0 active:scale-95 transition-transform"
           >
             <Plus className="size-7" />
           </Button>
@@ -982,9 +1064,66 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   }
 
   // ==========================================
-  // VIEW 2: DAFTAR TUGAS & NAVIGASI (Slide 6)
+  // VIEW 2: MENU MONITORING (Slide 2 Revisi)
+  // Khusus untuk fitur membuat OSM baru (+ New)
   // ==========================================
-  if (currentView === "monitoring_list") {
+  if (currentView === "monitoring") {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 flex flex-col">
+        {/* Navigation Header */}
+        <div className="bg-white dark:bg-slate-900 border-b p-4 flex items-center justify-between sticky top-0 z-20">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setCurrentView("hub")}
+              className="size-8 -ml-1 text-muted-foreground"
+            >
+              <ArrowLeft className="size-4" />
+            </Button>
+            <h1 className="text-base font-bold text-foreground">Monitoring</h1>
+          </div>
+        </div>
+
+        {/* Empty State Card (Slide 2: Khusus untuk membuat OSM baru) */}
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-full max-w-xs bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center space-y-4">
+            <div className="size-20 rounded-full bg-indigo-50/80 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Activity className="size-9" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-sm font-bold text-foreground">Tidak ada monitoring</h2>
+              <p className="text-xs text-muted-foreground">Tap &quot;New&quot; untuk membuat monitoring baru</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Floating Button "+ New" di kanan bawah (Slide 2) */}
+        <div className="fixed bottom-20 inset-x-0 max-w-[430px] mx-auto pointer-events-none px-4 flex justify-end z-40">
+          <Button
+            onClick={startNewOsm}
+            className="pointer-events-auto h-12 px-5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xl flex items-center gap-2 active:scale-95 transition-transform"
+          >
+            <Plus className="size-5" />
+            <span className="text-sm">New</span>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 3: OSM REPORTS (Slide 3 & 4 Revisi)
+  // Menu Report diubah menjadi OSM Reports, +New dihilangkan, 3 pilihan data: Created, Received, Assigned
+  // ==========================================
+  if (currentView === "reports" || currentView === "monitoring_list") {
+    const filteredReportSessions = sessions.filter((s) => {
+      if (reportActiveTab === "created") return s.isCreatedByMe ?? true;
+      if (reportActiveTab === "received") return s.isReceivedByArea ?? false;
+      if (reportActiveTab === "assigned") return s.isAssigned ?? (s.findingsSummary?.open > 0 || s.findingsSummary?.processed > 0);
+      return true;
+    });
+
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
         {/* Navigation Header */}
@@ -998,97 +1137,151 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             >
               <ArrowLeft className="size-4" />
             </Button>
-            <h1 className="text-base font-bold text-foreground">Monitoring OSM</h1>
+            <h1 className="text-base font-bold text-foreground">OSM Reports</h1>
           </div>
+          {/* Filter Icon button (Slide 3 kanan) */}
           <Button
-            size="sm"
-            onClick={startNewOsm}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8 gap-1 rounded-full px-3"
+            variant="ghost"
+            size="icon"
+            className="size-8 text-muted-foreground hover:text-foreground"
           >
-            <Plus className="size-3.5" /> New
+            <SlidersHorizontal className="size-4" />
           </Button>
         </div>
 
+        {/* 3 Tab Pilihan Data (Slide 3 & 4) */}
+        <div className="p-4 pb-2">
+          <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setReportActiveTab("created")}
+              className={`py-2 px-1 rounded-lg text-xs font-bold transition-all text-center ${
+                reportActiveTab === "created"
+                  ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Created {tabCounts.created > 0 ? tabCounts.created : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportActiveTab("received")}
+              className={`py-2 px-1 rounded-lg text-xs font-bold transition-all text-center ${
+                reportActiveTab === "received"
+                  ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Received {tabCounts.received > 0 ? tabCounts.received : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportActiveTab("assigned")}
+              className={`py-2 px-1 rounded-lg text-xs font-bold transition-all text-center ${
+                reportActiveTab === "assigned"
+                  ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Assigned {tabCounts.assigned > 0 ? tabCounts.assigned : ""}
+            </button>
+          </div>
+
+          {/* Deskripsi Tab Aktif */}
+          <div className="px-1 pt-2 pb-1 text-[11px] text-muted-foreground">
+            {reportActiveTab === "created" && "Data hasil inspeksi yang dilakukan oleh pemilik akun tersebut."}
+            {reportActiveTab === "received" && "Data hasil inspeksi yang dilakukan orang lain dan secara database menjadi tanggung jawab area tersebut."}
+            {reportActiveTab === "assigned" && "Fitur tindak lanjut temuan yang telah ditentukan PIC-nya."}
+          </div>
+        </div>
+
         {/* Sessions List */}
-        <div className="p-4 space-y-3">
+        <div className="p-4 pt-1 space-y-3">
           {isLoadingSessions ? (
             <div className="py-12 flex flex-col items-center justify-center text-muted-foreground text-xs gap-2">
-              <Loader2 className="size-6 animate-spin text-amber-600" />
-              <span>Memuat data monitoring...</span>
+              <Loader2 className="size-6 animate-spin text-indigo-600" />
+              <span>Memuat laporan OSM...</span>
             </div>
-          ) : sessions.length === 0 ? (
-            <div className="py-16 text-center text-muted-foreground text-xs rounded-xl border border-dashed bg-white dark:bg-slate-900 p-6 space-y-3">
-              <HardHat className="size-8 mx-auto text-slate-400" />
-              <p>Belum ada sesi monitoring On the Spot.</p>
-              <Button onClick={startNewOsm} size="sm" className="text-xs bg-blue-600 text-white">
-                Buat Sesi Baru Sekarang
-              </Button>
+          ) : filteredReportSessions.length === 0 ? (
+            <div className="py-16 text-center text-muted-foreground text-xs rounded-xl border border-dashed bg-white dark:bg-slate-900 p-6 space-y-2">
+              <ClipboardList className="size-8 mx-auto text-slate-400" />
+              <p className="font-semibold text-foreground">Tidak ada laporan pada tab ini.</p>
+              <p className="text-[11px]">
+                {reportActiveTab === "created" && "Anda belum pernah membuat laporan inspeksi OSM."}
+                {reportActiveTab === "received" && "Belum ada laporan inspeksi dari personil lain untuk area tanggung jawab Anda."}
+                {reportActiveTab === "assigned" && "Tidak ada temuan yang sedang ditugaskan kepada Anda untuk tindak lanjut."}
+              </p>
             </div>
           ) : (
-            sessions.map((item) => {
+            filteredReportSessions.map((item) => {
               const summary = item.findingsSummary || { total: 0, open: 0, closed: 0 };
+              const progress = item.progressPercent ?? (summary.total > 0 ? (summary.closed / summary.total) * 100 : 0);
+
               return (
                 <div
                   key={item.id}
                   onClick={() => handleOpenDetail(item.id)}
-                  className="rounded-xl border bg-white dark:bg-slate-900 p-4 space-y-2.5 shadow-xs active:scale-[0.99] transition-all cursor-pointer"
+                  className="rounded-2xl border bg-white dark:bg-slate-900 p-4 space-y-3 shadow-xs active:scale-[0.99] transition-all cursor-pointer relative"
                 >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-foreground">{item.inspectionDate}</span>
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      {item.sessionNumber}
-                    </span>
-                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                            item.ticketStatus === "PROCESSED" || item.findingsSummary?.processed > 0
+                              ? "bg-amber-500 text-white"
+                              : item.ticketStatus === "OPEN" || item.findingsSummary?.open > 0
+                              ? "bg-red-600 text-white"
+                              : item.ticketStatus === "CLOSED"
+                              ? "bg-emerald-600 text-white"
+                              : "bg-slate-600 text-white"
+                          }`}
+                        >
+                          {item.findingsSummary?.processed > 0
+                            ? "PROCESSED"
+                            : item.findingsSummary?.open > 0
+                            ? "OPEN"
+                            : item.ticketStatus || "CLOSED"}
+                        </span>
+                        {item.isLocked && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                            <Lock className="size-2.5" /> Terkunci
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-sm font-bold text-foreground truncate">
+                        {item.sessionNumber}
+                      </h3>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {item.locationArea} {item.locationDetail ? `• ${item.locationDetail}` : ""}
+                      </p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                        {item.leadCompany || "PT Chitra Paratama"}
+                      </p>
+                    </div>
 
-                  <div className="space-y-0.5">
-                    <h3 className="text-sm font-semibold text-foreground">{item.locationArea}</h3>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                      {item.focusItemName}
-                    </p>
+                    {/* Circular Progress Gauge (Slide 3 kanan) */}
+                    <CircularProgressRing percent={progress} size={52} strokeWidth={4} />
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-medium text-muted-foreground">
-                        {summary.total} Temuan
-                      </span>
-                      {summary.open > 0 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300">
-                          {summary.open} Open
-                        </span>
-                      )}
-                      {summary.closed > 0 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                          {summary.closed} Closed
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1 text-blue-600 font-medium text-xs">
-                      <span>Detail</span>
-                      <ChevronRight className="size-3.5" />
-                    </div>
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                      Finding {summary.total}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {item.inspectionDate}
+                    </span>
                   </div>
                 </div>
               );
             })
           )}
         </div>
-
-        {/* FAB */}
-        <div className="fixed bottom-6 right-6 z-30">
-          <Button
-            onClick={startNewOsm}
-            className="size-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl flex items-center justify-center p-0 active:scale-95 transition-transform"
-          >
-            <Plus className="size-7" />
-          </Button>
-        </div>
       </div>
     );
   }
 
-  // ========================================================
+    // ========================================================
   // VIEW 3: WIZARD FORM 3-TAHAP PEMBUATAN SESI (Slide 4, 5, 7)
   // ========================================================
   if (currentView === "create_wizard") {
@@ -2179,7 +2372,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setCurrentView("monitoring_list")}
+              onClick={() => setCurrentView("reports")}
               className="size-8 -ml-1 text-muted-foreground shrink-0"
             >
               <ArrowLeft className="size-4" />
@@ -2190,6 +2383,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {!s.isLocked && (
             <Button
               size="sm"
               onClick={() => {
@@ -2208,6 +2402,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
               <Plus className="size-3.5" />
               <span>+ Temuan</span>
             </Button>
+            )}
             <Button
               asChild
               variant="outline"
@@ -2288,6 +2483,62 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             ) : null}
           </div>
 
+
+          {/* Submit Button & Lock Banner (Slide 5 & 6 Revisi) */}
+          {s.isLocked ? (
+            <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-900/60 flex items-start gap-3">
+              <div className="size-8 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-300 shrink-0">
+                <Lock className="size-4" />
+              </div>
+              <div className="text-xs space-y-0.5">
+                <p className="font-bold text-foreground">Laporan Terkunci (Telah Disubmit)</p>
+                <p className="text-muted-foreground text-[11px] leading-relaxed">
+                  Setelah Submit, laporan terkunci dan tidak dapat diedit lagi. Hanya tindak lanjut perbaikan yang masih bisa dilakukan pada temuan berstatus <strong>OPEN</strong>.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/30 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Send className="size-4 text-blue-600" />
+                  <span className="font-bold text-blue-950 dark:text-blue-200">Submit Hasil Inspeksi</span>
+                </div>
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  (s.findings?.length || 0) >= 3
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                }`}>
+                  {s.findings?.length || 0} / 3 Temuan Baru
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Aturan: minimal <strong>3 hasil inspeksi baru</strong> agar dapat melakukan submit laporan. Setelah di-Submit, laporan terkunci dan notifikasi email terkirim otomatis ke PIC Area.
+              </p>
+              <Button
+                onClick={handleSubmitInspection}
+                disabled={isSubmittingInspection}
+                className={`w-full text-xs h-9 font-bold gap-2 rounded-lg transition-all ${
+                  (s.findings?.length || 0) >= 3
+                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-xs cursor-pointer"
+                    : "bg-slate-200 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
+                }`}
+              >
+                {isSubmittingInspection ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Memproses Submit Laporan...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-3.5" />
+                    <span>Submit Laporan Sekarang</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
           {/* Findings List */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -2295,6 +2546,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 <AlertTriangle className="size-3.5 text-amber-600" />
                 Daftar Temuan ({s.findings?.length || 0})
               </div>
+              {!s.isLocked && (
               <Button
                 size="sm"
                 onClick={() => {
@@ -2313,6 +2565,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 <Plus className="size-3" />
                 Tambah Temuan
               </Button>
+              )}
             </div>
 
             {(!s.findings || s.findings.length === 0) && (
@@ -2373,6 +2626,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                         <span className="size-1.5 rounded-full bg-rose-500" />
                         Foto Kondisi Temuan (Before)
                       </span>
+                      {!s.isLocked && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -2386,6 +2640,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                         <Edit3 className="size-3" />
                         Kelola Foto
                       </Button>
+                      )}
                     </div>
 
                     {f.photoUrls && f.photoUrls.length > 0 ? (
