@@ -2999,7 +2999,6 @@ export function MobileDailyActivityForm({
     const keyToUse = instanceKey || `${rawId}__${index}`
 
     if (selfInputEntries[keyToUse]) return selfInputEntries[keyToUse]
-    if (selfInputEntries[`item_${index}`]) return selfInputEntries[`item_${index}`]
 
     if (library.libraryActivityId != null) {
       const libActId = `${library.libraryActivityId}`
@@ -3018,10 +3017,16 @@ export function MobileDailyActivityForm({
       }
     }
 
+    if (selfInputEntries[`item_${index}`]) {
+      const candidate = selfInputEntries[`item_${index}`]
+      if (!candidate.id || candidate.id === (library as any).id || (library.libraryActivityId != null && candidate.id === library.libraryActivityId)) {
+        return candidate
+      }
+    }
+
     for (const [key, val] of Object.entries(selfInputEntries)) {
       if (key === keyToUse) return val
       if (key === rawId) return val
-      if (key === `item_${index}`) return val
       if (library.libraryActivityId != null && key === `${library.libraryActivityId}`) return val
       if (rawId.includes('_') && rawId.endsWith(`_${key}`)) return val
       if (key.includes('_') && key.endsWith(`_${rawId}`)) return val
@@ -3030,9 +3035,6 @@ export function MobileDailyActivityForm({
     const entriesList = Object.values(selfInputEntries)
     if (selectedLibraries.length === 1 && entriesList.length === 1) {
       return entriesList[0]
-    }
-    if (entriesList[index]?.equipmentNo || entriesList[index]?.notes || entriesList[index]?.previewUrls?.length) {
-      return entriesList[index]
     }
 
     return buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
@@ -3644,15 +3646,36 @@ export function MobileDailyActivityForm({
       ]
     }
 
+    const claimedDraftItemIds = new Set<number>()
     return Promise.all(
       selectedLibraries.map(async (library, index) => {
         const libraryId = `${library.id}`
         const instanceKey = `${libraryId}__${index}`
         const entry = resolveSelfInputEntry(library, index, instanceKey)
-        const matchingSessionItem =
-          (entry.id && (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))) ||
-          rawItems?.[index] ||
-          initialSessionData?.sessionItems?.[index]
+
+        const validLibraryId =
+          typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
+            ? library.libraryActivityId
+            : availableLibrary.some((lib) => String(lib.id) === libraryId)
+              ? Number(library.id)
+              : Number(String(library.id).split('_').pop()) || null
+
+        let matchingSessionItem: any = null
+        if (entry.id && typeof entry.id === 'number' && entry.id > 0 && !claimedDraftItemIds.has(entry.id)) {
+          const found = (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))
+          if (found) {
+            matchingSessionItem = found
+            claimedDraftItemIds.add(found.id)
+          }
+        }
+        if (!matchingSessionItem && validLibraryId != null) {
+          const found = (rawItems.find((it: any) => it.libraryActivityId === validLibraryId && !claimedDraftItemIds.has(it.id)) ||
+            initialSessionData?.sessionItems?.find((it: any) => it.libraryActivityId === validLibraryId && !claimedDraftItemIds.has(it.id)))
+          if (found) {
+            matchingSessionItem = found
+            claimedDraftItemIds.add(found.id)
+          }
+        }
         const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
         const effectiveUrls =
           entry.previewUrls && entry.previewUrls.length > 0
@@ -3715,16 +3738,38 @@ export function MobileDailyActivityForm({
       let itemsToSubmit: any[] = []
 
       if (selectedLibraries.length > 0) {
+        const claimedSubmitItemIds = new Set<number>()
         itemsToSubmit = (
           await Promise.all(
             selectedLibraries.map(async (library, index) => {
               const libraryId = `${library.id}`
               const instanceKey = `${libraryId}__${index}`
               const entry = resolveSelfInputEntry(library, index, instanceKey)
-              const matchingSessionItem =
-                (entry.id && (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))) ||
-                rawItems?.[index] ||
-                initialSessionData?.sessionItems?.[index]
+
+              const validLibraryId =
+                typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
+                  ? library.libraryActivityId
+                  : availableLibrary.some((lib) => String(lib.id) === libraryId)
+                    ? Number(library.id)
+                    : Number(String(library.id).split('_').pop()) || null
+
+              let matchingSessionItem: any = null
+              if (entry.id && typeof entry.id === 'number' && entry.id > 0 && !claimedSubmitItemIds.has(entry.id)) {
+                const found = (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))
+                if (found) {
+                  matchingSessionItem = found
+                  claimedSubmitItemIds.add(found.id)
+                }
+              }
+              if (!matchingSessionItem && validLibraryId != null) {
+                const found = (rawItems.find((it: any) => it.libraryActivityId === validLibraryId && !claimedSubmitItemIds.has(it.id)) ||
+                  initialSessionData?.sessionItems?.find((it: any) => it.libraryActivityId === validLibraryId && !claimedSubmitItemIds.has(it.id)))
+                if (found) {
+                  matchingSessionItem = found
+                  claimedSubmitItemIds.add(found.id)
+                }
+              }
+
               const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
               const effectiveUrls =
                 entry.previewUrls && entry.previewUrls.length > 0
@@ -3737,15 +3782,6 @@ export function MobileDailyActivityForm({
                 entry.restoredPhotoPayload,
                 effectiveUrls
               )
-
-              const validLibraryId =
-                matchingSessionItem?.libraryActivityId
-                  ? Number(matchingSessionItem.libraryActivityId)
-                  : typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
-                    ? library.libraryActivityId
-                    : availableLibrary.some((lib) => String(lib.id) === libraryId)
-                      ? Number(library.id)
-                      : Number(String(library.id).split('_').pop()) || null
 
               const u = (entry.equipmentNo || '').trim()
 

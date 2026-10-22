@@ -17,6 +17,7 @@ export type PdfSignatureNames = {
   useExternalOnly?: boolean
   omitExternal?: boolean
   includeExternal?: boolean
+  isPjo?: boolean
 }
 
 export async function embedCustomLogo(

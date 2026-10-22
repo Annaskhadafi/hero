@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { z } from 'zod'
@@ -239,6 +239,44 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
 
   if (!leaderName) {
     leaderName = pjoName || 'Leader / PJO'
+  }
+
+  // Jika yang mengajukan adalah PJO, approver tahap 2 langsung ke Leadernya PJO (bukan PJO itu sendiri)
+  const isRequesterPjo = Boolean(
+    requester && (
+      (requester.jobTitle && requester.jobTitle.toLowerCase().includes('pjo')) ||
+      (requester.role && requester.role.toLowerCase().includes('pjo')) ||
+      (requester.name && (requester.name.toLowerCase().includes('irwan adit') || requester.name.toLowerCase().includes('irwan aditya'))) ||
+      (pjoEmployeeId && requester.id === pjoEmployeeId)
+    )
+  )
+
+  if (isRequesterPjo || (requester?.id && leaderEmployeeId === requester.id)) {
+    if (directManager && directManager.id !== requester?.id) {
+      leaderEmployeeId = directManager.id
+      leaderName = directManager.name
+      leaderEmail = directManager.email || ''
+    } else {
+      const [mgr] = await db
+        .select({ id: employees.id, name: employees.name, email: employees.email })
+        .from(employees)
+        .where(
+          and(
+            or(
+              ilike(employees.jobTitle, '%central services manager%'),
+              ilike(employees.jobTitle, '%service operation mvc supervisor%'),
+              ilike(employees.jobTitle, '%operation manager%')
+            ),
+            ne(employees.id, requester?.id ?? 0)
+          )
+        )
+        .limit(1)
+      if (mgr) {
+        leaderEmployeeId = mgr.id
+        leaderName = mgr.name
+        leaderEmail = mgr.email || ''
+      }
+    }
   }
 
   const step1Token = randomUUID()
@@ -1834,8 +1872,17 @@ export async function createOvertimeCommandLetterAction(payload: {
 
     // Ensure or insert sequential approval steps (2 steps total: Pemohon -> Leader / PJO -> Selesai)
     if (payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId) {
-      const targetApproverId = payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId || null
-      const targetApproverName = payload.leaderName || payload.superiorName || payload.managerName || 'Leader / PJO'
+      let targetApproverId = payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId || null
+      let targetApproverName = payload.leaderName || payload.superiorName || payload.managerName || 'Leader / PJO'
+
+      // Jika yang mengajukan adalah PJO, approver tahap 2 langsung ke Leadernya PJO (bukan PJO itu sendiri)
+      if (requesterId && (targetApproverId === requesterId || (requesterEmp?.jobTitle && requesterEmp.jobTitle.toLowerCase().includes('pjo')) || (requesterEmp?.name && requesterEmp.name.toLowerCase().includes('irwan adit')))) {
+        if (requesterEmp?.directManagerId && requesterEmp.directManagerId !== requesterId) {
+          targetApproverId = requesterEmp.directManagerId
+          const [dm] = await db.select({ name: employees.name }).from(employees).where(eq(employees.id, targetApproverId)).limit(1)
+          if (dm) targetApproverName = dm.name
+        }
+      }
 
       const [validApprover] = targetApproverId
         ? await db

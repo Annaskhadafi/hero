@@ -6383,16 +6383,29 @@ export async function saveDailyActivityApprovalForm(payload: {
         .from(dailyActivitySessionItems)
         .where(eq(dailyActivitySessionItems.sessionId, payload.sessionId))
 
-      const submittedItemIds = new Set(
-        payload.items.filter((i) => i.id != null && i.id > 0).map((i) => i.id as number)
-      )
+      const existingDbItemIds = new Set(existingDbItems.map((e) => e.id))
+      const claimedItemIds = new Set<number>()
+
+      // Hanya ID yang benar-benar ada di sesi ini dan belum diklaim yang dianggap valid untuk update
+      const validSubmittedIds = new Set<number>()
+      for (const it of payload.items) {
+        const idNum = Number(it.id)
+        if (idNum > 0 && existingDbItemIds.has(idNum) && !validSubmittedIds.has(idNum)) {
+          validSubmittedIds.add(idNum)
+        }
+      }
 
       // Delete items removed from list
       for (const existing of existingDbItems) {
-        if (!submittedItemIds.has(existing.id)) {
+        if (!validSubmittedIds.has(existing.id)) {
           await db
             .delete(dailyActivitySessionItems)
-            .where(eq(dailyActivitySessionItems.id, existing.id))
+            .where(
+              and(
+                eq(dailyActivitySessionItems.id, existing.id),
+                eq(dailyActivitySessionItems.sessionId, payload.sessionId)
+              )
+            )
         }
       }
 
@@ -6485,8 +6498,16 @@ export async function saveDailyActivityApprovalForm(payload: {
           itemTeamMembersSummary: itemTeamSummary,
         })
 
-        let currentItemId = item.id
-        if (item.id && item.id > 0) {
+        let currentItemId: number | undefined = undefined
+        const idNum = Number(item.id)
+        const canUpdate =
+          idNum > 0 &&
+          existingDbItemIds.has(idNum) &&
+          !claimedItemIds.has(idNum)
+
+        if (canUpdate) {
+          claimedItemIds.add(idNum)
+          currentItemId = idNum
           await db
             .update(dailyActivitySessionItems)
             .set({
@@ -6496,14 +6517,19 @@ export async function saveDailyActivityApprovalForm(payload: {
               routeItemId: safeRouteItemId,
               unitNumber: item.unitNumber ?? '',
               actualPoints: item.points ?? 0,
-              remark: (payload.itemRemarks?.[item.id] ?? item.remark ?? '').substring(0, 600),
+              remark: (payload.itemRemarks?.[idNum] ?? item.remark ?? '').substring(0, 600),
               startedAt: startedAtDate,
               endedAt: endedAtDate,
               snapshotPayload: itemPayloadJson,
               sortOrder: idx + 1,
               updatedAt: new Date(),
             })
-            .where(eq(dailyActivitySessionItems.id, item.id))
+            .where(
+              and(
+                eq(dailyActivitySessionItems.id, idNum),
+                eq(dailyActivitySessionItems.sessionId, payload.sessionId)
+              )
+            )
         } else if (item.label?.trim()) {
           const [insertedItem] = await db.insert(dailyActivitySessionItems).values({
             sessionId: payload.sessionId,

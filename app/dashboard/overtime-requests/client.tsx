@@ -50,6 +50,7 @@ import type { RouteFolder } from '@/lib/daily-activity'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import QRCode from 'qrcode'
 import { generateOvertimeRecordPdf, generateSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
+import { resolveSummarySplSignatories } from '@/lib/timesheet/summary-spl-signatures'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
@@ -373,6 +374,7 @@ function renderSummarySplPdfHtml(
     periodLabel: string
     totalHours: number
     totalCount: number
+    isPjo?: boolean
     leaderName?: string
     pjoName?: string
     hcName?: string
@@ -518,41 +520,56 @@ function renderSummarySplPdfHtml(
 
       const signatureSectionHtml = isLastPage
         ? `
-          <!-- 4-Column Signature Table Matching Official Overtime Record Standard -->
+          <!-- Signature Table (2 Columns if PJO, 3 Columns if regular employee) -->
           <table style="width: 100%; border-collapse: collapse; margin-top: 28px; page-break-inside: avoid;">
             <tr>
-              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
-                Dibuat oleh :
-                <div style="height: 44px;"></div>
-                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                  ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'Karyawan'}
-                </div>
-              </td>
-              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
-                Approved by :
-                <div style="height: 44px;"></div>
-                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                  ${filterInfo.leaderName || 'Supervisor / Leader'}
-                </div>
-              </td>
-              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
-                Approved by :
-                <div style="height: 44px;"></div>
-                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                  ${filterInfo.pjoName || 'PJO / Manager'}
-                </div>
-              </td>
-              <td style="width: 25%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155;">
-                Diketahui oleh :
-                <div style="height: 44px;"></div>
-                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                  ${filterInfo.hcName || 'HC / Admin'}
-                </div>
-              </td>
+              ${
+                filterInfo.isPjo
+                  ? `
+                <td style="width: 50%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 20px;">
+                  Dibuat oleh :
+                  <div style="height: 44px;"></div>
+                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                    ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'PJO'}
+                  </div>
+                </td>
+                <td style="width: 50%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 20px;">
+                  Approved by :
+                  <div style="height: 44px;"></div>
+                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                    ${filterInfo.leaderName || 'Leader'}
+                  </div>
+                </td>
+              `
+                  : `
+                <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 15px;">
+                  Dibuat oleh :
+                  <div style="height: 44px;"></div>
+                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                    ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'Pengaju'}
+                  </div>
+                </td>
+                <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 15px;">
+                  Approved by :
+                  <div style="height: 44px;"></div>
+                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                    ${filterInfo.pjoName || 'PJO'}
+                  </div>
+                </td>
+                <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 15px;">
+                  Approved by :
+                  <div style="height: 44px;"></div>
+                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
+                    ${filterInfo.leaderName || 'Leader'}
+                  </div>
+                </td>
+              `
+              }
             </tr>
           </table>
           <div style="text-align: right; font-size: 7.5pt; color: #64748b; margin-top: 10px;">Halaman ${pageIndex + 1} dari ${totalPages}</div>
@@ -1631,9 +1648,12 @@ export function OvertimeListingClient({
     const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
 
     const firstRow = summaryFilteredRows[0]
-    const leaderName = firstRow?.approvals?.find((a) => a.stepOrder === 1 || (a.stepLabel || '').toLowerCase().includes('leader') || (a.stepLabel || '').toLowerCase().includes('spv'))?.approverName
-    const pjoName = firstRow?.approvals?.find((a) => a.stepOrder === 2 || (a.stepLabel || '').toLowerCase().includes('manager') || (a.stepLabel || '').toLowerCase().includes('pjo'))?.approverName
-    const hcName = firstRow?.approvals?.find((a) => a.stepOrder === 3 || (a.stepLabel || '').toLowerCase().includes('hc') || (a.stepLabel || '').toLowerCase().includes('hr'))?.approverName
+    const signatories = resolveSummarySplSignatories({
+      selectedEmployee: selectedEmpInfo,
+      allEmployees: employees,
+      firstRowApprovals: firstRow?.approvals,
+      fallbackEmployeeName: employeeName,
+    })
 
     return renderSummarySplPdfHtml(summaryFilteredRows, {
       employeeName,
@@ -1644,9 +1664,9 @@ export function OvertimeListingClient({
       periodLabel: formatMonthYearLabel(summaryMonth),
       totalHours: summaryStats.totalHours,
       totalCount: summaryStats.totalCount,
-      leaderName,
-      pjoName,
-      hcName,
+      isPjo: signatories.isPjo,
+      pjoName: signatories.pjoName,
+      leaderName: signatories.leaderName,
     })
   }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees])
 
@@ -1679,9 +1699,12 @@ export function OvertimeListingClient({
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
 
       const firstRow = summaryFilteredRows[0]
-      const leaderName = firstRow?.approvals?.find((a) => a.stepOrder === 1 || (a.stepLabel || '').toLowerCase().includes('leader') || (a.stepLabel || '').toLowerCase().includes('spv'))?.approverName
-      const pjoName = firstRow?.approvals?.find((a) => a.stepOrder === 2 || (a.stepLabel || '').toLowerCase().includes('manager') || (a.stepLabel || '').toLowerCase().includes('pjo'))?.approverName
-      const hcName = firstRow?.approvals?.find((a) => a.stepOrder === 3 || (a.stepLabel || '').toLowerCase().includes('hc') || (a.stepLabel || '').toLowerCase().includes('hr'))?.approverName
+      const signatories = resolveSummarySplSignatories({
+        selectedEmployee: selectedEmpInfo,
+        allEmployees: employees,
+        firstRowApprovals: firstRow?.approvals,
+        fallbackEmployeeName: employeeName,
+      })
 
       const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
 
@@ -1693,11 +1716,12 @@ export function OvertimeListingClient({
         department: deptName,
         section,
         siteName,
+        isPjo: signatories.isPjo,
         signatures: {
-          preparedBy: employeeName,
-          pjoLeader: leaderName || 'Supervisor',
-          approvedBy: pjoName || hcName || 'Branch Manager / Factory Manager',
-          hrName: hcName || 'Branch Manager / Factory Manager',
+          preparedBy: signatories.preparedByName,
+          pjoLeader: signatories.pjoName,
+          approvedBy: signatories.leaderName,
+          isPjo: signatories.isPjo,
           logoUrl: siteLogoUrl,
         },
         days: daysData,
@@ -1761,9 +1785,12 @@ export function OvertimeListingClient({
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
 
       const firstRow = summaryFilteredRows[0]
-      const leaderName = firstRow?.approvals?.find((a) => a.stepOrder === 1 || (a.stepLabel || '').toLowerCase().includes('leader') || (a.stepLabel || '').toLowerCase().includes('spv'))?.approverName
-      const pjoName = firstRow?.approvals?.find((a) => a.stepOrder === 2 || (a.stepLabel || '').toLowerCase().includes('manager') || (a.stepLabel || '').toLowerCase().includes('pjo'))?.approverName
-      const hcName = firstRow?.approvals?.find((a) => a.stepOrder === 3 || (a.stepLabel || '').toLowerCase().includes('hc') || (a.stepLabel || '').toLowerCase().includes('hr'))?.approverName
+      const signatories = resolveSummarySplSignatories({
+        selectedEmployee: selectedEmpInfo,
+        allEmployees: employees,
+        firstRowApprovals: firstRow?.approvals,
+        fallbackEmployeeName: employeeName,
+      })
 
       const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
 
@@ -1775,11 +1802,12 @@ export function OvertimeListingClient({
         department: deptName,
         section,
         siteName,
+        isPjo: signatories.isPjo,
         signatures: {
-          preparedBy: employeeName,
-          pjoLeader: leaderName || 'Supervisor',
-          approvedBy: pjoName || hcName || 'Branch Manager / Factory Manager',
-          hrName: hcName || 'Branch Manager / Factory Manager',
+          preparedBy: signatories.preparedByName,
+          pjoLeader: signatories.pjoName,
+          approvedBy: signatories.leaderName,
+          isPjo: signatories.isPjo,
           logoUrl: siteLogoUrl,
         },
         days: daysData,

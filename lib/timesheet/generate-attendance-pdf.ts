@@ -53,6 +53,7 @@ type OvertimeRecordInput = {
   showTotalOvertime?: boolean
   evidenceUrl?: string
   appBaseUrl?: string
+  isPjo?: boolean
 }
 
 type SiteAllowanceInput = {
@@ -994,16 +995,23 @@ async function drawSummarySplSignatures(
 ) {
   const { width } = page.getSize()
   const names = input.signatures
+  const isPjo = Boolean(input.isPjo || names.isPjo)
 
-  const labels: [string, string][] = [
-    ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Pemohon'],
-    ['Approved by:', names.pjoLeader?.trim() || 'Supervisor'],
-    ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || 'Branch Manager / Factory Manager'],
-  ]
+  const labels: [string, string][] = isPjo
+    ? [
+        ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'PJO'],
+        ['Approved by :', names.approvedBy?.trim() || names.pjoLeader?.trim() || 'Leader'],
+      ]
+    : [
+        ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Pengaju'],
+        ['Approved by :', names.pjoLeader?.trim() || 'PJO'],
+        ['Approved by :', names.approvedBy?.trim() || 'Leader'],
+      ]
 
   const LM = 45
   const printableWidth = width - LM * 2
-  const columnWidth = printableWidth / 3
+  const columnCount = labels.length
+  const columnWidth = printableWidth / columnCount
   const lineWidth = columnWidth - 25
 
   labels.forEach(([label, name], index) => {
@@ -1034,6 +1042,7 @@ async function drawOvertimeRecordSignatures(
 ) {
   const { width } = page.getSize()
   const names = input.signatures
+  const isPjo = Boolean(input.isPjo || names.isPjo)
 
   let labels: [string, string][] = []
   if (names.useExternalOnly) {
