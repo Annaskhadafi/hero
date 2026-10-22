@@ -42,6 +42,40 @@ const MONTH_NAMES = [
   'Desember',
 ]
 
+function toYearMonthString(val: unknown): string {
+  if (!val) return ''
+  if (val instanceof Date) {
+    if (Number.isNaN(val.getTime())) return ''
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    return `${y}-${m}`
+  }
+  const s = String(val).trim()
+  if (/^\d{4}-\d{2}/.test(s)) {
+    return s.substring(0, 7)
+  }
+  const d = new Date(s)
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    return `${y}-${m}`
+  }
+  return ''
+}
+
+function matchesSiteName(workLocation: string, siteName: string, siteLocation?: string | null): boolean {
+  if (!workLocation || !siteName) return false
+  const normW = workLocation.trim().toUpperCase().replace(/[-_]/g, ' ')
+  const normS = siteName.trim().toUpperCase().replace(/[-_]/g, ' ')
+  if (normW === normS) return true
+  if (normW.includes(normS) || normS.includes(normW)) return true
+  if (siteLocation) {
+    const normL = siteLocation.trim().toUpperCase().replace(/[-_]/g, ' ')
+    if (normW === normL || normW.includes(normL) || normL.includes(normW)) return true
+  }
+  return false
+}
+
 type MasterSiteItem = {
   id: number
   name: string
@@ -75,11 +109,30 @@ export function HseSiteMapCard({
   monthlyManHours = [],
   canEdit = true,
 }: HseSiteMapCardProps) {
-  // Default month: bulan ini (YYYY-MM)
+  // Default month: backdate 1 bulan sebelumnya (September jika bulan berjalan Oktober)
+  // karena Safe Man Hours diinput setelah tutup buku bulan bersangkutan di menu Safety Data Management.
   const [selectedMonth, setSelectedMonth] = React.useState<string>(() => {
+    // 1. Cek apakah ada data di monthlyManHours dengan jam kerja > 0
+    if (monthlyManHours && monthlyManHours.length > 0) {
+      const monthsWithData = monthlyManHours
+        .filter((m) => {
+          const hours = parseFloat(String(m.safetyManHours || 0).replace(/,/g, ''))
+          return hours > 0
+        })
+        .map((m) => toYearMonthString(m.month))
+        .filter(Boolean)
+        .sort()
+
+      if (monthsWithData.length > 0) {
+        return monthsWithData[monthsWithData.length - 1]
+      }
+    }
+
+    // 2. Default: H-1 bulan berjalan (backdate 1 bulan sebelumnya)
     const now = new Date()
-    const y = now.getFullYear()
-    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const y = prev.getFullYear()
+    const m = String(prev.getMonth() + 1).padStart(2, '0')
     return `${y}-${m}`
   })
 
@@ -100,18 +153,41 @@ export function HseSiteMapCard({
     return masterSites.map((site) => {
       const summary = siteMonthlySummaries.find((s) => {
         if (s.siteId !== site.id) return false
-        const sMonth = s.month ? String(s.month).substring(0, 7) : ''
+        const sMonth = toYearMonthString(s.month)
         return sMonth === selectedMonth
       })
 
-      // Jika belum ada di hero_safety_site_monthly_summary, cari dari monthlyManHours
-      const manHoursFallback = monthlyManHours.find((mh) => {
-        const mhMonth = mh.month ? String(mh.month).substring(0, 7) : ''
-        return mh.workLocation === site.name && mhMonth === selectedMonth
+      // Cari data Safe Man Hours dari Monthly Man Hours di menu Safety Data Management
+      const matchingMhList = monthlyManHours.filter((mh) => {
+        const mhMonth = toYearMonthString(mh.month)
+        if (mhMonth !== selectedMonth) return false
+        return matchesSiteName(mh.workLocation, site.name, site.location)
       })
 
-      const finalSafetyManHours = summary?.safetyManHours ?? manHoursFallback?.safetyManHours ?? '0'
-      const totalMp = site.totalManpower ?? summary?.totalManpower ?? manHoursFallback?.employeeCount ?? 0
+      let totalMhFromMgmt = 0
+      let hasMhRecord = false
+      let matchedEmpCount = 0
+
+      for (const mh of matchingMhList) {
+        const val = parseFloat(String(mh.safetyManHours || 0).replace(/,/g, ''))
+        if (Number.isFinite(val)) {
+          totalMhFromMgmt += val
+          hasMhRecord = true
+        }
+        if (mh.employeeCount && mh.employeeCount > matchedEmpCount) {
+          matchedEmpCount = mh.employeeCount
+        }
+      }
+
+      // Prioritas 1: Ambil dari Monthly Man Hours di menu Safety Data Management (sinkronisasi langsung)
+      // Prioritas 2: Fallback ke siteMonthlySummaries
+      const finalSafetyManHours = hasMhRecord
+        ? String(totalMhFromMgmt)
+        : summary?.safetyManHours != null && String(summary.safetyManHours).trim() !== '' && String(summary.safetyManHours) !== '0'
+        ? String(summary.safetyManHours)
+        : '0'
+
+      const totalMp = site.totalManpower ?? summary?.totalManpower ?? (matchedEmpCount > 0 ? matchedEmpCount : 0)
       const serviceMp = site.manpowerService ?? 0
       const repairMp = site.manpowerRepair ?? 0
 
@@ -128,11 +204,7 @@ export function HseSiteMapCard({
 
       const matchingReports = incidentReports.filter((inc) => {
         if (!inc.incidentDate) return false
-        const dStr =
-          typeof inc.incidentDate === 'string'
-            ? inc.incidentDate
-            : new Date(inc.incidentDate).toISOString()
-        if (!dStr.startsWith(selectedMonth)) return false
+        if (toYearMonthString(inc.incidentDate) !== selectedMonth) return false
         const loc = (inc.location || '').toLowerCase()
         const sName = site.name.toLowerCase()
         return loc.includes(sName) || sName.includes(loc)

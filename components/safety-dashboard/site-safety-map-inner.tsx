@@ -380,7 +380,7 @@ export function SiteSafetyMapInner({
                           Safe Man Hours
                         </span>
                         <span className="font-bold text-slate-900 text-sm tabular-nums">
-                          {Number(sum?.safetyManHours ?? 0).toLocaleString('id-ID')}
+                          {(parseFloat(String(sum?.safetyManHours ?? 0).replace(/,/g, '')) || 0).toLocaleString('id-ID')}
                         </span>
                       </div>
 

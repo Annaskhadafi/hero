@@ -141,7 +141,7 @@ export function SiteOshePerformanceDialog({
   const ytdNearmiss = ytdSummaries.reduce((a, c) => a + (c.nearmiss || 0), 0)
   const ytdManHours = ytdSummaries.reduce((a, c) => a + Number(c.safetyManHours || 0), 0)
 
-  const mtdManHours = Number(mtdSummary.safetyManHours || 0)
+  const mtdManHours = parseFloat(String(site.summary?.safetyManHours ?? mtdSummary.safetyManHours ?? 0).replace(/,/g, '')) || 0
   const mtdMinorInjury = (mtdSummary.firstAid || 0) + (mtdSummary.medicalTreatment || 0)
 
   // Rasio MTD & YTD
