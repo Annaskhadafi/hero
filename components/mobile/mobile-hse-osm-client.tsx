@@ -53,10 +53,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OsmMiniMap } from "@/components/ui/osm-mini-map";
 import {
   createHseOsmFinding,
   createHseOsmSession,
+  deleteHseOsmSession,
   getHseEmployeesList,
   getHseOsmDashboardData,
   getHseOsmSessionById,
@@ -136,6 +138,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   const [reportActiveTab, setReportActiveTab] = useState<"created" | "received" | "assigned">("created");
   const [tabCounts, setTabCounts] = useState({ created: 0, received: 0, assigned: 0, total: 0 });
   const [isSubmittingInspection, setIsSubmittingInspection] = useState(false);
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<{ id: number; sessionNumber: string } | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
 
   // Live GPS state
@@ -733,7 +737,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
       const res = await createHseOsmSession(sessionPayload);
       if (!res.success) throw new Error(res.error || "Gagal membuat sesi OSM.");
 
-      alert("Sesi On the Spot Monitoring berhasil dibuat!");
+      // Sesi On the Spot Monitoring berhasil dibuat
       await loadSessions();
       await handleOpenDetail(res.data.id);
     } catch (err: any) {
@@ -743,6 +747,29 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
     }
   }
 
+
+  async function handleConfirmDeleteSession() {
+    if (!deleteSessionTarget) return;
+    setIsDeletingSession(true);
+    try {
+      const res = await deleteHseOsmSession(deleteSessionTarget.id);
+      if (res.success) {
+        setDeleteSessionTarget(null);
+        if (currentView === "session_detail") {
+          setActiveSessionDetail(null);
+          setCurrentView("reports");
+        }
+        await loadSessions();
+      } else {
+        alert(res.error || "Gagal menghapus sesi OSM draft.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Gagal menghapus sesi OSM draft.");
+    } finally {
+      setIsDeletingSession(false);
+    }
+  }
 
   async function handleSubmitInspection() {
     if (!activeSessionDetail) return;
@@ -1243,6 +1270,11 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                             ? "OPEN"
                             : item.ticketStatus || "CLOSED"}
                         </span>
+                        {!item.isLocked && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-300/60 dark:border-amber-800">
+                            DRAFT
+                          </span>
+                        )}
                         {item.isLocked && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                             <Lock className="size-2.5" /> Terkunci
@@ -1265,18 +1297,83 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t text-xs">
-                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                      Finding {summary.total}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {item.inspectionDate}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                        Finding {summary.total}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        • {item.inspectionDate}
+                      </span>
+                    </div>
+                    {!item.isLocked && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteSessionTarget({ id: item.id, sessionNumber: item.sessionNumber });
+                        }}
+                        className="text-[11px] font-bold text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 px-2 py-1 rounded-md flex items-center gap-1 border border-red-200 dark:border-red-900/60 active:scale-95 transition"
+                      >
+                        <Trash2 className="size-3" />
+                        <span>Hapus</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })
           )}
         </div>
+
+      {/* Confirm Delete Draft Session Dialog */}
+      <Dialog open={deleteSessionTarget !== null} onOpenChange={(open) => !open && setDeleteSessionTarget(null)}>
+        <DialogContent className="max-w-[360px] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
+              <Trash2 className="size-5" />
+            </div>
+            <div>
+              <DialogTitle className="text-base font-bold text-foreground">Hapus Sesi Draft?</DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                {deleteSessionTarget?.sessionNumber}
+              </DialogDescription>
+            </div>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Sesi inspeksi OSM berstatus <strong>draft</strong> ini beserta seluruh temuan lapangannya akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.
+          </p>
+          <div className="flex items-center gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isDeletingSession}
+              onClick={() => setDeleteSessionTarget(null)}
+              className="flex-1 text-xs h-9"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isDeletingSession}
+              onClick={handleConfirmDeleteSession}
+              className="flex-1 text-xs h-9 bg-red-600 hover:bg-red-700 text-white font-bold gap-1.5"
+            >
+              {isDeletingSession ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <span>Menghapus...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="size-3.5" />
+                  <span>Ya, Hapus</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       </div>
     );
   }
@@ -1912,7 +2009,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 {/* Classification Type (10 Categories) */}
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-muted-foreground">
-                    Tipe Klasifikasi (10 Kategori Standar KPC)
+                    Tipe Klasifikasi (10 Kategori Standar HSE)
                   </Label>
                   <Select value={wizardClassification} onValueChange={setWizardClassification}>
                     <SelectTrigger className="text-xs h-9">
@@ -2384,6 +2481,18 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {!s.isLocked && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDeleteSessionTarget({ id: s.id, sessionNumber: s.sessionNumber })}
+                className="text-xs h-8 gap-1 rounded-full px-2.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 hover:bg-red-100"
+                title="Hapus Sesi Draft"
+              >
+                <Trash2 className="size-3.5" />
+                <span className="hidden xs:inline">Hapus Draft</span>
+              </Button>
+            )}
+            {!s.isLocked && (
             <Button
               size="sm"
               onClick={() => {
@@ -2535,6 +2644,15 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                     <span>Submit Laporan Sekarang</span>
                   </>
                 )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeleteSessionTarget({ id: s.id, sessionNumber: s.sessionNumber })}
+                className="w-full text-xs h-8 font-semibold gap-1.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/60 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg"
+              >
+                <Trash2 className="size-3.5" />
+                <span>Hapus Sesi Draft Ini</span>
               </Button>
             </div>
           )}
@@ -2871,7 +2989,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 {/* 2. Tipe Klasifikasi */}
                 <div className="space-y-1">
                   <Label className="text-[11px] font-semibold text-muted-foreground">
-                    Tipe Klasifikasi (10 Kategori Standar KPC) <span className="text-red-500">*</span>
+                    Tipe Klasifikasi (10 Kategori Standar HSE) <span className="text-red-500">*</span>
                   </Label>
                   <Select value={newFindingClassification} onValueChange={setNewFindingClassification}>
                     <SelectTrigger className="text-xs h-9">
@@ -3258,6 +3376,57 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
             </div>
           </div>
         )}
+
+
+        {/* Confirm Delete Draft Session Dialog */}
+        <Dialog open={deleteSessionTarget !== null} onOpenChange={(open) => !open && setDeleteSessionTarget(null)}>
+          <DialogContent className="max-w-[360px] rounded-2xl p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
+                <Trash2 className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">Hapus Sesi Draft?</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  {deleteSessionTarget?.sessionNumber}
+                </DialogDescription>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Sesi inspeksi OSM berstatus <strong>draft</strong> ini beserta seluruh temuan lapangannya akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isDeletingSession}
+                onClick={() => setDeleteSessionTarget(null)}
+                className="flex-1 text-xs h-9"
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isDeletingSession}
+                onClick={handleConfirmDeleteSession}
+                className="flex-1 text-xs h-9 bg-red-600 hover:bg-red-700 text-white font-bold gap-1.5"
+              >
+                {isDeletingSession ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Menghapus...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-3.5" />
+                    <span>Ya, Hapus</span>
+                  </>
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Photo Lightbox */}
         {selectedPhotoModal && (

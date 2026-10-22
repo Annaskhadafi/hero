@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Download,
   Eye,
@@ -40,6 +41,7 @@ import {
   getHseOsmSessionById,
   getHseOsmSessions,
 } from "@/app/actions/hse-osm";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { OsmDetailDialog } from "@/components/hse/osm-detail-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -59,7 +61,7 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
     }
   );
 
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>(initialData?.sessions || []);
   const [isLoading, setIsLoading] = useState(false);
 
   // Status Filter Pill Tab: "ALL" | "OPEN" | "IN PROGRESS" | "CLOSED" | "REJECTED"
@@ -133,11 +135,16 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
     if (!deleteTargetId) return;
     setIsDeleting(true);
     try {
-      await deleteHseOsmSession(deleteTargetId);
-      setDeleteTargetId(null);
-      await loadData();
-    } catch (err) {
+      const res = await deleteHseOsmSession(deleteTargetId);
+      if (res.success) {
+        setDeleteTargetId(null);
+        await loadData();
+      } else {
+        alert(res.error || "Gagal menghapus sesi OSM");
+      }
+    } catch (err: any) {
       console.error("Gagal menghapus sesi OSM:", err);
+      alert(err?.message || "Terjadi kesalahan saat menghapus sesi OSM");
     } finally {
       setIsDeleting(false);
     }
@@ -348,20 +355,45 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
     {
       key: "actions",
       header: "ACTIONS",
+      sortable: false,
       align: "right",
-      className: "w-[100px]",
-      render: (row) => (
-        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => handleOpenDetail(row.id)}
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            Actions <span className="ml-1 text-[10px]">▼</span>
-          </Button>
-        </div>
-      ),
+      className: "w-[110px]",
+      render: (row) => {
+        const isDraft = !row.isLocked || row.status === "ACTIVE" || row.status === "DRAFT";
+        return (
+          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground font-medium flex items-center gap-1 border border-border/40 hover:border-border"
+                >
+                  Actions <ChevronDown className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 shadow-lg">
+                <DropdownMenuItem
+                  onSelect={() => handleOpenDetail(row.id)}
+                  className="cursor-pointer gap-2 text-xs"
+                >
+                  <Eye className="size-3.5 text-muted-foreground" />
+                  <span>Lihat Detail</span>
+                </DropdownMenuItem>
+                {isDraft && (
+                  <DropdownMenuItem
+                    onSelect={() => setDeleteTargetId(row.id)}
+                    className="cursor-pointer gap-2 text-xs text-rose-600 focus:text-rose-600 focus:bg-rose-50 dark:focus:bg-rose-950/40 font-medium"
+                  >
+                    <Trash2 className="size-3.5" />
+                    <span>Hapus Sesi (Draft)</span>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
     },
   ];
 
@@ -601,6 +633,11 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
         sessionData={selectedSessionDetail}
         onRefresh={loadData}
         allowAddFinding={false}
+        onDelete={() => {
+          if (selectedSessionDetail?.id) {
+            setDeleteTargetId(selectedSessionDetail.id);
+          }
+        }}
       />
 
       {/* 6. Confirm Delete Dialog */}

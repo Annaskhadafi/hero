@@ -851,6 +851,27 @@ export async function verifyHseOsmFinding(
 
 export async function deleteHseOsmSession(id: number) {
   try {
+    const [session] = await db
+      .select({
+        id: heroHseOsmSessions.id,
+        sessionNumber: heroHseOsmSessions.sessionNumber,
+        status: heroHseOsmSessions.status,
+      })
+      .from(heroHseOsmSessions)
+      .where(and(eq(heroHseOsmSessions.id, id), isNull(heroHseOsmSessions.deletedAt)))
+      .limit(1)
+
+    if (!session) {
+      return { success: false, error: 'Sesi OSM tidak ditemukan atau sudah dihapus.' }
+    }
+
+    if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Sesi OSM yang telah disubmit dan terkunci tidak dapat dihapus. Hanya tiket draft yang dapat dihapus.',
+      }
+    }
+
     const now = new Date()
     await db
       .update(heroHseOsmSessions)

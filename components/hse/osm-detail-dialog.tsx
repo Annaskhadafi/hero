@@ -19,6 +19,7 @@ import {
   Plus,
   Printer,
   ShieldCheck,
+  Trash2,
   User,
   Users,
   X,
@@ -38,6 +39,7 @@ type OsmDetailDialogProps = {
   sessionData: any;
   onRefresh: () => void;
   allowAddFinding?: boolean;
+  onDelete?: () => void;
 };
 
 export function OsmDetailDialog({
@@ -46,6 +48,7 @@ export function OsmDetailDialog({
   sessionData,
   onRefresh,
   allowAddFinding = false,
+  onDelete,
 }: OsmDetailDialogProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [actionFinding, setActionFinding] = useState<any>(null);
@@ -96,6 +99,7 @@ export function OsmDetailDialog({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
+                
                     <h2 className="text-lg font-bold tracking-tight">
                       Laporan On the Spot Monitoring (OSM)
                     </h2>
@@ -104,12 +108,27 @@ export function OsmDetailDialog({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    QHSE Department — PT Chitra Paratama • Standar Pemantauan KPC
+                    HSE Department - PT Chitra Paratama
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
+                {!sessionData.isLocked && onDelete && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onClose();
+                      onDelete();
+                    }}
+                    className="bg-rose-950/40 border-rose-700/60 hover:bg-rose-900/50 text-rose-300 text-xs h-8 gap-1.5"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Hapus Sesi (Draft)
+                  </Button>
+                )}
+
                 <Button
                   asChild
                   variant="outline"

@@ -5,7 +5,7 @@ import { MobileHseOsmClient } from "@/components/mobile/mobile-hse-osm-client";
 
 export const metadata = {
   title: "On the Spot Monitoring (OSM) Mobile | HERO HSE",
-  description: "Aplikasi lapangan On the Spot Monitoring HSE KPC Standard.",
+  description: "Aplikasi lapangan On the Spot Monitoring HSE - PT Chitra Paratama.",
 };
 
 export default async function MobileHseOsmPage() {
