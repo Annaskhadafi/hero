@@ -138,8 +138,9 @@ export function ApdRequestForm({
         };
       });
     }
+    const defaultApdItem = (itemOptions.APD && itemOptions.APD.length > 0) ? itemOptions.APD[0] : APD_ITEMS[0];
     return [
-      { id: crypto.randomUUID(), itemType: APD_ITEMS[0], requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
+      { id: crypto.randomUUID(), itemType: defaultApdItem, requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
     ];
   });
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
@@ -195,9 +196,10 @@ export function ApdRequestForm({
   });
 
   const addItem = () => {
+    const defaultApdItem = (itemOptions.APD && itemOptions.APD.length > 0) ? itemOptions.APD[0] : APD_ITEMS[0];
     setItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), itemType: requestMode === "apd" ? APD_ITEMS[0] : "", requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
+      { id: crypto.randomUUID(), itemType: requestMode === "apd" ? defaultApdItem : "", requestType: "baru", quantity: 1, notes: "", photoFiles: [], photoPreviews: [] },
     ]);
   };
 
@@ -529,9 +531,13 @@ export function ApdRequestForm({
                       >
                         <SelectTrigger className="h-10 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm text-slate-800 shadow-2xs focus:ring-1 focus:ring-blue-500"><SelectValue placeholder="Pilih Jenis APD..." /></SelectTrigger>
                         <SelectContent>
-                          {(itemOptions.APD && itemOptions.APD.length > 0 ? itemOptions.APD : APD_ITEMS).map((opt) => (
-                            <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                          ))}
+                          {(() => {
+                            const apdList: readonly string[] = itemOptions.APD && itemOptions.APD.length > 0 ? itemOptions.APD : APD_ITEMS;
+                            const optionsList = item.itemType && !apdList.includes(item.itemType) ? [item.itemType, ...apdList] : apdList;
+                            return optionsList.map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ));
+                          })()}
                         </SelectContent>
                       </Select>
                     ) : (
