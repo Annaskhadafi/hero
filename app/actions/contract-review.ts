@@ -18,7 +18,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 function safeRevalidatePath(path: string) {
@@ -669,9 +669,9 @@ async function getUserByName(name: string, fallbackEmail?: string) {
   const [row] = await db
     .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
     .from(employees)
-    .where(eq(employees.name, name))
+    .where(or(eq(employees.name, name.trim()), ilike(employees.name, name.trim())))
     .limit(1)
-  return row ?? { id: null, name, email: fallbackEmail || '', jobTitle: '' }
+  return row ?? { id: null, name: name.trim(), email: fallbackEmail || '', jobTitle: '' }
 }
 
 async function getUserById(employeeId: number | null | undefined) {
@@ -950,6 +950,186 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
   }))
 }
 
+async function syncExistingContractReviewApprovals(
+  review: typeof hcEmployeeContractReviews.$inferSelect,
+  existingApprovals: (typeof hcContractReviewApprovals.$inferSelect)[]
+) {
+  // 1. Abian check (ensure technical/PJO routing when employee is Abian or reviewed)
+  const step1 = existingApprovals.find((a) => a.stepOrder === 1 && a.status === 'pending')
+  if (step1 && step1.approverEmployeeId === review.employeeId) {
+    const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
+    if (abianUser?.id && abianUser.id !== review.employeeId) {
+      await db
+        .update(hcContractReviewApprovals)
+        .set({
+          approverEmployeeId: abianUser.id,
+          approverName: abianUser.name,
+          approverEmail: abianUser.email,
+        })
+        .where(eq(hcContractReviewApprovals.id, step1.id))
+      step1.approverEmployeeId = abianUser.id
+      step1.approverName = abianUser.name
+      step1.approverEmail = abianUser.email
+    }
+  }
+
+  const hasConfirmationStep = existingApprovals.some((a) => a.approverRole === 'section_head_confirmation')
+
+  // 2. Leader Sync
+  if (review.leaderName && review.leaderName.trim()) {
+    const leaderStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'pjo_or_te_initial' ||
+        (!hasConfirmationStep && a.approverRole === 'section_head_initial') ||
+        a.stepOrder === 1
+    )
+    if (leaderStep && leaderStep.approverName?.trim().toLowerCase() !== review.leaderName.trim().toLowerCase()) {
+      const leaderUser = await getUserByName(review.leaderName)
+      const updateData = {
+        approverName: leaderUser.name || review.leaderName.trim(),
+        approverEmployeeId: leaderUser.id,
+        approverEmail: leaderUser.email || '',
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, leaderStep.id))
+      Object.assign(leaderStep, updateData)
+    }
+  }
+
+  // 3. Superior (Section Head) Sync
+  if (review.superiorName && review.superiorName.trim()) {
+    let superiorStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'section_head_confirmation' ||
+        (hasConfirmationStep && a.stepOrder === 3) ||
+        (!hasConfirmationStep && a.approverRole === 'section_head_initial')
+    )
+
+    // If review previously only had 4 steps (no confirmation step because leader was same as superior),
+    // but now superiorName is specified and differs from leaderName:
+    if (!superiorStep && !hasConfirmationStep && review.leaderName && review.superiorName.trim().toLowerCase() !== review.leaderName.trim().toLowerCase()) {
+      const superiorUser = await getUserByName(review.superiorName)
+      const step3 = existingApprovals.find((a) => a.stepOrder === 3)
+      const step4 = existingApprovals.find((a) => a.stepOrder === 4)
+      if (step4) {
+        await db.update(hcContractReviewApprovals).set({ stepOrder: 5 }).where(eq(hcContractReviewApprovals.id, step4.id))
+        step4.stepOrder = 5
+      }
+      if (step3) {
+        await db.update(hcContractReviewApprovals).set({ stepOrder: 4 }).where(eq(hcContractReviewApprovals.id, step3.id))
+        step3.stepOrder = 4
+      }
+      const [newStep] = await db
+        .insert(hcContractReviewApprovals)
+        .values({
+          reviewId: review.id,
+          stepOrder: 3,
+          approvalToken: randomUUID(),
+          approverEmployeeId: superiorUser.id,
+          approverName: superiorUser.name || review.superiorName.trim(),
+          approverEmail: superiorUser.email || '',
+          approverRole: 'section_head_confirmation',
+          status: 'waiting',
+        })
+        .returning()
+      existingApprovals.splice(2, 0, newStep)
+      superiorStep = newStep
+    }
+
+    if (superiorStep && superiorStep.approverName?.trim().toLowerCase() !== review.superiorName.trim().toLowerCase()) {
+      const superiorUser = await getUserByName(review.superiorName)
+      const updateData: any = {
+        approverName: superiorUser.name || review.superiorName.trim(),
+        approverEmployeeId: superiorUser.id,
+        approverEmail: superiorUser.email || '',
+      }
+      // If the approver person changed, clear invalid signature from previous approver
+      if (superiorStep.signatureDataUrl) {
+        updateData.signatureDataUrl = null
+        updateData.signedAt = null
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, superiorStep.id))
+      Object.assign(superiorStep, updateData)
+    }
+  }
+
+  // 4. Next Superior (Department Head) Sync
+  if (review.nextSuperiorName && review.nextSuperiorName.trim()) {
+    const deptHeadStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'central_service_manager' ||
+        a.approverRole === 'department_head' ||
+        (hasConfirmationStep ? a.stepOrder === 4 : a.stepOrder === 3)
+    )
+    if (deptHeadStep && deptHeadStep.approverName?.trim().toLowerCase() !== review.nextSuperiorName.trim().toLowerCase()) {
+      const deptHeadUser = await getUserByName(review.nextSuperiorName)
+      const updateData: any = {
+        approverName: deptHeadUser.name || review.nextSuperiorName.trim(),
+        approverEmployeeId: deptHeadUser.id,
+        approverEmail: deptHeadUser.email || '',
+      }
+      if (deptHeadStep.signatureDataUrl) {
+        updateData.signatureDataUrl = null
+        updateData.signedAt = null
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, deptHeadStep.id))
+      Object.assign(deptHeadStep, updateData)
+    }
+  }
+
+  // 5. HR Sync
+  if (review.hrName && review.hrName.trim()) {
+    const hrStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'hr' ||
+        (hasConfirmationStep ? a.stepOrder === 5 : a.stepOrder === 4)
+    )
+    if (hrStep && hrStep.approverName?.trim().toLowerCase() !== review.hrName.trim().toLowerCase()) {
+      const hrUser = await getUserByName(review.hrName)
+      const updateData: any = {
+        approverName: hrUser.name || review.hrName.trim(),
+        approverEmployeeId: hrUser.id,
+        approverEmail: hrUser.email || '',
+      }
+      if (hrStep.signatureDataUrl) {
+        updateData.signatureDataUrl = null
+        updateData.signedAt = null
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, hrStep.id))
+      Object.assign(hrStep, updateData)
+    }
+  }
+
+  // 6. Employee Sync
+  if (review.employeeId) {
+    const empStep = existingApprovals.find((a) => a.approverRole === 'employee' || a.stepOrder === 2)
+    if (empStep && (empStep.approverEmployeeId !== review.employeeId || (review.employeeNameStr && empStep.approverName !== review.employeeNameStr))) {
+      const empUser = await getUserById(review.employeeId)
+      const updateData: any = {
+        approverName: empUser?.name || review.employeeNameStr || empStep.approverName,
+        approverEmployeeId: review.employeeId,
+        approverEmail: empUser?.email || '',
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, empStep.id))
+      Object.assign(empStep, updateData)
+    }
+  }
+}
+
 export async function ensureContractReviewApprovals(reviewId: number) {
   const [review] = await db
     .select()
@@ -966,24 +1146,12 @@ export async function ensureContractReviewApprovals(reviewId: number) {
     .orderBy(asc(hcContractReviewApprovals.stepOrder))
 
   if (existingApprovals.length > 0) {
-    const step1 = existingApprovals.find((a) => a.stepOrder === 1 && a.status === 'pending')
-    if (step1 && step1.approverEmployeeId === review.employeeId) {
-      const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
-      if (abianUser?.id && abianUser.id !== review.employeeId) {
-        await db
-          .update(hcContractReviewApprovals)
-          .set({
-            approverEmployeeId: abianUser.id,
-            approverName: abianUser.name,
-            approverEmail: abianUser.email,
-          })
-          .where(eq(hcContractReviewApprovals.id, step1.id))
-        step1.approverEmployeeId = abianUser.id
-        step1.approverName = abianUser.name
-        step1.approverEmail = abianUser.email
-      }
-    }
-    return existingApprovals
+    await syncExistingContractReviewApprovals(review, existingApprovals)
+    return db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
   }
 
   const approvalSteps = await buildContractReviewApprovals(review)

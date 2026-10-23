@@ -117,10 +117,6 @@ export function ContractReviewClientForm({
   const [selectedSignatoryTarget, setSelectedSignatoryTarget] = useState<string>('leader')
 
   useEffect(() => {
-    if (approvalHistory) setApprovalsList(approvalHistory)
-  }, [approvalHistory])
-
-  useEffect(() => {
     getUserSignatureAction().then((result) => {
       if (result.success && result.signatureDataUrl) {
         setRegisteredSignature(result.signatureDataUrl)
@@ -272,6 +268,100 @@ export function ContractReviewClientForm({
       stepOrder?: number
     }>,
   })
+
+  const syncApprovalSignatory = (
+    roleKey: 'leader' | 'superior' | 'nextSuperior' | 'hr' | 'employee',
+    newName: string,
+    employeeObj?: any
+  ) => {
+    setApprovalsList((prev) => {
+      if (!prev || prev.length === 0) return prev
+      const hasConfirmationStep = prev.some((s) => s.approverRole === 'section_head_confirmation')
+
+      return prev.map((step) => {
+        let isMatch = false
+        if (roleKey === 'leader') {
+          isMatch =
+            step.approverRole === 'pjo_or_te_initial' ||
+            (!hasConfirmationStep && step.approverRole === 'section_head_initial') ||
+            step.stepOrder === 1
+        } else if (roleKey === 'superior') {
+          isMatch =
+            step.approverRole === 'section_head_confirmation' ||
+            (!hasConfirmationStep && step.approverRole === 'section_head_initial') ||
+            (hasConfirmationStep && step.stepOrder === 3)
+        } else if (roleKey === 'nextSuperior') {
+          isMatch =
+            step.approverRole === 'central_service_manager' ||
+            step.approverRole === 'department_head' ||
+            (hasConfirmationStep ? step.stepOrder === 4 : step.stepOrder === 3)
+        } else if (roleKey === 'hr') {
+          isMatch = step.approverRole === 'hr' || (hasConfirmationStep ? step.stepOrder === 5 : step.stepOrder === 4)
+        } else if (roleKey === 'employee') {
+          isMatch = step.approverRole === 'employee' || step.stepOrder === 2
+        }
+
+        if (isMatch) {
+          const isNameChanged = step.approverName?.trim().toLowerCase() !== newName.trim().toLowerCase()
+          return {
+            ...step,
+            approverName: newName,
+            approverEmployeeId: employeeObj?.id ?? step.approverEmployeeId,
+            approverEmail: employeeObj?.email ?? step.approverEmail,
+            ...(isNameChanged && step.signatureDataUrl
+              ? { signatureDataUrl: null, status: 'pending', signedAt: null }
+              : {}),
+          }
+        }
+        return step
+      })
+    })
+  }
+
+  useEffect(() => {
+    if (approvalHistory && approvalHistory.length > 0) {
+      const hasConf = approvalHistory.some((s) => s.approverRole === 'section_head_confirmation')
+      const synced = approvalHistory.map((step) => {
+        let name = step.approverName
+        let empId = step.approverEmployeeId
+        let email = step.approverEmail
+
+        if (step.approverRole === 'section_head_confirmation' || (hasConf && step.stepOrder === 3)) {
+          if (form.superiorName && form.superiorName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.superiorName
+            const emp = employees.find((e) => e.name === form.superiorName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        } else if (step.approverRole === 'pjo_or_te_initial' || step.stepOrder === 1) {
+          if (form.leaderName && form.leaderName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.leaderName
+            const emp = employees.find((e) => e.name === form.leaderName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        } else if (step.approverRole === 'central_service_manager' || (hasConf ? step.stepOrder === 4 : step.stepOrder === 3)) {
+          if (form.nextSuperiorName && form.nextSuperiorName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.nextSuperiorName
+            const emp = employees.find((e) => e.name === form.nextSuperiorName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        } else if (step.approverRole === 'hr' || (hasConf ? step.stepOrder === 5 : step.stepOrder === 4)) {
+          if (form.hrName && form.hrName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.hrName
+            const emp = employees.find((e) => e.name === form.hrName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        }
+
+        if (name !== step.approverName) {
+          return { ...step, approverName: name, approverEmployeeId: empId, approverEmail: email }
+        }
+        return step
+      })
+      setApprovalsList(synced)
+    } else if (approvalHistory) {
+      setApprovalsList(approvalHistory)
+    }
+  }, [approvalHistory, form.superiorName, form.leaderName, form.nextSuperiorName, form.hrName, employees])
 
   const selectedEmp = useMemo(() => {
     if (!form.employeeId) return null
@@ -1979,6 +2069,7 @@ export function ContractReviewClientForm({
                   placeholder="Pilih Karyawan..."
                   value={form.employeeId}
                   onValueChange={(val) => {
+                    const emp = employees.find(e => String(e.id) === val)
                     const populated = autoPopulateSignatories(val, { 
                       ...form, 
                       employeeId: val, 
@@ -1992,6 +2083,9 @@ export function ContractReviewClientForm({
                       hrTitle: ""
                     })
                     setForm(populated)
+                    if (emp) {
+                      syncApprovalSignatory('employee', emp.name, emp)
+                    }
                   }}
                   options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} (${emp.employeeId})` }))}
                   widthClassName="w-full"
@@ -2221,8 +2315,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.leaderName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, leaderName: m.name, leaderTitle: m.rank || m.position || m.jobTitle || "Leader" }))
-                    else setForm(prev => ({ ...prev, leaderName: "", leaderTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, leaderName: m.name, leaderTitle: m.rank || m.position || m.jobTitle || "Leader" }))
+                      syncApprovalSignatory('leader', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, leaderName: "", leaderTitle: "" }))
+                      syncApprovalSignatory('leader', "", null)
+                    }
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
@@ -2242,8 +2341,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.superiorName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, superiorName: m.name, superiorTitle: m.rank || m.position || m.jobTitle || "Superior" }))
-                    else setForm(prev => ({ ...prev, superiorName: "", superiorTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, superiorName: m.name, superiorTitle: m.rank || m.position || m.jobTitle || "Superior" }))
+                      syncApprovalSignatory('superior', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, superiorName: "", superiorTitle: "" }))
+                      syncApprovalSignatory('superior', "", null)
+                    }
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
@@ -2263,8 +2367,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.nextSuperiorName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Department Head" }))
-                    else setForm(prev => ({ ...prev, nextSuperiorName: "", nextSuperiorTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Department Head" }))
+                      syncApprovalSignatory('nextSuperior', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, nextSuperiorName: "", nextSuperiorTitle: "" }))
+                      syncApprovalSignatory('nextSuperior', "", null)
+                    }
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
@@ -2284,8 +2393,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.hrName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, hrName: m.name, hrTitle: m.rank || m.position || m.jobTitle || "HR-GA" }))
-                    else setForm(prev => ({ ...prev, hrName: "", hrTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, hrName: m.name, hrTitle: m.rank || m.position || m.jobTitle || "HR-GA" }))
+                      syncApprovalSignatory('hr', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, hrName: "", hrTitle: "" }))
+                      syncApprovalSignatory('hr', "", null)
+                    }
                   }}
                   options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'HR'}` }))}
                   widthClassName="w-full"
