@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
+import { isFormHost } from '@/lib/form-config'
 import Image from 'next/image'
 import {
   Download,
@@ -22,6 +24,33 @@ import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 const DISMISS_COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 jam cooldown jika user klik 'Nanti Saja'
 const DISMISS_KEY = 'hero:pwa-install-dismissed-at'
 const INSTALLED_KEY = 'hero:pwa-installed'
+
+// Helper cek apakah route saat ini adalah portal yang dikecualikan dari PWA install prompt (MAESTRO / FORM)
+function isExcludedRoute(hostname?: string, pathname?: string | null): boolean {
+  if (typeof window === 'undefined') return false
+  const host = (hostname || window.location.hostname || '').toLowerCase()
+  const path = (pathname ?? window.location.pathname ?? '').toLowerCase()
+
+  // 1. Skip jika di domain/path portal MAESTRO
+  if (host.includes('maestro') || path.startsWith('/maestro')) {
+    return true
+  }
+
+  // 2. Skip jika di domain/path portal FORM (form.chitraparatama.com / form.localhost / /form / /f/)
+  if (
+    host.includes('form.chitraparatama.com') ||
+    host.startsWith('form.') ||
+    host.includes('form.localhost') ||
+    isFormHost(host) ||
+    path === '/form' ||
+    path.startsWith('/form/') ||
+    path.startsWith('/f/')
+  ) {
+    return true
+  }
+
+  return false
+}
 
 // Helper deteksi perangkat HP / Mobile (BUKAN desktop)
 function checkIsMobile(): boolean {
@@ -47,6 +76,7 @@ function checkIsStandalone(): boolean {
 }
 
 export function HeroInstallPrompt() {
+  const pathname = usePathname()
   const [show, setShow] = useState(false)
   const [isIos, setIsIos] = useState(false)
   const [isAndroid, setIsAndroid] = useState(false)
@@ -54,14 +84,18 @@ export function HeroInstallPrompt() {
   const [installedSuccess, setInstalledSuccess] = useState(false)
   const deferredPromptRef = useRef<any>(null)
 
+  // Sembunyikan otomatis jika berpindah ke route yang dikecualikan (misal form / maestro)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isExcludedRoute(window.location.hostname, pathname)) {
+      setShow(false)
+    }
+  }, [pathname])
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    // 1. Skip jika di domain/path portal MAESTRO
-    if (
-      window.location.hostname.includes('maestro') ||
-      window.location.pathname.startsWith('/maestro')
-    ) {
+    // 1. Skip jika di domain/path portal MAESTRO atau FORM
+    if (isExcludedRoute(window.location.hostname, window.location.pathname)) {
       return
     }
 
@@ -86,7 +120,7 @@ export function HeroInstallPrompt() {
       ;(window as any).__heroDeferredPrompt = e
 
       // ATURAN PENTING: JANGAN PERNAH MUNCULKAN OTOMATIS DI DESKTOP
-      if (!checkIsMobile()) {
+      if (!checkIsMobile() || isExcludedRoute(window.location.hostname, window.location.pathname)) {
         return
       }
 
@@ -118,6 +152,7 @@ export function HeroInstallPrompt() {
 
     // 5. SELALU dengarkan custom event untuk membuka popup secara manual (misal dari menu sidebar mobile)
     const handleCustomOpen = (event?: any) => {
+      if (isExcludedRoute(window.location.hostname, window.location.pathname)) return
       // Jika dipicu secara manual, abaikan cooldown dismissal
       if (iosDevice) {
         setShowGuide(true)
@@ -130,7 +165,7 @@ export function HeroInstallPrompt() {
     // 6. Untuk perangkat HP (iOS Safari / Android) jika event native tidak menembak
     // Hanya auto-show jika: BENAR-BENAR MOBILE, BELUM STANDALONE, dan BELUM DIDISMISS
     let timer: NodeJS.Timeout | null = null
-    if (checkIsMobile() && !checkIsStandalone() && !isDismissed()) {
+    if (checkIsMobile() && !checkIsStandalone() && !isDismissed() && !isExcludedRoute(window.location.hostname, window.location.pathname)) {
       timer = setTimeout(() => {
         if (checkIsMobile() && !checkIsStandalone() && !isDismissed()) {
           setShow(true)
@@ -146,7 +181,7 @@ export function HeroInstallPrompt() {
     }
   }, [])
 
-  if (!show) return null
+  if (!show || (typeof window !== 'undefined' && isExcludedRoute(window.location.hostname, pathname))) return null
 
   const handleDismiss = () => {
     if (typeof window !== 'undefined') {

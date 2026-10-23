@@ -11,8 +11,19 @@ export function PwaRegistration() {
           return;
         }
 
-        // Skip PWA registration on MAESTRO customer portal
-        if (window.location.hostname.includes("maestro") || window.location.pathname.startsWith("/maestro")) {
+        // Skip PWA registration on MAESTRO and FORM portals
+        const host = window.location.hostname.toLowerCase();
+        const path = window.location.pathname.toLowerCase();
+        if (
+          host.includes("maestro") ||
+          path.startsWith("/maestro") ||
+          host.includes("form.chitraparatama.com") ||
+          host.startsWith("form.") ||
+          host.includes("form.localhost") ||
+          path === "/form" ||
+          path.startsWith("/form/") ||
+          path.startsWith("/f/")
+        ) {
           return;
         }
 
