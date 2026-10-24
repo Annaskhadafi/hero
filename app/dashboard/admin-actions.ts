@@ -253,7 +253,8 @@ async function requireSchedulingTimesheetAccess(
   if (!access.canView || !allowed) {
     if (resource !== 'scheduling_timesheet') {
       const parentAccess = await getCurrentMenuPermission('scheduling_timesheet')
-      const parentAllowed = permission === 'finalize' ? parentAccess.canDelete : parentAccess.canEdit
+      const parentAllowed =
+        permission === 'finalize' ? parentAccess.canDelete : parentAccess.canEdit
       if (parentAccess.canView && parentAllowed) {
         return parentAccess
       }
@@ -484,6 +485,7 @@ const scheduleCodeSchema = z.enum([
   'OFF',
   'FB',
   'ST',
+  'AL',
   'Libur',
   'Sakit',
   'Emergency',
@@ -659,10 +661,7 @@ async function normalizeScheduleV2DraftRows(siteId: number, period: string, rows
       .from(employees)
       .where(inArray(employees.id, extraIds))
   }
-  const validEmployeeIds = new Set([
-    ...activeIds,
-    ...extraEmployees.map((e) => e.id),
-  ])
+  const validEmployeeIds = new Set([...activeIds, ...extraEmployees.map((e) => e.id)])
 
   const dayCount = getScheduleV2DayCount(period)
   const result: ScheduleV2Row[] = []
@@ -1723,9 +1722,21 @@ const saveAttendanceRealOverridesSchema = z.object({
       employeeId: z.coerce.number().int().positive(),
       day: z.coerce.number().int().min(1).max(31),
       status: attendanceRealStatusSchema,
-      clockIn: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
-      clockOut: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
-      note: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
+      clockIn: z
+        .string()
+        .nullish()
+        .transform((v) => v?.trim() ?? '')
+        .default(''),
+      clockOut: z
+        .string()
+        .nullish()
+        .transform((v) => v?.trim() ?? '')
+        .default(''),
+      note: z
+        .string()
+        .nullish()
+        .transform((v) => v?.trim() ?? '')
+        .default(''),
       source: z.enum(['manual', 'excel', 'attendance']).default('manual'),
       overtimeHours: z.coerce.number().nullable().optional(),
     })
@@ -2847,13 +2858,11 @@ export async function clearAttendanceRealOverridesAction(
   return { ok: true }
 }
 
-const overtimeClockTimeSchema = z
-  .string()
-  .transform((v) => {
-    const clean = v.trim().slice(0, 5)
-    if (!clean || clean === '--:--') return ''
-    return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : ''
-  })
+const overtimeClockTimeSchema = z.string().transform((v) => {
+  const clean = v.trim().slice(0, 5)
+  if (!clean || clean === '--:--') return ''
+  return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : ''
+})
 
 const overtimeIntervalSchema = z.object({
   start: overtimeClockTimeSchema,
@@ -3030,9 +3039,16 @@ export async function saveSchedulingConfigAction(
 
     const sanitizedApprovalSections = validApprovalSections.map((row) => ({
       ...row,
-      pjoLeaderId: row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
-      sectionHeadId: row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId) ? row.sectionHeadId : null,
-      departmentHeadId: row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId) ? row.departmentHeadId : null,
+      pjoLeaderId:
+        row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
+      sectionHeadId:
+        row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId)
+          ? row.sectionHeadId
+          : null,
+      departmentHeadId:
+        row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId)
+          ? row.departmentHeadId
+          : null,
     }))
 
     await db.transaction(async (tx) => {
@@ -3146,7 +3162,12 @@ export async function saveSchedulingConfigAction(
             : (existingOvertimeMatrix?.id ?? null)
         const roles = [
           { key: 'pjo', label: 'PJO Leader', stepOrder: 1, employeeId: row.pjoLeaderId },
-          { key: 'section-head', label: 'Section Head', stepOrder: 2, employeeId: row.sectionHeadId },
+          {
+            key: 'section-head',
+            label: 'Section Head',
+            stepOrder: 2,
+            employeeId: row.sectionHeadId,
+          },
           { key: 'dept-head', label: 'Dept Head', stepOrder: 3, employeeId: row.departmentHeadId },
         ] as const
         if (roles.every((role) => role.employeeId == null)) {
@@ -3236,8 +3257,9 @@ export async function saveSchedulingConfigAction(
           const existingMatrixId =
             config.transactionType === 'overtime_request'
               ? overtimeMatrixId
-              : (existingMatrices.find((matrix) => matrix.transactionType === config.transactionType)
-                  ?.id ?? null)
+              : (existingMatrices.find(
+                  (matrix) => matrix.transactionType === config.transactionType
+                )?.id ?? null)
           const matrixValues = {
             name: config.name,
             structureId: activeStructureId,
@@ -3268,7 +3290,9 @@ export async function saveSchedulingConfigAction(
                   .returning({ id: approvalMatrices.id })
               )[0].id
 
-          await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
+          await tx
+            .delete(approvalMatrixSteps)
+            .where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
           if (activeNodes.length > 0) {
             await tx.insert(approvalMatrixSteps).values(
               activeNodes.map((node) => ({
@@ -4720,9 +4744,11 @@ async function applyApprovalDecision(params: {
     (approval as any).formName?.toLowerCase().includes('status pernikahan') ||
     (approval as any).activityTitle?.toLowerCase().includes('status pernikahan')
   ) {
-    const { approveMaritalStatusStepAction, rejectMaritalStatusStepAction, revertMaritalStatusStepAction } = await import(
-      '@/app/dashboard/central-service/marital-status/actions'
-    )
+    const {
+      approveMaritalStatusStepAction,
+      rejectMaritalStatusStepAction,
+      revertMaritalStatusStepAction,
+    } = await import('@/app/dashboard/central-service/marital-status/actions')
     const { maritalStatusRequests } = await import('@/db/schema/marital-status')
 
     const [appRow] = await db
@@ -4767,7 +4793,12 @@ async function applyApprovalDecision(params: {
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal menyetujui permohonan status pernikahan.')
         }
-      } else if ((params.decision as string) === 'reverted' || (params.decision as string) === 'revert' || (params.decision as string) === 'needs_revision' || (params.decision as string) === 'needs_correction') {
+      } else if (
+        (params.decision as string) === 'reverted' ||
+        (params.decision as string) === 'revert' ||
+        (params.decision as string) === 'needs_revision' ||
+        (params.decision as string) === 'needs_correction'
+      ) {
         const res = await revertMaritalStatusStepAction(reqId, params.approvalId, params.note)
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal mengembalikan permohonan status pernikahan.')
@@ -4853,8 +4884,6 @@ async function applyApprovalDecision(params: {
       return true
     }
   }
-
-
 
   // Summary APD approval handling
   if (
@@ -5557,7 +5586,10 @@ async function applyApprovalDecision(params: {
                   .map((e) => e.trim())
                   .filter(Boolean)
               const list = Array.from(
-                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                new Set([
+                  ...parseEmails(matConfig.ccEmails),
+                  ...parseEmails(matConfig.recipientEmails),
+                ])
               )
               if (list.length > 0) materialToolsCc = list
             }
@@ -5640,7 +5672,10 @@ async function applyApprovalDecision(params: {
 
             const dynamicCc = matConfig.isActive
               ? Array.from(
-                  new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                  new Set([
+                    ...parseEmails(matConfig.ccEmails),
+                    ...parseEmails(matConfig.recipientEmails),
+                  ])
                 )
               : []
 
@@ -5686,7 +5721,11 @@ async function applyApprovalDecision(params: {
               const streamCc: string[] = []
               if (reqSec.includes('repair') || reqSec.includes('retread')) {
                 streamCc.push(...parseEmails(apdConfig.repairCcEmail))
-              } else if (reqSec.includes('te') || reqSec.includes('technical') || reqSec.includes('engineer')) {
+              } else if (
+                reqSec.includes('te') ||
+                reqSec.includes('technical') ||
+                reqSec.includes('engineer')
+              ) {
                 streamCc.push(...parseEmails(apdConfig.teCcEmail))
               } else if (reqSec.includes('service') || reqSec.includes('mvc')) {
                 streamCc.push(...parseEmails(apdConfig.serviceCcEmail))
@@ -5763,7 +5802,10 @@ async function applyApprovalDecision(params: {
                   .map((e) => e.trim())
                   .filter(Boolean)
               const list = Array.from(
-                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                new Set([
+                  ...parseEmails(matConfig.ccEmails),
+                  ...parseEmails(matConfig.recipientEmails),
+                ])
               )
               if (list.length > 0) ccEmails = list
             }
@@ -5820,7 +5862,10 @@ async function applyApprovalDecision(params: {
                   .map((e) => e.trim())
                   .filter(Boolean)
               const list = Array.from(
-                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                new Set([
+                  ...parseEmails(matConfig.ccEmails),
+                  ...parseEmails(matConfig.recipientEmails),
+                ])
               )
               if (list.length > 0) ccEmails = list
             }
@@ -8081,7 +8126,12 @@ export async function manageSecurityUserAction(
       locationChangeReason: formData.get('locationChangeReason'),
     })
 
-    if (['reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(payload.intent) && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) {
+    if (
+      ['reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(
+        payload.intent
+      ) &&
+      !isSuperAdminRole(await getCurrentEmployeeAccessRole())
+    ) {
       throw new Error('Quick Action hanya tersedia untuk role Super Admin.')
     }
 
@@ -8807,16 +8857,18 @@ export async function manageSecurityUserAction(
       if (!isSuperAdmin && !isSelf) {
         return {
           status: 'error',
-          message: 'Hanya Super Admin yang diizinkan mereset password pengguna lain. Anda hanya dapat mengganti password akun Anda sendiri.',
+          message:
+            'Hanya Super Admin yang diizinkan mereset password pengguna lain. Anda hanya dapat mengganti password akun Anda sendiri.',
         }
       }
 
       const defaultPass = buildDefaultCredentialPassword(employee.employeeSn)
-      const fallbackDefaultPass = defaultPass.length >= 8 ? defaultPass : `Chitra#${employee.employeeSn || '12345'}`
+      const fallbackDefaultPass =
+        defaultPass.length >= 8 ? defaultPass : `Chitra#${employee.employeeSn || '12345'}`
       const newPassword =
         formData.get('useDefaultPassword') === 'true'
           ? fallbackDefaultPass
-          : payload.newPassword ?? ''
+          : (payload.newPassword ?? '')
 
       if (newPassword.length < 8) {
         return {
@@ -8869,7 +8921,10 @@ export async function manageSecurityUserAction(
       const [site] = await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
       if (!site) return { status: 'error', message: 'Lokasi site tidak valid.' }
 
-      await db.update(employees).set({ siteId: site.id, workLocation: site.name }).where(eq(employees.id, employee.id))
+      await db
+        .update(employees)
+        .set({ siteId: site.id, workLocation: site.name })
+        .where(eq(employees.id, employee.id))
       if (employee.siteId !== site.id) {
         const changeReason =
           (formData.get('locationChangeReason') as string)?.trim() ||
@@ -8899,7 +8954,10 @@ export async function manageSecurityUserAction(
         severity: 'info',
       })
       revalidateAdminSurfaces()
-      return { status: 'success', message: `Lokasi ${employee.name} berhasil diubah ke ${site.name}.` }
+      return {
+        status: 'success',
+        message: `Lokasi ${employee.name} berhasil diubah ke ${site.name}.`,
+      }
     }
 
     if (payload.intent === 'reset-face') {
@@ -10051,8 +10109,18 @@ export async function importTrainingRecordsAction(
         const d = parseOptionalOperationalDate(completedDate)
         if (d) {
           const MONTH_NAMES = [
-            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+            'Januari',
+            'Februari',
+            'Maret',
+            'April',
+            'Mei',
+            'Juni',
+            'Juli',
+            'Agustus',
+            'September',
+            'Oktober',
+            'November',
+            'Desember',
           ]
           completedMonth = MONTH_NAMES[d.getMonth()] ?? null
         }

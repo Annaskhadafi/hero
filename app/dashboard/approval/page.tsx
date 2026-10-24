@@ -1,30 +1,30 @@
-import { ApprovalWorkbench } from "@/components/approval-workbench";
-import { getServerSession } from "@/lib/auth-session";
-import { getApprovalCenterData } from "@/lib/approval-workspace";
-import { getCurrentMenuPermission } from "@/lib/hero-access";
-import { redirect } from "next/navigation";
+import { ApprovalWorkbench } from '@/components/approval-workbench'
+import { getServerSession } from '@/lib/auth-session'
+import { getApprovalCenterData } from '@/lib/approval-workspace'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { redirect } from 'next/navigation'
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 // Central Approval Inbox Page
 export default async function ApprovalPage() {
-  const access = await getCurrentMenuPermission("approval_inbox");
+  const access = await getCurrentMenuPermission('approval_inbox')
   if (!access.canView) {
-    redirect("/dashboard");
+    redirect('/dashboard')
   }
 
-  const session = await getServerSession();
-  const email = session?.user?.email || "chitra.operation.hero@gmail.com";
-  let data = null;
+  const session = await getServerSession()
+  const email = session?.user?.email || 'chitra.operation.hero@gmail.com'
+  let data = null
   try {
-    data = await getApprovalCenterData(email);
+    data = await getApprovalCenterData(email)
   } catch (err) {
-    console.error("[ApprovalPage] Server-side exception:", err);
+    console.error('[ApprovalPage] Server-side exception:', err)
   }
 
   const safeData = data ?? {
-    currentUserName: email || "User",
+    currentUserName: email || 'User',
     inboxMetrics: {
       pendingGroups: 0,
       pendingActivities: 0,
@@ -38,6 +38,7 @@ export default async function ApprovalPage() {
       rfrCount: 0,
       trainingRequestCount: 0,
       maritalStatusCount: 0,
+      flightRouteCount: 0,
       generalActivityCount: 0,
     },
     historyMetrics: {
@@ -56,7 +57,7 @@ export default async function ApprovalPage() {
     sopWinRequestInboxItems: (data as any)?.sopWinRequestInboxItems || [],
     rfrInboxItems: (data as any)?.rfrInboxItems || [],
     trainingRequestInboxItems: (data as any)?.trainingRequestInboxItems || [],
-  };
+  }
 
-  return <ApprovalWorkbench data={safeData} />;
+  return <ApprovalWorkbench data={safeData} />
 }

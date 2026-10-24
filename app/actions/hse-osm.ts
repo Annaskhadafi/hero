@@ -4,12 +4,7 @@ import { and, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import {
-  employees,
-  masterDepartments,
-  masterSections,
-  sites,
-} from '@/db/schema/hero'
+import { employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
 import {
   heroHseOsmFindings,
   heroHseOsmMasterClassifications,
@@ -22,7 +17,11 @@ import {
 } from '@/db/schema/hse-osm'
 import { auth } from '@/lib/auth'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
-import type { HseOsmFindingStatus, HseOsmRiskLevel, HseOsmFindingCondition } from '@/lib/hse-osm-constants'
+import type {
+  HseOsmFindingStatus,
+  HseOsmRiskLevel,
+  HseOsmFindingCondition,
+} from '@/lib/hse-osm-constants'
 import { sendHseOsmFindingNotifications, resolvePicArea } from '@/lib/hse-osm-notifications'
 
 export type OsmTeamMemberInput = {
@@ -178,12 +177,7 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
       const sessionsInSite = db
         .select({ id: heroHseOsmSessions.id })
         .from(heroHseOsmSessions)
-        .where(
-          and(
-            eq(heroHseOsmSessions.siteId, siteId),
-            isNull(heroHseOsmSessions.deletedAt)
-          )
-        )
+        .where(and(eq(heroHseOsmSessions.siteId, siteId), isNull(heroHseOsmSessions.deletedAt)))
       statusConditions.push(inArray(heroHseOsmFindings.sessionId, sessionsInSite))
     }
 
@@ -271,7 +265,17 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
 export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
   try {
     const actor = await getActorEmployee()
-    const { siteId, status, focusItemId, search, dateFrom, dateTo, limit = 50, offset = 0, reportTab } = options
+    const {
+      siteId,
+      status,
+      focusItemId,
+      search,
+      dateFrom,
+      dateTo,
+      limit = 50,
+      offset = 0,
+      reportTab,
+    } = options
 
     const conditions = [isNull(heroHseOsmSessions.deletedAt)]
 
@@ -323,6 +327,7 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
         leadRole: heroHseOsmSessions.leadRole,
         notes: heroHseOsmSessions.notes,
         status: heroHseOsmSessions.status,
+        createdBy: heroHseOsmSessions.createdBy,
         createdAt: heroHseOsmSessions.createdAt,
       })
       .from(heroHseOsmSessions)
@@ -347,10 +352,7 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       })
       .from(heroHseOsmFindings)
       .where(
-        and(
-          inArray(heroHseOsmFindings.sessionId, sessionIds),
-          isNull(heroHseOsmFindings.deletedAt)
-        )
+        and(inArray(heroHseOsmFindings.sessionId, sessionIds), isNull(heroHseOsmFindings.deletedAt))
       )
       .groupBy(heroHseOsmFindings.sessionId, heroHseOsmFindings.status)
 
@@ -390,7 +392,12 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       }
 
       const isLocked = session.status === 'SUBMITTED' || session.status === 'COMPLETED'
-      const progressPercent = totalFindings > 0 ? Math.round((closedCount / totalFindings) * 1000) / 10 : (isLocked ? 100 : 0)
+      const progressPercent =
+        totalFindings > 0
+          ? Math.round((closedCount / totalFindings) * 1000) / 10
+          : isLocked
+            ? 100
+            : 0
 
       const actorEmailNorm = (actor?.sessionUser?.email || '').toLowerCase()
       const actorBadge = actor?.employee?.employeeSn || ''
@@ -399,24 +406,22 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       const picInfo = resolvePicArea(session.locationArea)
 
       const isCreatedByMe = Boolean(
-        (session.createdBy && actorEmailNorm && session.createdBy.toLowerCase() === actorEmailNorm) ||
+        (session.createdBy &&
+          actorEmailNorm &&
+          session.createdBy.toLowerCase() === actorEmailNorm) ||
         (session.leadBadgeNumber && actorBadge && session.leadBadgeNumber === actorBadge) ||
         (session.leadEmployeeId && actorId && session.leadEmployeeId === actorId)
       )
 
       const isReceivedByArea = Boolean(
-        !isCreatedByMe && (
-          (session.siteId && actorSiteId && session.siteId === actorSiteId) ||
-          (picInfo.picEmail.toLowerCase() === actorEmailNorm)
-        )
+        !isCreatedByMe &&
+        ((session.siteId && actorSiteId && session.siteId === actorSiteId) ||
+          picInfo.picEmail.toLowerCase() === actorEmailNorm)
       )
 
       const isAssigned = Boolean(
-        (openCount > 0 || processedCount > 0) && (
-          isReceivedByArea ||
-          picInfo.picEmail.toLowerCase() === actorEmailNorm ||
-          isCreatedByMe
-        )
+        (openCount > 0 || processedCount > 0) &&
+        (isReceivedByArea || picInfo.picEmail.toLowerCase() === actorEmailNorm || isCreatedByMe)
       )
 
       return {
@@ -536,12 +541,7 @@ export async function getHseOsmSessionById(id: number) {
         createdAt: heroHseOsmFindings.createdAt,
       })
       .from(heroHseOsmFindings)
-      .where(
-        and(
-          eq(heroHseOsmFindings.sessionId, id),
-          isNull(heroHseOsmFindings.deletedAt)
-        )
-      )
+      .where(and(eq(heroHseOsmFindings.sessionId, id), isNull(heroHseOsmFindings.deletedAt)))
       .orderBy(heroHseOsmFindings.id)
 
     return {
@@ -611,7 +611,7 @@ export async function createHseOsmSession(input: CreateOsmSessionInput) {
       for (const finding of input.findings) {
         const findingNumber = await generateFindingNumber()
         const isStandard = finding.condition === 'STANDARD' || finding.status === 'CLOSED'
-        const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : (finding.status || 'OPEN')
+        const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : finding.status || 'OPEN'
         const now = new Date()
 
         await db.insert(heroHseOsmFindings).values({
@@ -626,21 +626,28 @@ export async function createHseOsmSession(input: CreateOsmSessionInput) {
           riskLevel: finding.riskLevel || 'MEDIUM',
           status: findingStatus,
           actionRequired: isStandard
-            ? (finding.actionRequired || 'Good Condition / Sesuai Standar Keselamatan')
-            : (finding.actionRequired || ''),
+            ? finding.actionRequired || 'Good Condition / Sesuai Standar Keselamatan'
+            : finding.actionRequired || '',
           actionTaken: isStandard
-            ? (finding.actionTaken || 'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).')
-            : (finding.actionTaken || ''),
+            ? finding.actionTaken ||
+              'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).'
+            : finding.actionTaken || '',
           actionPhotoUrls: finding.actionPhotoUrls || [],
           actionSubmittedAt: isStandard ? now : null,
           actionSubmittedBy: isStandard
-            ? (actor?.sessionUser?.name || actor?.employee?.name || input.leadEmployeeName || 'Inspector Lead')
+            ? actor?.sessionUser?.name ||
+              actor?.employee?.name ||
+              input.leadEmployeeName ||
+              'Inspector Lead'
             : null,
           verifiedAt: isStandard ? now : null,
           verifiedBy: isStandard
-            ? (actor?.sessionUser?.name || actor?.employee?.name || input.leadEmployeeName || 'Inspector Lead')
+            ? actor?.sessionUser?.name ||
+              actor?.employee?.name ||
+              input.leadEmployeeName ||
+              'Inspector Lead'
             : null,
-          dueDate: isStandard ? null : (finding.dueDate || null),
+          dueDate: isStandard ? null : finding.dueDate || null,
         })
       }
     }
@@ -696,7 +703,10 @@ export async function createHseOsmFinding(
     }
 
     if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
-      return { success: false, error: 'Laporan OSM telah disubmit dan terkunci. Tidak dapat menambah temuan baru.' }
+      return {
+        success: false,
+        error: 'Laporan OSM telah disubmit dan terkunci. Tidak dapat menambah temuan baru.',
+      }
     }
 
     const findingNumber = await generateFindingNumber()
@@ -705,8 +715,9 @@ export async function createHseOsmFinding(
     const currentTime = now.toTimeString().slice(0, 5)
 
     const isStandard = input.condition === 'STANDARD' || input.status === 'CLOSED'
-    const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : (input.status || 'OPEN')
-    const actionBy = actor?.sessionUser?.name || actor?.employee?.name || session.leadEmployeeName || 'Inspector'
+    const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : input.status || 'OPEN'
+    const actionBy =
+      actor?.sessionUser?.name || actor?.employee?.name || session.leadEmployeeName || 'Inspector'
 
     const [newFinding] = await db
       .insert(heroHseOsmFindings)
@@ -722,16 +733,17 @@ export async function createHseOsmFinding(
         riskLevel: input.riskLevel || 'MEDIUM',
         status: findingStatus,
         actionRequired: isStandard
-          ? (input.actionRequired?.trim() || 'Good Condition / Sesuai Standar Keselamatan')
-          : (input.actionRequired || ''),
+          ? input.actionRequired?.trim() || 'Good Condition / Sesuai Standar Keselamatan'
+          : input.actionRequired || '',
         actionTaken: isStandard
-          ? (input.actionTaken?.trim() || 'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).')
+          ? input.actionTaken?.trim() ||
+            'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).'
           : '',
         actionSubmittedAt: isStandard ? now : null,
         actionSubmittedBy: isStandard ? actionBy : null,
         verifiedAt: isStandard ? now : null,
         verifiedBy: isStandard ? actionBy : null,
-        dueDate: isStandard ? null : (input.dueDate || null),
+        dueDate: isStandard ? null : input.dueDate || null,
       })
       .returning()
 
@@ -776,13 +788,23 @@ export async function submitHseOsmAction(
       return { success: false, error: 'Temuan tidak ditemukan' }
     }
 
-    const [sessionRow] = await db.select({ status: heroHseOsmSessions.status }).from(heroHseOsmSessions).where(eq(heroHseOsmSessions.id, finding.sessionId)).limit(1)
+    const [sessionRow] = await db
+      .select({ status: heroHseOsmSessions.status })
+      .from(heroHseOsmSessions)
+      .where(eq(heroHseOsmSessions.id, finding.sessionId))
+      .limit(1)
     if (sessionRow?.status === 'SUBMITTED' || sessionRow?.status === 'COMPLETED') {
-      return { success: false, error: 'Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi.' }
+      return {
+        success: false,
+        error: 'Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi.',
+      }
     }
 
     if (finding.status !== 'OPEN') {
-      return { success: false, error: 'Tindak lanjut hanya dapat dilakukan pada temuan yang berstatus OPEN.' }
+      return {
+        success: false,
+        error: 'Tindak lanjut hanya dapat dilakukan pada temuan yang berstatus OPEN.',
+      }
     }
 
     const [updatedFinding] = await db
@@ -868,7 +890,8 @@ export async function deleteHseOsmSession(id: number) {
     if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
       return {
         success: false,
-        error: 'Sesi OSM yang telah disubmit dan terkunci tidak dapat dihapus. Hanya tiket draft yang dapat dihapus.',
+        error:
+          'Sesi OSM yang telah disubmit dan terkunci tidak dapat dihapus. Hanya tiket draft yang dapat dihapus.',
       }
     }
 
@@ -957,10 +980,7 @@ export async function syncHseOsmOfflineBatch(batchPayloads: CreateOsmSessionInpu
   }
 }
 
-export async function updateHseOsmFindingPhotos(
-  findingId: number,
-  photoUrls: string[]
-) {
+export async function updateHseOsmFindingPhotos(findingId: number, photoUrls: string[]) {
   try {
     const [finding] = await db
       .select({ id: heroHseOsmFindings.id, sessionId: heroHseOsmFindings.sessionId })
@@ -991,7 +1011,6 @@ export async function updateHseOsmFindingPhotos(
     return { success: false, error: error?.message || 'Gagal memperbarui foto temuan' }
   }
 }
-
 
 export async function submitHseOsmSession(sessionId: number) {
   try {

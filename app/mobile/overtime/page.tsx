@@ -2,7 +2,13 @@ import { redirect } from 'next/navigation'
 import { CheckCheck, History, PlusCircle } from 'lucide-react'
 
 import { db } from '@/db'
-import { activityLibraries, employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
+import {
+  activityLibraries,
+  employees,
+  masterDepartments,
+  masterSections,
+  sites,
+} from '@/db/schema/hero'
 import { and, asc, eq } from 'drizzle-orm'
 import { libraryDeptMatches, librarySectionMatches, librarySiteMatches } from '@/lib/daily-activity'
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
@@ -70,89 +76,118 @@ export default async function MobileOvertimePage({
   )
   if (!data) return null
 
-  const [approvals, activeEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries] = await Promise.all([
-    safeQuery(
-      () => getApprovalCenterData(session.user.email, { categoryFilter: 'OVERTIME', skipHistory: true }),
-      null,
-      'getApprovalCenterData'
-    ),
-    safeQuery(
-      () =>
-        db
-          .select({
-            id: employees.id,
-            name: employees.name,
-            email: employees.email,
-            employeeId: employees.employeeSn,
-            position: employees.jobTitle,
-            department: employees.department,
-            section: employees.section,
-            directManagerId: employees.directManagerId,
-            sectionId: employees.sectionId,
-            departmentId: employees.departmentId,
-            siteId: employees.siteId,
-          })
-          .from(employees)
-          .where(eq(employees.isActive, true))
-          .orderBy(asc(employees.name)),
-      [],
-      'getActiveEmployees'
-    ),
-    safeQuery(
-      () =>
-        db
-          .select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId })
-          .from(masterSections),
-      [],
-      'masterSections'
-    ),
-    safeQuery(
-      () =>
-        db
-          .select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId })
-          .from(masterDepartments),
-      [],
-      'masterDepartments'
-    ),
-    safeQuery(
-      () =>
-        db
-          .select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId })
-          .from(sites),
-      [],
-      'sites'
-    ),
-    safeQuery(
-      () =>
-        db
-          .select({
-            id: activityLibraries.id,
-            activityCode: activityLibraries.activityCode,
-            activityName: activityLibraries.activityName,
-            category: activityLibraries.category,
-            basePoints: activityLibraries.basePoints,
-            slaHours: activityLibraries.slaHours,
-            requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
-          })
-          .from(activityLibraries)
-          .where(
-            and(
-              eq(activityLibraries.isActive, true),
-              librarySiteMatches(activityLibraries.siteId, activityLibraries.siteIds, data.lead?.siteId),
-              libraryDeptMatches(activityLibraries.departmentId, activityLibraries.departmentIds, data.lead?.departmentId),
-              librarySectionMatches(activityLibraries.sectionId, activityLibraries.sectionIds, data.lead?.sectionId)
+  const [approvals, activeEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries] =
+    await Promise.all([
+      safeQuery(
+        () =>
+          getApprovalCenterData(session.user.email, {
+            categoryFilter: 'OVERTIME',
+            skipHistory: true,
+          }),
+        null,
+        'getApprovalCenterData'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: employees.id,
+              name: employees.name,
+              email: employees.email,
+              employeeId: employees.employeeSn,
+              position: employees.jobTitle,
+              department: employees.department,
+              section: employees.section,
+              directManagerId: employees.directManagerId,
+              sectionId: employees.sectionId,
+              departmentId: employees.departmentId,
+              siteId: employees.siteId,
+            })
+            .from(employees)
+            .where(eq(employees.isActive, true))
+            .orderBy(asc(employees.name)),
+        [],
+        'getActiveEmployees'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: masterSections.id,
+              name: masterSections.name,
+              headEmployeeId: masterSections.headEmployeeId,
+            })
+            .from(masterSections),
+        [],
+        'masterSections'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: masterDepartments.id,
+              name: masterDepartments.name,
+              headEmployeeId: masterDepartments.headEmployeeId,
+            })
+            .from(masterDepartments),
+        [],
+        'masterDepartments'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId })
+            .from(sites),
+        [],
+        'sites'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityLibraries.id,
+              activityCode: activityLibraries.activityCode,
+              activityName: activityLibraries.activityName,
+              category: activityLibraries.category,
+              basePoints: activityLibraries.basePoints,
+              slaHours: activityLibraries.slaHours,
+              requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+            })
+            .from(activityLibraries)
+            .where(
+              and(
+                eq(activityLibraries.isActive, true),
+                librarySiteMatches(
+                  activityLibraries.siteId,
+                  activityLibraries.siteIds,
+                  data.lead?.siteId
+                ),
+                libraryDeptMatches(
+                  activityLibraries.departmentId,
+                  activityLibraries.departmentIds,
+                  data.lead?.departmentId
+                ),
+                librarySectionMatches(
+                  activityLibraries.sectionId,
+                  activityLibraries.sectionIds,
+                  data.lead?.sectionId
+                )
+              )
             )
-          )
-          .orderBy(asc(activityLibraries.activityName)),
-      [],
-      'activityLibraries'
-    ),
-  ])
+            .orderBy(asc(activityLibraries.activityName)),
+        [],
+        'activityLibraries'
+      ),
+    ])
 
   const sectionHeadById = new Map(rawSections.map((s) => [s.id, s.headEmployeeId]))
-  const sectionHeadByName = new Map(rawSections.map((s) => [s.name.toLowerCase().trim(), s.headEmployeeId]))
+  const sectionHeadByName = new Map(
+    rawSections.map((s) => [s.name.toLowerCase().trim(), s.headEmployeeId])
+  )
   const deptHeadById = new Map(rawDepartments.map((d) => [d.id, d.headEmployeeId]))
-  const deptHeadByName = new Map(rawDepartments.map((d) => [d.name.toLowerCase().trim(), d.headEmployeeId]))
+  const deptHeadByName = new Map(
+    rawDepartments.map((d) => [d.name.toLowerCase().trim(), d.headEmployeeId])
+  )
   const siteHeadById = new Map(rawSites.map((s) => [s.id, s.headEmployeeId]))
 
   const sanitizedEmployees = (activeEmployees || []).map((e) => ({
@@ -167,25 +202,41 @@ export default async function MobileOvertimePage({
     sectionId: e.sectionId ? Number(e.sectionId) : null,
     departmentId: e.departmentId ? Number(e.departmentId) : null,
     siteId: e.siteId ? Number(e.siteId) : null,
-    sectionHeadId: e.sectionId ? (sectionHeadById.get(e.sectionId) ?? null) : (e.section ? (sectionHeadByName.get(e.section.toLowerCase().trim()) ?? null) : null),
-    deptHeadId: e.departmentId ? (deptHeadById.get(e.departmentId) ?? null) : (e.department ? (deptHeadByName.get(e.department.toLowerCase().trim()) ?? null) : null),
+    sectionHeadId: e.sectionId
+      ? (sectionHeadById.get(e.sectionId) ?? null)
+      : e.section
+        ? (sectionHeadByName.get(e.section.toLowerCase().trim()) ?? null)
+        : null,
+    deptHeadId: e.departmentId
+      ? (deptHeadById.get(e.departmentId) ?? null)
+      : e.department
+        ? (deptHeadByName.get(e.department.toLowerCase().trim()) ?? null)
+        : null,
     siteHeadId: e.siteId ? (siteHeadById.get(e.siteId) ?? null) : null,
   }))
 
   const rawEdit = query.edit ? String(query.edit).replace(/[^0-9]/g, '') : ''
-  const editSplId = rawEdit && !isNaN(Number(rawEdit)) && Number(rawEdit) > 0 ? Number(rawEdit) : undefined
+  const editSplId =
+    rawEdit && !isNaN(Number(rawEdit)) && Number(rawEdit) > 0 ? Number(rawEdit) : undefined
 
   const rawExtend = query.extend ? String(query.extend).replace(/[^0-9]/g, '') : ''
-  const parentSplId = rawExtend && !isNaN(Number(rawExtend)) && Number(rawExtend) > 0 ? Number(rawExtend) : undefined
+  const parentSplId =
+    rawExtend && !isNaN(Number(rawExtend)) && Number(rawExtend) > 0 ? Number(rawExtend) : undefined
 
   const targetSplId = editSplId || parentSplId
-  const initialSplData = targetSplId ? await safeQuery(() => getOvertimeApprovalData(targetSplId), null, "getOvertimeApprovalData") : null
+  const initialSplData = targetSplId
+    ? await safeQuery(() => getOvertimeApprovalData(targetSplId), null, 'getOvertimeApprovalData')
+    : null
   const historyRows: MobileSplHistoryRow[] = []
   for (const document of data.splDocuments) {
     const docAny = document as any
     const workers = document.workers || []
     const otherWorkerNames = workers
-      .filter((w) => w.employeeName && w.employeeName.toLowerCase().trim() !== (docAny.requesterName || '').toLowerCase().trim())
+      .filter(
+        (w) =>
+          w.employeeName &&
+          w.employeeName.toLowerCase().trim() !== (docAny.requesterName || '').toLowerCase().trim()
+      )
       .map((w) => w.employeeName)
 
     // 1. Primary / Submitter Row
@@ -208,13 +259,23 @@ export default async function MobileOvertimePage({
 
     // 2. Team Member Participant Rows (e.g. Sanudin)
     for (const w of workers) {
-      if (!w.employeeName || w.employeeName.toLowerCase().trim() === (docAny.requesterName || '').toLowerCase().trim()) {
+      if (
+        !w.employeeName ||
+        w.employeeName.toLowerCase().trim() === (docAny.requesterName || '').toLowerCase().trim()
+      ) {
         continue
       }
       const partnerNames = [
         docAny.requesterName,
-        ...workers.filter((other) => other.employeeName !== w.employeeName && other.employeeName !== docAny.requesterName).map((o) => o.employeeName)
-      ].filter(Boolean).join(', ')
+        ...workers
+          .filter(
+            (other) =>
+              other.employeeName !== w.employeeName && other.employeeName !== docAny.requesterName
+          )
+          .map((o) => o.employeeName),
+      ]
+        .filter(Boolean)
+        .join(', ')
 
       historyRows.push({
         id: document.id,
@@ -251,6 +312,7 @@ export default async function MobileOvertimePage({
       rfrCount: 0,
       trainingRequestCount: 0,
       maritalStatusCount: 0,
+      flightRouteCount: 0,
       generalActivityCount: 0,
     },
     historyMetrics: {
@@ -272,7 +334,9 @@ export default async function MobileOvertimePage({
   }
 
   const pendingSplCount = (safeApprovals.overtimeInboxItems || []).length
-  const activeSplCount = (historyRows || []).filter((r) => ['approved', 'submitted'].includes(r.status)).length
+  const activeSplCount = (historyRows || []).filter((r) =>
+    ['approved', 'submitted'].includes(r.status)
+  ).length
 
   const activeTabValue =
     query.edit || query.extend
@@ -293,7 +357,9 @@ export default async function MobileOvertimePage({
             </p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-[#003461]">SPL Mobile</h1>
           </div>
-          <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] font-bold text-xs">{historyRows.length} SPL</Badge>
+          <Badge className="border-0 bg-[#eaf4fb] text-xs font-bold text-[#003f78]">
+            {historyRows.length} SPL
+          </Badge>
         </div>
         <p className="text-sm leading-6 font-semibold text-[#486275]">
           Ajukan, approve, dan kelola riwayat SPL tanpa membuka desktop.
@@ -315,12 +381,12 @@ export default async function MobileOvertimePage({
 
           <TabsTrigger
             value="approval"
-            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs relative"
+            className="relative min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
           >
             <div className="relative flex items-center">
               <CheckCheck className="size-4 shrink-0" />
               {pendingSplCount > 0 && (
-                <span className="absolute -top-1.5 -right-2.5 flex size-4 items-center justify-center rounded-full bg-rose-600 text-[9px] font-black text-white ring-2 ring-white animate-pulse">
+                <span className="absolute -top-1.5 -right-2.5 flex size-4 animate-pulse items-center justify-center rounded-full bg-rose-600 text-[9px] font-black text-white ring-2 ring-white">
                   {pendingSplCount}
                 </span>
               )}
@@ -340,11 +406,19 @@ export default async function MobileOvertimePage({
         <TabsContent value="apply" className="mt-4 space-y-4">
           {(() => {
             const isApprovedSpl =
-              (initialSplData?.status || (initialSplData as any)?.document?.status || '').toLowerCase() === 'approved' ||
-              (initialSplData?.status || (initialSplData as any)?.document?.status || '').toLowerCase() === 'closed';
+              (
+                initialSplData?.status ||
+                (initialSplData as any)?.document?.status ||
+                ''
+              ).toLowerCase() === 'approved' ||
+              (
+                initialSplData?.status ||
+                (initialSplData as any)?.document?.status ||
+                ''
+              ).toLowerCase() === 'closed'
 
             return (
-              <section className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
+              <section className="rounded-[1.25rem] border border-slate-100 bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                   <div>
                     <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -369,8 +443,8 @@ export default async function MobileOvertimePage({
                   <Badge
                     className={
                       isApprovedSpl
-                        ? 'border-0 bg-emerald-50 text-emerald-700 font-bold text-[10px]'
-                        : 'border-0 bg-blue-50 text-blue-700 font-bold text-[10px]'
+                        ? 'border-0 bg-emerald-50 text-[10px] font-bold text-emerald-700'
+                        : 'border-0 bg-blue-50 text-[10px] font-bold text-blue-700'
                     }
                   >
                     {isApprovedSpl
@@ -399,13 +473,13 @@ export default async function MobileOvertimePage({
                   />
                 </div>
               </section>
-            );
+            )
           })()}
         </TabsContent>
 
         <TabsContent value="approval" className="mt-4 space-y-4">
-          <div className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+          <div className="rounded-[1.25rem] border border-slate-100 bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
                 <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
                   Pusat Persetujuan Mobile
@@ -415,11 +489,11 @@ export default async function MobileOvertimePage({
                 </h2>
               </div>
               {pendingSplCount > 0 ? (
-                <Badge className="border-0 bg-rose-100 text-rose-900 font-bold text-[10px]">
+                <Badge className="border-0 bg-rose-100 text-[10px] font-bold text-rose-900">
                   {pendingSplCount} Perlu Ditinjau
                 </Badge>
               ) : (
-                <Badge className="border-0 bg-emerald-100 text-emerald-900 font-bold text-[10px]">
+                <Badge className="border-0 bg-emerald-100 text-[10px] font-bold text-emerald-900">
                   Semua Bersih
                 </Badge>
               )}
@@ -435,8 +509,8 @@ export default async function MobileOvertimePage({
         </TabsContent>
 
         <TabsContent value="history" className="mt-4 space-y-4">
-          <div className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+          <div className="rounded-[1.25rem] border border-slate-100 bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)]">
+            <div className="mb-3 flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div>
                 <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
                   Arsip & Rekap
@@ -445,7 +519,7 @@ export default async function MobileOvertimePage({
                   Riwayat Seluruh SPL
                 </h2>
               </div>
-              <Badge className="border-0 bg-slate-100 text-slate-700 font-bold text-[10px]">
+              <Badge className="border-0 bg-slate-100 text-[10px] font-bold text-slate-700">
                 {historyRows.length} Total
               </Badge>
             </div>

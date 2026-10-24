@@ -79,30 +79,30 @@ export interface StandaloneAttendanceExportOptions {
 // ============================================================
 
 const PALETTE = {
-  headerBg: 'FF003461',       // Deep Navy
-  headerText: 'FFFFFFFF',     // Pure White
-  subHeaderBg: 'FFF8FAFC',    // Slate 50
-  subHeaderText: 'FF475569',  // Slate 600
-  weekendBg: 'FFFEE2E2',      // Light Red/Rose
-  weekendText: 'FF991B1B',    // Dark Rose
-  
+  headerBg: 'FF003461', // Deep Navy
+  headerText: 'FFFFFFFF', // Pure White
+  subHeaderBg: 'FFF8FAFC', // Slate 50
+  subHeaderText: 'FF475569', // Slate 600
+  weekendBg: 'FFFEE2E2', // Light Red/Rose
+  weekendText: 'FF991B1B', // Dark Rose
+
   // Section / Dept Groups
-  sectionBg: 'FFE2E8F0',      // Slate 200
-  sectionText: 'FF0F172A',    // Slate 900
-  deptBg: 'FFF1F5F9',         // Slate 100
-  deptText: 'FF334155',       // Slate 700
+  sectionBg: 'FFE2E8F0', // Slate 200
+  sectionText: 'FF0F172A', // Slate 900
+  deptBg: 'FFF1F5F9', // Slate 100
+  deptText: 'FF334155', // Slate 700
 
   // Status Colors (Matching UI Pills)
-  presentBg: 'FFD1FAE5',      // Light Green (Emerald 100)
-  presentText: 'FF065F46',    // Emerald 800
-  sickBg: 'FFFCE7F3',         // Light Pink/Purple (Pink 100)
-  sickText: 'FF831843',       // Pink 800
-  leaveBg: 'FFE0E7FF',        // Light Indigo (Indigo 100)
-  leaveText: 'FF3730A3',      // Indigo 800
-  offBg: 'FFF1F5F9',          // Slate 100
-  offText: 'FF64748B',        // Slate 500
-  absentBg: 'FFFEE2E2',       // Light Red (Red 100)
-  absentText: 'FF991B1B',     // Red 800
+  presentBg: 'FFD1FAE5', // Light Green (Emerald 100)
+  presentText: 'FF065F46', // Emerald 800
+  sickBg: 'FFFCE7F3', // Light Pink/Purple (Pink 100)
+  sickText: 'FF831843', // Pink 800
+  leaveBg: 'FFE0E7FF', // Light Indigo (Indigo 100)
+  leaveText: 'FF3730A3', // Indigo 800
+  offBg: 'FFF1F5F9', // Slate 100
+  offText: 'FF64748B', // Slate 500
+  absentBg: 'FFFEE2E2', // Light Red (Red 100)
+  absentText: 'FF991B1B', // Red 800
 
   // Summary Column Colors
   sumPresentBg: 'FFE6F4EA',
@@ -131,11 +131,19 @@ function getStatusStyle(rawCode: string): { bg: string; text: string; code: stri
     code === 'D' ||
     code === 'N'
   ) {
-    return { bg: PALETTE.presentBg, text: PALETTE.presentText, code: code === 'PRESENT' || code === 'HADIR' ? 'M' : code }
+    return {
+      bg: PALETTE.presentBg,
+      text: PALETTE.presentText,
+      code: code === 'PRESENT' || code === 'HADIR' ? 'M' : code,
+    }
   }
 
   if (code === 'S' || code === 'SD' || code === 'SAKIT' || code === 'SICK') {
-    return { bg: PALETTE.sickBg, text: PALETTE.sickText, code: code === 'SAKIT' || code === 'SICK' ? 'S' : code }
+    return {
+      bg: PALETTE.sickBg,
+      text: PALETTE.sickText,
+      code: code === 'SAKIT' || code === 'SICK' ? 'S' : code,
+    }
   }
 
   if (
@@ -147,7 +155,11 @@ function getStatusStyle(rawCode: string): { bg: string; text: string; code: stri
     code === 'C' ||
     code === 'DL'
   ) {
-    return { bg: PALETTE.leaveBg, text: PALETTE.leaveText, code: code === 'CUTI' || code === 'LEAVE' ? 'C' : code === 'IZIN' ? 'I' : code }
+    return {
+      bg: PALETTE.leaveBg,
+      text: PALETTE.leaveText,
+      code: code === 'CUTI' || code === 'LEAVE' ? 'C' : code === 'IZIN' ? 'I' : code,
+    }
   }
 
   if (code === 'OFF' || code === 'LIBUR' || code === 'O' || code === 'L') {
@@ -164,8 +176,18 @@ function getStatusStyle(rawCode: string): { bg: string; text: string; code: stri
 function formatPeriodIndonesian(period: string): string {
   const [year, month] = period.split('-')
   const monthNames = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
   ]
   const monthIdx = Number(month) - 1
   if (monthIdx >= 0 && monthIdx < 12) {
@@ -238,7 +260,14 @@ export async function exportAttendanceGridToExcel({
     topHeaderRow.push(`Tgl ${day}`)
   })
 
-  topHeaderRow.push('Hadir (Hari)', 'Off (Hari)', 'Izin/Cuti', 'Sakit', 'Total Jam', 'Overtime (Jam)')
+  topHeaderRow.push(
+    'Hadir (Hari)',
+    'Off (Hari)',
+    'Izin/Cuti',
+    'Sakit',
+    'Total Jam',
+    'Overtime (Jam)'
+  )
 
   const header1 = sheet.addRow(topHeaderRow)
   header1.height = 24
@@ -297,7 +326,8 @@ export async function exportAttendanceGridToExcel({
     if (col > 6 && col <= 6 + days.length) {
       const dayNum = days[col - 7]
       const wday = weekdayLabel(period, dayNum).toLowerCase()
-      const isWeekend = wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
+      const isWeekend =
+        wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
       const isHoliday = holidaysByDay.has(dayNum)
 
       if (isWeekend || isHoliday) {
@@ -344,7 +374,9 @@ export async function exportAttendanceGridToExcel({
 
     Array.from(depts.entries()).forEach(([dept, deptRows]) => {
       // Dept Sub-group Banner
-      const deptRow = sheet.addRow([`  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Orang)`])
+      const deptRow = sheet.addRow([
+        `  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Orang)`,
+      ])
       sheet.mergeCells(deptRow.number, 1, deptRow.number, totalCols)
       deptRow.height = 18
       const dCell = deptRow.getCell(1)
@@ -411,7 +443,12 @@ export async function exportAttendanceGridToExcel({
             rawStatus === 'DL'
           ) {
             empLeave++
-          } else if (rawStatus === 'S' || rawStatus === 'SICK' || rawStatus === 'SAKIT' || rawStatus === 'SD') {
+          } else if (
+            rawStatus === 'S' ||
+            rawStatus === 'SICK' ||
+            rawStatus === 'SAKIT' ||
+            rawStatus === 'SD'
+          ) {
             empSick++
           }
 
@@ -425,14 +462,21 @@ export async function exportAttendanceGridToExcel({
               if (diff < 0) diff += 1440
               cellHours = Math.round((diff / 60) * 10) / 10
             }
-          } else if (rawStatus === 'DS' || rawStatus === 'NS' || rawStatus === 'PRESENT' || rawStatus === 'HADIR' || rawStatus === 'M') {
+          } else if (
+            rawStatus === 'DS' ||
+            rawStatus === 'NS' ||
+            rawStatus === 'PRESENT' ||
+            rawStatus === 'HADIR' ||
+            rawStatus === 'M'
+          ) {
             cellHours = 8.0
           }
           empTotalHours += cellHours
 
           let displayVal = rawStatus || '-'
           if (mode === 'checkin-checkout') {
-            displayVal = clockIn && clockOut ? `${clockIn}-${clockOut}` : clockIn || rawStatus || '-'
+            displayVal =
+              clockIn && clockOut ? `${clockIn}-${clockOut}` : clockIn || rawStatus || '-'
           } else if (mode === 'work-hours') {
             displayVal = cellHours > 0 ? `${cellHours.toFixed(1)}h` : rawStatus || '-'
           } else {
@@ -458,7 +502,14 @@ export async function exportAttendanceGridToExcel({
         grandTotalHours += empTotalHours
         grandTotalOtHours += empOtHours
 
-        rowData.push(empPresent, empOff, empLeave, empSick, empTotalHours.toFixed(1), empOtHours.toFixed(1))
+        rowData.push(
+          empPresent,
+          empOff,
+          empLeave,
+          empSick,
+          empTotalHours.toFixed(1),
+          empOtHours.toFixed(1)
+        )
 
         const addedRow = sheet.addRow(rowData)
         addedRow.height = 19
@@ -597,8 +648,16 @@ export async function exportAttendanceGridVisualXlsx({
   sheet.addRow([])
 
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  const headerRow = ['No', 'Nama Karyawan', ...days.map((d) => `Tgl ${d}`), 'Total Masuk', 'Total Sakit', 'Total Izin', 'Total Off']
-  
+  const headerRow = [
+    'No',
+    'Nama Karyawan',
+    ...days.map((d) => `Tgl ${d}`),
+    'Total Masuk',
+    'Total Sakit',
+    'Total Izin',
+    'Total Off',
+  ]
+
   const hRow = sheet.addRow(headerRow)
   hRow.height = 24
 
@@ -1043,7 +1102,12 @@ export function buildTimesheetWorksheet(
 
   // ── ROW 1-4: TITLE & BANNER ──
   const titleRow1 = sheet.addRow(['PT CHITRA PARATAMA — HERO TIMESHEET SYSTEM'])
-  titleRow1.font = { name: 'Calibri', size: 13, bold: true, color: { argb: TIMESHEET_PALETTE.headerBg } }
+  titleRow1.font = {
+    name: 'Calibri',
+    size: 13,
+    bold: true,
+    color: { argb: TIMESHEET_PALETTE.headerBg },
+  }
 
   const titleRow2 = sheet.addRow([meta.title])
   titleRow2.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E293B' } }
@@ -1128,7 +1192,12 @@ export function buildTimesheetWorksheet(
       pattern: 'solid',
       fgColor: { argb: TIMESHEET_PALETTE.headerBg },
     }
-    cell1.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.headerText } }
+    cell1.font = {
+      name: 'Calibri',
+      size: 9.5,
+      bold: true,
+      color: { argb: TIMESHEET_PALETTE.headerText },
+    }
     cell1.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
     cell1.border = {
       top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -1143,7 +1212,12 @@ export function buildTimesheetWorksheet(
       pattern: 'solid',
       fgColor: { argb: TIMESHEET_PALETTE.subHeaderBg },
     }
-    cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.subHeaderText } }
+    cell2.font = {
+      name: 'Calibri',
+      size: 8.5,
+      bold: true,
+      color: { argb: TIMESHEET_PALETTE.subHeaderText },
+    }
     cell2.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
     cell2.border = {
       top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -1157,10 +1231,7 @@ export function buildTimesheetWorksheet(
       const dayNum = days[col - totalBaseCols - 1]
       const wday = weekdayLabel(period, dayNum).toLowerCase()
       const isWeekend =
-        wday.includes('sab') ||
-        wday.includes('min') ||
-        wday.includes('sat') ||
-        wday.includes('sun')
+        wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
       const isHoliday = holidaysByDay.has(dayNum)
 
       if (isHoliday) {
@@ -1169,14 +1240,24 @@ export function buildTimesheetWorksheet(
           pattern: 'solid',
           fgColor: { argb: TIMESHEET_PALETTE.holidayBg },
         }
-        cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.holidayText } }
+        cell2.font = {
+          name: 'Calibri',
+          size: 8.5,
+          bold: true,
+          color: { argb: TIMESHEET_PALETTE.holidayText },
+        }
       } else if (isWeekend) {
         cell2.fill = {
           type: 'pattern',
           pattern: 'solid',
           fgColor: { argb: TIMESHEET_PALETTE.weekendBg },
         }
-        cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.weekendText } }
+        cell2.font = {
+          name: 'Calibri',
+          size: 8.5,
+          bold: true,
+          color: { argb: TIMESHEET_PALETTE.weekendText },
+        }
       }
     }
   }
@@ -1223,12 +1304,19 @@ export function buildTimesheetWorksheet(
       pattern: 'solid',
       fgColor: { argb: TIMESHEET_PALETTE.sectionBg },
     }
-    secCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.sectionText } }
+    secCell.font = {
+      name: 'Calibri',
+      size: 9.5,
+      bold: true,
+      color: { argb: TIMESHEET_PALETTE.sectionText },
+    }
     secCell.alignment = { vertical: 'middle', indent: 1 }
 
     Array.from(depts.entries()).forEach(([dept, deptRows]) => {
       // Dept Sub-group Banner
-      const deptRow = sheet.addRow([`  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Karyawan)`])
+      const deptRow = sheet.addRow([
+        `  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Karyawan)`,
+      ])
       sheet.mergeCells(deptRow.number, 1, deptRow.number, totalCols)
       deptRow.height = 17
       const dCell = deptRow.getCell(1)
@@ -1237,7 +1325,12 @@ export function buildTimesheetWorksheet(
         pattern: 'solid',
         fgColor: { argb: TIMESHEET_PALETTE.deptBg },
       }
-      dCell.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.deptText } }
+      dCell.font = {
+        name: 'Calibri',
+        size: 8.5,
+        bold: true,
+        color: { argb: TIMESHEET_PALETTE.deptText },
+      }
       dCell.alignment = { vertical: 'middle', indent: 2 }
 
       const sortedRows = deptRows.slice().sort((a, b) => {
@@ -1315,7 +1408,7 @@ export function buildTimesheetWorksheet(
               cellVal = 'FB'
               bg = TIMESHEET_PALETTE.fbBg
               text = TIMESHEET_PALETTE.fbText
-            } else if (dayData.displayVal === 'AL' || rawVal === 'AL') {
+            } else if (dayData.displayVal === 'AL') {
               cellVal = 'AL'
               bg = 'D1FAE5'
               text = '065F46'
@@ -1620,7 +1713,12 @@ export function buildTimesheetWorksheet(
             currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
           } else if (c === 2) {
             currentCell.alignment = { vertical: 'middle', horizontal: 'left' }
-            currentCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF0F172A' } }
+            currentCell.font = {
+              name: 'Calibri',
+              size: 9.5,
+              bold: true,
+              color: { argb: 'FF0F172A' },
+            }
           } else if (c === 3) {
             currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
             currentCell.font = { name: 'Calibri', size: 8.5, color: { argb: 'FF475569' } }
@@ -1705,7 +1803,12 @@ export function buildTimesheetWorksheet(
               }
             } else {
               currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
-              currentCell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF0F172A' } }
+              currentCell.font = {
+                name: 'Calibri',
+                size: 9,
+                bold: true,
+                color: { argb: 'FF0F172A' },
+              }
             }
           }
         }

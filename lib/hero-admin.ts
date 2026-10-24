@@ -1,5 +1,19 @@
 import { cache } from 'react'
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, ne, notInArray, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
@@ -191,7 +205,12 @@ export async function getSecurityUserReferenceData() {
         departmentId: masterSections.departmentId,
       })
       .from(masterSections)
-      .where(and(eq(masterSections.isActive, true), notInArray(masterSections.code, OBSOLETE_SECTION_CODES)))
+      .where(
+        and(
+          eq(masterSections.isActive, true),
+          notInArray(masterSections.code, OBSOLETE_SECTION_CODES)
+        )
+      )
       .orderBy(asc(masterSections.name)),
     db
       .select({
@@ -200,7 +219,12 @@ export async function getSecurityUserReferenceData() {
         name: masterDepartments.name,
       })
       .from(masterDepartments)
-      .where(and(eq(masterDepartments.isActive, true), notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES)))
+      .where(
+        and(
+          eq(masterDepartments.isActive, true),
+          notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES)
+        )
+      )
       .orderBy(asc(masterDepartments.name)),
     Promise.all([
       db
@@ -1135,7 +1159,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/hc/kerjasama',
     iconName: 'handshake',
     resource: 'hc_kerjasama',
-    sortOrder: 12.5,
+    sortOrder: 13,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1185,7 +1209,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/ga/house-rental',
     iconName: 'home',
     resource: 'ga_house_rental',
-    sortOrder: 15.5,
+    sortOrder: 16,
     isVisible: true,
     openInNewTab: false,
   },
@@ -2067,7 +2091,9 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
   const firstResourceIndex = menuItems.findIndex(
     (candidate) => candidate.resource === item.resource
   )
-  const firstMatchIndex = menuItems.findIndex((candidate) => candidate.url === item.url && candidate.section === item.section)
+  const firstMatchIndex = menuItems.findIndex(
+    (candidate) => candidate.url === item.url && candidate.section === item.section
+  )
 
   return firstResourceIndex === index && firstMatchIndex === index
 }).map((item) => ({ ...item, menuArea: item.menuArea ?? 'main', section: item.section ?? 'Menu' }))
@@ -4703,7 +4729,12 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
   }
 
   // Daily Activity & Utilities monitoring: khusus untuk PJO, Head Section, Head Department, keatas
-  if (resource === 'daily_activity' || resource === 'utilities' || resource === 'tire_scrap' || resource === 'tire_check') {
+  if (
+    resource === 'daily_activity' ||
+    resource === 'utilities' ||
+    resource === 'tire_scrap' ||
+    resource === 'tire_check'
+  ) {
     const isLeadership = [
       'Super Admin',
       'Manager',
@@ -4750,12 +4781,9 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
 
   // Always permit core resources for all roles
   if (
-    [
-      'attendance',
-      'scheduling_timesheet_attendance',
-      'tire_service',
-      'overtime_requests',
-    ].includes(resource)
+    ['attendance', 'scheduling_timesheet_attendance', 'tire_service', 'overtime_requests'].includes(
+      resource
+    )
   ) {
     return {
       canView: true,
@@ -5747,9 +5775,7 @@ export async function ensureHeroGovernanceSeedData() {
       })
       .where(eq(navbarMenuItems.resource, 'central_service_master_apd'))
 
-    await db
-      .delete(navbarMenuItems)
-      .where(eq(navbarMenuItems.section, 'GOBPI'))
+    await db.delete(navbarMenuItems).where(eq(navbarMenuItems.section, 'GOBPI'))
 
     await db
       .update(navbarMenuItems)
@@ -5930,10 +5956,7 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_safety'),
-          eq(navbarMenuItems.url, '/dashboard/hc')
-        )
+        or(eq(navbarMenuItems.resource, 'hc_safety'), eq(navbarMenuItems.url, '/dashboard/hc'))
       )
 
     // HRGA - Layanan & Personalia
@@ -5976,10 +5999,7 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_surat'),
-          eq(navbarMenuItems.url, '/dashboard/hc/surat')
-        )
+        or(eq(navbarMenuItems.resource, 'hc_surat'), eq(navbarMenuItems.url, '/dashboard/hc/surat'))
       )
 
     await db
@@ -6068,10 +6088,7 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'apd-request'),
-          eq(navbarMenuItems.url, '/dashboard/apd')
-        )
+        or(eq(navbarMenuItems.resource, 'apd-request'), eq(navbarMenuItems.url, '/dashboard/apd'))
       )
 
     await db
@@ -6099,10 +6116,7 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_rfr'),
-          eq(navbarMenuItems.url, '/dashboard/hc/rfr')
-        )
+        or(eq(navbarMenuItems.resource, 'hc_rfr'), eq(navbarMenuItems.url, '/dashboard/hc/rfr'))
       )
 
     await db
@@ -6550,9 +6564,7 @@ export async function syncMenuPermissionsMatrix(): Promise<{
   ])
 
   const existingRoleMenuPairs = new Set(
-    existingRoleMenuPermissions.map(
-      (permission) => `${permission.roleId}:${permission.menuItemId}`
-    )
+    existingRoleMenuPermissions.map((permission) => `${permission.roleId}:${permission.menuItemId}`)
   )
 
   const missingRoleMenuPermissions = rolesForMenu.flatMap((role) =>
@@ -6956,7 +6968,14 @@ export async function getPointsAnalyticsPageData() {
 
   const siteMap = new Map<
     string,
-    { siteId: number | null; siteName: string; employees: number; totalPoints: number; periodPoints: number; penalties: number }
+    {
+      siteId: number | null
+      siteName: string
+      employees: number
+      totalPoints: number
+      periodPoints: number
+      penalties: number
+    }
   >()
   for (const employee of leaderboard) {
     const sName = employee.siteName || 'Head Office / Non-Site'
@@ -6975,7 +6994,7 @@ export async function getPointsAnalyticsPageData() {
     siteMap.set(sName, current)
   }
   const sitePerformance = [...siteMap.values()]
-    .map(s => ({
+    .map((s) => ({
       ...s,
       averagePoints: s.employees > 0 ? Math.round(s.totalPoints / s.employees) : 0,
     }))
@@ -7227,16 +7246,20 @@ export async function getHsePageData() {
   const repairCountsByLocation: Record<string, number> = {}
 
   for (const emp of activeEmployees) {
-    const rawLoc = emp.workLocation || emp.siteName || ""
+    const rawLoc = emp.workLocation || emp.siteName || ''
     if (!rawLoc) continue
     const norm = rawLoc.trim().toUpperCase()
 
     employeeCountsByLocation[norm] = (employeeCountsByLocation[norm] || 0) + 1
 
-    const jt = (emp.jobTitle || "").toLowerCase()
-    const sec = (emp.section || "").toLowerCase()
-    const isService = jt.includes("serviceman") || jt.includes("service") || sec.includes("service")
-    const isRepair = jt.includes("repairman") || jt.includes("repair") || sec.includes("repair") || sec.includes("retread")
+    const jt = (emp.jobTitle || '').toLowerCase()
+    const sec = (emp.section || '').toLowerCase()
+    const isService = jt.includes('serviceman') || jt.includes('service') || sec.includes('service')
+    const isRepair =
+      jt.includes('repairman') ||
+      jt.includes('repair') ||
+      sec.includes('repair') ||
+      sec.includes('retread')
 
     if (isService) {
       serviceCountsByLocation[norm] = (serviceCountsByLocation[norm] || 0) + 1
@@ -7247,8 +7270,8 @@ export async function getHsePageData() {
   }
 
   const enrichedMasterSites = masterSites.map((site) => {
-    const normName = (site.name || "").trim().toUpperCase()
-    const normLoc = (site.location || "").trim().toUpperCase()
+    const normName = (site.name || '').trim().toUpperCase()
+    const normLoc = (site.location || '').trim().toUpperCase()
     const totalMp = employeeCountsByLocation[normName] ?? employeeCountsByLocation[normLoc] ?? 0
     const serviceMp = serviceCountsByLocation[normName] ?? serviceCountsByLocation[normLoc] ?? 0
     const repairMp = repairCountsByLocation[normName] ?? repairCountsByLocation[normLoc] ?? 0
@@ -7664,7 +7687,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       )
       .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:', err)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:',
+          err
+        )
         return []
       }),
     db
@@ -7684,10 +7710,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       .select()
       .from(attendanceRecords)
       .where(
-        and(
-          gte(attendanceRecords.eventTime, fromDate),
-          lte(attendanceRecords.eventTime, toDate)
-        )
+        and(gte(attendanceRecords.eventTime, fromDate), lte(attendanceRecords.eventTime, toDate))
       )
       .catch((err) => {
         console.error('[getSchedulingTimesheetOptions:attendanceRecords] Query failed:', err)
@@ -7703,14 +7726,20 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
       )
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:', err)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:',
+          err
+        )
         return []
       }),
     db
       .select()
       .from(timesheetSchedulingConfigs)
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingConfigs] Query failed:', err)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetSchedulingConfigs] Query failed:',
+          err
+        )
         return []
       }),
     db
@@ -7723,7 +7752,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
       )
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingStatuses] Query failed:', err)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetSchedulingStatuses] Query failed:',
+          err
+        )
         return []
       }),
     db
@@ -7736,7 +7768,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
       )
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:', err)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:',
+          err
+        )
         return []
       }),
     db
@@ -7750,12 +7785,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         status: activities.status,
       })
       .from(activities)
-      .where(
-        and(
-          gte(activities.startTime, fromDate),
-          lte(activities.startTime, toDate)
-        )
-      )
+      .where(and(gte(activities.startTime, fromDate), lte(activities.startTime, toDate)))
       .catch((err) => {
         console.error('[getSchedulingTimesheetOptions:activities] Query failed:', err)
         return []
@@ -7872,7 +7902,12 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       )
       .where(
         and(
-          inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed', 'submitted', 'pending']),
+          inArray(sql`lower(${overtimeCommandLetters.status})`, [
+            'approved',
+            'closed',
+            'submitted',
+            'pending',
+          ]),
           or(
             and(
               gte(overtimeCommandLetters.workDate, fromDate),
@@ -8219,9 +8254,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       })),
     approvedSplWindows: approvedSplRows
       .filter(
-        (row) =>
-          row.employeeId != null &&
-          canSeeSchedulingEmployee(row.employeeId, row.siteId)
+        (row) => row.employeeId != null && canSeeSchedulingEmployee(row.employeeId, row.siteId)
       )
       .map((row) => ({
         id: row.id,
@@ -8757,7 +8790,9 @@ export async function recordEmployeeLocationTransfer(params: {
   return inserted
 }
 
-export async function getEmployeeLocationTransfersData(): Promise<EmployeeLocationTransferRecord[]> {
+export async function getEmployeeLocationTransfersData(): Promise<
+  EmployeeLocationTransferRecord[]
+> {
   const fromSites = alias(sites, 'fromSites')
   const toSites = alias(sites, 'toSites')
 
@@ -8943,7 +8978,9 @@ export async function getApdNotificationConfigData() {
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
     `)
-    await db.execute(sql`
+    await db
+      .execute(
+        sql`
       ALTER TABLE "hero_apd_notification_config"
       ADD COLUMN IF NOT EXISTS "service_cc_email" text DEFAULT '' NOT NULL,
       ADD COLUMN IF NOT EXISTS "repair_cc_email" text DEFAULT '' NOT NULL,
@@ -8951,7 +8988,9 @@ export async function getApdNotificationConfigData() {
       ADD COLUMN IF NOT EXISTS "service_reminder_email" text DEFAULT '' NOT NULL,
       ADD COLUMN IF NOT EXISTS "repair_reminder_email" text DEFAULT '' NOT NULL,
       ADD COLUMN IF NOT EXISTS "te_reminder_email" text DEFAULT '' NOT NULL
-    `).catch(() => null)
+    `
+      )
+      .catch(() => null)
   } catch {
     // DDL bypass
   }
@@ -9042,7 +9081,6 @@ export async function getMaritalStatusNotificationConfigData() {
     }
   )
 }
-
 
 export async function getMaterialToolsNotificationConfigData() {
   try {
@@ -9189,8 +9227,7 @@ export async function getAttendanceNotificationConfigData() {
     .limit(1)
 
   const seed = {
-    ccEmails:
-      'adila.arizona@chitraparatama.co.id, kesuma.bagaskara@chitraparatama.co.id',
+    ccEmails: 'adila.arizona@chitraparatama.co.id, kesuma.bagaskara@chitraparatama.co.id',
     headSectionMvcEmail: 'apriyanto.lastam@chitraparatama.co.id',
     headSectionRepairEmail: 'ary.maulana@chitraparatama.co.id',
     headSectionTeEmail: 'abian.husain@chitraparatama.co.id',
@@ -9203,10 +9240,7 @@ export async function getAttendanceNotificationConfigData() {
 
   if (!config) {
     try {
-      const [inserted] = await db
-        .insert(attendanceNotificationConfig)
-        .values(seed)
-        .returning()
+      const [inserted] = await db.insert(attendanceNotificationConfig).values(seed).returning()
       return inserted ?? { id: 0, ...seed }
     } catch {
       return { id: 0, ...seed }
@@ -9457,7 +9491,12 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 
       const visibleItems = dedupeMenuItemsByPage(
         permittedMenuItems
-          .filter((item) => item.isVisible && (item.resource !== 'security_quick_actions' || superAdmin) && (superAdmin || item.canView))
+          .filter(
+            (item) =>
+              item.isVisible &&
+              (item.resource !== 'security_quick_actions' || superAdmin) &&
+              (superAdmin || item.canView)
+          )
           .map((item) => ({
             ...item,
             url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,
