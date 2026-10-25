@@ -705,10 +705,14 @@ GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
 
 Single-context repo. See `docs/agents/domain.md`.
 
+### Security audit
+
+Gunakan skill `security-audit` (`.agents/skills/security-audit` / Cloudflare multi-phase security review) untuk semua vulnerability review, dependency audits, dan laporan keamanan harian. Semua temuan wajib memiliki concrete principal, crossed boundary, source evidence, dan smallest effective fix.
+
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

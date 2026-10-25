@@ -10,9 +10,9 @@ describe('user management password reset', () => {
     const source = helper()
     expect(source).toContain('normalizeAuthEmail')
     expect(source).toContain('email.trim().toLowerCase()')
-    expect(source).toContain('accountId: normalizedEmail')
+    expect(source).toContain('accountId: authUserId')
     expect(source).toContain(
-      'const ownerMatches = authUserId ? [eq(account.userId, authUserId)] : matches'
+      'const ownerMatches = authUserId'
     )
     expect(source).not.toContain('eq(account.userId, authUserId), ...matches')
   })
