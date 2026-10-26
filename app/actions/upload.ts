@@ -1,290 +1,336 @@
-"use server"
+'use server'
 
-import { getS3ObjectReadUrl, isS3UploadConfigured, uploadAnyFileToS3, uploadAttendancePhotoToS3 } from "@/lib/s3-storage";
-import { optimizeUploadFile } from "@/lib/server-image-optimization";
-import { getServerSession } from "@/lib/auth-session";
-import { getMaestroServerSession } from "@/lib/maestro-session";
-import { db } from "@/db";
-import { hcContractReviewApprovals } from "@/db/schema/hero";
-import { eq } from "drizzle-orm";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { randomUUID } from "crypto";
+import {
+  getS3ObjectReadUrl,
+  isS3UploadConfigured,
+  uploadAnyFileToS3,
+  uploadAttendancePhotoToS3,
+} from '@/lib/s3-storage'
+import { optimizeUploadFile } from '@/lib/server-image-optimization'
+import { getServerSession } from '@/lib/auth-session'
+import { getMaestroServerSession } from '@/lib/maestro-session'
+import { db } from '@/db'
+import { hcContractReviewApprovals } from '@/db/schema/hero'
+import { eq } from 'drizzle-orm'
+import { writeFile, mkdir } from 'fs/promises'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
 
-const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
-const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024
+const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024
+const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024
+const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
 const OFFICE_MIME_TYPES = new Set([
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-]);
-const OFFICE_EXTENSIONS = new Set(["doc", "docx", "ppt", "pptx"]);
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+])
+const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx'])
 const BANNED_EXTENSIONS = new Set([
-  "html", "htm", "xhtml", "svg", "exe", "js", "mjs", "ts", "php", "phtml",
-  "sh", "bash", "bat", "cmd", "ps1", "vbs", "cgi", "pl", "py", "jsp", "asp", "aspx"
-]);
+  'html',
+  'htm',
+  'xhtml',
+  'svg',
+  'exe',
+  'js',
+  'mjs',
+  'ts',
+  'php',
+  'phtml',
+  'sh',
+  'bash',
+  'bat',
+  'cmd',
+  'ps1',
+  'vbs',
+  'cgi',
+  'pl',
+  'py',
+  'jsp',
+  'asp',
+  'aspx',
+])
 
 function isPrivateIpOrHost(urlString: string): boolean {
   try {
-    const parsed = new URL(urlString);
-    const host = parsed.hostname.toLowerCase();
+    const parsed = new URL(urlString)
+    const host = parsed.hostname.toLowerCase()
     return (
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host === "169.254.169.254" ||
-      host.startsWith("10.") ||
-      host.startsWith("192.168.") ||
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host === '169.254.169.254' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
       /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
-    );
+    )
   } catch {
-    return true;
+    return true
   }
 }
 
 async function requireUploadSession() {
-  const session = await getServerSession();
+  const session = await getServerSession()
   if (session?.user?.email) {
-    return { success: true as const, session };
+    return { success: true as const, session }
   }
-  const maestroSession = await getMaestroServerSession();
+  const maestroSession = await getMaestroServerSession()
   if (maestroSession?.user?.email) {
-    return { success: true as const, session: maestroSession };
+    return { success: true as const, session: maestroSession }
   }
-  return { success: false as const, error: "Unauthorized" };
+  return { success: false as const, error: 'Unauthorized' }
 }
 
 export async function uploadFile(formData: FormData) {
   try {
-    const uploadTarget = (formData.get("uploadTarget") as string | null)?.trim();
-    const isPublicCareerCv = uploadTarget === "public-career-cv";
-    const isContractReviewAttachment = uploadTarget === "contract-review-attachment";
+    const uploadTarget = (formData.get('uploadTarget') as string | null)?.trim()
+    const isPublicCareerCv = uploadTarget === 'public-career-cv'
+    const isContractReviewAttachment = uploadTarget === 'contract-review-attachment'
 
     if (isContractReviewAttachment) {
-      const approvalToken = (formData.get("approvalToken") as string | null)?.trim();
-      const session = await getServerSession();
+      const approvalToken = (formData.get('approvalToken') as string | null)?.trim()
+      const session = await getServerSession()
       if (!session?.user?.email) {
         if (!approvalToken) {
-          return { success: false, error: "Unauthorized: Token approval atau sesi login diperlukan." };
+          return {
+            success: false,
+            error: 'Unauthorized: Token approval atau sesi login diperlukan.',
+          }
         }
         const [approval] = await db
           .select({ id: hcContractReviewApprovals.id })
           .from(hcContractReviewApprovals)
           .where(eq(hcContractReviewApprovals.approvalToken, approvalToken))
-          .limit(1);
+          .limit(1)
         if (!approval) {
-          return { success: false, error: "Unauthorized: Token approval tidak valid." };
+          return { success: false, error: 'Unauthorized: Token approval tidak valid.' }
         }
       }
     } else if (!isPublicCareerCv) {
-      const access = await requireUploadSession();
-      if (!access.success) return access;
+      const access = await requireUploadSession()
+      if (!access.success) return access
     }
 
-    const file = formData.get("file") as File;
-    if (!file) return { success: false, error: "No file provided" };
+    const file = formData.get('file') as File
+    if (!file) return { success: false, error: 'No file provided' }
 
-    const fileExt = getCurhatFileExtension(file.name, file.type);
-    if (BANNED_EXTENSIONS.has(fileExt) || file.type === "image/svg+xml") {
-      return { success: false, error: "Tipe file ini dilarang demi alasan keamanan." };
+    const fileExt = getCurhatFileExtension(file.name, file.type)
+    if (BANNED_EXTENSIONS.has(fileExt) || file.type === 'image/svg+xml') {
+      return { success: false, error: 'Tipe file ini dilarang demi alasan keamanan.' }
     }
 
-    const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
-    const isPdf = file.type === "application/pdf";
+    const isImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml'
+    const isPdf = file.type === 'application/pdf'
     if (isPublicCareerCv && !isPdf) {
-      return { success: false, error: "CV harus berformat PDF." };
+      return { success: false, error: 'CV harus berformat PDF.' }
     }
-    const isVideo = file.type.startsWith("video/");
-    const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt);
+    const isVideo = file.type.startsWith('video/')
+    const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt)
 
     if (!isImage && !isPdf && !isVideo && !isOffice) {
-      return { success: false, error: "File must be an image, PDF, Office document, or video." };
+      return { success: false, error: 'File must be an image, PDF, Office document, or video.' }
     }
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: "Photo size max 5MB." };
+      return { success: false, error: 'Photo size max 5MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
-      return { success: false, error: "PDF size max 10MB." };
+      return { success: false, error: 'PDF size max 10MB.' }
     }
     if (isVideo && file.size > MAX_VIDEO_FILE_SIZE) {
-      return { success: false, error: "Video size max 100MB." };
+      return { success: false, error: 'Video size max 100MB.' }
     }
     if (isOffice && file.size > MAX_DOC_FILE_SIZE) {
-      return { success: false, error: "Document size max 10MB." };
+      return { success: false, error: 'Document size max 10MB.' }
     }
 
     // Automatically optimize raster images to WebP with target-tuned dimensions
     const fileToUpload = isImage
       ? await optimizeUploadFile(file, {
-          maxDimension: uploadTarget === "hse-osm" ? 1400 : 1600,
+          maxDimension: uploadTarget === 'hse-osm' ? 1400 : 1600,
           quality: 78,
         })
-      : file;
-    const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type);
+      : file
+    const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
 
     if (isS3UploadConfigured()) {
       try {
         const result =
-          uploadTarget === "attendance"
+          uploadTarget === 'attendance'
             ? await uploadAttendancePhotoToS3(fileToUpload)
-            : await uploadAnyFileToS3(fileToUpload, uploadTarget || undefined, AbortSignal.timeout(45_000));
-        const proxyUrl = `/api/uploads/${result.key}`;
-        return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name, fileSize: fileToUpload.size };
+            : await uploadAnyFileToS3(
+                fileToUpload,
+                uploadTarget || undefined,
+                AbortSignal.timeout(15_000)
+              )
+        const proxyUrl = `/api/uploads/${result.key}`
+        return {
+          success: true,
+          url: proxyUrl,
+          readableUrl: proxyUrl,
+          fileName: fileToUpload.name,
+          fileSize: fileToUpload.size,
+        }
       } catch (s3Error) {
-        console.warn("S3 Upload failed, falling back to local storage:", s3Error);
+        console.warn('S3 Upload failed, falling back to local storage:', s3Error)
       }
     }
 
     // Local fallback storage when S3 is not configured or failed
-    const subFolder = uploadTarget ? uploadTarget : "";
+    const subFolder = uploadTarget ? uploadTarget : ''
     const uploadDir = subFolder
-      ? join(process.cwd(), "public", "uploads", subFolder)
-      : join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
+      ? join(process.cwd(), 'public', 'uploads', subFolder)
+      : join(process.cwd(), 'public', 'uploads')
+    await mkdir(uploadDir, { recursive: true })
 
-    const ext = finalFileExt;
-    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, "")) || "file";
-    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`;
-    const filePath = join(uploadDir, uniqueName);
-    const buffer = Buffer.from(await fileToUpload.arrayBuffer());
+    const ext = finalFileExt
+    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, '')) || 'file'
+    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`
+    const filePath = join(uploadDir, uniqueName)
+    const buffer = Buffer.from(await fileToUpload.arrayBuffer())
 
-    await writeFile(filePath, buffer);
+    await writeFile(filePath, buffer)
 
-    const publicUrl = subFolder ? `/api/uploads/${subFolder}/${uniqueName}` : `/api/uploads/${uniqueName}`;
-    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name, fileSize: fileToUpload.size };
+    const publicUrl = subFolder
+      ? `/api/uploads/${subFolder}/${uniqueName}`
+      : `/api/uploads/${uniqueName}`
+    return {
+      success: true,
+      url: publicUrl,
+      readableUrl: publicUrl,
+      fileName: fileToUpload.name,
+      fileSize: fileToUpload.size,
+    }
   } catch (error: any) {
-    console.error("Upload error:", error);
-    return { success: false, error: error?.message || "Failed to upload file to Object Storage" };
+    console.error('Upload error:', error)
+    return { success: false, error: error?.message || 'Failed to upload file to Object Storage' }
   }
 }
 
 export async function uploadImageFromUrl(imageUrl: string) {
   try {
-    const access = await requireUploadSession();
-    if (!access.success) return access;
+    const access = await requireUploadSession()
+    if (!access.success) return access
 
     if (isPrivateIpOrHost(imageUrl)) {
-      return { success: false, error: "Access to internal IP address is forbidden." };
+      return { success: false, error: 'Access to internal IP address is forbidden.' }
     }
 
     if (!isS3UploadConfigured()) {
-      return { success: false, error: "S3 Upload Driver is not properly configured." };
+      return { success: false, error: 'S3 Upload Driver is not properly configured.' }
     }
 
-    const response = await fetch(imageUrl);
+    const response = await fetch(imageUrl)
     if (!response.ok) {
-      return { success: false, error: "Failed to fetch image from URL." };
+      return { success: false, error: 'Failed to fetch image from URL.' }
     }
 
-    const blob = await response.blob();
-    if (!blob.type.startsWith("image/") || blob.type === "image/svg+xml") {
-      return { success: false, error: "URL does not point to a valid image." };
+    const blob = await response.blob()
+    if (!blob.type.startsWith('image/') || blob.type === 'image/svg+xml') {
+      return { success: false, error: 'URL does not point to a valid image.' }
     }
 
     if (blob.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: "Image from URL is too large (max 5MB)." };
+      return { success: false, error: 'Image from URL is too large (max 5MB).' }
     }
 
-    const urlObj = new URL(imageUrl);
-    let fileName = urlObj.pathname.split('/').pop() || "image.jpg";
-    if (!fileName.includes('.')) fileName += ".jpg";
-    
-    const file = new File([blob], fileName, { type: blob.type });
-    const fileToUpload = await optimizeUploadFile(file);
+    const urlObj = new URL(imageUrl)
+    let fileName = urlObj.pathname.split('/').pop() || 'image.jpg'
+    if (!fileName.includes('.')) fileName += '.jpg'
 
-    const result = await uploadAnyFileToS3(fileToUpload);
-    const proxyUrl = `/api/uploads/${result.key}`;
-    
-    return { success: true, url: proxyUrl, readableUrl: proxyUrl };
+    const file = new File([blob], fileName, { type: blob.type })
+    const fileToUpload = await optimizeUploadFile(file)
+
+    const result = await uploadAnyFileToS3(fileToUpload)
+    const proxyUrl = `/api/uploads/${result.key}`
+
+    return { success: true, url: proxyUrl, readableUrl: proxyUrl }
   } catch (error) {
-    console.error("Upload from URL error:", error);
-    return { success: false, error: "Failed to fetch or upload image from URL." };
+    console.error('Upload from URL error:', error)
+    return { success: false, error: 'Failed to fetch or upload image from URL.' }
   }
 }
 
 function sanitizeFileName(fileName: string) {
   return fileName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_");
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
 function getCurhatFileExtension(fileName: string, contentType: string) {
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  if (ext && !BANNED_EXTENSIONS.has(ext) && /^[a-z0-9]{1,10}$/.test(ext)) return ext;
-  if (contentType === "application/pdf") return "pdf";
-  if (contentType.startsWith("image/") && contentType !== "image/svg+xml") {
-    if (contentType === "image/jpeg") return "jpg";
-    if (contentType === "image/png") return "png";
-    if (contentType === "image/webp") return "webp";
-    if (contentType === "image/gif") return "gif";
+  const ext = fileName.split('.').pop()?.toLowerCase()
+  if (ext && !BANNED_EXTENSIONS.has(ext) && /^[a-z0-9]{1,10}$/.test(ext)) return ext
+  if (contentType === 'application/pdf') return 'pdf'
+  if (contentType.startsWith('image/') && contentType !== 'image/svg+xml') {
+    if (contentType === 'image/jpeg') return 'jpg'
+    if (contentType === 'image/png') return 'png'
+    if (contentType === 'image/webp') return 'webp'
+    if (contentType === 'image/gif') return 'gif'
   }
-  return "bin";
+  return 'bin'
 }
 
 export async function uploadCurhatAttachment(formData: FormData) {
   try {
-    const access = await requireUploadSession();
-    if (!access.success) return access;
+    const access = await requireUploadSession()
+    if (!access.success) return access
 
-    const file = formData.get("file") as File;
-    if (!file) return { success: false, error: "No file provided" };
+    const file = formData.get('file') as File
+    if (!file) return { success: false, error: 'No file provided' }
 
-    const fileExt = getCurhatFileExtension(file.name, file.type);
-    if (BANNED_EXTENSIONS.has(fileExt) || file.type === "image/svg+xml") {
-      return { success: false, error: "Tipe file ini dilarang demi alasan keamanan." };
+    const fileExt = getCurhatFileExtension(file.name, file.type)
+    if (BANNED_EXTENSIONS.has(fileExt) || file.type === 'image/svg+xml') {
+      return { success: false, error: 'Tipe file ini dilarang demi alasan keamanan.' }
     }
 
-    const isImage = file.type.startsWith("image/") && file.type !== "image/svg+xml";
-    const isPdf = file.type === "application/pdf";
+    const isImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml'
+    const isPdf = file.type === 'application/pdf'
     const isDoc =
-      file.type === "application/msword" ||
-      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.type === "application/vnd.ms-excel" ||
-      file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      file.type === 'application/msword' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
     if (!isImage && !isPdf && !isDoc) {
-      return { success: false, error: "File must be an image, PDF, or Office document." };
+      return { success: false, error: 'File must be an image, PDF, or Office document.' }
     }
 
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: "Image size max 5MB." };
+      return { success: false, error: 'Image size max 5MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
-      return { success: false, error: "PDF size max 10MB." };
+      return { success: false, error: 'PDF size max 10MB.' }
     }
     if (isDoc && file.size > MAX_DOC_FILE_SIZE) {
-      return { success: false, error: "Document size max 10MB." };
+      return { success: false, error: 'Document size max 10MB.' }
     }
 
-    const fileToUpload = isImage ? await optimizeUploadFile(file) : file;
-    const finalExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type);
+    const fileToUpload = isImage ? await optimizeUploadFile(file) : file
+    const finalExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
 
     if (isS3UploadConfigured()) {
-      const result = await uploadAnyFileToS3(fileToUpload, "curhat-attachments");
-      const proxyUrl = `/api/uploads/${result.key}`;
-      return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name };
+      const result = await uploadAnyFileToS3(fileToUpload, 'curhat-attachments')
+      const proxyUrl = `/api/uploads/${result.key}`
+      return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name }
     }
 
     // Local fallback storage when S3 is not configured
-    const uploadDir = join(process.cwd(), "public", "uploads", "curhat");
-    await mkdir(uploadDir, { recursive: true });
+    const uploadDir = join(process.cwd(), 'public', 'uploads', 'curhat')
+    await mkdir(uploadDir, { recursive: true })
 
-    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, "")) || "attachment";
-    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${finalExt}`;
-    const filePath = join(uploadDir, uniqueName);
-    const buffer = Buffer.from(await fileToUpload.arrayBuffer());
+    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, '')) || 'attachment'
+    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${finalExt}`
+    const filePath = join(uploadDir, uniqueName)
+    const buffer = Buffer.from(await fileToUpload.arrayBuffer())
 
-    await writeFile(filePath, buffer);
+    await writeFile(filePath, buffer)
 
-    const publicUrl = `/api/uploads/curhat/${uniqueName}`;
-    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name };
+    const publicUrl = `/api/uploads/curhat/${uniqueName}`
+    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name }
   } catch (error) {
-    console.error("Curhat upload error:", error);
-    return { success: false, error: "Failed to upload attachment." };
+    console.error('Curhat upload error:', error)
+    return { success: false, error: 'Failed to upload attachment.' }
   }
 }
