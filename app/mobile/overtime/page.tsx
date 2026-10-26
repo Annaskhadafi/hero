@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { CheckCheck, History, PlusCircle } from 'lucide-react'
+import { CheckCheck, FileSpreadsheet, History, PlusCircle } from 'lucide-react'
 
 import { db } from '@/db'
 import {
@@ -14,6 +14,7 @@ import { libraryDeptMatches, librarySectionMatches, librarySiteMatches } from '@
 import { MobileApprovalCenter } from '@/components/mobile/mobile-approval-center'
 import { MobileOvertimeRequestForm } from '@/components/mobile/mobile-overtime-request-form'
 import { MobileSplHistory, type MobileSplHistoryRow } from '@/components/mobile/mobile-spl-history'
+import { MobileOvertimeSummaryTab } from '@/components/mobile/mobile-overtime-summary-tab'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getOvertimeApprovalData } from '@/app/dashboard/overtime-requests/actions'
@@ -345,7 +346,9 @@ export default async function MobileOvertimePage({
         ? 'approval'
         : query.tab === 'history' || query.tab === 'active'
           ? 'history'
-          : 'apply'
+          : query.tab === 'summary'
+            ? 'summary'
+            : 'apply'
 
   return (
     <div className="space-y-5 pb-24">
@@ -370,7 +373,7 @@ export default async function MobileOvertimePage({
         key={`tabs-${activeTabValue}-${editSplId || ''}-${parentSplId || ''}`}
         defaultValue={activeTabValue}
       >
-        <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
+        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-white p-1 shadow-[0_12px_30px_rgba(8,32,51,0.08)]">
           <TabsTrigger
             value="apply"
             className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
@@ -400,6 +403,14 @@ export default async function MobileOvertimePage({
           >
             <History className="size-4 shrink-0" />
             <span>Riwayat</span>
+          </TabsTrigger>
+        
+          <TabsTrigger
+            value="summary"
+            className="min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-bold text-slate-600 transition-all data-[state=active]:bg-[#003461] data-[state=active]:text-white data-[state=active]:shadow-xs"
+          >
+            <FileSpreadsheet className="size-4 shrink-0" />
+            <span>Summary</span>
           </TabsTrigger>
         </TabsList>
 
@@ -524,6 +535,37 @@ export default async function MobileOvertimePage({
               </Badge>
             </div>
             <MobileSplHistory rows={historyRows} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="summary" className="mt-4 space-y-4">
+          <div className="rounded-[1.25rem] bg-white p-4 shadow-[0_16px_34px_rgba(8,32,51,0.08)] border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
+              <div>
+                <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
+                  Rekapitulasi Bulanan
+                </p>
+                <h2 className="mt-0.5 text-base font-extrabold text-[#003461]">
+                  Summary SPL Online
+                </h2>
+              </div>
+              <Badge className="border-0 bg-[#eaf4fb] text-[#003f78] font-bold text-[10px]">
+                {data.lead.name}
+              </Badge>
+            </div>
+            <MobileOvertimeSummaryTab
+              currentEmployee={{
+                id: data.lead.id,
+                name: data.lead.name,
+                employeeSn: (data.lead as any).employeeSn,
+                siteId: (data.lead as any).siteId,
+                siteName: (data.lead as any).siteName,
+                department: data.lead.department || undefined,
+                section: (data.lead as any).section || undefined,
+                email: (data.lead as any).email || session?.user?.email,
+                role: (data.lead as any).role,
+              }}
+            />
           </div>
         </TabsContent>
       </Tabs>

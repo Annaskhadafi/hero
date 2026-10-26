@@ -44,6 +44,8 @@ import {
   overtimeCommandLetterItems,
   overtimeCommandLetterParticipants,
   overtimeCommandLetters,
+  overtimeSummaries,
+  overtimeSummaryApprovals,
   ptwApprovals,
   sopWinRequests,
   sopWinRequestApprovals,
@@ -3192,6 +3194,141 @@ async function getOvertimeInboxItems(
   })
 }
 
+async function getOvertimeSummaryInboxItems(
+  email: string,
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
+) {
+  const normalizedEmail = normalizeMatchValue(email)
+  const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
+  const isAdmin = checkIsAdmin(email, currentEmployee)
+
+  try {
+    const rawSummaries = await db
+      .select({
+        approvalId: overtimeSummaryApprovals.id,
+        approvalToken: overtimeSummaryApprovals.approvalToken,
+        approverName: overtimeSummaryApprovals.approverName,
+        approverEmail: overtimeSummaryApprovals.approverEmail,
+        approverEmployeeId: overtimeSummaryApprovals.approverEmployeeId,
+        approverRole: overtimeSummaryApprovals.approverRole,
+        stepOrder: overtimeSummaryApprovals.stepOrder,
+        stepLabel: overtimeSummaryApprovals.stepLabel,
+        stepStatus: overtimeSummaryApprovals.status,
+        remarks: overtimeSummaryApprovals.remarks,
+        createdAt: overtimeSummaryApprovals.createdAt,
+        summaryId: overtimeSummaries.id,
+        summaryNumber: overtimeSummaries.summaryNumber,
+        employeeId: overtimeSummaries.employeeId,
+        periodMonth: overtimeSummaries.periodMonth,
+        totalSplCount: overtimeSummaries.totalSplCount,
+        totalHours: overtimeSummaries.totalHours,
+        summaryStatus: overtimeSummaries.status,
+        currentStepOrder: overtimeSummaries.currentStepOrder,
+        maxStepOrder: overtimeSummaries.maxStepOrder,
+        notes: overtimeSummaries.notes,
+        submittedAt: overtimeSummaries.submittedAt,
+        employeeName: employees.name,
+        employeeEmail: employees.email,
+        employeeDepartment: employees.department,
+        employeeSection: employees.section,
+        siteName: sites.name,
+        updatedAt: overtimeSummaries.updatedAt,
+      })
+      .from(overtimeSummaryApprovals)
+      .innerJoin(
+        overtimeSummaries,
+        eq(overtimeSummaryApprovals.summaryId, overtimeSummaries.id)
+      )
+      .leftJoin(employees, eq(overtimeSummaries.employeeId, employees.id))
+      .leftJoin(sites, eq(overtimeSummaries.siteId, sites.id))
+      .where(
+        and(
+          eq(overtimeSummaries.status, 'pending'),
+          eq(overtimeSummaryApprovals.status, 'pending'),
+          eq(overtimeSummaryApprovals.stepOrder, overtimeSummaries.currentStepOrder)
+        )
+      )
+      .orderBy(desc(overtimeSummaryApprovals.createdAt))
+
+    const filtered = rawSummaries.filter((row) => {
+      if (isAdmin) return true
+      const rowAppEmail = normalizeMatchValue(row.approverEmail)
+      const rowAppName = normalizeMatchValue(row.approverName)
+
+      if (normalizedEmail && rowAppEmail && rowAppEmail === normalizedEmail) return true
+      if (currentEmployee?.id != null && row.approverEmployeeId === currentEmployee.id) return true
+      if (
+        normalizedEmployeeName &&
+        rowAppName &&
+        (rowAppName === normalizedEmployeeName ||
+          rowAppName.includes(normalizedEmployeeName) ||
+          normalizedEmployeeName.includes(rowAppName))
+      ) {
+        return true
+      }
+      return false
+    })
+
+    return filtered.map((row) => {
+      const submittedAt = row.submittedAt ? new Date(row.submittedAt) : new Date()
+      const dueAt = new Date(submittedAt.getTime() + 48 * 60 * 60 * 1000)
+
+      return {
+        id: `summary-spl-${row.approvalId}`,
+        category: 'OVERTIME' as const,
+        categoryLabel: 'Summary SPL Bulanan',
+        approvalId: row.approvalId,
+        approvalToken: row.approvalToken,
+        splId: row.summaryId,
+        documentNumber: row.summaryNumber,
+        title: `Summary SPL: ${row.employeeName || 'Karyawan'} (${row.periodMonth}) • ${row.totalSplCount} SPL, ${row.totalHours} Jam`,
+        isReverted: false,
+        employeeName: row.employeeName || 'Karyawan',
+        department: row.employeeDepartment || '',
+        section: row.employeeSection || '',
+        siteName: row.siteName || 'Site Operasional',
+        approverName: row.approverName,
+        approverRole: row.approverRole,
+        stepLabel: row.stepLabel || `Step ${row.stepOrder}`,
+        workDate: submittedAt,
+        plannedStartAt: null,
+        plannedEndAt: null,
+        submittedAt,
+        dueAt,
+        dueState: getContractReviewDueState(dueAt, new Date()),
+        url: `/dashboard/overtime-requests?employeeId=${row.employeeId}&month=${row.periodMonth}&openSummary=true`,
+        requestNotes: `Rekap lembur bulanan periode ${row.periodMonth}. Total ${row.totalSplCount} dokumen SPL approved dengan akumulasi ${row.totalHours} jam lembur.`,
+        photoUrl: null,
+        photos: [],
+        participants: [],
+        lineItems: [],
+        approvals: [
+          {
+            id: row.approvalId,
+            stepOrder: row.stepOrder,
+            stepLabel: row.stepLabel,
+            status: row.stepStatus || 'pending',
+            approverName: row.approverName,
+            approverRole: row.approverRole,
+            signatureDataUrl: null,
+            remarks: row.remarks,
+            signedAt: null,
+          },
+        ],
+        isSummarySpl: true,
+        summaryId: row.summaryId,
+        periodMonth: row.periodMonth,
+        employeeId: row.employeeId,
+        totalHours: Number(row.totalHours) || 0,
+        totalSplCount: row.totalSplCount,
+      }
+    })
+  } catch (err) {
+    console.warn('[getOvertimeSummaryInboxItems] Query warning:', err)
+    return []
+  }
+}
+
 async function getPtwInboxItems(
   email: string,
   currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
@@ -3885,7 +4022,13 @@ export async function getApprovalCenterData(
         : Promise.resolve([]),
       !isDailyOnly && !isPtwOnly
         ? safeQuery(
-            () => getOvertimeInboxItems(email, currentEmployee as any),
+            async () => {
+              const [regularSpl, summarySpl] = await Promise.all([
+                getOvertimeInboxItems(email, currentEmployee as any),
+                getOvertimeSummaryInboxItems(email, currentEmployee as any),
+              ]);
+              return [...summarySpl, ...regularSpl];
+            },
             [],
             'getOvertimeInboxItems'
           )

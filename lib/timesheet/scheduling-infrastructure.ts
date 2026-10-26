@@ -66,6 +66,67 @@ export async function ensureSchedulingTimesheetTables() {
       await tx.execute(
         sql`alter table hero_timesheet_scheduling_configs add column if not exists pdf_config jsonb;`
       )
+      await tx.execute(
+        sql`alter table hero_timesheet_scheduling_configs add column if not exists requires_online_overtime_summary boolean not null default false;`
+      )
+      await tx.execute(
+        sql`alter table hero_timesheet_scheduling_configs add column if not exists overtime_summary_cutoff_day integer not null default 25;`
+      )
+      await tx.execute(sql`
+      create table if not exists hero_overtime_summaries (
+        id serial primary key,
+        summary_number text not null unique,
+        employee_id integer not null references hero_employees(id) on delete cascade,
+        site_id integer not null references hero_sites(id) on delete cascade,
+        period_month text not null,
+        total_spl_count integer not null default 0,
+        total_hours numeric(8,2) not null default 0,
+        spl_ids_snapshot jsonb not null default '[]'::jsonb,
+        items_snapshot jsonb not null default '[]'::jsonb,
+        status text not null default 'draft',
+        current_step_order integer not null default 1,
+        max_step_order integer not null default 2,
+        notes text,
+        generated_automatically boolean not null default false,
+        submitted_at timestamp,
+        approved_at timestamp,
+        rejected_at timestamp,
+        rejection_reason text,
+        created_by_user_id text,
+        created_at timestamp not null default now(),
+        updated_at timestamp not null default now()
+      );
+    `)
+      await tx.execute(sql`
+      create unique index if not exists hero_overtime_summaries_emp_period_uq
+      on hero_overtime_summaries(employee_id, period_month);
+    `)
+      await tx.execute(sql`
+      create table if not exists hero_overtime_summary_approvals (
+        id serial primary key,
+        summary_id integer not null references hero_overtime_summaries(id) on delete cascade,
+        step_order integer not null,
+        step_label text not null default '',
+        approval_token text not null unique,
+        approver_employee_id integer references hero_employees(id) on delete set null,
+        approver_name text not null default '',
+        approver_email text not null default '',
+        approver_role text not null default '',
+        status text not null default 'pending',
+        signature_data_url text,
+        remarks text not null default '',
+        signed_at timestamp,
+        created_at timestamp not null default now()
+      );
+    `)
+      await tx.execute(sql`
+      create unique index if not exists hero_overtime_summary_approvals_step_uq
+      on hero_overtime_summary_approvals(summary_id, step_order);
+    `)
+      await tx.execute(sql`
+      create unique index if not exists hero_overtime_summary_approvals_token_uq
+      on hero_overtime_summary_approvals(approval_token);
+    `)
       await tx.execute(sql`
       create table if not exists hero_timesheet_scheduling_statuses (
         id serial primary key,

@@ -4442,6 +4442,76 @@ export const overtimeApprovals = pgTable(
   })
 )
 
+// ─── Overtime Summary (Rekapitulasi SPL Bulanan) ────────────────────────────
+export const overtimeSummaries = pgTable(
+  'hero_overtime_summaries',
+  {
+    id: serial('id').primaryKey(),
+    summaryNumber: text('summary_number').notNull().unique(),
+    employeeId: integer('employee_id')
+      .notNull()
+      .references(() => employees.id, { onDelete: 'cascade' }),
+    siteId: integer('site_id')
+      .notNull()
+      .references(() => sites.id, { onDelete: 'cascade' }),
+    periodMonth: text('period_month').notNull(), // format: "YYYY-MM"
+    totalSplCount: integer('total_spl_count').notNull().default(0),
+    totalHours: decimal('total_hours', { precision: 8, scale: 2 }).notNull().default('0'),
+    splIdsSnapshot: jsonb('spl_ids_snapshot').notNull().default([]),
+    itemsSnapshot: jsonb('items_snapshot').notNull().default([]),
+    status: text('status').notNull().default('draft'), // 'draft', 'pending', 'approved', 'rejected'
+    currentStepOrder: integer('current_step_order').notNull().default(1),
+    maxStepOrder: integer('max_step_order').notNull().default(2),
+    notes: text('notes'),
+    generatedAutomatically: boolean('generated_automatically').notNull().default(false),
+    submittedAt: timestamp('submitted_at'),
+    approvedAt: timestamp('approved_at'),
+    rejectedAt: timestamp('rejected_at'),
+    rejectionReason: text('rejection_reason'),
+    createdByUserId: text('created_by_user_id'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    employeePeriodUnique: uniqueIndex(
+      'hero_overtime_summaries_emp_period_uq'
+    ).on(table.employeeId, table.periodMonth),
+  })
+)
+
+export const overtimeSummaryApprovals = pgTable(
+  'hero_overtime_summary_approvals',
+  {
+    id: serial('id').primaryKey(),
+    summaryId: integer('summary_id')
+      .notNull()
+      .references(() => overtimeSummaries.id, { onDelete: 'cascade' }),
+    stepOrder: integer('step_order').notNull(),
+    stepLabel: text('step_label').notNull().default(''), // 'PJO' | 'Leader'
+    approvalToken: text('approval_token').notNull().unique(),
+    approverEmployeeId: integer('approver_employee_id').references(
+      () => employees.id,
+      { onDelete: 'set null' }
+    ),
+    approverName: text('approver_name').notNull().default(''),
+    approverEmail: text('approver_email').notNull().default(''),
+    approverRole: text('approver_role').notNull().default(''),
+    status: text('status').notNull().default('pending'), // 'pending', 'approved', 'rejected'
+    signatureDataUrl: text('signature_data_url'),
+    remarks: text('remarks').notNull().default(''),
+    signedAt: timestamp('signed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    summaryStepUnique: uniqueIndex(
+      'hero_overtime_summary_approvals_step_uq'
+    ).on(table.summaryId, table.stepOrder),
+    tokenUnique: uniqueIndex(
+      'hero_overtime_summary_approvals_token_uq'
+    ).on(table.approvalToken),
+  })
+)
+
 // ─── PTW (Permit to Work) Approval Steps ────────────────────────────────────
 export const ptwApprovals = pgTable(
   'hero_ptw_approvals',

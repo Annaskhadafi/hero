@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
@@ -51,6 +51,13 @@ import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import QRCode from 'qrcode'
 import { generateOvertimeRecordPdf, generateSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
 import { resolveSummarySplSignatories } from '@/lib/timesheet/summary-spl-signatures'
+import {
+  getOvertimeSummaryWorkspaceDataAction,
+  submitOvertimeSummaryAction,
+  approveOvertimeSummaryAction,
+  rejectOvertimeSummaryAction,
+  type OvertimeSummaryDetail,
+} from '@/app/actions/overtime-summary'
 
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
@@ -1350,6 +1357,17 @@ export function OvertimeListingClient({
   const [summaryPreviewZoom, setSummaryPreviewZoom] = useState<number>(1.0)
   const [summaryPdfPreviewUrl, setSummaryPdfPreviewUrl] = useState<string | null>(null)
 
+  // Online Summary SPL Approval State
+  const [summaryOnlineData, setSummaryOnlineData] = useState<OvertimeSummaryDetail | null>(null)
+  const [isLoadingSummaryData, setIsLoadingSummaryData] = useState<boolean>(false)
+  const [isSummarySubmitOpen, setIsSummarySubmitOpen] = useState<boolean>(false)
+  const [isSubmittingSummary, setIsSubmittingSummary] = useState<boolean>(false)
+  const [summarySubmitNotes, setSummarySubmitNotes] = useState<string>('')
+  const [isSummaryApproveOpen, setIsSummaryApproveOpen] = useState<boolean>(false)
+  const [isSummaryRejectOpen, setIsSummaryRejectOpen] = useState<boolean>(false)
+  const [summaryRejectionReason, setSummaryRejectionReason] = useState<string>('')
+  const [isSummaryActionRunning, setIsSummaryActionRunning] = useState<boolean>(false)
+
   const hasActiveFilters =
     activeTab !== 'all' ||
     summaryEmployeeId !== 'ALL' ||
@@ -1369,7 +1387,120 @@ export function OvertimeListingClient({
     setSelectedWorkerCounts([])
   }
 
-  const isManagementOrAdmin = useMemo(() => {
+  const refreshSummaryOnlineData = useCallback(async () => {
+    if (summaryEmployeeId === 'ALL' || !summaryMonth) {
+      setSummaryOnlineData(null)
+      return
+    }
+    setIsLoadingSummaryData(true)
+    try {
+      const res = await getOvertimeSummaryWorkspaceDataAction({
+        employeeId: Number(summaryEmployeeId),
+        periodMonth: summaryMonth,
+      })
+      if (res.ok) {
+        setSummaryOnlineData(res.summary || null)
+      } else {
+        setSummaryOnlineData(null)
+      }
+    } catch {
+      setSummaryOnlineData(null)
+    } finally {
+      setIsLoadingSummaryData(false)
+    }
+  }, [summaryEmployeeId, summaryMonth])
+
+  useEffect(() => {
+    void refreshSummaryOnlineData()
+  }, [refreshSummaryOnlineData])
+
+  const handleOpenSubmitSummary = () => {
+    if (summaryEmployeeId === 'ALL' || !summaryMonth) {
+      toast.error('Silakan pilih karyawan dan periode bulan terlebih dahulu.')
+      return
+    }
+    if (summaryFilteredRows.length === 0) {
+      toast.error('Tidak ada dokumen SPL yang berstatus APPROVED untuk diajukan.')
+      return
+    }
+    setSummarySubmitNotes('')
+    setIsSummarySubmitOpen(true)
+  }
+
+  const handleConfirmSubmitSummary = async () => {
+    if (summaryEmployeeId === 'ALL' || !summaryMonth) return
+    setIsSubmittingSummary(true)
+    try {
+      const res = await submitOvertimeSummaryAction({
+        employeeId: Number(summaryEmployeeId),
+        periodMonth: summaryMonth,
+        notes: summarySubmitNotes,
+      })
+      if (res.ok) {
+        toast.success(res.message || 'Summary SPL berhasil diajukan untuk approval!')
+        setIsSummarySubmitOpen(false)
+        await refreshSummaryOnlineData()
+      } else {
+        toast.error(res.error || 'Gagal mengajukan Summary SPL.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan saat mengajukan.')
+    } finally {
+      setIsSubmittingSummary(false)
+    }
+  }
+
+  const handleApproveSummary = async (stepOrder: number) => {
+    if (!summaryOnlineData) return
+    setIsSummaryActionRunning(true)
+    try {
+      const res = await approveOvertimeSummaryAction({
+        summaryId: summaryOnlineData.id,
+        stepOrder,
+      })
+      if (res.ok) {
+        toast.success(res.message || 'Summary SPL berhasil disetujui!')
+        setIsSummaryApproveOpen(false)
+        await refreshSummaryOnlineData()
+      } else {
+        toast.error(res.error || 'Gagal menyetujui Summary SPL.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan.')
+    } finally {
+      setIsSummaryActionRunning(false)
+    }
+  }
+
+  const handleRejectSummary = async (stepOrder: number) => {
+    if (!summaryOnlineData) return
+    if (!summaryRejectionReason.trim()) {
+      toast.error('Alasan penolakan wajib diisi.')
+      return
+    }
+    setIsSummaryActionRunning(true)
+    try {
+      const res = await rejectOvertimeSummaryAction({
+        summaryId: summaryOnlineData.id,
+        stepOrder,
+        rejectionReason: summaryRejectionReason,
+      })
+      if (res.ok) {
+        toast.success(res.message || 'Summary SPL berhasil ditolak.')
+        setIsSummaryRejectOpen(false)
+        setSummaryRejectionReason('')
+        await refreshSummaryOnlineData()
+      } else {
+        toast.error(res.error || 'Gagal menolak Summary SPL.')
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Terjadi kesalahan.')
+    } finally {
+      setIsSummaryActionRunning(false)
+    }
+  }
+
+    const isManagementOrAdmin = useMemo(() => {
     if (isAdmin) return true
     if (!currentEmployeeId && !currentEmployeeName) return true
     const currentEmp = employees?.find((e) => e.id === currentEmployeeId)
@@ -2774,7 +2905,104 @@ export function OvertimeListingClient({
                 >
                   <RotateCcw className="size-3 mr-1" /> Reset
                 </Button>
+        
+        {summaryEmployeeId !== 'ALL' && summaryMonth && (
+          <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-200/60">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "flex size-8 items-center justify-center rounded-lg text-white font-bold text-xs shadow-xs shrink-0",
+                summaryOnlineData?.status === 'approved'
+                  ? "bg-emerald-600"
+                  : summaryOnlineData?.status === 'pending'
+                    ? "bg-amber-500"
+                    : summaryOnlineData?.status === 'rejected'
+                      ? "bg-rose-600"
+                      : "bg-slate-400"
+              )}>
+                {summaryOnlineData?.status === 'approved' ? (
+                  <CheckCircle2 className="size-4" />
+                ) : summaryOnlineData?.status === 'pending' ? (
+                  <Clock className="size-4 animate-spin" />
+                ) : summaryOnlineData?.status === 'rejected' ? (
+                  <AlertCircle className="size-4" />
+                ) : (
+                  <FileSpreadsheet className="size-4" />
+                )}
               </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Status Online Approval:
+                  </span>
+                  {summaryOnlineData?.status === 'approved' ? (
+                    <Badge className="bg-emerald-600 text-white font-bold text-[10px] py-0 px-2">
+                      Disetujui Penuh (Approved)
+                    </Badge>
+                  ) : summaryOnlineData?.status === 'pending' ? (
+                    <Badge className="bg-amber-500 text-white font-bold text-[10px] py-0 px-2">
+                      Menunggu Step {summaryOnlineData.currentStepOrder} dari {summaryOnlineData.maxStepOrder}
+                    </Badge>
+                  ) : summaryOnlineData?.status === 'rejected' ? (
+                    <Badge className="bg-rose-600 text-white font-bold text-[10px] py-0 px-2">
+                      Ditolak (Rejected)
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="bg-slate-200 text-slate-700 font-bold text-[10px] py-0 px-2">
+                      Belum Diajukan
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {summaryOnlineData?.status === 'approved'
+                    ? `Summary SPL resmi disetujui penuh pada ${new Date(summaryOnlineData.approvedAt!).toLocaleDateString('id-ID')}. Tanda tangan digital telah tersemat di dokumen.`
+                    : summaryOnlineData?.status === 'pending'
+                      ? `Dokumen sedang menunggu persetujuan dari ${summaryOnlineData.approvals.find(a => a.stepOrder === summaryOnlineData.currentStepOrder)?.approverName || 'Approver'}.`
+                      : summaryOnlineData?.status === 'rejected'
+                        ? `Alasan penolakan: ${summaryOnlineData.rejectionReason || 'Ditolak approver'}`
+                        : 'Rekapitulasi ini belum diajukan ke Inbox Approval.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {(!summaryOnlineData || summaryOnlineData.status === 'draft' || summaryOnlineData.status === 'rejected') && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleOpenSubmitSummary}
+                  disabled={filteredRows.length === 0}
+                  className="h-9 gap-1.5 rounded-xl bg-[#003461] hover:bg-[#002447] text-white text-xs font-bold px-3.5 shadow-xs cursor-pointer"
+                >
+                  <Send className="size-3.5" />
+                  {summaryOnlineData?.status === 'rejected' ? 'Ajukan Ulang Summary' : 'Ajukan Approval Summary'}
+                </Button>
+              )}
+
+              {summaryOnlineData?.status === 'pending' && (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setIsSummaryApproveOpen(true)}
+                    className="h-9 gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 shadow-xs cursor-pointer"
+                  >
+                    <Check className="size-3.5" /> Setujui
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsSummaryRejectOpen(true)}
+                    className="h-9 gap-1 rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold px-3 shadow-xs cursor-pointer"
+                  >
+                    <X className="size-3.5" /> Tolak
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
             ) : (
               <div className="flex items-center h-9 text-[11px] text-slate-400 italic px-1">
                 * Menampilkan seluruh data SPL. Pilih Karyawan / Bulan untuk menyaring rekapitulasi.
@@ -3837,6 +4065,151 @@ export function OvertimeListingClient({
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Konfirmasi Submit Summary SPL */}
+      <Dialog open={isSummarySubmitOpen} onOpenChange={setIsSummarySubmitOpen}>
+        <DialogContent className="max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Ajukan Approval Summary SPL Bulanan
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Kirimkan rekapitulasi lembur karyawan ke Inbox Approval bertingkat secara digital.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="rounded-xl bg-slate-50 p-3.5 space-y-2 border border-slate-200/70">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Karyawan:</span>
+                <span className="font-bold text-slate-900">
+                  {employees?.find(e => String(e.id) === summaryEmployeeId)?.name || 'Karyawan'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Periode Lembur:</span>
+                <span className="font-bold text-slate-900">{formatMonthYearLabel(summaryMonth)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Total Dokumen:</span>
+                <span className="font-bold text-slate-900">{summaryStats.totalCount} SPL Approved</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Akumulasi Lembur:</span>
+                <span className="font-bold text-emerald-700">{summaryStats.totalHours} Jam Lembur</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-slate-700">Catatan Pengajuan (Opsional)</Label>
+              <textarea
+                placeholder="Tambahkan catatan khusus jika diperlukan..."
+                value={summarySubmitNotes}
+                onChange={(e) => setSummarySubmitNotes(e.target.value)}
+                className="w-full text-xs min-h-[70px] rounded-xl border border-slate-200 p-2.5 outline-none focus:border-[#003461]"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="grid grid-cols-2 gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSummarySubmitOpen(false)}
+              className="h-9 rounded-xl text-xs font-semibold"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmSubmitSummary}
+              disabled={isSubmittingSummary}
+              className="h-9 rounded-xl bg-[#003461] hover:bg-[#002447] text-white text-xs font-bold gap-1.5"
+            >
+              {isSubmittingSummary ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              Kirim ke Approval
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Konfirmasi Setujui Summary SPL */}
+      <Dialog open={isSummaryApproveOpen} onOpenChange={setIsSummaryApproveOpen}>
+        <DialogContent className="max-w-sm rounded-2xl p-5">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Setujui Summary SPL
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Konfirmasi persetujuan untuk rekap lembur karyawan periode {formatMonthYearLabel(summaryMonth)}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="grid grid-cols-2 gap-2 pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSummaryApproveOpen(false)}
+              className="h-9 rounded-xl text-xs font-semibold"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleApproveSummary(summaryOnlineData?.currentStepOrder || 1)}
+              disabled={isSummaryActionRunning}
+              className="h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold gap-1.5"
+            >
+              {isSummaryActionRunning ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              Ya, Setujui
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Tolak Summary SPL */}
+      <Dialog open={isSummaryRejectOpen} onOpenChange={setIsSummaryRejectOpen}>
+        <DialogContent className="max-w-sm rounded-2xl p-5">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-rose-700">
+              Tolak Summary SPL
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Berikan alasan penolakan rekapitulasi lembur ini.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2 space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-700">Alasan Penolakan *</Label>
+            <textarea
+              placeholder="Tuliskan alasan penolakan..."
+              value={summaryRejectionReason}
+              onChange={(e) => setSummaryRejectionReason(e.target.value)}
+              className="w-full text-xs min-h-[75px] rounded-xl border border-slate-200 p-2.5 outline-none focus:border-rose-500"
+            />
+          </div>
+
+          <DialogFooter className="grid grid-cols-2 gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSummaryRejectOpen(false)}
+              className="h-9 rounded-xl text-xs font-semibold"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={() => handleRejectSummary(summaryOnlineData?.currentStepOrder || 1)}
+              disabled={isSummaryActionRunning || !summaryRejectionReason.trim()}
+              className="h-9 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold gap-1.5"
+            >
+              {isSummaryActionRunning ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+              Tolak
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

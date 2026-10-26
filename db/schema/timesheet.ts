@@ -206,6 +206,8 @@ export const timesheetSchedulingConfigs = pgTable(
     allowanceVariables: jsonb('allowance_variables').notNull().default([]),
     overtimeVariables: jsonb('overtime_variables').notNull().default([]),
     overtimeConfig: jsonb('overtime_config'),
+    requiresOnlineOvertimeSummary: boolean('requires_online_overtime_summary').notNull().default(false),
+    overtimeSummaryCutoffDay: integer('overtime_summary_cutoff_day').notNull().default(25),
     pdfConfig: jsonb('pdf_config'),
     savedByUserId: text('saved_by_user_id').references(() => user.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').notNull().defaultNow(),

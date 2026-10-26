@@ -362,6 +362,8 @@ type SiteSchedulingConfig = {
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
+  requiresOnlineOvertimeSummary?: boolean
+  overtimeSummaryCutoffDay?: number
   timezone: IndonesiaTimezoneCode
   defaultShiftType: DefaultShiftType
   defaultClockIn: string
@@ -581,6 +583,8 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   msaType: 'staff-nonstaff',
   mealsType: 'workday',
   overtimeType: 'five-hour',
+  requiresOnlineOvertimeSummary: false,
+  overtimeSummaryCutoffDay: 25,
   timezone: 'WITA',
   defaultShiftType: 'day-shift',
   defaultClockIn: '07:00',
@@ -799,6 +803,8 @@ function buildSiteSchedulingConfig(
             ? 'field-break'
             : 'workday') as SiteMealsType,
         overtimeType: savedConfig.overtimeType as SiteOvertimeType,
+        requiresOnlineOvertimeSummary: Boolean(savedConfig.requiresOnlineOvertimeSummary ?? false),
+        overtimeSummaryCutoffDay: Number(savedConfig.overtimeSummaryCutoffDay ?? 25) || 25,
         timezone: siteTimezone as IndonesiaTimezoneCode,
         defaultShiftType:
           (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
@@ -8934,6 +8940,50 @@ export function SchedulingTimesheetWorkspace({
                         { value: 'none', label: 'Tidak dihitung' },
                       ]}
                     />
+                  </div>
+                </div>
+
+                <div className="border-border/30 border-t px-4 py-4">
+                  <div className="rounded-xl border border-border/60 bg-surface-container-low/50 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <Label className="text-foreground text-xs font-bold tracking-tight">
+                          Wajib Approval Online Summary SPL
+                        </Label>
+                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                          Aktifkan agar rekap SPL bulanan di site ini diproses melalui approval bertingkat online (PJO &rarr; Leader) dan otomatis terkirim saat cut-off.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={Boolean(siteConfig.requiresOnlineOvertimeSummary)}
+                        onCheckedChange={(checked) =>
+                          updateSiteConfig('requiresOnlineOvertimeSummary', checked)
+                        }
+                      />
+                    </div>
+                    {siteConfig.requiresOnlineOvertimeSummary && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-border/40 text-xs">
+                        <Label className="text-muted-foreground text-[11px] font-semibold whitespace-nowrap">
+                          Tanggal Cut-off Bulanan:
+                        </Label>
+                        <div className="w-20">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={siteConfig.overtimeSummaryCutoffDay ?? 25}
+                            onChange={(e) =>
+                              updateSiteConfig(
+                                'overtimeSummaryCutoffDay',
+                                Math.max(1, Math.min(31, Number(e.target.value) || 25))
+                              )
+                            }
+                            className="h-8 text-center font-bold text-xs"
+                          />
+                        </div>
+                        <span className="text-muted-foreground text-[11px]">setiap bulannya (default: tgl 25)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
