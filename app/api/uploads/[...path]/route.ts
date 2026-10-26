@@ -312,60 +312,38 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     }
   }
 
-  // 2. Fetch from S3 proxy using candidate keys
+  // 2. Fetch from S3 proxy with fast, targeted lookup
   if (isS3UploadConfigured()) {
-    // Fast targeted candidate resolution
-    const candidateS3Keys = Array.from(
-      new Set(
-        path.length > 1
-          ? [relativePath, fileName, `upload/${fileName}`, `uploads/${fileName}`, `rfr/${fileName}`]
-          : [
-              fileName,
-              `upload/${fileName}`,
-              `uploads/${fileName}`,
-              `rfr/${fileName}`,
-              `activity-photos/${fileName}`,
-              `attendance-photos/${fileName}`,
-              `contract-review-attachment/${fileName}`,
-              `sop-win-requests/${fileName}`,
-              `emergency-reports/${fileName}`,
-              `safety/${fileName}`,
-            ]
-      )
-    )
+    try {
+      const object = await getS3ObjectForProxy(relativePath)
+      if (object && object.body) {
+        const rawBuffer = Buffer.from(object.body)
 
-    for (const key of candidateS3Keys) {
-      try {
-        const object = await getS3ObjectForProxy(key)
-        if (object && object.body) {
-          const rawBuffer = Buffer.from(object.body)
-
-          // Persist S3 download to local public/uploads disk cache so future requests are instantaneous
-          try {
-            const localCachePath = join(publicDir, 'uploads', relativePath)
-            const localCacheDir = join(publicDir, 'uploads', ...path.slice(0, -1))
-            if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
-            writeFileSync(localCachePath, rawBuffer)
-          } catch (writeErr) {
-            console.warn('Failed caching S3 file to local disk:', writeErr)
-          }
-
-          const {
-            data: fileBuffer,
-            contentType,
-            isThumbnail,
-          } = await prepareResponseBuffer(
-            rawBuffer,
-            fileName,
-            targetWidth,
-            cachedThumbPath,
-            thumbCacheDir
-          )
-          return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
+        // Persist S3 download to local public/uploads disk cache so future requests are instantaneous (0 ms)
+        try {
+          const localCachePath = join(publicDir, 'uploads', relativePath)
+          const localCacheDir = join(publicDir, 'uploads', ...path.slice(0, -1))
+          if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
+          writeFileSync(localCachePath, rawBuffer)
+        } catch (writeErr) {
+          console.warn('Failed caching S3 file to local disk:', writeErr)
         }
-      } catch (error) {
-        console.warn('Failed to proxy S3 upload key:', key, error)
+
+        const {
+          data: fileBuffer,
+          contentType,
+          isThumbnail,
+        } = await prepareResponseBuffer(
+          rawBuffer,
+          fileName,
+          targetWidth,
+          cachedThumbPath,
+          thumbCacheDir
+        )
+        return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
       }
+    } catch (error) {
+      console.warn('Failed to proxy S3 upload key:', relativePath, error)
     }
   }
 

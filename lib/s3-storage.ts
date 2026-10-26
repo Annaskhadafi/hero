@@ -402,14 +402,18 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
     return null
   }
 
+  const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
+  const bareFilename = cleanKey.split('/').pop() || cleanKey
+
+  // Distinct candidate keys - maximum 3-4 targeted keys, checked quickly
   const candidateKeys = Array.from(
     new Set([
-      primaryKey,
-      decodeURIComponent(primaryKey),
-      primaryKey.replace(/^uploads?\//, ''),
-      `upload/${primaryKey.replace(/^uploads?\//, '')}`,
-      `uploads/${primaryKey.replace(/^uploads?\//, '')}`,
-      primaryKey.replace(/^api\/uploads?\//, ''),
+      cleanKey,
+      cleanKey.startsWith('upload/')
+        ? cleanKey.replace(/^upload\//, 'uploads/')
+        : `upload/${cleanKey}`,
+      `rfr/${bareFilename}`,
+      bareFilename,
     ])
   )
 
@@ -421,7 +425,8 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
         new GetObjectCommand({
           Bucket: serverEnv.s3BucketName,
           Key: candidateKey,
-        })
+        }),
+        { abortSignal: AbortSignal.timeout(2500) }
       )
 
       if (response.Body) {
@@ -433,7 +438,7 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
         }
       }
     } catch {
-      // Continue trying next candidate key
+      // Continue trying next candidate key quickly
     }
   }
 
