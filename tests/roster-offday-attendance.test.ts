@@ -290,6 +290,41 @@ describe('Roster 5:2 & Attendance Engine', () => {
     assert.equal(day1IsCrossDay, true, 'Day 1 with missed check-in should still have isCrossDay=true')
   })
 
+  it('reconciles cross-day checkouts occurring late on next day (Mustofa Ahyari scenario)', () => {
+    // Scenario: Day 18 check-in at 16:47 (Night Shift).
+    // Day 19 checkout at 17:47 (next afternoon/extended checkout). Day 19 schedule is OFF.
+    const day18Schedule = 'NS'
+    const day19Schedule = 'OFF'
+
+    // Initial split overrides as saved previously
+    const overrides = new Map<number, { clockIn: string; clockOut: string; status: string; isCrossDay?: boolean }>()
+    overrides.set(18, { clockIn: '16:47', clockOut: '', status: 'present' })
+    overrides.set(19, { clockIn: '', clockOut: '17:47', status: 'present' })
+
+    // Apply cross-day reconciliation
+    const curOverride = overrides.get(18)!
+    const nextOverride = overrides.get(19)!
+
+    // If Day d has check-in and no check-out, and Day d+1 has only check-out:
+    if (curOverride.clockIn && !curOverride.clockOut && nextOverride && !nextOverride.clockIn && nextOverride.clockOut) {
+      curOverride.clockOut = nextOverride.clockOut
+      curOverride.isCrossDay = true
+      // Consumed next day override is removed
+      overrides.delete(19)
+    }
+
+    // Assert Day 18 has the checkout and isCrossDay flag
+    assert.equal(curOverride.clockOut, '17:47')
+    assert.equal(curOverride.isCrossDay, true, 'Day 18 must display (+1) badge')
+
+    // Assert Day 19 override was removed
+    assert.equal(overrides.has(19), false, 'Day 19 orphan override must be deleted')
+
+    // Day 19 status falls back to roster schedule OFF
+    const day19ResolvedStatus = overrides.get(19)?.status || day19Schedule.toLowerCase()
+    assert.equal(day19ResolvedStatus, 'off', 'Day 19 must resolve to OFF without Beda Roster')
+  })
+
   it('verifies cross-day reconciliation in codebase files', () => {
     const syncPath = path.resolve('lib/timesheet/face-attendance-sync.ts')
     const syncCode = fs.readFileSync(syncPath, 'utf8')

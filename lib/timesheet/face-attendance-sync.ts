@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { attendanceRecords, sites } from '@/db/schema/hero'
 import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingPlansV2 } from '@/db/schema/timesheet'
-import { and, eq, gte, lt, ne } from 'drizzle-orm'
+import { and, asc, eq, gte, lt, ne } from 'drizzle-orm'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { getSiteAttendanceClockConfig } from '@/lib/timesheet/site-attendance-punctuality'
 import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
@@ -311,9 +311,19 @@ export async function syncFaceAttendanceToTimesheet(
 
     if (prevSameEveningOut.length === 0) {
       // Look for today's early-morning EXPLICIT checkout punches (< 12:00 local time)
-      const morningCheckoutPunches = sortedRecords.filter(
-        (r) => isCheckOutEvent(r.eventType) && getTimezoneDateParts(r.eventTime, tzInfo.code).hours < 12
-      )
+      // OR if today has no check-in punches, any checkout today belongs to yesterday's night shift
+      const todayCheckIns = sortedRecords.filter((r) => !isCheckOutEvent(r.eventType))
+      const firstTodayCheckIn = todayCheckIns[0]
+
+      const morningCheckoutPunches = sortedRecords.filter((r) => {
+        if (!isCheckOutEvent(r.eventType)) return false
+        const h = getTimezoneDateParts(r.eventTime, tzInfo.code).hours
+        return (
+          h < 12 ||
+          !firstTodayCheckIn ||
+          r.eventTime.getTime() < firstTodayCheckIn.eventTime.getTime()
+        )
+      })
 
       if (morningCheckoutPunches.length > 0) {
         const morningCheckout = selectAttendancePunches(morningCheckoutPunches, {
@@ -469,21 +479,33 @@ export async function syncFaceAttendanceToTimesheet(
   let clockOut = ''
 
   if (isNightShift && checkInPunches.length > 0) {
-    // Overnight shift handling: look for explicit checkout punches on next day 00:00 - 10:00 local time
-    const nextDayCutoff = new Date(startOfNextDay.getTime() + 12 * 60 * 60 * 1000)
-    const overnightRecords = await db
+    // Overnight shift handling: look for explicit checkout punches on next day
+    // Check up to next day's full duration before any new check-in
+    const nextDayDate = new Date(startOfNextDay.getTime() + 12 * 60 * 60 * 1000)
+    const nextBoundaries = getTimezoneDayBoundaries(nextDayDate, tzInfo.code)
+    const nextDayFullRecords = await db
       .select()
       .from(attendanceRecords)
       .where(
         and(
           eq(attendanceRecords.employeeId, employeeId),
           eq(attendanceRecords.siteId, siteId),
-          gte(attendanceRecords.eventTime, startOfNextDay),
-          lt(attendanceRecords.eventTime, nextDayCutoff)
+          gte(attendanceRecords.eventTime, nextBoundaries.startOfDay),
+          lt(attendanceRecords.eventTime, nextBoundaries.startOfNextDay)
         )
       )
+      .orderBy(asc(attendanceRecords.eventTime))
 
-    const explicitNextOut = overnightRecords.filter((r) => isCheckOutEvent(r.eventType))
+    const nextDayCheckIns = nextDayFullRecords.filter((r) => !isCheckOutEvent(r.eventType))
+    const firstNextCheckIn = nextDayCheckIns[0]
+
+    const explicitNextOut = nextDayFullRecords.filter((r) => {
+      if (!isCheckOutEvent(r.eventType)) return false
+      if (firstNextCheckIn && r.eventTime.getTime() >= firstNextCheckIn.eventTime.getTime()) {
+        return false
+      }
+      return true
+    })
 
     if (explicitNextOut.length > 0) {
       const lastOvernight = selectAttendancePunches(explicitNextOut, {
@@ -492,23 +514,8 @@ export async function syncFaceAttendanceToTimesheet(
       }).checkOut!
       clockOut = formatTimeHHMMInTimezone(lastOvernight.eventTime, tzInfo.code)
 
-      // Ensure Day T+1 override does not retain orphan attendance if it has no own shift punches (>= 10:00)
-      const nextDayDate = new Date(startOfNextDay.getTime() + 12 * 60 * 60 * 1000)
-      const nextBoundaries = getTimezoneDayBoundaries(nextDayDate, tzInfo.code)
-      const nextDayFullRecords = await db
-        .select()
-        .from(attendanceRecords)
-        .where(
-          and(
-            eq(attendanceRecords.employeeId, employeeId),
-            eq(attendanceRecords.siteId, siteId),
-            gte(attendanceRecords.eventTime, nextBoundaries.startOfDay),
-            lt(attendanceRecords.eventTime, nextBoundaries.startOfNextDay)
-          )
-        )
-      const nextDayOwnPunches = nextDayFullRecords.filter(
-        (r) => !isCheckOutEvent(r.eventType) || getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 12
-      )
+      // If next day has NO check-ins of its own, all punches were just checkouts for today
+      const nextDayOwnPunches = nextDayCheckIns
       const { period: nextPeriod, day: nextDay } = derivePeriodAndDayInTimezone(
         nextDayDate,
         tzInfo.code

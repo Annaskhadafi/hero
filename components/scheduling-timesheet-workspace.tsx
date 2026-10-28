@@ -447,6 +447,7 @@ type ManualAttendanceCell = {
   scheduledClockIn?: string | null
   shiftCode?: string | null
   isCrossDay?: boolean
+  validationFlags?: string[]
 }
 
 type SavedAttendanceOverride = {
@@ -461,6 +462,7 @@ type SavedAttendanceOverride = {
   source?: string
   overtimeHours?: number | string | null
   validationFlags?: string[]
+  isCrossDay?: boolean
   updatedAt: string
 }
 
@@ -1339,9 +1341,18 @@ function attendanceKey(employeeId: number, day: number) {
   return `${employeeId}-${day}`
 }
 
-function attendanceCellClass(status: AttendanceCellStatus, scheduleCode?: string) {
+function attendanceCellClass(
+  status: AttendanceCellStatus,
+  scheduleCode?: string,
+  isNightShift?: boolean
+) {
   if (scheduleCode === 'AL') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 font-bold'
-  if (status === 'present') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200'
+  if (status === 'present') {
+    if (isNightShift) {
+      return 'bg-indigo-600 text-white ring-1 ring-indigo-700 hover:bg-indigo-700 shadow-sm'
+    }
+    return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 hover:bg-emerald-200 shadow-sm'
+  }
   if (status === 'sick') return 'bg-amber-100 text-amber-950 ring-1 ring-amber-200'
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
@@ -1834,7 +1845,7 @@ export function SchedulingTimesheetWorkspace({
     'attendance' | 'checkin-checkout' | 'work-hours'
   >('attendance')
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<
-    'all' | 'present' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
+    'all' | 'present' | 'present_pagi' | 'present_malam' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
   >('all')
   const [importHistoryOpen, setImportHistoryOpen] = useState(false)
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
@@ -2419,15 +2430,60 @@ export function SchedulingTimesheetWorkspace({
   // raw-punch heuristic below, which only knows each punch's calendar date.
   const attendanceOverrideByCell = useMemo(() => {
     const map = new Map<string, SavedAttendanceOverride>()
+    const employeeIds = new Set<number>()
+
     for (const override of attendanceOverrides) {
       if (
         override.period === period &&
         override.source === 'attendance' &&
         (siteId === 'all' || String(override.siteId) === siteId)
       ) {
-        map.set(attendanceKey(override.employeeId, override.day), override)
+        map.set(attendanceKey(override.employeeId, override.day), { ...override })
+        employeeIds.add(override.employeeId)
       }
     }
+
+    const daysInCurrentPeriod = daysInMonth(period)
+
+    // Cross-day reconciliation for overrides:
+    // 1) Mark any existing overnight checkout (clockOut < clockIn or flag) as isCrossDay = true.
+    // 2) If Day d has check-in but no check-out, and Day d+1 has check-out with no check-in (orphan checkout):
+    //    Attribute Day d+1's check-out to Day d, mark Day d as isCrossDay = true,
+    //    and remove the consumed override on Day d+1 so Day d+1 follows its normal roster schedule.
+    for (const empId of employeeIds) {
+      for (let d = 1; d <= daysInCurrentPeriod; d++) {
+        const curKey = attendanceKey(empId, d)
+        const curOverride = map.get(curKey)
+
+        if (curOverride) {
+          if (
+            (curOverride.clockIn && curOverride.clockOut && curOverride.clockOut < curOverride.clockIn) ||
+            curOverride.validationFlags?.includes('cross-day-checkout')
+          ) {
+            curOverride.isCrossDay = true
+          }
+
+          if (curOverride.clockIn && !curOverride.clockOut && d < daysInCurrentPeriod) {
+            const nextKey = attendanceKey(empId, d + 1)
+            const nextOverride = map.get(nextKey)
+
+            if (nextOverride && !nextOverride.clockIn && nextOverride.clockOut) {
+              curOverride.clockOut = nextOverride.clockOut
+              curOverride.isCrossDay = true
+              if (nextOverride.note && !curOverride.note) {
+                curOverride.note = nextOverride.note
+              }
+              const flags = new Set(curOverride.validationFlags || [])
+              flags.delete('missing-check-out')
+              flags.add('cross-day-checkout')
+              curOverride.validationFlags = Array.from(flags)
+              map.delete(nextKey)
+            }
+          }
+        }
+      }
+    }
+
     return map
   }, [attendanceOverrides, period, siteId])
 
@@ -2922,16 +2978,44 @@ export function SchedulingTimesheetWorkspace({
           return isCheckIn && (h >= 15 || h < 5)
         })
 
-        const isYesterdayNightShift = prevIsScheduledNight || prevHasNightPunch
+        const prevHasOpenCheckIn =
+          prevRecords.some((r) => {
+            const isCheckIn =
+              r.eventType === 'checked-in' ||
+              (!r.eventType.toLowerCase().includes('out') &&
+                !r.eventType.toLowerCase().includes('pulang') &&
+                !r.eventType.toLowerCase().includes('checkout'))
+            return isCheckIn
+          }) &&
+          !prevRecords.some((r) => {
+            return (
+              r.eventType.toLowerCase().includes('out') ||
+              r.eventType.toLowerCase().includes('pulang') ||
+              r.eventType.toLowerCase().includes('checkout')
+            )
+          })
+
+        const isYesterdayNightShift = prevIsScheduledNight || prevHasNightPunch || prevHasOpenCheckIn
 
         if (isYesterdayNightShift) {
+          const curCheckIns = curRecords.filter((r) => {
+            return (
+              r.eventType === 'checked-in' ||
+              (!r.eventType.toLowerCase().includes('out') &&
+                !r.eventType.toLowerCase().includes('pulang') &&
+                !r.eventType.toLowerCase().includes('checkout'))
+            )
+          })
+          const hasCurCheckIn = curCheckIns.length > 0
+
           const morningCheckouts = curRecords.filter((r) => {
             const isOut =
               r.eventType.toLowerCase().includes('out') ||
               r.eventType.toLowerCase().includes('pulang') ||
               r.eventType.toLowerCase().includes('checkout')
+            if (!isOut) return false
             const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
-            return isOut && h < 12
+            return h < 12 || !hasCurCheckIn
           })
 
           if (morningCheckouts.length > 0) {
@@ -5097,8 +5181,7 @@ export function SchedulingTimesheetWorkspace({
       isOffSchedule &&
       !clockIn &&
       clockOut &&
-      clockOut < '12:00' &&
-      (prevIsNight || prevHasNightIn || prevCell?.clockOut === clockOut)
+      (clockOut < '12:00' || prevCell?.clockOut === clockOut || prevIsNight || prevHasNightIn)
 
     if (isManual) {
       // Manual status explicitly set by admin/user MUST take precedence
@@ -5157,6 +5240,15 @@ export function SchedulingTimesheetWorkspace({
           : Number(effectiveOverride.overtimeHours)
         : undefined
 
+    const isCrossDay = Boolean(
+      effectiveStatus === 'present' &&
+        clockIn &&
+        finalClockOut &&
+        (effectiveOverride?.isCrossDay ||
+          finalClockOut < clockIn ||
+          effectiveOverride?.validationFlags?.includes('cross-day-checkout'))
+    )
+
     return {
       ...(overrideOvertimeHours !== undefined ? { overtimeHours: overrideOvertimeHours } : {}),
       status: effectiveStatus,
@@ -5174,6 +5266,7 @@ export function SchedulingTimesheetWorkspace({
       isLatePending,
       scheduledClockIn: punctuality.scheduledClockIn,
       shiftCode: punctuality.shiftCode,
+      isCrossDay,
     }
   }
 
@@ -5834,6 +5927,24 @@ export function SchedulingTimesheetWorkspace({
       list = list.filter((r) => {
         const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
         if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
+        if (attendanceStatusFilter === 'present_pagi') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return !isNight
+          })
+        }
+        if (attendanceStatusFilter === 'present_malam') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return isNight
+          })
+        }
         if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
         if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
         if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
@@ -11799,7 +11910,9 @@ export function SchedulingTimesheetWorkspace({
                         </span>
                         {[
                           { key: 'all', label: 'Semua' },
-                          { key: 'present', label: 'Masuk' },
+                          { key: 'present', label: 'Semua Masuk' },
+                          { key: 'present_pagi', label: 'Masuk Pagi' },
+                          { key: 'present_malam', label: 'Masuk Malam' },
                           { key: 'sick', label: 'Sakit' },
                           { key: 'leave', label: 'Izin' },
                           { key: 'absent', label: 'Alpha' },
@@ -11861,17 +11974,42 @@ export function SchedulingTimesheetWorkspace({
                   ) : null}
                   {/* View title & Actions Bar (All 5 Tabs) */}
                   <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-                    <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                      {attendanceView === 'attendance' &&
-                        `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
-                      {attendanceView === 'msa' &&
-                        `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
-                      {attendanceView === 'lokasi' &&
-                        `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
-                      {attendanceView === 'meals' &&
-                        `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
-                      {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
-                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                        {attendanceView === 'attendance' &&
+                          `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
+                        {attendanceView === 'msa' &&
+                          `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'lokasi' &&
+                          `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
+                        {attendanceView === 'meals' &&
+                          `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
+                      </p>
+                      {attendanceView === 'attendance' && (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="text-slate-500 font-semibold text-[10.5px]">Indikator:</span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-950 ring-1 ring-emerald-300">
+                            <span className="size-2 rounded-full bg-emerald-600" /> Masuk Pagi
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-2xs">
+                            <span className="size-2 rounded-full bg-indigo-200" /> Masuk Malam
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-950 ring-1 ring-red-400">
+                            <span className="size-2 rounded-full bg-red-600" /> Terlambat
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-950 ring-1 ring-orange-400">
+                            <span className="size-2 rounded-full bg-orange-600" /> Beda Roster
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-950 ring-1 ring-purple-300">
+                            <span className="size-2 rounded-full bg-purple-600" /> Field Break
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-300">
+                            <span className="size-2 rounded-full bg-slate-500" /> OFF
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {attendanceView !== 'attendance' ? (
                         <>
@@ -12430,6 +12568,17 @@ export function SchedulingTimesheetWorkspace({
                                             : `Beda Roster · Seharusnya ${expectedShiftCode}`
                                           const scheduledClockIn =
                                             row.schedule[day - 1]?.split('-')[0]?.trim() || ''
+                                          const isNightShift =
+                                            inferredShift?.shiftCode === 'night' ||
+                                            (!inferredShift &&
+                                              (isNightShiftScheduleCode(scheduleCode) ||
+                                                isNightShiftScheduleCode(cell.shiftCode)))
+                                          const isNightPresentCell =
+                                            cell.status === 'present' &&
+                                            isNightShift &&
+                                            !cell.isLatePending &&
+                                            !isRosterMismatch &&
+                                            !isHolidayDay
                                           return (
                                             <td
                                               key={day}
@@ -12449,7 +12598,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
                                                       : isHolidayDay
                                                         ? attendanceHolidayCellClass
-                                                        : attendanceCellClass(cell.status, scheduleCode)
+                                                        : attendanceCellClass(cell.status, scheduleCode, isNightShift)
                                                 } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                                 onClick={() =>
                                                   multiSelectAttendance
@@ -12464,12 +12613,14 @@ export function SchedulingTimesheetWorkspace({
                                                 }
                                                 title={
                                                   cell.isLatePending
-                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
+                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk ${isNightShift ? 'Malam' : 'Pagi'}: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
                                                     : isConflict
                                                       ? rosterMismatchLabel
                                                       : holidayName ||
                                                         cell.note ||
-                                                        attendanceStatusLabel(cell.status)
+                                                        (cell.status === 'present'
+                                                          ? `Masuk ${isNightShift ? 'Malam (Night Shift)' : 'Pagi (Day Shift)'}`
+                                                          : attendanceStatusLabel(cell.status))
                                                 }
                                               >
                                                 {isConflict ? (
@@ -12492,22 +12643,60 @@ export function SchedulingTimesheetWorkspace({
                                                     <span className="block text-[9.5px] font-extrabold tracking-tight text-red-700">
                                                       Terlambat
                                                     </span>
-                                                    {cell.lateMinutes ? (
-                                                      <span className="mt-0.5 block text-[8px] font-bold text-red-600">
-                                                        +{cell.lateMinutes}m
+                                                    <span className="flex items-center gap-0.5">
+                                                      {cell.lateMinutes ? (
+                                                        <span className="block text-[8px] font-bold text-red-600">
+                                                          +{cell.lateMinutes}m
+                                                        </span>
+                                                      ) : null}
+                                                      <span className="block text-[7.5px] font-bold uppercase text-red-800">
+                                                        ({isNightShift ? 'NS' : 'DS'})
                                                       </span>
-                                                    ) : null}
+                                                    </span>
+                                                  </span>
+                                                ) : cell.status === 'present' ? (
+                                                  <span className="block leading-tight">
+                                                    <span
+                                                      className={`block text-[10px] font-bold ${
+                                                        isNightPresentCell ? 'text-white' : 'text-emerald-950'
+                                                      }`}
+                                                    >
+                                                      Masuk
+                                                    </span>
+                                                    <span
+                                                      className={`block text-[7.5px] font-black uppercase tracking-wider ${
+                                                        isNightPresentCell ? 'text-indigo-200' : 'text-emerald-700'
+                                                      }`}
+                                                    >
+                                                      {isNightShift ? 'Malam' : 'Pagi'}
+                                                    </span>
                                                   </span>
                                                 ) : (
-                                                  <span>{scheduleCode === 'AL' && (!cell.clockIn && !cell.clockOut) ? 'AL' : cell.status === 'field_break' ? 'FB' : attendanceStatusLabel(cell.status)}</span>
+                                                  <span>
+                                                    {scheduleCode === 'AL' && (!cell.clockIn && !cell.clockOut)
+                                                      ? 'AL'
+                                                      : cell.status === 'field_break'
+                                                        ? 'FB'
+                                                        : attendanceStatusLabel(cell.status)}
+                                                  </span>
                                                 )}
                                                 {cell.clockIn || cell.clockOut ? (
-                                                  <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
+                                                  <span
+                                                    className={`mt-1 block font-mono text-[9.5px] leading-tight ${
+                                                      isNightPresentCell
+                                                        ? 'text-indigo-100 font-semibold'
+                                                        : 'text-slate-800'
+                                                    }`}
+                                                  >
                                                     {cell.clockIn || '--:--'}-
                                                     {cell.clockOut || '--:--'}
                                                     {cell.isCrossDay ? (
                                                       <span
-                                                        className="ml-0.5 inline-block text-[8px] font-bold text-amber-600 cursor-help"
+                                                        className={`ml-0.5 inline-block text-[8px] font-bold ${
+                                                          isNightPresentCell
+                                                            ? 'text-amber-300'
+                                                            : 'text-amber-600'
+                                                        } cursor-help`}
                                                         title="Checkout di hari berikutnya (H+1)"
                                                       >
                                                         (+1)
@@ -12516,7 +12705,7 @@ export function SchedulingTimesheetWorkspace({
                                                   </span>
                                                 ) : null}
                                                 {cell.status !== 'empty' && cell.source ? (
-                                                  <span className="absolute right-1 bottom-1">
+                                                  <span className={`absolute right-1 bottom-1 ${isNightPresentCell ? 'rounded-full bg-white/20 p-0.5' : ''}`}>
                                                     <AttendanceSourceIndicator
                                                       source={cell.source}
                                                       timestamp={
