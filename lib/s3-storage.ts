@@ -275,25 +275,30 @@ export async function uploadAnyFileToS3(
       { abortSignal }
     )
   } catch (putError: any) {
-    // If standard put failed, retry once with fallback
-    if (
-      putError?.name === 'AccessControlListNotSupported' ||
-      String(putError?.message || '').includes('ACL') ||
-      putError?.name !== 'AbortError'
-    ) {
-      await client.send(
-        new PutObjectCommand({
-          Bucket: serverEnv.s3BucketName,
-          Key: key,
-          Body: buffer,
-          ContentLength: buffer.length,
-          ContentType: contentType,
-          CacheControl: 'public, max-age=31536000, immutable',
-        }),
-        { abortSignal }
-      )
+    const isAborted =
+      abortSignal?.aborted ||
+      putError?.name === 'AbortError' ||
+      putError?.name === 'TimeoutError' ||
+      String(putError?.message || '').toLowerCase().includes('abort') ||
+      String(putError?.message || '').toLowerCase().includes('timeout');
+
+    if (!isAborted) {
+      try {
+        await client.send(
+          new PutObjectCommand({
+            Bucket: serverEnv.s3BucketName,
+            Key: key,
+            Body: buffer,
+            ContentLength: buffer.length,
+            ContentType: contentType,
+            CacheControl: 'public, max-age=31536000, immutable',
+          })
+        );
+      } catch {
+        throw putError;
+      }
     } else {
-      throw putError
+      throw putError;
     }
   }
 
