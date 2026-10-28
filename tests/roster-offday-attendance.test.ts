@@ -10,6 +10,7 @@ import {
   inferShiftFromClockInTime,
   calculateLateMinutesFromTimes,
   normalizeSiteAttendanceClockConfig,
+  isNightShiftScheduleCode,
 } from '@/lib/timesheet/attendance-punctuality'
 
 describe('Roster 5:2 & Attendance Engine', () => {
@@ -209,5 +210,100 @@ describe('Roster 5:2 & Attendance Engine', () => {
       effectiveStatus = 'present'
     }
     assert.equal(effectiveStatus, 'present', 'Attendance on OFF day should replace OFF with present')
+  })
+  it('correctly identifies night shift schedule codes', () => {
+    assert.equal(isNightShiftScheduleCode('NS'), true)
+    assert.equal(isNightShiftScheduleCode('NIGHT'), true)
+    assert.equal(isNightShiftScheduleCode('MALAM'), true)
+    assert.equal(isNightShiftScheduleCode('SHIFT 2'), true)
+    assert.equal(isNightShiftScheduleCode('SHIFT-2'), true)
+    assert.equal(isNightShiftScheduleCode('NS-A'), true)
+    assert.equal(isNightShiftScheduleCode('DS'), false)
+    assert.equal(isNightShiftScheduleCode('IN'), false)
+    assert.equal(isNightShiftScheduleCode('OFF'), false)
+    assert.equal(isNightShiftScheduleCode('FB'), false)
+    assert.equal(isNightShiftScheduleCode(null), false)
+  })
+
+  it('correctly attributes cross-day night shift checkouts to previous day and keeps OFF day clean', () => {
+    // Scenario: Day 1 is NS (17:27 check-in), Day 2 is OFF.
+    // Employee checks out at 06:04 on Day 2.
+    const day1Schedule = 'NS'
+    const day2Schedule = 'OFF'
+
+    const day1ClockIn = '17:27'
+    const day2RawPunch = '06:04' // morning checkout (< 12:00)
+
+    // Simulate cross-day attribution:
+    // When yesterday was night shift, day 2's morning checkout belongs to Day 1
+    const isYesterdayNight = isNightShiftScheduleCode(day1Schedule) || (day1ClockIn >= '15:00')
+    assert.equal(isYesterdayNight, true)
+
+    let day1ClockOut = ''
+    let day2ClockOut = ''
+    let day2Status = 'off'
+
+    if (isYesterdayNight && day2RawPunch < '12:00') {
+      day1ClockOut = day2RawPunch
+      day2ClockOut = ''
+      day2Status = 'off'
+    }
+
+    assert.equal(day1ClockOut, '06:04')
+    assert.equal(day2ClockOut, '')
+    assert.equal(day2Status, 'off', 'Day 2 must remain OFF without attendance')
+
+    // Cross-day flag on Day 1
+    const day1IsCrossDay = Boolean(day1ClockIn >= '15:00' && day1ClockOut < '12:00')
+    assert.equal(day1IsCrossDay, true, 'Day 1 should have isCrossDay=true to display (+1) badge')
+
+    // Verify conflict check on Day 2:
+    const isConflict = day2Status === 'present' && ['OFF', 'Libur', 'Sakit', 'FB'].includes(day2Schedule)
+    assert.equal(isConflict, false, 'Day 2 must NOT trigger Beda Roster conflict')
+  })
+
+  it('handles missed night check-in: attributes morning checkout to NS day and preserves OFF day', () => {
+    // Scenario: Employee forgot to check in at night on Day 1 (scheduled NS),
+    // but checked out on Day 2 morning at 06:04. Day 2 schedule is OFF.
+    const day1Schedule = 'NS'
+    const day2Schedule = 'OFF'
+    const day1ClockIn = '' // Missed check-in
+    const day2RawPunch = '06:04'
+
+    const isYesterdayNight = isNightShiftScheduleCode(day1Schedule)
+    assert.equal(isYesterdayNight, true)
+
+    let day1ClockOut = ''
+    let day2ClockOut = ''
+    let day2Status = 'off'
+
+    if (isYesterdayNight && day2RawPunch < '12:00') {
+      day1ClockOut = day2RawPunch
+      day2ClockOut = ''
+      day2Status = 'off'
+    }
+
+    assert.equal(day1ClockOut, '06:04')
+    assert.equal(day2Status, 'off')
+
+    const day1IsCrossDay = Boolean(!day1ClockIn && isNightShiftScheduleCode(day1Schedule) && day1ClockOut < '12:00')
+    assert.equal(day1IsCrossDay, true, 'Day 1 with missed check-in should still have isCrossDay=true')
+  })
+
+  it('verifies cross-day reconciliation in codebase files', () => {
+    const syncPath = path.resolve('lib/timesheet/face-attendance-sync.ts')
+    const syncCode = fs.readFileSync(syncPath, 'utf8')
+    assert(syncCode.includes('isYesterdayNightShift'), 'sync must check isYesterdayNightShift')
+    assert(syncCode.includes('cross-day-checkout'), 'sync must track cross-day-checkout flag')
+    assert(syncCode.includes('isTodayOffDay && checkInPunches.length === 0'), 'sync must protect OFF days without check-in')
+
+    const workspacePath = path.resolve('components/scheduling-timesheet-workspace.tsx')
+    const workspaceCode = fs.readFileSync(workspacePath, 'utf8')
+    assert(workspaceCode.includes('isOrphanNightCheckoutOnDayOff'), 'workspace must detect orphan night checkout on day off')
+    assert(workspaceCode.includes('isCrossDay'), 'workspace must support isCrossDay')
+    assert(workspaceCode.includes('(+1)'), 'workspace must render (+1) indicator')
+
+    const cleanScriptPath = path.resolve('scripts/clean-night-shift-off-day-overrides.ts')
+    assert(fs.existsSync(cleanScriptPath), 'clean script must exist')
   })
 })

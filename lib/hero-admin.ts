@@ -8250,6 +8250,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
           ? override.source
           : 'manual',
         overtimeHours: override.overtimeHours ?? null,
+        validationFlags: (Array.isArray(override.validationFlags) ? (override.validationFlags as string[]) : []) as string[],
         updatedAt: override.updatedAt.toISOString(),
       })),
     approvedSplWindows: approvedSplRows

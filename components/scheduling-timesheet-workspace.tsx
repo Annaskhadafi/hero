@@ -133,6 +133,7 @@ import { toast } from 'sonner'
 import {
   INDONESIA_TIMEZONES,
   IndonesiaTimezoneCode,
+  getTimezoneDateParts,
   inferTimezoneFromLocation,
   normalizeIndonesiaTimezone,
 } from '@/lib/indonesia-timezone'
@@ -185,6 +186,7 @@ import {
   resolveConfiguredShiftClockIn,
   resolveSiteAttendanceClockConfig,
   updatePunctualityInNote,
+  isNightShiftScheduleCode,
   type SiteAttendanceClockConfig,
 } from '@/lib/timesheet/attendance-punctuality'
 import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
@@ -444,6 +446,7 @@ type ManualAttendanceCell = {
   overtimeHours?: number | null
   scheduledClockIn?: string | null
   shiftCode?: string | null
+  isCrossDay?: boolean
 }
 
 type SavedAttendanceOverride = {
@@ -457,6 +460,7 @@ type SavedAttendanceOverride = {
   note: string
   source?: string
   overtimeHours?: number | string | null
+  validationFlags?: string[]
   updatedAt: string
 }
 
@@ -2884,6 +2888,83 @@ export function SchedulingTimesheetWorkspace({
       grouped.set(key, list)
     }
 
+    // Cross-day reconciliation for night shifts:
+    // If day d-1 was a night shift (schedule is NS or had evening check-in),
+    // and day d has early morning check-out (< 12:00 local time),
+    // attribute that check-out to day d-1 and remove it from day d.
+    const employeeIds = new Set<number>()
+    for (const record of attendanceRecords) {
+      if (siteId === 'all' || record.siteId == null || String(record.siteId) === siteId) {
+        employeeIds.add(record.employeeId)
+      }
+    }
+    const daysInCurrentPeriod = daysInMonth(period)
+
+    for (const empId of employeeIds) {
+      const empRow = rows.find((r) => r.employee.id === empId)
+      for (let d = 2; d <= daysInCurrentPeriod; d++) {
+        const curKey = attendanceKey(empId, d)
+        const curRecords = grouped.get(curKey)
+        if (!curRecords || curRecords.length === 0) continue
+
+        const prevKey = attendanceKey(empId, d - 1)
+        const prevRecords = grouped.get(prevKey) || []
+        const prevScheduleCode = empRow?.schedule[d - 2]
+        const prevIsScheduledNight = isNightShiftScheduleCode(prevScheduleCode)
+
+        const prevHasNightPunch = prevRecords.some((r) => {
+          const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
+          const isCheckIn =
+            r.eventType === 'checked-in' ||
+            (!r.eventType.toLowerCase().includes('out') &&
+              !r.eventType.toLowerCase().includes('pulang') &&
+              !r.eventType.toLowerCase().includes('checkout'))
+          return isCheckIn && (h >= 15 || h < 5)
+        })
+
+        const isYesterdayNightShift = prevIsScheduledNight || prevHasNightPunch
+
+        if (isYesterdayNightShift) {
+          const morningCheckouts = curRecords.filter((r) => {
+            const isOut =
+              r.eventType.toLowerCase().includes('out') ||
+              r.eventType.toLowerCase().includes('pulang') ||
+              r.eventType.toLowerCase().includes('checkout')
+            const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
+            return isOut && h < 12
+          })
+
+          if (morningCheckouts.length > 0) {
+            morningCheckouts.sort((a, b) => a.eventTime.localeCompare(b.eventTime))
+            const morningCheckout = morningCheckouts[morningCheckouts.length - 1]
+
+            const prevHasCheckout = prevRecords.some((r) => {
+              return (
+                r.eventType.toLowerCase().includes('out') ||
+                r.eventType.toLowerCase().includes('pulang') ||
+                r.eventType.toLowerCase().includes('checkout')
+              )
+            })
+
+            if (!prevHasCheckout) {
+              prevRecords.push(morningCheckout)
+              grouped.set(prevKey, prevRecords)
+            }
+
+            const remainingCurRecords = curRecords.filter(
+              (r) => !morningCheckouts.some((mc) => mc.id === r.id)
+            )
+
+            if (remainingCurRecords.length > 0) {
+              grouped.set(curKey, remainingCurRecords)
+            } else {
+              grouped.delete(curKey)
+            }
+          }
+        }
+      }
+    }
+
     for (const [key, records] of grouped.entries()) {
       const recordSite = sites.find((item) => item.id === records[0]?.siteId)
       const clockConfig =
@@ -5003,9 +5084,27 @@ export function SchedulingTimesheetWorkspace({
         'Face/location attendance'
 
     let effectiveStatus = rawStatus
+    const isOffSchedule = ['OFF', 'Libur', 'FB', 'Sakit', 'AL'].includes(rowCode || '')
+    const prevDaySchedule = day > 1 ? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 2] : null
+    const prevIsNight = isNightShiftScheduleCode(prevDaySchedule)
+    const prevCell = day > 1 ? attendanceOverrideByCell.get(attendanceKey(employeeId, day - 1)) : null
+    const prevHasNightIn = prevCell?.clockIn && prevCell.clockIn >= '15:00'
+
+    // If day is scheduled as OFF, has no check-in, and only has an early morning checkout (< 12:00)
+    // that belongs to yesterday's night shift: do NOT treat as present!
+    const isOrphanNightCheckoutOnDayOff =
+      !isManual &&
+      isOffSchedule &&
+      !clockIn &&
+      clockOut &&
+      clockOut < '12:00' &&
+      (prevIsNight || prevHasNightIn || prevCell?.clockOut === clockOut)
+
     if (isManual) {
       // Manual status explicitly set by admin/user MUST take precedence
       effectiveStatus = normalizeAttendanceStatus(effectiveOverride.status)
+    } else if (isOrphanNightCheckoutOnDayOff) {
+      effectiveStatus = normalizeAttendanceStatus(rowCode)
     } else if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
       if (effectiveStatus === 'empty' || effectiveStatus === 'off') {
         effectiveStatus = 'present'
@@ -5024,7 +5123,7 @@ export function SchedulingTimesheetWorkspace({
 
     // Jika tidak ada absensi fisik (clock-in / clock-out) dan tidak ada override manual,
     // maka status kehadiran wajib mengikuti jadwal roster yang diset (FB, AL/Cuti, OFF, ST)
-    if (!isManual && !clockIn && !clockOut) {
+    if (!isManual && !clockIn && (!clockOut || isOrphanNightCheckoutOnDayOff)) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
       if (
         rosterStatus === 'field_break' ||
@@ -5035,6 +5134,7 @@ export function SchedulingTimesheetWorkspace({
         effectiveStatus = rosterStatus
       }
     }
+    const finalClockOut = isOrphanNightCheckoutOnDayOff ? '' : clockOut
 
     const punctuality = evaluateAttendanceGridPunctuality({
       clockIn,
@@ -5061,7 +5161,7 @@ export function SchedulingTimesheetWorkspace({
       ...(overrideOvertimeHours !== undefined ? { overtimeHours: overrideOvertimeHours } : {}),
       status: effectiveStatus,
       clockIn,
-      clockOut,
+      clockOut: finalClockOut,
       note,
       source: !effectiveOverride
         ? 'attendance'
@@ -12405,6 +12505,14 @@ export function SchedulingTimesheetWorkspace({
                                                   <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
                                                     {cell.clockIn || '--:--'}-
                                                     {cell.clockOut || '--:--'}
+                                                    {cell.isCrossDay ? (
+                                                      <span
+                                                        className="ml-0.5 inline-block text-[8px] font-bold text-amber-600 cursor-help"
+                                                        title="Checkout di hari berikutnya (H+1)"
+                                                      >
+                                                        (+1)
+                                                      </span>
+                                                    ) : null}
                                                   </span>
                                                 ) : null}
                                                 {cell.status !== 'empty' && cell.source ? (

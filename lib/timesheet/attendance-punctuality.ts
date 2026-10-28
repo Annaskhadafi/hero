@@ -40,6 +40,28 @@ export function isClockTime(value: unknown): value is string {
   return typeof value === 'string' && CLOCK_TIME_PATTERN.test(value)
 }
 
+export function isNightShiftScheduleCode(code?: string | null): boolean {
+  if (!code) return false
+  const upper = String(code).trim().toUpperCase()
+  return (
+    [
+      'NS',
+      'NG',
+      'N',
+      'NIGHT',
+      'NIGHTSHIFT',
+      'NIGHT SHIFT',
+      'MALAM',
+      'SHIFT MALAM',
+      'SHIFT 2',
+      'SHIFT-2',
+      'SHIFT2',
+      '2',
+      'S2',
+    ].includes(upper) || upper.startsWith('NS')
+  )
+}
+
 export function normalizeSiteAttendanceClockConfig(value: unknown): SiteAttendanceClockConfig {
   const config = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const legacyDayClock = isClockTime(config.defaultClockIn) ? config.defaultClockIn : null

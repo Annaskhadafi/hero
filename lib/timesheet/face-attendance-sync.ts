@@ -1,10 +1,11 @@
 import { db } from '@/db'
 import { attendanceRecords, sites } from '@/db/schema/hero'
-import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs } from '@/db/schema/timesheet'
+import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingPlansV2 } from '@/db/schema/timesheet'
 import { and, eq, gte, lt, ne } from 'drizzle-orm'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { getSiteAttendanceClockConfig } from '@/lib/timesheet/site-attendance-punctuality'
 import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
+import { isNightShiftScheduleCode } from '@/lib/timesheet/attendance-punctuality'
 import {
   derivePeriodAndDayInTimezone,
   formatTimeHHMMInTimezone,
@@ -125,6 +126,75 @@ export function computeWorkMinutes(clockIn: string, clockOut: string): number | 
  * Automatically respects the site's local timezone (WIB, WITA, or WIT).
  * Correctly attributes morning checkouts (< 10:00) to yesterday's Night Shift (date of entry).
  */
+
+async function getEmployeeScheduleCodeForDay(
+  siteId: number,
+  period: string,
+  employeeId: number,
+  day: number
+): Promise<string | null> {
+  const v2Plans = await db
+    .select({
+      status: timesheetSchedulingPlansV2.status,
+      activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+    })
+    .from(timesheetSchedulingPlansV2)
+    .where(
+      and(
+        eq(timesheetSchedulingPlansV2.siteId, siteId),
+        eq(timesheetSchedulingPlansV2.period, period)
+      )
+    )
+    .limit(1)
+
+  if (v2Plans.length > 0) {
+    const plan = v2Plans[0]
+    const list = (
+      plan.status === 'active' && Array.isArray(plan.activeSchedule) && plan.activeSchedule.length > 0
+        ? plan.activeSchedule
+        : Array.isArray(plan.draftSchedule)
+          ? plan.draftSchedule
+          : []
+    ) as Array<{ employeeId: number; schedule: string[] }>
+    const row = list.find((r) => r.employeeId === employeeId)
+    if (row?.schedule && row.schedule[day - 1]) {
+      return row.schedule[day - 1]
+    }
+  }
+
+  const v1Plans = await db
+    .select({
+      fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+      draftSchedule: timesheetSchedulingPlans.draftSchedule,
+    })
+    .from(timesheetSchedulingPlans)
+    .where(
+      and(
+        eq(timesheetSchedulingPlans.siteId, siteId),
+        eq(timesheetSchedulingPlans.period, period)
+      )
+    )
+    .limit(1)
+
+  if (v1Plans.length > 0) {
+    const plan = v1Plans[0]
+    const list = (
+      Array.isArray(plan.fixedSchedule) && plan.fixedSchedule.length > 0
+        ? plan.fixedSchedule
+        : Array.isArray(plan.draftSchedule)
+          ? plan.draftSchedule
+          : []
+    ) as Array<{ employeeId: number; schedule: string[] }>
+    const row = list.find((r) => r.employeeId === employeeId)
+    if (row?.schedule && row.schedule[day - 1]) {
+      return row.schedule[day - 1]
+    }
+  }
+
+  return null
+}
+
 export async function syncFaceAttendanceToTimesheet(
   employeeId: number,
   siteId: number,
@@ -213,19 +283,36 @@ export async function syncFaceAttendanceToTimesheet(
     return h >= 5 && h < 15
   })
 
-  if (prevNightPunch && !prevHasDayShiftIn) {
+  const { period: prevPeriod, day: prevDay } = derivePeriodAndDayInTimezone(
+    previousDayDate,
+    tzInfo.code
+  )
+  const prevScheduleCode = await getEmployeeScheduleCodeForDay(
+    siteId,
+    prevPeriod,
+    employeeId,
+    prevDay
+  )
+  const prevIsScheduledNight = isNightShiftScheduleCode(prevScheduleCode)
+  const isYesterdayNightShift = Boolean(
+    (prevNightPunch || prevIsScheduledNight) && !prevHasDayShiftIn
+  )
+
+  if (isYesterdayNightShift) {
     // Check if yesterday had a same-evening checkout punch >= 2h after prevNightPunch
-    const prevSameEveningOut = prevSorted.filter(
-      (r) =>
-        isCheckOutEvent(r.eventType) &&
-        r.id !== prevNightPunch.id &&
-        r.eventTime.getTime() - prevNightPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
-    )
+    const prevSameEveningOut = prevNightPunch
+      ? prevSorted.filter(
+          (r) =>
+            isCheckOutEvent(r.eventType) &&
+            r.id !== prevNightPunch.id &&
+            r.eventTime.getTime() - prevNightPunch.eventTime.getTime() >= 2 * 60 * 60 * 1000
+        )
+      : []
 
     if (prevSameEveningOut.length === 0) {
-      // Look for today's early-morning EXPLICIT checkout punches (< 10:00 local time)
+      // Look for today's early-morning EXPLICIT checkout punches (< 12:00 local time)
       const morningCheckoutPunches = sortedRecords.filter(
-        (r) => isCheckOutEvent(r.eventType) && getTimezoneDateParts(r.eventTime, tzInfo.code).hours < 10
+        (r) => isCheckOutEvent(r.eventType) && getTimezoneDateParts(r.eventTime, tzInfo.code).hours < 12
       )
 
       if (morningCheckoutPunches.length > 0) {
@@ -234,15 +321,20 @@ export async function syncFaceAttendanceToTimesheet(
           timeZone: tzInfo.iana,
         }).checkOut!
 
-        const prevClockIn = formatTimeHHMMInTimezone(prevNightPunch.eventTime, tzInfo.code)
+        const prevClockIn = prevNightPunch
+          ? formatTimeHHMMInTimezone(prevNightPunch.eventTime, tzInfo.code)
+          : ''
         const prevClockOut = formatTimeHHMMInTimezone(morningCheckout.eventTime, tzInfo.code)
-        const prevWorkMinutes = computeWorkMinutes(prevClockIn, prevClockOut)
-        const { period: prevPeriod, day: prevDay } = derivePeriodAndDayInTimezone(
-          previousDayDate,
-          tzInfo.code
-        )
+        const prevWorkMinutes = prevClockIn ? computeWorkMinutes(prevClockIn, prevClockOut) : null
+        const prevValidationFlags: string[] = ['cross-day-checkout']
+        if (!prevClockIn) {
+          prevValidationFlags.push('missing-check-in')
+        }
 
-        const prevNote = prevNightPunch.locationNote || ''
+        const prevNote =
+          prevNightPunch?.locationNote ||
+          morningCheckout.locationNote ||
+          'Night Shift Cross-Day'
 
         // Upsert yesterday's completed night shift record
         await db
@@ -257,7 +349,7 @@ export async function syncFaceAttendanceToTimesheet(
             clockOut: prevClockOut,
             note: prevNote,
             source: 'attendance',
-            validationFlags: [],
+            validationFlags: prevValidationFlags,
             workMinutes: prevWorkMinutes,
             updatedAt: new Date(),
           })
@@ -274,7 +366,7 @@ export async function syncFaceAttendanceToTimesheet(
               clockOut: prevClockOut,
               note: prevNote,
               source: 'attendance',
-              validationFlags: [],
+              validationFlags: prevValidationFlags,
               workMinutes: prevWorkMinutes,
               updatedAt: new Date(),
             },
@@ -323,6 +415,30 @@ export async function syncFaceAttendanceToTimesheet(
   const checkInPunches = todayOwnPunches.filter((r) => !isCheckOutEvent(r.eventType))
   const checkOutPunches = todayOwnPunches.filter((r) => isCheckOutEvent(r.eventType))
 
+  // If today is scheduled as OFF (or Libur, FB, etc.) and there is no check-in punch of its own:
+  // Do NOT mark today as present; remove any orphan attendance override
+  const todayScheduleCode = await getEmployeeScheduleCodeForDay(siteId, period, employeeId, day)
+  const isTodayOffDay = ['OFF', 'LIBUR', 'FB', 'SAKIT', 'AL'].includes(
+    (todayScheduleCode || '').trim().toUpperCase()
+  )
+  if (isTodayOffDay && checkInPunches.length === 0) {
+    await db
+      .delete(timesheetAttendanceRealOverrides)
+      .where(
+        and(
+          eq(timesheetAttendanceRealOverrides.siteId, siteId),
+          eq(timesheetAttendanceRealOverrides.period, period),
+          eq(timesheetAttendanceRealOverrides.employeeId, employeeId),
+          eq(timesheetAttendanceRealOverrides.day, day),
+          eq(timesheetAttendanceRealOverrides.source, 'attendance')
+        )
+      )
+    console.log(
+      `[face-sync] ✓ Skipped Today OFF day with no check-in: site=${siteId}, period=${period}, emp=${employeeId}, day=${day}`
+    )
+    return null
+  }
+
   let clockIn = ''
   let isNightShift = false
   let syncNote = todayOwnPunches[0].locationNote || ''
@@ -354,7 +470,7 @@ export async function syncFaceAttendanceToTimesheet(
 
   if (isNightShift && checkInPunches.length > 0) {
     // Overnight shift handling: look for explicit checkout punches on next day 00:00 - 10:00 local time
-    const nextDayCutoff = new Date(startOfNextDay.getTime() + 10 * 60 * 60 * 1000)
+    const nextDayCutoff = new Date(startOfNextDay.getTime() + 12 * 60 * 60 * 1000)
     const overnightRecords = await db
       .select()
       .from(attendanceRecords)
@@ -391,7 +507,7 @@ export async function syncFaceAttendanceToTimesheet(
           )
         )
       const nextDayOwnPunches = nextDayFullRecords.filter(
-        (r) => !isCheckOutEvent(r.eventType) || getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 10
+        (r) => !isCheckOutEvent(r.eventType) || getTimezoneDateParts(r.eventTime, tzInfo.code).hours >= 12
       )
       const { period: nextPeriod, day: nextDay } = derivePeriodAndDayInTimezone(
         nextDayDate,
@@ -441,6 +557,9 @@ export async function syncFaceAttendanceToTimesheet(
   }
   if (!clockOut) {
     validationFlags.push('missing-check-out')
+  }
+  if (isNightShift && clockOut && checkInPunches.length > 0) {
+    validationFlags.push('cross-day-checkout')
   }
 
   // GPS flag propagation: scan locationNote for [gps-unavailable]
