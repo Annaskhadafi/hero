@@ -548,25 +548,17 @@ export async function resolveNightShiftCheckoutContext(input: {
   // Look for an unclosed night check-in in the past 24 hours
   const past24h = new Date(input.eventTime.getTime() - 24 * 60 * 60 * 1000)
 
-  const { db } = await import('@/db')
-  const { attendanceRecords } = await import('@/db/schema/hero')
-  const { and, desc, eq, gte, lte } = await import('drizzle-orm')
+  let recentPunches: Array<{ id: number; eventType: string; eventTime: Date }> = []
 
-  const recentPunches = await db
-    .select({
-      id: attendanceRecords.id,
-      eventType: attendanceRecords.eventType,
-      eventTime: attendanceRecords.eventTime,
-    })
-    .from(attendanceRecords)
-    .where(
-      and(
-        eq(attendanceRecords.employeeId, input.employeeId),
-        gte(attendanceRecords.eventTime, past24h),
-        lte(attendanceRecords.eventTime, input.eventTime)
-      )
-    )
-    .orderBy(desc(attendanceRecords.eventTime))
+  if (typeof window === 'undefined') {
+    try {
+      const loadDbHelper = new Function('p', 'return import(p)')
+      const { getRecentPunchesForNightShift } = await loadDbHelper('./attendance-night-shift-db')
+      recentPunches = await getRecentPunchesForNightShift(input.employeeId, past24h, input.eventTime)
+    } catch {
+      recentPunches = []
+    }
+  }
 
   const lastCheckIn = recentPunches.find(
     (p) =>
