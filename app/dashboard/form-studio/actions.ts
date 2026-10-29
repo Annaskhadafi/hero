@@ -23,6 +23,7 @@ import type {
   FormSettings,
   FormThemeConfig,
 } from '@/lib/form-builder-types'
+import { getFormResponsesExportData } from '@/lib/form-export-service'
 
 async function requireStudioSession() {
   const session = await getServerSession()
@@ -567,5 +568,24 @@ export async function broadcastWhatsAppFormAction(data: {
   } catch (err: any) {
     console.error('Error broadcastWhatsAppFormAction:', err)
     return { success: false, error: err.message || 'Gagal mengirim broadcast WhatsApp' }
+  }
+}
+
+export async function exportFormResponsesAction(templateId: number) {
+  try {
+    const auth = await requireStudioSession()
+    if (!auth.success) {
+      return { success: false, error: auth.error }
+    }
+
+    const exportData = await getFormResponsesExportData(templateId)
+    if (!exportData) {
+      return { success: false, error: 'Formulir tidak ditemukan atau belum dapat diakses.' }
+    }
+
+    return { success: true, data: exportData }
+  } catch (err: any) {
+    console.error('Error exportFormResponsesAction:', err)
+    return { success: false, error: err.message || 'Gagal mengambil data respon formulir' }
   }
 }

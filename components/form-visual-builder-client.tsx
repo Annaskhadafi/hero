@@ -58,7 +58,10 @@ import {
   HelpCircle,
   ExternalLink,
   Sparkles,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { THEME_PRESETS, getBackgroundPatternStyle } from '@/lib/form-theme-presets'
 import type {
   FormFieldDefinition,
@@ -70,7 +73,8 @@ import type {
   LikertRow,
   LikertColumn,
 } from '@/lib/form-builder-types'
-import { saveFormBuilderAction } from '@/app/dashboard/form-studio/actions'
+import { saveFormBuilderAction, exportFormResponsesAction } from '@/app/dashboard/form-studio/actions'
+import { exportFormResponsesToExcel } from '@/lib/export-form-excel'
 import { getFormBaseUrl } from '@/lib/form-config'
 
 const FIELD_PALETTE: {
@@ -307,6 +311,31 @@ export function FormVisualBuilderClient({
   const selectedField = fields.find((f) => f.fieldKey === selectedFieldId) || null
   const baseUrl = getFormBaseUrl()
   const publicFormUrl = `${baseUrl}/f/${slug}`
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
+
+  async function handleExportExcel() {
+    try {
+      setIsExportingExcel(true)
+      const res = await exportFormResponsesAction(initialForm.id)
+      if (!res.success || !res.data) {
+        toast.error(res.error || 'Gagal mengambil data respon formulir.')
+        return
+      }
+
+      if (res.data.rows.length === 0) {
+        toast.info('Belum ada respon responden yang tersimpan pada formulir ini.')
+        return
+      }
+
+      await exportFormResponsesToExcel(res.data)
+      toast.success(`Berhasil mengekspor ${res.data.rows.length} respon ke format Excel!`)
+    } catch (err: any) {
+      console.error('Error handleExportExcel:', err)
+      toast.error('Terjadi kesalahan saat memproses file Excel.')
+    } finally {
+      setIsExportingExcel(false)
+    }
+  }
 
   // Add field
   function handleAddField(type: FormFieldType, defaultProps: Partial<FormFieldDefinition>) {
@@ -424,6 +453,26 @@ export function FormVisualBuilderClient({
               <span className="hidden sm:inline">Analitik</span>
             </Button>
           </Link>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            disabled={isExportingExcel}
+            className="h-8 gap-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+          >
+            {isExportingExcel ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />
+                <span className="hidden sm:inline">Mengekspor...</span>
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="hidden sm:inline">Export Excel</span>
+              </>
+            )}
+          </Button>
 
           <a href={publicFormUrl} target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm" className="h-8 gap-1.5">
