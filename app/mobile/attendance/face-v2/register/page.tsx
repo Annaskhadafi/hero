@@ -12,7 +12,11 @@ import {
   ScanFace,
   RefreshCw,
   Zap,
+  ShieldCheck,
+  Trash2,
+  FileText,
 } from 'lucide-react'
+import { revokeBiometricConsentAndPurgeAction } from '@/app/actions/biometric-consent-actions'
 
 type RegState = 'idle' | 'camera' | 'processing' | 'success' | 'error'
 
@@ -206,7 +210,7 @@ function FaceV2RegisterForm() {
   // --- IDLE STATE ---
   if (state === 'idle') {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center px-4 py-6 bg-slate-50">
+      <div className="flex min-h-screen flex-col items-center justify-start px-4 pt-6 pb-36 bg-slate-50 overflow-y-auto">
         <div className="w-full max-w-sm">
           <Link href="/mobile/attendance" className="mb-6 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <ArrowLeft className="size-3.5" /> Kembali
@@ -237,13 +241,76 @@ function FaceV2RegisterForm() {
               </ul>
             </div>
 
+            {/* Lembar Persetujuan Biometrik Standalone (UU PDP No. 27/2022) */}
+            <div className="w-full rounded-2xl bg-emerald-50/80 border border-emerald-200/70 p-4 text-left space-y-2.5 shadow-sm">
+              <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                <ShieldCheck className="size-4 text-emerald-600 shrink-0" />
+                <span>Kepatuhan UU PDP (No. 27/2022)</span>
+              </div>
+              <p className="text-[11px] text-emerald-950/80 leading-relaxed">
+                Sistem memproses fitur matematis (vektor 512-D terenkripsi AES-256). Foto mentah tidak disimpan permanen di disk dan segera dibersihkan dari RAM setelah ekstraksi.
+              </p>
+              
+              <button
+                type="button"
+                onClick={() => setShowConsentDetails(!showConsentDetails)}
+                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 underline flex items-center gap-1 transition-colors"
+              >
+                <FileText className="size-3" />
+                {showConsentDetails ? 'Sembunyikan Rincian Regulasi' : 'Baca Rincian Klausul Biometrik'}
+              </button>
+
+              {showConsentDetails && (
+                <div className="text-[10px] text-slate-600 bg-white p-3 rounded-xl border border-emerald-100 space-y-1.5 leading-relaxed shadow-xs">
+                  <p className="font-bold text-slate-800 text-[11px]">4 Pilar Perlindungan Data Pribadi HERO:</p>
+                  <p>• <b>Proses Aman (In-Memory)</b>: Foto mentah segera dibuang dari memory RAM.</p>
+                  <p>• <b>Enkripsi AES-256</b>: Vektor matematis tidak dapat dikembalikan jadi foto asli.</p>
+                  <p>• <b>Persetujuan Eksplisit</b>: Hanya untuk absensi kerja & keselamatan kerja.</p>
+                  <p>• <b>Hak Hapus Data</b>: Anda berhak mencabut izin & menghapus vektor wajah kapan saja.</p>
+                </div>
+              )}
+
+              <label className="flex items-start gap-2 pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={consentAgreed}
+                  onChange={(e) => setConsentAgreed(e.target.checked)}
+                  className="mt-0.5 size-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-[11px] font-semibold text-slate-700 select-none">
+                  Saya menyetujui pemrosesan data biometrik wajah untuk verifikasi kehadiran HERO.
+                </span>
+              </label>
+            </div>
+
+            {purgeSuccess && (
+              <div className="w-full p-3 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold text-center">
+                {purgeSuccess}
+              </div>
+            )}
+
             <button
               type="button"
+              disabled={!consentAgreed}
               onClick={startCamera}
-              className="w-full min-h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 text-sm font-black text-white uppercase shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+              className={`w-full min-h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-700 text-sm font-black text-white uppercase shadow-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-transform ${
+                !consentAgreed ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
             >
               <Camera className="size-5" /> Mulai Registrasi
             </button>
+
+            {isReregister && (
+              <button
+                type="button"
+                onClick={handlePurgeData}
+                disabled={isPurging}
+                className="w-full py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-50 text-red-600 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <Trash2 className="size-3.5" />
+                {isPurging ? 'Menghapus Data...' : 'Cabut Izin & Hapus Data Wajah Saat Ini'}
+              </button>
+            )}
           </div>
         </div>
       </div>
