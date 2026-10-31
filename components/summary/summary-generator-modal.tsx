@@ -86,6 +86,8 @@ const COMMON_APD_ITEMS = [
   'Tali Kacamata',
   'Chin Strap',
   'Face Shield Helmet',
+  'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kleenguard G40 (Vale)',
 ];
 
 export function SummaryGeneratorModal({

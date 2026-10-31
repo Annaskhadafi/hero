@@ -19,6 +19,8 @@ export const QTY_ONLY_COLUMNS = [
   'Apron',
   'Face Shield Helmet',
   'Sunbrim Helmet',
+  'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kleenguard G40 (Vale)',
 ];
 
 export const APD_ITEM_COLUMNS = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];

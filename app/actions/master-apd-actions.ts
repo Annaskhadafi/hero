@@ -47,6 +47,8 @@ const DEFAULT_MASTER_APD_ITEMS: Array<{
   { code: 'APD-017', name: 'Tali Kacamata', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
   { code: 'APD-018', name: 'Chin Strap', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
   { code: 'APD-019', name: 'Face Shield Helmet', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
+  { code: 'APD-025', name: 'Sarung Tangan Kulit (Vale)', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
+  { code: 'APD-026', name: 'Sarung Tangan Kleenguard G40 (Vale)', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
 ];
 
 export async function getMasterApdListAction(category?: string, activeOnly: boolean = false) {

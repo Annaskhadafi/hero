@@ -48,6 +48,8 @@ export const APD_ITEMS = [
   "Apron",
   "Face Shield Helmet",
   "Sunbrim Helmet",
+  "Sarung Tangan Kulit (Vale)",
+  "Sarung Tangan Kleenguard G40 (Vale)",
 ] as const;
 
 export const APD_SIZE_OPTIONS = [
