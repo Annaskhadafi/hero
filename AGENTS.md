@@ -182,9 +182,18 @@ disimpan pada URL atau nama file.
 
 ### 4\. Requirement Clarification \& Feature Alignment (Grill-Me Mode)
 
-* **Kondisi:** Setiap kali ada fitur baru yang spesifikasinya kurang jelas, ambigu, atau memiliki banyak percabangan keputusan desain/flow.
-* **Aturan:** WAJIB gunakan mode interview `/grill-me` (tanya detail, bongkar asumsi, kunci requirements) sebelum eksekusi coding.
-* **Output:** Dokumen planning/spec yang matang, komprehensif, dan presisi ("gacor") sebelum mulai penulisan kode.
+* **Default sesi baru:** Mulai setiap session HERO dengan menilai permintaan memakai `grill-me` (`.agents/skills/grill-me/SKILL.md`). Skill ini mengarah ke `grilling` (`.agents/skills/grilling/SKILL.md`); baca dan ikuti alur interview interaktifnya.
+* **Pemicu ulang:** Gunakan lagi ketika maksud user, target, kriteria selesai, atau keputusan desain/flow belum jelas. Untuk tugas yang sudah jelas dan trivial, langsung kerjakan tanpa interview yang tidak perlu.
+* **Interaksi:** Susun pohon keputusan; tanyakan hanya keputusan yang sudah siap dijawab, maksimal 3 pertanyaan per ronde, dengan opsi yang bisa dipilih dan rekomendasi yang jelas. Tunggu jawaban sebelum ronde berikutnya. Cari sendiri fakta yang bisa diperiksa dari repo/tools; jangan lempar pencarian fakta ke user.
+* **Sebelum coding:** Nyatakan asumsi, alternatif tafsir, dan tradeoff yang relevan. Jika keputusan penting masih terbuka, jangan memilih diam-diam; kunci pemahaman bersama dan minta konfirmasi ringkasan requirements sebelum implementasi. Buat spec hanya bila kompleksitas tugas memang memerlukannya.
+
+### Behavioral Guidelines for Coding
+
+* **Think before coding:** Pahami alur nyata dan kriteria sukses lebih dulu. Ungkapkan asumsi dan kebingungan, tampilkan interpretasi yang berbeda, serta sarankan cara lebih sederhana bila ada.
+* **Simplicity first:** Tulis kode minimum untuk permintaan yang disepakati. Jangan menambah fitur spekulatif, abstraksi sekali pakai, konfigurasi tanpa kebutuhan, atau penanganan kondisi yang mustahil. Sederhanakan solusi yang membesar tanpa alasan.
+* **Surgical changes:** Ubah hanya baris yang terkait langsung dengan permintaan; ikuti gaya lokal. Jangan merapikan atau menghapus kode lama yang tidak terkait. Hapus import, variabel, dan fungsi yang menjadi tidak terpakai akibat perubahan sendiri; cukup laporkan temuan lama di luar scope.
+* **Goal-driven execution:** Untuk tugas bertahap, tulis rencana singkat dengan verifikasi tiap langkah. Reproduksi bug sebelum memperbaikinya; validasi input dengan kasus gagal; untuk refactor pastikan perilaku lolos sebelum dan sesudah. Ulangi sampai kriteria sukses terbukti.
+* Pedoman ini mengutamakan kehati-hatian; gunakan penilaian untuk tugas trivial dan ikuti aturan keamanan, RBAC, integritas data, serta pengujian khusus HERO yang lebih ketat.
 
 ### 5\. Multi-Agent \& Teamwork Delegation (Teamwork \& Sub-agents)
 

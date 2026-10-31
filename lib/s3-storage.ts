@@ -410,13 +410,15 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
   const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
   const bareFilename = cleanKey.split('/').pop() || cleanKey
 
-  // Distinct candidate keys - maximum 3-4 targeted keys, checked quickly
+  // Distinct candidate keys - targeted lookups for S3
   const candidateKeys = Array.from(
     new Set([
       cleanKey,
       cleanKey.startsWith('upload/')
         ? cleanKey.replace(/^upload\//, 'uploads/')
-        : `upload/${cleanKey}`,
+        : `upload/${bareFilename}`,
+      `upload/${bareFilename}`,
+      `uploads/${bareFilename}`,
       `rfr/${bareFilename}`,
       bareFilename,
     ])
@@ -424,14 +426,18 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
 
   const client = getS3Client()
 
-  for (const candidateKey of candidateKeys) {
+  for (let i = 0; i < candidateKeys.length; i++) {
+    const candidateKey = candidateKeys[i]
+    // The first candidate (exact requested key) gets up to 15s for larger documents/PDFs.
+    // Secondary fallbacks get 4s to quickly detect 404/NoSuchKey.
+    const timeoutMs = i === 0 ? 15_000 : 4_000
     try {
       const response = await client.send(
         new GetObjectCommand({
           Bucket: serverEnv.s3BucketName,
           Key: candidateKey,
         }),
-        { abortSignal: AbortSignal.timeout(2500) }
+        { abortSignal: AbortSignal.timeout(timeoutMs) }
       )
 
       if (response.Body) {
@@ -442,8 +448,13 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
           contentLength: response.ContentLength ?? byteArray.byteLength,
         }
       }
-    } catch {
-      // Continue trying next candidate key quickly
+    } catch (err: any) {
+      if (err?.name !== 'NoSuchKey' && err?.name !== 'NotFound') {
+        console.warn(
+          `[getS3ObjectForProxy] Candidate key "${candidateKey}" error:`,
+          err?.message || err
+        )
+      }
     }
   }
 
