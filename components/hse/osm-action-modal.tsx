@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, UploadCloud, Loader2, Image as ImageIcon, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,15 @@ export function OsmActionModal({
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && finding) {
+      setActionTaken(finding.actionTaken || "");
+      setUploadedPhotos(finding.actionPhotoUrls || []);
+      setRejectionReason("");
+      setError(null);
+    }
+  }, [isOpen, finding]);
 
   if (!finding) return null;
 

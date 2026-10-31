@@ -793,17 +793,17 @@ export async function submitHseOsmAction(
       .from(heroHseOsmSessions)
       .where(eq(heroHseOsmSessions.id, finding.sessionId))
       .limit(1)
-    if (sessionRow?.status === 'SUBMITTED' || sessionRow?.status === 'COMPLETED') {
+    if (sessionRow?.status === 'COMPLETED') {
       return {
         success: false,
-        error: 'Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi.',
+        error: 'Sesi OSM ini telah selesai (Completed) dan ditutup secara permanen.',
       }
     }
 
-    if (finding.status !== 'OPEN') {
+    if (finding.status !== 'OPEN' && finding.status !== 'REJECTED') {
       return {
         success: false,
-        error: 'Tindak lanjut hanya dapat dilakukan pada temuan yang berstatus OPEN.',
+        error: 'Tindak lanjut hanya dapat dilakukan pada temuan yang berstatus OPEN atau REJECTED.',
       }
     }
 
@@ -814,6 +814,7 @@ export async function submitHseOsmAction(
         actionPhotoUrls: input.actionPhotoUrls || [],
         actionSubmittedAt: new Date(),
         actionSubmittedBy: actor?.employee?.name || actor?.sessionUser?.name || 'Inspector',
+        rejectionReason: '',
         status: 'PROCESSED',
         updatedAt: new Date(),
       })
@@ -919,6 +920,29 @@ export async function deleteHseOsmSession(id: number) {
 
 export async function deleteHseOsmFinding(id: number) {
   try {
+    const [finding] = await db
+      .select({ id: heroHseOsmFindings.id, sessionId: heroHseOsmFindings.sessionId })
+      .from(heroHseOsmFindings)
+      .where(and(eq(heroHseOsmFindings.id, id), isNull(heroHseOsmFindings.deletedAt)))
+      .limit(1)
+
+    if (!finding) {
+      return { success: false, error: 'Temuan tidak ditemukan atau sudah dihapus.' }
+    }
+
+    const [session] = await db
+      .select({ status: heroHseOsmSessions.status })
+      .from(heroHseOsmSessions)
+      .where(eq(heroHseOsmSessions.id, finding.sessionId))
+      .limit(1)
+
+    if (session?.status === 'SUBMITTED' || session?.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Laporan OSM telah disubmit dan terkunci. Temuan tidak dapat dihapus.',
+      }
+    }
+
     const now = new Date()
     await db
       .update(heroHseOsmFindings)
@@ -990,6 +1014,19 @@ export async function updateHseOsmFindingPhotos(findingId: number, photoUrls: st
 
     if (!finding) {
       return { success: false, error: 'Temuan tidak ditemukan' }
+    }
+
+    const [sessionRow] = await db
+      .select({ status: heroHseOsmSessions.status })
+      .from(heroHseOsmSessions)
+      .where(eq(heroHseOsmSessions.id, finding.sessionId))
+      .limit(1)
+
+    if (sessionRow?.status === 'SUBMITTED' || sessionRow?.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi.',
+      }
     }
 
     const [updated] = await db

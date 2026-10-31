@@ -154,6 +154,8 @@ export function OsmDetailDialog({
     findings = [],
   } = sessionData;
 
+  const isLocked = Boolean(sessionData.isLocked || status === 'SUBMITTED' || status === 'COMPLETED');
+
   function openActionModal(finding: any, mode: "submit_action" | "verify_close" | "verify_reject") {
     setActionFinding(finding);
     setActionModalMode(mode);
@@ -411,18 +413,20 @@ export function OsmDetailDialog({
                               <span className="font-bold text-slate-700 dark:text-slate-300 block">
                                 Foto Temuan:
                               </span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setManagePhotosFinding(f);
-                                  setEditingFindingPhotos([...(f.photoUrls || [])]);
-                                }}
-                                className="h-6 gap-1 px-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
-                              >
-                                <Camera className="size-3" /> Kelola / Ganti Foto
-                              </Button>
+                              {!isLocked && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setManagePhotosFinding(f);
+                                    setEditingFindingPhotos([...(f.photoUrls || [])]);
+                                  }}
+                                  className="h-6 gap-1 px-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                                >
+                                  <Camera className="size-3" /> Kelola / Ganti Foto
+                                </Button>
+                              )}
                             </div>
                             {f.photoUrls && f.photoUrls.length > 0 ? (
                               <div className="grid grid-cols-2 gap-2">
@@ -446,18 +450,20 @@ export function OsmDetailDialog({
                             ) : (
                               <div className="p-4 rounded-md border border-dashed flex flex-col items-center justify-center gap-1.5 text-center text-muted-foreground text-[11px]">
                                 <span>Tidak ada foto temuan</span>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setManagePhotosFinding(f);
-                                    setEditingFindingPhotos([]);
-                                  }}
-                                  className="h-6 text-[10px] gap-1 text-blue-600"
-                                >
-                                  <Camera className="size-3" /> + Unggah Foto
-                                </Button>
+                                {!isLocked && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setManagePhotosFinding(f);
+                                      setEditingFindingPhotos([]);
+                                    }}
+                                    className="h-6 text-[10px] gap-1 text-blue-600"
+                                  >
+                                    <Camera className="size-3" /> + Unggah Foto
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -520,14 +526,14 @@ export function OsmDetailDialog({
 
                         {/* Action Buttons for this finding */}
                         <div className="flex items-center justify-end gap-2 pt-1 border-t">
-                          {f.status === "OPEN" && (
+                          {(f.status === "OPEN" || f.status === "REJECTED") && (
                             <Button
                               size="sm"
                               onClick={() => openActionModal(f, "submit_action")}
                               className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-7.5 px-3 gap-1"
                             >
                               <CheckCircle2 className="size-3.5" />
-                              Tindak Lanjuti Perbaikan
+                              {f.status === "REJECTED" ? "Perbaiki Ulang Tindakan" : "Tindak Lanjuti Perbaikan"}
                             </Button>
                           )}
 
