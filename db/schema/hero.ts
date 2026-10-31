@@ -4856,3 +4856,27 @@ export type NewTrainingRequestApproval = typeof trainingRequestApprovals.$inferI
 
 
 
+
+
+/**
+ * Biometric Consents (UU PDP No. 27/2022 Pasal 20, 22, 35)
+ * Dedicated standalone biometric consent registry and audit trail.
+ */
+export const biometricConsents = pgTable('hero_biometric_consents', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  consentType: text('consent_type').notNull().default('face_recognition'),
+  status: text('status').notNull().default('agreed'),
+  consentVersion: text('consent_version').notNull().default('v1.0-uupdp'),
+  legalNoticeText: text('legal_notice_text').notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  consentedAt: timestamp('consented_at').notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export type BiometricConsent = typeof biometricConsents.$inferSelect
+export type NewBiometricConsent = typeof biometricConsents.$inferInsert

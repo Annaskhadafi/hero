@@ -31,6 +31,34 @@ function FaceV2RegisterForm() {
   const [statusMsg, setStatusMsg] = useState('')
   const [registeredAt, setRegisteredAt] = useState<string | null>(null)
   const [cameraReady, setCameraReady] = useState(false)
+  const [consentAgreed, setConsentAgreed] = useState(true)
+  const [showConsentDetails, setShowConsentDetails] = useState(false)
+  const [isPurging, setIsPurging] = useState(false)
+  const [purgeSuccess, setPurgeSuccess] = useState<string | null>(null)
+
+  const handlePurgeData = async () => {
+    if (!employeeId || employeeId <= 0) return
+    const confirmed = window.confirm('Apakah Anda yakin ingin mencabut izin persetujuan dan menghapus data biometrik wajah Anda secara permanen dari HERO?')
+    if (!confirmed) return
+
+    setIsPurging(true)
+    setError('')
+    try {
+      const res = await revokeBiometricConsentAndPurgeAction({ employeeId })
+      if (res.success) {
+        setPurgeSuccess('Data biometrik wajah berhasil dihapus permanen.')
+        setTimeout(() => {
+          window.location.href = '/mobile/attendance'
+        }, 1500)
+      } else {
+        setError(res.error || 'Gagal menghapus data biometrik.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal menghubungi server.')
+    } finally {
+      setIsPurging(false)
+    }
+  }
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
