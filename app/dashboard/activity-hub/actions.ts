@@ -6473,11 +6473,22 @@ export async function saveDailyActivityApprovalForm(payload: {
         const numRouteId = item.routeItemId ? Number(item.routeItemId) : null
         const safeRouteItemId = numRouteId && validRouteSet.has(numRouteId) ? numRouteId : null
 
+        const allowedTeamIds = payload.teamMemberEmployeeIds
+          ? new Set([
+              ...payload.teamMemberEmployeeIds,
+              ...(payload.employeeId ? [payload.employeeId] : []),
+            ])
+          : null
+
         const rawItemMemberIds: number[] = Array.isArray((item as any).itemTeamMemberIds)
-          ? (item as any).itemTeamMemberIds.map(Number)
+          ? (item as any).itemTeamMemberIds
+              .map(Number)
+              .filter((id: number) => !allowedTeamIds || allowedTeamIds.has(id))
           : []
         const rawItemMembers: any[] = Array.isArray((item as any).itemTeamMembers)
-          ? (item as any).itemTeamMembers
+          ? (item as any).itemTeamMembers.filter(
+              (m: any) => !allowedTeamIds || allowedTeamIds.has(Number(m.id || m.employeeId))
+            )
           : []
         const itemTeamSummary = rawItemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
 

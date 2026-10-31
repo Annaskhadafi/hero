@@ -805,7 +805,9 @@ function ItemTeamPicker({
   const [isOpen, setIsOpen] = useState(false)
 
   const isCustomized = itemTeamMemberIds !== undefined
-  const effectiveIds = isCustomized ? itemTeamMemberIds : sessionTeamIds
+  const effectiveIds = isCustomized
+    ? (isSessionTeamLog ? itemTeamMemberIds.filter((id) => sessionTeamIds.includes(id)) : itemTeamMemberIds)
+    : sessionTeamIds
 
   // Session team members selected in top form
   const sessionTeamMembers = useMemo(() => {
@@ -3785,14 +3787,17 @@ export function MobileDailyActivityForm({
 
               const u = (entry.equipmentNo || '').trim()
 
-              const itemTeamMemberIds = entry.itemTeamMemberIds !== undefined
+              const rawItemTeamIds = entry.itemTeamMemberIds !== undefined
                 ? entry.itemTeamMemberIds
                 : (isTeamLog ? selectedMemberIds : [])
-              const itemTeamMembers = entry.itemTeamMembers && entry.itemTeamMembers.length > 0
-                ? entry.itemTeamMembers
+              const itemTeamMemberIds = isTeamLog
+                ? rawItemTeamIds.filter((id) => selectedMemberIds.includes(id))
+                : rawItemTeamIds
+              const itemTeamMembers = (entry.itemTeamMembers && entry.itemTeamMembers.length > 0
+                ? (isTeamLog ? entry.itemTeamMembers.filter((m: any) => selectedMemberIds.includes(m.id)) : entry.itemTeamMembers)
                 : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
                     .filter((m: any) => itemTeamMemberIds.includes(m.id))
-                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn })))
 
               return {
                 id: matchingSessionItem?.id,
@@ -3857,14 +3862,17 @@ export function MobileDailyActivityForm({
                 state?.restoredPhotoPayload,
                 state?.previewUrls
               )
-              const itemTeamMemberIds = state?.itemTeamMemberIds !== undefined
+              const rawRouteItemTeamIds = state?.itemTeamMemberIds !== undefined
                 ? state.itemTeamMemberIds
                 : (isTeamLog ? selectedMemberIds : [])
-              const itemTeamMembers = state?.itemTeamMembers && state.itemTeamMembers.length > 0
-                ? state.itemTeamMembers
+              const itemTeamMemberIds = isTeamLog
+                ? rawRouteItemTeamIds.filter((id) => selectedMemberIds.includes(id))
+                : rawRouteItemTeamIds
+              const itemTeamMembers = (state?.itemTeamMembers && state.itemTeamMembers.length > 0
+                ? (isTeamLog ? state.itemTeamMembers.filter((m: any) => selectedMemberIds.includes(m.id)) : state.itemTeamMembers)
                 : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
                     .filter((m: any) => itemTeamMemberIds.includes(m.id))
-                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn })))
 
               return {
                 routeItemId: item.routeItemId,
