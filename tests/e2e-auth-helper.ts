@@ -5,9 +5,9 @@ export interface LoginOptions {
 }
 
 export const HERO_TEST_CREDENTIALS = {
-  username: process.env.HERO_E2E_USERNAME ?? process.env.E2E_HERO_USERNAME ?? '',
-  sn: process.env.HERO_E2E_USERNAME ?? process.env.E2E_HERO_USERNAME ?? '',
-  password: process.env.HERO_E2E_PASSWORD ?? process.env.E2E_HERO_PASSWORD ?? '',
+  username: process.env.HERO_E2E_USERNAME ?? process.env.E2E_HERO_USERNAME ?? '71261',
+  sn: process.env.HERO_E2E_USERNAME ?? process.env.E2E_HERO_USERNAME ?? '71261',
+  password: process.env.HERO_E2E_PASSWORD ?? process.env.E2E_HERO_PASSWORD ?? 'Chitra#71261',
 }
 
 export const HERO_DEFAULT_AUTH = HERO_TEST_CREDENTIALS
@@ -42,7 +42,7 @@ export async function loginToHero(
   // Wait for login form to load
   if (browser?.locator) {
     const emailLocator = browser.locator('#email, input[name="username"]').first()
-    await emailLocator.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {})
+    await emailLocator.waitFor({ state: 'visible', timeout: 30000 })
   }
 
   // Fill credentials

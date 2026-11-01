@@ -26,6 +26,7 @@ import {
   type IncidentReportItem,
 } from '@/components/safety-dashboard/site-oshe-performance-dialog'
 import { ManageSiteCoordinatesDialog } from '@/components/safety-dashboard/manage-site-coordinates-dialog'
+import { matchesSiteName, toYearMonthString } from '@/lib/safety-dashboard/site-name-matcher'
 
 const MONTH_NAMES = [
   'Januari',
@@ -41,40 +42,6 @@ const MONTH_NAMES = [
   'November',
   'Desember',
 ]
-
-function toYearMonthString(val: unknown): string {
-  if (!val) return ''
-  if (val instanceof Date) {
-    if (Number.isNaN(val.getTime())) return ''
-    const y = val.getFullYear()
-    const m = String(val.getMonth() + 1).padStart(2, '0')
-    return `${y}-${m}`
-  }
-  const s = String(val).trim()
-  if (/^\d{4}-\d{2}/.test(s)) {
-    return s.substring(0, 7)
-  }
-  const d = new Date(s)
-  if (!Number.isNaN(d.getTime())) {
-    const y = d.getFullYear()
-    const m = String(d.getMonth() + 1).padStart(2, '0')
-    return `${y}-${m}`
-  }
-  return ''
-}
-
-function matchesSiteName(workLocation: string, siteName: string, siteLocation?: string | null): boolean {
-  if (!workLocation || !siteName) return false
-  const normW = workLocation.trim().toUpperCase().replace(/[-_]/g, ' ')
-  const normS = siteName.trim().toUpperCase().replace(/[-_]/g, ' ')
-  if (normW === normS) return true
-  if (normW.includes(normS) || normS.includes(normW)) return true
-  if (siteLocation) {
-    const normL = siteLocation.trim().toUpperCase().replace(/[-_]/g, ' ')
-    if (normW === normL || normW.includes(normL) || normL.includes(normW)) return true
-  }
-  return false
-}
 
 type MasterSiteItem = {
   id: number
@@ -423,6 +390,7 @@ export function HseSiteMapCard({
         selectedMonth={selectedMonth}
         allSiteSummaries={siteMonthlySummaries as SiteMonthlySummaryItem[]}
         incidentReports={incidentReports as IncidentReportItem[]}
+        monthlyManHours={monthlyManHours}
       />
 
       {/* Modal Dialog Kelola Koordinat Site */}
