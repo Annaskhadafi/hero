@@ -7483,6 +7483,14 @@ export function SchedulingTimesheetWorkspace({
     return roundOvertimeHours(result.autoMinutes / 60)
   }
 
+  function overtimeHoursBySource(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
+    const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
+    const result = calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
+    const mandatoryHours = result.source === 'Legacy' ? result.totalHours : result.autoMinutes / 60
+    const splHours = result.splMinutes / 60
+    return { mandatoryHours, splHours, totalHours: mandatoryHours + splHours }
+  }
+
   function splOvertimeForDay(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
     const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
     if (cell.status !== 'present' || !cell.clockIn || !cell.clockOut) return null
@@ -7812,7 +7820,11 @@ export function SchedulingTimesheetWorkspace({
       let attTotalHours = 0
       let allowanceTotal = 0
       let overtimeTotal = 0
+      let overtimeSplTotal = 0
+      let overtimePayrollEquivalentTotal = 0
       let payrollOvertimeTotal = 0
+      let payrollMandatoryTotal = 0
+      let payrollSplTotal = 0
       let payrollWorkDaysPresent = 0
       let payrollOffDaysPresent = 0
 
@@ -7994,22 +8006,13 @@ export function SchedulingTimesheetWorkspace({
               cellType = 'other'
             }
           } else {
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id,
-                true
-              )
-              if (mandatoryOvertimeHours(overtime) > 0) {
-                numericVal = mandatoryOvertimeHours(overtime)
+              const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
+              const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
+              const splHours = roundOvertimeHours(buckets.splHours)
+              if (mandatoryHours > 0) {
+                numericVal = mandatoryHours
                 displayVal = numericVal
                 cellType = 'ot'
-              } else if (overtime.unauthorizedMinutes > 0) {
-                displayVal = 'SPL'
-                cellType = 'spl'
               } else if (scheduleCode === 'ST') {
                 displayVal = 'ST'
                 cellType = 'st'
@@ -8022,6 +8025,17 @@ export function SchedulingTimesheetWorkspace({
               } else {
                 displayVal = '-'
                 cellType = 'dash'
+              }
+              overtimeSplTotal += splHours
+              const empSiteId = row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))
+              const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+              const dayAttendanceType = classifyPayrollAttendanceDay(
+                row.schedule, period, day - 1, empSiteConfig.rosterType, holidays
+              )
+              if (buckets.totalHours > 0) {
+                overtimePayrollEquivalentTotal += roundOvertimeHours(
+                  calculatePayrollOvertimeValue(empSiteConfig.rosterType, dayAttendanceType, buckets.totalHours, overtimeVariables)
+                )
               }
             overtimeTotal += numericVal
           }
@@ -8088,32 +8102,17 @@ export function SchedulingTimesheetWorkspace({
               payrollOffDaysPresent++
             }
 
-            let rawOtHours = 0
-            if (
-              cell.overtimeHours !== undefined &&
-              cell.overtimeHours !== null &&
-              cell.overtimeHours > 0
-            ) {
-              rawOtHours = roundOvertimeHours(cell.overtimeHours as number)
-            } else {
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              )
-              if (overtime.totalHours > 0) {
-                rawOtHours = overtime.totalHours
-              }
-            }
+            const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
+            const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
+            const splHours = roundOvertimeHours(buckets.splHours)
+            payrollMandatoryTotal += mandatoryHours
+            payrollSplTotal += splHours
 
-            if (rawOtHours > 0) {
+            if (buckets.totalHours > 0) {
               const calculatedVal = calculatePayrollOvertimeValue(
                 empRosterType,
                 dayAttendanceType,
-                rawOtHours,
+                buckets.totalHours,
                 overtimeVariables
               )
               numericVal = roundOvertimeHours(calculatedVal)
@@ -8151,8 +8150,15 @@ export function SchedulingTimesheetWorkspace({
         },
         allowanceTotal,
         overtimeTotal: roundOvertimeHours(overtimeTotal),
+        overtimeSplitSummary: {
+          mandatoryHours: roundOvertimeHours(overtimeTotal),
+          splHours: roundOvertimeHours(overtimeSplTotal),
+          payrollEquivalentHours: roundOvertimeHours(overtimePayrollEquivalentTotal),
+        },
         payrollOvertimeSummary: {
           totalOvertimeCalculated: roundOvertimeHours(payrollOvertimeTotal),
+          mandatoryHours: roundOvertimeHours(payrollMandatoryTotal),
+          splHours: roundOvertimeHours(payrollSplTotal),
           workDaysPresent: payrollWorkDaysPresent,
           offDaysPresent: payrollOffDaysPresent,
         },
@@ -12361,7 +12367,7 @@ export function SchedulingTimesheetWorkspace({
                                           if (attendanceView === 'ovt_spl') {
                                             const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
                                             const documents = approvedSplDocumentsForDay(row.employee.id, day)
-                                            const splHours = overtime?.splMinutes ? roundOvertimeHours(overtime.splMinutes / 60) : null
+                                            const splHours = roundOvertimeHours((overtime?.splMinutes ?? 0) / 60)
                                             return (
                                               <td key={day} className="w-[52px] min-w-[52px] border-x border-b border-slate-200/80 bg-white px-0.5 py-1.5 text-center text-[10px]">
                                                 {documents.length === 1 ? (
@@ -12372,13 +12378,13 @@ export function SchedulingTimesheetWorkspace({
                                                     title={`${documents[0].splNumber} · ${documents[0].title}`}
                                                     onClick={() => void previewSplDocument(documents[0].id, documents[0].splNumber)}
                                                   >
-                                                    {splHours ?? 'SPL'}
+                                                    {splHours || ''}
                                                   </Button>
                                                 ) : documents.length > 1 ? (
                                                   <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
                                                       <Button variant="ghost" className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50" aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}>
-                                                        {splHours ?? 'SPL'}
+                                                        {splHours || ''}
                                                       </Button>
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="start">
@@ -12874,7 +12880,7 @@ export function SchedulingTimesheetWorkspace({
                                                       true
                                                     )
                                                     total += attendanceView === 'ovt_spl'
-                                                      ? (splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0) / 60
+                                                      ? roundOvertimeHours((splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0) / 60)
                                                       : mandatoryOvertimeHours(overtime)
                                                   }
                                                 }
@@ -12882,7 +12888,7 @@ export function SchedulingTimesheetWorkspace({
                                               return (
                                                 <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
                                                   {attendanceView === 'ovt_spl'
-                                                    ? Number(total.toFixed(2))
+                                                    ? (roundOvertimeHours(total) || '')
                                                     : attendanceView === 'ovt'
                                                       ? roundOvertimeHours(total)
                                                     : `Rp ${total.toLocaleString('id-ID')}`}
