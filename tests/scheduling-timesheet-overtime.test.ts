@@ -173,6 +173,8 @@ describe('scheduling timesheet overtime policy', () => {
     }
     const withoutSpl = calculateConfiguredOvertime(base)
     expect(withoutSpl.totalHours).toBe(4)
+    expect(withoutSpl.autoMinutes).toBe(240)
+    expect(withoutSpl.splMinutes).toBe(0)
     expect(withoutSpl.unauthorizedMinutes).toBe(120)
 
     const withSpl = calculateConfiguredOvertime({
@@ -190,6 +192,8 @@ describe('scheduling timesheet overtime policy', () => {
       ],
     })
     expect(withSpl.totalHours).toBe(6)
+    expect(withSpl.autoMinutes).toBe(240)
+    expect(withSpl.splMinutes).toBe(120)
     expect(withSpl.unauthorizedMinutes).toBe(0)
     expect(withSpl.source).toBe('Auto + SPL')
     expect(withSpl.splNumbers).toEqual(['SPL-001'])
@@ -220,7 +224,7 @@ describe('scheduling timesheet overtime policy', () => {
     expect(result.splNumbers).toEqual(['SPL-SHORT'])
   })
 
-  it('uses fixed 6:1 OFF credit after approved SPL', () => {
+  it('keeps approved SPL overlapping mandatory overtime out of the SPL bucket', () => {
     const result = calculateConfiguredOvertime({
       config: activeConfig,
       dayKey: 'hariLibur',
@@ -240,8 +244,60 @@ describe('scheduling timesheet overtime policy', () => {
         overtimeCreditMinutes: 660,
       }],
     })
+    // Payroll keeps the configured off-day SPL credit; the display buckets
+    // remain mutually exclusive and use actual intervals.
     expect(result.totalHours).toBe(11)
-    expect(result.splNumbers).toEqual(['SPL-OFF'])
+    expect(result.splMinutes).toBe(0)
+    expect(result.splNumbers).toEqual([])
+  })
+
+  it('counts only the actual SPL portion outside mandatory overtime', () => {
+    const result = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '06:00',
+      clockOut: '20:00',
+      splWindows: [
+        {
+          id: 5,
+          splNumber: 'SPL-PARTIAL',
+          siteId: 1,
+          employeeId: 1,
+          plannedStartAt: '2026-07-01T09:00:00.000Z',
+          plannedEndAt: '2026-07-01T11:00:00.000Z',
+          status: 'approved',
+        },
+      ],
+    })
+
+    // 16:00-18:00 is mandatory; the approved SPL is 17:00-19:00 Makassar,
+    // so only 18:00-19:00 belongs to Overtime SPL.
+    expect(result.autoMinutes).toBe(240)
+    expect(result.splMinutes).toBe(60)
+    expect(result.totalMinutes).toBe(300)
+    expect(result.splNumbers).toEqual(['SPL-PARTIAL'])
+  })
+
+  it('counts approved break SPL outside mandatory overtime without losing payroll hours', () => {
+    const result = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '06:00',
+      clockOut: '18:00',
+      splWindows: [{
+        id: 20, splNumber: 'SPL-BREAK', siteId: 1, employeeId: 1,
+        plannedStartAt: '2026-07-01T04:00:00.000Z',
+        plannedEndAt: '2026-07-01T05:00:00.000Z',
+        status: 'approved', category: 'break',
+      }],
+    })
+    expect(result.autoMinutes).toBe(240)
+    expect(result.splMinutes).toBe(60)
+    expect(result.totalMinutes).toBe(300)
   })
 
   it('uses legacy hours when the site switch is inactive', () => {
@@ -256,6 +312,26 @@ describe('scheduling timesheet overtime policy', () => {
     })
     expect(result.source).toBe('Legacy')
     expect(result.totalHours).toBe(7.5)
+    expect(result.autoMinutes).toBe(0)
+  })
+
+  it('does not classify legacy fallback as mandatory overtime when no windows are configured', () => {
+    const config = {
+      ...activeConfig,
+      hariBiasa: { dayShift: [], nightShift: [] },
+    }
+    const result = calculateOvertime({
+      config,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '08:00',
+      clockOut: '20:00',
+      legacyHours: 4,
+    })
+    expect(result.source).toBe('Legacy')
+    expect(result.totalHours).toBe(4)
+    expect(result.autoMinutes).toBe(0)
   })
 
   it.each(['draft', 'submitted', 'returned', 'rejected'])('ignores SPL status %s', (status) => {

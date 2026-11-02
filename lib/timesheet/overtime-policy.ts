@@ -537,15 +537,16 @@ export function calculateConfiguredOvertime(params: {
   const splEligible = intersectSets(
     fullAttendance,
     matchedSpl.flatMap((item) => {
-      if (item.category === 'break' || item.category === 'off_day') return [item.interval]
+      // Break and off-day SPL can be inside the normal shift, but never in a mandatory OT window.
+      if (item.category === 'break' || item.category === 'off_day') {
+        return subtractIntervals([item.interval], autoConfigured)
+      }
       const outside = outsideConfiguredShift.map((candidate) => intersect(candidate, item.interval)).filter((match): match is MinuteInterval => match != null)
       return outside
     })
   ).map((item) => ({ ...item, sources: new Set<'auto' | 'spl'>(['spl']) }))
   const contributingSplNumbers = matchedSpl
-    .filter(({ interval, category }) =>
-      category === 'break' || category === 'off_day' || outsideConfiguredShift.some((candidate) => intersect(interval, candidate))
-    )
+    .filter(({ interval }) => splEligible.some((candidate) => intersect(interval, candidate)))
     .map((item) => item.splNumber)
   const eligible = mergeIntervals([...autoEligible, ...splEligible])
   const unauthorized = subtractIntervals(outsideConfiguredShift, splEligible)

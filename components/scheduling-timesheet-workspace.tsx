@@ -130,6 +130,7 @@ import {
 } from '@/components/ui/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
+import { generateElementAsPdfBlob } from '@/lib/pdf-download'
 import {
   INDONESIA_TIMEZONES,
   IndonesiaTimezoneCode,
@@ -1838,7 +1839,7 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false)
   const [attendanceView, setAttendanceView] = useState<
-    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
+    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt' | 'ovt_spl'
   >('attendance')
   const [attendanceSearch, setAttendanceSearch] = useState('')
   const [attendanceGridExportMode, setAttendanceGridExportMode] = useState<
@@ -6514,7 +6515,7 @@ export function SchedulingTimesheetWorkspace({
   type SummaryView = 'ovt' | 'msa' | 'meals' | 'lokasi'
 
   function currentSummaryView(): SummaryView {
-    return attendanceView === 'attendance' ? 'ovt' : attendanceView
+    return attendanceView === 'attendance' || attendanceView === 'ovt_spl' ? 'ovt' : attendanceView
   }
 
   function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
@@ -6595,23 +6596,16 @@ export function SchedulingTimesheetWorkspace({
                 if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
                 return ''
               }
-              // Prioritize manually saved overtime hours (from attendance override)
-              if (
-                cell.overtimeHours !== undefined &&
-                cell.overtimeHours !== null &&
-                cell.overtimeHours > 0
-              ) {
-                return String(roundOvertimeHours(cell.overtimeHours as number))
-              }
               const overtime = calculateDayOvertime(
                 row.schedule,
                 day,
                 cell.clockIn,
                 cell.clockOut,
                 staff,
-                row.employee.id
+                row.employee.id,
+                true
               )
-              if (overtime.totalHours > 0) return String(overtime.totalHours)
+              if (mandatoryOvertimeHours(overtime) > 0) return String(mandatoryOvertimeHours(overtime))
               if (overtime.unauthorizedMinutes > 0) return 'SPL'
               if (code === 'ST') return 'ST'
               if (code === 'GD') return 'GD'
@@ -6652,19 +6646,15 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
             else if (!staff) {
-              // Prioritize manually saved overtime hours
-              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-                total += Number(cell.overtimeHours)
-              } else {
-                total += calculateDayOvertime(
+              total += mandatoryOvertimeHours(calculateDayOvertime(
                   row.schedule,
                   day,
                   cell.clockIn,
                   cell.clockOut,
                   staff,
-                  row.employee.id
-                ).totalHours
-              }
+                  row.employee.id,
+                  true
+                ))
             }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
@@ -7067,6 +7057,39 @@ export function SchedulingTimesheetWorkspace({
     setPdfPreview({ url, title })
   }
 
+  async function previewSplDocument(documentId: number, splNumber: string) {
+    const toastId = `spl-preview-${documentId}`
+    toast.loading('Menyiapkan preview SPL…', { id: toastId })
+    try {
+      const response = await fetch(`/dashboard/scheduling-timesheet/attendance/spl/${documentId}`)
+      if (!response.ok) throw new Error('Dokumen SPL tidak dapat dibuka dengan hak akses ini.')
+      const html = await response.text()
+      const article = new DOMParser().parseFromString(html, 'text/html').querySelector('article')
+      if (!article) throw new Error('Isi dokumen SPL tidak ditemukan.')
+      const page = document.createElement('div')
+      page.className = 'bg-white p-8'
+      page.style.width = '794px'
+      page.style.position = 'fixed'
+      page.style.left = '-9999px'
+      page.style.top = '0'
+      page.style.zIndex = '-1'
+      page.append(article.cloneNode(true))
+      document.body.append(page)
+      try {
+        const blob = await generateElementAsPdfBlob(page, { orientation: 'portrait' })
+        openPdfPreview(new Uint8Array(await blob.arrayBuffer()), `SPL ${splNumber}`)
+      } finally {
+        page.remove()
+      }
+      toast.success('Preview SPL siap.', { id: toastId })
+    } catch (error) {
+      toast.error('Preview SPL gagal dibuka.', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   async function previewAllSiteOvertimePdf() {
     if (selectedPdfDocTypes.length === 0) {
       toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
@@ -7330,7 +7353,7 @@ export function SchedulingTimesheetWorkspace({
   const approvedSplByEmployee = useMemo(() => {
     const result = new Map<number, ApprovedSplWindow[]>()
     for (const window of approvedSplWindows) {
-      if (String(window.siteId) !== siteId) continue
+      if (siteId !== 'all' && String(window.siteId) !== siteId) continue
       const employeeWindows = result.get(window.employeeId) ?? []
       employeeWindows.push(window)
       result.set(window.employeeId, employeeWindows)
@@ -7369,7 +7392,8 @@ export function SchedulingTimesheetWorkspace({
     clockOut: string,
     staff: boolean,
     employeeId: number,
-    ignoreOverride = false
+    ignoreOverride = false,
+    approvedSplOnly = false
   ): OvertimeCalculationResult {
     if (!ignoreOverride) {
       const key = attendanceKey(employeeId, day)
@@ -7441,7 +7465,9 @@ export function SchedulingTimesheetWorkspace({
       workDate: `${period}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
-      splWindows: approvedSplByEmployee.get(employeeId) ?? [],
+      splWindows: (approvedSplByEmployee.get(employeeId) ?? []).filter(
+        (window) => !approvedSplOnly || window.status.toLowerCase() === 'approved'
+      ),
       legacyHours: calculateLegacyOvertime(
         schedule,
         day,
@@ -7451,6 +7477,30 @@ export function SchedulingTimesheetWorkspace({
       ),
     })
     return { ...calculated, totalHours: roundOvertimeHours(calculated.totalHours) }
+  }
+
+  function mandatoryOvertimeHours(result: OvertimeCalculationResult) {
+    return roundOvertimeHours(result.autoMinutes / 60)
+  }
+
+  function splOvertimeForDay(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
+    const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
+    if (cell.status !== 'present' || !cell.clockIn || !cell.clockOut) return null
+    return calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
+  }
+
+  function approvedSplDocumentsForDay(employeeId: number, day: number) {
+    const workDate = `${period}-${String(day).padStart(2, '0')}`
+    return (approvedSplByEmployee.get(employeeId) ?? []).filter((spl) => {
+      if (spl.status.toLowerCase() !== 'approved') return false
+      const dateValue = spl.workDate || spl.plannedStartAt
+      if (!dateValue) return false
+      const splDate = new Date(dateValue)
+      if (Number.isNaN(splDate.getTime())) return false
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(splDate) === workDate
+    })
   }
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
@@ -7944,26 +7994,18 @@ export function SchedulingTimesheetWorkspace({
               cellType = 'other'
             }
           } else {
-            if (
-              cell.overtimeHours !== undefined &&
-              cell.overtimeHours !== null &&
-              cell.overtimeHours > 0
-            ) {
-              numericVal = roundOvertimeHours(cell.overtimeHours as number)
-              displayVal = numericVal
-              cellType = 'ot'
-            } else {
               const overtime = calculateDayOvertime(
                 row.schedule,
                 day,
                 cell.clockIn,
                 cell.clockOut,
                 staff,
-                row.employee.id
+                row.employee.id,
+                true
               )
-              if (overtime.totalHours > 0) {
-                numericVal = overtime.totalHours
-                displayVal = overtime.totalHours
+              if (mandatoryOvertimeHours(overtime) > 0) {
+                numericVal = mandatoryOvertimeHours(overtime)
+                displayVal = numericVal
                 cellType = 'ot'
               } else if (overtime.unauthorizedMinutes > 0) {
                 displayVal = 'SPL'
@@ -7981,7 +8023,6 @@ export function SchedulingTimesheetWorkspace({
                 displayVal = '-'
                 cellType = 'dash'
               }
-            }
             overtimeTotal += numericVal
           }
 
@@ -11868,19 +11909,22 @@ export function SchedulingTimesheetWorkspace({
                         { key: 'msa', label: 'MSA' },
                         { key: 'meals', label: 'Meals' },
                         { key: 'ovt', label: 'Overtime' },
+                        { key: 'ovt_spl', label: 'Overtime SPL' },
                       ].map((tab) => (
-                        <button
+                        <Button
                           key={tab.key}
+                          type="button"
+                          variant="ghost"
                           onClick={() => setAttendanceView(tab.key as any)}
                           className={cn(
-                            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
+                            'h-9 rounded-lg px-3 text-xs font-semibold transition-all',
                             attendanceView === tab.key
                               ? 'bg-white text-slate-900 shadow-xs'
                               : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                           )}
                         >
                           {tab.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -11984,7 +12028,8 @@ export function SchedulingTimesheetWorkspace({
                           `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
                         {attendanceView === 'meals' &&
                           `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
-                        {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
+                        {attendanceView === 'ovt' && 'OVERTIME WAJIB SUMMARY'}
+                        {attendanceView === 'ovt_spl' && 'OVERTIME SPL SUMMARY'} {period} · {rate.project}
                       </p>
                       {attendanceView === 'attendance' && (
                         <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -12011,7 +12056,7 @@ export function SchedulingTimesheetWorkspace({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {attendanceView !== 'attendance' ? (
+                      {attendanceView !== 'attendance' && attendanceView !== 'ovt_spl' ? (
                         <>
                           <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                             <Switch
@@ -12040,7 +12085,7 @@ export function SchedulingTimesheetWorkspace({
                       ) : null}
 
                       {/* Export Excel Button with Dropdown for Current Tab or All 5 Tabs */}
-                      <DropdownMenu>
+                      {attendanceView !== 'ovt_spl' && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             size="sm"
@@ -12103,7 +12148,7 @@ export function SchedulingTimesheetWorkspace({
                             </div>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
                   </div>
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
@@ -12243,6 +12288,7 @@ export function SchedulingTimesheetWorkspace({
                                             </div>
                                             {/* PDF Action Buttons (Visible and easy to click) */}
                                             <div className="flex items-center gap-1 border-t border-slate-100 pt-0.5 text-[10px]">
+                                              {attendanceView !== 'ovt' && attendanceView !== 'ovt_spl' && <>
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title="Preview record PDF karyawan sesuai view ini"
@@ -12273,6 +12319,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'TU'
                                                       : 'OT'}
                                               </button>
+                                              </>}
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
@@ -12310,6 +12357,43 @@ export function SchedulingTimesheetWorkspace({
                                             scheduleCode === 'Libur' ||
                                             scheduleCode === 'Sakit'
                                           const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+
+                                          if (attendanceView === 'ovt_spl') {
+                                            const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
+                                            const documents = approvedSplDocumentsForDay(row.employee.id, day)
+                                            const splHours = overtime?.splMinutes ? roundOvertimeHours(overtime.splMinutes / 60) : null
+                                            return (
+                                              <td key={day} className="w-[52px] min-w-[52px] border-x border-b border-slate-200/80 bg-white px-0.5 py-1.5 text-center text-[10px]">
+                                                {documents.length === 1 ? (
+                                                  <Button
+                                                    variant="ghost"
+                                                    className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50"
+                                                    aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}
+                                                    title={`${documents[0].splNumber} · ${documents[0].title}`}
+                                                    onClick={() => void previewSplDocument(documents[0].id, documents[0].splNumber)}
+                                                  >
+                                                    {splHours ?? 'SPL'}
+                                                  </Button>
+                                                ) : documents.length > 1 ? (
+                                                  <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                      <Button variant="ghost" className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50" aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}>
+                                                        {splHours ?? 'SPL'}
+                                                      </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="start">
+                                                      <DropdownMenuLabel>Dokumen SPL</DropdownMenuLabel>
+                                                      {documents.map((spl) => (
+                                                        <DropdownMenuItem key={spl.id} onSelect={() => void previewSplDocument(spl.id, spl.splNumber)}>
+                                                            {spl.splNumber || `SPL ${spl.id}`} {spl.title ? `· ${spl.title}` : ''}
+                                                        </DropdownMenuItem>
+                                                      ))}
+                                                    </DropdownMenuContent>
+                                                  </DropdownMenu>
+                                                ) : null}
+                                              </td>
+                                            )
+                                          }
 
                                           // MSA/Meals/OVT view
                                           if (attendanceView !== 'attendance') {
@@ -12462,10 +12546,11 @@ export function SchedulingTimesheetWorkspace({
                                                    cell.clockIn,
                                                    cell.clockOut,
                                                    staff,
-                                                   row.employee.id
+                                                   row.employee.id,
+                                                   true
                                                  )
-                                                 if (overtime.totalHours > 0) {
-                                                   cellValue = overtime.totalHours
+                                                 if (mandatoryOvertimeHours(overtime) > 0) {
+                                                   cellValue = mandatoryOvertimeHours(overtime)
                                                    cellBg = 'bg-white text-foreground font-semibold'
                                                  } else if (overtime.unauthorizedMinutes > 0) {
                                                    cellValue = 'SPL'
@@ -12483,20 +12568,10 @@ export function SchedulingTimesheetWorkspace({
                                                    cellValue = ''
                                                    cellBg = ''
                                                  }
-                                                overtimeMeta =
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`
-                                                    : overtime.source === 'Auto + SPL'
-                                                      ? 'Auto+SPL'
-                                                      : overtime.source === 'None'
-                                                        ? ''
-                                                        : overtime.source
+                                                overtimeMeta = overtime.unauthorizedMinutes > 0 ? 'Perlu SPL' : ''
                                                 cellTitle = [
                                                   `${scheduleCode} · ${cell.status}`,
-                                                  `Sumber: ${overtime.source}`,
-                                                  overtime.splNumbers.length
-                                                    ? `SPL: ${overtime.splNumbers.join(', ')}`
-                                                    : '',
+                                                  'Overtime wajib',
                                                   overtime.unauthorizedMinutes > 0
                                                     ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
                                                     : '',
@@ -12778,7 +12853,7 @@ export function SchedulingTimesheetWorkspace({
                                                 // Skip if no allowance (izin/sakit/alpha/empty workday)
                                                 // OVT: only count present days
                                                 if (
-                                                  attendanceView === 'ovt' &&
+                                                  (attendanceView === 'ovt' || attendanceView === 'ovt_spl') &&
                                                   cell.status !== 'present'
                                                 )
                                                   continue
@@ -12789,21 +12864,27 @@ export function SchedulingTimesheetWorkspace({
                                                 } else {
                                                   // OVT only for non-staff
                                                   if (!staff) {
-                                                    total += calculateDayOvertime(
+                                                    const overtime = calculateDayOvertime(
                                                       row.schedule,
                                                       day,
                                                       cell.clockIn,
                                                       cell.clockOut,
                                                       staff,
-                                                      row.employee.id
-                                                    ).totalHours
+                                                      row.employee.id,
+                                                      true
+                                                    )
+                                                    total += attendanceView === 'ovt_spl'
+                                                      ? (splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0) / 60
+                                                      : mandatoryOvertimeHours(overtime)
                                                   }
                                                 }
                                               }
                                               return (
                                                 <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
-                                                  {attendanceView === 'ovt'
-                                                    ? roundOvertimeHours(total)
+                                                  {attendanceView === 'ovt_spl'
+                                                    ? Number(total.toFixed(2))
+                                                    : attendanceView === 'ovt'
+                                                      ? roundOvertimeHours(total)
                                                     : `Rp ${total.toLocaleString('id-ID')}`}
                                                 </td>
                                               )
