@@ -154,6 +154,7 @@ export type OvertimeCreateLineItem = {
 }
 
 export type OvertimeListingRow = {
+  siteId?: number | null
   id: number
   splNumber: string
   title: string
@@ -703,6 +704,8 @@ function ApprovalProgressBadge({ approvals }: { approvals: OvertimeListingRow['a
 export function OvertimeListingClient({
   rows: propRows,
   employees = [],
+  sites = [],
+  currentEmployeeSiteId = null,
   activityLibraries = [],
   routeFolders = [],
   initialSettings,
@@ -713,6 +716,8 @@ export function OvertimeListingClient({
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
+  sites?: Array<{ id: number; name: string }>
+  currentEmployeeSiteId?: number | null
   activityLibraries?: OvertimeActivityLibraryItem[]
   routeFolders?: RouteFolder[]
   initialSettings?: OvertimeWorkflowSettings
@@ -1350,7 +1355,24 @@ export function OvertimeListingClient({
   const statusFilterOptions = ['Approved', 'Submitted', 'Draft', 'Rejected']
   const workerCountFilterOptions = ['1 - 3 Orang', '4 - 10 Orang', '> 10 Orang']
 
+  const defaultSiteFilter = currentEmployeeSiteId ? String(currentEmployeeSiteId) : 'ALL'
+  const [summarySiteId, setSummarySiteId] = useState<string>(defaultSiteFilter)
   const [summaryEmployeeId, setSummaryEmployeeId] = useState<string>('ALL')
+
+  const summarySiteOptions = useMemo(() => {
+    return [
+      { value: 'ALL', label: 'Semua Site' },
+      ...(sites || []).map((s) => ({
+        value: String(s.id),
+        label: s.name,
+      })),
+    ]
+  }, [sites])
+
+  const handleSiteChange = (val: string) => {
+    setSummarySiteId(val)
+    setSummaryEmployeeId('ALL')
+  }
   const [summaryMonth, setSummaryMonth] = useState<string>('')
   const [isGeneratingSummaryPdf, setIsGeneratingSummaryPdf] = useState<boolean>(false)
   const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState<boolean>(false)
@@ -1370,6 +1392,7 @@ export function OvertimeListingClient({
 
   const hasActiveFilters =
     activeTab !== 'all' ||
+    summarySiteId !== defaultSiteFilter ||
     summaryEmployeeId !== 'ALL' ||
     Boolean(summaryMonth) ||
     searchQuery.trim().length > 0 ||
@@ -1379,6 +1402,7 @@ export function OvertimeListingClient({
 
   const handleResetFilters = () => {
     setActiveTab('all')
+    setSummarySiteId(defaultSiteFilter)
     setSummaryEmployeeId('ALL')
     setSummaryMonth('')
     setSearchQuery('')
@@ -1561,9 +1585,12 @@ export function OvertimeListingClient({
     const map = new Map<string, { id: string; name: string; dept?: string }>()
     map.set('ALL', { id: 'ALL', name: 'Semua Karyawan' })
 
+    const filterBySite = summarySiteId && summarySiteId !== 'ALL'
+
     if (Array.isArray(employees)) {
       employees.forEach((emp) => {
         if (!emp) return
+        if (filterBySite && String(emp.siteId) !== summarySiteId) return
         const key = String(emp.id || emp.name || '')
         if (key && emp.name) {
           map.set(key, {
@@ -1578,6 +1605,15 @@ export function OvertimeListingClient({
     if (Array.isArray(rows)) {
       rows.forEach((row) => {
         if (!row) return
+        if (filterBySite && row.siteId != null && String(row.siteId) !== summarySiteId) {
+          return
+        }
+        if (filterBySite && row.requestedByEmployeeId) {
+          const matchedEmp = employees.find((e) => Number(e.id) === Number(row.requestedByEmployeeId))
+          if (matchedEmp && matchedEmp.siteId != null && String(matchedEmp.siteId) !== summarySiteId) {
+            return
+          }
+        }
         if (row.requestedByEmployeeId && !map.has(String(row.requestedByEmployeeId))) {
           map.set(String(row.requestedByEmployeeId), {
             id: String(row.requestedByEmployeeId),
@@ -1595,6 +1631,12 @@ export function OvertimeListingClient({
         if (Array.isArray(row.participants)) {
           row.participants.forEach((p) => {
             if (p && p.employeeName && !map.has(p.employeeName)) {
+              if (filterBySite && (p as any).employeeId) {
+                const matchedEmp = employees.find((e) => Number(e.id) === Number((p as any).employeeId))
+                if (matchedEmp && matchedEmp.siteId != null && String(matchedEmp.siteId) !== summarySiteId) {
+                  return
+                }
+              }
               map.set(p.employeeName, {
                 id: p.employeeName,
                 name: p.employeeName,
@@ -1609,7 +1651,7 @@ export function OvertimeListingClient({
       value: emp.id,
       label: emp.id === 'ALL' ? 'Semua Karyawan' : (emp.dept ? `${emp.name || ''} (${emp.dept})` : emp.name || emp.id),
     }))
-  }, [employees, rows, isManagementOrAdmin, currentEmployeeId, currentEmployeeName])
+  }, [employees, rows, isManagementOrAdmin, currentEmployeeId, currentEmployeeName, summarySiteId])
 
   const filteredRows = useMemo(() => {
     if (!Array.isArray(rows)) return []
@@ -1628,6 +1670,20 @@ export function OvertimeListingClient({
         if (activeTab === 'approved' && rowStatus !== 'approved') return false
         if (activeTab === 'draft' && rowStatus !== 'draft') return false
         if (activeTab === 'rejected' && rowStatus !== 'rejected' && rowStatus !== 'cancelled') return false
+      }
+
+      // 0.1 Site Filter
+      if (summarySiteId && summarySiteId !== 'ALL') {
+        const rowSiteId = row.siteId != null ? String(row.siteId) : null
+        if (rowSiteId && rowSiteId !== summarySiteId) {
+          return false
+        }
+        if (!rowSiteId && row.requestedByEmployeeId) {
+          const emp = employees.find((e) => Number(e.id) === Number(row.requestedByEmployeeId))
+          if (emp && emp.siteId != null && String(emp.siteId) !== summarySiteId) {
+            return false
+          }
+        }
       }
 
       // 1. Employee Filter (Strictly match row created for the selected employee)
@@ -1710,7 +1766,7 @@ export function OvertimeListingClient({
 
       return true
     })
-  }, [rows, activeTab, summaryEmployeeId, summaryMonth, searchQuery, selectedDepartments, selectedStatuses, selectedWorkerCounts, summaryEmployeeOptions])
+  }, [rows, activeTab, summarySiteId, summaryEmployeeId, summaryMonth, searchQuery, selectedDepartments, selectedStatuses, selectedWorkerCounts, summaryEmployeeOptions])
 
   const summaryFilteredRows = useMemo(() => {
     if (summaryEmployeeId && summaryEmployeeId !== 'ALL') {
@@ -1776,7 +1832,7 @@ export function OvertimeListingClient({
     const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
     const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
     const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-    const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+    const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
 
     const firstRow = summaryFilteredRows[0]
     const signatories = resolveSummarySplSignatories({
@@ -1826,7 +1882,7 @@ export function OvertimeListingClient({
       const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
       const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
       const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
 
       const firstRow = summaryFilteredRows[0]
@@ -1911,7 +1967,7 @@ export function OvertimeListingClient({
       const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
       const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
       const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
 
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
 
@@ -2860,8 +2916,23 @@ export function OvertimeListingClient({
         </div>
 
         {/* Filter Controls Grid inside Dedicated Card */}
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {/* 1. Nama Karyawan */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 1. Lokasi Site / Unit Kerja */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Lokasi Site / Unit Kerja
+            </Label>
+            <SearchableSelect
+              label="Site"
+              options={summarySiteOptions}
+              value={summarySiteId}
+              onValueChange={handleSiteChange}
+              placeholder="Pilih Site..."
+              widthClassName="w-full h-9 rounded-xl border-slate-200 text-xs shadow-xs"
+            />
+          </div>
+
+          {/* 2. Nama Karyawan */}
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
               Nama Karyawan
@@ -2876,7 +2947,7 @@ export function OvertimeListingClient({
             />
           </div>
 
-          {/* 2. Bulan & Tahun */}
+          {/* 3. Bulan & Tahun */}
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
               Periode Bulan & Tahun
@@ -2889,7 +2960,7 @@ export function OvertimeListingClient({
             />
           </div>
 
-          {/* Active Summary Filter Status & Reset */}
+          {/* 4. Active Summary Filter Status & Reset */}
           <div className="space-y-1 flex flex-col justify-end">
             {hasActiveFilters ? (
               <div className="flex items-center justify-between h-9 rounded-xl bg-slate-50 px-3 border border-slate-200/80 dark:bg-slate-800/50 dark:border-slate-800">

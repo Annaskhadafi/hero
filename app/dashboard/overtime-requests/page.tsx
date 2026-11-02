@@ -68,7 +68,8 @@ export default async function OvertimeRequestsPage() {
         requesterName: employees.name,
         requesterDepartment: masterDepartments.name,
         requesterSection: employees.section,
-        siteId: employees.siteId,
+        siteId: overtimeCommandLetters.siteId,
+        employeeSiteId: employees.siteId,
         requestNotes: overtimeCommandLetters.requestNotes,
       })
       .from(overtimeCommandLetters)
@@ -356,6 +357,8 @@ export default async function OvertimeRequestsPage() {
       .filter((p) => p.employeeName && p.employeeName.toLowerCase() !== (r.requesterName || '').toLowerCase().trim())
       .map((p) => p.employeeName)
 
+    const splSiteId = r.siteId ? Number(r.siteId) : (r.employeeSiteId ? Number(r.employeeSiteId) : null)
+
     // 1. Requester / Koordinator Row
     rows.push({
       id: Number(r.id),
@@ -368,6 +371,7 @@ export default async function OvertimeRequestsPage() {
       requestedByEmployeeId: r.requestedByEmployeeId ? Number(r.requestedByEmployeeId) : null,
       requesterName: r.requesterName || 'Pemohon',
       requesterDepartment: r.requesterDepartment || 'Central Services',
+      siteId: splSiteId,
       requestNotes: r.requestNotes || null,
       workerCount: parts.length > 0 ? parts.length : 1,
       teamRole: otherParticipantNames.length > 0 ? 'Pemohon' : undefined,
@@ -388,6 +392,9 @@ export default async function OvertimeRequestsPage() {
         ...parts.filter((other) => other.employeeName !== p.employeeName && other.employeeName !== r.requesterName).map((o) => o.employeeName)
       ].filter(Boolean).join(', ')
 
+      const participantEmp = allEmployees.find((e) => e.id === p.employeeId)
+      const participantSiteId = participantEmp?.siteId ? Number(participantEmp.siteId) : splSiteId
+
       rows.push({
         id: Number(r.id),
         splNumber: r.splNumber || `SPL-${r.id}`,
@@ -399,6 +406,7 @@ export default async function OvertimeRequestsPage() {
         requestedByEmployeeId: p.employeeId ? Number(p.employeeId) : null,
         requesterName: p.employeeName,
         requesterDepartment: r.requesterDepartment || 'Central Services',
+        siteId: participantSiteId,
         requestNotes: r.requestNotes || null,
         workerCount: parts.length > 0 ? parts.length : 1,
         teamRole: 'Anggota Tim',
@@ -434,6 +442,8 @@ export default async function OvertimeRequestsPage() {
     <OvertimeListingClient
       rows={rows}
       employees={sanitizedEmployees}
+      sites={(rawSites || []).map((s) => ({ id: Number(s.id), name: s.name }))}
+      currentEmployeeSiteId={activeEmployee?.siteId ? Number(activeEmployee.siteId) : null}
       activityLibraries={rawActivityLibraries || []}
       routeFolders={availableRouteFolders || []}
       initialSettings={initialSettings}

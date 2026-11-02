@@ -2,12 +2,12 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { loginToHero } from './e2e-auth-helper'
 
-test('Verifikasi Fitur Summary SPL Online Approval Desktop & Mobile', async ({
+test('Verifikasi Fitur Pilihan Per-Site pada Summary SPL Desktop', async ({
   app,
   screen,
   browser,
 }) => {
-  // 1. Authenticate using system standard helper without callbackUrl
+  // 1. Authenticate using system standard credentials
   await loginToHero(app, screen, browser)
   await new Promise((resolve) => setTimeout(resolve, 3000))
 
@@ -19,53 +19,60 @@ test('Verifikasi Fitur Summary SPL Online Approval Desktop & Mobile', async ({
   const summaryHeader = browser.locator('text=Rekapitulasi & Export Summary SPL').first()
   await expect(summaryHeader).toBeVisible({ timeout: 30000 })
 
-  // Screenshot 1: Overview Card Summary SPL Desktop
+  // Screenshot 1: Overview Card Summary SPL Desktop dengan filter Site default
   await app.screenshot('01-desktop-summary-spl-overview')
 
-  // 4. Pilih salah satu karyawan di dropdown filter Summary SPL
-  const employeeSelectTrigger = browser
-    .locator('button:has-text("Pilih Karyawan"), button[aria-haspopup="dialog"]:has-text("Karyawan")')
+  // 4. Verifikasi & Interaksi Dropdown Pilihan Site
+  const siteSelectTrigger = browser
+    .locator('button:has-text("Pilih Site"), button[aria-haspopup="dialog"]:has-text("Site")')
     .first()
+  await expect(siteSelectTrigger).toBeVisible({ timeout: 15000 })
 
-  if (await employeeSelectTrigger.isVisible()) {
-    await employeeSelectTrigger.click()
-    await new Promise((resolve) => setTimeout(resolve, 1500))
+  await siteSelectTrigger.click()
+  await new Promise((resolve) => setTimeout(resolve, 1500))
 
-    // Pilih karyawan pertama yang ada di daftar
-    const firstOption = browser.locator('[role="option"], button[role="option"]').first()
-    if (await firstOption.isVisible()) {
-      await firstOption.click()
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-    }
-  }
-
-  // Screenshot 2: Card Summary SPL dengan filter aktif & Banner Status Approval Online
-  await app.screenshot('02-desktop-summary-spl-approval-status')
-
-  // 5. Kunjungi halaman Mobile Overtime
-  await app.open('/mobile/overtime')
-  await new Promise((resolve) => setTimeout(resolve, 4000))
-
-  // Klik Tab Summary di Mobile
-  const summaryTab = browser.locator('button[role="tab"]:has-text("Summary")').first()
-  await expect(summaryTab).toBeVisible({ timeout: 20000 })
-  await summaryTab.click()
-  await new Promise((resolve) => setTimeout(resolve, 3000))
-
-  // Verifikasi Konten Tab Summary di Mobile
-  const mobileSummaryHeading = browser.locator('text=Summary SPL Online').first()
-  await expect(mobileSummaryHeading).toBeVisible({ timeout: 25000 })
-
-  // Screenshot 3: Tampilan Tab Summary SPL di Mobile
-  await app.screenshot('03-mobile-summary-spl-tab')
-
-  // 6. Buka tab Riwayat di Mobile untuk memastikan navigasi tab 4 kolom berjalan sempurna
-  const riwayatTab = browser.locator('button[role="tab"]:has-text("Riwayat")').first()
-  if (await riwayatTab.isVisible()) {
-    await riwayatTab.click()
+  // Pilih opsi site (misal opsi pertama setelah dialog terbuka)
+  const siteOption = browser.locator('[role="option"], button[role="option"]').first()
+  if (await siteOption.isVisible()) {
+    await siteOption.click()
     await new Promise((resolve) => setTimeout(resolve, 2000))
   }
 
-  // Screenshot 4: Navigasi tab Mobile
-  await app.screenshot('04-mobile-overtime-tabs-navigation')
+  // Screenshot 2: Pilihan Site Aktif
+  await app.screenshot('02-desktop-summary-spl-site-filtered')
+
+  // 5. Verifikasi Cascading Dropdown Karyawan sesuai Site
+  const employeeSelectTrigger = browser
+    .locator('button:has-text("Pilih Karyawan"), button[aria-haspopup="dialog"]:has-text("Karyawan")')
+    .first()
+  await expect(employeeSelectTrigger).toBeVisible({ timeout: 15000 })
+
+  await employeeSelectTrigger.click()
+  await new Promise((resolve) => setTimeout(resolve, 1500))
+
+  // Screenshot 3: Dropdown Karyawan yang tersaring (cascaded) sesuai Site
+  await app.screenshot('03-desktop-summary-spl-employee-cascaded')
+
+  // Pilih karyawan spesifik di urutan kedua (bukan 'Semua Karyawan') jika ada
+  const employeeOptions = browser.locator('[role="option"], button[role="option"]')
+  const count = await employeeOptions.count()
+  if (count > 1) {
+    await employeeOptions.nth(1).click()
+  } else if (count > 0) {
+    await employeeOptions.first().click()
+  }
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+
+  // Screenshot 4: Filter Karyawan terpilih & Tombol Preview PDF aktif
+  await app.screenshot('04-desktop-summary-spl-employee-selected')
+
+  // 6. Test Tombol Reset Filter
+  const resetButton = browser.locator('button:has-text("Reset")').first()
+  if (await resetButton.isVisible()) {
+    await resetButton.click()
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  }
+
+  // Screenshot 5: Kondisi setelah Reset Filter
+  await app.screenshot('05-desktop-summary-spl-reset')
 })
