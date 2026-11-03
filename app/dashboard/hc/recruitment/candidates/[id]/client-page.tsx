@@ -6,7 +6,8 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles, IconAward, IconUserCheck, IconPlus, IconFileX, IconLoader2, IconUpload, IconExternalLink } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles, IconAward, IconUserCheck, IconPlus, IconFileX, IconLoader2, IconUpload, IconExternalLink, IconPrinter } from "@tabler/icons-react";
+import { CandidateDigitalResume } from "@/components/recruitment/candidate-digital-resume";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -2786,67 +2787,12 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                 />
               </object>
             ) : (
-              <div className="p-6 max-w-lg w-full">
-                <div className="bg-card border rounded-xl shadow-xs p-6 space-y-4 text-center">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
-                    <IconFileX className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-foreground">Berkas CV Tidak Ditemukan (404)</h3>
-                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                      Berkas CV untuk <strong className="text-foreground">{candidate.fullName}</strong> tidak ditemukan di penyimpanan server (kemungkinan berkas lama hilang saat redeploy container atau unggahan belum tersimpan ke S3). Anda dapat mengunggah berkas CV pengganti (PDF) di bawah ini.
-                    </p>
-                  </div>
-
-                  <div className="pt-2 border-t border-dashed">
-                    <div className="space-y-3">
-                      <input
-                        type="file"
-                        id="candidate-detail-modal-cv-upload"
-                        accept=".pdf,application/pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) setUploadCvFile(f);
-                        }}
-                      />
-                      <label
-                        htmlFor="candidate-detail-modal-cv-upload"
-                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/40 transition-colors border-border/80"
-                      >
-                        <IconUpload className="w-6 h-6 text-muted-foreground mb-1" />
-                        <span className="text-xs font-semibold text-primary">
-                          {uploadCvFile ? uploadCvFile.name : "Pilih Berkas PDF CV Baru"}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground mt-0.5">
-                          {uploadCvFile ? `${(uploadCvFile.size / 1024 / 1024).toFixed(2)} MB` : "Maksimal 10MB • Format PDF"}
-                        </span>
-                      </label>
-
-                      {uploadCvFile && (
-                        <Button
-                          type="button"
-                          onClick={() => handleUploadCandidateCv()}
-                          disabled={isUploadingCv}
-                          className="w-full h-9 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-                        >
-                          {isUploadingCv ? (
-                            <>
-                              <IconLoader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Menyimpan CV...
-                            </>
-                          ) : (
-                            <>
-                              <IconUpload className="w-4 h-4 mr-2" />
-                              Simpan & Tampilkan CV
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <CandidateDigitalResume
+                candidate={candidate}
+                fileName={cvViewerState.fileName}
+                onUploadFile={handleUploadCandidateCv}
+                isUploading={isUploadingCv}
+              />
             )}
           </div>
 
@@ -2871,6 +2817,18 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                     </label>
                   </Button>
                 </>
+              )}
+              {!cvViewerState.exists && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  onClick={() => window.print()}
+                >
+                  <IconPrinter className="w-4 h-4 mr-1.5" />
+                  Cetak Resume
+                </Button>
               )}
             </div>
             <div className="flex items-center gap-2">

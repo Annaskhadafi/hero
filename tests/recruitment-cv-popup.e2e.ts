@@ -55,8 +55,8 @@ test('Verifikasi CV Popup & Fallback Handler di Recruitment', async ({
   await new Promise((resolve) => setTimeout(resolve, 3000))
   await app.screenshot('004-hengki-cv-missing-fallback-modal')
 
-  // Verifikasi fallback card muncul: "Berkas CV Tidak Ditemukan (404)" dan tombol upload ada
-  const fallbackTitle = browser.locator('text=Berkas CV Tidak Ditemukan (404)').first()
+  // Verifikasi Digital Resume & Fallback Banner muncul
+  const fallbackTitle = browser.locator('text=Menampilkan Digital Resume & AI Assessment Lengkap').or(browser.locator('text=Digital Resume')).or(browser.locator('text=Berkas PDF Fisik Belum Tersedia')).first()
   await expect(fallbackTitle).toBeVisible({ timeout: 15000 })
 
   await app.screenshot('005-recruitment-cv-fix-verified')

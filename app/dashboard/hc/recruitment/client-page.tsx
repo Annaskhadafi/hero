@@ -22,13 +22,14 @@ import {
   IconSparkles,
   IconFileX,
   IconLoader2,
+  IconPrinter,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCvDetails, updateCandidateCv, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail, assessCandidateCv } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, getCandidateById, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCvDetails, updateCandidateCv, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail, assessCandidateCv } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -38,6 +39,7 @@ import { getNextLetterNumber, getActiveEmployees } from "@/app/actions/surat";
 import { getBatchesByRecruitment, createBatch, updateBatch, deleteBatch } from "@/app/actions/hc-recruitment-batches";
 import { uploadFile } from "@/app/actions/upload";
 import { getKarirJobUrl } from "@/lib/karir-config";
+import { CandidateDigitalResume } from "@/components/recruitment/candidate-digital-resume";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -172,16 +174,22 @@ type Candidate = {
   email: string;
   phone: string;
   dateOfBirth?: Date | string | null;
+  address?: string;
+  gender?: string;
+  drivingLicenses?: string[] | null;
+  certificates?: Array<{ name: string; year: string; publisher: string }> | null;
+  achievements?: string;
   source: string;
   currentStage: string;
   rating: number | null;
   notes: string;
   cvUrl: string;
-  workExperience?: Array<{ company?: string; role?: string; yearIn?: string; yearOut?: string; description?: string }>;
-  education?: Array<{ level?: string; institution?: string; major?: string; yearIn?: string; yearOut?: string }>;
+  workExperience?: Array<{ company?: string; role?: string; yearIn?: string; yearOut?: string; description?: string }> | null;
+  education?: Array<{ level?: string; institution?: string; major?: string; yearIn?: string; yearOut?: string }> | null;
   aiScore: number | null;
   aiSummary: string;
   aiDetails?: { recommendation?: string; breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }> } | null;
+  aiAssessmentDate?: Date | string | null;
   rejectionReason: string;
   createdAt: Date;
 };
@@ -252,6 +260,7 @@ export function RecruitmentClientPage({
   const [emailStatuses, setEmailStatuses] = useState<Record<number, { status: string; lastSentAt: Date | null; templateName: string | null }>>({});
   const [cvViewerState, setCvViewerState] = useState<{
     isOpen: boolean;
+    candidate: Candidate | null;
     candidateId: number | null;
     candidateName: string;
     cvUrl: string | null;
@@ -260,6 +269,7 @@ export function RecruitmentClientPage({
     isLoading: boolean;
   }>({
     isOpen: false,
+    candidate: null,
     candidateId: null,
     candidateName: "",
     cvUrl: null,
@@ -662,8 +672,13 @@ export function RecruitmentClientPage({
   const handleViewCv = async (cvUrl: string | null, candidateName: string, candidateId?: number) => {
     if (candidateId) setCvLoadingId(candidateId);
     setUploadCvFile(null);
+    let cand = candidateId
+      ? candidates.find(c => c.id === candidateId) || candidatePage.data.find(c => c.id === candidateId) || null
+      : null;
+
     setCvViewerState({
       isOpen: true,
+      candidate: cand,
       candidateId: candidateId || null,
       candidateName,
       cvUrl: null,
@@ -673,6 +688,16 @@ export function RecruitmentClientPage({
     });
 
     try {
+      if (!cand && candidateId) {
+        try {
+          const fetchedCand = await getCandidateById(candidateId);
+          if (fetchedCand) {
+            cand = fetchedCand as any;
+            setCvViewerState(prev => ({ ...prev, candidate: cand }));
+          }
+        } catch {}
+      }
+
       if (!cvUrl) {
         setCvViewerState(prev => ({
           ...prev,
@@ -697,30 +722,31 @@ export function RecruitmentClientPage({
     }
   };
 
-  const handleUploadCandidateCv = async () => {
-    if (!uploadCvFile || !cvViewerState.candidateId) {
+  const handleUploadCandidateCv = async (fileToUpload?: File) => {
+    const file = fileToUpload || uploadCvFile;
+    if (!file || !cvViewerState.candidateId) {
       toast.error("Pilih berkas PDF terlebih dahulu");
       return;
     }
-    if (uploadCvFile.type !== "application/pdf" && !uploadCvFile.name.toLowerCase().endsWith(".pdf")) {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       toast.error("Berkas CV harus berformat PDF");
       return;
     }
-    if (uploadCvFile.size > 10 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       toast.error("Ukuran berkas CV maksimal 10MB");
       return;
     }
 
     setIsUploadingCv(true);
-    const toastId = toast.loading("Mengunggah berkas CV ke server...");
+    const toastId = toast.loading("Mengunggah berkas CV ke S3 Cloud Storage...");
     try {
       const formData = new FormData();
-      formData.append("file", uploadCvFile);
+      formData.append("file", file);
       formData.append("uploadTarget", "public-career-cv");
 
       const uploadResult = await uploadFile(formData);
       if (!uploadResult.success || !uploadResult.url) {
-        throw new Error(uploadResult.error || "Gagal mengunggah berkas");
+        throw new Error(uploadResult.error || "Gagal mengunggah berkas ke S3");
       }
 
       const updateResult = await updateCandidateCv(cvViewerState.candidateId, uploadResult.url);
@@ -730,15 +756,18 @@ export function RecruitmentClientPage({
 
       const newUrl = uploadResult.url;
       setCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: newUrl } : c));
-      setPaginatedCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: newUrl } : c));
+      setCandidatePage(prev => ({
+        ...prev,
+        data: prev.data.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: newUrl } : c),
+      }));
 
-      toast.success("Berkas CV berhasil diperbarui & disimpan!", { id: toastId });
+      toast.success("Berkas CV berhasil diunggah ke S3 & diperbarui!", { id: toastId });
       setUploadCvFile(null);
       setCvViewerState(prev => ({
         ...prev,
         cvUrl: newUrl,
         exists: true,
-        fileName: uploadCvFile.name,
+        fileName: file.name,
       }));
     } catch (err: any) {
       toast.error(err?.message || "Gagal memperbarui berkas CV", { id: toastId });
@@ -2609,6 +2638,13 @@ export function RecruitmentClientPage({
                 title={`CV of ${cvViewerState.candidateName}`}
               />
             </object>
+          ) : cvViewerState.candidate ? (
+            <CandidateDigitalResume
+              candidate={cvViewerState.candidate}
+              fileName={cvViewerState.fileName}
+              onUploadFile={handleUploadCandidateCv}
+              isUploading={isUploadingCv}
+            />
           ) : (
             <div className="p-6 max-w-lg w-full">
               <div className="bg-card border rounded-xl shadow-xs p-6 space-y-4 text-center">
@@ -2650,7 +2686,7 @@ export function RecruitmentClientPage({
                     {uploadCvFile && (
                       <Button
                         type="button"
-                        onClick={handleUploadCandidateCv}
+                        onClick={() => handleUploadCandidateCv()}
                         disabled={isUploadingCv}
                         className="w-full h-9 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
                       >
@@ -2695,7 +2731,10 @@ export function RecruitmentClientPage({
                         if (!upRes.success || !upRes.url) throw new Error(upRes.error || "Upload gagal");
                         await updateCandidateCv(cvViewerState.candidateId!, upRes.url);
                         setCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: upRes.url } : c));
-                        setPaginatedCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: upRes.url } : c));
+                        setCandidatePage(prev => ({
+                          ...prev,
+                          data: prev.data.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: upRes.url } : c),
+                        }));
                         setCvViewerState(prev => ({ ...prev, cvUrl: upRes.url, fileName: f.name, exists: true }));
                         toast.success("Berkas CV berhasil diganti!", { id: toastId });
                       } catch (err: any) {
@@ -2711,6 +2750,18 @@ export function RecruitmentClientPage({
                   </label>
                 </Button>
               </>
+            )}
+            {!cvViewerState.exists && cvViewerState.candidate && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9"
+                onClick={() => window.print()}
+              >
+                <IconPrinter className="w-4 h-4 mr-1.5" />
+                Cetak Resume
+              </Button>
             )}
           </div>
           <div className="flex items-center gap-2">

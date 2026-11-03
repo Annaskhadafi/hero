@@ -8,6 +8,7 @@ import {
   date,
   boolean,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sites, employees } from "@/db/schema/hero";
 
@@ -81,9 +82,21 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   showDays: boolean("show_days").notNull().default(true),
   includeBast: boolean("include_bast").notNull().default(false),
   includeRoster: boolean("include_roster").notNull().default(false),
+  showCustomApproval: boolean("show_custom_approval").notNull().default(false),
+  customApprovalPosition: text("custom_approval_position").notNull().default("middle"),
+  customApprovals: jsonb("custom_approvals").$type<CustomApprovalItem[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export type CustomApprovalPosition = "middle" | "right";
+
+export type CustomApprovalItem = {
+  label?: string;
+  name: string;
+  position?: string;
+  company?: string;
+};
 
 export const service360QuotationItems = pgTable("hero_service360_quotation_items", {
   id: serial("id").primaryKey(),

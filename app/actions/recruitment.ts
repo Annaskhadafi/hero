@@ -875,12 +875,18 @@ export async function getCandidatesPaginated(filters: CandidateFilter = {}): Pro
       currentStage: hcCandidates.currentStage,
       rating: hcCandidates.rating,
       notes: hcCandidates.notes,
+      address: hcCandidates.address,
+      gender: hcCandidates.gender,
+      drivingLicenses: hcCandidates.drivingLicenses,
+      certificates: hcCandidates.certificates,
+      achievements: hcCandidates.achievements,
       cvUrl: hcCandidates.cvUrl,
       workExperience: hcCandidates.workExperience,
       education: hcCandidates.education,
       aiScore: hcCandidates.aiScore,
       aiSummary: hcCandidates.aiSummary,
       aiDetails: hcCandidates.aiDetails,
+      aiAssessmentDate: hcCandidates.aiAssessmentDate,
       rejectionReason: hcCandidates.rejectionReason,
       createdAt: hcCandidates.createdAt,
     })
@@ -908,14 +914,23 @@ type CandidateRow = {
   fullName: string;
   email: string;
   phone: string;
+  dateOfBirth?: Date | null;
+  address?: string;
+  gender?: string;
+  drivingLicenses?: string[] | null;
+  certificates?: Array<{ name: string; year: string; publisher: string }> | null;
+  achievements?: string;
   source: string;
   currentStage: string;
   rating: number | null;
   notes: string;
   cvUrl: string;
+  workExperience?: Array<{ company?: string; role?: string; yearIn?: string; yearOut?: string; description?: string }> | null;
+  education?: Array<{ level?: string; institution?: string; major?: string; yearIn?: string; yearOut?: string }> | null;
   aiScore: number | null;
   aiSummary: string;
   aiDetails?: { breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }>; recommendation?: string } | null;
+  aiAssessmentDate?: Date | null;
   rejectionReason: string;
   createdAt: Date;
 };
