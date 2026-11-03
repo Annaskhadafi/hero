@@ -153,6 +153,14 @@ export async function uploadFile(formData: FormData) {
         })
       : file
     const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
+    const requiresS3Persistence = isPdf || isPublicCareerCv
+
+    if (requiresS3Persistence && !isS3UploadConfigured()) {
+      return {
+        success: false,
+        error: 'S3 Cloud Storage belum terkonfigurasi. Berkas PDF wajib disimpan ke S3 agar persisten saat redeploy.',
+      }
+    }
 
     if (isS3UploadConfigured()) {
       try {
@@ -172,8 +180,15 @@ export async function uploadFile(formData: FormData) {
           fileName: fileToUpload.name,
           fileSize: fileToUpload.size,
         }
-      } catch (s3Error) {
-        console.warn('S3 Upload failed, falling back to local storage:', s3Error)
+      } catch (s3Error: any) {
+        console.error('S3 Upload failed:', s3Error)
+        if (requiresS3Persistence) {
+          return {
+            success: false,
+            error: `Gagal mengunggah berkas PDF ke S3 Object Storage (${s3Error?.message || 'Koneksi S3 terputus'}). Berkas tidak disimpan ke lokal agar tidak hilang saat redeploy. Silakan coba lagi.`,
+          }
+        }
+        console.warn('S3 Upload failed, falling back to local storage for non-critical assets:', s3Error)
       }
     }
 
@@ -191,6 +206,19 @@ export async function uploadFile(formData: FormData) {
     const buffer = Buffer.from(await fileToUpload.arrayBuffer())
 
     await writeFile(filePath, buffer)
+
+    // Also persist to persistent host bind mount if present (e.g. Dokploy /mnt/data/one-chitra/uploads)
+    const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
+    try {
+      const { existsSync } = await import('fs')
+      if (existsSync(customUploadsDir)) {
+        const persistentDir = subFolder ? join(customUploadsDir, subFolder) : customUploadsDir
+        await mkdir(persistentDir, { recursive: true })
+        await writeFile(join(persistentDir, uniqueName), buffer)
+      }
+    } catch (e) {
+      console.warn('Could not write to persistent bind mount fallback:', e)
+    }
 
     const publicUrl = subFolder
       ? `/api/uploads/${subFolder}/${uniqueName}`

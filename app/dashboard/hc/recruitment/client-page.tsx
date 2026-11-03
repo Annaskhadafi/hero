@@ -20,13 +20,15 @@ import {
   IconArrowsExchange,
   IconUpload,
   IconSparkles,
+  IconFileX,
+  IconLoader2,
 } from "@tabler/icons-react";
 import { format, differenceInDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
 const WITA_TZ = "Asia/Makassar";
 import { toast } from "sonner";
-import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail, assessCandidateCv } from "@/app/actions/recruitment";
+import { updateRecruitment, createRecruitment, deleteRecruitment, deleteCandidate, deleteMultipleCandidates, getCandidatesPaginated, updateCandidateStage, getCandidateEmailStatuses, getCvDownloadUrl, getCvDetails, updateCandidateCv, getCandidateComparisonData, sendStartDateEmails, previewStartDateEmail, adminCreateCandidate, bulkImportCandidates, sendBulkCustomEmail, assessCandidateCv } from "@/app/actions/recruitment";
 import { bulkAssignTestToCandidates } from "@/app/actions/recruitment-tests";
 import { getAllTestGroups, bulkAssignTestGroupToCandidates, previewTestGroupEmail } from "@/app/actions/test-group";
 import { bulkScheduleInterviews, previewInterviewEmail } from "@/app/actions/interviews";
@@ -248,8 +250,25 @@ export function RecruitmentClientPage({
   const [vacancySortBy, setVacancySortBy] = useState<"date" | "candidates" | "daysLeft">("date");
   const [selectedVacancyIds, setSelectedVacancyIds] = useState<Set<number>>(new Set());
   const [emailStatuses, setEmailStatuses] = useState<Record<number, { status: string; lastSentAt: Date | null; templateName: string | null }>>({});
-  const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
-  const [cvViewerName, setCvViewerName] = useState("");
+  const [cvViewerState, setCvViewerState] = useState<{
+    isOpen: boolean;
+    candidateId: number | null;
+    candidateName: string;
+    cvUrl: string | null;
+    exists: boolean;
+    fileName: string;
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    candidateId: null,
+    candidateName: "",
+    cvUrl: null,
+    exists: false,
+    fileName: "",
+    isLoading: false,
+  });
+  const [isUploadingCv, setIsUploadingCv] = useState(false);
+  const [uploadCvFile, setUploadCvFile] = useState<File | null>(null);
   const [cvLoadingId, setCvLoadingId] = useState<number | null>(null);
   const [profileDrawerCandidate, setProfileDrawerCandidate] = useState<Candidate | null>(null);
   const [aiLoadingIds, setAiLoadingIds] = useState<Set<number>>(new Set());
@@ -640,16 +659,91 @@ export function RecruitmentClientPage({
     }
   };
 
-  const handleViewCv = async (cvUrl: string, candidateName: string) => {
-    setCvLoadingId(-1);
+  const handleViewCv = async (cvUrl: string | null, candidateName: string, candidateId?: number) => {
+    if (candidateId) setCvLoadingId(candidateId);
+    setUploadCvFile(null);
+    setCvViewerState({
+      isOpen: true,
+      candidateId: candidateId || null,
+      candidateName,
+      cvUrl: null,
+      exists: false,
+      fileName: cvUrl?.split("/").pop()?.split("?")[0] || "CV.pdf",
+      isLoading: true,
+    });
+
     try {
-      const url = await getCvDownloadUrl(cvUrl);
-      setCvViewerUrl(url);
-      setCvViewerName(candidateName);
+      if (!cvUrl) {
+        setCvViewerState(prev => ({
+          ...prev,
+          isLoading: false,
+          exists: false,
+        }));
+        return;
+      }
+      const details = await getCvDetails(cvUrl);
+      setCvViewerState(prev => ({
+        ...prev,
+        isLoading: false,
+        cvUrl: details.url,
+        exists: details.exists,
+        fileName: details.fileName || prev.fileName,
+      }));
     } catch {
-      toast.error("Failed to load CV");
+      toast.error("Gagal memverifikasi berkas CV");
+      setCvViewerState(prev => ({ ...prev, isLoading: false, exists: false }));
     } finally {
       setCvLoadingId(null);
+    }
+  };
+
+  const handleUploadCandidateCv = async () => {
+    if (!uploadCvFile || !cvViewerState.candidateId) {
+      toast.error("Pilih berkas PDF terlebih dahulu");
+      return;
+    }
+    if (uploadCvFile.type !== "application/pdf" && !uploadCvFile.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Berkas CV harus berformat PDF");
+      return;
+    }
+    if (uploadCvFile.size > 10 * 1024 * 1024) {
+      toast.error("Ukuran berkas CV maksimal 10MB");
+      return;
+    }
+
+    setIsUploadingCv(true);
+    const toastId = toast.loading("Mengunggah berkas CV ke server...");
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadCvFile);
+      formData.append("uploadTarget", "public-career-cv");
+
+      const uploadResult = await uploadFile(formData);
+      if (!uploadResult.success || !uploadResult.url) {
+        throw new Error(uploadResult.error || "Gagal mengunggah berkas");
+      }
+
+      const updateResult = await updateCandidateCv(cvViewerState.candidateId, uploadResult.url);
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || "Gagal memperbarui data kandidat");
+      }
+
+      const newUrl = uploadResult.url;
+      setCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: newUrl } : c));
+      setPaginatedCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: newUrl } : c));
+
+      toast.success("Berkas CV berhasil diperbarui & disimpan!", { id: toastId });
+      setUploadCvFile(null);
+      setCvViewerState(prev => ({
+        ...prev,
+        cvUrl: newUrl,
+        exists: true,
+        fileName: uploadCvFile.name,
+      }));
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal memperbarui berkas CV", { id: toastId });
+    } finally {
+      setIsUploadingCv(false);
     }
   };
 
@@ -1665,7 +1759,7 @@ export function RecruitmentClientPage({
                           <TableCell className="sticky right-0 bg-white px-2 text-right shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
                             <div className="flex justify-end gap-1">
                               {candidate.cvUrl ? (
-                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id} title="View CV">
+                                <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName, candidate.id)} disabled={cvLoadingId === candidate.id} title="View CV">
                                   {cvLoadingId === candidate.id ? <span className="w-3 h-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <IconFileText className="w-3.5 h-3.5" />}
                                 </Button>
                               ) : null}
@@ -2258,7 +2352,7 @@ export function RecruitmentClientPage({
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
                             {candidate.cvUrl ? (
-                              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName)} disabled={cvLoadingId === candidate.id} title="View CV">
+                              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => handleViewCv(candidate.cvUrl, candidate.fullName, candidate.id)} disabled={cvLoadingId === candidate.id} title="View CV">
                                 {cvLoadingId === candidate.id ? <span className="w-3 h-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <IconFileText className="w-3.5 h-3.5" />}
                               </Button>
                             ) : null}
@@ -2475,36 +2569,163 @@ export function RecruitmentClientPage({
     </Dialog>
 
     {/* CV Viewer Dialog */}
-    <Dialog open={!!cvViewerUrl} onOpenChange={(open) => { if (!open) setCvViewerUrl(null); }}>
-      <DialogContent className="w-[95vw] h-[95vh] max-w-none p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
-        <DialogHeader className="px-6 py-3 border-b shrink-0">
-          <DialogTitle>CV / Resume — {cvViewerName}</DialogTitle>
+    <Dialog
+      open={cvViewerState.isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          setCvViewerState(prev => ({ ...prev, isOpen: false }));
+          setUploadCvFile(null);
+        }
+      }}
+    >
+      <DialogContent className="w-[95vw] h-[95vh] max-w-6xl p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
+        <DialogHeader className="px-6 py-3 border-b shrink-0 flex flex-row items-center justify-between">
+          <div>
+            <DialogTitle className="text-base font-semibold">
+              CV / Resume — {cvViewerState.candidateName}
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate max-w-md">
+              {cvViewerState.fileName || "CV Document"}
+            </p>
+          </div>
         </DialogHeader>
-        <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
-          {cvViewerUrl ? (
+
+        <div className="flex-1 overflow-hidden bg-muted/20 relative flex flex-col items-center justify-center" style={{ minHeight: 0, flex: '1 1 0%' }}>
+          {cvViewerState.isLoading ? (
+            <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground p-8">
+              <IconLoader2 className="w-8 h-8 animate-spin text-primary" />
+              <p className="text-sm font-medium">Memverifikasi & memuat berkas CV...</p>
+            </div>
+          ) : cvViewerState.exists && cvViewerState.cvUrl ? (
             <object
-              data={cvViewerUrl}
+              data={cvViewerState.cvUrl}
               type="application/pdf"
               className="w-full h-full border-0"
             >
               <iframe
-                src={cvViewerUrl}
+                src={cvViewerState.cvUrl}
                 className="w-full h-full border-0"
                 style={{ height: '100%', minHeight: 0 }}
-                title={`CV of ${cvViewerName}`}
+                title={`CV of ${cvViewerState.candidateName}`}
               />
             </object>
           ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+            <div className="p-6 max-w-lg w-full">
+              <div className="bg-card border rounded-xl shadow-xs p-6 space-y-4 text-center">
+                <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+                  <IconFileX className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Berkas CV Tidak Ditemukan (404)</h3>
+                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    Berkas CV untuk <strong className="text-foreground">{cvViewerState.candidateName}</strong> tidak ditemukan di penyimpanan server (kemungkinan berkas lama hilang saat redeploy container atau unggahan belum tersimpan ke S3). Anda dapat mengunggah berkas CV pengganti (PDF) di bawah ini.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-dashed">
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      id="cv-reupload-input"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) setUploadCvFile(f);
+                      }}
+                    />
+                    <label
+                      htmlFor="cv-reupload-input"
+                      className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/40 transition-colors border-border/80"
+                    >
+                      <IconUpload className="w-6 h-6 text-muted-foreground mb-1" />
+                      <span className="text-xs font-semibold text-primary">
+                        {uploadCvFile ? uploadCvFile.name : "Pilih Berkas PDF CV Baru"}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground mt-0.5">
+                        {uploadCvFile ? `${(uploadCvFile.size / 1024 / 1024).toFixed(2)} MB` : "Maksimal 10MB • Format PDF"}
+                      </span>
+                    </label>
+
+                    {uploadCvFile && (
+                      <Button
+                        type="button"
+                        onClick={handleUploadCandidateCv}
+                        disabled={isUploadingCv}
+                        className="w-full h-9 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+                      >
+                        {isUploadingCv ? (
+                          <>
+                            <IconLoader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Menyimpan CV...
+                          </>
+                        ) : (
+                          <>
+                            <IconUpload className="w-4 h-4 mr-2" />
+                            Simpan & Tampilkan CV
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
-        <DialogFooter className="px-6 py-3 border-t shrink-0">
-          <Button variant="outline" onClick={() => setCvViewerUrl(null)}>Close</Button>
-          {cvViewerUrl && (
-            <Button asChild variant="default">
-              <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
+
+        <DialogFooter className="px-6 py-3 border-t shrink-0 flex items-center justify-between sm:justify-between">
+          <div className="flex items-center gap-2">
+            {cvViewerState.exists && cvViewerState.candidateId && (
+              <>
+                <input
+                  type="file"
+                  id="cv-replace-input"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      const formData = new FormData();
+                      formData.append("file", f);
+                      formData.append("uploadTarget", "public-career-cv");
+                      const toastId = toast.loading("Mengganti berkas CV...");
+                      try {
+                        const upRes = await uploadFile(formData);
+                        if (!upRes.success || !upRes.url) throw new Error(upRes.error || "Upload gagal");
+                        await updateCandidateCv(cvViewerState.candidateId!, upRes.url);
+                        setCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: upRes.url } : c));
+                        setPaginatedCandidates(prev => prev.map(c => c.id === cvViewerState.candidateId ? { ...c, cvUrl: upRes.url } : c));
+                        setCvViewerState(prev => ({ ...prev, cvUrl: upRes.url, fileName: f.name, exists: true }));
+                        toast.success("Berkas CV berhasil diganti!", { id: toastId });
+                      } catch (err: any) {
+                        toast.error(err?.message || "Gagal mengganti CV", { id: toastId });
+                      }
+                    }
+                  }}
+                />
+                <Button asChild variant="outline" size="sm" className="h-9 cursor-pointer">
+                  <label htmlFor="cv-replace-input">
+                    <IconUpload className="w-4 h-4 mr-1.5" />
+                    Ganti Berkas CV
+                  </label>
+                </Button>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="h-9" onClick={() => setCvViewerState(prev => ({ ...prev, isOpen: false }))}>
+              Close
             </Button>
-          )}
+            {cvViewerState.exists && cvViewerState.cvUrl && (
+              <Button asChild variant="default" className="h-9">
+                <a href={cvViewerState.cvUrl} target="_blank" rel="noreferrer">
+                  <IconExternalLink className="w-4 h-4 mr-1.5" />
+                  Open in New Tab
+                </a>
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

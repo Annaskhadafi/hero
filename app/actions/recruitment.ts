@@ -1950,6 +1950,76 @@ export async function getCvDownloadUrl(cvUrl: string | null) {
   return (await getS3ObjectReadUrl(cvUrl, 3600)) || resolved;
 }
 
+export async function getCvDetails(cvUrl: string | null): Promise<{
+  url: string | null;
+  exists: boolean;
+  fileName: string;
+}> {
+  if (!cvUrl) {
+    return { url: null, exists: false, fileName: "" };
+  }
+  const { resolveUploadUrl } = await import("@/lib/resolve-upload-url");
+  const { checkS3ObjectExists, getS3ObjectReadUrl, isS3UploadConfigured } = await import("@/lib/s3-storage");
+  const resolved = resolveUploadUrl(cvUrl);
+  const cleanUrl = resolved || cvUrl;
+  const fileName = cleanUrl.split("/").pop()?.split("?")[0] || "CV.pdf";
+
+  // 1. Check local disk candidates
+  const publicDir = path.join(process.cwd(), "public");
+  const customUploadsDir = process.env.UPLOADS_DIR || "/mnt/data/one-chitra/uploads";
+  const cleanRelative = cleanUrl.replace(/^\/api\/uploads\//, "").replace(/^\/+/, "");
+  const localCandidates = [
+    path.join(publicDir, "uploads", cleanRelative),
+    path.join(publicDir, "uploads", fileName),
+    path.join(publicDir, cleanRelative),
+    path.join(publicDir, fileName),
+    path.join(customUploadsDir, cleanRelative),
+    path.join(customUploadsDir, fileName),
+    path.join(customUploadsDir, "public-career-cv", fileName),
+  ];
+
+  let exists = localCandidates.some((p) => fs.existsSync(p));
+
+  // 2. If not on local disk, check S3
+  if (!exists && isS3UploadConfigured()) {
+    exists = await checkS3ObjectExists(cvUrl);
+  }
+
+  let finalUrl = resolved;
+  if (!resolved || !resolved.startsWith("/api/uploads/")) {
+    finalUrl = (await getS3ObjectReadUrl(cvUrl, 3600)) || resolved;
+  }
+
+  return {
+    url: finalUrl,
+    exists,
+    fileName,
+  };
+}
+
+export async function updateCandidateCv(candidateId: number, cvUrl: string) {
+  if (!candidateId || !cvUrl) {
+    return { success: false, error: "Candidate ID dan berkas CV wajib diisi." };
+  }
+
+  const [updated] = await db
+    .update(hcCandidates)
+    .set({
+      cvUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(hcCandidates.id, candidateId))
+    .returning();
+
+  if (!updated) {
+    return { success: false, error: "Kandidat tidak ditemukan." };
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);
+  return { success: true, candidate: updated };
+}
+
 // ─── AI Assessment (OpenAI & 9router Compatible) ──────────────────────────
 
 function getRecruitmentAiConfig() {

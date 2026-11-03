@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { serverEnv } from '@/lib/server-env'
 
@@ -261,51 +261,41 @@ export async function uploadAnyFileToS3(
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const client = getS3Client()
+  const maxAttempts = 3
+  let lastError: any = null
 
-  try {
-    await client.send(
-      new PutObjectCommand({
-        Bucket: serverEnv.s3BucketName,
-        Key: key,
-        Body: buffer,
-        ContentLength: buffer.length,
-        ContentType: contentType,
-        CacheControl: 'public, max-age=31536000, immutable',
-      }),
-      { abortSignal }
-    )
-  } catch (putError: any) {
-    const isAborted =
-      abortSignal?.aborted ||
-      putError?.name === 'AbortError' ||
-      putError?.name === 'TimeoutError' ||
-      String(putError?.message || '').toLowerCase().includes('abort') ||
-      String(putError?.message || '').toLowerCase().includes('timeout');
-
-    if (!isAborted) {
-      try {
-        await client.send(
-          new PutObjectCommand({
-            Bucket: serverEnv.s3BucketName,
-            Key: key,
-            Body: buffer,
-            ContentLength: buffer.length,
-            ContentType: contentType,
-            CacheControl: 'public, max-age=31536000, immutable',
-          })
-        );
-      } catch {
-        throw putError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const putSignal = abortSignal || AbortSignal.timeout(60_000)
+      await client.send(
+        new PutObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: key,
+          Body: buffer,
+          ContentLength: buffer.length,
+          ContentType: contentType,
+          CacheControl: 'public, max-age=31536000, immutable',
+        }),
+        { abortSignal: putSignal }
+      )
+      return {
+        key,
+        url: buildS3PublicUrl(key),
       }
-    } else {
-      throw putError;
+    } catch (putError: any) {
+      lastError = putError
+      const isAbortedByUser = abortSignal?.aborted
+      if (isAbortedByUser || attempt === maxAttempts) {
+        break
+      }
+      console.warn(
+        `[uploadAnyFileToS3] Attempt ${attempt}/${maxAttempts} failed (${putError?.message || putError}), retrying in ${attempt * 500}ms...`
+      )
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500))
     }
   }
 
-  return {
-    key,
-    url: buildS3PublicUrl(key),
-  }
+  throw lastError
 }
 
 export async function createDirectS3UploadUrl(
@@ -419,6 +409,9 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
         : `upload/${bareFilename}`,
       `upload/${bareFilename}`,
       `uploads/${bareFilename}`,
+      `uploads/${cleanKey}`,
+      `upload/${cleanKey}`,
+      `public-career-cv/${bareFilename}`,
       `rfr/${bareFilename}`,
       bareFilename,
     ])
@@ -459,6 +452,66 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
   }
 
   return null
+}
+
+export async function checkS3ObjectExists(objectUrl: string | null): Promise<boolean> {
+  if (!objectUrl || !isS3UploadConfigured()) {
+    return false
+  }
+
+  const primaryKey =
+    resolveS3ObjectKey(objectUrl) ||
+    (!objectUrl.includes('://')
+      ? objectUrl
+          .trim()
+          .replace(/^\/+/, '')
+          .replace(/^api\/uploads\//, '')
+      : null)
+  if (!primaryKey) {
+    return false
+  }
+
+  const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
+  const bareFilename = cleanKey.split('/').pop() || cleanKey
+
+  const candidateKeys = Array.from(
+    new Set([
+      cleanKey,
+      cleanKey.startsWith('upload/')
+        ? cleanKey.replace(/^upload\//, 'uploads/')
+        : `upload/${bareFilename}`,
+      `upload/${bareFilename}`,
+      `uploads/${bareFilename}`,
+      `uploads/${cleanKey}`,
+      `upload/${cleanKey}`,
+      `public-career-cv/${bareFilename}`,
+      `rfr/${bareFilename}`,
+      bareFilename,
+    ])
+  )
+
+  const client = getS3Client()
+
+  for (let i = 0; i < candidateKeys.length; i++) {
+    const candidateKey = candidateKeys[i]
+    const timeoutMs = i === 0 ? 5_000 : 2_000
+    try {
+      await client.send(
+        new HeadObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: candidateKey,
+        }),
+        { abortSignal: AbortSignal.timeout(timeoutMs) }
+      )
+      return true
+    } catch (err: any) {
+      if (err?.name !== 'NoSuchKey' && err?.name !== 'NotFound') {
+        // Continue checking next candidate key
+      }
+    }
+  }
+
+  return false
 }
 
 export function isS3UploadConfigured() {

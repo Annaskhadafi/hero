@@ -283,11 +283,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   }
 
   // 1. Check local public/uploads directory candidates
+  const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
   const candidateLocalPaths = [
     join(publicDir, 'uploads', relativePath),
     join(publicDir, 'uploads', fileName),
     join(publicDir, relativePath),
     join(publicDir, fileName),
+    join(customUploadsDir, relativePath),
+    join(customUploadsDir, fileName),
+    join(customUploadsDir, 'public-career-cv', fileName),
   ]
 
   for (const localPath of candidateLocalPaths) {

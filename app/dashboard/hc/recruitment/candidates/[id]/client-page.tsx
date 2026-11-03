@@ -6,7 +6,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer, Tooltip as RechartsTooltip } from "recharts";
-import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles, IconAward, IconUserCheck, IconPlus } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarEvent, IconCheck, IconX, IconVideo, IconMapPin, IconStethoscope, IconLink, IconCopy, IconMail, IconFileText, IconEye, IconSend, IconMailForward, IconRefresh, IconSparkles, IconAward, IconUserCheck, IconPlus, IconFileX, IconLoader2, IconUpload, IconExternalLink } from "@tabler/icons-react";
 
 import { AdminPageShell } from "@/components/admin-page-shell";
 import { Button } from "@/components/ui/button";
@@ -121,7 +121,8 @@ function ApplicationFormAnswer({ text }: { text: string | null | undefined }) {
 import { scheduleCandidateInterview, updateInterviewStatus, previewInterviewEmail } from "@/app/actions/interviews";
 import { scheduleCandidateMcu, recordMcuResult, uploadMcuResultFile, previewMcuEmail } from "@/app/actions/mcu";
 import { generateOnboardingToken } from "@/app/actions/onboarding";
-import { hireAndCreateEmployee, getCvDownloadUrl, createCandidatePanelEvaluation, updateCandidate, resendEmailFromLog, assessCandidateCv } from "@/app/actions/recruitment";
+import { hireAndCreateEmployee, getCvDownloadUrl, getCvDetails, updateCandidateCv, createCandidatePanelEvaluation, updateCandidate, resendEmailFromLog, assessCandidateCv } from "@/app/actions/recruitment";
+import { uploadFile } from "@/app/actions/upload";
 import { resendTestAssignmentEmail } from "@/app/actions/recruitment-tests";
 import { getActiveMcuClinics } from "@/app/actions/hc-mcu-clinics";
 import { saveOffering, sendOfferingEmail, respondToOffering } from "@/app/actions/offering";
@@ -219,7 +220,22 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [isHireOpen, setIsHireOpen] = useState(false);
   const [isHiring, setIsHiring] = useState(false);
   const [hireStartDate, setHireStartDate] = useState("");
-  const [cvViewerUrl, setCvViewerUrl] = useState<string | null>(null);
+  const [currentCvUrl, setCurrentCvUrl] = useState<string | null>(candidate.cvUrl || null);
+  const [cvViewerState, setCvViewerState] = useState<{
+    isOpen: boolean;
+    url: string | null;
+    exists: boolean;
+    fileName: string;
+    isLoading: boolean;
+  }>({
+    isOpen: false,
+    url: null,
+    exists: false,
+    fileName: candidate.cvUrl?.split("/").pop()?.split("?")[0] || "CV.pdf",
+    isLoading: false,
+  });
+  const [isUploadingCv, setIsUploadingCv] = useState(false);
+  const [uploadCvFile, setUploadCvFile] = useState<File | null>(null);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [offeringPdfUrl, setOfferingPdfUrl] = useState<string | null>(null);
   const [offeringPdfLoading, setOfferingPdfLoading] = useState(false);
@@ -311,15 +327,86 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
   const [isMcuResultSubmitting, setIsMcuResultSubmitting] = useState(false);
 
   const handleViewCv = async () => {
-    if (!candidate.cvUrl) return;
+    setUploadCvFile(null);
+    setCvViewerState({
+      isOpen: true,
+      url: null,
+      exists: false,
+      fileName: currentCvUrl?.split("/").pop()?.split("?")[0] || "CV.pdf",
+      isLoading: true,
+    });
     setCvLoading(true);
+
     try {
-      const url = await getCvDownloadUrl(candidate.cvUrl);
-      setCvViewerUrl(url);
+      if (!currentCvUrl) {
+        setCvViewerState(prev => ({ ...prev, isLoading: false, exists: false }));
+        return;
+      }
+      const details = await getCvDetails(currentCvUrl);
+      setCvViewerState(prev => ({
+        ...prev,
+        isLoading: false,
+        url: details.url,
+        exists: details.exists,
+        fileName: details.fileName || prev.fileName,
+      }));
     } catch {
-      toast.error("Failed to load CV");
+      toast.error("Gagal memverifikasi berkas CV");
+      setCvViewerState(prev => ({ ...prev, isLoading: false, exists: false }));
     } finally {
       setCvLoading(false);
+    }
+  };
+
+  const handleUploadCandidateCv = async (fileToUpload?: File) => {
+    const file = fileToUpload || uploadCvFile;
+    if (!file) {
+      toast.error("Pilih berkas PDF terlebih dahulu");
+      return;
+    }
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Berkas CV harus berformat PDF");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Ukuran berkas CV maksimal 10MB");
+      return;
+    }
+
+    setIsUploadingCv(true);
+    const toastId = toast.loading("Mengunggah berkas CV ke server...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("uploadTarget", "public-career-cv");
+
+      const uploadResult = await uploadFile(formData);
+      if (!uploadResult.success || !uploadResult.url) {
+        throw new Error(uploadResult.error || "Gagal mengunggah berkas");
+      }
+
+      const updateResult = await updateCandidateCv(candidate.id, uploadResult.url);
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || "Gagal memperbarui data kandidat");
+      }
+
+      const newUrl = uploadResult.url;
+      setCurrentCvUrl(newUrl);
+      setUploadCvFile(null);
+      setCvViewerState(prev => ({
+        ...prev,
+        isOpen: true,
+        url: newUrl,
+        exists: true,
+        fileName: file.name,
+        isLoading: false,
+      }));
+
+      toast.success("Berkas CV berhasil diperbarui & disimpan!", { id: toastId });
+    } catch (err: any) {
+      toast.error(err?.message || "Gagal memperbarui berkas CV", { id: toastId });
+    } finally {
+      setIsUploadingCv(false);
     }
   };
 
@@ -658,7 +745,7 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
               Edit
             </Button>
             <Badge variant="secondary" className="text-sm px-3 py-1">{candidate.currentStage}</Badge>
-            {candidate.cvUrl && (
+            {currentCvUrl && (
               <Button variant="outline" size="sm" onClick={handleViewCv} disabled={cvLoading}>
                 <IconFileText className="w-4 h-4 mr-2" />
                 View CV
@@ -923,14 +1010,32 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
                   <CardTitle>CV / Resume</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {candidate.cvUrl ? (
-                    <Button variant="outline" onClick={handleViewCv} disabled={cvLoading}>
-                      <IconFileText className="w-4 h-4 mr-2" />
-                      {cvLoading ? "Loading..." : "View CV Document"}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {currentCvUrl ? (
+                      <Button variant="outline" className="h-9" onClick={handleViewCv} disabled={cvLoading}>
+                        <IconFileText className="w-4 h-4 mr-2" />
+                        {cvLoading ? "Loading..." : "View CV Document"}
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground mr-2">Belum ada berkas CV</p>
+                    )}
+                    <input
+                      type="file"
+                      id="candidate-detail-cv-upload"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUploadCandidateCv(f);
+                      }}
+                    />
+                    <Button asChild variant="outline" size="sm" className="h-9 cursor-pointer">
+                      <label htmlFor="candidate-detail-cv-upload">
+                        <IconUpload className="w-4 h-4 mr-1.5" />
+                        {currentCvUrl ? "Ganti Berkas CV" : "Unggah Berkas CV"}
+                      </label>
                     </Button>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No CV uploaded</p>
-                  )}
+                  </div>
                 </CardContent>
               </Card>
 
@@ -2642,36 +2747,145 @@ export function CandidateDetailClientPage({ candidate, interviews, mcuRecords, e
       </Dialog>
 
       {/* CV Viewer Dialog */}
-      <Dialog open={!!cvViewerUrl} onOpenChange={(open) => { if (!open) setCvViewerUrl(null); }}>
-        <DialogContent className="w-[95vw] h-[95vh] max-w-none p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
-          <DialogHeader className="px-6 py-3 border-b shrink-0">
-            <DialogTitle>CV / Resume — {candidate.fullName}</DialogTitle>
+      <Dialog
+        open={cvViewerState.isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCvViewerState(prev => ({ ...prev, isOpen: false }));
+            setUploadCvFile(null);
+          }
+        }}
+      >
+        <DialogContent className="w-[95vw] h-[95vh] max-w-6xl p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '95vh' }}>
+          <DialogHeader className="px-6 py-3 border-b shrink-0 flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle className="text-base font-semibold">CV / Resume — {candidate.fullName}</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate max-w-md">
+                {cvViewerState.fileName || "CV Document"}
+              </p>
+            </div>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden bg-muted/20" style={{ minHeight: 0, flex: '1 1 0%' }}>
-            {cvViewerUrl ? (
+
+          <div className="flex-1 overflow-hidden bg-muted/20 relative flex flex-col items-center justify-center" style={{ minHeight: 0, flex: '1 1 0%' }}>
+            {cvViewerState.isLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground p-8">
+                <IconLoader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm font-medium">Memverifikasi & memuat berkas CV...</p>
+              </div>
+            ) : cvViewerState.exists && cvViewerState.url ? (
               <object
-                data={cvViewerUrl}
+                data={cvViewerState.url}
                 type="application/pdf"
                 className="w-full h-full border-0"
               >
                 <iframe
-                  src={cvViewerUrl}
+                  src={cvViewerState.url}
                   className="w-full h-full border-0"
                   style={{ height: '100%', minHeight: 0 }}
                   title={`CV of ${candidate.fullName}`}
                 />
               </object>
             ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>
+              <div className="p-6 max-w-lg w-full">
+                <div className="bg-card border rounded-xl shadow-xs p-6 space-y-4 text-center">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto border border-amber-500/20">
+                    <IconFileX className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-foreground">Berkas CV Tidak Ditemukan (404)</h3>
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                      Berkas CV untuk <strong className="text-foreground">{candidate.fullName}</strong> tidak ditemukan di penyimpanan server (kemungkinan berkas lama hilang saat redeploy container atau unggahan belum tersimpan ke S3). Anda dapat mengunggah berkas CV pengganti (PDF) di bawah ini.
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-dashed">
+                    <div className="space-y-3">
+                      <input
+                        type="file"
+                        id="candidate-detail-modal-cv-upload"
+                        accept=".pdf,application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) setUploadCvFile(f);
+                        }}
+                      />
+                      <label
+                        htmlFor="candidate-detail-modal-cv-upload"
+                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/40 transition-colors border-border/80"
+                      >
+                        <IconUpload className="w-6 h-6 text-muted-foreground mb-1" />
+                        <span className="text-xs font-semibold text-primary">
+                          {uploadCvFile ? uploadCvFile.name : "Pilih Berkas PDF CV Baru"}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground mt-0.5">
+                          {uploadCvFile ? `${(uploadCvFile.size / 1024 / 1024).toFixed(2)} MB` : "Maksimal 10MB • Format PDF"}
+                        </span>
+                      </label>
+
+                      {uploadCvFile && (
+                        <Button
+                          type="button"
+                          onClick={() => handleUploadCandidateCv()}
+                          disabled={isUploadingCv}
+                          className="w-full h-9 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+                        >
+                          {isUploadingCv ? (
+                            <>
+                              <IconLoader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Menyimpan CV...
+                            </>
+                          ) : (
+                            <>
+                              <IconUpload className="w-4 h-4 mr-2" />
+                              Simpan & Tampilkan CV
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
-          <DialogFooter className="px-6 py-3 border-t shrink-0">
-            <Button variant="outline" onClick={() => setCvViewerUrl(null)}>Close</Button>
-            {cvViewerUrl && (
-              <Button asChild variant="default">
-                <a href={cvViewerUrl} target="_blank" rel="noreferrer">Open in New Tab</a>
+
+          <DialogFooter className="px-6 py-3 border-t shrink-0 flex items-center justify-between sm:justify-between">
+            <div className="flex items-center gap-2">
+              {cvViewerState.exists && (
+                <>
+                  <input
+                    type="file"
+                    id="candidate-detail-modal-replace-cv"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleUploadCandidateCv(f);
+                    }}
+                  />
+                  <Button asChild variant="outline" size="sm" className="h-9 cursor-pointer">
+                    <label htmlFor="candidate-detail-modal-replace-cv">
+                      <IconUpload className="w-4 h-4 mr-1.5" />
+                      Ganti Berkas CV
+                    </label>
+                  </Button>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="h-9" onClick={() => setCvViewerState(prev => ({ ...prev, isOpen: false }))}>
+                Close
               </Button>
-            )}
+              {cvViewerState.exists && cvViewerState.url && (
+                <Button asChild variant="default" className="h-9">
+                  <a href={cvViewerState.url} target="_blank" rel="noreferrer">
+                    <IconExternalLink className="w-4 h-4 mr-1.5" />
+                    Open in New Tab
+                  </a>
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
