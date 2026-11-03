@@ -28,11 +28,14 @@ test('Scheduling Timesheet PDF Multi-Select Options Contract Verification', () =
   assert.match(content, /selectedPdfDocTypes\.includes\('mls_summary'\)/, 'Should check mls_summary in bulk download')
   assert.match(content, /selectedPdfDocTypes\.includes\('tu_summary'\)/, 'Should check tu_summary in bulk download')
   assert.match(content, /selectedPdfDocTypes\.includes\('overtime_record'\)/, 'Should check overtime_record in bulk download')
+
   // 4. Verify Eksternal toggle and signatures contract
   assert.match(content, /pdfUseExternalSignatures/, 'Should have pdfUseExternalSignatures state')
+  assert.match(content, /pdfExternalSignatureCount/, 'Should have pdfExternalSignatureCount state')
   assert.match(content, /toggle-external-pdf-bulk/, 'Should render bulk Eksternal toggle')
   assert.match(content, /getSummaryPdfSignatures/, 'Should have getSummaryPdfSignatures resolver')
   assert.match(content, /useExternalOnly:\s*true/, 'Should set useExternalOnly: true when Eksternal is checked')
+  assert.match(content, /externalSignatureCount:\s*pdfExternalSignatureCount/, 'Should pass externalSignatureCount to signatures')
   assert.match(content, /omitExternal:\s*true/, 'Should set omitExternal: true when Eksternal is not checked')
 })
 
@@ -42,8 +45,9 @@ test('PDF Signatures Module Source Contract Verification', () => {
 
   const content = fs.readFileSync(pdfSigPath, 'utf-8')
 
-  // Verify type has useExternalOnly and omitExternal
+  // Verify type has useExternalOnly, externalSignatureCount, and omitExternal
   assert.match(content, /useExternalOnly\?: boolean/, 'Should define useExternalOnly in PdfSignatureNames')
+  assert.match(content, /externalSignatureCount\?:/, 'Should define externalSignatureCount in PdfSignatureNames')
   assert.match(content, /omitExternal\?: boolean/, 'Should define omitExternal in PdfSignatureNames')
 
   // Verify 2 signatures logic when useExternalOnly is active
@@ -51,3 +55,11 @@ test('PDF Signatures Module Source Contract Verification', () => {
   assert.match(content, /isTwoSigners/, 'Should handle 2 signers positioning')
 })
 
+test('Overtime Record Signatures Module Contract Verification', () => {
+  const genPdfPath = path.resolve(process.cwd(), 'lib/timesheet/generate-attendance-pdf.ts')
+  assert.ok(fs.existsSync(genPdfPath), 'generate-attendance-pdf.ts must exist')
+
+  const content = fs.readFileSync(genPdfPath, 'utf-8')
+  assert.match(content, /names\.externalSignatureCount/, 'Should respect externalSignatureCount in Overtime Record')
+  assert.match(content, /isTwoSigners/, 'Should calculate isTwoSigners in drawOvertimeRecordSignatures')
+})

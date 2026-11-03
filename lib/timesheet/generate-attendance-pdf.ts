@@ -1046,12 +1046,20 @@ async function drawOvertimeRecordSignatures(
 
   let labels: [string, string][] = []
   if (names.useExternalOnly) {
+    const count = names.externalSignatureCount ?? 2
     labels = [
       ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || input.employeeName || '-'],
       ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
-      ['Approved by:', names.pjoLeader || '-'],
-      ['Diketahui oleh:', names.hrName || '-'],
     ]
+    if (count === 3) {
+      const thirdSigner = names.customSigners?.[0]
+      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
+    } else if (count >= 4) {
+      const thirdSigner = names.customSigners?.[0]
+      const fourthSigner = names.customSigners?.[1]
+      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
+      labels.push([fourthSigner?.label || 'Diketahui oleh:', fourthSigner?.name || names.hrName || '-'])
+    }
   } else {
     labels = [
       ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
@@ -1063,12 +1071,18 @@ async function drawOvertimeRecordSignatures(
 
   const LM = 45
   const printableWidth = width - LM * 2
-  const columnWidth = printableWidth / 4
-  const lineWidth = columnWidth - 18
+  const columnCount = labels.length
+  const isTwoSigners = columnCount === 2
+  const columnWidth = isTwoSigners ? 220 : printableWidth / columnCount
+  const lineWidth = isTwoSigners ? 180 : columnWidth - 18
 
-  // Draw 4 Equal Signature Columns across page width
+  // Draw Signature Columns across page width
   labels.forEach(([label, name], index) => {
-    const x = LM + index * columnWidth
+    const x = isTwoSigners
+      ? index === 0
+        ? LM
+        : width - LM - lineWidth
+      : LM + index * columnWidth
     page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
     page.drawLine({
       start: { x, y: y - 42 },

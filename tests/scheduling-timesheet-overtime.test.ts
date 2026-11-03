@@ -401,6 +401,35 @@ describe('scheduling timesheet overtime policy', () => {
     })
     expect(pdfWithEvidenceUrl).toBeInstanceOf(Uint8Array)
     expect(pdfWithEvidenceUrl.length).toBeGreaterThan(1000)
+
+    // Test Overtime Record with 2 external approvals
+    const pdfExternal2 = await generateOvertimeRecordPdf({
+      ...baseInput,
+      signatures: {
+        ...baseInput.signatures,
+        useExternalOnly: true,
+        externalSignatureCount: 2,
+        externalPreparedBy: 'Adit Prasetyo',
+        externalApprovedBy: 'Plant Group Leader AMM MIFA',
+      },
+    })
+    expect(pdfExternal2).toBeInstanceOf(Uint8Array)
+    expect(pdfExternal2.length).toBeGreaterThan(1000)
+
+    // Test Overtime Record with 3 external approvals and custom signer
+    const pdfExternal3 = await generateOvertimeRecordPdf({
+      ...baseInput,
+      signatures: {
+        ...baseInput.signatures,
+        useExternalOnly: true,
+        externalSignatureCount: 3,
+        externalPreparedBy: 'Adit Prasetyo',
+        externalApprovedBy: 'Plant Group Leader AMM MIFA',
+        customSigners: [{ label: 'Approved by (Dept Head):', name: 'Budi Santoso' }],
+      },
+    })
+    expect(pdfExternal3).toBeInstanceOf(Uint8Array)
+    expect(pdfExternal3.length).toBeGreaterThan(1000)
   })
 
   it('allows optional empty overtime intervals in site setup and validation', () => {

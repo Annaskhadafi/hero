@@ -511,6 +511,7 @@ type PdfConfig = {
   hrName: string
   externalPreparedBy?: string
   externalApprovedBy?: string
+  externalSignatureCount?: 2 | 3 | 4
   customSigners: PdfConfigSigner[]
   logoUrl: string
 }
@@ -636,6 +637,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
     hrName: '',
     externalPreparedBy: '',
     externalApprovedBy: '',
+    externalSignatureCount: 2,
     customSigners: [],
     logoUrl: '',
   },
@@ -750,6 +752,7 @@ function normalizePdfConfig(
     hrName: (cfg.hrName as string) || '',
     externalPreparedBy: (cfg.externalPreparedBy as string) || '',
     externalApprovedBy: (cfg.externalApprovedBy as string) || '',
+    externalSignatureCount: (Number(cfg.externalSignatureCount) as 2 | 3 | 4) || 2,
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
   }
@@ -1857,6 +1860,8 @@ export function SchedulingTimesheetWorkspace({
   const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
   const [pdfIncludeHse, setPdfIncludeHse] = useState<boolean>(true)
   const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
+  const [pdfExternalSignatureCount, setPdfExternalSignatureCount] = useState<2 | 3 | 4>(2)
+
   const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
     'overtime_summary',
     'msa_summary',
@@ -2022,6 +2027,13 @@ export function SchedulingTimesheetWorkspace({
   const siteConfig = useMemo(() => {
     return resolveCurrentSiteConfig(siteId)
   }, [resolveCurrentSiteConfig, siteId])
+  useEffect(() => {
+    if (siteConfig?.pdfConfig?.externalSignatureCount) {
+      setPdfExternalSignatureCount(
+        (Number(siteConfig.pdfConfig.externalSignatureCount) as 2 | 3 | 4) || 2
+      )
+    }
+  }, [siteConfig?.pdfConfig?.externalSignatureCount])
 
   const getEmployeeSiteConfig = useCallback(
     (empSiteId: number | null | undefined): SiteSchedulingConfig => {
@@ -4302,7 +4314,7 @@ export function SchedulingTimesheetWorkspace({
     setAllowanceVariables((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
-  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[]) {
+  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[] | number) {
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -6288,6 +6300,7 @@ export function SchedulingTimesheetWorkspace({
         pjoLeader: '',
         hrName: '',
         useExternalOnly: true,
+        externalSignatureCount: pdfExternalSignatureCount,
         omitExternal: false,
         logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
         customSigners: cfg.customSigners || baseSignatures.customSigners,
@@ -10271,13 +10284,40 @@ export function SchedulingTimesheetWorkspace({
 
                   {/* Alur Tanda Tangan Eksternal */}
                   <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
-                        Eksternal
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        Alur Penandatangan Eksternal (Customer / Pihak Luar)
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                          Eksternal
+                        </span>
+                        <span className="text-xs font-semibold text-slate-700">
+                          Alur Penandatangan Eksternal (Customer / Pihak Luar)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-muted-foreground mr-1">Default:</span>
+                        {([2, 3, 4] as const).map((cnt) => {
+                          const isActive = (siteConfig.pdfConfig.externalSignatureCount ?? 2) === cnt
+                          return (
+                            <button
+                              key={cnt}
+                              type="button"
+                              onClick={() => {
+                                updatePdfConfig('externalSignatureCount', cnt)
+                                setPdfExternalSignatureCount(cnt)
+                              }}
+                              className={cn(
+                                'h-6 px-2 text-[11px] font-semibold rounded transition-colors cursor-pointer border',
+                                isActive
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              )}
+                              title={`Set default ${cnt} tanda tangan untuk eksternal`}
+                            >
+                              {cnt} TTD
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
@@ -11466,10 +11506,52 @@ export function SchedulingTimesheetWorkspace({
                           <label
                             htmlFor="toggle-external-pdf-bulk"
                             className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                            title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada 4 dokumen summary"
+                            title="Gunakan alur tanda tangan eksternal pada dokumen Overtime Record & Summary"
                           >
                             Eksternal
                           </label>
+                          {pdfUseExternalSignatures && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  id="btn-external-signature-count-bulk"
+                                  className="flex items-center gap-1 border-l border-slate-200 pl-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer select-none"
+                                  title="Pilih jumlah tanda tangan / approval eksternal"
+                                >
+                                  <span>{pdfExternalSignatureCount} Approval</span>
+                                  <ChevronDown className="size-3 opacity-60" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48 text-xs">
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                  Format Approval Eksternal
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(2)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 2 && 'font-bold text-primary')}
+                                >
+                                  <span>2 Approval (Dibuat & Approved)</span>
+                                  {pdfExternalSignatureCount === 2 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(3)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 3 && 'font-bold text-primary')}
+                                >
+                                  <span>3 Approval (+ TTD Tambahan)</span>
+                                  {pdfExternalSignatureCount === 3 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(4)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 4 && 'font-bold text-primary')}
+                                >
+                                  <span>4 Approval (Lengkap 4 Kolom)</span>
+                                  {pdfExternalSignatureCount === 4 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
 
                         {/* Multi-select Dropdown Pilihan Dokumen PDF */}
@@ -12073,10 +12155,52 @@ export function SchedulingTimesheetWorkspace({
                             <label
                               htmlFor="toggle-external-pdf-summary"
                               className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                              title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada dokumen summary"
+                              title="Gunakan alur tanda tangan eksternal pada dokumen summary"
                             >
                               Eksternal
                             </label>
+                            {pdfUseExternalSignatures && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    id="btn-external-signature-count-summary"
+                                    className="flex items-center gap-1 border-l border-slate-200 pl-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer select-none"
+                                    title="Pilih jumlah tanda tangan / approval eksternal"
+                                  >
+                                    <span>{pdfExternalSignatureCount} Approval</span>
+                                    <ChevronDown className="size-3 opacity-60" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                  <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                    Format Approval Eksternal
+                                  </DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(2)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 2 && 'font-bold text-primary')}
+                                  >
+                                    <span>2 Approval (Dibuat & Approved)</span>
+                                    {pdfExternalSignatureCount === 2 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(3)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 3 && 'font-bold text-primary')}
+                                  >
+                                    <span>3 Approval (+ TTD Tambahan)</span>
+                                    {pdfExternalSignatureCount === 3 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(4)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 4 && 'font-bold text-primary')}
+                                  >
+                                    <span>4 Approval (Lengkap 4 Kolom)</span>
+                                    {pdfExternalSignatureCount === 4 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                           <Button
                             size="sm"
