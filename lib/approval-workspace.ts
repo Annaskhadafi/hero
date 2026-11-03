@@ -2692,6 +2692,7 @@ async function getDailyActivityInboxItems(
           })
           .from(dailyActivitySessionItems)
           .where(inArray(dailyActivitySessionItems.sessionId, sessionIds))
+          .orderBy(asc(employees.name))
           .orderBy(asc(dailyActivitySessionItems.id))
       : Promise.resolve([]),
     sessionIds.length > 0

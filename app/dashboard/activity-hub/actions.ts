@@ -4880,6 +4880,7 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
         .from(dailyActivitySessionItemTeamMembers)
         .innerJoin(employees, eq(dailyActivitySessionItemTeamMembers.employeeId, employees.id))
         .where(inArray(dailyActivitySessionItemTeamMembers.itemId, itemIds))
+        .orderBy(asc(employees.name))
     : []
 
   const itemTeamMap = new Map<number, Array<{ id: number; name: string; employeeSn?: string }>>()
@@ -4941,7 +4942,8 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     const dbItemTeam = itemTeamMap.get(item.id) || []
     const payloadItemTeam = parsedPayload?.itemTeamMembers || []
     const itemTeamMembers = dbItemTeam.length > 0 ? dbItemTeam : payloadItemTeam
-    const itemTeamMemberIds = itemTeamMembers.map((m: any) => Number(m.id)).filter(Boolean)
+    itemTeamMembers.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }))
+    const itemTeamMemberIds = itemTeamMembers.map((m: any) => Number(m.id || m.employeeId)).filter(Boolean)
     const itemTeamMembersSummary = itemTeamMembers.map((m: any) => m.name).filter(Boolean).join(', ') || parsedPayload?.itemTeamMembersSummary || ''
 
     return {
@@ -6435,6 +6437,15 @@ export async function saveDailyActivityApprovalForm(payload: {
       const validLibSet = new Set(validLibRows.map((r) => r.id))
       const validRouteSet = new Set(validRouteRows.map((r) => r.id))
 
+      const sessionTeamEmployees = Array.isArray(payload.teamMemberEmployeeIds) && payload.teamMemberEmployeeIds.length > 0
+        ? await db
+            .select({ id: employees.id, name: employees.name, employeeSn: employees.employeeSn })
+            .from(employees)
+            .where(inArray(employees.id, payload.teamMemberEmployeeIds))
+            .orderBy(asc(employees.name))
+        : []
+      const sessionTeamEmployeeMap = new Map(sessionTeamEmployees.map((e) => [e.id, e]))
+
       // Update or insert items
       for (let idx = 0; idx < payload.items.length; idx++) {
         const item = payload.items[idx]
@@ -6480,17 +6491,31 @@ export async function saveDailyActivityApprovalForm(payload: {
             ])
           : null
 
-        const rawItemMemberIds: number[] = Array.isArray((item as any).itemTeamMemberIds)
+        let rawItemMemberIds: number[] = Array.isArray((item as any).itemTeamMemberIds)
           ? (item as any).itemTeamMemberIds
               .map(Number)
               .filter((id: number) => !allowedTeamIds || allowedTeamIds.has(id))
           : []
-        const rawItemMembers: any[] = Array.isArray((item as any).itemTeamMembers)
-          ? (item as any).itemTeamMembers.filter(
-              (m: any) => !allowedTeamIds || allowedTeamIds.has(Number(m.id || m.employeeId))
-            )
-          : []
-        const itemTeamSummary = rawItemMembers.map((m: any) => m.name).filter(Boolean).join(', ')
+
+        // If session team is revised/provided, synchronize items that had the session team
+        if (Array.isArray(payload.teamMemberEmployeeIds) && payload.teamMemberEmployeeIds.length > 0) {
+          if (rawItemMemberIds.length === 0 || rawItemMemberIds.length === payload.teamMemberEmployeeIds.length) {
+            rawItemMemberIds = [...payload.teamMemberEmployeeIds]
+          }
+        }
+
+        let rawItemMembers: any[] = []
+        if (rawItemMemberIds.length > 0) {
+          rawItemMembers = rawItemMemberIds
+            .map((id) => sessionTeamEmployeeMap.get(id))
+            .filter((e) => Boolean(e))
+          if (rawItemMembers.length < rawItemMemberIds.length && Array.isArray((item as any).itemTeamMembers)) {
+            const existingMap = new Map((item as any).itemTeamMembers.map((m) => [Number(m.id || m.employeeId), m]))
+            rawItemMembers = rawItemMemberIds.map((id) => sessionTeamEmployeeMap.get(id) || existingMap.get(id)).filter(Boolean)
+          }
+        }
+        rawItemMembers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }))
+        const itemTeamSummary = rawItemMembers.map((m) => m.name).filter(Boolean).join(', ')
 
         const itemPayloadJson = JSON.stringify({
           unitNumber: item.unitNumber ?? '',
