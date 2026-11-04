@@ -30,14 +30,8 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('button[title*="Split Mode"]').first()).toBeVisible()
   await expect(browser.locator('button[title*="PiP Mode"]').first()).toBeVisible()
 
-  // 7. Verify Multi-Mode (Device Offline -> Server ONNX -> Cloud API)
+  // 7. Verify Multi-Mode (Server ONNX -> Cloud API -> Device Offline)
   const multiModeBtn = browser.locator('button[title*="Mode:"]').first()
-  await expect(browser.locator('text=DEVICE').first()).toBeVisible()
-  await app.screenshot('mobile-road-hazard-device-offline-mode')
-
-  // Cycle to Server ONNX
-  await multiModeBtn.click()
-  await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=ONNX').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-server-onnx-mode')
 
@@ -47,10 +41,16 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('text=API').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-cloud-api-mode')
 
-  // Cycle back to Device Offline
+  // Cycle to Device Offline
   await multiModeBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=DEVICE').first()).toBeVisible()
+  await app.screenshot('mobile-road-hazard-device-offline-mode')
+
+  // Cycle back to Server ONNX
+  await multiModeBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  await expect(browser.locator('text=ONNX').first()).toBeVisible()
 
   // 8. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
   await app.screenshot('mobile-road-hazard-live-split-map')

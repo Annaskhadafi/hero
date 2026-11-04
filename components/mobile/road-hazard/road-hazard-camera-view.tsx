@@ -153,8 +153,8 @@ export function RoadHazardCameraView({
   }>({ latitude: null, longitude: null, speedKmh: null, accuracy: null })
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
-  // AI Dual Mode & Settings (Default: 20% sensitivity, System ONNX engine)
-  const [inferenceMode, setInferenceMode] = useState<'offline' | 'system' | 'api'>('offline')
+  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, System ONNX engine)
+  const [inferenceMode, setInferenceMode] = useState<'system' | 'offline' | 'api'>('system')
   const [scanIntervalMs, setScanIntervalMs] = useState(650)
   const [confThreshold, setConfThreshold] = useState(0.20)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
@@ -162,6 +162,7 @@ export function RoadHazardCameraView({
   const [soundAlert, setSoundAlert] = useState(true)
   const [voiceAlertEnabled, setVoiceAlertEnabled] = useState(true)
   const lastSpokenTimeRef = useRef<number>(0)
+  const fallbackNotifiedRef = useRef<boolean>(false)
 
   // Load saved AI preferences on mount
   useEffect(() => {
@@ -567,8 +568,27 @@ export function RoadHazardCameraView({
 
       // 100% Client-Side In-Browser Inference via WebAssembly (Zero Server Traffic / Offline Ready)
       if (inferenceMode === 'offline') {
-        const clientRes = await runClientDeviceHazardInference(video, confThreshold)
-        return clientRes
+        try {
+          const clientRes = await runClientDeviceHazardInference(video, confThreshold)
+          if (clientRes && clientRes.success) {
+            return clientRes
+          }
+          console.warn('[road-hazard] Device offline model failed:', clientRes?.error)
+          if (!fallbackNotifiedRef.current) {
+            fallbackNotifiedRef.current = true
+            toast.info('Model offline perangkat belum siap, beralih otomatis ke Server ONNX lokal.')
+            setInferenceMode('system')
+            try { localStorage.setItem('hero_road_hazard_mode', 'system') } catch {}
+          }
+        } catch (err) {
+          console.warn('[road-hazard] Offline inference exception:', err)
+          if (!fallbackNotifiedRef.current) {
+            fallbackNotifiedRef.current = true
+            toast.info('Model offline perangkat belum siap, beralih otomatis ke Server ONNX lokal.')
+            setInferenceMode('system')
+            try { localStorage.setItem('hero_road_hazard_mode', 'system') } catch {}
+          }
+        }
       }
 
       const snapCanvas = document.createElement('canvas')
@@ -621,20 +641,24 @@ export function RoadHazardCameraView({
     [confThreshold, currentGps, inferenceMode]
   )
 
-  // Live Auto-Scan Loop with Smart Adaptive Frequency
+  // Live Auto-Scan Loop: Runs whenever camera is active!
+  // Standby preview mode (before recording): relaxed 1200ms scan to show real-time live detection
+  // Active recording mode: adaptive 480ms - 900ms scan with GPS tracking, sound alerts, and auto-snap
   useEffect(() => {
     let intervalTimer: NodeJS.Timeout | null = null
 
-    if (cameraActive && isRecording) {
-      // Smart Adaptive Scan: adjusts dynamically based on vehicle speed
+    if (cameraActive) {
       const speed = currentGps.speedKmh ?? 0
-      let dynamicInterval = scanIntervalMs
-      if (speed <= 5) {
-        // Vehicle stopped/idle -> save CPU and bandwidth
-        dynamicInterval = Math.max(scanIntervalMs, 1200)
-      } else if (speed >= 20) {
-        // Vehicle moving fast on hauling road -> turbo scan rate
-        dynamicInterval = Math.min(scanIntervalMs, 480)
+      let dynamicInterval = 1200 // Standby preview scan
+
+      if (isRecording) {
+        if (speed <= 5) {
+          dynamicInterval = Math.max(scanIntervalMs, 1000)
+        } else if (speed >= 20) {
+          dynamicInterval = Math.min(scanIntervalMs, 480)
+        } else {
+          dynamicInterval = scanIntervalMs
+        }
       }
 
       intervalTimer = setInterval(async () => {
@@ -658,35 +682,39 @@ export function RoadHazardCameraView({
                 type: hazardName,
                 conf: topDet.confidence,
               })
-              playAlertSound()
-              speakVoiceAlert(hazardName)
-              triggerHaptic()
 
-              // Auto-snap condition
-              if (autoSnapEnabled && topDet.confidence >= autoSnapThreshold) {
-                let cleanUrl = res.photoUrl || ''
-                let annotatedUrl = res.annotatedPhotoUrl || ''
-                if (videoRef.current) {
-                  const localSnap = captureVideoSnapshot(videoRef.current, detections)
-                  cleanUrl = cleanUrl || localSnap.cleanUrl
-                  annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
-                }
+              // Only play sound and auto-save events when actively recording trip
+              if (isRecording) {
+                playAlertSound()
+                speakVoiceAlert(hazardName)
+                triggerHaptic()
 
-                const newEv: DetectedHazardEvent = {
-                  id: "auto-" + Date.now(),
-                  hazardType: topDet.hazard_type || 'Potholes',
-                  confidence: topDet.confidence,
-                  latitude: currentGps.latitude,
-                  longitude: currentGps.longitude,
-                  speedKmh: currentGps.speedKmh,
-                  photoUrl: cleanUrl,
-                  annotatedPhotoUrl: annotatedUrl,
-                  detectionBoxes: detections,
-                  timestamp: new Date().toLocaleTimeString('id-ID'),
-                  isManualSnap: false,
-                  notes: 'Auto-captured oleh AI Road Hazard',
+                // Auto-snap condition
+                if (autoSnapEnabled && topDet.confidence >= autoSnapThreshold) {
+                  let cleanUrl = res.photoUrl || ''
+                  let annotatedUrl = res.annotatedPhotoUrl || ''
+                  if (videoRef.current) {
+                    const localSnap = captureVideoSnapshot(videoRef.current, detections)
+                    cleanUrl = cleanUrl || localSnap.cleanUrl
+                    annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
+                  }
+
+                  const newEv: DetectedHazardEvent = {
+                    id: "auto-" + Date.now(),
+                    hazardType: topDet.hazard_type || 'Potholes',
+                    confidence: topDet.confidence,
+                    latitude: currentGps.latitude,
+                    longitude: currentGps.longitude,
+                    speedKmh: currentGps.speedKmh,
+                    photoUrl: cleanUrl,
+                    annotatedPhotoUrl: annotatedUrl,
+                    detectionBoxes: detections,
+                    timestamp: new Date().toLocaleTimeString('id-ID'),
+                    isManualSnap: false,
+                    notes: 'Auto-captured oleh AI Road Hazard',
+                  }
+                  setEvents((prev) => [newEv, ...prev])
                 }
-                setEvents((prev) => [newEv, ...prev])
               }
 
               setTimeout(() => setActiveAlert(null), 2200)
@@ -716,6 +744,8 @@ export function RoadHazardCameraView({
     isRecording,
     scanIntervalMs,
     currentGps.speedKmh,
+    currentGps.latitude,
+    currentGps.longitude,
     analyzeFrame,
     drawDetections,
     playAlertSound,
@@ -727,7 +757,7 @@ export function RoadHazardCameraView({
     isAnalyzing,
   ])
 
-  // Manual Snap Shoot
+  // Manual Snap Shoot - Always captures frame
   const handleSnapShoot = async () => {
     if (isSnapping) return
     setIsSnapping(true)
@@ -737,38 +767,34 @@ export function RoadHazardCameraView({
 
     try {
       const res = await analyzeFrame(true)
-      if (res?.success) {
-        const topDet = res.detections?.[0]
-        const hazardType = topDet?.hazard_type || 'Potholes'
-        const conf = topDet?.confidence || 0.85
+      const topDet = res?.detections?.[0]
+      const hazardType = topDet?.hazard_type || (res?.detections?.length ? 'Potholes' : 'Catatan Manual')
+      const conf = topDet?.confidence || 1.0
 
-        let cleanUrl = res.photoUrl || ''
-        let annotatedUrl = res.annotatedPhotoUrl || ''
-        if (videoRef.current) {
-          const localSnap = captureVideoSnapshot(videoRef.current, res.detections || [])
-          cleanUrl = cleanUrl || localSnap.cleanUrl
-          annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
-        }
-
-        const newEv: DetectedHazardEvent = {
-          id: `snap-${Date.now()}`,
-          hazardType,
-          confidence: conf,
-          latitude: currentGps.latitude,
-          longitude: currentGps.longitude,
-          speedKmh: currentGps.speedKmh,
-          photoUrl: cleanUrl,
-          annotatedPhotoUrl: annotatedUrl,
-          detectionBoxes: res.detections,
-          timestamp: new Date().toLocaleTimeString('id-ID'),
-          isManualSnap: true,
-          notes: 'Snapshot manual petugas',
-        }
-        setEvents((prev) => [newEv, ...prev])
-        toast.success(`Snapshot #${events.length + 1} tersimpan! (${hazardType} ${Math.round(conf * 100)}%)`)
-      } else {
-        toast.info('Snapshot tersimpan.')
+      let cleanUrl = res?.photoUrl || ''
+      let annotatedUrl = res?.annotatedPhotoUrl || ''
+      if (videoRef.current) {
+        const localSnap = captureVideoSnapshot(videoRef.current, res?.detections || [])
+        cleanUrl = cleanUrl || localSnap.cleanUrl
+        annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
       }
+
+      const newEv: DetectedHazardEvent = {
+        id: `snap-${Date.now()}`,
+        hazardType,
+        confidence: conf,
+        latitude: currentGps.latitude,
+        longitude: currentGps.longitude,
+        speedKmh: currentGps.speedKmh,
+        photoUrl: cleanUrl,
+        annotatedPhotoUrl: annotatedUrl,
+        detectionBoxes: res?.detections || [],
+        timestamp: new Date().toLocaleTimeString('id-ID'),
+        isManualSnap: true,
+        notes: topDet ? `Snapshot manual: ${hazardType}` : 'Snapshot manual inspeksi jalan',
+      }
+      setEvents((prev) => [newEv, ...prev])
+      toast.success(`Snapshot #${events.length + 1} tersimpan! (${hazardType}${topDet ? ` ${Math.round(conf * 100)}%` : ''})`)
     } catch {
       toast.error('Gagal mengambil snapshot.')
     } finally {
@@ -1008,7 +1034,7 @@ export function RoadHazardCameraView({
               )}
               <span className="text-white/40">•</span>
               <span className="text-emerald-400 font-mono">
-                {latencyMs ? `${latencyMs}ms` : 'Ready'}
+                {latencyMs ? `${latencyMs}ms` : 'Aktif'}
               </span>
             </div>
           </div>

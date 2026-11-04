@@ -27,6 +27,10 @@ let clientSession: any = null
 let isInitializing = false
 let initError: string | null = null
 
+export function isClientHazardModelLoading(): boolean {
+  return isInitializing
+}
+
 async function getOrtWeb(): Promise<any> {
   if (typeof window === 'undefined') {
     throw new Error('Client inference engine must run in browser environment.')
@@ -39,6 +43,7 @@ async function getOrtWeb(): Promise<any> {
       if (ortModule.env?.wasm) {
         ortModule.env.wasm.wasmPaths = '/onnxruntime-web/'
         ortModule.env.wasm.numThreads = 1
+        ortModule.env.wasm.proxy = false
       }
     } catch (err) {
       console.warn('[client-hazard-ai] Failed importing onnxruntime-web:', err)
@@ -53,12 +58,13 @@ async function getOrtWeb(): Promise<any> {
  * Initializes and warms up the offline AI model in the client's browser memory.
  * Caches model instance so subsequent frames run with sub-50ms latency.
  */
-export async function initializeClientHazardModel(): Promise<boolean> {
+export async function initializeClientHazardModel(timeoutMs = 12000): Promise<boolean> {
   if (clientSession) return true
   if (isInitializing) {
-    // Wait for ongoing initialization
-    while (isInitializing) {
-      await new Promise((resolve) => setTimeout(resolve, 100))
+    let elapsed = 0
+    while (isInitializing && elapsed < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      elapsed += 150
     }
     return !!clientSession
   }
@@ -70,19 +76,29 @@ export async function initializeClientHazardModel(): Promise<boolean> {
     const ort = await getOrtWeb()
     const modelUrl = '/models/hazardyolo26n-4.onnx'
 
-    // Try webgl first for hardware acceleration; fallback to wasm CPU
-    try {
-      clientSession = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['webgl', 'wasm'],
-        graphOptimizationLevel: 'all',
-      })
-    } catch (gpuErr) {
-      console.info('[client-hazard-ai] WebGL EP failed, falling back to WASM CPU:', gpuErr)
-      clientSession = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all',
-      })
-    }
+    const createPromise = (async () => {
+      try {
+        return await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['webgl', 'wasm'],
+          graphOptimizationLevel: 'all',
+        })
+      } catch (gpuErr) {
+        console.info('[client-hazard-ai] WebGL EP failed, falling back to WASM CPU:', gpuErr)
+        return await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['wasm'],
+          graphOptimizationLevel: 'all',
+        })
+      }
+    })()
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Waktu inisialisasi model di memori perangkat habis (timeout).')),
+        timeoutMs
+      )
+    )
+
+    clientSession = await Promise.race([createPromise, timeoutPromise])
 
     // Warm-up inference with blank dummy input to prime JIT compiler
     const dummyTensor = new ort.Tensor('float32', new Float32Array(1 * 3 * 640 * 640), [1, 3, 640, 640])
@@ -97,6 +113,11 @@ export async function initializeClientHazardModel(): Promise<boolean> {
   } finally {
     isInitializing = false
   }
+}
+
+if (typeof window !== 'undefined') {
+  ;(window as any).__testHazardInit = initializeClientHazardModel
+  ;(window as any).__testHazardInference = runClientDeviceHazardInference
 }
 
 export function isClientHazardModelReady(): boolean {

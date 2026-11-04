@@ -17,9 +17,9 @@ import {
   Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   HeroDataTable,
-  type ColumnDef,
   HeroKpiCard,
   HeroStatusBadge,
   HeroDetailModal,
@@ -156,7 +156,6 @@ export function RoadHazardDesktopClient({
         return (
           <HeroStatusBadge
             status={statusMap[sev] || 'neutral'}
-            label={sev}
           />
         )
       },
@@ -171,28 +170,28 @@ export function RoadHazardDesktopClient({
           title="Total Sesi Inspeksi"
           value={totalSessions}
           description="Sesi perekaman trip jalan hauling"
-          icon={Video}
+          icon={<Video className="size-5" />}
           tone="blue"
         />
         <HeroKpiCard
           title="Lubang Terdeteksi"
           value={totalPotholes}
           description="Potholes berisiko merusak ban"
-          icon={AlertTriangle}
+          icon={<AlertTriangle className="size-5" />}
           tone="rose"
         />
         <HeroKpiCard
           title="Jalan Keriting"
           value={totalCorrugation}
           description="Corrugation mengurangi traksi"
-          icon={ShieldAlert}
+          icon={<ShieldAlert className="size-5" />}
           tone="amber"
         />
         <HeroKpiCard
           title="Alur Ambles (Ruts)"
           value={totalRuts}
           description="Ruts potensi slip unit muatan"
-          icon={Car}
+          icon={<Car className="size-5" />}
           tone="cyan"
         />
       </div>
@@ -230,8 +229,7 @@ export function RoadHazardDesktopClient({
         data={sessions}
         columns={columns}
         searchPlaceholder="Cari kode sesi, site, jalur..."
-        searchColumn="sessionCode"
-        onRowClick={(row) => {
+        onRowClick={(row: RoadHazardSessionRow) => {
           setSelectedSession(row)
           setDetailModalOpen(true)
         }}
@@ -239,7 +237,7 @@ export function RoadHazardDesktopClient({
           {
             label: 'Lihat Detail Sesi',
             icon: Eye,
-            onClick: (row) => {
+            onClick: (row: RoadHazardSessionRow) => {
               setSelectedSession(row)
               setDetailModalOpen(true)
             },
@@ -253,8 +251,8 @@ export function RoadHazardDesktopClient({
           open={detailModalOpen}
           onOpenChange={setDetailModalOpen}
           title={`Detail Sesi: ${selectedSession.sessionCode}`}
-          status={<HeroStatusBadge status={selectedSession.severityLevel === 'CRITICAL' || selectedSession.severityLevel === 'HIGH' ? 'destructive' : 'success'} label={selectedSession.severityLevel} />}
-          description={`Inspeksi jalur ${selectedSession.roadSection} di ${selectedSession.siteName}`}
+          statusBadge={<HeroStatusBadge status={selectedSession.severityLevel === 'CRITICAL' || selectedSession.severityLevel === 'HIGH' ? 'destructive' : 'success'} />}
+          subtitle={`Inspeksi jalur ${selectedSession.roadSection} di ${selectedSession.siteName}`}
         >
           <div className="space-y-4 py-2 text-xs">
             <div className="grid grid-cols-2 gap-3 rounded-lg border border-border/70 p-3 bg-muted/20">
