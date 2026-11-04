@@ -475,5 +475,109 @@ describe('scheduling timesheet overtime policy', () => {
     expect(errors.length).toBeGreaterThan(0)
     expect(errors[0]).toContain('jam mulai/selesai yang tidak lengkap')
   })
+
+  it('calculates actual overtime on off-days when requireSpl is false without needing SPL', () => {
+    const offConfigNoSpl: SiteOvertimeConfig = {
+      ...activeConfig,
+      requireSpl: false,
+      hariLibur: {
+        dayShift: [],
+        nightShift: [],
+      },
+    }
+    const result = calculateConfiguredOvertime({
+      config: offConfigNoSpl,
+      dayKey: 'hariLibur',
+      shiftCode: 'DS',
+      workDate: '2026-10-10',
+      clockIn: '10:13',
+      clockOut: '18:14',
+    })
+    expect(result.totalHours).toBeCloseTo(8.016, 2)
+    expect(result.unauthorizedMinutes).toBe(0)
+    expect(result.intervals.length).toBe(1)
+    expect(result.intervals[0].start).toBe('10:13')
+    expect(result.intervals[0].end).toBe('18:14')
+  })
+
+  it('includes additional 1 hour overtime when requireSpl is false without SPL', () => {
+    const regularConfigNoSpl: SiteOvertimeConfig = {
+      ...activeConfig,
+      requireSpl: false,
+    }
+    const result = calculateConfiguredOvertime({
+      config: regularConfigNoSpl,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-10-06',
+      clockIn: '06:00',
+      clockOut: '19:00',
+    })
+    expect(result.totalHours).toBe(5)
+    expect(result.unauthorizedMinutes).toBe(0)
+  })
+
+  it('renders actual off-day overtime and extended overtime +1 hour in Overtime Record PDF', async () => {
+    const { generateOvertimeRecordPdf } = await import('@/lib/timesheet/generate-attendance-pdf')
+    const pdf = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-10',
+      employeeId: 999,
+      employeeName: 'Tini Dwi Saripah',
+      employeeSn: '73226',
+      department: 'Finance',
+      section: 'Finance Operations',
+      siteName: 'Balikpapan',
+      signatures: { preparedBy: 'Tini Dwi Saripah' },
+      isNonStaff: true,
+      showTotalOvertime: true,
+      days: [
+        {
+          day: 1,
+          dayName: 'Thursday',
+          status: 'present',
+          clockIn: '08:00',
+          clockOut: '20:00',
+          scheduleCode: 'DS',
+          isHoliday: false,
+          configuredOvertimeIntervals: [{ start: '17:00', end: '19:00' }],
+          overtime: {
+            totalHours: 3,
+            totalMinutes: 180,
+            autoMinutes: 120,
+            splMinutes: 60,
+            unauthorizedMinutes: 0,
+            source: 'Auto',
+            splNumbers: [],
+            intervals: [{ startMinute: 1020, endMinute: 1200, start: '17:00', end: '20:00', source: 'Auto' }],
+            workingIntervals: [],
+          },
+        },
+        {
+          day: 3,
+          dayName: 'Saturday',
+          status: 'present',
+          clockIn: '10:13',
+          clockOut: '18:14',
+          scheduleCode: 'OFF',
+          isHoliday: false,
+          configuredOvertimeIntervals: [{ start: '00:00', end: '00:00' }],
+          overtime: {
+            totalHours: 8,
+            totalMinutes: 480,
+            autoMinutes: 480,
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Auto',
+            splNumbers: [],
+            intervals: [{ startMinute: 613, endMinute: 1094, start: '10:13', end: '18:14', source: 'Auto' }],
+            workingIntervals: [],
+          },
+        },
+      ],
+    })
+    expect(pdf).toBeInstanceOf(Uint8Array)
+    expect(pdf.length).toBeGreaterThan(1000)
+  })
 })
 

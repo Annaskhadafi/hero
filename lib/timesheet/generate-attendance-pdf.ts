@@ -464,14 +464,32 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
       interval ? `${String(interval.end).replace(':', '.')}` : ''
 
-    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-    const otTo = formatOvertimeIntervalEnd(
+    let otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    let otTo = formatOvertimeIntervalEnd(
       configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
     )
 
     let ot = day.overtime?.totalHours ?? 0
+    if (otFrom === '00.00' && otTo === '00.00') {
+      if (hasManualAttendance && day.clockIn && day.clockOut) {
+        otFrom = day.clockIn.replace(':', '.')
+        otTo = day.clockOut.replace(':', '.')
+      } else {
+        otFrom = ''
+        otTo = ''
+      }
+    }
     if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
       ot = 0
+    } else if (ot <= 0 && isOff && hasManualAttendance && day.clockIn && day.clockOut) {
+      const [sh, sm] = day.clockIn.split(/[:.]/).map(Number)
+      const [eh, em] = day.clockOut.split(/[:.]/).map(Number)
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        ot = Math.round(((endMin - startMin) / 60) * 10) / 10
+      }
     } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
@@ -483,6 +501,24 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
         if (endMin < startMin) endMin += 1440
         return sum + (endMin - startMin) / 60
       }, 0)
+    }
+
+    if (ot > 0 && otFrom && otTo) {
+      const [sh, sm] = otFrom.split(/[:.]/).map(Number)
+      const [eh, em] = otTo.split(/[:.]/).map(Number)
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        const intervalHours = (endMin - startMin) / 60
+        if (ot > intervalHours) {
+          const expectedEndMin = startMin + Math.round(ot * 60)
+          const normEnd = expectedEndMin % 1440
+          const hh = String(Math.floor(normEnd / 60)).padStart(2, '0')
+          const mm = String(normEnd % 60).padStart(2, '0')
+          otTo = `${hh}.${mm}`
+        }
+      }
     }
 
     if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
@@ -517,9 +553,9 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     const shouldRenderWorkTimes =
       !isAbsent &&
-      !day.isHoliday &&
+      (!day.isHoliday || hasManualAttendance) &&
       Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
-      !isOff
+      (!isOff || hasManualAttendance)
     const workFrom = shouldRenderWorkTimes
       ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
       : ''
@@ -806,14 +842,32 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
       interval ? `${String(interval.end).replace(':', '.')}` : ''
 
-    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-    const otTo = formatOvertimeIntervalEnd(
+    let otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    let otTo = formatOvertimeIntervalEnd(
       configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
     )
 
     let ot = day.overtime?.totalHours ?? 0
+    if (otFrom === '00.00' && otTo === '00.00') {
+      if (hasManualAttendance && day.clockIn && day.clockOut) {
+        otFrom = day.clockIn.replace(':', '.')
+        otTo = day.clockOut.replace(':', '.')
+      } else {
+        otFrom = ''
+        otTo = ''
+      }
+    }
     if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
       ot = 0
+    } else if (ot <= 0 && isOff && hasManualAttendance && day.clockIn && day.clockOut) {
+      const [sh, sm] = day.clockIn.split(/[:.]/).map(Number)
+      const [eh, em] = day.clockOut.split(/[:.]/).map(Number)
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        ot = Math.round(((endMin - startMin) / 60) * 10) / 10
+      }
     } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
@@ -825,6 +879,24 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
         if (endMin < startMin) endMin += 1440
         return sum + (endMin - startMin) / 60
       }, 0)
+    }
+
+    if (ot > 0 && otFrom && otTo) {
+      const [sh, sm] = otFrom.split(/[:.]/).map(Number)
+      const [eh, em] = otTo.split(/[:.]/).map(Number)
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        const intervalHours = (endMin - startMin) / 60
+        if (ot > intervalHours) {
+          const expectedEndMin = startMin + Math.round(ot * 60)
+          const normEnd = expectedEndMin % 1440
+          const hh = String(Math.floor(normEnd / 60)).padStart(2, '0')
+          const mm = String(normEnd % 60).padStart(2, '0')
+          otTo = `${hh}.${mm}`
+        }
+      }
     }
 
     if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {

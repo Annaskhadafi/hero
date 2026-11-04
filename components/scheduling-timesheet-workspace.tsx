@@ -2448,7 +2448,7 @@ export function SchedulingTimesheetWorkspace({
     for (const override of attendanceOverrides) {
       if (
         override.period === period &&
-        override.source === 'attendance' &&
+        (override.source === 'attendance' || override.source === 'manual') &&
         (siteId === 'all' || String(override.siteId) === siteId)
       ) {
         map.set(attendanceKey(override.employeeId, override.day), { ...override })
@@ -4141,6 +4141,22 @@ export function SchedulingTimesheetWorkspace({
       }
     })
   }
+
+  function updateRequireSpl(requireSpl: boolean) {
+    if (!guardOpenPeriod('Edit site settings')) return
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          overtimeConfig: { ...currentConfig.overtimeConfig, requireSpl },
+        },
+      }
+    })
+  }
+
 
   function updateApprovalApprover(
     rowId: string,
@@ -6435,17 +6451,23 @@ export function SchedulingTimesheetWorkspace({
         splTitle: splTitles.join('; '),
         splDetails,
         workingTimeFrom:
-          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+          (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
             ? ''
             : (day.clockIn || defaultWorkFrom),
         workingTimeTo:
-          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+          (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
             ? ''
             : (day.clockOut || defaultWorkTo),
         configuredOvertimeIntervals:
           (isOffsiteOrAbsent && !hasRealAttendance) || (isOffDay && !hasRealAttendance)
             ? []
-            : (configuredIntervals as OvertimeInterval[]),
+            : isOffDay && hasRealAttendance && cell.clockIn && cell.clockOut
+              ? (day.overtime?.intervals && day.overtime.intervals.length > 0
+                  ? day.overtime.intervals
+                  : [{ start: cell.clockIn, end: cell.clockOut }])
+              : (day.overtime?.intervals && day.overtime.intervals.length > 0
+                  ? day.overtime.intervals
+                  : (configuredIntervals as OvertimeInterval[])),
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
@@ -7395,6 +7417,9 @@ export function SchedulingTimesheetWorkspace({
         item.dayType === dayType &&
         item.totalHours === totalHours
     )
+    if (dayType === 'off') {
+      return roundOvertimeHours(configured?.overtimeHours ?? totalHours)
+    }
     return roundOvertimeHours(configured?.overtimeHours ?? Math.max(0, totalHours - 8))
   }
 
@@ -7412,7 +7437,11 @@ export function SchedulingTimesheetWorkspace({
       const key = attendanceKey(employeeId, day)
       const cell = manualAttendance[key]
       if (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-        return legacyOvertimeResult(cell.overtimeHours)
+        return legacyOvertimeResult(Number(cell.overtimeHours))
+      }
+      const override = attendanceOverrideByCell.get(key)
+      if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
+        return legacyOvertimeResult(Number(override.overtimeHours))
       }
     }
 
@@ -9862,6 +9891,26 @@ export function SchedulingTimesheetWorkspace({
                         ? '✓ Mengikuti Template: Overtime wajib sesuai konfigurasi template (misal 4 jam) otomatis diakui tanpa perlukan SPL. Hanya jika lembur MELEBIHI jam wajib baru memerlukan SPL.'
                         : '✓ Realtime: Memperhitungkan jam aktual clock in/out dan seluruh jam di luar shift normal memerlukan persetujuan SPL.'}
                     </p>
+                    <div className="mt-3.5 border-t border-border/40 pt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">Wajib SPL untuk Lembur di Luar Shift / Hari OFF</p>
+                        <p className="text-muted-foreground mt-0.5 text-[11px]">
+                          {siteConfig.overtimeConfig.requireSpl
+                            ? "Wajib SPL: Jam lembur di luar sesi wajib atau di hari OFF memerlukan dokumen SPL approved agar terhitung."
+                            : "Tidak Wajib SPL: Jam kerja aktual otomatis dihitung sebagai lembur tanpa memerlukan dokumen SPL."}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {siteConfig.overtimeConfig.requireSpl ? "Wajib SPL" : "Bebas (Data Aktual)"}
+                        </span>
+                        <Switch
+                          aria-label="Wajib SPL untuk Lembur"
+                          checked={Boolean(siteConfig.overtimeConfig.requireSpl)}
+                          onCheckedChange={updateRequireSpl}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="border-border/40 bg-background mb-4 rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">

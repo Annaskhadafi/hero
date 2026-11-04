@@ -13,6 +13,7 @@ export type OvertimeDayRule = Record<OvertimeShiftKey, OvertimeInterval[]>
 export type SiteOvertimeConfig = {
   enabled: boolean
   mode?: 'template' | 'realtime'
+  requireSpl?: boolean
   splPolicy: SplPolicyConfig
   hariBiasa: OvertimeDayRule
   hariLibur: OvertimeDayRule
@@ -80,6 +81,7 @@ const EMPTY_RESULT: OvertimeCalculationResult = {
 export const DEFAULT_SITE_OVERTIME_CONFIG: SiteOvertimeConfig = {
   enabled: false,
   mode: 'template',
+  requireSpl: true,
   splPolicy: DEFAULT_SPL_POLICY,
   hariBiasa: {
     dayShift: [
@@ -127,6 +129,7 @@ function cloneDefaults(): SiteOvertimeConfig {
   return {
     enabled: DEFAULT_SITE_OVERTIME_CONFIG.enabled,
     mode: DEFAULT_SITE_OVERTIME_CONFIG.mode,
+    requireSpl: DEFAULT_SITE_OVERTIME_CONFIG.requireSpl,
     splPolicy: normalizeSplPolicy(DEFAULT_SITE_OVERTIME_CONFIG.splPolicy),
     hariBiasa: {
       dayShift: DEFAULT_SITE_OVERTIME_CONFIG.hariBiasa.dayShift.map((item) => ({ ...item })),
@@ -195,6 +198,7 @@ export function normalizeSiteOvertimeConfig(value: unknown): SiteOvertimeConfig 
     ...fallback,
     enabled: source.enabled !== false,
     mode,
+    requireSpl: source.requireSpl !== undefined ? Boolean(source.requireSpl) : (fallback.requireSpl ?? true),
     splPolicy: normalizeSplPolicy(source.splPolicy),
   }
   for (const dayKey of ['hariBiasa', 'hariLibur', 'hariKe6', 'hariKe7'] as const) {
@@ -487,6 +491,7 @@ export function calculateConfiguredOvertime(params: {
   if (!attendance) return { ...EMPTY_RESULT }
 
   const isTemplateMode = (params.config.mode ?? 'template') === 'template'
+  const requireSpl = params.config.requireSpl !== undefined ? Boolean(params.config.requireSpl) : true
   const inMin = parseTimeMinutes(params.clockIn)
   const outMin = parseTimeMinutes(params.clockOut)
   const overnight =
@@ -548,12 +553,18 @@ export function calculateConfiguredOvertime(params: {
   const contributingSplNumbers = matchedSpl
     .filter(({ interval }) => splEligible.some((candidate) => intersect(interval, candidate)))
     .map((item) => item.splNumber)
-  const eligible = mergeIntervals([...autoEligible, ...splEligible])
-  const unauthorized = subtractIntervals(outsideConfiguredShift, splEligible)
+  const outsideEligibleWithoutSpl = !requireSpl
+    ? outsideConfiguredShift.map((item) => ({
+        ...item,
+        sources: new Set<'auto' | 'spl'>(['auto']),
+      }))
+    : []
+  const eligible = mergeIntervals([...autoEligible, ...outsideEligibleWithoutSpl, ...splEligible])
+  const unauthorized = requireSpl ? subtractIntervals(outsideConfiguredShift, splEligible) : []
   const unauthorizedTotal = totalMinutes(unauthorized)
   const workingIntervals =
     params.dayKey === 'hariLibur' ? [] : intersectSets(fullAttendance, normalWork)
-  const hasAuto = autoEligible.length > 0
+  const hasAuto = autoEligible.length > 0 || outsideEligibleWithoutSpl.length > 0
   const hasSpl = splEligible.length > 0
   const fixedSplMinutes = Math.max(0, ...matchedSpl.map((item) => item.fixedMinutes))
   const calculatedTotalMinutes = fixedSplMinutes || totalMinutes(eligible)
