@@ -63,11 +63,13 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await rekapTabBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1500))
 
-  // Verify KPI Cards & Actions
+  // Verify KPI Cards & Actions (PDF, Excel, WhatsApp, Reset)
   await expect(browser.locator('text=Rekapitulasi Trip').first()).toBeVisible()
   await expect(browser.locator('text=Titik bahaya terdeteksi').first()).toBeVisible()
   await expect(browser.locator('text=Potensi rusak ban').first()).toBeVisible()
-  await expect(browser.locator('button:has-text("Download PDF Resmi")').first()).toBeVisible()
+  await expect(browser.locator('button:has-text("PDF")').first()).toBeVisible()
+  await expect(browser.locator('button:has-text("Excel")').first()).toBeVisible()
+  await expect(browser.locator('button:has-text("Share WA")').first()).toBeVisible()
   await expect(browser.locator('button:has-text("Sesi Baru")').first()).toBeVisible()
 
   // Screenshot of Recap Screen

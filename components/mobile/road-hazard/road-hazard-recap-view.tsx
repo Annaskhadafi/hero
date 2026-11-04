@@ -16,11 +16,14 @@ import {
   Camera,
   Layers,
   ShieldCheck,
+  FileSpreadsheet,
+  Share2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { HeroKpiCard } from '@/components/templates'
 import { generateRoadHazardPdf } from '@/lib/road-hazard/road-hazard-pdf'
+import { generateRoadHazardExcel } from '@/lib/road-hazard/road-hazard-excel'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
 import type { DetectedHazardEvent } from './road-hazard-camera-view'
 
@@ -53,6 +56,7 @@ export function RoadHazardRecapView({
   const [isSaved, setIsSaved] = useState(false)
   const [currentSessionCode, setCurrentSessionCode] = useState(sessionCode)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
   const [notesState, setNotesState] = useState<Record<string, string>>({})
   const [summaryNotes, setSummaryNotes] = useState('')
 
@@ -195,6 +199,94 @@ export function RoadHazardRecapView({
     }
   }
 
+  // Handle Export Excel (.xlsx) for Road Maintenance / Grader Team
+  const handleExportExcel = async () => {
+    if (isExportingExcel) return
+    setIsExportingExcel(true)
+    try {
+      const excelBlob = generateRoadHazardExcel({
+        sessionCode: currentSessionCode,
+        siteName,
+        customerName,
+        inspectorName,
+        roadSection,
+        dateStr: new Date().toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        durationText: formatDuration(durationSeconds),
+        totalDistanceText: `~${(totalDistanceMeters / 1000).toFixed(2)} km`,
+        totalHazards,
+        potholesCount,
+        corrugationCount,
+        rutsCount,
+        severityLevel,
+        summaryNotes,
+        events: events.map((ev) => ({
+          hazardType: ev.hazardType,
+          confidence: ev.confidence,
+          latitude: ev.latitude,
+          longitude: ev.longitude,
+          speedKmh: ev.speedKmh,
+          photoUrl: ev.photoUrl,
+          notes: notesState[ev.id] ?? ev.notes,
+          timestamp: ev.timestamp,
+          isManualSnap: ev.isManualSnap,
+        })),
+      })
+
+      const blobUrl = URL.createObjectURL(excelBlob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `Laporan-Road-Hazard-Titik-Maintenance-${siteName.replace(/\s+/g, '_')}-${Date.now()}.xlsx`
+      link.click()
+      URL.revokeObjectURL(blobUrl)
+
+      toast.success('Data Excel (.xlsx) berhasil diunduh untuk tim maintenance jalan.')
+    } catch (err) {
+      console.error('[road-hazard-excel] Export failed:', err)
+      toast.error('Gagal mengekspor file Excel.')
+    } finally {
+      setIsExportingExcel(false)
+    }
+  }
+
+  // Handle Share WhatsApp
+  const handleShareWhatsApp = () => {
+    try {
+      const dateStr = new Date().toLocaleDateString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+      const text = `🚨 *LAPORAN ROAD HAZARD LIVE AI - HERO HSE*
+────────────────────────────
+📍 *Site:* ${siteName}
+🛣️ *Rute:* ${roadSection || 'Hauling Road'}
+👤 *Inspektur:* ${inspectorName}
+📅 *Tanggal:* ${dateStr}
+⏱️ *Durasi:* ${formatDuration(durationSeconds)} (~${(totalDistanceMeters / 1000).toFixed(2)} km)
+
+⚠️ *LEVEL RISIKO:* *${severityLevel} RISK*
+📊 *Total Kendala:* ${totalHazards} Titik
+ • 🕳️ Potholes (Lubang): ${potholesCount}
+ • 〰️ Corrugation (Keriting): ${corrugationCount}
+ • 🛣️ Ruts (Alur Ambles): ${rutsCount}
+
+📝 *Catatan / Rekomendasi Tindakan:*
+${summaryNotes || 'Perlu perataan (grading) dan penimbunan batu agregat pada titik lubang aktif.'}
+────────────────────────────
+Kode Sesi: ${currentSessionCode}
+*HERO Mobile AI Dashcam*`
+
+      const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`
+      window.open(waUrl, '_blank')
+    } catch {
+      toast.error('Gagal membuka WhatsApp.')
+    }
+  }
+
   return (
     <div className="space-y-4 pb-12">
       {/* Session Overview Card */}
@@ -290,15 +382,42 @@ export function RoadHazardRecapView({
       )}
 
       {/* Action Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 pt-1">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center pt-1">
         <Button
           type="button"
           onClick={handleExportPdf}
           disabled={isExportingPdf}
-          className="h-9 flex-1 gap-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-sm"
+          className="h-9 gap-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-sm"
         >
           {isExportingPdf ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-          <span>Download PDF Resmi</span>
+          <span>PDF Resmi</span>
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleExportExcel}
+          disabled={isExportingExcel}
+          className="h-9 gap-1.5 rounded-lg font-semibold text-xs border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+          title="Download data titik koordinat untuk tim grader/maintenance"
+        >
+          {isExportingExcel ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <FileSpreadsheet className="size-4 text-emerald-600" />
+          )}
+          <span>Excel .xlsx</span>
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleShareWhatsApp}
+          className="h-9 gap-1.5 rounded-lg font-semibold text-xs border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+          title="Bagikan ringkasan laporan ke grup WhatsApp HSE"
+        >
+          <Share2 className="size-4 text-green-600" />
+          <span>Share WA</span>
         </Button>
 
         <Button
@@ -306,7 +425,7 @@ export function RoadHazardRecapView({
           variant="outline"
           onClick={handleSaveToDatabase}
           disabled={isSaving || isSaved}
-          className={`h-9 flex-1 gap-1.5 rounded-lg font-semibold text-xs ${
+          className={`h-9 gap-1.5 rounded-lg font-semibold text-xs ${
             isSaved ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : ''
           }`}
         >
@@ -317,14 +436,14 @@ export function RoadHazardRecapView({
           ) : (
             <Save className="size-4" />
           )}
-          <span>{isSaved ? 'Tersimpan di DB' : 'Simpan Sesi'}</span>
+          <span>{isSaved ? 'Tersimpan di DB' : 'Simpan'}</span>
         </Button>
 
         <Button
           type="button"
           variant="secondary"
           onClick={onResetNewTrip}
-          className="h-9 gap-1.5 rounded-lg text-xs font-semibold"
+          className="col-span-2 sm:col-span-1 h-9 gap-1.5 rounded-lg text-xs font-semibold"
           title="Mulai Sesi Baru"
         >
           <RotateCcw className="size-3.5" />

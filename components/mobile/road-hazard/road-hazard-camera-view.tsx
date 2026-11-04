@@ -155,6 +155,8 @@ export function RoadHazardCameraView({
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
   const [autoSnapThreshold, setAutoSnapThreshold] = useState(0.60)
   const [soundAlert, setSoundAlert] = useState(true)
+  const [voiceAlertEnabled, setVoiceAlertEnabled] = useState(true)
+  const lastSpokenTimeRef = useRef<number>(0)
 
   // Map overlay toggle (can be minimized so it does not block the road camera)
   const [isMapMinimized, setIsMapMinimized] = useState(false)
@@ -218,6 +220,39 @@ export function RoadHazardCameraView({
       // Audio playback blocked or unsupported
     }
   }, [soundAlert])
+
+  // Verbal voice feedback in Indonesian for vehicle drivers
+  const speakVoiceAlert = useCallback(
+    (hazardType: string) => {
+      if (!soundAlert || !voiceAlertEnabled) return
+      if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+
+      const now = Date.now()
+      if (now - lastSpokenTimeRef.current < 2600) return
+      lastSpokenTimeRef.current = now
+
+      try {
+        window.speechSynthesis.cancel()
+        let text = 'Awas, jalan rusak di depan!'
+        if (hazardType === 'Potholes') {
+          text = 'Awas, ada lubang di depan!'
+        } else if (hazardType === 'Corragation') {
+          text = 'Jalan keriting bergelombang!'
+        } else if (hazardType === 'Ruts') {
+          text = 'Hati-hati, alur jalan ambles!'
+        }
+
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = 'id-ID'
+        utterance.rate = 1.15
+        utterance.pitch = 1.02
+        window.speechSynthesis.speak(utterance)
+      } catch {
+        // Speech API unsupported or blocked
+      }
+    },
+    [soundAlert, voiceAlertEnabled]
+  )
 
   const triggerHaptic = useCallback(() => {
     try {
@@ -465,11 +500,22 @@ export function RoadHazardCameraView({
     [confThreshold, currentGps]
   )
 
-  // Live Auto-Scan Loop
+  // Live Auto-Scan Loop with Smart Adaptive Frequency
   useEffect(() => {
     let intervalTimer: NodeJS.Timeout | null = null
 
     if (cameraActive && isRecording) {
+      // Smart Adaptive Scan: adjusts dynamically based on vehicle speed
+      const speed = currentGps.speedKmh ?? 0
+      let dynamicInterval = scanIntervalMs
+      if (speed <= 5) {
+        // Vehicle stopped/idle -> save CPU and bandwidth
+        dynamicInterval = Math.max(scanIntervalMs, 1200)
+      } else if (speed >= 20) {
+        // Vehicle moving fast on hauling road -> turbo scan rate
+        dynamicInterval = Math.min(scanIntervalMs, 480)
+      }
+
       intervalTimer = setInterval(async () => {
         if (isAnalyzing) return
         setIsAnalyzing(true)
@@ -486,11 +532,13 @@ export function RoadHazardCameraView({
 
             if (detections.length > 0) {
               const topDet = detections[0]
+              const hazardName = topDet.hazard_type || topDet.class_name || 'Potholes'
               setActiveAlert({
-                type: topDet.hazard_type || topDet.class_name,
+                type: hazardName,
                 conf: topDet.confidence,
               })
               playAlertSound()
+              speakVoiceAlert(hazardName)
               triggerHaptic()
 
               // Auto-snap condition
@@ -523,7 +571,7 @@ export function RoadHazardCameraView({
         } finally {
           setIsAnalyzing(false)
         }
-      }, scanIntervalMs)
+      }, dynamicInterval)
     } else {
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d')
@@ -538,9 +586,11 @@ export function RoadHazardCameraView({
     cameraActive,
     isRecording,
     scanIntervalMs,
+    currentGps.speedKmh,
     analyzeFrame,
     drawDetections,
     playAlertSound,
+    speakVoiceAlert,
     triggerHaptic,
     autoSnapEnabled,
     autoSnapThreshold,
@@ -777,7 +827,10 @@ export function RoadHazardCameraView({
             {isRecording && (
               <div className="flex items-center gap-1 rounded bg-black/60 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
                 <Sparkles className="size-3 text-amber-400" />
-                <span>AI Live {latencyMs ? `${latencyMs}ms` : 'Ready'}</span>
+                <span>
+                  AI {latencyMs ? `${latencyMs}ms` : 'Ready'} •{' '}
+                  {(currentGps.speedKmh ?? 0) >= 20 ? 'Turbo' : (currentGps.speedKmh ?? 0) <= 5 ? 'Eco' : 'Live'}
+                </span>
               </div>
             )}
           </div>
@@ -979,6 +1032,14 @@ export function RoadHazardCameraView({
                     />
                   </div>
                 )}
+
+                <div className="flex items-center justify-between pt-1">
+                  <div>
+                    <p className="font-semibold text-slate-200">Suara Bicara Verbal (ID)</p>
+                    <p className="text-[11px] text-slate-400">Peringatan verbal otomatis ("Awas, lubang!")</p>
+                  </div>
+                  <Switch checked={voiceAlertEnabled} onCheckedChange={setVoiceAlertEnabled} />
+                </div>
 
                 <div className="space-y-1.5 pt-2">
                   <div className="flex justify-between text-slate-300">
