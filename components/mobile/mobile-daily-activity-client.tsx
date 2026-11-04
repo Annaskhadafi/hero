@@ -886,7 +886,7 @@ export function MobileDailyActivityClient({
       <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
         <DialogContent
           showCloseButton={false}
-          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl"
         >
           {/* Mobile Header Bar */}
           <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none">
