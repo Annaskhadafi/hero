@@ -52,7 +52,7 @@ const nextConfig: NextConfig = {
     ],
   },
   typescript: { ignoreBuildErrors: true },
-  serverExternalPackages: ['face-api.js', 'pptxgenjs', 'libheif-js', 'heic-decode'],
+  serverExternalPackages: ['face-api.js', 'pptxgenjs', 'libheif-js', 'heic-decode', 'onnxruntime-node', 'sharp'],
   experimental: {
     optimizePackageImports: [
       'lucide-react',
@@ -344,7 +344,7 @@ const nextConfig: NextConfig = {
       // Prevent face-api.js from being bundled on server
       config.externals = config.externals || []
       if (Array.isArray(config.externals)) {
-        config.externals.push('face-api.js')
+        config.externals.push('face-api.js', 'onnxruntime-node', 'sharp')
       }
     }
     // Handle canvas dependency that face-api.js may need

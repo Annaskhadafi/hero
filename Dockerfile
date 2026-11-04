@@ -6,7 +6,7 @@
 
 # Stage 1: Base image
 FROM node:20.19-alpine AS base
-RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
+RUN apk add --no-cache libc6-compat gcompat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
@@ -35,7 +35,7 @@ RUN --mount=type=cache,id=hero-next,target=/app/.next/cache \
 
 # Stage 4: Production runner
 FROM node:20.19-alpine AS runner
-RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
+RUN apk add --no-cache libc6-compat gcompat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -48,6 +48,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/Weight ./Weight
 
 # Setup migration directory
 RUN mkdir -p /app/migration && chown nextjs:nodejs /app/migration

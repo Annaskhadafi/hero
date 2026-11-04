@@ -1,4 +1,3 @@
-import * as ort from 'onnxruntime-node'
 import sharp from 'sharp'
 import { join } from 'path'
 import { existsSync } from 'fs'
@@ -25,7 +24,20 @@ export interface LocalHazardInferenceResult {
   error?: string
 }
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null
+let ortModule: any = null
+let sessionPromise: Promise<any> | null = null
+
+async function getOrt(): Promise<any> {
+  if (!ortModule) {
+    try {
+      ortModule = await import('onnxruntime-node')
+    } catch (err) {
+      console.warn('[road-hazard-onnx] onnxruntime-node could not be loaded dynamically:', err)
+      throw new Error('Modul onnxruntime-node tidak tersedia di environment ini.')
+    }
+  }
+  return ortModule
+}
 
 function getModelPath(): string {
   const primaryPath = join(process.cwd(), 'Weight', 'hazardyolo26n-4.onnx')
@@ -34,14 +46,15 @@ function getModelPath(): string {
   const fallbackPath = 'D:\\\[01] PROJECT\\HERO\\Weight\\hazardyolo26n-4.onnx'
   if (existsSync(fallbackPath)) return fallbackPath
 
-  throw new Error(`ONNX model file not found in ${primaryPath} or ${fallbackPath}`)
+  throw new Error(`Berkas model ONNX tidak ditemukan di ${primaryPath} atau ${fallbackPath}`)
 }
 
-async function getInferenceSession(): Promise<ort.InferenceSession> {
+async function getInferenceSession(): Promise<any> {
   if (!sessionPromise) {
     sessionPromise = (async () => {
+      const ort = await getOrt()
       const modelPath = getModelPath()
-      const sessionOptions: ort.InferenceSession.SessionOptions = {
+      const sessionOptions = {
         executionProviders: ['cpu'],
         graphOptimizationLevel: 'all',
         intraOpNumThreads: 2,
@@ -61,6 +74,7 @@ export async function runLocalOnnxHazardInference(params: {
   const confThreshold = params.confidenceThreshold ?? 0.20
 
   try {
+    const ort = await getOrt()
     const session = await getInferenceSession()
 
     // 1. Get original image dimensions using sharp

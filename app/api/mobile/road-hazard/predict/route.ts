@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     let normalizedDetections: any[] = []
     let modelName = 'hazardyolo26n-4 (Local ONNX)'
     let modelVersion = 'v1.0'
-    let predictionId = randomUUID()
+    let predictionId: string = randomUUID()
     let latencyMs = 0
     let topConfidence = 0
     let potholesCount = 0
@@ -75,20 +75,61 @@ export async function POST(request: NextRequest) {
       })
 
       if (!onnxRes.success) {
-        return NextResponse.json(
-          { error: onnxRes.error || 'Gagal memproses model ONNX lokal.' },
-          { status: 500 }
-        )
-      }
+        console.warn('[road-hazard-predict] Local ONNX failed, falling back to Cloud API:', onnxRes.error)
+        // Graceful automatic fallback to Cloud API if local ONNX environment cannot execute
+        const fallbackRes = await rarayPredictRoadHazard({
+          fileBuffer: buffer,
+          fileName: file.name || `road-frame-${Date.now()}.jpg`,
+          mimeType: file.type,
+          confidenceThreshold: confThreshold,
+          iouThreshold: iouThreshold,
+        })
 
-      normalizedDetections = onnxRes.detections
-      modelName = onnxRes.modelName
-      modelVersion = onnxRes.modelVersion
-      latencyMs = onnxRes.latencyMs
-      topConfidence = onnxRes.topConfidence
-      potholesCount = onnxRes.potholesCount
-      corrugationCount = onnxRes.corrugationCount
-      rutsCount = onnxRes.rutsCount
+        if (fallbackRes.status === 'success' && fallbackRes.result) {
+          const rawResult = fallbackRes.result
+          const detections = Array.isArray(rawResult.detections) ? rawResult.detections : []
+          normalizedDetections = detections.map((det) => {
+            const rawClass = String(det.class_name || det.class || det.label || '').trim()
+            let hazardType = 'Other'
+            const lower = rawClass.toLowerCase()
+            if (lower.includes('pothole') || lower.includes('lubang')) hazardType = 'Potholes'
+            else if (lower.includes('corragation') || lower.includes('corrugation') || lower.includes('keriting')) hazardType = 'Corragation'
+            else if (lower.includes('rut') || lower.includes('ambles') || lower.includes('alur')) hazardType = 'Ruts'
+            else if (rawClass) hazardType = rawClass
+
+            const conf = typeof det.confidence === 'number' ? det.confidence : Number(det.score ?? 0)
+            return {
+              ...det,
+              hazard_type: hazardType,
+              confidence: Number((conf > 1 ? conf / 100 : conf).toFixed(3)),
+            }
+          })
+          modelName = `${rawResult.model_name || 'Raray Vision'} (Fallback)`
+          modelVersion = rawResult.model_version || 'v1'
+          latencyMs = rawResult.latency_ms || 0
+          topConfidence = rawResult.top_confidence || 0
+          resolvedAnnotatedUrl = rawResult.annotated_image_url ? resolveUploadUrl(rawResult.annotated_image_url) : null
+          for (const d of normalizedDetections) {
+            if (d.hazard_type === 'Potholes') potholesCount++
+            else if (d.hazard_type === 'Corragation') corrugationCount++
+            else if (d.hazard_type === 'Ruts') rutsCount++
+          }
+        } else {
+          return NextResponse.json(
+            { error: onnxRes.error || 'Gagal memproses analisis road hazard AI.' },
+            { status: 500 }
+          )
+        }
+      } else {
+        normalizedDetections = onnxRes.detections
+        modelName = onnxRes.modelName
+        modelVersion = onnxRes.modelVersion
+        latencyMs = onnxRes.latencyMs
+        topConfidence = onnxRes.topConfidence
+        potholesCount = onnxRes.potholesCount
+        corrugationCount = onnxRes.corrugationCount
+        rutsCount = onnxRes.rutsCount
+      }
     } else {
       // 1B. Mode Cloud API: Remote Raray Vision Road Hazard endpoint
       const predictionRes = await rarayPredictRoadHazard({
