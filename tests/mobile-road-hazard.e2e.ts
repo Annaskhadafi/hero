@@ -30,24 +30,32 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('button[title*="Split Mode"]').first()).toBeVisible()
   await expect(browser.locator('button[title*="PiP Mode"]').first()).toBeVisible()
 
-  // 7. Verify Dual Mode (ONNX vs API) toggle & HUD badge
+  // 7. Verify Multi-Mode (Device Offline -> Server ONNX -> Cloud API)
+  const multiModeBtn = browser.locator('button[title*="Mode:"]').first()
+  await expect(browser.locator('text=DEVICE').first()).toBeVisible()
+  await app.screenshot('mobile-road-hazard-device-offline-mode')
+
+  // Cycle to Server ONNX
+  await multiModeBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=ONNX').first()).toBeVisible()
-  const dualModeBtn = browser.locator('button[title*="Mesin"]').first()
-  await dualModeBtn.click()
+  await app.screenshot('mobile-road-hazard-server-onnx-mode')
+
+  // Cycle to Cloud API
+  await multiModeBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=API').first()).toBeVisible()
-  await app.screenshot('mobile-road-hazard-dual-mode-api')
+  await app.screenshot('mobile-road-hazard-cloud-api-mode')
 
-  // Switch back to System ONNX
-  await dualModeBtn.click()
+  // Cycle back to Device Offline
+  await multiModeBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 800))
-  await expect(browser.locator('text=ONNX').first()).toBeVisible()
-  await app.screenshot('mobile-road-hazard-dual-mode-onnx')
+  await expect(browser.locator('text=DEVICE').first()).toBeVisible()
 
   // 8. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
   await app.screenshot('mobile-road-hazard-live-split-map')
 
-  // 8. Test PiP mode toggle & Fullscreen Dashcam
+  // 9. Test PiP mode toggle & Fullscreen Dashcam
   const pipBtn = browser.locator('button[title*="PiP Mode"]').first()
   await pipBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -73,7 +81,7 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await splitBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  // 9. Switch to Rekap Tab
+  // 10. Switch to Rekap Tab
   const rekapTabBtn = browser.locator('button:has-text("Rekap")').first()
   await rekapTabBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1500))
@@ -90,7 +98,7 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   // Screenshot of Recap Screen
   await app.screenshot('mobile-road-hazard-recap-screen')
 
-  // 10. Switch to Riwayat Tab
+  // 11. Switch to Riwayat Tab
   const riwayatTabBtn = browser.locator('button:has-text("Riwayat")').first()
   await riwayatTabBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1500))

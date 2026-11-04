@@ -7,6 +7,7 @@ import {
   Square,
   Sparkles,
   Zap,
+  Cpu,
   ZapOff,
   Cloud,
   SwitchCamera,
@@ -39,6 +40,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { HeroConfirmDialog } from '@/components/templates'
 import { RoadHazardLiveMap } from './road-hazard-live-map'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
+import { runClientDeviceHazardInference, initializeClientHazardModel } from '@/lib/road-hazard/client-inference-engine'
 import { cn } from '@/lib/utils'
 
 export interface DetectedHazardEvent {
@@ -152,7 +154,7 @@ export function RoadHazardCameraView({
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
   // AI Dual Mode & Settings (Default: 20% sensitivity, System ONNX engine)
-  const [inferenceMode, setInferenceMode] = useState<'system' | 'api'>('system')
+  const [inferenceMode, setInferenceMode] = useState<'offline' | 'system' | 'api'>('offline')
   const [scanIntervalMs, setScanIntervalMs] = useState(650)
   const [confThreshold, setConfThreshold] = useState(0.20)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
@@ -165,8 +167,14 @@ export function RoadHazardCameraView({
   useEffect(() => {
     try {
       const savedMode = localStorage.getItem('hero_road_hazard_mode')
-      if (savedMode === 'system' || savedMode === 'api') {
+      if (savedMode === 'offline' || savedMode === 'system' || savedMode === 'api') {
         setInferenceMode(savedMode)
+        if (savedMode === 'offline') {
+          initializeClientHazardModel().catch(() => {})
+        }
+      } else {
+        // Default to offline device model
+        initializeClientHazardModel().catch(() => {})
       }
       const savedThreshold = localStorage.getItem('hero_road_hazard_threshold')
       if (savedThreshold && !isNaN(Number(savedThreshold))) {
@@ -177,16 +185,19 @@ export function RoadHazardCameraView({
     }
   }, [])
 
-  const handleSetInferenceMode = (mode: 'system' | 'api') => {
+  const handleSetInferenceMode = (mode: 'offline' | 'system' | 'api') => {
     setInferenceMode(mode)
     try {
       localStorage.setItem('hero_road_hazard_mode', mode)
     } catch {}
-    toast.info(
-      mode === 'system'
-        ? 'Beralih ke Mesin System ONNX (Lokal Cepat ~43ms)'
-        : 'Beralih ke Cloud API (Raray Vision Cloud)'
-    )
+    if (mode === 'offline') {
+      initializeClientHazardModel().catch(() => {})
+      toast.success('Beralih ke Model AI Offline di Perangkat (100% Tanpa Sinyal/Server)')
+    } else if (mode === 'system') {
+      toast.info('Beralih ke Mesin System ONNX Server (Lokal Cepat ~43ms)')
+    } else {
+      toast.info('Beralih ke Cloud API (Raray Vision Cloud)')
+    }
   }
 
   const handleSetConfThreshold = (val: number) => {
@@ -553,6 +564,12 @@ export function RoadHazardCameraView({
     async (isManualSnap = false): Promise<any> => {
       const video = videoRef.current
       if (!video || !video.videoWidth || !video.videoHeight) return null
+
+      // 100% Client-Side In-Browser Inference via WebAssembly (Zero Server Traffic / Offline Ready)
+      if (inferenceMode === 'offline') {
+        const clientRes = await runClientDeviceHazardInference(video, confThreshold)
+        return clientRes
+      }
 
       const snapCanvas = document.createElement('canvas')
       // Live frame uses lightweight width (480px, ~25KB) for sub-200ms roundtrip latency
@@ -971,9 +988,14 @@ export function RoadHazardCameraView({
               <span>{formatTimer(elapsedSeconds)}</span>
             </div>
 
-            {/* AI Dual Mode & Latency Badge */}
+            {/* AI Multi-Mode & Latency Badge */}
             <div className="flex items-center gap-1 rounded bg-black/70 px-2 py-0.5 text-[10px] font-bold border border-white/10 shadow backdrop-blur-sm">
-              {inferenceMode === 'system' ? (
+              {inferenceMode === 'offline' ? (
+                <>
+                  <Cpu className="size-3 text-emerald-400 animate-pulse" />
+                  <span className="text-emerald-300 font-mono">DEVICE</span>
+                </>
+              ) : inferenceMode === 'system' ? (
                 <>
                   <Zap className="size-3 fill-amber-400 text-amber-400 animate-pulse" />
                   <span className="text-amber-300 font-mono">ONNX</span>
@@ -1157,23 +1179,33 @@ export function RoadHazardCameraView({
             {soundAlert ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
           </Button>
 
-          {/* Quick Dual Mode Toggle (System ONNX vs Cloud API) */}
+          {/* Quick Mode Toggle (Offline Device -> System ONNX -> Cloud API) */}
           <Button
             size="icon"
             variant="outline"
-            onClick={() => handleSetInferenceMode(inferenceMode === 'system' ? 'api' : 'system')}
+            onClick={() => {
+              const nextMode =
+                inferenceMode === 'offline' ? 'system' : inferenceMode === 'system' ? 'api' : 'offline'
+              handleSetInferenceMode(nextMode)
+            }}
             className={`size-8 rounded-full border-white/20 backdrop-blur-md transition-all ${
-              inferenceMode === 'system'
+              inferenceMode === 'offline'
+                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                : inferenceMode === 'system'
                 ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
                 : 'bg-cyan-950/80 text-cyan-300 border-cyan-500/40'
             }`}
             title={
-              inferenceMode === 'system'
-                ? 'Mesin: System ONNX (Lokal Cepat ~43ms) • Klik untuk ganti ke Cloud API'
-                : 'Mesin: Cloud API (Raray Vision) • Klik untuk ganti ke System ONNX'
+              inferenceMode === 'offline'
+                ? 'Mode: Device Offline (100% di HP) • Klik untuk ganti ke Server ONNX'
+                : inferenceMode === 'system'
+                ? 'Mode: System ONNX Server • Klik untuk ganti ke Cloud API'
+                : 'Mode: Cloud API • Klik untuk ganti ke Device Offline'
             }
           >
-            {inferenceMode === 'system' ? (
+            {inferenceMode === 'offline' ? (
+              <Cpu className="size-3.5 text-emerald-400" />
+            ) : inferenceMode === 'system' ? (
               <Zap className="size-3.5 fill-amber-400 text-amber-400" />
             ) : (
               <Cloud className="size-3.5 text-cyan-400" />
@@ -1196,34 +1228,50 @@ export function RoadHazardCameraView({
                 <SheetTitle className="text-white text-base font-bold">Pengaturan AI Road Hazard</SheetTitle>
               </SheetHeader>
               <div className="space-y-4 py-4 text-xs">
-                {/* Dual Mode Engine Selector */}
+                {/* Multi-Engine Selector (Offline Device, Server ONNX, Cloud API) */}
                 <div className="space-y-1.5 rounded-xl border border-white/10 bg-black/40 p-2.5">
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-slate-200">Mesin Inferensi (Dual Mode)</p>
+                    <p className="font-semibold text-slate-200">Mode Inferensi AI</p>
                     <span className="rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-white/10">
-                      {inferenceMode === 'system' ? '⚡ System ONNX' : '☁️ Cloud API'}
+                      {inferenceMode === 'offline'
+                        ? '⚡ Device Offline'
+                        : inferenceMode === 'system'
+                        ? '🖥️ Server ONNX'
+                        : '☁️ Cloud API'}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400">
-                    Pilih antara engine ONNX lokal berkecepatan tinggi atau Cloud API Vision
+                    Pilih eksekusi model langsung di HP (tanpa sinyal), server lokal, atau cloud
                   </p>
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="grid grid-cols-3 gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSetInferenceMode('offline')}
+                      className={`flex flex-col items-center justify-center gap-1 rounded-lg py-2 px-1 text-[11px] font-bold transition-all border text-center ${
+                        inferenceMode === 'offline'
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
+                          : 'bg-slate-800/80 text-slate-300 border-white/10 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Cpu className="size-3.5" />
+                      <span>Device Offline</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleSetInferenceMode('system')}
-                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs font-bold transition-all border ${
+                      className={`flex flex-col items-center justify-center gap-1 rounded-lg py-2 px-1 text-[11px] font-bold transition-all border text-center ${
                         inferenceMode === 'system'
                           ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
                           : 'bg-slate-800/80 text-slate-300 border-white/10 hover:bg-slate-800'
                       }`}
                     >
                       <Zap className="size-3.5 fill-current" />
-                      <span>System ONNX</span>
+                      <span>Server ONNX</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSetInferenceMode('api')}
-                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs font-bold transition-all border ${
+                      className={`flex flex-col items-center justify-center gap-1 rounded-lg py-2 px-1 text-[11px] font-bold transition-all border text-center ${
                         inferenceMode === 'api'
                           ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20'
                           : 'bg-slate-800/80 text-slate-300 border-white/10 hover:bg-slate-800'
@@ -1233,10 +1281,12 @@ export function RoadHazardCameraView({
                       <span>Cloud API</span>
                     </button>
                   </div>
-                  <p className="text-[10px] text-amber-400/90 font-medium pt-0.5">
-                    {inferenceMode === 'system'
-                      ? '⚡ Model hazardyolo26n-4 lokal: ~43ms, offline-ready, hemat kuota data hauling.'
-                      : '☁️ Raray Vision Cloud: ~300ms, memerlukan sinyal internet aktif.'}
+                  <p className="text-[10px] text-emerald-400 font-medium pt-0.5">
+                    {inferenceMode === 'offline'
+                      ? '⚡ 100% Offline di HP (WASM/WebGL): Sangat cocok untuk area blank spot tambang tanpa sinyal.'
+                      : inferenceMode === 'system'
+                      ? '🖥️ Server ONNX: Model dieksekusi di server Next.js lokal (~43ms).'
+                      : '☁️ Raray Vision Cloud: Analisis remote via cloud vision (~300ms).'}
                   </p>
                 </div>
 
