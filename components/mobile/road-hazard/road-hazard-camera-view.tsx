@@ -24,6 +24,7 @@ import {
   Maximize2,
   Minimize2,
   Expand,
+  ArrowLeft,
   X,
   ExternalLink,
   Navigation,
@@ -713,7 +714,12 @@ export function RoadHazardCameraView({
 
         {/* Layout Mode: Split (Live Map on Bottom 48%) */}
         {viewMode === 'split' && (
-          <div className="relative h-[48%] w-full overflow-hidden bg-slate-900">
+          <div
+            className={cn(
+              "relative h-[48%] w-full overflow-hidden bg-slate-900 isolate z-0",
+              (confirmStopOpen || Boolean(previewSnapshot)) && "invisible pointer-events-none"
+            )}
+          >
             <RoadHazardLiveMap
               currentLat={currentLat}
               currentLng={currentLng}
@@ -734,7 +740,12 @@ export function RoadHazardCameraView({
         {/* Layout Mode: PiP (Floating Picture-in-Picture Mini Map Widget with Close / Minimize) */}
         {viewMode === 'pip' && (
           !isMapMinimized ? (
-            <div className="absolute bottom-24 right-3 z-30 h-32 w-40 overflow-hidden rounded-xl border-2 border-cyan-400/80 shadow-2xl bg-slate-900 transition-all">
+            <div
+              className={cn(
+                "absolute bottom-24 right-3 z-20 h-32 w-40 overflow-hidden rounded-xl border-2 border-cyan-400/80 shadow-2xl bg-slate-900 transition-all isolate",
+                (confirmStopOpen || Boolean(previewSnapshot)) && "invisible pointer-events-none"
+              )}
+            >
               <RoadHazardLiveMap
                 currentLat={currentLat}
                 currentLng={currentLng}
@@ -760,7 +771,7 @@ export function RoadHazardCameraView({
             <button
               type="button"
               onClick={() => setIsMapMinimized(false)}
-              className="absolute bottom-24 right-3 z-30 flex items-center gap-1.5 rounded-full bg-slate-900/90 px-2.5 py-1 text-[10px] font-bold text-cyan-300 shadow-xl border border-cyan-500/40 backdrop-blur-md active:scale-95 transition-all"
+              className="absolute bottom-24 right-3 z-20 flex items-center gap-1.5 rounded-full bg-slate-900/90 px-2.5 py-1 text-[10px] font-bold text-cyan-300 shadow-xl border border-cyan-500/40 backdrop-blur-md active:scale-95 transition-all"
               title="Tampilkan Peta"
             >
               <Navigation className="size-3 text-cyan-400 animate-pulse" />
@@ -771,7 +782,12 @@ export function RoadHazardCameraView({
 
         {/* Layout Mode: Full Map Only */}
         {viewMode === 'map' && (
-          <div className="relative size-full overflow-hidden bg-slate-900">
+          <div
+            className={cn(
+              "relative size-full overflow-hidden bg-slate-900 isolate z-0",
+              (confirmStopOpen || Boolean(previewSnapshot)) && "invisible pointer-events-none"
+            )}
+          >
             <RoadHazardLiveMap
               currentLat={currentLat}
               currentLng={currentLng}
@@ -786,7 +802,20 @@ export function RoadHazardCameraView({
         {/* Top HUD Overlay (Always Visible on Top of Video/Map) */}
         <div className="absolute left-3 right-3 top-3 z-30 flex items-start justify-between gap-2 pointer-events-none">
           {/* Site, Section & Speedometer Pill */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
+            {/* Prominent KEMBALI button when Fullscreen is active */}
+            {isFullscreen && (
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-rose-600 hover:bg-rose-500 px-3.5 py-1.5 text-xs font-black text-white shadow-xl shadow-rose-950/70 backdrop-blur-md border border-rose-300 active:scale-95 transition-all w-fit animate-in fade-in zoom-in-95 duration-150"
+                title="Keluar dari Layar Penuh (Kembali)"
+              >
+                <ArrowLeft className="size-4 stroke-[3]" />
+                <span>KEMBALI</span>
+              </button>
+            )}
+
             <div className="flex items-center gap-1.5 rounded-full bg-slate-900/85 px-3 py-1 backdrop-blur-md border border-white/10 shadow">
               <span className="size-2 rounded-full bg-emerald-500 animate-ping" />
               <span className="text-[11px] font-black tracking-wide text-white uppercase">{siteName}</span>
@@ -913,14 +942,22 @@ export function RoadHazardCameraView({
           <button
             type="button"
             onClick={toggleFullscreen}
-            className={`flex size-7 items-center justify-center rounded-lg transition-all ${
+            className={cn(
+              "flex items-center justify-center rounded-lg transition-all",
               isFullscreen
-                ? 'bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-400/30'
-                : 'text-cyan-300 hover:bg-white/10'
-            }`}
-            title={isFullscreen ? 'Keluar Fullscreen Dashcam' : 'Layar Penuh (Fullscreen Dashcam Unit)'}
+                ? "bg-amber-400 text-slate-950 font-bold px-2 h-7 gap-1 shadow-lg shadow-amber-400/30"
+                : "size-7 text-cyan-300 hover:bg-white/10"
+            )}
+            title={isFullscreen ? 'Keluar Layar Penuh (Kembali)' : 'Layar Penuh (Fullscreen Dashcam Unit)'}
           >
-            {isFullscreen ? <Minimize2 className="size-3.5" /> : <Expand className="size-3.5" />}
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="size-3.5" />
+                <span className="text-[10px] font-black uppercase tracking-tight">Kembali</span>
+              </>
+            ) : (
+              <Expand className="size-3.5" />
+            )}
           </button>
         </div>
 

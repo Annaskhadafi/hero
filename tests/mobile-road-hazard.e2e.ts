@@ -44,14 +44,15 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   const fsBtn = browser.locator('button[title*="Fullscreen Dashcam"], button[title*="Layar Penuh"]').first()
   await fsBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1000))
+
+  // Verify KEMBALI button is visible in Fullscreen mode
+  await expect(browser.locator('button:has-text("KEMBALI")').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-fullscreen-dashcam')
 
-  // Exit fullscreen
-  const exitFsBtn = browser.locator('button[title*="Keluar Fullscreen"]').first()
-  if (await exitFsBtn.count() > 0) {
-    await exitFsBtn.click()
-    await new Promise((resolve) => setTimeout(resolve, 500))
-  }
+  // Exit fullscreen via KEMBALI button
+  const exitFsBtn = browser.locator('button:has-text("KEMBALI")').first()
+  await exitFsBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 500))
 
   // Switch back to split mode
   const splitBtn = browser.locator('button[title*="Split Mode"]').first()

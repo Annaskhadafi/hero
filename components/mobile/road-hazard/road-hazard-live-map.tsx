@@ -16,7 +16,7 @@ const DynamicLeafletMap = dynamic(() => import('./road-hazard-live-map-inner'), 
 
 export function RoadHazardLiveMap(props: RoadHazardLiveMapInnerProps & { className?: string }) {
   return (
-    <div className={`relative overflow-hidden ${props.className || 'size-full'}`}>
+    <div className={`relative overflow-hidden isolate z-0 ${props.className || 'size-full'}`}>
       <DynamicLeafletMap {...props} />
     </div>
   )
