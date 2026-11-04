@@ -470,6 +470,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     )
 
     let ot = day.overtime?.totalHours ?? 0
+    if (ot > 0 && hasManualAttendance && day.clockOut) {
+      otTo = day.clockOut.replace(':', '.')
+    }
+
     if (otFrom === '00.00' && otTo === '00.00') {
       if (hasManualAttendance && day.clockIn && day.clockOut) {
         otFrom = day.clockIn.replace(':', '.')
@@ -848,6 +852,10 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     )
 
     let ot = day.overtime?.totalHours ?? 0
+    if (ot > 0 && hasManualAttendance && day.clockOut) {
+      otTo = day.clockOut.replace(':', '.')
+    }
+
     if (otFrom === '00.00' && otTo === '00.00') {
       if (hasManualAttendance && day.clockIn && day.clockOut) {
         otFrom = day.clockIn.replace(':', '.')
