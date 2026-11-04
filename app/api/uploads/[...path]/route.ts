@@ -40,6 +40,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   'hrga-kerjasama',
   'ga-house-rental',
   'rfr',
+  'road-hazard',
 ])
 
 function getContentType(fileName: string) {
@@ -237,7 +238,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === 'hse-osm' ||
     path[0] === 'hrga-kerjasama' ||
     path[0] === 'ga-house-rental' ||
-    path[0] === 'rfr'
+    path[0] === 'rfr' ||
+    path[0] === 'road-hazard'
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {

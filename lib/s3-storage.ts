@@ -77,7 +77,8 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith('reward-store/') ||
       cleanPath.startsWith('training-requests/') ||
       cleanPath.startsWith('marital-status/') ||
-      cleanPath.startsWith('rfr/')
+      cleanPath.startsWith('rfr/') ||
+      cleanPath.startsWith('road-hazard/')
     ) {
       return cleanPath
     }
@@ -413,6 +414,7 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
       `upload/${cleanKey}`,
       `public-career-cv/${bareFilename}`,
       `rfr/${bareFilename}`,
+      `road-hazard/${bareFilename}`,
       bareFilename,
     ])
   )
@@ -486,6 +488,7 @@ export async function checkS3ObjectExists(objectUrl: string | null): Promise<boo
       `upload/${cleanKey}`,
       `public-career-cv/${bareFilename}`,
       `rfr/${bareFilename}`,
+      `road-hazard/${bareFilename}`,
       bareFilename,
     ])
   )
