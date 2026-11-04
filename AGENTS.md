@@ -122,6 +122,37 @@ Jika skenario pengetesan membutuhkan akses login ke dalam HERO, **WAJIB** menggu
 
 ---
 
+# Standar Wajib Pelaporan Progress & Update Slide PPT Bulanan (MANDATORI - SETIAP FITUR / PERBAIKAN)
+
+## 📊 Aturan Wajib Pembaruan Slide Presentasi Bulanan (`D:\\[01] PROJECT\\HERO\\Monthly`)
+
+Untuk memastikan setiap progress pekerjaan harian, perbaikan bug (fix), dan penambahan fitur baru terdokumentasi secara resmi, rapi, dan transparan bersama bukti nyata tangkapan layar (screenshot E2E):
+
+### 1. Eksekusi Skrip Pembaruan Presentasi Otomatis
+* **WAJIB HUKUMNYA** setelah pengujian E2E selesai dan screenshot berhasil diambil, Agent **WAJIB** mengeksekusi skrip otomasi:
+  ```bash
+  python scripts/update-monthly-presentation.py \
+    --title "Nama Fitur atau Perbaikan" \
+    --description "Penjelasan singkat mengenai perbaikan/fitur dan tujuannya" \
+    --screenshots "path/to/screenshot1.png" "path/to/screenshot2.png" \
+    --system "HERO" # Atau "ONE-CHITRA" jika modul terkait ONE-CHITRA
+  ```
+* Skrip ini secara otomatis:
+  1. **Mendeteksi Bulan Berjalan**: Menyesuaikan dengan bulan dan tahun aktif sistem dalam Bahasa Indonesia (misal: `MONTHLY NOVEMBER 2026 SDS.pptx`).
+  2. **Inisialisasi Otomatis File Baru**: Jika file bulan berjalan belum ada, skrip otomatis menyalin (*copy*) dari file bulan sebelumnya di folder `Monthly/`, memperbarui cover Slide 1 (Bulan & Tahun), judul SI Gantt di Slide 5, mengosongkan daftar lama di Slide 4, dan menghapus slide detail bulan lalu agar siap digunakan dengan bersih.
+  3. **Menambahkan Poin Ringkasan di Slide 4**: Menambahkan poin bullet `• <Judul Fitur/Fix>` ke dalam kotak `HERO ECOSYSTEM` atau `ONE-CHITRA ECOSYSTEM` pada slide *"What We Have Done / List (Evidance)"*.
+  4. **Membuat Slide Detail "HERO Update" Baru**: Menambahkan slide baru lengkap dengan badge kategori di pojok kanan atas, judul fitur, deskripsi singkat, dan menyematkan 1 atau 2 screenshot E2E secara rapi dan presisi berdampingan (*side-by-side*) tepat sebelum slide *"Planning on next months"*.
+
+### 2. Format Wajib Laporan Akhir ke Pengguna
+Di akhir setiap respons pengerjaan tugas (fitur/fix), Agent **WAJIB** menyajikan:
+1. **Ringkasan Progress Harian**: Rekapitulasi apa saja yang telah dikerjakan pada sesi/hari ini.
+2. **Status Slide Presentasi Bulanan**:
+   - File target yang diperbarui: `D:\\[01] PROJECT\\HERO\\Monthly\\MONTHLY [BULAN] [TAHUN] SDS.pptx`
+   - Nomor slide detail baru yang ditambahkan (misal: Slide #6 atau #7).
+   - Bukti screenshot E2E yang telah disematkan ke dalam slide presentasi sebagai bukti resmi (*official evidence*).
+
+---
+
 # MAESTRO Trigger (`/maestro`)
 
 Jika request user menyertakan marker `/maestro`, perlakukan seluruh request

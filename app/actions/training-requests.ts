@@ -56,7 +56,10 @@ async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
   }
 }
 
+let trainingRequestSchemaEnsured = false
+
 export async function ensureTrainingRequestSchema() {
+  if (trainingRequestSchemaEnsured) return
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS hero_training_requests (
@@ -118,6 +121,7 @@ export async function ensureTrainingRequestSchema() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `)
+    trainingRequestSchemaEnsured = true
   } catch (err) {
     console.warn('[ensureTrainingRequestSchema] schema check error:', err)
   }
