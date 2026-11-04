@@ -37,7 +37,7 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   const pipBtn = browser.locator('button[title*="PiP Mode"]').first()
   await pipBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1000))
-  await expect(browser.locator('text=WIDGET MAPS').first()).toBeVisible()
+  await expect(browser.locator('text=PETA').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-pip-mode')
 
   // Test Fullscreen Dashcam toggle
@@ -68,7 +68,7 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('text=Titik bahaya terdeteksi').first()).toBeVisible()
   await expect(browser.locator('text=Potensi rusak ban').first()).toBeVisible()
   await expect(browser.locator('button:has-text("Download PDF Resmi")').first()).toBeVisible()
-  await expect(browser.locator('button:has-text("Simpan Sesi")').first()).toBeVisible()
+  await expect(browser.locator('button:has-text("Sesi Baru")').first()).toBeVisible()
 
   // Screenshot of Recap Screen
   await app.screenshot('mobile-road-hazard-recap-screen')

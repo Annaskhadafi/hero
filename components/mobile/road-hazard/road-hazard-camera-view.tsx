@@ -149,12 +149,15 @@ export function RoadHazardCameraView({
   }>({ latitude: null, longitude: null, speedKmh: null, accuracy: null })
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
-  // AI settings
-  const [scanIntervalMs, setScanIntervalMs] = useState(1800)
+  // AI settings (Fast Live Detection: 650ms scan interval for responsive vehicle speed)
+  const [scanIntervalMs, setScanIntervalMs] = useState(650)
   const [confThreshold, setConfThreshold] = useState(0.25)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
   const [autoSnapThreshold, setAutoSnapThreshold] = useState(0.60)
   const [soundAlert, setSoundAlert] = useState(true)
+
+  // Map overlay toggle (can be minimized so it does not block the road camera)
+  const [isMapMinimized, setIsMapMinimized] = useState(false)
 
   // AI live detection feedback
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -407,14 +410,16 @@ export function RoadHazardCameraView({
     })
   }, [])
 
-  // Analyze single frame via API
+  // Analyze single frame via API (optimized for high FPS and low latency)
   const analyzeFrame = useCallback(
     async (isManualSnap = false): Promise<any> => {
       const video = videoRef.current
       if (!video || !video.videoWidth || !video.videoHeight) return null
 
       const snapCanvas = document.createElement('canvas')
-      snapCanvas.width = isManualSnap ? video.videoWidth : Math.min(video.videoWidth, 800)
+      // Live frame uses lightweight width (480px, ~25KB) for sub-200ms roundtrip latency
+      // Manual snapshot uses full resolution HD for crisp documentation
+      snapCanvas.width = isManualSnap ? video.videoWidth : Math.min(video.videoWidth, 480)
       snapCanvas.height = isManualSnap
         ? video.videoHeight
         : Math.round((snapCanvas.width / video.videoWidth) * video.videoHeight)
@@ -453,7 +458,7 @@ export function RoadHazardCameraView({
             }
           },
           'image/jpeg',
-          isManualSnap ? 0.9 : 0.72
+          isManualSnap ? 0.88 : 0.48
         )
       })
     },
@@ -676,20 +681,42 @@ export function RoadHazardCameraView({
           </div>
         )}
 
-        {/* Layout Mode: PiP (Floating Picture-in-Picture Mini Map Widget) */}
+        {/* Layout Mode: PiP (Floating Picture-in-Picture Mini Map Widget with Close / Minimize) */}
         {viewMode === 'pip' && (
-          <div className="absolute bottom-24 right-3 z-30 h-36 w-44 overflow-hidden rounded-xl border-2 border-cyan-400/80 shadow-2xl bg-slate-900 transition-all hover:scale-105">
-            <RoadHazardLiveMap
-              currentLat={currentLat}
-              currentLng={currentLng}
-              pathCoordinates={pathCoordinates}
-              snapshots={events}
-              className="size-full"
-            />
-            <div className="pointer-events-none absolute top-1 left-1 z-[400] rounded bg-black/70 px-1 py-0.5 text-[8px] font-black text-cyan-300">
-              WIDGET MAPS
+          !isMapMinimized ? (
+            <div className="absolute bottom-24 right-3 z-30 h-32 w-40 overflow-hidden rounded-xl border-2 border-cyan-400/80 shadow-2xl bg-slate-900 transition-all">
+              <RoadHazardLiveMap
+                currentLat={currentLat}
+                currentLng={currentLng}
+                pathCoordinates={pathCoordinates}
+                snapshots={events}
+                className="size-full"
+              />
+              <div className="pointer-events-none absolute top-1 left-1 z-[400] rounded bg-black/70 px-1 py-0.5 text-[8px] font-black text-cyan-300">
+                PETA
+              </div>
+              {/* Tombol Tutup / Minimize Peta agar tidak menghalangi kamera */}
+              <button
+                type="button"
+                onClick={() => setIsMapMinimized(true)}
+                className="absolute top-1 right-1 z-[401] flex size-5 items-center justify-center rounded-full bg-slate-950/80 text-white hover:bg-rose-600 transition-colors shadow"
+                title="Sembunyikan Peta (Kamera Penuh)"
+              >
+                <X className="size-3" />
+              </button>
             </div>
-          </div>
+          ) : (
+            /* Floating Mini Pill saat peta diminimize agar pandangan kamera bebas dan bersih */
+            <button
+              type="button"
+              onClick={() => setIsMapMinimized(false)}
+              className="absolute bottom-24 right-3 z-30 flex items-center gap-1.5 rounded-full bg-slate-900/90 px-2.5 py-1 text-[10px] font-bold text-cyan-300 shadow-xl border border-cyan-500/40 backdrop-blur-md active:scale-95 transition-all"
+              title="Tampilkan Peta"
+            >
+              <Navigation className="size-3 text-cyan-400 animate-pulse" />
+              <span>Buka Peta</span>
+            </button>
+          )
         )}
 
         {/* Layout Mode: Full Map Only */}
@@ -844,8 +871,41 @@ export function RoadHazardCameraView({
           </button>
         </div>
 
-        {/* Quick Toolbar (Torch, Camera Switch, Sound, Settings) */}
+        {/* Quick Toolbar (Map Toggle, Torch, Camera Switch, Sound, Settings) */}
         <div className="absolute top-26 right-3 z-30 flex flex-col items-center gap-1.5 pt-1">
+          {/* Quick Map Visibility Toggle (Allows driver to hide/show map with single tap) */}
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => {
+              if (viewMode === 'cam') {
+                setViewMode('pip')
+                setIsMapMinimized(false)
+              } else if (viewMode === 'pip' && !isMapMinimized) {
+                setIsMapMinimized(true)
+              } else if (viewMode === 'pip' && isMapMinimized) {
+                setIsMapMinimized(false)
+              } else if (viewMode === 'split') {
+                setViewMode('cam')
+              } else {
+                setViewMode('pip')
+                setIsMapMinimized(false)
+              }
+            }}
+            className={`size-8 rounded-full border-white/20 bg-slate-900/80 text-white backdrop-blur-md ${
+              viewMode === 'split' || (viewMode === 'pip' && !isMapMinimized)
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-bold shadow-md shadow-cyan-500/20'
+                : 'hover:bg-white/10 text-slate-300'
+            }`}
+            title={
+              viewMode === 'split' || (viewMode === 'pip' && !isMapMinimized)
+                ? 'Sembunyikan Peta (Layar Bersih)'
+                : 'Tampilkan Peta'
+            }
+          >
+            <MapIcon className="size-3.5" />
+          </Button>
+
           {hasTorch && (
             <Button
               size="icon"
@@ -922,16 +982,17 @@ export function RoadHazardCameraView({
 
                 <div className="space-y-1.5 pt-2">
                   <div className="flex justify-between text-slate-300">
-                    <span>Frekuensi Live Scan</span>
-                    <span className="font-bold text-amber-400">{(scanIntervalMs / 1000).toFixed(1)}s</span>
+                    <span>Kecepatan Live Scan AI</span>
+                    <span className="font-bold text-amber-400">{(scanIntervalMs / 1000).toFixed(2)}s</span>
                   </div>
                   <Slider
                     value={[scanIntervalMs]}
-                    min={1000}
-                    max={4000}
-                    step={200}
+                    min={400}
+                    max={2500}
+                    step={50}
                     onValueChange={(val) => setScanIntervalMs(val[0])}
                   />
+                  <p className="text-[10px] text-slate-400">Rekomendasi 0.5s - 0.7s untuk unit hauling bergerak</p>
                 </div>
               </div>
             </SheetContent>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   FileText,
   Download,
@@ -15,6 +15,7 @@ import {
   Clock,
   Camera,
   Layers,
+  ShieldCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,7 @@ export function RoadHazardRecapView({
 }: RoadHazardRecapViewProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [currentSessionCode, setCurrentSessionCode] = useState(sessionCode)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [notesState, setNotesState] = useState<Record<string, string>>({})
   const [summaryNotes, setSummaryNotes] = useState('')
@@ -101,9 +103,9 @@ export function RoadHazardRecapView({
           latitude: ev.latitude,
           longitude: ev.longitude,
           speedKmh: ev.speedKmh,
-          photoUrl: ev.photoUrl,
-          annotatedPhotoUrl: ev.annotatedPhotoUrl,
-          detectionBoxes: ev.detectionBoxes,
+          photoUrl: ev.photoUrl || '',
+          annotatedPhotoUrl: ev.annotatedPhotoUrl || null,
+          detectionBoxes: ev.detectionBoxes || null,
           notes: notesState[ev.id] ?? ev.notes ?? '',
           isManualSnap: ev.isManualSnap,
         })),
@@ -122,13 +124,23 @@ export function RoadHazardRecapView({
 
       const data = await res.json()
       setIsSaved(true)
-      toast.success(`Sesi berhasil disimpan! (Kode: ${data.sessionCode})`)
+      if (data.sessionCode) {
+        setCurrentSessionCode(data.sessionCode)
+      }
+      toast.success(`Sesi berhasil disimpan! (Kode: ${data.sessionCode || 'OK'})`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Gagal menyimpan sesi.')
     } finally {
       setIsSaving(false)
     }
   }
+
+  // Auto-save on arrival at recap screen so user data is never lost
+  useEffect(() => {
+    if (!isSaved && !isSaving && (events.length > 0 || durationSeconds > 0)) {
+      handleSaveToDatabase()
+    }
+  }, [])
 
   // Handle Export PDF
   const handleExportPdf = async () => {
@@ -137,7 +149,7 @@ export function RoadHazardRecapView({
 
     try {
       const pdfBlob = await generateRoadHazardPdf({
-        sessionCode,
+        sessionCode: currentSessionCode,
         siteName,
         customerName,
         inspectorName,
@@ -260,6 +272,22 @@ export function RoadHazardRecapView({
           description="Alur roda dalam"
         />
       </div>
+
+      {/* Saved Status Banner */}
+      {isSaved && currentSessionCode && (
+        <div className="flex items-center justify-between rounded-xl bg-emerald-500/10 p-2.5 text-xs border border-emerald-500/25">
+          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="size-4 shrink-0" />
+            <div>
+              <p className="font-bold">Sesi Tersimpan di Database</p>
+              <p className="text-[10px] opacity-80">Kode: {currentSessionCode}</p>
+            </div>
+          </div>
+          <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300">
+            TERCATAT
+          </span>
+        </div>
+      )}
 
       {/* Action Toolbar */}
       <div className="flex flex-wrap items-center gap-2 pt-1">

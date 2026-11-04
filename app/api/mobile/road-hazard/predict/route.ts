@@ -105,9 +105,9 @@ export async function POST(request: NextRequest) {
       else if (d.hazard_type === 'Ruts') rutsCount++
     }
 
-    // 3. Save snapshot file if requested or if hazards detected
+    // 3. Save snapshot file ONLY if requested as an explicit snap (saves heavy S3 upload on live frames)
     let savedPhotoUrl = ''
-    if (isSnap || normalizedDetections.length > 0) {
+    if (isSnap) {
       const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg'
       const filename = `${randomUUID()}.${ext}`
       const s3Key = `road-hazard/${filename}`
