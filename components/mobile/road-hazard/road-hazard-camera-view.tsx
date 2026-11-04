@@ -22,6 +22,8 @@ import {
   Map as MapIcon,
   Columns,
   Maximize2,
+  Minimize2,
+  Expand,
   X,
   ExternalLink,
   Navigation,
@@ -35,6 +37,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { HeroConfirmDialog } from '@/components/templates'
 import { RoadHazardLiveMap } from './road-hazard-live-map'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
+import { cn } from '@/lib/utils'
 
 export interface DetectedHazardEvent {
   id: string
@@ -82,6 +85,54 @@ export function RoadHazardCameraView({
 
   // Layout View Mode (Split, PiP, Cam, Map)
   const [viewMode, setViewMode] = useState<ViewMode>('split')
+
+  // Fullscreen Dashcam Mode (True edge-to-edge for vehicle mounting)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!isFullscreen) {
+        if (containerRef.current?.requestFullscreen) {
+          await containerRef.current.requestFullscreen().catch(() => {})
+        } else if ((containerRef.current as any)?.webkitRequestFullscreen) {
+          await (containerRef.current as any).webkitRequestFullscreen().catch(() => {})
+        }
+        setIsFullscreen(true)
+      } else {
+        if (document.fullscreenElement) {
+          if (document.exitFullscreen) {
+            await document.exitFullscreen().catch(() => {})
+          } else if ((document as any).webkitExitFullscreen) {
+            await (document as any).webkitExitFullscreen().catch(() => {})
+          }
+        }
+        setIsFullscreen(false)
+      }
+    } catch (err) {
+      console.warn('[road-hazard] Fullscreen toggle fallback:', err)
+      setIsFullscreen((prev) => !prev)
+    }
+  }, [isFullscreen])
+
+  // Sync with native browser fullscreen changes
+  useEffect(() => {
+    const handleFsChange = () => {
+      const isNativeFs = Boolean(
+        document.fullscreenElement || (document as any).webkitFullscreenElement
+      )
+      if (!isNativeFs && isFullscreen) {
+        setIsFullscreen(false)
+      }
+    }
+
+    document.addEventListener('fullscreenchange', handleFsChange)
+    document.addEventListener('webkitfullscreenchange', handleFsChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange)
+      document.removeEventListener('webkitfullscreenchange', handleFsChange)
+    }
+  }, [isFullscreen])
 
   // Trip recording state
   const [isRecording, setIsRecording] = useState(false)
@@ -295,6 +346,16 @@ export function RoadHazardCameraView({
     startCamera()
     return () => stopCamera()
   }, [startCamera, stopCamera])
+
+  // Ensure video stream remains attached when switching views or toggling fullscreen
+  useEffect(() => {
+    if (videoRef.current && streamRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current
+      }
+      videoRef.current.play().catch(() => {})
+    }
+  }, [viewMode, cameraActive, isFullscreen])
 
   // Helper to draw detection boxes on overlay canvas
   const drawDetections = useCallback((detections: any[], videoWidth: number, videoHeight: number) => {
@@ -552,95 +613,82 @@ export function RoadHazardCameraView({
   const currentLng = currentGps.longitude ?? 116.868041
 
   return (
-    <div className="relative flex h-[calc(100dvh-135px)] w-full flex-col overflow-hidden rounded-2xl bg-slate-950 shadow-2xl">
+    <div
+      ref={containerRef}
+      className={cn(
+        "flex flex-col overflow-hidden bg-slate-950 transition-all duration-200 select-none",
+        isFullscreen
+          ? "fixed inset-0 z-[9999] h-[100dvh] w-screen rounded-none shadow-none"
+          : "relative h-[calc(100dvh-135px)] w-full rounded-2xl shadow-2xl"
+      )}
+    >
       {/* Shutter Flash Animation */}
       {shutterFlash && <div className="absolute inset-0 z-50 bg-white transition-opacity duration-200 pointer-events-none" />}
 
       {/* Main Dual Area (Camera + Live Map) */}
       <div className="relative flex flex-1 flex-col overflow-hidden bg-black">
-        {/* Layout Mode: Split (Camera Top, Live Map Bottom) */}
+        {/* Unified Camera Video & Detection Canvas - ALWAYS MOUNTED (Never unmounts across layout/fullscreen changes) */}
+        <div
+          className={cn(
+            "relative overflow-hidden bg-black transition-[height] duration-200",
+            viewMode === 'split'
+              ? "h-[52%] w-full border-b border-white/10"
+              : viewMode === 'map'
+              ? "hidden"
+              : "absolute inset-0 size-full z-0"
+          )}
+        >
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="size-full object-cover"
+            onLoadedMetadata={() => {
+              if (videoRef.current) {
+                videoRef.current.play().catch(() => {})
+              }
+            }}
+          />
+          <canvas
+            ref={canvasRef}
+            className="pointer-events-none absolute inset-0 size-full object-cover"
+          />
+        </div>
+
+        {/* Layout Mode: Split (Live Map on Bottom 48%) */}
         {viewMode === 'split' && (
-          <div className="flex size-full flex-col">
-            {/* Top 52%: Camera Video */}
-            <div className="relative h-[52%] w-full overflow-hidden bg-black border-b border-white/10">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="size-full object-cover"
-              />
-              <canvas
-                ref={canvasRef}
-                className="pointer-events-none absolute inset-0 size-full object-cover"
-              />
-            </div>
+          <div className="relative h-[48%] w-full overflow-hidden bg-slate-900">
+            <RoadHazardLiveMap
+              currentLat={currentLat}
+              currentLng={currentLng}
+              pathCoordinates={pathCoordinates}
+              snapshots={events}
+              onSelectSnapshot={setPreviewSnapshot}
+              className="size-full"
+            />
 
-            {/* Bottom 48%: Live Interactive OpenStreetMap */}
-            <div className="relative h-[48%] w-full overflow-hidden bg-slate-900">
-              <RoadHazardLiveMap
-                currentLat={currentLat}
-                currentLng={currentLng}
-                pathCoordinates={pathCoordinates}
-                snapshots={events}
-                onSelectSnapshot={setPreviewSnapshot}
-                className="size-full"
-              />
-
-              {/* Floating Map Label Badge */}
-              <div className="pointer-events-none absolute bottom-2 left-2 z-[400] flex items-center gap-1 rounded-md bg-slate-950/80 px-2 py-0.5 text-[9px] font-bold text-cyan-300 backdrop-blur-sm border border-cyan-500/20">
-                <Navigation className="size-2.5 animate-pulse" />
-                <span>Live Route Map • {events.length} Snap Pin</span>
-              </div>
+            {/* Floating Map Label Badge */}
+            <div className="pointer-events-none absolute bottom-2 left-2 z-[400] flex items-center gap-1 rounded-md bg-slate-950/80 px-2 py-0.5 text-[9px] font-bold text-cyan-300 backdrop-blur-sm border border-cyan-500/20">
+              <Navigation className="size-2.5 animate-pulse" />
+              <span>Live Route Map • {events.length} Snap Pin</span>
             </div>
           </div>
         )}
 
-        {/* Layout Mode: PiP (Camera Fullscreen + Floating Mini Map) */}
+        {/* Layout Mode: PiP (Floating Picture-in-Picture Mini Map Widget) */}
         {viewMode === 'pip' && (
-          <div className="relative size-full overflow-hidden bg-black">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="size-full object-cover"
+          <div className="absolute bottom-24 right-3 z-30 h-36 w-44 overflow-hidden rounded-xl border-2 border-cyan-400/80 shadow-2xl bg-slate-900 transition-all hover:scale-105">
+            <RoadHazardLiveMap
+              currentLat={currentLat}
+              currentLng={currentLng}
+              pathCoordinates={pathCoordinates}
+              snapshots={events}
+              className="size-full"
             />
-            <canvas
-              ref={canvasRef}
-              className="pointer-events-none absolute inset-0 size-full object-cover"
-            />
-
-            {/* Floating Picture-in-Picture Mini Map Widget */}
-            <div className="absolute bottom-24 right-3 z-30 h-36 w-44 overflow-hidden rounded-xl border-2 border-cyan-400/80 shadow-2xl bg-slate-900 transition-all hover:scale-105">
-              <RoadHazardLiveMap
-                currentLat={currentLat}
-                currentLng={currentLng}
-                pathCoordinates={pathCoordinates}
-                snapshots={events}
-                className="size-full"
-              />
-              <div className="pointer-events-none absolute top-1 left-1 z-[400] rounded bg-black/70 px-1 py-0.5 text-[8px] font-black text-cyan-300">
-                WIDGET MAPS
-              </div>
+            <div className="pointer-events-none absolute top-1 left-1 z-[400] rounded bg-black/70 px-1 py-0.5 text-[8px] font-black text-cyan-300">
+              WIDGET MAPS
             </div>
-          </div>
-        )}
-
-        {/* Layout Mode: Camera Only */}
-        {viewMode === 'cam' && (
-          <div className="relative size-full overflow-hidden bg-black">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="size-full object-cover"
-            />
-            <canvas
-              ref={canvasRef}
-              className="pointer-events-none absolute inset-0 size-full object-cover"
-            />
           </div>
         )}
 
@@ -736,7 +784,7 @@ export function RoadHazardCameraView({
           </div>
         )}
 
-        {/* Floating Layout Mode Switcher (Top Right Toolbar) */}
+        {/* Floating Layout Mode & Fullscreen Switcher (Top Right Toolbar) */}
         <div className="absolute top-16 right-3 z-30 flex items-center gap-1 rounded-xl bg-slate-950/80 p-1 backdrop-blur-md border border-white/15">
           <button
             type="button"
@@ -754,7 +802,7 @@ export function RoadHazardCameraView({
             className={`flex size-7 items-center justify-center rounded-lg text-white transition-all ${
               viewMode === 'pip' ? 'bg-cyan-500 text-slate-950 font-bold' : 'hover:bg-white/10'
             }`}
-            title="PiP Mode (Widget Peta Mengambang)"
+            title="PiP Mode (Perluas Kamera + Widget Peta)"
           >
             <Maximize2 className="size-3.5" />
           </button>
@@ -777,6 +825,22 @@ export function RoadHazardCameraView({
             title="Peta Penuh"
           >
             <MapIcon className="size-3.5" />
+          </button>
+
+          <div className="h-4 w-px bg-white/20 mx-0.5" />
+
+          {/* Fullscreen Dashcam Toggle */}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className={`flex size-7 items-center justify-center rounded-lg transition-all ${
+              isFullscreen
+                ? 'bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-400/30'
+                : 'text-cyan-300 hover:bg-white/10'
+            }`}
+            title={isFullscreen ? 'Keluar Fullscreen Dashcam' : 'Layar Penuh (Fullscreen Dashcam Unit)'}
+          >
+            {isFullscreen ? <Minimize2 className="size-3.5" /> : <Expand className="size-3.5" />}
           </button>
         </div>
 

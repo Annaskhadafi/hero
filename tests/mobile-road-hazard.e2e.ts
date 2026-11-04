@@ -33,12 +33,25 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   // 7. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
   await app.screenshot('mobile-road-hazard-live-split-map')
 
-  // 8. Test PiP mode toggle
+  // 8. Test PiP mode toggle & Fullscreen Dashcam
   const pipBtn = browser.locator('button[title*="PiP Mode"]').first()
   await pipBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 1000))
   await expect(browser.locator('text=WIDGET MAPS').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-pip-mode')
+
+  // Test Fullscreen Dashcam toggle
+  const fsBtn = browser.locator('button[title*="Fullscreen Dashcam"], button[title*="Layar Penuh"]').first()
+  await fsBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await app.screenshot('mobile-road-hazard-fullscreen-dashcam')
+
+  // Exit fullscreen
+  const exitFsBtn = browser.locator('button[title*="Keluar Fullscreen"]').first()
+  if (await exitFsBtn.count() > 0) {
+    await exitFsBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
 
   // Switch back to split mode
   const splitBtn = browser.locator('button[title*="Split Mode"]').first()
