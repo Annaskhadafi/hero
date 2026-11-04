@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { cn } from '@/lib/utils'
 
@@ -838,7 +839,16 @@ export function MobileSplHistory({
                                   <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
                                   <td className="text-center text-[7pt]">
                                     {hasPhoto ? (
-                                      <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                      <a
+                                        href={resolveUploadUrl(item.photoUrl || (Array.isArray(item.photos) ? item.photos[0] : ''))}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-bold text-emerald-600 hover:text-emerald-700 underline inline-flex items-center justify-center gap-0.5"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Klik untuk melihat foto bukti lembur"
+                                      >
+                                        📷 Ada Foto
+                                      </a>
                                     ) : (
                                       <span className="text-slate-400">—</span>
                                     )}

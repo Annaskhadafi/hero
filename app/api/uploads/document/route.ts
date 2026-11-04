@@ -10,9 +10,11 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const session = await getServerSession();
-    const maestroSession = !session?.user?.email ? await getMaestroServerSession() : null;
+    const hasHeroUser = Boolean(session?.user?.id || session?.user?.email);
+    const maestroSession = !hasHeroUser ? await getMaestroServerSession() : null;
+    const hasMaestroUser = Boolean(maestroSession?.user?.id || maestroSession?.user?.email);
 
-    if (!session?.user?.email && !maestroSession?.user?.email) {
+    if (!hasHeroUser && !hasMaestroUser) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 

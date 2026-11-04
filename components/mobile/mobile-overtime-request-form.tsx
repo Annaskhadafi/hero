@@ -685,16 +685,37 @@ export function MobileOvertimeRequestForm({
       const fd = new FormData();
       fd.append('file', compressedFile);
       fd.append('uploadTarget', 'activity-photos');
-      const result = await uploadFile(fd);
+      // Primary: Server action upload
+      let result = await uploadFile(fd);
+
+      // Fallback: If Server Action fails (network glitch, origin check, or timeout), try direct HTTP endpoint
+      if (!result.success) {
+        try {
+          const res = await fetch('/api/uploads/document', {
+            method: 'POST',
+            body: fd,
+          });
+          if (res.ok) {
+            const apiRes = await res.json();
+            if (apiRes.success && (apiRes.readableUrl || apiRes.url)) {
+              result = apiRes;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('[MobileSPL] Fallback API upload failed:', apiErr);
+        }
+      }
       if (result.success && (result.readableUrl || result.url)) {
         const finalUrl = result.readableUrl || result.url;
         updateLineItem(idx, 'photoUrl', finalUrl);
+        if (!photoUrl) setPhotoUrl(finalUrl);
         toast.success('Foto evidence berhasil diunggah');
       } else {
-        toast.error('Gagal mengunggah foto evidence');
+        toast.error(result.error || 'Gagal mengunggah foto evidence');
       }
-    } catch {
-      toast.error('Gagal mengunggah foto evidence');
+    } catch (err: any) {
+      console.error('[MobileSPL] Photo upload exception:', err);
+      toast.error(err?.message || 'Gagal mengunggah foto evidence. Periksa jaringan.');
     } finally {
       setIsUploadingLinePhoto((prev) => {
         const next = [...prev];
@@ -737,6 +758,7 @@ export function MobileOvertimeRequestForm({
       }
       const startDateTime = new Date(`${baseDate}T${cleanStartTime}`);
       const endDateTime = new Date(`${effectiveEndDate}T${cleanEndTime}`);
+      const effectiveDocPhotoUrl = photoUrl || validItems.find((it) => it.photoUrl)?.photoUrl || null;
 
       if (editSplId) {
         const res = await resubmitOvertimeCommandLetterAction({
@@ -745,7 +767,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
-          photoUrl: photoUrl,
+          photoUrl: effectiveDocPhotoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           status: 'Submitted',
@@ -794,7 +816,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
-          photoUrl: photoUrl,
+          photoUrl: effectiveDocPhotoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           workerParticipants: validWorkers.map((w) => ({
@@ -1364,8 +1386,12 @@ export function MobileOvertimeRequestForm({
                           isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
                         )}
                       >
-                        <Camera className="size-3.5 text-slate-500" />
-                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Kamera"}
+                        {isUploadingLinePhoto[idx] ? (
+                          <Loader2 className="size-3.5 animate-spin text-blue-600" />
+                        ) : (
+                          <Camera className="size-3.5 text-slate-500" />
+                        )}
+                        {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
                         <input
                           type="file"
                           accept="image/*"
@@ -1385,8 +1411,12 @@ export function MobileOvertimeRequestForm({
                           isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
                         )}
                       >
-                        <FileText className="size-3.5 text-slate-500" />
-                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Galeri"}
+                        {isUploadingLinePhoto[idx] ? (
+                          <Loader2 className="size-3.5 animate-spin text-blue-600" />
+                        ) : (
+                          <FileText className="size-3.5 text-slate-500" />
+                        )}
+                        {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
                         <input
                           type="file"
                           accept="image/*"
@@ -1806,7 +1836,16 @@ export function MobileOvertimeRequestForm({
                             <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
                             <td className="text-center text-[7pt]">
                               {hasPhoto ? (
-                                <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                <a
+                                  href={resolveUploadUrl(item.photoUrl || (Array.isArray(item.photos) ? item.photos[0] : ''))}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-bold text-emerald-600 hover:text-emerald-700 underline inline-flex items-center justify-center gap-0.5"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Klik untuk melihat foto bukti lembur"
+                                >
+                                  📷 Ada Foto
+                                </a>
                               ) : (
                                 <span className="text-slate-400">—</span>
                               )}

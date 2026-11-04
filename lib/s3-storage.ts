@@ -267,7 +267,11 @@ export async function uploadAnyFileToS3(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const putSignal = abortSignal || AbortSignal.timeout(60_000)
+      const attemptTimeout = AbortSignal.timeout(15_000)
+      const putSignal = abortSignal
+        ? (typeof AbortSignal.any === 'function' ? AbortSignal.any([abortSignal, attemptTimeout]) : abortSignal)
+        : attemptTimeout
+
       await client.send(
         new PutObjectCommand({
           Bucket: serverEnv.s3BucketName,

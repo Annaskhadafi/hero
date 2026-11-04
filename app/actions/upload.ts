@@ -16,7 +16,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 
-const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024
+const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024
 const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024
 const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024
 const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024 // 100MB
@@ -73,14 +73,14 @@ function isPrivateIpOrHost(urlString: string): boolean {
 
 async function requireUploadSession() {
   const session = await getServerSession()
-  if (session?.user?.email) {
+  if (session?.user?.email || session?.user?.id) {
     return { success: true as const, session }
   }
   const maestroSession = await getMaestroServerSession()
-  if (maestroSession?.user?.email) {
+  if (maestroSession?.user?.email || maestroSession?.user?.id) {
     return { success: true as const, session: maestroSession }
   }
-  return { success: false as const, error: 'Unauthorized' }
+  return { success: false as const, error: 'Unauthorized: Sesi login tidak ditemukan.' }
 }
 
 export async function uploadFile(formData: FormData) {
@@ -121,7 +121,9 @@ export async function uploadFile(formData: FormData) {
       return { success: false, error: 'Tipe file ini dilarang demi alasan keamanan.' }
     }
 
-    const isImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml'
+    const isImage =
+      (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif)$/i.test(file.name)) &&
+      file.type !== 'image/svg+xml'
     const isPdf = file.type === 'application/pdf'
     if (isPublicCareerCv && !isPdf) {
       return { success: false, error: 'CV harus berformat PDF.' }
@@ -133,7 +135,7 @@ export async function uploadFile(formData: FormData) {
       return { success: false, error: 'File must be an image, PDF, Office document, or video.' }
     }
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: 'Photo size max 5MB.' }
+      return { success: false, error: 'Ukuran foto maksimal 15MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
       return { success: false, error: 'PDF size max 10MB.' }
@@ -153,25 +155,16 @@ export async function uploadFile(formData: FormData) {
         })
       : file
     const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
-    const requiresS3Persistence = isPdf || isPublicCareerCv
+    const isS3Ready = isS3UploadConfigured()
 
-    if (requiresS3Persistence && !isS3UploadConfigured()) {
-      return {
-        success: false,
-        error: 'S3 Cloud Storage belum terkonfigurasi. Berkas PDF wajib disimpan ke S3 agar persisten saat redeploy.',
-      }
-    }
-
-    if (isS3UploadConfigured()) {
+    if (isS3Ready) {
       try {
         const result =
           uploadTarget === 'attendance'
             ? await uploadAttendancePhotoToS3(fileToUpload)
-            : await uploadAnyFileToS3(
-                fileToUpload,
-                uploadTarget || undefined,
-                AbortSignal.timeout(60_000)
-              )
+            : uploadTarget
+              ? await uploadAnyFileToS3(fileToUpload, uploadTarget)
+              : await uploadAnyFileToS3(fileToUpload, undefined, AbortSignal.timeout(30_000))
         const proxyUrl = `/api/uploads/${result.key}`
         return {
           success: true,
@@ -182,13 +175,10 @@ export async function uploadFile(formData: FormData) {
         }
       } catch (s3Error: any) {
         console.error('S3 Upload failed:', s3Error)
-        if (requiresS3Persistence) {
-          return {
-            success: false,
-            error: `Gagal mengunggah berkas PDF ke S3 Object Storage (${s3Error?.message || 'Koneksi S3 terputus'}). Berkas tidak disimpan ke lokal agar tidak hilang saat redeploy. Silakan coba lagi.`,
-          }
+        return {
+          success: false,
+          error: `Gagal mengunggah berkas ke S3 Cloud Storage (${s3Error?.message || 'Koneksi S3 terputus'}). Berkas wajib disimpan ke S3 agar tidak hilang saat redeploy. Silakan coba lagi.`,
         }
-        console.warn('S3 Upload failed, falling back to local storage for non-critical assets:', s3Error)
       }
     }
 
@@ -326,7 +316,7 @@ export async function uploadCurhatAttachment(formData: FormData) {
     }
 
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: 'Image size max 5MB.' }
+      return { success: false, error: 'Ukuran foto maksimal 15MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
       return { success: false, error: 'PDF size max 10MB.' }
