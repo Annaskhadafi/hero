@@ -6484,6 +6484,7 @@ export function SchedulingTimesheetWorkspace({
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
+      overtimeMode: empSiteConfig.overtimeConfig.mode ?? 'template',
     })
   }
 

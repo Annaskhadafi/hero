@@ -470,7 +470,11 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     )
 
     let ot = day.overtime?.totalHours ?? 0
-    if (ot > 0 && hasManualAttendance && day.clockOut) {
+    const isRealtimeMode = input.overtimeMode === 'realtime'
+
+    // Jika mode realtime, atau hari libur/OFF: Overtime To mengikuti jam realtime pulang aktual (clockOut)
+    // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
+    if (ot > 0 && hasManualAttendance && day.clockOut && (isRealtimeMode || isOff)) {
       otTo = day.clockOut.replace(':', '.')
     }
 
@@ -852,7 +856,11 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     )
 
     let ot = day.overtime?.totalHours ?? 0
-    if (ot > 0 && hasManualAttendance && day.clockOut) {
+    const isRealtimeMode = input.overtimeMode === 'realtime'
+
+    // Jika mode realtime, atau hari libur/OFF: Overtime To mengikuti jam realtime pulang aktual (clockOut)
+    // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
+    if (ot > 0 && hasManualAttendance && day.clockOut && (isRealtimeMode || isOff)) {
       otTo = day.clockOut.replace(':', '.')
     }
 
