@@ -6639,9 +6639,10 @@ export function SchedulingTimesheetWorkspace({
                 cell.clockOut,
                 staff,
                 row.employee.id,
-                true
+                false
               )
-              if (mandatoryOvertimeHours(overtime) > 0) return String(mandatoryOvertimeHours(overtime))
+              const otVal = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
+              if (otVal > 0) return String(roundOvertimeHours(otVal))
               if (overtime.unauthorizedMinutes > 0) return 'SPL'
               if (code === 'ST') return 'ST'
               if (code === 'GD') return 'GD'
@@ -6682,15 +6683,16 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
             else if (!staff) {
-              total += mandatoryOvertimeHours(calculateDayOvertime(
+              const dayOt = calculateDayOvertime(
                   row.schedule,
                   day,
                   cell.clockIn,
                   cell.clockOut,
                   staff,
                   row.employee.id,
-                  true
-                ))
+                  false
+                )
+              total += dayOt.totalHours > 0 ? dayOt.totalHours : mandatoryOvertimeHours(dayOt)
             }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
