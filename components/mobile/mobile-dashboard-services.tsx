@@ -451,7 +451,7 @@ export function MobileDashboardServices({
     {
       title: 'Road Hazard Live AI',
       href: '/mobile/hse/road-hazard',
-      resource: 'hse_road_condition_analysis',
+      resource: 'hse_road_hazard',
       icon: Video,
       bg: 'bg-blue-500/10 text-blue-600',
       section: 'HSE & Safety',

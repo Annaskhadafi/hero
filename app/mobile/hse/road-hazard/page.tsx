@@ -6,6 +6,7 @@ import { db } from '@/db'
 import { sites } from '@/db/schema/hero'
 import { roadHazardSessions } from '@/db/schema/road-hazard'
 import { getServerSession } from '@/lib/auth-session'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { ensureRoadHazardTables } from '@/lib/road-hazard/db-helper'
 import { RoadHazardClientPage } from './road-hazard-client'
 
@@ -13,6 +14,11 @@ export default async function MobileRoadHazardPage() {
   const session = await getServerSession()
   if (!session?.user) {
     redirect('/auth/signin?callbackUrl=/mobile/hse/road-hazard')
+  }
+
+  const access = await getCurrentMenuPermission('hse_road_hazard')
+  if (!access.canView) {
+    redirect('/403')
   }
 
   await ensureRoadHazardTables()

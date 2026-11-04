@@ -121,7 +121,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'maestro-menu-v2'
+const HERO_GOVERNANCE_SEED_VERSION = 'road-hazard-rbac-v1'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -1586,6 +1586,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'alert-triangle',
     resource: 'hse_incident_report',
     sortOrder: 12,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'Road Hazard Live AI',
+    url: '/dashboard/hse/road-hazard',
+    iconName: 'video',
+    resource: 'hse_road_hazard',
+    sortOrder: 13,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4674,6 +4686,7 @@ const HSE_MANAGED_RESOURCES = new Set([
   'hse_incident_report',
   'hse_tire_inspection',
   'hse_road_condition_analysis',
+  'hse_road_hazard',
 ])
 
 const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])

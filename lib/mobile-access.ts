@@ -68,6 +68,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/hse/izin-kerja-ptw', mobile: '/mobile/hse/ptw' },
   { desktop: '/dashboard/hse/sia-sio-tools-certification', mobile: '/mobile/hse/sia-sio-tools' },
   { desktop: '/dashboard/hse/tire-inspection', mobile: '/mobile/hse/tire-inspection' },
+  { desktop: '/dashboard/hse/road-hazard', mobile: '/mobile/hse/road-hazard' },
   { desktop: '/dashboard/reports/road-condition', mobile: '/mobile/reports/road-condition' },
   {
     desktop: '/dashboard/central-service/site-condition',
@@ -129,6 +130,7 @@ const fallbackMobileSegments = new Set([
   'profile',
   'reports',
   'road-condition',
+  'road-hazard',
   'site-condition',
   'summary',
   'timesheet',
