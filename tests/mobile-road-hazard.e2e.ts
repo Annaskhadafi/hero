@@ -30,7 +30,21 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('button[title*="Split Mode"]').first()).toBeVisible()
   await expect(browser.locator('button[title*="PiP Mode"]').first()).toBeVisible()
 
-  // 7. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
+  // 7. Verify Dual Mode (ONNX vs API) toggle & HUD badge
+  await expect(browser.locator('text=ONNX').first()).toBeVisible()
+  const dualModeBtn = browser.locator('button[title*="Mesin"]').first()
+  await dualModeBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  await expect(browser.locator('text=API').first()).toBeVisible()
+  await app.screenshot('mobile-road-hazard-dual-mode-api')
+
+  // Switch back to System ONNX
+  await dualModeBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  await expect(browser.locator('text=ONNX').first()).toBeVisible()
+  await app.screenshot('mobile-road-hazard-dual-mode-onnx')
+
+  // 8. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
   await app.screenshot('mobile-road-hazard-live-split-map')
 
   // 8. Test PiP mode toggle & Fullscreen Dashcam

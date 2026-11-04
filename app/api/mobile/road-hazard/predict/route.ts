@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from '@/lib/auth-session'
 import { rarayPredictRoadHazard } from '@/lib/raray-vision/client'
+import { runLocalOnnxHazardInference } from '@/lib/road-hazard/onnx-engine'
 import { isS3UploadConfigured, uploadBufferToS3 } from '@/lib/s3-storage'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { writeFile, mkdir } from 'fs/promises'
@@ -46,66 +47,113 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const confThreshold = parseThreshold(formData.get('conf_threshold'), 0.25)
+    // Default threshold is 0.20 (20%), allowing range down to 0.00 as requested
+    const confThreshold = parseThreshold(formData.get('conf_threshold'), 0.20)
     const iouThreshold = parseThreshold(formData.get('iou_threshold'), 0.45)
     const isSnap = formData.get('is_snap') === 'true'
+    const mode = (formData.get('mode') as string) === 'api' ? 'api' : 'system'
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    // 1. Call Raray Vision Road Hazard endpoint
-    const predictionRes = await rarayPredictRoadHazard({
-      fileBuffer: buffer,
-      fileName: file.name || `road-frame-${Date.now()}.jpg`,
-      mimeType: file.type,
-      confidenceThreshold: confThreshold,
-      iouThreshold: iouThreshold,
-    })
-
-    if (predictionRes.status === 'error' || !predictionRes.result) {
-      return NextResponse.json(
-        { error: predictionRes.message || 'Gagal memproses analisis road hazard AI.' },
-        { status: 502 }
-      )
-    }
-
-    const rawResult = predictionRes.result
-    const detections = Array.isArray(rawResult.detections) ? rawResult.detections : []
-
-    // 2. Normalize hazard detections
-    const normalizedDetections = detections.map((det) => {
-      const rawClass = String(det.class_name || det.class || det.label || '').trim()
-      let hazardType = 'Other'
-      const lower = rawClass.toLowerCase()
-      if (lower.includes('pothole') || lower.includes('lubang')) {
-        hazardType = 'Potholes'
-      } else if (lower.includes('corragation') || lower.includes('corrugation') || lower.includes('keriting') || lower.includes('gelombang')) {
-        hazardType = 'Corragation'
-      } else if (lower.includes('rut') || lower.includes('ambles') || lower.includes('alur')) {
-        hazardType = 'Ruts'
-      } else if (rawClass) {
-        hazardType = rawClass
-      }
-
-      const conf = typeof det.confidence === 'number' ? det.confidence : Number(det.score ?? 0)
-      return {
-        ...det,
-        hazard_type: hazardType,
-        confidence: Number((conf > 1 ? conf / 100 : conf).toFixed(3)),
-      }
-    })
-
-    // Count breakdown
+    let normalizedDetections: any[] = []
+    let modelName = 'hazardyolo26n-4 (Local ONNX)'
+    let modelVersion = 'v1.0'
+    let predictionId = randomUUID()
+    let latencyMs = 0
+    let topConfidence = 0
     let potholesCount = 0
     let corrugationCount = 0
     let rutsCount = 0
+    let resolvedAnnotatedUrl: string | null = null
 
-    for (const d of normalizedDetections) {
-      if (d.hazard_type === 'Potholes') potholesCount++
-      else if (d.hazard_type === 'Corragation') corrugationCount++
-      else if (d.hazard_type === 'Ruts') rutsCount++
+    if (mode === 'system') {
+      // 1A. Mode System: High-speed local ONNX inference engine (~43ms)
+      const onnxRes = await runLocalOnnxHazardInference({
+        fileBuffer: buffer,
+        confidenceThreshold: confThreshold,
+        iouThreshold: iouThreshold,
+      })
+
+      if (!onnxRes.success) {
+        return NextResponse.json(
+          { error: onnxRes.error || 'Gagal memproses model ONNX lokal.' },
+          { status: 500 }
+        )
+      }
+
+      normalizedDetections = onnxRes.detections
+      modelName = onnxRes.modelName
+      modelVersion = onnxRes.modelVersion
+      latencyMs = onnxRes.latencyMs
+      topConfidence = onnxRes.topConfidence
+      potholesCount = onnxRes.potholesCount
+      corrugationCount = onnxRes.corrugationCount
+      rutsCount = onnxRes.rutsCount
+    } else {
+      // 1B. Mode Cloud API: Remote Raray Vision Road Hazard endpoint
+      const predictionRes = await rarayPredictRoadHazard({
+        fileBuffer: buffer,
+        fileName: file.name || `road-frame-${Date.now()}.jpg`,
+        mimeType: file.type,
+        confidenceThreshold: confThreshold,
+        iouThreshold: iouThreshold,
+      })
+
+      if (predictionRes.status === 'error' || !predictionRes.result) {
+        return NextResponse.json(
+          { error: predictionRes.message || 'Gagal memproses analisis road hazard AI.' },
+          { status: 502 }
+        )
+      }
+
+      const rawResult = predictionRes.result
+      const detections = Array.isArray(rawResult.detections) ? rawResult.detections : []
+
+      normalizedDetections = detections.map((det) => {
+        const rawClass = String(det.class_name || det.class || det.label || '').trim()
+        let hazardType = 'Other'
+        const lower = rawClass.toLowerCase()
+        if (lower.includes('pothole') || lower.includes('lubang')) {
+          hazardType = 'Potholes'
+        } else if (
+          lower.includes('corragation') ||
+          lower.includes('corrugation') ||
+          lower.includes('keriting') ||
+          lower.includes('gelombang')
+        ) {
+          hazardType = 'Corragation'
+        } else if (lower.includes('rut') || lower.includes('ambles') || lower.includes('alur')) {
+          hazardType = 'Ruts'
+        } else if (rawClass) {
+          hazardType = rawClass
+        }
+
+        const conf = typeof det.confidence === 'number' ? det.confidence : Number(det.score ?? 0)
+        return {
+          ...det,
+          hazard_type: hazardType,
+          confidence: Number((conf > 1 ? conf / 100 : conf).toFixed(3)),
+        }
+      })
+
+      modelName = rawResult.model_name || 'Road hazard PPA BA'
+      modelVersion = rawResult.model_version || 'v1'
+      predictionId = rawResult.prediction_id || randomUUID()
+      latencyMs = rawResult.latency_ms || 0
+      topConfidence = rawResult.top_confidence || 0
+
+      for (const d of normalizedDetections) {
+        if (d.hazard_type === 'Potholes') potholesCount++
+        else if (d.hazard_type === 'Corragation') corrugationCount++
+        else if (d.hazard_type === 'Ruts') rutsCount++
+      }
+
+      resolvedAnnotatedUrl = rawResult.annotated_image_url
+        ? resolveUploadUrl(rawResult.annotated_image_url)
+        : null
     }
 
-    // 3. Save snapshot file ONLY if requested as an explicit snap (saves heavy S3 upload on live frames)
+    // 2. Save snapshot file ONLY if requested as an explicit snap (saves heavy S3 upload on live frames)
     let savedPhotoUrl = ''
     if (isSnap) {
       const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg'
@@ -127,26 +175,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Safe resolution of annotated image url if returned from Raray Vision S3
-    const resolvedAnnotatedUrl = rawResult.annotated_image_url
-      ? resolveUploadUrl(rawResult.annotated_image_url)
-      : null
-
     return NextResponse.json({
       success: true,
-      predictionId: rawResult.prediction_id,
-      modelName: rawResult.model_name || 'Road hazard PPA BA',
-      modelVersion: rawResult.model_version || 'v1',
+      mode,
+      predictionId,
+      modelName,
+      modelVersion,
       detections: normalizedDetections,
       detectionCount: normalizedDetections.length,
-      topConfidence: rawResult.top_confidence || 0,
-      latencyMs: rawResult.latency_ms || 0,
+      topConfidence,
+      latencyMs,
       photoUrl: savedPhotoUrl || resolvedAnnotatedUrl,
       annotatedPhotoUrl: resolvedAnnotatedUrl || savedPhotoUrl,
       potholesCount,
       corrugationCount,
       rutsCount,
-      quality: rawResult.quality || null,
     })
   } catch (error) {
     console.error('[road-hazard-predict] Server error:', error)

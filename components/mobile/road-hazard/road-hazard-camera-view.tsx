@@ -8,6 +8,7 @@ import {
   Sparkles,
   Zap,
   ZapOff,
+  Cloud,
   SwitchCamera,
   Volume2,
   VolumeX,
@@ -150,14 +151,50 @@ export function RoadHazardCameraView({
   }>({ latitude: null, longitude: null, speedKmh: null, accuracy: null })
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
-  // AI settings (Fast Live Detection: 650ms scan interval for responsive vehicle speed)
+  // AI Dual Mode & Settings (Default: 20% sensitivity, System ONNX engine)
+  const [inferenceMode, setInferenceMode] = useState<'system' | 'api'>('system')
   const [scanIntervalMs, setScanIntervalMs] = useState(650)
-  const [confThreshold, setConfThreshold] = useState(0.25)
+  const [confThreshold, setConfThreshold] = useState(0.20)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
-  const [autoSnapThreshold, setAutoSnapThreshold] = useState(0.60)
+  const [autoSnapThreshold, setAutoSnapThreshold] = useState(0.50)
   const [soundAlert, setSoundAlert] = useState(true)
   const [voiceAlertEnabled, setVoiceAlertEnabled] = useState(true)
   const lastSpokenTimeRef = useRef<number>(0)
+
+  // Load saved AI preferences on mount
+  useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem('hero_road_hazard_mode')
+      if (savedMode === 'system' || savedMode === 'api') {
+        setInferenceMode(savedMode)
+      }
+      const savedThreshold = localStorage.getItem('hero_road_hazard_threshold')
+      if (savedThreshold && !isNaN(Number(savedThreshold))) {
+        setConfThreshold(Number(savedThreshold))
+      }
+    } catch {
+      // LocalStorage access restricted
+    }
+  }, [])
+
+  const handleSetInferenceMode = (mode: 'system' | 'api') => {
+    setInferenceMode(mode)
+    try {
+      localStorage.setItem('hero_road_hazard_mode', mode)
+    } catch {}
+    toast.info(
+      mode === 'system'
+        ? 'Beralih ke Mesin System ONNX (Lokal Cepat ~43ms)'
+        : 'Beralih ke Cloud API (Raray Vision Cloud)'
+    )
+  }
+
+  const handleSetConfThreshold = (val: number) => {
+    setConfThreshold(val)
+    try {
+      localStorage.setItem('hero_road_hazard_threshold', String(val))
+    } catch {}
+  }
 
   // Map overlay toggle (can be minimized so it does not block the road camera)
   const [isMapMinimized, setIsMapMinimized] = useState(false)
@@ -471,6 +508,7 @@ export function RoadHazardCameraView({
 
             const formData = new FormData()
             formData.append('file', blob, `hazard-frame-${Date.now()}.jpg`)
+            formData.append('mode', inferenceMode)
             formData.append('conf_threshold', String(confThreshold))
             formData.append('is_snap', isManualSnap ? 'true' : 'false')
             if (currentGps.latitude) formData.append('latitude', String(currentGps.latitude))
@@ -498,7 +536,7 @@ export function RoadHazardCameraView({
         )
       })
     },
-    [confThreshold, currentGps]
+    [confThreshold, currentGps, inferenceMode]
   )
 
   // Live Auto-Scan Loop with Smart Adaptive Frequency
@@ -853,15 +891,24 @@ export function RoadHazardCameraView({
               <span>{formatTimer(elapsedSeconds)}</span>
             </div>
 
-            {isRecording && (
-              <div className="flex items-center gap-1 rounded bg-black/60 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
-                <Sparkles className="size-3 text-amber-400" />
-                <span>
-                  AI {latencyMs ? `${latencyMs}ms` : 'Ready'} •{' '}
-                  {(currentGps.speedKmh ?? 0) >= 20 ? 'Turbo' : (currentGps.speedKmh ?? 0) <= 5 ? 'Eco' : 'Live'}
-                </span>
-              </div>
-            )}
+            {/* AI Dual Mode & Latency Badge */}
+            <div className="flex items-center gap-1 rounded bg-black/70 px-2 py-0.5 text-[10px] font-bold border border-white/10 shadow backdrop-blur-sm">
+              {inferenceMode === 'system' ? (
+                <>
+                  <Zap className="size-3 fill-amber-400 text-amber-400 animate-pulse" />
+                  <span className="text-amber-300 font-mono">ONNX</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="size-3 text-cyan-400" />
+                  <span className="text-cyan-300 font-mono">API</span>
+                </>
+              )}
+              <span className="text-white/40">•</span>
+              <span className="text-emerald-400 font-mono">
+                {latencyMs ? `${latencyMs}ms` : 'Ready'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1030,6 +1077,29 @@ export function RoadHazardCameraView({
             {soundAlert ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
           </Button>
 
+          {/* Quick Dual Mode Toggle (System ONNX vs Cloud API) */}
+          <Button
+            size="icon"
+            variant="outline"
+            onClick={() => handleSetInferenceMode(inferenceMode === 'system' ? 'api' : 'system')}
+            className={`size-8 rounded-full border-white/20 backdrop-blur-md transition-all ${
+              inferenceMode === 'system'
+                ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                : 'bg-cyan-950/80 text-cyan-300 border-cyan-500/40'
+            }`}
+            title={
+              inferenceMode === 'system'
+                ? 'Mesin: System ONNX (Lokal Cepat ~43ms) • Klik untuk ganti ke Cloud API'
+                : 'Mesin: Cloud API (Raray Vision) • Klik untuk ganti ke System ONNX'
+            }
+          >
+            {inferenceMode === 'system' ? (
+              <Zap className="size-3.5 fill-amber-400 text-amber-400" />
+            ) : (
+              <Cloud className="size-3.5 text-cyan-400" />
+            )}
+          </Button>
+
           {/* Settings Drawer */}
           <Sheet>
             <SheetTrigger asChild>
@@ -1041,11 +1111,78 @@ export function RoadHazardCameraView({
                 <Settings2 className="size-3.5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="bottom" className="rounded-t-2xl bg-slate-900 text-white border-white/10">
+            <SheetContent side="bottom" className="rounded-t-2xl bg-slate-900 text-white border-white/10 max-h-[85vh] overflow-y-auto">
               <SheetHeader>
                 <SheetTitle className="text-white text-base font-bold">Pengaturan AI Road Hazard</SheetTitle>
               </SheetHeader>
               <div className="space-y-4 py-4 text-xs">
+                {/* Dual Mode Engine Selector */}
+                <div className="space-y-1.5 rounded-xl border border-white/10 bg-black/40 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-slate-200">Mesin Inferensi (Dual Mode)</p>
+                    <span className="rounded px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-white/10">
+                      {inferenceMode === 'system' ? '⚡ System ONNX' : '☁️ Cloud API'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Pilih antara engine ONNX lokal berkecepatan tinggi atau Cloud API Vision
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSetInferenceMode('system')}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs font-bold transition-all border ${
+                        inferenceMode === 'system'
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                          : 'bg-slate-800/80 text-slate-300 border-white/10 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Zap className="size-3.5 fill-current" />
+                      <span>System ONNX</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSetInferenceMode('api')}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-2 text-xs font-bold transition-all border ${
+                        inferenceMode === 'api'
+                          ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20'
+                          : 'bg-slate-800/80 text-slate-300 border-white/10 hover:bg-slate-800'
+                      }`}
+                    >
+                      <Cloud className="size-3.5" />
+                      <span>Cloud API</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-amber-400/90 font-medium pt-0.5">
+                    {inferenceMode === 'system'
+                      ? '⚡ Model hazardyolo26n-4 lokal: ~43ms, offline-ready, hemat kuota data hauling.'
+                      : '☁️ Raray Vision Cloud: ~300ms, memerlukan sinyal internet aktif.'}
+                  </p>
+                </div>
+
+                {/* Sensitivity Threshold (Min 0%, Default 20%) */}
+                <div className="space-y-1.5 rounded-xl border border-white/10 bg-black/40 p-2.5">
+                  <div className="flex justify-between text-slate-300">
+                    <span className="font-semibold text-slate-200">Ambang Batas Sensitivitas (Threshold)</span>
+                    <span className="font-bold text-cyan-400 font-mono">{Math.round(confThreshold * 100)}%</span>
+                  </div>
+                  <Slider
+                    value={[confThreshold]}
+                    min={0.00}
+                    max={1.00}
+                    step={0.05}
+                    onValueChange={(val) => handleSetConfThreshold(val[0])}
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-500">
+                    <span>0% (Sangat Sensitif)</span>
+                    <span>20% (Default)</span>
+                    <span>100% (Sangat Ketat)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 pt-0.5">
+                    Bisa disetel hingga 0% agar sensitivitas lebih tinggi untuk mendeteksi keriting atau lubang jalan halus.
+                  </p>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-slate-200">Auto-Snap Kendala</p>
@@ -1062,8 +1199,8 @@ export function RoadHazardCameraView({
                     </div>
                     <Slider
                       value={[autoSnapThreshold]}
-                      min={0.3}
-                      max={0.9}
+                      min={0.00}
+                      max={1.00}
                       step={0.05}
                       onValueChange={(val) => setAutoSnapThreshold(val[0])}
                     />
