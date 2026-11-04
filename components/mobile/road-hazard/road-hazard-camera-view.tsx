@@ -483,6 +483,71 @@ export function RoadHazardCameraView({
     })
   }, [])
 
+  // Helper to capture high-res frame with rendered detection overlays directly from video
+  const captureVideoSnapshot = useCallback(
+    (video: HTMLVideoElement, detections: any[]) => {
+      try {
+        const width = video.videoWidth || 640
+        const height = video.videoHeight || 480
+        const c = document.createElement('canvas')
+        c.width = width
+        c.height = height
+        const ctx = c.getContext('2d')
+        if (!ctx) return { cleanUrl: '', annotatedUrl: '' }
+
+        ctx.drawImage(video, 0, 0, width, height)
+        const cleanUrl = c.toDataURL('image/jpeg', 0.85)
+
+        if (Array.isArray(detections) && detections.length > 0) {
+          detections.forEach((det) => {
+            const type = det.hazard_type || det.class_name || 'Potholes'
+            let color = '#e11d48'
+            if (type === 'Corragation') color = '#ea580c'
+            if (type === 'Ruts') color = '#eab308'
+
+            let x = 0, y = 0, w = 0, h = 0
+            if (Array.isArray(det.box) && det.box.length === 4) {
+              x = det.box[0]
+              y = det.box[1]
+              w = det.box[2] - det.box[0]
+              h = det.box[3] - det.box[1]
+            } else if (det.box && typeof det.box === 'object') {
+              x = det.box.x || 0
+              y = det.box.y || 0
+              w = det.box.width || det.box.w || 100
+              h = det.box.height || det.box.h || 100
+            } else {
+              x = width * 0.25
+              y = height * 0.35
+              w = width * 0.5
+              h = height * 0.3
+            }
+
+            ctx.strokeStyle = color
+            ctx.lineWidth = Math.max(3, Math.round(width / 180))
+            ctx.strokeRect(x, y, w, h)
+
+            ctx.fillStyle = color
+            const labelText = `${type.toUpperCase()} ${Math.round((det.confidence || 0) * 100)}%`
+            ctx.font = "bold 14px sans-serif"
+            const textWidth = ctx.measureText(labelText).width
+            const bannerH = Math.max(22, Math.round(width / 24))
+            ctx.fillRect(x, Math.max(0, y - bannerH), textWidth + 14, bannerH)
+
+            ctx.fillStyle = '#ffffff'
+            ctx.fillText(labelText, x + 6, Math.max(bannerH - 5, y - 6))
+          })
+        }
+
+        const annotatedUrl = c.toDataURL('image/jpeg', 0.85)
+        return { cleanUrl, annotatedUrl }
+      } catch {
+        return { cleanUrl: '', annotatedUrl: '' }
+      }
+    },
+    []
+  )
+
   // Analyze single frame via API (optimized for high FPS and low latency)
   const analyzeFrame = useCallback(
     async (isManualSnap = false): Promise<any> => {
@@ -582,15 +647,23 @@ export function RoadHazardCameraView({
 
               // Auto-snap condition
               if (autoSnapEnabled && topDet.confidence >= autoSnapThreshold) {
+                let cleanUrl = res.photoUrl || ''
+                let annotatedUrl = res.annotatedPhotoUrl || ''
+                if (videoRef.current) {
+                  const localSnap = captureVideoSnapshot(videoRef.current, detections)
+                  cleanUrl = cleanUrl || localSnap.cleanUrl
+                  annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
+                }
+
                 const newEv: DetectedHazardEvent = {
-                  id: `auto-${Date.now()}`,
+                  id: "auto-" + Date.now(),
                   hazardType: topDet.hazard_type || 'Potholes',
                   confidence: topDet.confidence,
                   latitude: currentGps.latitude,
                   longitude: currentGps.longitude,
                   speedKmh: currentGps.speedKmh,
-                  photoUrl: res.photoUrl || res.annotatedPhotoUrl,
-                  annotatedPhotoUrl: res.annotatedPhotoUrl,
+                  photoUrl: cleanUrl,
+                  annotatedPhotoUrl: annotatedUrl,
                   detectionBoxes: detections,
                   timestamp: new Date().toLocaleTimeString('id-ID'),
                   isManualSnap: false,
@@ -652,6 +725,14 @@ export function RoadHazardCameraView({
         const hazardType = topDet?.hazard_type || 'Potholes'
         const conf = topDet?.confidence || 0.85
 
+        let cleanUrl = res.photoUrl || ''
+        let annotatedUrl = res.annotatedPhotoUrl || ''
+        if (videoRef.current) {
+          const localSnap = captureVideoSnapshot(videoRef.current, res.detections || [])
+          cleanUrl = cleanUrl || localSnap.cleanUrl
+          annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
+        }
+
         const newEv: DetectedHazardEvent = {
           id: `snap-${Date.now()}`,
           hazardType,
@@ -659,14 +740,13 @@ export function RoadHazardCameraView({
           latitude: currentGps.latitude,
           longitude: currentGps.longitude,
           speedKmh: currentGps.speedKmh,
-          photoUrl: res.photoUrl || res.annotatedPhotoUrl,
-          annotatedPhotoUrl: res.annotatedPhotoUrl,
+          photoUrl: cleanUrl,
+          annotatedPhotoUrl: annotatedUrl,
           detectionBoxes: res.detections,
           timestamp: new Date().toLocaleTimeString('id-ID'),
           isManualSnap: true,
           notes: 'Snapshot manual petugas',
         }
-
         setEvents((prev) => [newEv, ...prev])
         toast.success(`Snapshot #${events.length + 1} tersimpan! (${hazardType} ${Math.round(conf * 100)}%)`)
       } else {

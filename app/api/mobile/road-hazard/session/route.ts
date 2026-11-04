@@ -4,10 +4,41 @@ import { db } from '@/db'
 import { roadHazardSessions, roadHazardEvents } from '@/db/schema/road-hazard'
 import { employees, sites } from '@/db/schema/hero'
 import { ensureRoadHazardTables } from '@/lib/road-hazard/db-helper'
+import { isS3UploadConfigured, uploadBufferToS3 } from '@/lib/s3-storage'
+import { writeFile, mkdir } from 'fs/promises'
+import { join } from 'path'
 import { desc, eq } from 'drizzle-orm'
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 
 export const runtime = 'nodejs'
+
+async function persistBase64Image(dataUri: string): Promise<string> {
+  if (!dataUri || !dataUri.startsWith('data:image')) {
+    return dataUri
+  }
+
+  try {
+    const matches = dataUri.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/)
+    if (!matches || matches.length !== 3) return dataUri
+    const ext = matches[1].replace('jpeg', 'jpg')
+    const buffer = Buffer.from(matches[2], 'base64')
+    const filename = `${randomUUID()}.${ext}`
+    const s3Key = `road-hazard/${filename}`
+
+    if (isS3UploadConfigured()) {
+      await uploadBufferToS3(buffer, s3Key, `image/${ext}`)
+      return `/api/uploads/${s3Key}`
+    } else {
+      const uploadsDir = join(process.cwd(), 'public', 'uploads', 'road-hazard')
+      await mkdir(uploadsDir, { recursive: true })
+      await writeFile(join(uploadsDir, filename), buffer)
+      return `/api/uploads/road-hazard/${filename}`
+    }
+  } catch (err) {
+    console.warn('[road-hazard-session] Failed saving base64 image:', err)
+    return dataUri
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,23 +85,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Safe resolution of inspector employee id (must exist in hero_employees or be null)
+    // Safe resolution of inspectorId
     let safeInspectorId: number | null = null
     try {
-      const userNik = (session.user as any).employeeSn || (session.user as any).nik || (session.user as any).username
-      if (userNik) {
+      const userSn = (session.user as any)?.employeeSn || (session.user as any)?.sn
+      if (userSn) {
         const [emp] = await db
           .select({ id: employees.id })
           .from(employees)
-          .where(eq(employees.employeeSn, String(userNik)))
-          .limit(1)
-        if (emp) safeInspectorId = emp.id
-      }
-      if (!safeInspectorId && (session.user as any).employeeId && !isNaN(Number((session.user as any).employeeId))) {
-        const [emp] = await db
-          .select({ id: employees.id })
-          .from(employees)
-          .where(eq(employees.id, Number((session.user as any).employeeId)))
+          .where(eq(employees.employeeSn, String(userSn)))
           .limit(1)
         if (emp) safeInspectorId = emp.id
       }
@@ -108,31 +131,44 @@ export async function POST(request: NextRequest) {
       .returning({ id: roadHazardSessions.id })
 
     if (newSession?.id && Array.isArray(events) && events.length > 0) {
-      const eventRows = events.map((ev: any) => {
-        const confNum = Number(ev.confidence ?? 0)
-        const safeConf = !isNaN(confNum) ? Math.min(Math.max(confNum, 0), 1).toFixed(3) : '0.000'
-        const latNum = ev.latitude != null && !isNaN(Number(ev.latitude)) ? Number(ev.latitude) : null
-        const safeLat = latNum != null ? latNum.toFixed(8) : null
-        const lngNum = ev.longitude != null && !isNaN(Number(ev.longitude)) ? Number(ev.longitude) : null
-        const safeLng = lngNum != null ? lngNum.toFixed(8) : null
-        const speedNum = ev.speedKmh != null && !isNaN(Number(ev.speedKmh)) ? Number(ev.speedKmh) : 0
-        const safeSpeed = Math.max(0, speedNum).toFixed(2)
+      const eventRows = await Promise.all(
+        events.map(async (ev: any) => {
+          const confNum = Number(ev.confidence ?? 0)
+          const safeConf = !isNaN(confNum) ? Math.min(Math.max(confNum, 0), 1).toFixed(3) : '0.000'
+          const latNum = ev.latitude != null && !isNaN(Number(ev.latitude)) ? Number(ev.latitude) : null
+          const safeLat = latNum != null ? latNum.toFixed(8) : null
+          const lngNum = ev.longitude != null && !isNaN(Number(ev.longitude)) ? Number(ev.longitude) : null
+          const safeLng = lngNum != null ? lngNum.toFixed(8) : null
+          const speedNum = ev.speedKmh != null && !isNaN(Number(ev.speedKmh)) ? Number(ev.speedKmh) : 0
+          const safeSpeed = Math.max(0, speedNum).toFixed(2)
 
-        return {
-          sessionId: newSession.id,
-          hazardType: String(ev.hazardType || ev.hazard_type || 'Potholes').trim() || 'Potholes',
-          confidence: safeConf,
-          latitude: safeLat,
-          longitude: safeLng,
-          speedKmh: safeSpeed,
-          photoUrl: String(ev.photoUrl || ev.photo_url || ''),
-          annotatedPhotoUrl: ev.annotatedPhotoUrl ? String(ev.annotatedPhotoUrl) : null,
-          detectionBoxes: ev.detectionBoxes || ev.detection_boxes || null,
-          qualityInfo: ev.qualityInfo || ev.quality_info || null,
-          notes: String(ev.notes || ''),
-          isManualSnap: Boolean(ev.isManualSnap ?? ev.is_manual_snap ?? false),
-        }
-      })
+          let photo = String(ev.photoUrl || ev.photo_url || '')
+          let annotated = ev.annotatedPhotoUrl ? String(ev.annotatedPhotoUrl) : null
+
+          // Persist base64 images if received from client-side capture
+          if (photo.startsWith('data:image')) {
+            photo = await persistBase64Image(photo)
+          }
+          if (annotated && annotated.startsWith('data:image')) {
+            annotated = await persistBase64Image(annotated)
+          }
+
+          return {
+            sessionId: newSession.id,
+            hazardType: String(ev.hazardType || ev.hazard_type || 'Potholes').trim() || 'Potholes',
+            confidence: safeConf,
+            latitude: safeLat,
+            longitude: safeLng,
+            speedKmh: safeSpeed,
+            photoUrl: photo,
+            annotatedPhotoUrl: annotated || photo,
+            detectionBoxes: ev.detectionBoxes || ev.detection_boxes || null,
+            qualityInfo: ev.qualityInfo || ev.quality_info || null,
+            notes: String(ev.notes || ''),
+            isManualSnap: Boolean(ev.isManualSnap ?? ev.is_manual_snap ?? false),
+          }
+        })
+      )
 
       await db.insert(roadHazardEvents).values(eventRows)
     }

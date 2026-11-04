@@ -108,7 +108,6 @@ export async function POST(request: NextRequest) {
           modelVersion = rawResult.model_version || 'v1'
           latencyMs = rawResult.latency_ms || 0
           topConfidence = rawResult.top_confidence || 0
-          resolvedAnnotatedUrl = rawResult.annotated_image_url ? resolveUploadUrl(rawResult.annotated_image_url) : null
           for (const d of normalizedDetections) {
             if (d.hazard_type === 'Potholes') potholesCount++
             else if (d.hazard_type === 'Corragation') corrugationCount++
@@ -188,15 +187,11 @@ export async function POST(request: NextRequest) {
         else if (d.hazard_type === 'Corragation') corrugationCount++
         else if (d.hazard_type === 'Ruts') rutsCount++
       }
-
-      resolvedAnnotatedUrl = rawResult.annotated_image_url
-        ? resolveUploadUrl(rawResult.annotated_image_url)
-        : null
     }
 
-    // 2. Save snapshot file ONLY if requested as an explicit snap (saves heavy S3 upload on live frames)
+    // 2. Persistently save snapshot file whenever a hazard is detected OR when an explicit snap is taken
     let savedPhotoUrl = ''
-    if (isSnap) {
+    if (isSnap || normalizedDetections.length > 0) {
       const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg'
       const filename = `${randomUUID()}.${ext}`
       const s3Key = `road-hazard/${filename}`
@@ -226,8 +221,8 @@ export async function POST(request: NextRequest) {
       detectionCount: normalizedDetections.length,
       topConfidence,
       latencyMs,
-      photoUrl: savedPhotoUrl || resolvedAnnotatedUrl,
-      annotatedPhotoUrl: resolvedAnnotatedUrl || savedPhotoUrl,
+      photoUrl: savedPhotoUrl,
+      annotatedPhotoUrl: savedPhotoUrl,
       potholesCount,
       corrugationCount,
       rutsCount,

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { HeroKpiCard } from '@/components/templates'
 import { generateRoadHazardPdf } from '@/lib/road-hazard/road-hazard-pdf'
 import { generateRoadHazardExcel } from '@/lib/road-hazard/road-hazard-excel'
@@ -58,6 +59,7 @@ export function RoadHazardRecapView({
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [isExportingExcel, setIsExportingExcel] = useState(false)
   const [notesState, setNotesState] = useState<Record<string, string>>({})
+  const [previewSnapshot, setPreviewSnapshot] = useState<DetectedHazardEvent | null>(null)
   const [summaryNotes, setSummaryNotes] = useState('')
 
   // Statistics
@@ -496,20 +498,27 @@ Kode Sesi: ${currentSessionCode}
                   className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm"
                 >
                   <div className="flex gap-3 p-3">
-                    {/* Thumbnail */}
-                    <div className="relative size-24 shrink-0 overflow-hidden rounded-lg bg-slate-900 border border-border/50">
+                    {/* Thumbnail with click-to-preview & fallback */}
+                    <div 
+                      onClick={() => setPreviewSnapshot(ev)}
+                      className="relative size-24 shrink-0 overflow-hidden rounded-lg bg-slate-900 border border-border/50 cursor-pointer active:scale-95 transition-transform group"
+                    >
                       {displayUrl ? (
                         <img
                           src={displayUrl}
                           alt={ev.hazardType}
                           className="size-full object-cover"
                           loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                            const fallback = e.currentTarget.parentElement?.querySelector('.img-fallback')
+                            if (fallback) (fallback as HTMLElement).style.display = 'flex'
+                          }}
                         />
-                      ) : (
-                        <div className="flex size-full items-center justify-center text-[10px] text-muted-foreground">
-                          <Camera className="size-6 text-muted-foreground/40" />
-                        </div>
-                      )}
+                      ) : null}
+                      <div className={`img-fallback flex size-full items-center justify-center text-[10px] text-muted-foreground ${displayUrl ? 'hidden' : ''}`}>
+                        <Camera className="size-6 text-muted-foreground/40" />
+                      </div>
                       {ev.isManualSnap && (
                         <span className="absolute bottom-1 left-1 rounded bg-black/75 px-1 text-[9px] font-bold text-white">
                           SNAP
@@ -583,7 +592,73 @@ Kode Sesi: ${currentSessionCode}
             })}
           </div>
         )}
+        {/* Snapshot Detail Preview Modal */}
+        <Dialog open={!!previewSnapshot} onOpenChange={(open) => !open && setPreviewSnapshot(null)}>
+          <DialogContent className="max-w-md rounded-2xl bg-slate-950 text-white border border-white/20 p-4 shadow-2xl">
+            {previewSnapshot && (
+              <>
+                <DialogHeader className="pb-2 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <DialogTitle className="text-base font-black text-white flex items-center gap-2">
+                      <span className="size-2.5 rounded-full bg-rose-500 animate-pulse" />
+                      <span>{previewSnapshot.hazardType.toUpperCase()}</span>
+                      <span className="text-xs text-cyan-300 font-mono">
+                        AI {Math.round(previewSnapshot.confidence * 100)}%
+                      </span>
+                    </DialogTitle>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    {previewSnapshot.timestamp} • {previewSnapshot.isManualSnap ? 'Manual Snap' : 'Auto AI Detection'}
+                  </p>
+                </DialogHeader>
+
+                <div className="space-y-3 pt-2">
+                  <div className="overflow-hidden rounded-xl bg-black border border-white/10 max-h-[300px] flex items-center justify-center">
+                    <img
+                      src={resolveClientUploadUrl(
+                        previewSnapshot.annotatedPhotoUrl || previewSnapshot.photoUrl
+                      )}
+                      alt="Detail Snapshot"
+                      className="size-full object-contain max-h-[300px]"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
+                  </div>
+
+                  {previewSnapshot.latitude && previewSnapshot.longitude && (
+                    <div className="flex items-center justify-between rounded-lg bg-white/5 p-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-slate-300 font-mono text-[11px]">
+                        <MapPin className="size-3.5 text-emerald-400" />
+                        <span>
+                          {Number(previewSnapshot.latitude).toFixed(5)},{' '}
+                          {Number(previewSnapshot.longitude).toFixed(5)}
+                        </span>
+                      </div>
+                      <a
+                        href={`https://www.google.com/maps?q=${previewSnapshot.latitude},${previewSnapshot.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-400 hover:underline"
+                      >
+                        <span>Google Maps</span>
+                        <ExternalLink className="size-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  {previewSnapshot.notes && (
+                    <p className="rounded-lg bg-white/5 p-2 text-xs italic text-slate-300">
+                      {previewSnapshot.notes}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
 }
+

@@ -7,6 +7,11 @@ export function resolveClientUploadUrl(url: string | null | undefined): string {
   if (!url) return ''
   let trimmed = url.trim()
 
+  // 0. Base64 data URLs and blob URLs must be preserved untouched
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed
+  }
+
   // Strip localhost / 127.0.0.1 domain prefix if present
   trimmed = trimmed.replace(/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?/i, '')
 
