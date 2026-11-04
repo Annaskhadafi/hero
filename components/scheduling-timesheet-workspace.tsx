@@ -38,7 +38,7 @@ import type { PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
@@ -295,8 +295,11 @@ type EmployeeScheduleProfile = {
   isLokal?: boolean
 }
 
+export type SummaryView = 'ovt' | 'ovt_spl' | 'msa' | 'meals' | 'lokasi'
+
 export type AttendancePdfDocType =
   | 'overtime_summary'
+  | 'ovt_spl_summary'
   | 'msa_summary'
   | 'mls_summary'
   | 'tu_summary'
@@ -316,32 +319,38 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
     description: 'Tabel Rekapitulasi Overtime seluruh karyawan',
   },
   {
-    id: 'msa_summary',
+    id: 'ovt_spl_summary',
     number: 2,
+    label: 'OVERTIME SPL SUMMARY',
+    description: 'Tabel Rekapitulasi Overtime SPL (Surat Perintah Lembur) harian',
+  },
+  {
+    id: 'msa_summary',
+    number: 3,
     label: 'MSA summary',
     description: 'Tabel Rekapitulasi Meal & Site Allowance (MSA)',
   },
   {
     id: 'mls_summary',
-    number: 3,
+    number: 4,
     label: 'MLS summary',
     description: 'Tabel Rekapitulasi Meals Allowance (MLS)',
   },
   {
     id: 'tu_summary',
-    number: 4,
+    number: 5,
     label: 'TU summary',
     description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
   },
   {
     id: 'overtime_record',
-    number: 5,
+    number: 6,
     label: 'OVERTIME RECORD',
     description: 'Summary Overtime Record per orang (Lembar rincian lembur karyawan)',
   },
   {
     id: 'payable_site_allowance',
-    number: 6,
+    number: 7,
     label: 'payable site allowance',
     description: 'Lembar rincian tunjangan site per karyawan',
   },
@@ -1864,6 +1873,7 @@ export function SchedulingTimesheetWorkspace({
 
   const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
     'overtime_summary',
+    'ovt_spl_summary',
     'msa_summary',
     'mls_summary',
     'tu_summary',
@@ -1872,6 +1882,12 @@ export function SchedulingTimesheetWorkspace({
   ])
   const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
+  const [summaryGridPdfModalOpen, setSummaryGridPdfModalOpen] = useState(false)
+  const [summaryGridSiteId, setSummaryGridSiteId] = useState<string>(siteId)
+  const [summaryGridType, setSummaryGridType] = useState<SummaryView>('ovt_spl')
+  const [summaryGridSelectAllEmployees, setSummaryGridSelectAllEmployees] = useState(true)
+  const [summaryGridSelectedEmployeeIds, setSummaryGridSelectedEmployeeIds] = useState<number[]>([])
+  const [summaryGridEmployeeSearch, setSummaryGridEmployeeSearch] = useState('')
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -6548,10 +6564,8 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  type SummaryView = 'ovt' | 'msa' | 'meals' | 'lokasi'
-
   function currentSummaryView(): SummaryView {
-    return attendanceView === 'attendance' || attendanceView === 'ovt_spl' ? 'ovt' : attendanceView
+    return attendanceView === 'attendance' ? 'ovt' : (attendanceView as SummaryView)
   }
 
   function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
@@ -6650,6 +6664,23 @@ export function SchedulingTimesheetWorkspace({
               if (code === 'AL') return 'AL'
               return ''
             }
+            if (view === 'ovt_spl') {
+              if (staff) return '-'
+              const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
+              const splHours = roundOvertimeHours((overtime?.splMinutes ?? 0) / 60)
+              if (splHours > 0) return String(splHours)
+              if (cell.status !== 'present') {
+                if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
+                if (cell.status === 'standby' || code === 'ST') return 'ST'
+                if (code === 'GD') return 'GD'
+                if (cell.status === 'off' || isRosterOff || code === 'OFF') return 'OFF'
+                if (cell.status === 'sick' || code === 'Sakit') return 'Sakit'
+                if (cell.status === 'leave' || code === 'Izin') return 'Izin'
+                if (cell.status === 'absent') return 'Alpha'
+                if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
+              }
+              return ''
+            }
             if (view === 'msa') {
               if (!allowance.rule.msa || allowance.empSiteConfig.msaType === 'none') return '-'
               if (isFieldBreakDay) return 'FB'
@@ -6682,7 +6713,12 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt' && cell.status !== 'present') continue
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
-            else if (!staff) {
+            else if (view === 'ovt_spl') {
+              if (!staff) {
+                const splMin = splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0
+                total += roundOvertimeHours(splMin / 60)
+              }
+            } else if (!staff) {
               const dayOt = calculateDayOvertime(
                   row.schedule,
                   day,
@@ -6712,7 +6748,7 @@ export function SchedulingTimesheetWorkspace({
             department: dept,
             section,
             dailyValues,
-            total: view === 'ovt' ? String(roundOvertimeHours(total)) : String(total),
+            total: view === 'ovt' || view === 'ovt_spl' ? String(roundOvertimeHours(total)) : String(total),
             remark: 'NORMAL',
           })
           no++
@@ -6730,7 +6766,7 @@ export function SchedulingTimesheetWorkspace({
     const { generateSummaryTablePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
     const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures)
     return generateSummaryTablePdf({
-      view: view === 'ovt' ? 'ot' : view,
+      view: view === 'ovt' ? 'ot' : view === 'ovt_spl' ? 'spl' : view,
       period,
       siteName: site?.name || '',
       project: rate.project,
@@ -6741,7 +6777,7 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  async function downloadSummaryPdf(view: SummaryView) {
+  async function downloadSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
     try {
       if (
         availableSiteSectionCategories.size > 1 &&
@@ -6755,16 +6791,20 @@ export function SchedulingTimesheetWorkspace({
       }
 
       const allEmps = rows.map((r) => r.employee)
-      const selectedEmps = allEmps.filter((emp) => {
-        const cat = getEmployeeSectionCategory(emp)
-        if (availableSiteSectionCategories.size > 1) {
+      let selectedEmps = allEmps
+      if (customEmpIds && customEmpIds.length > 0) {
+        const idSet = new Set(customEmpIds)
+        selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
+      } else if (availableSiteSectionCategories.size > 1) {
+        selectedEmps = allEmps.filter((emp) => {
+          const cat = getEmployeeSectionCategory(emp)
           if (cat === 'Repair' && !pdfIncludeRepair) return false
           if (cat === 'Services' && !pdfIncludeServices) return false
           if (cat === 'Technical' && !pdfIncludeTechnical) return false
           if (cat === 'HSE' && !pdfIncludeHse) return false
-        }
-        return true
-      })
+          return true
+        })
+      }
 
       if (selectedEmps.length === 0) {
         toast.error('Tidak ada baris karyawan di site ini yang cocok dengan section yang dipilih.')
@@ -6781,7 +6821,15 @@ export function SchedulingTimesheetWorkspace({
       a.href = url
       const sitePart = (site?.name || 'Semua Site').replace(/\s+/g, '_')
       const label =
-        view === 'ovt' ? 'Overtime' : view === 'msa' ? 'MSA' : view === 'meals' ? 'MLS' : 'TU'
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'ovt_spl'
+            ? 'Overtime_SPL'
+            : view === 'msa'
+              ? 'MSA'
+              : view === 'meals'
+                ? 'MLS'
+                : 'TU'
       const activeSections = [
         pdfIncludeRepair ? 'Repair' : '',
         pdfIncludeServices ? 'Services' : '',
@@ -6800,6 +6848,51 @@ export function SchedulingTimesheetWorkspace({
     } catch (error) {
       console.error('[PDF Summary Error]', error)
       toast.error('Download PDF Summary gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function previewSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
+    try {
+      const allEmps = rows.map((r) => r.employee)
+      let selectedEmps = allEmps
+      if (customEmpIds && customEmpIds.length > 0) {
+        const idSet = new Set(customEmpIds)
+        selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
+      } else if (availableSiteSectionCategories.size > 1) {
+        selectedEmps = allEmps.filter((emp) => {
+          const cat = getEmployeeSectionCategory(emp)
+          if (cat === 'Repair' && !pdfIncludeRepair) return false
+          if (cat === 'Services' && !pdfIncludeServices) return false
+          if (cat === 'Technical' && !pdfIncludeTechnical) return false
+          if (cat === 'HSE' && !pdfIncludeHse) return false
+          return true
+        })
+      }
+
+      if (selectedEmps.length === 0) {
+        toast.error('Tidak ada karyawan di site ini yang cocok.')
+        return
+      }
+
+      const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
+      const empIds = selectedEmps.map((e) => e.id)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+      const label =
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'ovt_spl'
+            ? 'Overtime SPL'
+            : view === 'msa'
+              ? 'MSA'
+              : view === 'meals'
+                ? 'MLS'
+                : 'TU'
+      openPdfPreview(pdf, `${label} Summary Grid – ${site?.name || ''} – ${period}`)
+    } catch (error) {
+      console.error('[Preview Summary PDF Error]', error)
+      toast.error('Gagal menampilkan preview PDF', {
         description: error instanceof Error ? error.message : String(error),
       })
     }
@@ -6872,6 +6965,21 @@ export function SchedulingTimesheetWorkspace({
         pages.forEach((page) => merged.addPage(page))
       }
 
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 1.b OVERTIME SPL SUMMARY
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
       // 2. MSA summary
       if (selectedPdfDocTypes.includes('msa_summary')) {
         const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
@@ -6934,6 +7042,7 @@ export function SchedulingTimesheetWorkspace({
       const selectedDocLabels = selectedPdfDocTypes
         .map((t) => {
           if (t === 'overtime_summary') return 'OT-Summary'
+          if (t === 'ovt_spl_summary') return 'SPL-Summary'
           if (t === 'msa_summary') return 'MSA-Summary'
           if (t === 'mls_summary') return 'MLS-Summary'
           if (t === 'tu_summary') return 'TU-Summary'
@@ -7175,6 +7284,13 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('overtime_summary')) {
         const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -11247,6 +11363,30 @@ export function SchedulingTimesheetWorkspace({
                           ? `(${selectedOvertimeEmployeeIds.length})`
                           : ''}
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSummaryGridSiteId(siteId)
+                          setSummaryGridType(
+                            attendanceView === 'attendance'
+                              ? 'ovt_spl'
+                              : (attendanceView as SummaryView)
+                          )
+                          setSummaryGridSelectAllEmployees(
+                            selectedOvertimeEmployeeIds.length === 0
+                          )
+                          setSummaryGridSelectedEmployeeIds(
+                            selectedOvertimeEmployeeIds
+                          )
+                          setSummaryGridPdfModalOpen(true)
+                        }}
+                        className="h-8.5 rounded-lg border-blue-200 bg-blue-50/70 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:text-blue-800 shadow-2xs gap-1.5"
+                        title="Buka dialog Cetak & Download PDF Summary Grid per Site dan Karyawan terpilih (SPL, OT, MSA, MLS, TU)"
+                      >
+                        <FileText className="size-3.5 text-blue-600" />
+                        <span>PDF Summary Grid</span>
+                      </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -11367,6 +11507,30 @@ export function SchedulingTimesheetWorkspace({
                           <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                             Dokumen & Ringkasan
                           </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSummaryGridSiteId(siteId)
+                              setSummaryGridType(
+                                attendanceView === 'attendance'
+                                  ? 'ovt_spl'
+                                  : (attendanceView as SummaryView)
+                              )
+                              setSummaryGridSelectAllEmployees(
+                                selectedOvertimeEmployeeIds.length === 0
+                              )
+                              setSummaryGridSelectedEmployeeIds(
+                                selectedOvertimeEmployeeIds
+                              )
+                              setSummaryGridPdfModalOpen(true)
+                            }}
+                            className="cursor-pointer gap-2 py-2 bg-blue-50/50 hover:bg-blue-100/70"
+                          >
+                            <FileText className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs text-blue-900">PDF Summary Grid (Pilih Site & Karyawan)</span>
+                              <span className="text-[10px] text-blue-600/80">Format Landscape A4 Resmi lengkap tanggal 1–31</span>
+                            </div>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => {
                               const columns = [
@@ -12196,7 +12360,7 @@ export function SchedulingTimesheetWorkspace({
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {attendanceView !== 'attendance' && attendanceView !== 'ovt_spl' ? (
+                      {attendanceView !== 'attendance' ? (
                         <>
                           <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
                             <Switch
@@ -12258,10 +12422,21 @@ export function SchedulingTimesheetWorkspace({
                             size="sm"
                             variant="outline"
                             disabled={rows.length === 0 || siteId === 'all'}
-                            onClick={() => void downloadSummaryPdf(attendanceView)}
-                            title="Download PDF Summary sesuai tabel di halaman ini"
+                            onClick={() => void previewSummaryPdf(attendanceView as SummaryView)}
+                            title="Preview PDF Summary Grid sesuai tabel di halaman ini"
+                            className="h-8 rounded-lg text-xs"
                           >
-                            <Download className="mr-2 size-4" /> Download PDF
+                            <Eye className="mr-1.5 size-3.5 text-slate-500" /> Preview PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={rows.length === 0 || siteId === 'all'}
+                            onClick={() => void downloadSummaryPdf(attendanceView as SummaryView)}
+                            title="Download PDF Summary Grid sesuai tabel di halaman ini"
+                            className="h-8 rounded-lg text-xs font-semibold text-slate-800"
+                          >
+                            <Download className="mr-1.5 size-3.5 text-slate-600" /> Download PDF
                           </Button>
                         </>
                       ) : null}
@@ -14760,6 +14935,309 @@ export function SchedulingTimesheetWorkspace({
                 disabled={isSavingSchedule || !reopenReason.trim()}
               >
                 Reopen
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Export PDF Summary Grid (Pilih Site & Karyawan) */}
+      <Dialog
+        open={summaryGridPdfModalOpen}
+        onOpenChange={setSummaryGridPdfModalOpen}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <FileText className="size-5 text-blue-600" />
+              <span>Export PDF Summary Grid (Landscape A4)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pilih Site, Jenis Dokumen Grid, dan Karyawan untuk mengunduh rekapitulasi matriks harian (tanggal 1–31) lengkap dengan approval resmi.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* 1. Pilih Site & Periode */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Pilih Site Lokasi</label>
+                <HeroSearchableSelect
+                  options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+                  value={summaryGridSiteId}
+                  onChange={(val) => {
+                    setSummaryGridSiteId(val)
+                    setSiteId(val)
+                    setSummaryGridSelectedEmployeeIds([])
+                    setSummaryGridSelectAllEmployees(true)
+                  }}
+                  placeholder="Pilih Site..."
+                  className="w-full h-9 bg-white text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Periode Aktif</label>
+                <div className="h-9 px-3 flex items-center rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-800">
+                  {period} ({rate.project || 'Project Standard'})
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Pilih Tipe Summary Grid */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Jenis Dokumen Summary Grid</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { key: 'ovt_spl', label: 'Overtime SPL', desc: 'Surat Perintah Lembur harian' },
+                  { key: 'ovt', label: 'Overtime Reguler', desc: 'Rekapitulasi lembur harian' },
+                  { key: 'msa', label: 'MSA Summary', desc: 'Meal & Site Allowance' },
+                  { key: 'meals', label: 'MLS Summary', desc: 'Uang makan harian' },
+                  { key: 'lokasi', label: 'TU Summary', desc: 'Tunjangan khusus / lokasi' },
+                ].map((item) => {
+                  const isActive = summaryGridType === item.key
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setSummaryGridType(item.key as SummaryView)}
+                      className={cn(
+                        'flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none',
+                        isActive
+                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20 text-blue-900'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      )}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-bold text-xs">{item.label}</span>
+                        {isActive && <Check className="size-3.5 text-blue-600 shrink-0" />}
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{item.desc}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 3. Pilih Karyawan */}
+            <div className="space-y-2.5 p-3 rounded-xl border border-slate-200 bg-white shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Pilihan Karyawan</p>
+                  <p className="text-[11px] text-slate-500">
+                    {summaryGridSelectAllEmployees
+                      ? `Semua karyawan di site ini (${rows.length} orang)`
+                      : `${summaryGridSelectedEmployeeIds.length} dari ${rows.length} karyawan dipilih`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSummaryGridSelectAllEmployees(true)
+                      setSummaryGridSelectedEmployeeIds([])
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer select-none',
+                      summaryGridSelectAllEmployees
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    )}
+                  >
+                    Semua Karyawan ({rows.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryGridSelectAllEmployees(false)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer select-none',
+                      !summaryGridSelectAllEmployees
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    )}
+                  >
+                    Pilih Tertentu {summaryGridSelectedEmployeeIds.length > 0 ? `(${summaryGridSelectedEmployeeIds.length})` : ''}
+                  </button>
+                </div>
+              </div>
+
+              {!summaryGridSelectAllEmployees && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="size-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama karyawan, NIK / SN, divisi..."
+                        value={summaryGridEmployeeSearch}
+                        onChange={(e) => setSummaryGridEmployeeSearch(e.target.value)}
+                        className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSummaryGridSelectedEmployeeIds(rows.map((r) => r.employee.id))}
+                      className="text-xs text-blue-600 font-semibold hover:underline shrink-0 cursor-pointer"
+                    >
+                      Pilih Semua
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSummaryGridSelectedEmployeeIds([])}
+                      className="text-xs text-slate-500 font-semibold hover:text-rose-600 hover:underline shrink-0 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  </div>
+
+                  <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/30 p-1">
+                    {rows
+                      .map((r) => r.employee)
+                      .filter((emp) => {
+                        if (!summaryGridEmployeeSearch.trim()) return true
+                        const q = summaryGridEmployeeSearch.toLowerCase().trim()
+                        return (
+                          emp.name.toLowerCase().includes(q) ||
+                          (emp.employeeSn && emp.employeeSn.toLowerCase().includes(q)) ||
+                          (emp.department && emp.department.toLowerCase().includes(q)) ||
+                          (emp.section && emp.section.toLowerCase().includes(q))
+                        )
+                      })
+                      .map((emp) => {
+                        const isChecked = summaryGridSelectedEmployeeIds.includes(emp.id)
+                        return (
+                          <label
+                            key={emp.id}
+                            className={cn(
+                              'flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs select-none',
+                              isChecked ? 'bg-blue-50/70 text-blue-950 font-medium' : 'hover:bg-slate-100/70 text-slate-700'
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSummaryGridSelectedEmployeeIds((prev) => [...prev, emp.id])
+                                } else {
+                                  setSummaryGridSelectedEmployeeIds((prev) => prev.filter((id) => id !== emp.id))
+                                }
+                              }}
+                              className="size-4 rounded accent-blue-600 cursor-pointer shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-slate-900 leading-tight">
+                                {emp.name}{' '}
+                                <span className="font-normal text-slate-500">
+                                  ({emp.employeeSn || '-'})
+                                </span>
+                              </p>
+                              <p className="truncate text-[10px] text-slate-500">
+                                {emp.department || 'Tanpa Dept'} • {emp.section || emp.role || 'Umum'}
+                              </p>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    {rows.length === 0 && (
+                      <p className="p-4 text-center text-xs text-slate-500">
+                        Tidak ada karyawan di site ini.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Opsi Tanda Tangan Approval */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-white">
+              <div>
+                <p className="text-xs font-semibold text-slate-800">Format Approval & Tanda Tangan</p>
+                <p className="text-[11px] text-slate-500">
+                  {pdfUseExternalSignatures
+                    ? `Format Approval Eksternal (${pdfExternalSignatureCount} kolom tanda tangan)`
+                    : 'Format Standar Internal HERO'}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="toggle-modal-external-pdf"
+                    checked={pdfUseExternalSignatures}
+                    onCheckedChange={setPdfUseExternalSignatures}
+                  />
+                  <label htmlFor="toggle-modal-external-pdf" className="text-xs font-medium text-slate-700 cursor-pointer select-none">
+                    Eksternal
+                  </label>
+                </div>
+                {pdfUseExternalSignatures && (
+                  <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+                    {([2, 3, 4] as const).map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setPdfExternalSignatureCount(cnt)}
+                        className={cn(
+                          'px-2 py-0.5 text-xs font-semibold rounded cursor-pointer select-none',
+                          pdfExternalSignatureCount === cnt
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        )}
+                      >
+                        {cnt} Kolom
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSummaryGridPdfModalOpen(false)}
+              className="h-9 px-4 text-xs"
+            >
+              Tutup
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  rows.length === 0 ||
+                  (!summaryGridSelectAllEmployees && summaryGridSelectedEmployeeIds.length === 0)
+                }
+                onClick={() =>
+                  void previewSummaryPdf(
+                    summaryGridType,
+                    summaryGridSelectAllEmployees ? undefined : summaryGridSelectedEmployeeIds
+                  )
+                }
+                className="h-9 px-4 text-xs"
+              >
+                <Eye className="mr-1.5 size-3.5 text-slate-500" />
+                Preview PDF Grid
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={
+                  rows.length === 0 ||
+                  (!summaryGridSelectAllEmployees && summaryGridSelectedEmployeeIds.length === 0)
+                }
+                onClick={() =>
+                  void downloadSummaryPdf(
+                    summaryGridType,
+                    summaryGridSelectAllEmployees ? undefined : summaryGridSelectedEmployeeIds
+                  )
+                }
+                className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+              >
+                <Download className="mr-1.5 size-3.5" />
+                Download PDF Grid
               </Button>
             </div>
           </div>

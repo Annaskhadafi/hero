@@ -49,7 +49,8 @@ type OvertimeRecordInput = {
   siteName: string
   signatures: PdfSignatureNames
   days: AttendanceDayData[]
-  isNonStaff: boolean
+  isNonStaff?: boolean
+  overtimeMode?: 'template' | 'realtime' | 'spl' | string
   showTotalOvertime?: boolean
   evidenceUrl?: string
   appBaseUrl?: string
@@ -1771,15 +1772,17 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
 }
 
 // ============================================================
-// SUMMARY TABLE PDF (OT / MSA / Meals / Tunjangan Khusus)
+// SUMMARY TABLE PDF (OT / SPL / MSA / Meals / Tunjangan Khusus)
 // ============================================================
-export type SummaryTableView = 'ot' | 'msa' | 'meals' | 'lokasi'
+export type SummaryTableView = 'ot' | 'spl' | 'msa' | 'meals' | 'lokasi' | 'attendance'
 
 export const SUMMARY_TABLE_TITLES: Record<SummaryTableView, string> = {
   ot: 'OVERTIME SUMMARY',
+  spl: 'OVERTIME SPL SUMMARY',
   msa: 'MSA SUMMARY',
   meals: 'MLS SUMMARY',
   lokasi: 'TU SUMMARY',
+  attendance: 'ATTENDANCE SUMMARY',
 }
 
 export type SummaryTableRow = {
