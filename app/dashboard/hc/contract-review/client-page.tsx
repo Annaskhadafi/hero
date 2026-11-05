@@ -60,6 +60,7 @@ import { MinimalTableShell } from "@/components/ui/minimal-table-shell"
 import { MultiSelectFilterDropdown } from "@/components/ui/multi-select-filter-dropdown"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { HeroSearchableSelect } from "@/components/templates"
+import { ContractReviewReminderDialog } from "@/components/hc/contract-review-reminder-dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -119,6 +120,8 @@ export function ContractReviewClientPage({
   const [isReminderRunning, setIsReminderRunning] = useState(false)
   const [sendingReminderId, setSendingReminderId] = useState<number | null>(null)
   const [resendingReviewId, setResendingReviewId] = useState<number | null>(null)
+  const [selectedReminderEmployee, setSelectedReminderEmployee] = useState<{ id: number; name: string } | null>(null)
+  const [isReminderDialogOpen, setIsReminderDialogOpen] = useState(false)
 
   // Multi-select state
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<number[]>([])
@@ -868,7 +871,7 @@ export function ContractReviewClientPage({
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-3 text-xs">
                               <span className="font-semibold text-slate-900">
-                                {row.approvalStep ? Step / : Menunggu Approval} {/* Step {row.approvalStep}/{row.approvalTotalSteps} */}
+                                {row.approvalStep ? `Step ${row.approvalStep}` : 'Menunggu Approval'} {/* Step {row.approvalStep}/{row.approvalTotalSteps} */}
                               </span>
                               <span className="font-mono text-[11px] text-slate-500">{completedSteps}/{totalSteps} TTD</span>
                             </div>
@@ -1292,14 +1295,12 @@ export function ContractReviewClientPage({
                             variant="ghost"
                             className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                             title={`Kirim Reminder Manual untuk ${emp.name}`}
-                            disabled={sendingReminderId === emp.id}
-                            onClick={() => handleSendSingleReminder(emp.id, emp.name)}
+                            onClick={() => {
+                              setSelectedReminderEmployee({ id: emp.id, name: emp.name })
+                              setIsReminderDialogOpen(true)
+                            }}
                           >
-                            {sendingReminderId === emp.id ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Send className="size-3.5" />
-                            )}
+                            <Send className="size-3.5" />
                           </Button>
                         </div>
                       </TableCell>
@@ -1507,6 +1508,20 @@ export function ContractReviewClientPage({
           )}
         </DialogContent>
       </Dialog>
+
+      <ContractReviewReminderDialog
+        open={isReminderDialogOpen}
+        onOpenChange={(open) => {
+          setIsReminderDialogOpen(open)
+          if (!open) setSelectedReminderEmployee(null)
+        }}
+        employeeId={selectedReminderEmployee?.id ?? null}
+        employeeName={selectedReminderEmployee?.name}
+        allEmployees={employees}
+        onSuccess={() => {
+          router.refresh()
+        }}
+      />
     </AdminPageShell>
   )
 }

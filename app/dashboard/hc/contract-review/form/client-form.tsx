@@ -619,6 +619,53 @@ export function ContractReviewClientForm({
     const emp = employees.find(e => String(e.id) === employeeId)
     if (!emp) return currentForm
 
+    const sectionStr = (emp.section || '').trim().toLowerCase()
+    const deptStr = (emp.department || '').trim().toLowerCase()
+    const jobStr = (emp.jobTitle || emp.position || emp.rank || '').trim().toLowerCase()
+    const isHse =
+      sectionStr === 'hse' ||
+      sectionStr.includes('hse') ||
+      sectionStr.includes('health') ||
+      sectionStr.includes('safety') ||
+      deptStr === 'hse' ||
+      deptStr.includes('hse') ||
+      jobStr.includes('hse')
+
+    // Rule for HSE:
+    // - CK Sites (e.g. CK BIB, CK) -> Leader: Saipudin (HSE Leader)
+    // - Non-CK Sites -> Leader: Andi Safari (HSE Coordinator)
+    // - Superior: Andi Safari (for CK) or Dept Head / Manager (for Non-CK), remaining flexible
+    if (isHse) {
+      const siteStr = (emp.siteName || '').toUpperCase()
+      const isCk = /\bCK\b/i.test(siteStr) || siteStr.startsWith('CK') || siteStr.includes('CK ') || siteStr.includes(' CK')
+      
+      const leaderName = isCk ? 'Saipudin' : 'Andi Safari'
+      const leaderTitle = isCk ? 'HSE Leader' : 'HSE Coordinator'
+      const superiorName = isCk ? 'Andi Safari' : (masterHeadMap?.departments?.[String(emp.departmentId)]?.headName || 'Romy Hidayat')
+      const superiorTitle = isCk ? 'HSE Coordinator' : 'Department Head'
+      const nextSuperiorName = masterHeadMap?.departments?.[String(emp.departmentId)]?.headName || 'Romy Hidayat'
+      const nextSuperiorTitle = 'Department Head'
+      const hrName = currentForm.hrName || approvalSettings?.approvalMatrix?.hrName || 'Kesuma Bagaskara'
+      const hrTitle = currentForm.hrTitle || resolveEmployeeTitle(hrName, 'HR-GA')
+
+      const finalLeaderName = currentForm.leaderName || leaderName
+      const finalSuperiorName = currentForm.superiorName || superiorName
+      const finalNextSuperiorName = currentForm.nextSuperiorName || nextSuperiorName
+
+      return {
+        ...currentForm,
+        employeeId,
+        leaderName: finalLeaderName,
+        leaderTitle: currentForm.leaderTitle || (finalLeaderName === currentUser?.name ? currentUser?.jobTitle || 'Leader' : leaderTitle),
+        superiorName: finalSuperiorName,
+        superiorTitle: currentForm.superiorTitle || superiorTitle,
+        nextSuperiorName: finalNextSuperiorName,
+        nextSuperiorTitle: currentForm.nextSuperiorTitle || nextSuperiorTitle,
+        hrName,
+        hrTitle,
+      }
+    }
+
     const isCentralService = emp.department?.toLowerCase().includes('central') || emp.section?.toLowerCase().includes('repair') || emp.section?.toLowerCase().includes('retread') || emp.section?.toLowerCase().includes('mvc') || emp.section?.toLowerCase().includes('service')
     const isHo = emp.siteName && (emp.siteName.toLowerCase().includes('balikpapan') || emp.siteName.toLowerCase().includes('jakarta'))
 

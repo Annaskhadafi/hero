@@ -783,6 +783,52 @@ async function resolveMasterSectionAndDepartmentHeads(input: {
   }
 }
 
+function isHseSectionOrRole(sectionName?: string | null, departmentName?: string | null, jobTitle?: string | null): boolean {
+  const s = (sectionName || '').trim().toLowerCase()
+  const d = (departmentName || '').trim().toLowerCase()
+  const j = (jobTitle || '').trim().toLowerCase()
+  return (
+    s === 'hse' ||
+    s.includes('hse') ||
+    s.includes('health') ||
+    s.includes('safety') ||
+    d === 'hse' ||
+    d.includes('hse') ||
+    j.includes('hse')
+  )
+}
+
+function isCkSiteName(siteName?: string | null): boolean {
+  if (!siteName) return false
+  const s = siteName.trim().toUpperCase()
+  return /\bCK\b/i.test(s) || s.startsWith('CK') || s.includes('CK ') || s.includes(' CK')
+}
+
+export async function resolveHseLeaderForSite(siteName?: string | null) {
+  const isCk = isCkSiteName(siteName)
+  if (isCk) {
+    // Saipudin - HSE Leader (SN: 72648)
+    const user = await getUserByName('Saipudin', 'saipudin@chitraparatama.co.id')
+    return {
+      id: user?.id ?? 1164,
+      name: user?.name || 'Saipudin',
+      email: user?.email || 'saipudin@chitraparatama.co.id',
+      jobTitle: user?.jobTitle || 'HSE Leader',
+      role: 'HSE Leader (Site CK)',
+    }
+  } else {
+    // Andi Safari - HSE Coordinator (SN: 70909)
+    const user = await getUserByName('Andi Safari', 'andi.safari@chitraparatama.co.id')
+    return {
+      id: user?.id ?? 1104,
+      name: user?.name || 'Andi Safari',
+      email: user?.email || 'andi.safari@chitraparatama.co.id',
+      jobTitle: user?.jobTitle || 'HSE Coordinator',
+      role: 'HSE Coordinator (Non-CK)',
+    }
+  }
+}
+
 async function buildContractReviewApprovals(review: typeof hcEmployeeContractReviews.$inferSelect) {
   if (!review.employeeId) return []
 
@@ -820,8 +866,16 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
         .limit(1)
     : []
 
+  const [sectionRow] = userEmployee.sectionId
+    ? await db
+        .select({ id: masterSections.id, name: masterSections.name })
+        .from(masterSections)
+        .where(eq(masterSections.id, userEmployee.sectionId))
+        .limit(1)
+    : []
+
   const siteName = siteRow?.name || csEmp?.siteName || userEmployee.workLocation || ''
-  const section = csEmp?.section || ''
+  const section = csEmp?.section || sectionRow?.name || ''
   const settings = await getContractReviewSettings()
   const isHo = isHoSite(siteName) || siteRow?.siteType === 'Head Office' || siteRow?.siteType === 'HO'
   const legacySectionHead = getLegacySectionHeadConfig(section, settings)
@@ -859,6 +913,11 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
     const customLeader = await getUserByName(review.leaderName)
     if (customLeader?.id || customLeader?.name) {
       firstApprover = customLeader
+    }
+  } else if (isHseSectionOrRole(section, '', userEmployee.jobTitle)) {
+    const hseLeader = await resolveHseLeaderForSite(siteName)
+    if (hseLeader && hseLeader.id !== userEmployee.id) {
+      firstApprover = hseLeader
     }
   } else if (!isHo) {
     let siteHead: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
@@ -1492,10 +1551,18 @@ async function resolveApproverForEmployee(emp: {
   departmentName?: string | null
   siteName?: string | null
   siteType?: string | null
+  jobTitle?: string | null
 }) {
   const settings = await getContractReviewSettings()
   const siteName = emp.siteName ?? ''
   const isHo = isHoSite(siteName) || emp.siteType === 'Head Office' || emp.siteType === 'HO'
+
+  // Special Check: HSE routing directly to Saipudin (CK) or Andi Safari (Non-CK)
+  const isHse = isHseSectionOrRole(emp.sectionName, emp.departmentName, emp.jobTitle)
+  let hseLeader: { id: number | null; name: string; email: string; jobTitle?: string; role?: string } | null = null
+  if (isHse) {
+    hseLeader = await resolveHseLeaderForSite(siteName)
+  }
 
   // 1. Direct Manager from Struktur Organisasi (hero_employees.direct_manager_id)
   let directManager: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
@@ -1577,13 +1644,20 @@ async function resolveApproverForEmployee(emp: {
     ? (validDirectManager?.email ? validDirectManager : sectionHead)
     : (validSiteHead?.email ? validSiteHead : validDirectManager?.email ? validDirectManager : sectionHead)
 
+  // Special rule for HSE: Bypass PJO Site and route directly to HSE Leader / Coordinator
+  if (isHse && hseLeader && hseLeader.id !== emp.id && hseLeader.email) {
+    primaryApprover = hseLeader
+  }
+
   // Fallback to department head or HR if primary has no valid email
   if (!primaryApprover?.email) {
     primaryApprover = departmentHead?.email ? departmentHead : hr
   }
 
   let approverRoleTitle = 'Approver'
-  if (validSiteHead && primaryApprover?.id === validSiteHead.id) {
+  if (isHse && hseLeader && primaryApprover?.id === hseLeader.id) {
+    approverRoleTitle = hseLeader.role || 'HSE Leader'
+  } else if (validSiteHead && primaryApprover?.id === validSiteHead.id) {
     approverRoleTitle = `PJO / Lokasi Head (${siteName || 'Site'})`
   } else if (validDirectManager && primaryApprover?.id === validDirectManager.id) {
     approverRoleTitle = `Atasan Langsung (${validDirectManager.name})`
@@ -1597,9 +1671,9 @@ async function resolveApproverForEmployee(emp: {
 
   return {
     approver: primaryApprover,
-    siteHead,
-    directManager,
-    sectionHead,
+    siteHead: validSiteHead,
+    directManager: validDirectManager,
+    sectionHead: isHse && hseLeader ? hseLeader : sectionHead,
     departmentHead,
     hr,
     approverRoleTitle,
@@ -1903,6 +1977,7 @@ export async function sendSingleContractReminder(employeeId: number) {
     departmentName: emp.departmentName,
     siteName: emp.siteName,
     siteType: emp.siteType,
+    jobTitle: emp.jobTitle,
   })
 
   const targetEmail = approver?.email?.trim() || hr?.email?.trim() || settings.approvalMatrix.hrEmail
@@ -1995,6 +2070,303 @@ export async function sendSingleContractReminder(employeeId: number) {
   return {
     success: true,
     message: `Reminder berhasil dikirim ke ${targetName} (${approverRoleTitle} - ${targetEmail}).`,
+  }
+}
+
+export type ReminderRecipientCandidate = {
+  type: 'section_leader' | 'site_head' | 'direct_manager' | 'hr' | 'custom'
+  name: string
+  email: string
+  role: string
+  description: string
+  isDefault?: boolean
+}
+
+export async function getContractReviewReminderRecipients(employeeId: number) {
+  try {
+    const [emp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        directManagerId: employees.directManagerId,
+        workLocation: employees.workLocation,
+        contractDurationEnd: employees.contractDurationEnd,
+        departmentName: masterDepartments.name,
+        sectionName: masterSections.name,
+        siteName: sites.name,
+        siteType: sites.siteType,
+      })
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(and(eq(employees.id, employeeId), eq(employees.isActive, true)))
+      .limit(1)
+
+    if (!emp) {
+      return { success: false as const, error: 'Karyawan tidak ditemukan.' }
+    }
+
+    const { approver, siteHead, directManager, sectionHead, hr, approverRoleTitle } =
+      await resolveApproverForEmployee({
+        id: emp.id,
+        sectionId: emp.sectionId,
+        departmentId: emp.departmentId,
+        siteId: emp.siteId,
+        directManagerId: emp.directManagerId,
+        sectionName: emp.sectionName,
+        departmentName: emp.departmentName,
+        siteName: emp.siteName,
+        siteType: emp.siteType,
+        jobTitle: emp.jobTitle,
+      })
+
+    const today = new Date()
+    const contractEndDate = emp.contractDurationEnd ? parseIsoDate(String(emp.contractDurationEnd)) : null
+    const daysLeft = contractEndDate ? differenceInCalendarDays(contractEndDate, today) : 0
+
+    const candidates: ReminderRecipientCandidate[] = []
+    const seenEmails = new Set<string>()
+
+    // 1. Primary detected approver (Leader Section / HSE Leader / etc.)
+    if (approver?.email) {
+      seenEmails.add(approver.email.toLowerCase().trim())
+      candidates.push({
+        type: 'section_leader',
+        name: approver.name,
+        email: approver.email,
+        role: approverRoleTitle || 'Atasan / Leader',
+        description: 'Rekomendasi sistem berdasarkan section dan hirarki atasan.',
+        isDefault: true,
+      })
+    }
+
+    // 2. Section Head (if different from primary approver)
+    if (sectionHead?.email && !seenEmails.has(sectionHead.email.toLowerCase().trim())) {
+      seenEmails.add(sectionHead.email.toLowerCase().trim())
+      candidates.push({
+        type: 'section_leader',
+        name: sectionHead.name,
+        email: sectionHead.email,
+        role: `Section Head (${emp.sectionName || 'Section'})`,
+        description: 'Pimpinan Section di Master Data.',
+      })
+    }
+
+    // 3. PJO / Site Head (if exists and different)
+    if (siteHead?.email && !seenEmails.has(siteHead.email.toLowerCase().trim())) {
+      seenEmails.add(siteHead.email.toLowerCase().trim())
+      candidates.push({
+        type: 'site_head',
+        name: siteHead.name,
+        email: siteHead.email,
+        role: `PJO / Lokasi Head (${emp.siteName || 'Site'})`,
+        description: 'Penanggung Jawab Operasional di site kerja karyawan.',
+      })
+    }
+
+    // 4. Direct Manager (if exists and different)
+    if (directManager?.email && !seenEmails.has(directManager.email.toLowerCase().trim())) {
+      seenEmails.add(directManager.email.toLowerCase().trim())
+      candidates.push({
+        type: 'direct_manager',
+        name: directManager.name,
+        email: directManager.email,
+        role: `Atasan Langsung (${directManager.jobTitle || 'Manager'})`,
+        description: 'Atasan langsung yang tercatat pada struktur organisasi.',
+      })
+    }
+
+    // 5. HR Manager / Staff
+    if (hr?.email && !seenEmails.has(hr.email.toLowerCase().trim())) {
+      candidates.push({
+        type: 'hr',
+        name: hr.name,
+        email: hr.email,
+        role: 'HC / HR-GA',
+        description: 'Perwakilan Human Capital / HR.',
+      })
+    }
+
+    return {
+      success: true as const,
+      candidates,
+      employeeInfo: {
+        id: emp.id,
+        name: emp.name,
+        employeeSn: normalizeSn(emp.employeeSn),
+        jobTitle: emp.jobTitle || '-',
+        section: emp.sectionName || '-',
+        site: emp.siteName || '-',
+        daysLeft,
+        contractEndDate: contractEndDate ? formatDisplayDate(contractEndDate) : '-',
+      },
+    }
+  } catch (err: any) {
+    console.error('[getContractReviewReminderRecipients] Error:', err)
+    return { success: false as const, error: err?.message || 'Gagal memuat kandidat penerima reminder.' }
+  }
+}
+
+export async function sendCustomContractReminder(input: {
+  employeeId: number
+  recipientEmail: string
+  recipientName: string
+  recipientRole?: string
+  note?: string
+}) {
+  await ensureContractReviewWorkflowTables()
+  const today = new Date()
+  const baseUrl = await getBaseUrl()
+  const settings = await getContractReviewSettings()
+
+  const [emp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      contractDurationEnd: employees.contractDurationEnd,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+      siteName: sites.name,
+    })
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(and(eq(employees.id, input.employeeId), eq(employees.isActive, true)))
+    .limit(1)
+
+  if (!emp || !emp.contractDurationEnd) {
+    return { success: false, error: 'Karyawan tidak ditemukan atau tidak memiliki tanggal berakhir kontrak.' }
+  }
+
+  const contractEndDate = parseIsoDate(String(emp.contractDurationEnd))
+  if (!contractEndDate) {
+    return { success: false, error: 'Format tanggal berakhir kontrak tidak valid.' }
+  }
+
+  const targetEmail = input.recipientEmail.trim()
+  const targetName = input.recipientName.trim()
+  const targetRole = input.recipientRole?.trim() || 'Atasan / Reviewer'
+
+  if (!targetEmail) {
+    return { success: false, error: 'Email penerima wajib diisi.' }
+  }
+
+  const daysUntilEnd = differenceInCalendarDays(contractEndDate, today)
+  const reminderType = daysUntilEnd < 0 ? `Overdue (${Math.abs(daysUntilEnd)} hari)` : `H-${daysUntilEnd}`
+
+  const [existingReview] = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.employeeId, input.employeeId))
+    .orderBy(desc(hcEmployeeContractReviews.createdAt))
+    .limit(1)
+
+  const reviewLink = existingReview
+    ? `${baseUrl}/dashboard/hc/contract-review/form/${existingReview.id}`
+    : `${baseUrl}/dashboard/hc/contract-review/new?employeeId=${emp.id}&employeeSn=${normalizeSn(emp.employeeSn)}`
+  const pendingApproval = existingReview
+    ? (await getContractReviewReminderContext(existingReview)).pendingApproval
+    : null
+  const actionableLink = pendingApproval ? `${baseUrl}/review/${pendingApproval.approvalToken}` : reviewLink
+
+  const template = settings.emailTemplates.reminder
+  let body = template.body
+    .replace(/{{recipientName}}/g, targetName)
+    .replace(/{{reviewerName}}/g, targetName)
+    .replace(/{{employeeName}}/g, emp.name)
+    .replace(/{{employeeSn}}/g, normalizeSn(emp.employeeSn))
+    .replace(/{{employeeSection}}/g, emp.sectionName || '-')
+    .replace(/{{employeeSite}}/g, emp.siteName || '-')
+    .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+    .replace(/{{reviewLink}}/g, actionableLink)
+    .replace(/{{approverName}}/g, targetName)
+    .replace(/{{approvalStep}}/g, targetRole)
+    .replace(/{{approvalLink}}/g, actionableLink)
+
+  if (input.note?.trim()) {
+    body += `\n\nCatatan Tambahan dari HC:\n${input.note.trim()}`
+  }
+
+  const subject = template.subject
+    .replace(/{{recipientName}}/g, targetName)
+    .replace(/{{employeeName}}/g, emp.name)
+    .replace(/{{employeeSn}}/g, normalizeSn(emp.employeeSn))
+    .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+
+  const emailResult = await sendContractReviewEmail({
+    to: targetEmail,
+    subject,
+    body,
+    reviewId: existingReview?.id ?? 0,
+    templateCode: 'contract_review_reminder',
+    variables: {
+      recipientName: targetName,
+      reviewerName: targetName,
+      employeeName: emp.name,
+      employeeSn: normalizeSn(emp.employeeSn),
+      employeeSection: emp.sectionName || '-',
+      employeeSite: emp.siteName || '-',
+      contractEndDate: formatDisplayDate(contractEndDate),
+      reviewLink: actionableLink,
+      approverName: targetName,
+      approvalStep: targetRole,
+      approvalLink: actionableLink,
+    },
+  })
+
+  if (!emailResult.sent) {
+    return { success: false, error: emailResult.error || 'Gagal mengirim email reminder.' }
+  }
+
+  await db.insert(hcContractReviewReminders).values({
+    employeeId: emp.id,
+    employeeSn: normalizeSn(emp.employeeSn),
+    employeeName: emp.name,
+    section: emp.sectionName || '-',
+    siteName: emp.siteName || '-',
+    contractEndDate: contractEndDate.toISOString().slice(0, 10),
+    reminderType,
+    recipientEmail: targetEmail,
+    recipientName: targetName,
+    recipientRole: targetRole,
+    reviewId: existingReview?.id ?? null,
+    sentAt: new Date(),
+  })
+
+  await notifyWorkflowBellRecipients({
+    recipientEmails: [targetEmail],
+    eventType: 'contract_review_reminder',
+    category: 'approval_requests',
+    title: `Reminder masa kontrak ${emp.name}`,
+    body: `${reminderType}: kontrak berakhir ${formatDisplayDate(contractEndDate)}. Silakan tindak lanjuti contract review (${targetRole}).`,
+    url: actionableLink,
+    tagPrefix: 'contract-review-reminder',
+    metadata: {
+      employeeId: emp.id,
+      reminderType,
+      approverRole: targetRole,
+    },
+  })
+
+  revalidatePath('/dashboard/hc/contract-review')
+  return {
+    success: true,
+    message: `Reminder masa kontrak untuk ${emp.name} berhasil dikirim ke ${targetName} (${targetRole} - ${targetEmail}).`,
   }
 }
 
@@ -2196,6 +2568,7 @@ export async function sendDueContractReviewReminders() {
       sectionName: expEmp.section,
       departmentName: expEmp.department,
       siteName: expEmp.siteName,
+      jobTitle: expEmp.jobTitle,
     })
 
     const targetEmail = approver?.email?.trim() || hr?.email?.trim() || settings.approvalMatrix.hrEmail
