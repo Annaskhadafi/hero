@@ -2315,7 +2315,7 @@ export function OvertimeListingClient({
     })
   }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees, isSummaryPreviewOpen, summaryPreviewMode, siteSummaryData, sites, summarySiteId])
 
-  const handleOpenSummaryPreview = async () => {
+  const handleOpenSummaryPreview = () => {
     setSummaryPreviewMode('employee')
     if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
       toast.error('Silakan pilih karyawan terlebih dahulu untuk melihat preview PDF Summary SPL.')
@@ -2327,69 +2327,15 @@ export function OvertimeListingClient({
       return
     }
 
-    try {
-      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
-      const employeeName =
-        selectedEmpObj && selectedEmpObj.value !== 'ALL'
-          ? selectedEmpObj.label.split(' (')[0]
-          : 'Semua Karyawan'
-      const deptName =
-        selectedEmpObj && selectedEmpObj.label.includes('(')
-          ? selectedEmpObj.label.split('(')[1].replace(')', '')
-          : 'Central Services'
-
-      const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
-      const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
-      const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
-      const siteLogoUrl = resolveSiteLogoUrl(siteName)
-
-      const firstRow = summaryFilteredRows[0]
-      const signatories = resolveSummarySplSignatories({
-        selectedEmployee: selectedEmpInfo,
-        allEmployees: employees,
-        firstRowApprovals: firstRow?.approvals,
-        fallbackEmployeeName: employeeName,
-      })
-
-      const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
-
-      const pdfBytes = await generateSummarySplPdf({
-        documentTitle: 'SUMMARY SPL',
-        period: summaryMonth || '2026-10',
-        employeeName,
-        employeeSn,
-        department: deptName,
-        section,
-        siteName,
-        isPjo: signatories.isPjo,
-        signatures: {
-          preparedBy: signatories.preparedByName,
-          pjoLeader: signatories.pjoName,
-          approvedBy: signatories.leaderName,
-          isPjo: signatories.isPjo,
-          logoUrl: siteLogoUrl,
-        },
-        days: daysData,
-        isNonStaff: true,
-        showTotalOvertime: true,
-      })
-
-      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
-      if (summaryPdfPreviewUrl) {
-        URL.revokeObjectURL(summaryPdfPreviewUrl)
-      }
-      const url = URL.createObjectURL(blob)
-      setSummaryPdfPreviewUrl(url)
-      setSummaryPreviewZoom(1.0)
-      setIsSummaryPreviewOpen(true)
-    } catch (err) {
-      console.error('Preview error:', err)
-      toast.error('Gagal memuat preview Summary SPL.')
+    if (summaryPdfPreviewUrl) {
+      URL.revokeObjectURL(summaryPdfPreviewUrl)
+      setSummaryPdfPreviewUrl(null)
     }
+    setSummaryPreviewZoom(1.0)
+    setIsSummaryPreviewOpen(true)
   }
 
-  const handleOpenSiteSummaryPreview = async () => {
+  const handleOpenSiteSummaryPreview = () => {
     if (!summarySiteId || summarySiteId === 'ALL') {
       toast.error('Silakan pilih Lokasi Site / Unit Kerja terlebih dahulu pada filter.')
       return
@@ -2400,55 +2346,13 @@ export function OvertimeListingClient({
       return
     }
 
-    setIsGeneratingSummaryPdf(true)
-    const toastId = 'open-site-summary-preview'
-    toast.loading('Menyiapkan dokumen PDF Summary SPL Per Site...', { id: toastId })
-
-    try {
-      const siteName = siteSummaryData.siteName
-      const siteLogoUrl = resolveSiteLogoUrl(siteName)
-      const firstRow = siteSummaryData.uniqueSpls[0]
-      const signatories = resolveSummarySplSignatories({
-        selectedEmployee: null,
-        allEmployees: employees,
-        firstRowApprovals: firstRow?.approvals,
-        fallbackEmployeeName: 'Admin Site',
-      })
-
-      const pdfBytes = await generateSiteSummarySplPdf({
-        documentTitle: 'SUMMARY SPL PER SITE',
-        period: summaryMonth || '2026-11',
-        siteName,
-        totalSplCount: siteSummaryData.totalSplCount,
-        totalHours: siteSummaryData.totalHours,
-        totalEmployees: siteSummaryData.totalEmployees,
-        rows: siteSummaryData.rows,
-        employeeStats: siteSummaryData.employeeStats,
-        signatures: {
-          preparedBy: signatories.preparedByName || 'Admin Site',
-          pjoLeader: signatories.pjoName || 'PJO Site',
-          approvedBy: signatories.leaderName || 'Site Leader',
-          isPjo: signatories.isPjo,
-          logoUrl: siteLogoUrl,
-        },
-      })
-
-      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
-      if (summaryPdfPreviewUrl) {
-        URL.revokeObjectURL(summaryPdfPreviewUrl)
-      }
-      const url = URL.createObjectURL(blob)
-      setSummaryPdfPreviewUrl(url)
-      setSummaryPreviewMode('site')
-      setSummaryPreviewZoom(1.0)
-      setIsSummaryPreviewOpen(true)
-      toast.dismiss(toastId)
-    } catch (err: any) {
-      console.error('Preview error site summary:', err)
-      toast.error('Gagal menyiapkan preview PDF Summary SPL Per Site.', { id: toastId })
-    } finally {
-      setIsGeneratingSummaryPdf(false)
+    if (summaryPdfPreviewUrl) {
+      URL.revokeObjectURL(summaryPdfPreviewUrl)
+      setSummaryPdfPreviewUrl(null)
     }
+    setSummaryPreviewMode('site')
+    setSummaryPreviewZoom(1.0)
+    setIsSummaryPreviewOpen(true)
   }
 
   const handleDownloadSiteSummaryPdf = async () => {
@@ -5029,28 +4933,16 @@ export function OvertimeListingClient({
           </div>
 
           {/* Preview Sheet Canvas Area */}
-          <div className="flex-1 overflow-hidden bg-[#383d47] p-2 flex justify-center items-center">
-            {summaryPdfPreviewUrl ? (
+          <div className="flex-1 overflow-hidden bg-[#2d3238] p-0 flex justify-center items-stretch">
+            {summaryPreviewHtmlContent ? (
               <iframe
-                title="Overtime Record PDF Preview"
-                src={summaryPdfPreviewUrl}
-                className="w-full h-full border-0 rounded-lg shadow-2xl bg-white"
+                title="Summary SPL Preview"
+                srcDoc={summaryPreviewHtmlContent}
+                className="w-full h-full border-0 bg-[#f1f5f9]"
               />
             ) : (
-              <div
-                className="bg-white shadow-2xl rounded-xs transition-transform duration-200 origin-top"
-                style={{
-                  transform: `scale(${summaryPreviewZoom})`,
-                  width: '210mm',
-                  minHeight: '297mm',
-                }}
-              >
-                <iframe
-                  title="Summary SPL Preview"
-                  srcDoc={summaryPreviewHtmlContent}
-                  className="w-full h-full min-h-[297mm] border-0"
-                  style={{ width: '100%', minHeight: '297mm' }}
-                />
+              <div className="flex flex-col items-center justify-center p-12 text-slate-300 text-xs">
+                Tidak ada data dokumen untuk ditampilkan.
               </div>
             )}
           </div>

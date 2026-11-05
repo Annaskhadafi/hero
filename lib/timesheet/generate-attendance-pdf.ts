@@ -1366,11 +1366,11 @@ export async function generateSiteSummarySplPdf(input: SiteSummarySplInput): Pro
     drawCell(page, colX[0], y, cols[0], dynamicRowH, { text: tglOnly, font, fontSize: 7, align: 'center', bgColor, color: textRedColor })
     drawCell(page, colX[1], y, cols[1], dynamicRowH, { text: row.dayName, font, fontSize: 7, align: 'center', bgColor, color: textRedColor })
     drawCell(page, colX[2], y, cols[2], dynamicRowH, { text: row.employeeName, font: fontBold, fontSize: 7, align: 'left', wrap: true, bgColor })
-    drawCell(page, colX[3], y, cols[3], dynamicRowH, { text: row.department || '—', font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
+    drawCell(page, colX[3], y, cols[3], dynamicRowH, { text: row.department || '-', font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
     drawCell(page, colX[4], y, cols[4], dynamicRowH, { text: row.startTime, font, fontSize: 6.5, align: 'center', bgColor })
     drawCell(page, colX[5], y, cols[5], dynamicRowH, { text: row.endTime, font, fontSize: 6.5, align: 'center', bgColor })
     drawCell(page, colX[6], y, cols[6], dynamicRowH, { text: `${row.durationHours} Jam`, font: fontBold, fontSize: 7, align: 'center', color: rgb(0, 0.4, 0.7), bgColor })
-    drawCell(page, colX[7], y, cols[7], dynamicRowH, { text: row.taskSummary, font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
+    const cleanTask = (row.taskSummary || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/[•]/g, '*').replace(/[^\x00-\xFF]/g, ' '); drawCell(page, colX[7], y, cols[7], dynamicRowH, { text: cleanTask, font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
   }
 
   // Check room for Total Row + Employee Recap + Signatures
@@ -1428,8 +1428,8 @@ export async function generateSiteSummarySplPdf(input: SiteSummarySplInput): Pro
       y -= rH
       const rBg = idx % 2 === 1 ? rgb(0.98, 0.98, 0.99) : undefined
       drawCell(page, rColX[0], y, rCols[0], rH, { text: String(idx + 1), font, fontSize: 7, align: 'center', bgColor: rBg })
-      drawCell(page, rColX[1], y, rCols[1], rH, { text: `${st.employeeName}${st.employeeSn && st.employeeSn !== '—' ? ` (${st.employeeSn})` : ''}`, font: fontBold, fontSize: 7, align: 'left', bgColor: rBg })
-      drawCell(page, rColX[2], y, rCols[2], rH, { text: st.department || '—', font, fontSize: 7, align: 'left', bgColor: rBg })
+      drawCell(page, rColX[1], y, rCols[1], rH, { text: `${st.employeeName}${st.employeeSn && st.employeeSn !== '-' && st.employeeSn !== '—' ? ` (${st.employeeSn})` : ''}`, font: fontBold, fontSize: 7, align: 'left', bgColor: rBg })
+      drawCell(page, rColX[2], y, rCols[2], rH, { text: st.department || '-', font, fontSize: 7, align: 'left', bgColor: rBg })
       drawCell(page, rColX[3], y, rCols[3], rH, { text: `${st.splCount} SPL`, font, fontSize: 7, align: 'center', bgColor: rBg })
       drawCell(page, rColX[4], y, rCols[4], rH, { text: `${st.totalHours} Jam`, font: fontBold, fontSize: 7, align: 'center', color: rgb(0, 0.4, 0.7), bgColor: rBg })
     })

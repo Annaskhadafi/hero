@@ -23,10 +23,8 @@ test('Verifikasi Tombol dan Fitur Download Summary SPL Per Site', async ({
   await app.screenshot('01-card-summary-spl-with-site-button')
 
   // 2. Klik tombol "Summary Per Site (PDF)"
-  // Jika tombol disabled karena belum pilih site, pilih site dulu
   const isBtnDisabled = await siteSummaryBtn.isDisabled().catch(() => false)
   if (isBtnDisabled) {
-    // Klik trigger Site combobox di dedicated card
     const siteSelectTrigger = browser.locator('button[placeholder="Pilih Site..."], button:has-text("Semua Lokasi Site"), button:has-text("Pilih Site")').first()
     if (await siteSelectTrigger.isVisible().catch(() => false)) {
       await siteSelectTrigger.click()
@@ -44,10 +42,11 @@ test('Verifikasi Tombol dan Fitur Download Summary SPL Per Site', async ({
 
   // 3. Klik tombol "Summary Per Site (PDF)" untuk membuka dialog
   await siteSummaryBtn.click()
-  await new Promise((resolve) => setTimeout(resolve, 3500))
-
-  // Screenshot 3: Modal Preview Summary SPL Per Site terbuka
-  await app.screenshot('03-preview-modal-summary-spl-per-site')
+  
+  // Tunggu hingga iframe dokumen termuat
+  const previewIframe = browser.locator('iframe[title="Summary SPL Preview"]').first()
+  await previewIframe.waitFor({ state: 'visible', timeout: 15000 })
+  await new Promise((resolve) => setTimeout(resolve, 4000))
 
   // 4. Verifikasi toolbar preview modal menampilkan title Summary SPL Per Site
   const previewHeader = browser.locator('div:has-text("Preview Summary SPL Per Site"), h2:has-text("Preview Summary SPL Per Site"), span:has-text("Summary SPL Per Site")').first()
@@ -56,6 +55,9 @@ test('Verifikasi Tombol dan Fitur Download Summary SPL Per Site', async ({
   // 5. Verifikasi tombol "Unduh PDF" tersedia di dalam preview toolbar
   const downloadPdfBtn = browser.locator('button:has-text("Unduh PDF")').first()
   await expect(downloadPdfBtn).toBeVisible({ timeout: 10000 })
+
+  // Screenshot 3: Modal Preview Summary SPL Per Site dengan KONTEN A4 NYATA
+  await app.screenshot('03-preview-modal-summary-spl-per-site')
 
   // 6. Tutup modal preview
   await browser.keyboard.press('Escape')
