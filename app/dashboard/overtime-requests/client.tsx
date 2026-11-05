@@ -93,6 +93,7 @@ import { HeroSearchableSelect } from '@/components/templates'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
+import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import {
   batchApproveOvertimeRequestsAction,
@@ -107,6 +108,8 @@ import {
   generateTestOvertimeApproval,
   sendDueOvertimeReminders,
   saveOvertimeWorkflowSettings,
+  getSplSignaturesAction,
+  getBatchSplSignaturesAction,
 } from '@/app/dashboard/overtime-requests/actions'
 import {
   type OvertimeWorkflowSettings,
@@ -201,6 +204,7 @@ export type OvertimeListingRow = {
     approverEmail?: string | null
     approverEmployeeId?: number | null
     signatureDataUrl?: string | null
+    hasSignature?: boolean | null
     signedAt: Date | string | null
     remarks?: string | null
   }>
@@ -681,7 +685,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ApprovalProgressBadge({ approvals }: { approvals: OvertimeListingRow['approvals'] }) {
-  const approved = approvals.filter((a) => a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.signatureDataUrl) || Boolean(a.signedAt)).length
+  const approved = approvals.filter((a) => a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.hasSignature) || Boolean(a.signatureDataUrl) || Boolean(a.signedAt)).length
   const total = approvals.length
   const anyRejected = approvals.some((a) => a.status === 'rejected')
 
@@ -1317,6 +1321,8 @@ export function OvertimeListingClient({
 
   // PDF Preview Dialog
   const [previewSplTarget, setPreviewSplTarget] = useState<OvertimeListingRow | null>(null)
+  const [signatureCache, setSignatureCache] = useState<Record<number, Record<number, string | null>>>({})
+  const [evidenceModalSplId, setEvidenceModalSplId] = useState<number | null>(null)
 
   // Batch Approval & Signature Registry State
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -1333,6 +1339,27 @@ export function OvertimeListingClient({
       }
     })
   }, [])
+
+  // On-demand signature fetch for single preview target
+  useEffect(() => {
+    if (!previewSplTarget?.id) return
+    const id = previewSplTarget.id
+    if (signatureCache[id]) return
+
+    const hasSig = previewSplTarget.approvals?.some((a) => Boolean(a.signatureDataUrl))
+    if (hasSig) return
+
+    getSplSignaturesAction(id).then((sigs) => {
+      if (!sigs || sigs.length === 0) return
+      const stepMap: Record<number, string | null> = {}
+      for (const s of sigs) {
+        if (s.signatureDataUrl) {
+          stepMap[s.stepOrder] = s.signatureDataUrl
+        }
+      }
+      setSignatureCache((prev) => ({ ...prev, [id]: stepMap }))
+    })
+  }, [previewSplTarget?.id, signatureCache])
 
   // Filters & Tabs State
   const [activeTab, setActiveTab] = useState<'all' | 'submitted' | 'approved' | 'draft' | 'rejected'>('all')
@@ -1819,7 +1846,7 @@ export function OvertimeListingClient({
   }, [summaryFilteredRows])
 
   const summaryPreviewHtmlContent = useMemo(() => {
-    if (!summaryFilteredRows || summaryFilteredRows.length === 0) return ''
+    if (!isSummaryPreviewOpen || !summaryFilteredRows || summaryFilteredRows.length === 0) return ''
     const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
     const employeeName =
       selectedEmpObj && selectedEmpObj.value !== 'ALL'
@@ -1855,7 +1882,7 @@ export function OvertimeListingClient({
       pjoName: signatories.pjoName,
       leaderName: signatories.leaderName,
     })
-  }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees])
+  }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees, isSummaryPreviewOpen])
 
   const handleOpenSummaryPreview = async () => {
     if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
@@ -2080,6 +2107,18 @@ export function OvertimeListingClient({
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
+
+  // On-demand signature fetch for batch review
+  useEffect(() => {
+    if (!isBatchReviewOpen || selectedIds.length === 0) return
+    const missingIds = selectedIds.filter((id) => !signatureCache[id])
+    if (missingIds.length === 0) return
+
+    getBatchSplSignaturesAction(missingIds).then((batchMap) => {
+      if (!batchMap || Object.keys(batchMap).length === 0) return
+      setSignatureCache((prev) => ({ ...prev, ...batchMap }))
+    })
+  }, [isBatchReviewOpen, selectedIds, signatureCache])
 
   const isRowReviewableByCurrentUser = (row: OvertimeListingRow) => {
     const status = (row.status || '').toLowerCase()
@@ -2561,7 +2600,39 @@ export function OvertimeListingClient({
           console.error('QR code generation error:', e)
         }
 
-        const contentHtml = renderSplHtmlTemplate(row, qrImgHtml)
+        let targetRow = row
+        const cached = signatureCache[row.id]
+        if (cached) {
+          targetRow = {
+            ...row,
+            approvals: row.approvals.map((app) => ({
+              ...app,
+              signatureDataUrl: cached[app.stepOrder] || app.signatureDataUrl,
+            })),
+          }
+        } else if (!row.approvals?.some((a) => Boolean(a.signatureDataUrl))) {
+          try {
+            const sigs = await getSplSignaturesAction(row.id)
+            if (sigs && sigs.length > 0) {
+              const stepMap: Record<number, string | null> = {}
+              for (const s of sigs) {
+                if (s.signatureDataUrl) stepMap[s.stepOrder] = s.signatureDataUrl
+              }
+              setSignatureCache((prev) => ({ ...prev, [row.id]: stepMap }))
+              targetRow = {
+                ...row,
+                approvals: row.approvals.map((app) => {
+                  const matched = sigs.find((s) => s.stepOrder === app.stepOrder)
+                  return matched?.signatureDataUrl ? { ...app, signatureDataUrl: matched.signatureDataUrl } : app
+                }),
+              }
+            }
+          } catch (e) {
+            console.error('Failed to load signatures for PDF download:', e)
+          }
+        }
+
+        const contentHtml = renderSplHtmlTemplate(targetRow, qrImgHtml)
         await downloadHtmlAsPdf(contentHtml, `SPL_${row.splNumber.replace(/[\/\\]/g, '_')}.pdf`)
       }
       toast.success('PDF berhasil diunduh!', { id: 'spl-pdf-dl' })
@@ -3356,6 +3427,18 @@ export function OvertimeListingClient({
                               <Eye className="size-4" />
                             </Button>
 
+                            {/* Tombol Lihat Bukti Foto */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => setEvidenceModalSplId(row.id)}
+                              title="Lihat Galeri Foto Bukti Lembur"
+                              className="text-slate-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                            >
+                              <Camera className="size-4" />
+                            </Button>
+
                             {/* Tombol Edit Form HANYA JIKA DRAFT, REVISI, ATAU REJECT (TIDAK MUNCUL JIKA SUBMITTED / APPROVED) */}
                             {canEdit && access?.canEdit ? (
                               <Button
@@ -3604,7 +3687,14 @@ export function OvertimeListingClient({
                                 <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
                                 <td className="text-center text-[7pt]">
                                   {hasPhoto ? (
-                                    <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => currentBatchDoc && setEvidenceModalSplId(currentBatchDoc.id)}
+                                      className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer inline-flex items-center gap-0.5"
+                                      title="Klik untuk melihat galeri foto bukti pekerjaan"
+                                    >
+                                      📷 Ada Foto
+                                    </button>
                                   ) : (
                                     <span className="text-slate-400">—</span>
                                   )}
@@ -3665,8 +3755,8 @@ export function OvertimeListingClient({
                       {/* 1. Serviceman / Karyawan */}
                       {(() => {
                         const step1 = currentBatchDoc.approvals.find(a => a.stepOrder === 1)
-                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signedAt)
-                        const sigUrl1 = step1?.signatureDataUrl
+                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.hasSignature) || Boolean(step1?.signedAt)
+                        const sigUrl1 = step1?.signatureDataUrl || (currentBatchDoc ? signatureCache[currentBatchDoc.id]?.[1] : undefined)
 
                         return (
                           <div className="flex flex-col items-center text-center">
@@ -3696,8 +3786,8 @@ export function OvertimeListingClient({
                       {/* 2. Leader / PJO */}
                       {(() => {
                         const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2 || a.stepOrder === 3)
-                        const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
-                        const sigUrl2 = step2?.signatureDataUrl
+                        const isApproved2 = step2?.status === 'approved' || Boolean(step2?.hasSignature) || Boolean(step2?.signedAt)
+                        const sigUrl2 = step2?.signatureDataUrl || (currentBatchDoc ? (signatureCache[currentBatchDoc.id]?.[2] || signatureCache[currentBatchDoc.id]?.[3]) : undefined)
 
                         return (
                           <div className="flex flex-col items-center text-center">
@@ -4042,7 +4132,14 @@ export function OvertimeListingClient({
                               <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
                               <td className="text-center text-[7pt]">
                                 {hasPhoto ? (
-                                  <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEvidenceModalSplId(previewSplTarget.id)}
+                                    className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer inline-flex items-center gap-0.5"
+                                    title="Klik untuk melihat galeri foto bukti pekerjaan"
+                                  >
+                                    📷 Ada Foto
+                                  </button>
                                 ) : (
                                   <span className="text-slate-400">—</span>
                                 )}
@@ -4095,9 +4192,12 @@ export function OvertimeListingClient({
                     <div>
                       <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
                       <div className="h-16 flex items-end">
-                        {previewSplTarget.approvals.find(a => a.stepOrder === 1)?.signatureDataUrl && (
-                          <img src={previewSplTarget.approvals.find(a => a.stepOrder === 1)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                        {(() => {
+                          const sig1 = previewSplTarget.approvals.find(a => a.stepOrder === 1)?.signatureDataUrl || signatureCache[previewSplTarget.id]?.[1]
+                          return sig1 ? (
+                            <img src={sig1} alt="TTD" className="h-14 object-contain" />
+                          ) : null
+                        })()}
                       </div>
                       <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
                         {previewSplTarget.approvals.find(a => a.stepOrder === 1)?.approverName || createForm.requesterName || previewSplTarget.requesterName}
@@ -4109,9 +4209,12 @@ export function OvertimeListingClient({
                     <div>
                       <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
                       <div className="h-16 flex items-end">
-                        {(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl) && (
-                          <img src={(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl)!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                        {(() => {
+                          const sig2 = previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl || signatureCache[previewSplTarget.id]?.[2] || signatureCache[previewSplTarget.id]?.[3]
+                          return sig2 ? (
+                            <img src={sig2} alt="TTD" className="h-14 object-contain" />
+                          ) : null
+                        })()}
                       </div>
                       <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
                         {previewSplTarget.approvals.find(a => a.stepOrder === 2)?.approverName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || createForm.leaderName || createForm.superiorName || 'Leader / PJO Site'}
@@ -6098,6 +6201,13 @@ export function OvertimeListingClient({
         onSignatureUpdated={handleSignatureSaved}
         openModalDirectly={openDirectSignatureModal}
         onCloseDirectModal={() => setOpenDirectSignatureModal(false)}
+      />
+
+      {/* Overtime Evidence Photo Gallery Modal */}
+      <OvertimeEvidenceModal
+        isOpen={Boolean(evidenceModalSplId)}
+        onClose={() => setEvidenceModalSplId(null)}
+        splId={evidenceModalSplId}
       />
     </AdminPageShell>
   )

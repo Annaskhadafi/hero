@@ -54,7 +54,7 @@ export default async function OvertimeRequestsPage() {
 
   const isSiteAdmin = accessRole === 'site admin'
 
-  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows] = await Promise.all([
+  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows, initialSettings] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -142,6 +142,7 @@ export default async function OvertimeRequestsPage() {
       })
       .from(activityRouteItems)
       .orderBy(asc(activityRouteItems.sortOrder)),
+    getOvertimeWorkflowSettings(),
   ])
 
   const itemsByGroupId = new Map<number, any[]>()
@@ -186,9 +187,9 @@ export default async function OvertimeRequestsPage() {
 
   const rawSplIds = rawSplRecords.map((r) => r.id)
 
-  const rawApprovalsList =
+  const [rawApprovalsList, rawParticipantsList, rawItemsList] = await Promise.all([
     rawSplIds.length > 0
-      ? await db
+      ? db
           .select({
             overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
             stepOrder: overtimeApprovals.stepOrder,
@@ -198,18 +199,16 @@ export default async function OvertimeRequestsPage() {
             approverName: overtimeApprovals.approverName,
             approverEmail: overtimeApprovals.approverEmail,
             approverEmployeeId: overtimeApprovals.approverEmployeeId,
-            signatureDataUrl: overtimeApprovals.signatureDataUrl,
+            hasSignature: sql<boolean>`CASE WHEN ${overtimeApprovals.signatureDataUrl} IS NOT NULL AND length(${overtimeApprovals.signatureDataUrl}) > 0 THEN true ELSE false END`,
             remarks: overtimeApprovals.remarks,
             signedAt: overtimeApprovals.signedAt,
           })
           .from(overtimeApprovals)
           .where(inArray(overtimeApprovals.overtimeCommandLetterId, rawSplIds))
           .orderBy(asc(overtimeApprovals.stepOrder))
-      : []
-
-  const rawParticipantsList =
+      : Promise.resolve([]),
     rawSplIds.length > 0
-      ? await db
+      ? db
           .select({
             overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
             employeeId: overtimeCommandLetterParticipants.employeeId,
@@ -221,7 +220,21 @@ export default async function OvertimeRequestsPage() {
           .from(overtimeCommandLetterParticipants)
           .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
           .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, rawSplIds))
-      : []
+      : Promise.resolve([]),
+    rawSplIds.length > 0
+      ? db
+          .select({
+            overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+            lineLabel: overtimeCommandLetterItems.lineLabel,
+            lineDescription: overtimeCommandLetterItems.lineDescription,
+            targetUnit: overtimeCommandLetterItems.targetUnit,
+            estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+            plannedPoints: overtimeCommandLetterItems.plannedPoints,
+          })
+          .from(overtimeCommandLetterItems)
+          .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, rawSplIds))
+      : Promise.resolve([]),
+  ])
 
   const approvalsBySplMap = new Map<number, (typeof rawApprovalsList)[number][]>()
   for (const a of rawApprovalsList) {
@@ -276,21 +289,7 @@ export default async function OvertimeRequestsPage() {
   const splIds = splRecords.map((r) => r.id)
   const approvalsList = rawApprovalsList.filter((a) => splIds.includes(a.overtimeCommandLetterId))
   const participantsList = rawParticipantsList.filter((p) => splIds.includes(p.overtimeCommandLetterId))
-
-  const itemsList =
-    splIds.length > 0
-      ? await db
-          .select({
-            overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
-            lineLabel: overtimeCommandLetterItems.lineLabel,
-            lineDescription: overtimeCommandLetterItems.lineDescription,
-            targetUnit: overtimeCommandLetterItems.targetUnit,
-            estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
-            plannedPoints: overtimeCommandLetterItems.plannedPoints,
-          })
-          .from(overtimeCommandLetterItems)
-          .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
-      : []
+  const itemsList = rawItemsList.filter((item) => splIds.includes(item.overtimeCommandLetterId))
 
   const approvalsMap = new Map<number, OvertimeListingRow['approvals']>()
   for (const a of approvalsList) {
@@ -303,7 +302,8 @@ export default async function OvertimeRequestsPage() {
       approverName: a.approverName || '',
       approverEmail: a.approverEmail || null,
       approverEmployeeId: a.approverEmployeeId ? Number(a.approverEmployeeId) : null,
-      signatureDataUrl: a.signatureDataUrl || null,
+      signatureDataUrl: null,
+      hasSignature: Boolean(a.hasSignature),
       remarks: a.remarks || null,
       signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : null,
     })
@@ -437,8 +437,6 @@ export default async function OvertimeRequestsPage() {
     deptHeadId: e.deptHeadId ? Number(e.deptHeadId) : null,
     siteHeadId: e.siteHeadId ? Number(e.siteHeadId) : null,
   }))
-
-  const initialSettings = await getOvertimeWorkflowSettings()
 
   return (
     <OvertimeListingClient

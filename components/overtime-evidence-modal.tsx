@@ -34,22 +34,48 @@ export function OvertimeEvidenceModal({
     setIsLoading(true)
     setError(null)
 
-    getOvertimeEvidenceDataAction(splId)
-      .then((res) => {
-        if (!isMounted) return
-        if (res.success && res.data) {
-          setData(res.data)
-        } else {
-          setError(res.error || 'Dokumen bukti SPL tidak ditemukan.')
+    const fetchEvidence = async () => {
+      try {
+        // 1. Prioritaskan API route REST langsung (kebal terhadap Server Action ID skew)
+        const res = await fetch(`/api/overtime-evidence/${encodeURIComponent(String(splId))}`, {
+          cache: 'no-store',
+        })
+        if (res.ok) {
+          const json = await res.json()
+          if (json.success && json.data && isMounted) {
+            setData(json.data)
+            return
+          }
         }
-      })
-      .catch((err) => {
+
+        // 2. Fallback ke Server Action
+        const actionRes = await getOvertimeEvidenceDataAction(splId)
         if (!isMounted) return
+        if (actionRes.success && actionRes.data) {
+          setData(actionRes.data)
+        } else {
+          setError(actionRes.error || 'Dokumen bukti SPL tidak ditemukan.')
+        }
+      } catch (err: any) {
+        if (!isMounted) return
+        // Coba ulang via API route jika Server Action error
+        try {
+          const retryRes = await fetch(`/api/overtime-evidence/${encodeURIComponent(String(splId))}`)
+          if (retryRes.ok) {
+            const retryJson = await retryRes.json()
+            if (retryJson.success && retryJson.data && isMounted) {
+              setData(retryJson.data)
+              return
+            }
+          }
+        } catch {}
         setError(err?.message || 'Gagal memuat galeri bukti SPL.')
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) setIsLoading(false)
-      })
+      }
+    }
+
+    fetchEvidence()
 
     return () => {
       isMounted = false
@@ -59,9 +85,9 @@ export function OvertimeEvidenceModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        overlayClassName="z-[110]"
+        overlayClassName="z-[150]"
         showCloseButton={false}
-        className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 shadow-2xl overflow-x-hidden z-[120]"
+        className="w-[96vw] max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 shadow-2xl overflow-x-hidden z-[160]"
       >
         {isLoading ? (
           <div className="py-24 flex flex-col items-center justify-center text-center">

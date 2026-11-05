@@ -5158,7 +5158,7 @@ export function InboxTab({
 
         {/* Quick Lightbox Dialog */}
         <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
-          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+          <DialogContent overlayClassName="z-[200]" className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center z-[210]">
             {selectedPreviewImage && (
               <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
                 <img
@@ -6862,7 +6862,7 @@ export function HistoryTab({
 
         {/* Quick Lightbox Dialog */}
         <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
-          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+          <DialogContent overlayClassName="z-[200]" className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center z-[210]">
             {selectedPreviewImage && (
               <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
                 <img
@@ -7129,7 +7129,7 @@ export function HistoryTab({
 
       {/* Quick Lightbox Dialog */}
       <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
-        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+        <DialogContent overlayClassName="z-[200]" className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center z-[210]">
           {selectedPreviewImage && (
             <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
               <img

@@ -5,16 +5,20 @@ import QRCode from 'qrcode'
 import { QrCode } from 'lucide-react'
 import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
 
+import type { OvertimeEvidenceData } from '@/lib/overtime-evidence-data'
+
 export function SplEvidenceQrBox({
   splId,
   splNumber,
   className = '',
   size = 56,
+  fallbackData = null,
 }: {
   splId: number | string
   splNumber?: string
   className?: string
   size?: number
+  fallbackData?: OvertimeEvidenceData | null
 }) {
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [evidenceUrl, setEvidenceUrl] = useState<string>('')
@@ -79,6 +83,7 @@ export function SplEvidenceQrBox({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         splId={splId}
+        fallbackData={fallbackData}
       />
     </>
   )

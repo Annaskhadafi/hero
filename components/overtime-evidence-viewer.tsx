@@ -628,7 +628,10 @@ export function OvertimeEvidenceViewer({
 
       {/* ── INTERACTIVE LIGHTBOX DIALOG ── */}
       <Dialog open={Boolean(selectedPhoto)} onOpenChange={(open) => !open && closeLightbox()}>
-        <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden bg-slate-950/95 border-slate-800 text-white shadow-2xl flex flex-col rounded-2xl">
+        <DialogContent
+          overlayClassName="z-[200]"
+          className="max-w-4xl max-h-[95vh] p-0 overflow-hidden bg-slate-950/95 border-slate-800 text-white shadow-2xl flex flex-col rounded-2xl z-[210]"
+        >
           {/* Header Lightbox */}
           <div className="p-4 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
             <div className="min-w-0 flex-1 pr-4">

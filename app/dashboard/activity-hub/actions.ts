@@ -7603,18 +7603,15 @@ export async function createDailyActivitySessionAction(input: {
       siteId = firstSite?.id || 1
     }
 
-    if (input.customerName && input.customerName.trim() && siteId) {
-      const cleanCust = input.customerName
+    let sessionCustomerName = ''
+    if (input.customerName && input.customerName.trim()) {
+      sessionCustomerName = input.customerName
         .replace(/\s*\|\s*\[Team:\s*[^\]]+\]/gi, '')
         .replace(/\s*\[Team:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\|\s*\[Customer:\s*[^\]]+\]/gi, '')
+        .replace(/\s*\[Customer:\s*[^\]]+\]/gi, '')
         .replace(/\s*\|\s*$/, '')
         .trim()
-      if (cleanCust) {
-        await db
-          .update(sites)
-          .set({ customerName: cleanCust })
-          .where(eq(sites.id, siteId))
-      }
     }
 
     const dateFormatted = input.workDate
@@ -7671,6 +7668,11 @@ export async function createDailyActivitySessionAction(input: {
       .join(', ')
 
     let finalSummary = (input.summaryRemark || input.notes || '').trim()
+    if (sessionCustomerName && !finalSummary.includes('[Customer:')) {
+      finalSummary = finalSummary
+        ? `${finalSummary} | [Customer: ${sessionCustomerName}]`
+        : `[Customer: ${sessionCustomerName}]`
+    }
     if (otherTeamNames.length > 0 && !finalSummary.includes('[Team:')) {
       finalSummary = finalSummary
         ? `${finalSummary} | [Team: ${otherTeamNames}]`

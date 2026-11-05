@@ -3262,3 +3262,53 @@ export async function getOvertimeEvidenceDataAction(idOrSplNumber: number | stri
     return { success: false as const, error: err?.message || 'Gagal memuat bukti lembur' }
   }
 }
+
+
+export async function getSplSignaturesAction(
+  splId: number
+): Promise<{ stepOrder: number; signatureDataUrl: string | null }[]> {
+  if (!splId || isNaN(splId)) return []
+  try {
+    const rows = await db
+      .select({
+        stepOrder: overtimeApprovals.stepOrder,
+        signatureDataUrl: overtimeApprovals.signatureDataUrl,
+      })
+      .from(overtimeApprovals)
+      .where(eq(overtimeApprovals.overtimeCommandLetterId, splId))
+      .orderBy(asc(overtimeApprovals.stepOrder))
+    return rows
+  } catch (err) {
+    console.error('Failed to get SPL signatures:', err)
+    return []
+  }
+}
+
+export async function getBatchSplSignaturesAction(
+  splIds: number[]
+): Promise<Record<number, Record<number, string | null>>> {
+  if (!splIds || splIds.length === 0) return {}
+  try {
+    const rows = await db
+      .select({
+        overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
+        stepOrder: overtimeApprovals.stepOrder,
+        signatureDataUrl: overtimeApprovals.signatureDataUrl,
+      })
+      .from(overtimeApprovals)
+      .where(inArray(overtimeApprovals.overtimeCommandLetterId, splIds))
+      .orderBy(asc(overtimeApprovals.stepOrder))
+
+    const result: Record<number, Record<number, string | null>> = {}
+    for (const r of rows) {
+      if (!result[r.overtimeCommandLetterId]) {
+        result[r.overtimeCommandLetterId] = {}
+      }
+      result[r.overtimeCommandLetterId][r.stepOrder] = r.signatureDataUrl
+    }
+    return result
+  } catch (err) {
+    console.error('Failed to get batch SPL signatures:', err)
+    return {}
+  }
+}
