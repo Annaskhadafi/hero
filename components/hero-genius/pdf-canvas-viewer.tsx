@@ -618,7 +618,7 @@ export function PdfCanvasViewer({
                   <FileText className="size-6 animate-pulse" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 size-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold shadow-xs">
-                  ⚡
+                  <span>⚡</span>
                 </div>
               </div>
 
