@@ -17,7 +17,23 @@ const cspHeader = `
   object-src 'self' blob: data:;
 `.replace(/\s{2,}/g, ' ').trim()
 
+// Stable encryption key for Next.js Server Actions to prevent action hash mismatch across builds/restarts
+if (!process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY) {
+  process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY =
+    'CCswG+rtVTs0QrZCZm3kAPlYPerqKGDGYyvr615W9BU='
+}
+
+const deploymentId =
+  process.env.NEXT_DEPLOYMENT_ID ||
+  process.env.GIT_COMMIT_SHA ||
+  process.env.DOKPLOY_GIT_COMMIT ||
+  undefined
+
 const nextConfig: NextConfig = {
+  deploymentId: deploymentId || undefined,
+  generateBuildId: async () => {
+    return deploymentId || null
+  },
   output: 'standalone',
   productionBrowserSourceMaps: false,
   poweredByHeader: false,

@@ -553,7 +553,7 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster,
+    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, isFlatPrice, discountType, discountValue, showDays, includeBast, includeRoster,
     showCustomApproval, customApprovals, customApprovalPosition
   } = data
 
@@ -599,6 +599,7 @@ export async function createQuotation(data: any) {
     hideBackupPrice: hideBackupPrice ?? false,
     hideBackupDate: hideBackupDate ?? false,
     hideMonthColumn: hideMonthColumn ?? false,
+    isFlatPrice: isFlatPrice ?? false,
     discountType: discountType || null,
     discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
@@ -640,7 +641,7 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster,
+    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, isFlatPrice, discountType, discountValue, showDays, includeBast, includeRoster,
     showCustomApproval, customApprovals, customApprovalPosition
   } = data
 
@@ -671,6 +672,7 @@ export async function updateQuotation(id: number, data: any) {
     hideBackupPrice: hideBackupPrice ?? false,
     hideBackupDate: hideBackupDate ?? false,
     hideMonthColumn: hideMonthColumn ?? false,
+    isFlatPrice: isFlatPrice ?? false,
     discountType: discountType || null,
     discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,

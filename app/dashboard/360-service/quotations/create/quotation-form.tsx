@@ -103,6 +103,7 @@ const quotationSchema = z.object({
   hideBackupPrice: z.boolean().optional(),
   hideBackupDate: z.boolean().optional(),
   hideMonthColumn: z.boolean().optional(),
+  isFlatPrice: z.boolean().optional(),
   discountType: z.enum(['percent', 'fixed']).nullable().optional(),
   discountValue: z.number().min(0).optional(),
   showDays: z.boolean().optional(),
@@ -257,6 +258,7 @@ const router = useRouter()
       hideBackupPrice: initialData?.hideBackupPrice ?? false,
       hideBackupDate: initialData?.hideBackupDate ?? false,
       hideMonthColumn: initialData?.hideMonthColumn ?? false,
+      isFlatPrice: initialData?.isFlatPrice ?? false,
       discountType: initialData?.discountType ?? null,
       discountValue: initialData?.discountValue ? Number(initialData.discountValue) : 0,
       showDays: initialData?.showDays ?? true,
@@ -329,6 +331,7 @@ const router = useRouter()
   const hideBackupPrice = watch("hideBackupPrice")
   const hideBackupDate = watch("hideBackupDate")
   const hideMonthColumn = watch("hideMonthColumn")
+  const isFlatPrice = watch("isFlatPrice") ?? false
   const discountType = watch("discountType")
   const discountValue = watch("discountValue") || 0
   const showDays = watch("showDays")
@@ -579,6 +582,9 @@ const router = useRouter()
   };
 
   const getPrimaryProrate = (item: SelectedItem) => {
+    if (isFlatPrice) {
+      return item.price * item.quantity
+    }
     if (isProrateEligible(item.category)) {
       const hasPeriod = Boolean(
         (item.startDate && item.endDate) ||
@@ -602,6 +608,9 @@ const router = useRouter()
   }
 
   const getBackupProrate = (item: SelectedItem) => {
+    if (isFlatPrice) {
+      return item.isBackup ? (item.backupPrice || 0) * item.quantity : 0
+    }
     if (isProrateEligible(item.category) && item.isBackup) {
       return calculateStartMonthProrateFactor(item.backupStartDate, item.backupEndDate, item.startDate || item.backupStartDate)
         * (item.backupPrice || 0) * item.quantity
@@ -1022,6 +1031,16 @@ const router = useRouter()
                   <div className="flex items-center gap-2">
                     <Switch checked={hideMonthColumn} onCheckedChange={(v) => setValue("hideMonthColumn", v)} />
                     <label className="text-xs leading-tight">Hide Month<br/>Column<br/>(PDF)</label>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-lg border border-emerald-200/60 dark:border-emerald-800/40">
+                    <Switch 
+                      id="switch-flat-price"
+                      checked={isFlatPrice} 
+                      onCheckedChange={(v) => setValue("isFlatPrice", v)} 
+                    />
+                    <label htmlFor="switch-flat-price" className="text-xs leading-tight font-bold text-emerald-800 dark:text-emerald-300 cursor-pointer">
+                      Flat<br/>Price
+                    </label>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={showDays} onCheckedChange={(v) => setValue("showDays", v)} />

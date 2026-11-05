@@ -116,12 +116,16 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   rentalItems.forEach(item => {
     let backupProrate = 0;
     if (item.quotationItem.isBackup) {
-      const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-      backupProrate = calculateStartMonthProrateFactor(
-        item.quotationItem.backupStartDate,
-        item.quotationItem.backupEndDate,
-        billingStart || item.quotationItem.backupStartDate,
-      ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      if (quotation.isFlatPrice) {
+        backupProrate = (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      } else {
+        const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+        backupProrate = calculateStartMonthProrateFactor(
+          item.quotationItem.backupStartDate,
+          item.quotationItem.backupEndDate,
+          billingStart || item.quotationItem.backupStartDate,
+        ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      }
     }
     const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
     totalRental += quotation.hideBackupPrice ? (primaryProrate + backupProrate) : primaryProrate;
@@ -468,6 +472,11 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             <Button variant="outline" size="sm">Edit</Button>
           </Link>
           <h1 className="text-lg font-bold tracking-tight text-slate-800 ml-2">Quotation Preview</h1>
+          {quotation.isFlatPrice && (
+            <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/80">
+              Flat Price
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Suspense fallback={<Button disabled className="bg-teal-600 text-white">Loading...</Button>}>
@@ -621,13 +630,17 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           const isProrateEligible = PRORATE_CATS.includes(itemCategory) || itemCategory === "";
 
                           let backupProrate = 0;
-                          if (item.quotationItem.isBackup && isProrateEligible) {
-                            const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-                            backupProrate = calculateStartMonthProrateFactor(
-                              item.quotationItem.backupStartDate,
-                              item.quotationItem.backupEndDate,
-                              billingStart || item.quotationItem.backupStartDate,
-                            ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                          if (item.quotationItem.isBackup) {
+                            if (quotation.isFlatPrice) {
+                              backupProrate = (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                            } else if (isProrateEligible) {
+                              const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+                              backupProrate = calculateStartMonthProrateFactor(
+                                item.quotationItem.backupStartDate,
+                                item.quotationItem.backupEndDate,
+                                billingStart || item.quotationItem.backupStartDate,
+                              ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                            }
                           }
                           const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
 

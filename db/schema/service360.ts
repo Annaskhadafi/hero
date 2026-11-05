@@ -77,6 +77,7 @@ export const service360Quotations = pgTable("hero_service360_quotations", {
   hideBackupPrice: boolean("hide_backup_price").notNull().default(false),
   hideBackupDate: boolean("hide_backup_date").notNull().default(false),
   hideMonthColumn: boolean("hide_month_column").notNull().default(false),
+  isFlatPrice: boolean("is_flat_price").notNull().default(false),
   discountType: text("discount_type"),
   discountValue: decimal("discount_value", { precision: 15, scale: 2 }).notNull().default("0"),
   showDays: boolean("show_days").notNull().default(true),
