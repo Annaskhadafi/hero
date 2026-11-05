@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
+import { PdfCanvasViewer } from '@/components/hero-genius/pdf-canvas-viewer'
 
 export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: number }) {
   const cleanUrl = (rawUrl || '').trim()
@@ -24,62 +25,9 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
   const isWord = /\.(docx?|rtf)($|\?)/i.test(cleanUrl)
   const isExcel = /\.(xlsx?|csv)($|\?)/i.test(cleanUrl)
 
-  const [isLoading, setIsLoading] = useState(isPdf || isImage)
-  const [loadError, setLoadError] = useState(false)
+  const [isImageLoading, setIsImageLoading] = useState(isImage)
+  const [imageLoadError, setImageLoadError] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
-  const [fileStatus, setFileStatus] = useState<'checking' | 'available' | 'error'>('checking')
-
-  // Verify file availability on mount or reload for PDFs
-  useEffect(() => {
-    let active = true
-    if (!resolvedUrl) {
-      setLoadError(true)
-      setIsLoading(false)
-      setFileStatus('error')
-      return
-    }
-
-    if (isPdf) {
-      setFileStatus('checking')
-      setIsLoading(true)
-      setLoadError(false)
-
-      fetch(resolvedUrl, { method: 'HEAD' })
-        .then((res) => {
-          if (!active) return
-          if (res.ok) {
-            setFileStatus('available')
-            setIsLoading(false)
-          } else {
-            setFileStatus('error')
-            setLoadError(true)
-            setIsLoading(false)
-          }
-        })
-        .catch(() => {
-          if (!active) return
-          // HEAD might fail on some browser policies, let object fallback load
-          setFileStatus('available')
-          setIsLoading(false)
-        })
-    } else {
-      setFileStatus('available')
-    }
-
-    return () => {
-      active = false
-    }
-  }, [resolvedUrl, isPdf, reloadKey])
-
-  // Safety timer: stop spinner after 6 seconds so user is never stuck in endless loading
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        setIsLoading(false)
-      }, 6000)
-      return () => clearTimeout(timer)
-    }
-  }, [isLoading])
 
   const handleOpenInNewTab = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -120,13 +68,13 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
       {/* Image Preview with Loading Spinner */}
       {isImage && (
         <div className="relative flex max-h-[500px] min-h-[140px] justify-center overflow-hidden rounded border bg-black/5 p-2">
-          {isLoading && !loadError && (
+          {isImageLoading && !imageLoadError && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/80 backdrop-blur-xs">
               <Loader2 className="mb-1 h-6 w-6 animate-spin text-blue-600" />
               <span className="text-[11px] font-medium text-slate-500">Memuat gambar...</span>
             </div>
           )}
-          {loadError ? (
+          {imageLoadError ? (
             <div className="space-y-2 p-6 text-center">
               <AlertCircle className="mx-auto h-8 w-8 text-amber-500" />
               <p className="text-xs text-slate-600">
@@ -144,10 +92,10 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
             <img
               src={resolvedUrl}
               alt={filename}
-              onLoad={() => setIsLoading(false)}
+              onLoad={() => setIsImageLoading(false)}
               onError={() => {
-                setIsLoading(false)
-                setLoadError(true)
+                setIsImageLoading(false)
+                setImageLoadError(true)
               }}
               className="max-h-[480px] max-w-full rounded object-contain shadow-xs"
             />
@@ -155,84 +103,20 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
         </div>
       )}
 
-      {/* PDF Embedded View with Clean Object / Iframe & Real Loading State */}
+      {/* PDF Embedded View with Canvas & Native Option */}
       {isPdf && (
         <div className="space-y-2">
-          <div className="relative h-[560px] overflow-hidden rounded-lg border border-slate-300 bg-white shadow-inner">
-            {isLoading && !loadError && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center space-y-2 bg-slate-50/95 backdrop-blur-xs">
-                <Loader2 className="h-8 w-8 animate-spin text-[#003461]" />
-                <p className="text-xs font-semibold text-slate-800">
-                  Memuat pratinjau dokumen PDF...
-                </p>
-                <p className="text-[11px] text-slate-500">Menghubungkan ke server berkas</p>
-              </div>
-            )}
-            {loadError || fileStatus === 'error' ? (
-              <div className="flex h-full flex-col items-center justify-center space-y-3 bg-slate-50 p-8 text-center">
-                <div className="rounded-full bg-rose-100 p-3 text-rose-600">
-                  <FileText className="h-8 w-8" />
-                </div>
-                <div className="max-w-md space-y-1">
-                  <p className="text-xs font-bold text-slate-800">
-                    Pratinjau PDF Tidak Dapat Dimuat Langsung
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    Dokumen ini mungkin memerlukan penampil PDF eksternal atau sedang disinkronkan dari penyimpanan.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleOpenInNewTab}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" /> Buka di Tab Baru
-                  </button>
-                  <a
-                    href={resolvedUrl}
-                    download={filename}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
-                  >
-                    <Download className="h-3.5 w-3.5" /> Unduh Berkas
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => setReloadKey((k) => k + 1)}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" /> Coba Lagi
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <object
-                key={reloadKey}
-                data={`${resolvedUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                type="application/pdf"
-                className="h-full w-full border-0"
-              >
-                <iframe
-                  src={`${resolvedUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                  className="h-full w-full border-0 bg-white"
-                  title={`Preview ${filename}`}
-                  onLoad={() => setIsLoading(false)}
-                >
-                  <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-                    <p className="text-xs text-slate-600">
-                      Browser Anda tidak mendukung preview PDF langsung.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleOpenInNewTab}
-                      className="mt-2 rounded bg-blue-600 px-3 py-1 text-xs text-white"
-                    >
-                      Buka Dokumen
-                    </button>
-                  </div>
-                </iframe>
-              </object>
-            )}
+          <div className="relative h-[600px] overflow-hidden rounded-lg border border-slate-300 bg-white shadow-inner">
+            <PdfCanvasViewer
+              key={reloadKey}
+              url={resolvedUrl}
+              filename={filename}
+              defaultViewMode="single"
+              preferNativeViewer={false}
+              hideToolbar={false}
+              hideDownload={false}
+              className="h-full w-full"
+            />
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-100/80 px-3 py-2 text-[11px] text-slate-600">
             <span className="font-medium truncate max-w-sm">Dokumen PDF: {filename}</span>

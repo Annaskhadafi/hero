@@ -95,7 +95,26 @@ export const serverEnv = {
     ]);
   },
   get s3ForcePathStyle() {
-    return getBooleanEnv(["S3_FORCE_PATH_STYLE", "OBJECT_STORAGE_FORCE_PATH_STYLE"]);
+    const explicitlySet = getFirstEnvValue([
+      "S3_FORCE_PATH_STYLE",
+      "OBJECT_STORAGE_FORCE_PATH_STYLE",
+    ]);
+    if (explicitlySet) {
+      return getBooleanEnv([
+        "S3_FORCE_PATH_STYLE",
+        "OBJECT_STORAGE_FORCE_PATH_STYLE",
+      ]);
+    }
+    const endpoint = getFirstEnvValue([
+      "S3_ENDPOINT",
+      "OBJECT_STORAGE_ENDPOINT",
+      "AWS_ENDPOINT_URL_S3",
+      "AWS_ENDPOINT_URL",
+    ]);
+    if (endpoint && !endpoint.includes("amazonaws.com")) {
+      return true;
+    }
+    return false;
   },
   get s3UploadPrefix() {
     return getFirstEnvValue(["S3_UPLOAD_PREFIX", "OBJECT_STORAGE_PREFIX"]);

@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { getS3ObjectForProxy, isS3UploadConfigured } from '@/lib/s3-storage'
+import {
+  getS3ObjectForProxy,
+  getS3ObjectMetadataForProxy,
+  isS3UploadConfigured,
+} from '@/lib/s3-storage'
 import { getServerSession } from '@/lib/auth-session'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
@@ -206,6 +210,58 @@ function createStreamingResponse(
   })
 }
 
+export async function HEAD(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  const { path } = await params
+
+  if (!path || path.length === 0) {
+    return new NextResponse(null, { status: 400 })
+  }
+
+  if (!isAllowedUploadPath(path)) {
+    return new NextResponse(null, { status: 400 })
+  }
+
+  const relativePath = path.join('/')
+  const fileName = path[path.length - 1]
+  const publicDir = join(process.cwd(), 'public')
+  const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
+  const candidateLocalPaths = [
+    join(publicDir, 'uploads', relativePath),
+    join(publicDir, 'uploads', fileName),
+    join(publicDir, relativePath),
+    join(publicDir, fileName),
+    join(customUploadsDir, relativePath),
+    join(customUploadsDir, fileName),
+  ]
+
+  for (const localPath of candidateLocalPaths) {
+    if (existsSync(localPath)) {
+      const contentType = getContentType(fileName)
+      const headers = new Headers()
+      headers.set('Content-Type', contentType)
+      headers.set('Accept-Ranges', 'bytes')
+      headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
+      return new NextResponse(null, { status: 200, headers })
+    }
+  }
+
+  if (isS3UploadConfigured()) {
+    try {
+      const meta = await getS3ObjectMetadataForProxy(relativePath)
+      if (meta) {
+        const headers = new Headers()
+        headers.set('Content-Type', meta.contentType)
+        headers.set('Content-Length', meta.contentLength.toString())
+        headers.set('Accept-Ranges', 'bytes')
+        headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
+        return new NextResponse(null, { status: 200, headers })
+      }
+    } catch {}
+  }
+
+  return new NextResponse(null, { status: 404 })
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
 
@@ -331,6 +387,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
           const localCacheDir = join(publicDir, 'uploads', ...path.slice(0, -1))
           if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
           writeFileSync(localCachePath, rawBuffer)
+
+          // Also persist to Dokploy host persistent bind mount if directory exists
+          if (existsSync(customUploadsDir)) {
+            const persistentPath = join(customUploadsDir, relativePath)
+            const persistentDir = join(customUploadsDir, ...path.slice(0, -1))
+            if (!existsSync(persistentDir)) mkdirSync(persistentDir, { recursive: true })
+            writeFileSync(persistentPath, rawBuffer)
+          }
         } catch (writeErr) {
           console.warn('Failed caching S3 file to local disk:', writeErr)
         }

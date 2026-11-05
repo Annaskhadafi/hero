@@ -385,6 +385,82 @@ export function resolveS3ObjectKey(objectUrl: string | null) {
   return getObjectKeyFromUrl(objectUrl)
 }
 
+function buildTargetedCandidateKeys(cleanKey: string, bareFilename: string): string[] {
+  const list: string[] = [cleanKey]
+
+  if (cleanKey.startsWith('upload/')) {
+    list.push(cleanKey.replace(/^upload\//, 'uploads/'))
+    list.push(`rfr/${bareFilename}`)
+    list.push(bareFilename)
+  } else if (cleanKey.startsWith('uploads/')) {
+    list.push(cleanKey.replace(/^uploads\//, 'upload/'))
+    list.push(`rfr/${bareFilename}`)
+    list.push(bareFilename)
+  } else if (cleanKey.startsWith('rfr/')) {
+    list.push(`upload/${bareFilename}`)
+    list.push(`uploads/${bareFilename}`)
+    list.push(bareFilename)
+  } else if (cleanKey.includes('/')) {
+    list.push(`upload/${bareFilename}`)
+    list.push(bareFilename)
+  } else {
+    list.push(`upload/${bareFilename}`)
+    list.push(`uploads/${bareFilename}`)
+    list.push(`rfr/${bareFilename}`)
+  }
+
+  return Array.from(new Set(list))
+}
+
+export async function getS3ObjectMetadataForProxy(objectUrl: string | null) {
+  if (!objectUrl || !isS3UploadConfigured()) {
+    return null
+  }
+
+  const primaryKey =
+    resolveS3ObjectKey(objectUrl) ||
+    (!objectUrl.includes('://')
+      ? objectUrl
+          .trim()
+          .replace(/^\/+/, '')
+          .replace(/^api\/uploads\//, '')
+      : null)
+  if (!primaryKey) {
+    return null
+  }
+
+  const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
+  const bareFilename = cleanKey.split('/').pop() || cleanKey
+  const candidateKeys = buildTargetedCandidateKeys(cleanKey, bareFilename)
+  const client = getS3Client()
+
+  for (let i = 0; i < candidateKeys.length; i++) {
+    const candidateKey = candidateKeys[i]
+    const timeoutMs = i === 0 ? 5_000 : 2_000
+    try {
+      const response = await client.send(
+        new HeadObjectCommand({
+          Bucket: serverEnv.s3BucketName,
+          Key: candidateKey,
+        }),
+        { abortSignal: AbortSignal.timeout(timeoutMs) }
+      )
+
+      if (response) {
+        return {
+          key: candidateKey,
+          contentType: response.ContentType ?? 'application/octet-stream',
+          contentLength: response.ContentLength ?? 0,
+        }
+      }
+    } catch {
+      // Continue to next candidate
+    }
+  }
+
+  return null
+}
+
 export async function getS3ObjectForProxy(objectUrl: string | null) {
   if (!objectUrl || !isS3UploadConfigured()) {
     return null
@@ -406,30 +482,15 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
   const bareFilename = cleanKey.split('/').pop() || cleanKey
 
   // Distinct candidate keys - targeted lookups for S3
-  const candidateKeys = Array.from(
-    new Set([
-      cleanKey,
-      cleanKey.startsWith('upload/')
-        ? cleanKey.replace(/^upload\//, 'uploads/')
-        : `upload/${bareFilename}`,
-      `upload/${bareFilename}`,
-      `uploads/${bareFilename}`,
-      `uploads/${cleanKey}`,
-      `upload/${cleanKey}`,
-      `public-career-cv/${bareFilename}`,
-      `rfr/${bareFilename}`,
-      `road-hazard/${bareFilename}`,
-      bareFilename,
-    ])
-  )
+  const candidateKeys = buildTargetedCandidateKeys(cleanKey, bareFilename)
 
   const client = getS3Client()
 
   for (let i = 0; i < candidateKeys.length; i++) {
     const candidateKey = candidateKeys[i]
-    // The first candidate (exact requested key) gets up to 15s for larger documents/PDFs.
-    // Secondary fallbacks get 4s to quickly detect 404/NoSuchKey.
-    const timeoutMs = i === 0 ? 15_000 : 4_000
+    // The first candidate (exact requested key) gets up to 12s for larger documents/PDFs.
+    // Secondary fallbacks get 3.5s to quickly detect 404/NoSuchKey.
+    const timeoutMs = i === 0 ? 12_000 : 3_500
     try {
       const response = await client.send(
         new GetObjectCommand({
@@ -461,64 +522,8 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
 }
 
 export async function checkS3ObjectExists(objectUrl: string | null): Promise<boolean> {
-  if (!objectUrl || !isS3UploadConfigured()) {
-    return false
-  }
-
-  const primaryKey =
-    resolveS3ObjectKey(objectUrl) ||
-    (!objectUrl.includes('://')
-      ? objectUrl
-          .trim()
-          .replace(/^\/+/, '')
-          .replace(/^api\/uploads\//, '')
-      : null)
-  if (!primaryKey) {
-    return false
-  }
-
-  const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
-  const bareFilename = cleanKey.split('/').pop() || cleanKey
-
-  const candidateKeys = Array.from(
-    new Set([
-      cleanKey,
-      cleanKey.startsWith('upload/')
-        ? cleanKey.replace(/^upload\//, 'uploads/')
-        : `upload/${bareFilename}`,
-      `upload/${bareFilename}`,
-      `uploads/${bareFilename}`,
-      `uploads/${cleanKey}`,
-      `upload/${cleanKey}`,
-      `public-career-cv/${bareFilename}`,
-      `rfr/${bareFilename}`,
-      `road-hazard/${bareFilename}`,
-      bareFilename,
-    ])
-  )
-
-  const client = getS3Client()
-
-  for (let i = 0; i < candidateKeys.length; i++) {
-    const candidateKey = candidateKeys[i]
-    const timeoutMs = i === 0 ? 5_000 : 2_000
-    try {
-      await client.send(
-        new HeadObjectCommand({
-          Bucket: serverEnv.s3BucketName,
-          Key: candidateKey,
-        }),
-        { abortSignal: AbortSignal.timeout(timeoutMs) }
-      )
-      return true
-    } catch (err: any) {
-      if (err?.name !== 'NoSuchKey' && err?.name !== 'NotFound') {
-        // Continue checking next candidate key
-      }
-    }
-  }
-
-  return false
+  const meta = await getS3ObjectMetadataForProxy(objectUrl)
+  return Boolean(meta)
 }
 
 export function isS3UploadConfigured() {
