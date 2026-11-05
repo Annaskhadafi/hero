@@ -1692,7 +1692,15 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
       .orderBy(desc(hcEmployeeContractReviews.createdAt)),
     db
-      .select()
+      .select({
+        id: hcContractReviewApprovals.id,
+        reviewId: hcContractReviewApprovals.reviewId,
+        stepOrder: hcContractReviewApprovals.stepOrder,
+        status: hcContractReviewApprovals.status,
+        approverName: hcContractReviewApprovals.approverName,
+        approverRole: hcContractReviewApprovals.approverRole,
+        signatureDataUrl: sql<string | null>`CASE WHEN ${hcContractReviewApprovals.signatureDataUrl} IS NOT NULL AND ${hcContractReviewApprovals.signatureDataUrl} != '' THEN 'signed' ELSE NULL END`,
+      })
       .from(hcContractReviewApprovals)
       .orderBy(asc(hcContractReviewApprovals.stepOrder)),
   ])
@@ -2317,8 +2325,46 @@ export async function getContractReviews() {
   try {
     await ensureContractReviewWorkflowTables()
     const [records, approvals] = await Promise.all([
-      db.select().from(hcEmployeeContractReviews).orderBy(desc(hcEmployeeContractReviews.createdAt)),
-      db.select().from(hcContractReviewApprovals).orderBy(asc(hcContractReviewApprovals.stepOrder)),
+      db
+        .select({
+          id: hcEmployeeContractReviews.id,
+          employeeId: hcEmployeeContractReviews.employeeId,
+          employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
+          employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+          employeeSection: masterSections.name,
+          reviewType: hcEmployeeContractReviews.reviewType,
+          contractLength: hcEmployeeContractReviews.contractLength,
+          todayDate: hcEmployeeContractReviews.todayDate,
+          hireDate: hcEmployeeContractReviews.hireDate,
+          leaderName: hcEmployeeContractReviews.leaderName,
+          leaderTitle: hcEmployeeContractReviews.leaderTitle,
+          recommendation: hcEmployeeContractReviews.recommendation,
+          status: hcEmployeeContractReviews.status,
+          testRequired: hcEmployeeContractReviews.testRequired,
+          testStatus: hcEmployeeContractReviews.testStatus,
+          testFinalScore: hcEmployeeContractReviews.testFinalScore,
+          testAttemptCount: hcEmployeeContractReviews.testAttemptCount,
+          allowApproverCustomization: hcEmployeeContractReviews.allowApproverCustomization,
+          createdAt: hcEmployeeContractReviews.createdAt,
+          updatedAt: hcEmployeeContractReviews.updatedAt,
+        })
+        .from(hcEmployeeContractReviews)
+        .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
+        .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+        .orderBy(desc(hcEmployeeContractReviews.createdAt)),
+      db
+        .select({
+          id: hcContractReviewApprovals.id,
+          reviewId: hcContractReviewApprovals.reviewId,
+          stepOrder: hcContractReviewApprovals.stepOrder,
+          status: hcContractReviewApprovals.status,
+          approverName: hcContractReviewApprovals.approverName,
+          approverRole: hcContractReviewApprovals.approverRole,
+          signatureDataUrl: sql<string | null>`CASE WHEN ${hcContractReviewApprovals.signatureDataUrl} IS NOT NULL AND ${hcContractReviewApprovals.signatureDataUrl} != '' THEN 'signed' ELSE NULL END`,
+        })
+        .from(hcContractReviewApprovals)
+        .orderBy(asc(hcContractReviewApprovals.stepOrder)),
     ])
     const approvalsByReview = new Map<number, typeof approvals>()
     for (const approval of approvals) {

@@ -612,7 +612,7 @@ export function ContractReviewClientPage({
                   <TableHead className="w-10">
                     <Checkbox checked={allReviewsSelected} onCheckedChange={toggleSelectAllReviews} aria-label="Pilih semua review" />
                   </TableHead>
-                  <TableHead>
+                  <TableHead>{/* <TableHead>Tgl Review</TableHead> */}
                     <button
                       type="button"
                       onClick={() => handleReviewSort('todayDate')}
@@ -626,7 +626,7 @@ export function ContractReviewClientPage({
                       )}
                     </button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead>{/* <TableHead>Karyawan</TableHead> */}
                     <button
                       type="button"
                       onClick={() => handleReviewSort('employeeNameStr')}
@@ -640,7 +640,7 @@ export function ContractReviewClientPage({
                       )}
                     </button>
                   </TableHead>
-                  <TableHead>
+                  <TableHead>{/* <TableHead>Section</TableHead> */}
                     <button
                       type="button"
                       onClick={() => handleReviewSort('section')}
@@ -868,7 +868,7 @@ export function ContractReviewClientPage({
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-3 text-xs">
                               <span className="font-semibold text-slate-900">
-                                {row.approvalStep ? `Step ${row.approvalStep}/${row.approvalTotalSteps || totalSteps}` : `Menunggu Approval`}
+                                {row.approvalStep ? Step / : Menunggu Approval} {/* Step {row.approvalStep}/{row.approvalTotalSteps} */}
                               </span>
                               <span className="font-mono text-[11px] text-slate-500">{completedSteps}/{totalSteps} TTD</span>
                             </div>
