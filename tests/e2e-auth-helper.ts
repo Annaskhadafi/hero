@@ -56,6 +56,10 @@ export async function loginToHero(
     await emailInput.fill(username)
     await passwordInput.fill(password)
     await submitBtn.click()
+
+    // Wait for login processing and redirect away from /sign-in
+    await submitBtn.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {})
+    await new Promise((resolve) => setTimeout(resolve, 2000))
   } else {
     const emailInput = screen.getByPlaceholder(/Email atau SN/i)
     const passwordInput = screen.getByPlaceholder(/kata sandi/i)
@@ -64,20 +68,19 @@ export async function loginToHero(
     await emailInput.fill(username)
     await passwordInput.fill(password)
     await submitButton.click()
-  }
 
-  // Wait for login processing and redirect away from /sign-in
-  for (let i = 0; i < 25; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    try {
-      const isLoggingIn = await screen
-        .getByRole('button', { name: /Masuk\.\.\.|Signing in|SIGNING IN|Log In/i })
-        .isVisible()
-        .catch(() => false)
-      if (!isLoggingIn && i >= 3) break
-    } catch {
-      break
+    for (let i = 0; i < 10; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      try {
+        const isLoggingIn = await screen
+          .getByRole('button', { name: /Masuk\.\.\.|Signing in|SIGNING IN|Log In/i })
+          .isVisible()
+          .catch(() => false)
+        if (!isLoggingIn && i >= 2) break
+      } catch {
+        break
+      }
     }
+    await new Promise((resolve) => setTimeout(resolve, 2000))
   }
-  await new Promise((resolve) => setTimeout(resolve, 2000))
 }
