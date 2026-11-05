@@ -143,12 +143,16 @@ Untuk memastikan setiap progress pekerjaan harian, perbaikan bug (fix), dan pena
   3. **Menambahkan Poin Ringkasan di Slide 4**: Menambahkan poin bullet `• <Judul Fitur/Fix>` ke dalam kotak `HERO ECOSYSTEM` atau `ONE-CHITRA ECOSYSTEM` pada slide *"What We Have Done / List (Evidance)"*.
   4. **Membuat Slide Detail "HERO Update" Baru**: Menambahkan slide baru lengkap dengan badge kategori di pojok kanan atas, judul fitur, deskripsi singkat, dan menyematkan 1 atau 2 screenshot E2E secara rapi dan presisi berdampingan (*side-by-side*) tepat sebelum slide *"Planning on next months"*.
 
-### 2. Format Wajib Laporan Akhir ke Pengguna
-Di akhir setiap respons pengerjaan tugas (fitur/fix), Agent **WAJIB** menyajikan:
+### 2. Format Wajib Laporan Akhir ke Pengguna (MANDATORI - SELALU DISERTAKAN)
+Di akhir setiap respons pengerjaan tugas (fitur/fix), Agent **WAJIB** menyajikan secara lengkap:
 1. **Ringkasan Progress Harian**: Rekapitulasi apa saja yang telah dikerjakan pada sesi/hari ini.
-2. **Status Slide Presentasi Bulanan**:
+2. **Bukti Visual Tangkapan Layar (Screenshot / SS)**:
+   - Tampilkan bukti visual nyata tangkapan layar (screenshot UI / hasil tes E2E) yang relevan, baik berupa preview gambar maupun link file lokal yang dapat langsung dilihat user.
+3. **Template Broadcast WhatsApp (WA) Simple dari TIM SDS**:
+   - Sertakan format pesan WhatsApp singkat, jelas, profesional, dan siap di-copy-paste oleh pengguna untuk dibagikan kepada user/group terkait.
+4. **Status Slide Presentasi Bulanan**:
    - File target yang diperbarui: `D:\\[01] PROJECT\\HERO\\Monthly\\MONTHLY [BULAN] [TAHUN] SDS.pptx`
-   - Nomor slide detail baru yang ditambahkan (misal: Slide #6 atau #7).
+   - Nomor slide detail baru yang ditambahkan (misal: Slide #6 atau #39).
    - Bukti screenshot E2E yang telah disematkan ke dalam slide presentasi sebagai bukti resmi (*official evidence*).
 
 ---
