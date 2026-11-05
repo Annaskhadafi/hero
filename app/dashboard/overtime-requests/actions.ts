@@ -2018,9 +2018,30 @@ export async function createOvertimeCommandLetterAction(payload: {
     // Ensure or insert sequential approval steps (2 steps total: Pemohon -> Leader / PJO -> Selesai)
     if (payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId) {
       let targetApproverId =
-        payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId || null
+        payload.superiorEmployeeId || payload.leaderEmployeeId || payload.managerEmployeeId || null
       let targetApproverName =
-        payload.leaderName || payload.superiorName || payload.managerName || 'Leader / PJO'
+        payload.superiorName || payload.leaderName || payload.managerName || 'Leader / PJO'
+
+      // Jika requester berada di site operasional yang memiliki Head Location (PJO Site) di master data hero_sites,
+      // dan approver belum diset atau sama dengan requester, prioritaskan PJO Site agar tidak terlewat
+      if (siteId && (!targetApproverId || targetApproverId === requesterId)) {
+        const [siteRec] = await db
+          .select({ headEmployeeId: sites.headEmployeeId })
+          .from(sites)
+          .where(eq(sites.id, siteId))
+          .limit(1)
+        if (siteRec?.headEmployeeId && siteRec.headEmployeeId !== requesterId) {
+          targetApproverId = siteRec.headEmployeeId
+          const [pjoEmp] = await db
+            .select({ name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, siteRec.headEmployeeId))
+            .limit(1)
+          if (pjoEmp) {
+            targetApproverName = pjoEmp.name
+          }
+        }
+      }
 
       // Jika yang mengajukan adalah PJO, approver tahap 2 langsung ke Leadernya PJO (bukan PJO itu sendiri)
       if (

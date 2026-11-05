@@ -347,7 +347,7 @@ const SITE_APPROVER_MAP: Record<string, string> = {
   '137': '255',  // Muhammad Refaldi (Tj. Redeb - Technical Engineer)
   '138': '454',  // Adit Prasetyo (AMM Mifa Holing - PJO)
   '139': '955',  // Apriyanto (Sebamban)
-  '140': '1307', // Muhammad Wahyu Ichsan (Vale Sorowako - HSE)
+  '140': '1013', // Andika Septiadi (Vale Sorowako - PJO)
   '141': '1203', // Alfian Saleh (MTN Berau)
   '142': '1172', // Zaiddan Maiadzanie (CK NCN)
   '143': '1045', // Yoga Dirgantara Nuryanto (Petrosea SDA)
@@ -431,7 +431,7 @@ function resolvePjoOrAtasan(siteId: string, sectionId?: string): string {
     '134': '96',   // Palembang -> Febrial Hariri (PJO)
     '137': '255',  // Tj. Redeb / Berau -> Muhammad Refaldi (PJO)
     '138': '454',  // AMM Mifa -> Adit Prasetyo (PJO)
-    '140': '1307', // Vale Sorowako -> Muhammad Wahyu Ichsan (HSE / PJO)
+    '140': '1013', // Vale Sorowako -> Andika Septiadi (PJO)
     '141': '1203', // MTN Berau -> Alfian Saleh (PJO)
     '143': '1045', // Petrosea SDA -> Yoga Dirgantara Nuryanto (PJO)
     '144': '1057', // AMM Tabang -> Singgih Wiyono (PJO)
@@ -490,7 +490,7 @@ export const MASTER_CATEGORIZED_SITES = [
   { id: '131', name: 'CK BMB', category: 'HSE', approverId: '1285' }, // Danny Hangga Irawan (HSE Officer)
   { id: '129', name: 'CK KIM', category: 'HSE', approverId: '1380' }, // Rizky Rahmadani (HSE Officer)
   { id: '128', name: 'CK MHU', category: 'HSE', approverId: '1375' }, // Ade Saharu (HSE)
-  { id: '140', name: 'Vale - Sorowako', category: 'HSE', approverId: '1307' }, // Muhammad Wahyu Ichsan (HSE Officer)
+  { id: '140', name: 'Vale - Sorowako', category: 'HSE', approverId: '1013' }, // Andika Septiadi (PJO)
 
   // 3. PJO (13 Sites)
   { id: '138', name: 'AMM Mifa Holing', category: 'PJO', approverId: '454' }, // Adit Prasetyo (Technical Engineer)
@@ -602,7 +602,7 @@ function WorkflowBuilderDialog({
       '134': '96',   // Palembang -> Febrial Hariri (PJO)
       '137': '255',  // Tj. Redeb / Berau -> Muhammad Refaldi (PJO)
       '138': '454',  // AMM Mifa -> Adit Prasetyo (PJO)
-      '140': '1307', // Vale Sorowako -> Muhammad Wahyu Ichsan (HSE / PJO)
+      '140': '1013', // Vale Sorowako -> Andika Septiadi (PJO)
       '141': '1203', // MTN Berau -> Alfian Saleh (PJO)
       '143': '1045', // Petrosea SDA -> Yoga Dirgantara Nuryanto (PJO)
       '144': '1057', // AMM Tabang -> Singgih Wiyono (PJO)
@@ -1162,7 +1162,7 @@ function WorkflowBuilderDialog({
       }
 
       if (name.includes('sorowako') || name.includes('vale') || siteId === '140') {
-        return '1307' // Muhammad Wahyu Ichsan (HSE / PJO)
+        return '1013' // Andika Septiadi (PJO Vale)
       }
 
       if (name.includes('timika') || name.includes('revy')) {
@@ -1707,7 +1707,7 @@ function WorkflowBuilderDialog({
     
     const SITE_PJO_DEFAULTS: Record<string, string> = {
       '127': '1164', // Saipudin (Sangatta)
-      '140': '1127', // Muhammad Naufal (Vale Sorowako)
+      '140': '1013', // Andika Septiadi (Vale Sorowako - PJO)
       '130': '97',   // Tommy Indra Aldiny Rambe (Tj. Adaro)
       '210': '97',   // Tommy Indra Aldiny Rambe (BUMA Tanjung)
       '131': '97',   // Tommy Indra Aldiny Rambe (CK BMB)

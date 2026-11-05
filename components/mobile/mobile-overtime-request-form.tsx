@@ -155,7 +155,7 @@ export function MobileOvertimeRequestForm({
   const initialTargetId = doc?.requestedByEmployeeId || currentEmployee?.id || employees[0]?.id;
   const initialHierarchy = initialTargetId
     ? resolveEmployeeApproverHierarchy(initialTargetId, employees)
-    : { leader: null, superior: null, department: "Central Services" };
+    : { requester: null, leader: null, superior: null, pjo: null, defaultApprover: null, department: "Central Services", section: "" };
 
   const [title, setTitle] = useState(
     doc?.title
@@ -251,16 +251,21 @@ export function MobileOvertimeRequestForm({
   // Jika sedang revisi / edit SPL (doc?.id), prioritaskan approver yang tersimpan di existing approval. Jika baru buat, gunakan hierarchy.
   const isEditingExistingSpl = Boolean(doc?.id || editSplId || parentSplId);
 
+  // Default approver untuk 1-Tier Approval SPL Mobile (Leader / PJO Site):
+  // Di site operasional tambang/cabang, izin lembur lapangan WAJIB disetujui PJO Site (Head Location dari hero_sites, misal Andika Septiadi di Vale).
+  // Jangan default langsung ke Section Head (Junaidi/Ary Maulana) karena di satu site ada banyak section (service, repair, retread, dll), sehingga PJO terlewat!
+  const defaultPjoApprover = initialHierarchy.defaultApprover || initialHierarchy.pjo || initialHierarchy.superior || initialHierarchy.leader;
+
   const initialLeaderId = isEditingExistingSpl && (existingLeaderApproval || matchedLeaderByEmployee)
     ? (existingLeaderApproval?.approverEmployeeId
         ? String(existingLeaderApproval.approverEmployeeId)
         : matchedLeaderByEmployee
           ? String(matchedLeaderByEmployee.id)
-          : initialHierarchy.leader?.id
-            ? String(initialHierarchy.leader.id)
+          : defaultPjoApprover?.id
+            ? String(defaultPjoApprover.id)
             : "")
-    : (initialHierarchy.leader?.id
-        ? String(initialHierarchy.leader.id)
+    : (defaultPjoApprover?.id
+        ? String(defaultPjoApprover.id)
         : existingLeaderApproval?.approverEmployeeId
           ? String(existingLeaderApproval.approverEmployeeId)
           : matchedLeaderByEmployee
@@ -270,9 +275,9 @@ export function MobileOvertimeRequestForm({
   const initialLeaderName = isEditingExistingSpl && (existingLeaderApproval || matchedLeaderByEmployee)
     ? (existingLeaderApproval?.approverName ||
         matchedLeaderByEmployee?.name ||
-        initialHierarchy.leader?.name ||
+        defaultPjoApprover?.name ||
         "")
-    : (initialHierarchy.leader?.name ||
+    : (defaultPjoApprover?.name ||
         matchedLeaderByEmployee?.name ||
         existingLeaderApproval?.approverName ||
         "");
@@ -282,11 +287,11 @@ export function MobileOvertimeRequestForm({
         ? String(existingSuperiorApproval.approverEmployeeId)
         : matchedSuperiorByEmployee
           ? String(matchedSuperiorByEmployee.id)
-          : initialHierarchy.superior?.id
-            ? String(initialHierarchy.superior.id)
+          : defaultPjoApprover?.id
+            ? String(defaultPjoApprover.id)
             : "")
-    : (initialHierarchy.superior?.id
-        ? String(initialHierarchy.superior.id)
+    : (defaultPjoApprover?.id
+        ? String(defaultPjoApprover.id)
         : existingSuperiorApproval?.approverEmployeeId
           ? String(existingSuperiorApproval.approverEmployeeId)
           : matchedSuperiorByEmployee
@@ -296,9 +301,9 @@ export function MobileOvertimeRequestForm({
   const initialSuperiorName = isEditingExistingSpl && (existingSuperiorApproval || matchedSuperiorByEmployee)
     ? (existingSuperiorApproval?.approverName ||
         matchedSuperiorByEmployee?.name ||
-        initialHierarchy.superior?.name ||
+        defaultPjoApprover?.name ||
         "")
-    : (initialHierarchy.superior?.name ||
+    : (defaultPjoApprover?.name ||
         matchedSuperiorByEmployee?.name ||
         existingSuperiorApproval?.approverName ||
         "");
@@ -507,13 +512,13 @@ export function MobileOvertimeRequestForm({
     if (hierarchy.department) {
       setRequesterDepartment(hierarchy.department);
     }
-    if (hierarchy.leader && !isLeaderLocked) {
-      setLeaderEmployeeId(String(hierarchy.leader.id));
-      setLeaderName(hierarchy.leader.name);
-    }
-    if (hierarchy.superior && !isSuperiorLocked) {
-      setSuperiorEmployeeId(String(hierarchy.superior.id));
-      setSuperiorName(hierarchy.superior.name);
+    // Di site operasional, izin lembur lapangan WAJIB diprioritaskan ke PJO Site (Head Location dari master data site)
+    const defaultApprover = hierarchy.defaultApprover || hierarchy.pjo || hierarchy.superior || hierarchy.leader;
+    if (defaultApprover && !isLeaderLocked && !isSuperiorLocked) {
+      setLeaderEmployeeId(String(defaultApprover.id));
+      setLeaderName(defaultApprover.name);
+      setSuperiorEmployeeId(String(defaultApprover.id));
+      setSuperiorName(defaultApprover.name);
     }
   }
 
@@ -832,10 +837,10 @@ export function MobileOvertimeRequestForm({
             plannedPoints: Number(item.plannedPoints) || 0,
             photoUrl: item.photoUrl || undefined,
           })),
-          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : null,
-          leaderName: leaderName || null,
-          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : null,
-          superiorName: superiorName || null,
+          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : (superiorEmployeeId ? Number(superiorEmployeeId) : null),
+          leaderName: leaderName || superiorName || null,
+          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : (leaderEmployeeId ? Number(leaderEmployeeId) : null),
+          superiorName: superiorName || leaderName || null,
         });
 
         if (!res.success) {
