@@ -1676,7 +1676,10 @@ export function OvertimeListingClient({
     setSummarySiteId(val)
     setSummaryEmployeeId('ALL')
   }
-  const [summaryMonth, setSummaryMonth] = useState<string>('')
+  const [summaryMonth, setSummaryMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
   const [isGeneratingSummaryPdf, setIsGeneratingSummaryPdf] = useState<boolean>(false)
   const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState<boolean>(false)
   const [summaryPreviewZoom, setSummaryPreviewZoom] = useState<number>(1.0)
@@ -1694,11 +1697,16 @@ export function OvertimeListingClient({
   const [summaryRejectionReason, setSummaryRejectionReason] = useState<string>('')
   const [isSummaryActionRunning, setIsSummaryActionRunning] = useState<boolean>(false)
 
+  const currentMonthStr = useMemo(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }, [])
+
   const hasActiveFilters =
     activeTab !== 'all' ||
     summarySiteId !== defaultSiteFilter ||
     summaryEmployeeId !== 'ALL' ||
-    Boolean(summaryMonth) ||
+    Boolean(summaryMonth && summaryMonth !== currentMonthStr) ||
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedStatuses.length > 0 ||
@@ -1708,7 +1716,8 @@ export function OvertimeListingClient({
     setActiveTab('all')
     setSummarySiteId(defaultSiteFilter)
     setSummaryEmployeeId('ALL')
-    setSummaryMonth('')
+    const now = new Date()
+    setSummaryMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
     setSearchQuery('')
     setSelectedDepartments([])
     setSelectedStatuses([])
@@ -2096,8 +2105,41 @@ export function OvertimeListingClient({
     })
   }, [filteredRows, summaryEmployeeId])
 
+  // Official Payable Allowance Filter: only approved SPLs unless user specifically picked statuses
+  const approvedSummaryFilteredRows = useMemo(() => {
+    return summaryFilteredRows.filter((r) => {
+      const rowStatus = (r.status || '').toLowerCase()
+      if (selectedStatuses.length > 0) {
+        return selectedStatuses.some((status) => {
+          const s = status.toLowerCase()
+          if (s.includes('approved')) return rowStatus === 'approved'
+          if (s.includes('submitted')) return rowStatus === 'submitted'
+          if (s.includes('draft')) return rowStatus === 'draft'
+          if (s.includes('rejected')) return rowStatus === 'rejected' || rowStatus === 'cancelled'
+          return rowStatus === s
+        })
+      }
+      return rowStatus === 'approved'
+    })
+  }, [summaryFilteredRows, selectedStatuses])
+
   const siteSummaryData = useMemo(() => {
     const matchingRows = (rows || []).filter((r) => {
+      // 0. Status Guard: Payable Site Allowance must only count Approved SPLs by default, or follow specific status filters
+      const rowStatus = (r.status || '').toLowerCase()
+      if (selectedStatuses.length > 0) {
+        const match = selectedStatuses.some((status) => {
+          const s = status.toLowerCase()
+          if (s.includes('approved')) return rowStatus === 'approved'
+          if (s.includes('submitted')) return rowStatus === 'submitted'
+          if (s.includes('draft')) return rowStatus === 'draft'
+          if (s.includes('rejected')) return rowStatus === 'rejected' || rowStatus === 'cancelled'
+          return rowStatus === s
+        })
+        if (!match) return false
+      } else {
+        if (rowStatus !== 'approved') return false
+      }
       if (summarySiteId && summarySiteId !== 'ALL') {
         const rowSiteId = r.siteId != null ? String(r.siteId) : null
         if (rowSiteId && rowSiteId !== summarySiteId) {
@@ -2217,7 +2259,7 @@ export function OvertimeListingClient({
       employeeStats,
       uniqueSpls,
     }
-  }, [rows, summarySiteId, summaryMonth, employees, sites])
+  }, [rows, summarySiteId, summaryMonth, employees, sites, selectedStatuses])
 
   const summaryStats = useMemo(() => {
     let totalHours = 0
@@ -2226,7 +2268,7 @@ export function OvertimeListingClient({
     let draftCount = 0
     let rejectedCount = 0
 
-    summaryFilteredRows.forEach((row) => {
+    approvedSummaryFilteredRows.forEach((row) => {
       totalHours += calculateSplDurationHours(row)
       const st = (row.status || '').toLowerCase()
       if (st === 'approved') approvedCount++
@@ -2236,20 +2278,48 @@ export function OvertimeListingClient({
     })
 
     return {
-      totalCount: summaryFilteredRows.length,
+      totalCount: approvedSummaryFilteredRows.length,
       totalHours: Math.round(totalHours * 10) / 10,
       approvedCount,
       submittedCount,
       draftCount,
       rejectedCount,
     }
-  }, [summaryFilteredRows])
+  }, [approvedSummaryFilteredRows])
 
   const summaryPreviewHtmlContent = useMemo(() => {
     if (!isSummaryPreviewOpen) return ''
 
     if (summaryPreviewMode === 'site') {
-      if (siteSummaryData.rows.length === 0) return ''
+      if (siteSummaryData.rows.length === 0) {
+        return `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f8fafc; margin: 0; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+              .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px 32px; max-width: 520px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+              .icon { font-size: 40px; margin-bottom: 16px; }
+              .title { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+              .desc { font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }
+              .badge { display: inline-block; background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="icon">🏢</div>
+              <div class="title">Belum Ada SPL Approved</div>
+              <div class="desc">
+                Tidak ditemukan dokumen SPL berstatus <strong>Approved</strong> untuk lokasi <strong>${siteSummaryData.siteName}</strong> pada periode <strong>${formatMonthYearLabel(summaryMonth)}</strong>.<br/><br/>
+                Sistem secara otomatis hanya menghitung dokumen lembur yang telah disetujui (Approved) atasan untuk menjamin keakuratan laporan resmi Payable Site Allowance.
+              </div>
+              <div class="badge">Site: ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)}</div>
+            </div>
+          </body>
+          </html>
+        `
+      }
       const siteLogoUrl = resolveSiteLogoUrl(siteSummaryData.siteName)
       const firstRow = siteSummaryData.uniqueSpls[0]
       const signatories = resolveSummarySplSignatories({
@@ -2277,7 +2347,37 @@ export function OvertimeListingClient({
       })
     }
 
-    if (!summaryFilteredRows || summaryFilteredRows.length === 0) return ''
+    if (!approvedSummaryFilteredRows || approvedSummaryFilteredRows.length === 0) {
+      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+      const empName = selectedEmpObj && selectedEmpObj.value !== 'ALL' ? selectedEmpObj.label.split(' (')[0] : 'Karyawan'
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f8fafc; margin: 0; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+            .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px 32px; max-width: 520px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+            .icon { font-size: 40px; margin-bottom: 16px; }
+            .title { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+            .desc { font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }
+            .badge { display: inline-block; background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">👤</div>
+            <div class="title">Belum Ada SPL Approved</div>
+            <div class="desc">
+              Tidak ditemukan dokumen SPL berstatus <strong>Approved</strong> untuk <strong>${empName}</strong> pada periode <strong>${formatMonthYearLabel(summaryMonth)}</strong>.<br/><br/>
+              Sistem hanya memasukkan lembur yang telah disetujui (Approved) ke dalam perhitungan resmi Payable Site Allowance per karyawan.
+            </div>
+            <div class="badge">Karyawan: ${empName} • ${formatMonthYearLabel(summaryMonth)}</div>
+          </div>
+        </body>
+        </html>
+      `
+    }
     const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
     const employeeName =
       selectedEmpObj && selectedEmpObj.value !== 'ALL'
@@ -2292,7 +2392,7 @@ export function OvertimeListingClient({
     const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
     const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
 
-    const firstRow = summaryFilteredRows[0]
+    const firstRow = approvedSummaryFilteredRows[0]
     const signatories = resolveSummarySplSignatories({
       selectedEmployee: selectedEmpInfo,
       allEmployees: employees,
@@ -2300,7 +2400,7 @@ export function OvertimeListingClient({
       fallbackEmployeeName: employeeName,
     })
 
-    return renderSummarySplPdfHtml(summaryFilteredRows, {
+    return renderSummarySplPdfHtml(approvedSummaryFilteredRows, {
       employeeName,
       employeeSn,
       department,
@@ -2313,7 +2413,7 @@ export function OvertimeListingClient({
       pjoName: signatories.pjoName,
       leaderName: signatories.leaderName,
     })
-  }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees, isSummaryPreviewOpen, summaryPreviewMode, siteSummaryData, sites, summarySiteId])
+  }, [approvedSummaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees, isSummaryPreviewOpen, summaryPreviewMode, siteSummaryData, sites, summarySiteId])
 
   const handleOpenSummaryPreview = () => {
     setSummaryPreviewMode('employee')
@@ -2438,8 +2538,8 @@ export function OvertimeListingClient({
       return
     }
 
-    if (summaryFilteredRows.length === 0) {
-      toast.error('Tidak ada data summary SPL untuk dibuatkan PDF.')
+    if (approvedSummaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL approved untuk dibuatkan PDF.')
       return
     }
 
@@ -2465,7 +2565,7 @@ export function OvertimeListingClient({
 
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
 
-      const firstRow = summaryFilteredRows[0]
+      const firstRow = approvedSummaryFilteredRows[0]
       const signatories = resolveSummarySplSignatories({
         selectedEmployee: selectedEmpInfo,
         allEmployees: employees,
@@ -2473,7 +2573,7 @@ export function OvertimeListingClient({
         fallbackEmployeeName: employeeName,
       })
 
-      const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
+      const daysData = buildOvertimeRecordMonthlyDays(approvedSummaryFilteredRows, summaryMonth)
 
       const pdfBytes = await generateSummarySplPdf({
         documentTitle: 'SUMMARY SPL',
@@ -2519,12 +2619,56 @@ export function OvertimeListingClient({
   }
 
   const handleExportSummaryExcel = async () => {
-    if (summaryFilteredRows.length === 0) {
-      toast.error('Tidak ada data summary SPL untuk diekspor ke Excel.')
+    const isSiteExport = summaryEmployeeId === 'ALL' && summarySiteId !== 'ALL'
+
+    if (isSiteExport) {
+      if (siteSummaryData.rows.length === 0) {
+        toast.error(`Tidak ada data summary SPL approved untuk site ${siteSummaryData.siteName} pada periode ini.`)
+        return
+      }
+      const data = siteSummaryData.rows.map((row, idx) => ({
+        No: idx + 1,
+        Tanggal: row.dateStr,
+        Hari: row.dayName,
+        'No. SPL': row.splNumber,
+        'Nama Karyawan': row.employeeName,
+        'NIP/SN': row.employeeSn || '—',
+        Departemen: row.department || '—',
+        'Jam Mulai': row.startTime,
+        'Jam Selesai': row.endTime,
+        'Total Jam Lembur': row.durationHours,
+        'Uraian Tugas': row.taskSummary,
+      }))
+      const XLSX = await import('xlsx')
+      const ws = XLSX.utils.json_to_sheet(data)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Summary Site')
+
+      if (siteSummaryData.employeeStats.length > 0) {
+        const recapData = siteSummaryData.employeeStats.map((st, idx) => ({
+          No: idx + 1,
+          'Nama Karyawan': st.employeeName,
+          'NIP/SN': st.employeeSn || '—',
+          Departemen: st.department || '—',
+          'Jumlah SPL': st.splCount,
+          'Total Jam Lembur': st.totalHours,
+        }))
+        const recapWs = XLSX.utils.json_to_sheet(recapData)
+        XLSX.utils.book_append_sheet(wb, recapWs, 'Rekapitulasi Karyawan')
+      }
+
+      const cleanSite = siteSummaryData.siteName.replace(/[^a-zA-Z0-9]/g, '_')
+      XLSX.writeFile(wb, `Summary_SPL_Site_${cleanSite}_${summaryMonth || 'Semua'}.xlsx`)
+      toast.success('File Excel Summary SPL Per Site berhasil diunduh!')
       return
     }
 
-    const data = summaryFilteredRows.map((row, idx) => ({
+    if (approvedSummaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL approved untuk diekspor ke Excel.')
+      return
+    }
+
+    const data = approvedSummaryFilteredRows.map((row, idx) => ({
       No: idx + 1,
       Tanggal: formatDate(row.workDate),
       'No. SPL': row.splNumber,
@@ -3413,11 +3557,11 @@ export function OvertimeListingClient({
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 Rekapitulasi & Export Summary SPL (PDF Standard)
                 <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 px-2 py-0.5 text-[10px] font-bold border-0">
-                  {summaryStats.totalCount} SPL • {summaryStats.totalHours} Jam
+                  {summaryStats.totalCount} SPL Approved • {summaryStats.totalHours} Jam
                 </Badge>
               </h3>
               <p className="text-xs text-slate-500">
-                Filter rekapitulasi lembur karyawan per periode bulan untuk diunduh sebagai dokumen PDF resmi (Payble Site Allowance) atau Excel.
+                Filter rekapitulasi lembur karyawan per periode bulan untuk diunduh sebagai dokumen PDF resmi (Payable Site Allowance) atau Excel. Laporan resmi otomatis memvalidasi dokumen yang telah Approved.
               </p>
             </div>
           </div>
