@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Check, ChevronDown, Search, X } from 'lucide-react'
+import { Check, ChevronDown, Plus, Search, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +27,7 @@ export interface HeroSearchableSelectProps {
   className?: string
   width?: string
   error?: string
+  allowCustom?: boolean
 }
 
 export function HeroSearchableSelect({
@@ -40,6 +41,7 @@ export function HeroSearchableSelect({
   className,
   width = 'w-full',
   error,
+  allowCustom = false,
 }: HeroSearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
@@ -171,10 +173,24 @@ export function HeroSearchableSelect({
 
           {/* Options List */}
           <div className="max-h-[220px] space-y-0.5 overflow-y-auto">
-            {filteredOptions.length === 0 ? (
-              <div className="py-3 text-center text-xs text-slate-400">
-                Tidak ada opsi yang cocok.
+            {allowCustom && query.trim() && !options.some((o) => o.label.toLowerCase() === query.trim().toLowerCase()) && (
+              <div
+                onClick={() => {
+                  handleSelect(query.trim())
+                  setQuery('')
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-blue-300 bg-blue-50/60 px-2.5 py-2 text-xs text-blue-700 hover:bg-blue-100 font-medium mb-1 transition-colors"
+              >
+                <Plus className="size-3.5 text-blue-600 shrink-0" />
+                <span className="truncate">Gunakan: &quot;{query.trim()}&quot;</span>
               </div>
+            )}
+            {filteredOptions.length === 0 ? (
+              (!allowCustom || !query.trim()) ? (
+                <div className="py-3 text-center text-xs text-slate-400">
+                  Tidak ada opsi yang cocok.
+                </div>
+              ) : null
             ) : (
               filteredOptions.map((opt, idx) => {
                 const isSelected = activeValues.includes(opt.value)

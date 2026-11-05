@@ -1,10 +1,11 @@
 import { db } from '@/db'
-import { sites } from '@/db/schema/hero'
+import { employees, sites } from '@/db/schema/hero'
 import { timesheetSchedulingConfigs } from '@/db/schema/timesheet'
 import {
   calculateAttendancePunctuality,
   inferShiftCodeForEvent,
   isClockTime,
+  isStaffRole,
   resolveConfiguredShiftClockIn,
   resolveSiteAttendanceClockConfig,
 } from '@/lib/timesheet/attendance-punctuality'
@@ -66,14 +67,32 @@ export async function resolveSiteAttendancePunctuality(input: {
   shiftCode?: string | null
   fallbackClockIn?: string | null
   isStaff?: boolean
+  employeeId?: number | null
 }) {
   if (input.eventType !== 'checked-in') return null
+
+  let isStaff = input.isStaff
+  if (isStaff === undefined && input.employeeId) {
+    const [emp] = await db
+      .select({
+        role: employees.role,
+        jobTitle: employees.jobTitle,
+        levelName: employees.levelName,
+      })
+      .from(employees)
+      .where(eq(employees.id, input.employeeId))
+      .limit(1)
+
+    if (emp) {
+      isStaff = isStaffRole(emp.role, emp.jobTitle, emp.levelName)
+    }
+  }
 
   const config = await getSiteAttendanceClockConfig(input.siteId)
   const shiftCode =
     input.shiftCode?.trim() || inferShiftCodeForEvent(input.eventTime, config, config.timezone)
   const scheduledClockIn =
-    resolveConfiguredShiftClockIn(shiftCode, config, input.isStaff) ??
+    resolveConfiguredShiftClockIn(shiftCode, config, isStaff) ??
     (isClockTime(input.fallbackClockIn) ? input.fallbackClockIn : null)
 
   return scheduledClockIn

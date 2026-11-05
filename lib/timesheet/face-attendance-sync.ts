@@ -1,7 +1,7 @@
 import { db } from '@/db'
 import { attendanceRecords, sites } from '@/db/schema/hero'
 import { timesheetAttendanceRealOverrides, timesheetSchedulingConfigs, timesheetSchedulingPlans, timesheetSchedulingPlansV2 } from '@/db/schema/timesheet'
-import { and, asc, eq, gte, lt, ne } from 'drizzle-orm'
+import { and, asc, eq, gte, lt, ne, sql } from 'drizzle-orm'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { getSiteAttendanceClockConfig } from '@/lib/timesheet/site-attendance-punctuality'
 import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
@@ -380,7 +380,7 @@ export async function syncFaceAttendanceToTimesheet(
               workMinutes: prevWorkMinutes,
               updatedAt: new Date(),
             },
-            where: ne(timesheetAttendanceRealOverrides.source, 'manual'),
+            where: sql`${timesheetAttendanceRealOverrides.source} != 'manual' OR ${timesheetAttendanceRealOverrides.status} = 'empty' OR (${timesheetAttendanceRealOverrides.clockIn} IS NULL AND ${timesheetAttendanceRealOverrides.clockOut} IS NULL) OR (${timesheetAttendanceRealOverrides.clockIn} = '' AND ${timesheetAttendanceRealOverrides.clockOut} = '')`,
           })
 
         console.log(
@@ -615,7 +615,7 @@ export async function syncFaceAttendanceToTimesheet(
         workMinutes,
         updatedAt: new Date(),
       },
-      where: ne(timesheetAttendanceRealOverrides.source, 'manual'),
+      where: sql`${timesheetAttendanceRealOverrides.source} != 'manual' OR ${timesheetAttendanceRealOverrides.status} = 'empty' OR (${timesheetAttendanceRealOverrides.clockIn} IS NULL AND ${timesheetAttendanceRealOverrides.clockOut} IS NULL) OR (${timesheetAttendanceRealOverrides.clockIn} = '' AND ${timesheetAttendanceRealOverrides.clockOut} = '')`,
     })
 
   console.log(

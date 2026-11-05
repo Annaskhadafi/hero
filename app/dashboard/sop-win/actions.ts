@@ -3066,6 +3066,39 @@ export async function upsertSopWinDepartmentWorkflowAction(input: {
   }
 }
 
+
+export async function getSopWinApproverCandidatesAction() {
+  try {
+    const candidateList = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+      })
+      .from(employees)
+      .where(or(eq(employees.employmentStatus, "active"), eq(employees.isActive, true)))
+      .orderBy(asc(employees.name));
+
+    return {
+      success: true,
+      data: candidateList.map((emp) => ({
+        id: emp.id,
+        name: (emp.name || "").trim(),
+        email: (emp.email || "").trim(),
+        employeeSn: emp.employeeSn ? emp.employeeSn.trim() : "",
+        jobTitle: emp.jobTitle ? emp.jobTitle.trim() : "",
+        department: emp.department ? emp.department.trim() : "",
+      })),
+    };
+  } catch (error: any) {
+    console.error("[getSopWinApproverCandidatesAction] error:", error);
+    return { success: false, message: error.message || "Gagal memuat kandidat approver.", data: [] };
+  }
+}
+
 export async function seedDefaultSopWinDepartmentWorkflowsAction() {
   try {
     const depts = await db.select().from(sopWinDepartments);

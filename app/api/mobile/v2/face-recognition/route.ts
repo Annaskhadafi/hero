@@ -7,6 +7,7 @@ import { authenticateMobileRequest } from '@/lib/mobile-auth'
 import { rarayVerifyFace, rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
 import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-sync'
 import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
+import { isStaffRole } from '@/lib/timesheet/attendance-punctuality'
 import { validateSiteBoundary } from '@/lib/location'
 import { uploadAttendancePhotoToS3, isS3UploadConfigured } from '@/lib/s3-storage'
 import { writeFile, mkdir } from 'fs/promises'
@@ -263,6 +264,9 @@ export async function POST(request: NextRequest) {
         isActive: employees.isActive,
         faceRarayId: employees.faceRarayId,
         faceRarayRegisteredAt: employees.faceRarayRegisteredAt,
+        role: employees.role,
+        jobTitle: employees.jobTitle,
+        levelName: employees.levelName,
       })
       .from(employees)
       .where(eq(employees.id, empId))
@@ -444,11 +448,14 @@ export async function POST(request: NextRequest) {
     const gpsFlag = lat === 0 && lng === 0 ? '[gps-unavailable] ' : ''
     const accuracyNote =
       accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
+    const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: sId,
       eventType: resolvedEventType,
       eventTime,
       shiftCode: typeof shiftCode === 'string' ? shiftCode : null,
+      isStaff,
+      employeeId: empId,
     })
     const locationNote = [
       `${gpsFlag}${isManualFallback ? 'photo-fallback' : 'face-v2-raray'}${accuracyNote}`,
