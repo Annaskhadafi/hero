@@ -269,6 +269,243 @@ export function ContractReviewClientForm({
     }>,
   })
 
+  // Draft Auto-Save & Recovery State
+  const [restoredDraftInfo, setRestoredDraftInfo] = useState<{
+    savedAt: string
+    sourceKey: string
+  } | null>(null)
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null)
+  const [isAutoSaving, setIsAutoSaving] = useState(false)
+  const isInitialMount = useRef(true)
+  const isDirty = useRef(false)
+
+  // 1. Recovery on initial mount: Check if an unsubmitted draft exists
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const primaryKey = initialData?.id
+      ? `hero_cr_draft_id_${initialData.id}`
+      : employeeIdParam
+      ? `hero_cr_draft_emp_${employeeIdParam}`
+      : `hero_cr_draft_new`
+
+    let savedRaw = localStorage.getItem(primaryKey)
+    let activeKey = primaryKey
+
+    if (!savedRaw && !initialData?.id) {
+      savedRaw = localStorage.getItem('hero_cr_draft_new')
+      activeKey = 'hero_cr_draft_new'
+    }
+
+    if (savedRaw) {
+      try {
+        const parsed = JSON.parse(savedRaw)
+        if (parsed && parsed.form) {
+          const hasActivities = Array.isArray(parsed.form.performanceActivities) && 
+            parsed.form.performanceActivities.some((a: any) => a.activity?.trim() || a.remark?.trim())
+          const hasCompRemarks = Boolean(
+            parsed.form.compDisciplineRemark?.trim() ||
+            parsed.form.compSkillRemark?.trim() ||
+            parsed.form.compResultRemark?.trim() ||
+            parsed.form.compQualityRemark?.trim() ||
+            parsed.form.compCustomerRemark?.trim() ||
+            parsed.form.compTeamworkRemark?.trim()
+          )
+          const hasSignaturesOrNotes = Boolean(parsed.previewLeaderSig || parsed.form.recommendation)
+
+          if (hasActivities || hasCompRemarks || hasSignaturesOrNotes) {
+            setForm((prev) => ({
+              ...prev,
+              ...parsed.form,
+              id: initialData?.id ?? parsed.form.id,
+              performanceActivities: parsed.form.performanceActivities?.length > 0
+                ? parsed.form.performanceActivities
+                : prev.performanceActivities,
+            }))
+
+            if (parsed.previewLeaderSig) {
+              setPreviewLeaderSig(parsed.previewLeaderSig)
+            }
+            if (parsed.leaderSignatureOverride) {
+              setLeaderSignatureOverride(parsed.leaderSignatureOverride)
+            }
+
+            setRestoredDraftInfo({
+              savedAt: parsed.savedAt || new Date().toISOString(),
+              sourceKey: activeKey,
+            })
+            setLastSavedTime(parsed.savedAt ? new Date(parsed.savedAt) : new Date())
+            toast.info('Draf penilaian sebelumnya ditemukan dan berhasil dipulihkan.', {
+              description: `Tersimpan di draf: ${new Date(parsed.savedAt || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse contract review draft:', e)
+      }
+    }
+  }, [initialData?.id, employeeIdParam])
+
+  // 2. Debounced auto-save on any change to the form
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+
+    isDirty.current = true
+
+    const primaryKey = initialData?.id
+      ? `hero_cr_draft_id_${initialData.id}`
+      : form.employeeId
+      ? `hero_cr_draft_emp_${form.employeeId}`
+      : `hero_cr_draft_new`
+
+    const timer = setTimeout(() => {
+      try {
+        const hasContent = Boolean(
+          form.employeeId ||
+          form.performanceActivities.some((a: any) => a.activity?.trim() || a.remark?.trim()) ||
+          form.compDisciplineRemark?.trim() ||
+          form.compSkillRemark?.trim() ||
+          form.compResultRemark?.trim() ||
+          form.compQualityRemark?.trim() ||
+          form.compCustomerRemark?.trim() ||
+          form.compTeamworkRemark?.trim() ||
+          previewLeaderSig
+        )
+
+        if (hasContent) {
+          setIsAutoSaving(true)
+          const draftData = {
+            form,
+            previewLeaderSig,
+            leaderSignatureOverride,
+            savedAt: new Date().toISOString(),
+          }
+          localStorage.setItem(primaryKey, JSON.stringify(draftData))
+          if (!initialData?.id) {
+            localStorage.setItem('hero_cr_draft_new', JSON.stringify(draftData))
+          }
+          setLastSavedTime(new Date())
+          setTimeout(() => setIsAutoSaving(false), 400)
+        }
+      } catch (err) {
+        console.warn('Auto-save error:', err)
+        setIsAutoSaving(false)
+      }
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [form, previewLeaderSig, leaderSignatureOverride, initialData?.id])
+
+  // 3. Warn before accidental window close if unsaved edits exist
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty.current) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  const handleManualSaveDraft = () => {
+    try {
+      const primaryKey = initialData?.id
+        ? `hero_cr_draft_id_${initialData.id}`
+        : form.employeeId
+        ? `hero_cr_draft_emp_${form.employeeId}`
+        : `hero_cr_draft_new`
+
+      const draftData = {
+        form,
+        previewLeaderSig,
+        leaderSignatureOverride,
+        savedAt: new Date().toISOString(),
+      }
+      localStorage.setItem(primaryKey, JSON.stringify(draftData))
+      if (!initialData?.id) {
+        localStorage.setItem('hero_cr_draft_new', JSON.stringify(draftData))
+      }
+      isDirty.current = false
+      const now = new Date()
+      setLastSavedTime(now)
+      toast.success('Draf formulir berhasil disimpan!', {
+        description: `Seluruh poin review objektif tersimpan aman di draf (${now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}).`,
+      })
+    } catch (e: any) {
+      toast.error('Gagal menyimpan draf: ' + (e?.message || 'Storage browser penuh.'))
+    }
+  }
+
+  const handleDiscardDraft = () => {
+    if (confirm('Buang draf lokal dan kembalikan formulir ke data awal?')) {
+      const keysToRemove = [
+        `hero_cr_draft_id_${initialData?.id}`,
+        `hero_cr_draft_emp_${form.employeeId}`,
+        `hero_cr_draft_new`,
+      ]
+      keysToRemove.forEach((k) => {
+        try { localStorage.removeItem(k) } catch {}
+      })
+      setRestoredDraftInfo(null)
+      setLastSavedTime(null)
+      isDirty.current = false
+
+      if (initialData) {
+        window.location.reload()
+      } else {
+        setForm({
+          id: undefined,
+          employeeId: "",
+          reviewType: "probation",
+          contractLength: "",
+          todayDate: new Date().toISOString().slice(0, 10),
+          hireDate: "",
+          performanceActivities: [{ activity: "", achievement: "100", remark: "" }],
+          compDisciplineAch: "",
+          compDisciplineRemark: "",
+          compSkillAch: "",
+          compSkillRemark: "",
+          compResultAch: "",
+          compResultRemark: "",
+          compQualityAch: "",
+          compQualityRemark: "",
+          compCustomerAch: "",
+          compCustomerRemark: "",
+          compTeamworkAch: "",
+          compTeamworkRemark: "",
+          leaderName: currentUser?.name || "",
+          leaderTitle: currentUser?.jobTitle || "",
+          employeeNameStr: "",
+          superiorName: "",
+          superiorTitle: "",
+          hrName: "Kesuma Bagaskara",
+          hrTitle: "HR-GA",
+          nextSuperiorName: "",
+          nextSuperiorTitle: "",
+          recommendation: "contract_extended",
+          contractExtendedMonths: "",
+          contractEndDate: "",
+          permanentDate: "",
+          letterIssuance: "",
+          status: "draft",
+          testRequired: false,
+          testConfigId: undefined,
+          testStatus: "none",
+          testFinalScore: undefined,
+          testAttemptCount: 0,
+          testCompletedAt: undefined,
+          attachments: [],
+        })
+        setPreviewLeaderSig(currentUser?.signatureDataUrl || '')
+      }
+      toast.success('Draf lokal telah dibuang.')
+    }
+  }
+
   const syncApprovalSignatory = (
     roleKey: 'leader' | 'superior' | 'nextSuperior' | 'hr' | 'employee',
     newName: string,
@@ -769,65 +1006,114 @@ export function ContractReviewClientForm({
 
   const handleSave = () => {
     startTransition(async () => {
-      const leaderCanvasSignature = getLeaderSignatureDataUrl()
-      const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
+      try {
+        const leaderCanvasSignature = getLeaderSignatureDataUrl()
+        const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
 
-      if (leaderSignatureDataUrl && form.testRequired) {
-        if (['none', 'pending', 'in_progress'].includes(form.testStatus)) {
-          alert('Ujian Online belum diselesaikan oleh karyawan. Dokumen hanya dapat disimpan sebagai draft sebelum ujian selesai.')
-          return
-        }
-        if (form.testStatus === 'failed') {
-          const cfg = initialData?.testConfig
-          if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (form.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
-            alert(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap tunggu hingga remedial selesai.`)
+        if (leaderSignatureDataUrl && form.testRequired) {
+          if (['none', 'pending', 'in_progress'].includes(form.testStatus)) {
+            handleManualSaveDraft()
+            alert('Ujian Online belum diselesaikan oleh karyawan. Dokumen hanya dapat disimpan sebagai draft sebelum ujian selesai.\n\nCatatan: Seluruh poin review yang sudah Anda isi tetap aman tersimpan di DRAF.')
             return
           }
+          if (form.testStatus === 'failed') {
+            const cfg = initialData?.testConfig
+            if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (form.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
+              handleManualSaveDraft()
+              alert(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap tunggu hingga remedial selesai.\n\nCatatan: Seluruh poin review yang sudah Anda isi tetap aman tersimpan di DRAF.`)
+              return
+            }
+          }
         }
-      }
 
-      const payload = {
-        ...form,
-        leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
-        superiorTitle: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
-        hrTitle: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
-        nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
-        employeeId: form.employeeId ? parseInt(form.employeeId) : null,
-        contractExtendedMonths: form.contractExtendedMonths ? parseInt(form.contractExtendedMonths as string) : null,
-        todayDate: new Date(form.todayDate),
-        hireDate: form.hireDate ? new Date(form.hireDate) : new Date(),
-        employeeNameStr: selectedEmp?.name || form.employeeNameStr,
-        leaderSignatureDataUrl,
-      }
-      const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
-      if (res.success) {
-        if (adminMode && initialData?.id && approvalsList && approvalsList.length > 0) {
-          let currentApprovals = [...approvalsList]
-          if (selectedSignatoryTarget && selectedSignatoryTarget.startsWith("step-")) {
-            const stepId = parseInt(selectedSignatoryTarget.replace("step-", ""))
-            const canvas = leaderSigRef.current?.getTrimmedCanvas()
-            const activeDataUrl = canvas ? canvas.toDataURL("image/png") : ""
-            if (activeDataUrl) {
-              currentApprovals = currentApprovals.map((s) =>
-                s.id === stepId ? { ...s, signatureDataUrl: activeDataUrl, status: "approved" } : s
-              )
-            }
-          }
-          for (const step of currentApprovals) {
-            if (step.signatureDataUrl) {
-              await updateAdminContractReviewApprovalSignature(initialData.id, step.id, step.signatureDataUrl)
-            }
-          }
+        const payload = {
+          ...form,
+          leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
+          superiorTitle: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
+          hrTitle: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
+          nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
+          employeeId: form.employeeId ? parseInt(form.employeeId) : null,
+          contractExtendedMonths: form.contractExtendedMonths ? parseInt(form.contractExtendedMonths as string) : null,
+          todayDate: new Date(form.todayDate),
+          hireDate: form.hireDate ? new Date(form.hireDate) : new Date(),
+          employeeNameStr: selectedEmp?.name || form.employeeNameStr,
+          leaderSignatureDataUrl,
         }
-        const savedId = (res as any).data?.id
-        if (!adminMode && !pathname.startsWith('/mobile/') && !initialData?.id && savedId) {
-          // Create mode: redirect ke form edit agar user bisa upload lampiran
-          router.push(`/dashboard/hc/contract-review/form/${savedId}`)
+        const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
+        if (res.success) {
+          // SAVE SUCCESS: Clear local draft
+          try {
+            if (initialData?.id) {
+              localStorage.removeItem(`hero_cr_draft_id_${initialData.id}`)
+            }
+            if (form.employeeId) {
+              localStorage.removeItem(`hero_cr_draft_emp_${form.employeeId}`)
+            }
+            localStorage.removeItem('hero_cr_draft_new')
+          } catch {}
+          isDirty.current = false
+          setRestoredDraftInfo(null)
+
+          if (adminMode && initialData?.id && approvalsList && approvalsList.length > 0) {
+            let currentApprovals = [...approvalsList]
+            if (selectedSignatoryTarget && selectedSignatoryTarget.startsWith("step-")) {
+              const stepId = parseInt(selectedSignatoryTarget.replace("step-", ""))
+              const canvas = leaderSigRef.current?.getTrimmedCanvas()
+              const activeDataUrl = canvas ? canvas.toDataURL("image/png") : ""
+              if (activeDataUrl) {
+                currentApprovals = currentApprovals.map((s) =>
+                  s.id === stepId ? { ...s, signatureDataUrl: activeDataUrl, status: "approved" } : s
+                )
+              }
+            }
+            for (const step of currentApprovals) {
+              if (step.signatureDataUrl) {
+                await updateAdminContractReviewApprovalSignature(initialData.id, step.id, step.signatureDataUrl)
+              }
+            }
+          }
+          const savedId = (res as any).data?.id
+          if (!adminMode && !pathname.startsWith('/mobile/') && !initialData?.id && savedId) {
+            // Create mode: redirect ke form edit agar user bisa upload lampiran
+            router.push(`/dashboard/hc/contract-review/form/${savedId}`)
+          } else {
+            router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+          }
         } else {
-          router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+          // SAVE FAILED: Keep draft intact & re-save to local storage immediately
+          try {
+            const primaryKey = initialData?.id
+              ? `hero_cr_draft_id_${initialData.id}`
+              : form.employeeId
+              ? `hero_cr_draft_emp_${form.employeeId}`
+              : `hero_cr_draft_new`
+            localStorage.setItem(primaryKey, JSON.stringify({
+              form,
+              previewLeaderSig,
+              leaderSignatureOverride,
+              savedAt: new Date().toISOString(),
+            }))
+            setLastSavedTime(new Date())
+          } catch {}
+          alert("Gagal menyimpan: " + res.error + "\n\nCatatan: Seluruh poin penilaian yang sudah Anda isi tetap aman tersimpan di DRAF.")
         }
-      } else {
-        alert("Gagal menyimpan: " + res.error)
+      } catch (err: any) {
+        // EXCEPTION: Keep draft safely
+        try {
+          const primaryKey = initialData?.id
+            ? `hero_cr_draft_id_${initialData.id}`
+            : form.employeeId
+            ? `hero_cr_draft_emp_${form.employeeId}`
+            : `hero_cr_draft_new`
+          localStorage.setItem(primaryKey, JSON.stringify({
+            form,
+            previewLeaderSig,
+            leaderSignatureOverride,
+            savedAt: new Date().toISOString(),
+          }))
+          setLastSavedTime(new Date())
+        } catch {}
+        alert("Terjadi kesalahan sistem saat menyimpan: " + (err?.message || "Koneksi terputus") + "\n\nCatatan: Seluruh poin penilaian yang sudah Anda isi tetap aman tersimpan di DRAF.")
       }
     })
   }
@@ -1998,6 +2284,34 @@ export function ContractReviewClientForm({
 
         {/* Workflow & Simpan */}
         <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {/* Live Auto-save indicator */}
+          <div className="flex items-center gap-1.5 px-1.5 sm:px-2 text-[11px] text-slate-500 font-medium">
+            {isAutoSaving ? (
+              <>
+                <Loader2 className="size-3 animate-spin text-amber-500" />
+                <span className="text-amber-700 hidden sm:inline">Menyimpan draf...</span>
+              </>
+            ) : lastSavedTime ? (
+              <>
+                <FileCheck className="size-3.5 text-emerald-600" />
+                <span className="text-slate-600 hidden sm:inline">
+                  Draf {lastSavedTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleManualSaveDraft}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100 border-slate-300"
+            title="Simpan seluruh poin penilaian secara instan ke draf lokal"
+          >
+            <FileText className="mr-1.5 size-3.5 text-slate-500" /> Simpan Draf
+          </Button>
+
           {initialData?.id && (
             <Button
               type="button"
@@ -2032,6 +2346,44 @@ export function ContractReviewClientForm({
           </Button>
         </div>
       </div>
+
+      {/* Draft Restored Banner */}
+      {restoredDraftInfo && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50/95 p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between print:hidden animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-200 text-amber-800">
+              <FileText className="size-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-amber-950">
+                Draf Penilaian Belum Tersimpan Ditemukan & Dipulihkan
+              </p>
+              <p className="text-[11px] text-amber-800">
+                Poin-poin evaluasi objektif yang Anda ketik sebelumnya telah dipulihkan otomatis (Tersimpan di draf: {new Date(restoredDraftInfo.savedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleDiscardDraft}
+              className="h-8 border-amber-300 bg-white px-2.5 text-xs text-amber-900 hover:bg-amber-100"
+            >
+              Buang Draf
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setRestoredDraftInfo(null)}
+              className="h-8 bg-amber-600 px-3 text-xs text-white hover:bg-amber-700 shadow-sm"
+            >
+              Gunakan Draf Ini
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className={cn("grid gap-6", isPrintMode ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
         {/* KIRI: Form Input */}
