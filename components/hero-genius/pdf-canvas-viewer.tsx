@@ -13,6 +13,7 @@ import {
   FileText,
   ExternalLink,
   Layers,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,7 @@ export function PdfCanvasViewer({
   filename = "Dokumen",
   className = "",
   defaultViewMode = "single",
-  preferNativeViewer = false,
+  preferNativeViewer = true,
   hideToolbar = true,
   hideDownload = true,
   onLoaded,
@@ -60,6 +61,8 @@ export function PdfCanvasViewer({
   const [useNativeViewer, setUseNativeViewer] = useState<boolean>(preferNativeViewer);
   const [showSlowNotice, setShowSlowNotice] = useState<boolean>(false);
   const [reloadKey, setReloadKey] = useState<number>(0);
+  const [progressPercent, setProgressPercent] = useState<number>(15);
+  const [estimatedSeconds, setEstimatedSeconds] = useState<number>(3);
 
   const shouldHideDownload = hideDownload ?? hideToolbar ?? true;
   const baseUrl = url.split("#")[0];
@@ -71,21 +74,43 @@ export function PdfCanvasViewer({
 
   // 1. Ensure PDF.js is loaded dynamically or use native viewer
   useEffect(() => {
-    if (useNativeViewer) {
-      setIsLoading(false);
-      setErrorMsg(null);
-      return;
-    }
-
     let isMounted = true;
+    setIsLoading(true);
+    setErrorMsg(null);
     setShowSlowNotice(false);
+    setProgressPercent(15);
+    setEstimatedSeconds(3);
 
-    // Timeout alert for very large PDFs to offer fast native viewer
+    // Dynamic progress bar ticker for smooth percentage and time estimation
+    const startTime = Date.now();
+    const progressTicker = setInterval(() => {
+      if (!isMounted) return;
+      const elapsed = (Date.now() - startTime) / 1000;
+      setProgressPercent((prev) => {
+        if (prev >= 92) return 92;
+        const increment = Math.max(2, Math.floor(Math.random() * 8) + 3);
+        const next = Math.min(92, prev + increment);
+        const remSec = Math.max(1, Math.ceil((100 - next) / 25));
+        setEstimatedSeconds(remSec);
+        return next;
+      });
+    }, 300);
+
+    // If still loading after 4.5s, show slow loading helper
     const timer = setTimeout(() => {
-      if (isMounted && isLoading) {
+      if (isMounted) {
         setShowSlowNotice(true);
       }
     }, 4500);
+
+    if (useNativeViewer) {
+      setLoadingProgress("Menyiapkan penampil dokumen...");
+      return () => {
+        isMounted = false;
+        clearInterval(progressTicker);
+        clearTimeout(timer);
+      };
+    }
 
     async function loadPdfJs() {
       try {
@@ -144,19 +169,28 @@ export function PdfCanvasViewer({
 
         loadingTask.onProgress = (progressData: { loaded: number; total: number }) => {
           if (progressData.total > 0) {
-            const percent = Math.round((progressData.loaded / progressData.total) * 100);
-            if (isMounted) setLoadingProgress(`Mengunduh dokumen (${percent}%)...`);
+            const percent = Math.min(95, Math.round((progressData.loaded / progressData.total) * 100));
+            if (isMounted) {
+              setProgressPercent(percent);
+              const remaining = Math.max(1, Math.round((100 - percent) / 30));
+              setEstimatedSeconds(remaining);
+              setLoadingProgress(`Mengunduh dokumen (${percent}%)...`);
+            }
           }
         };
 
         const doc = await loadingTask.promise;
         if (!isMounted) return;
 
+        setProgressPercent(100);
+        setEstimatedSeconds(0);
         setPdfDoc(doc);
         setNumPages(doc.numPages);
-        setIsLoading(false);
         setShowSlowNotice(false);
         if (onLoaded) onLoaded(doc.numPages);
+        setTimeout(() => {
+          if (isMounted) setIsLoading(false);
+        }, 200);
       } catch (err: any) {
         console.error("[PdfCanvasViewer] Load error:", err);
         if (isMounted) {
@@ -183,6 +217,15 @@ export function PdfCanvasViewer({
       renderTasksRef.current = {};
     };
   }, [url, onLoaded, useNativeViewer, reloadKey]);
+
+  const handleNativeLoaded = useCallback(() => {
+    setProgressPercent(100);
+    setEstimatedSeconds(0);
+    setLoadingProgress("Dokumen siap!");
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 250);
+  }, []);
 
   // 2. Render Page to Canvas
   const renderPage = useCallback(
@@ -562,16 +605,77 @@ export function PdfCanvasViewer({
       {/* Main Canvas Scroll Area (Clean White Background) */}
       <div
         ref={containerRef}
-        className={`flex-1 min-h-0 w-full overflow-y-auto overflow-x-auto flex flex-col items-center bg-white dark:bg-slate-900 touch-pan-y ${
+        className={`relative flex-1 min-h-0 w-full overflow-y-auto overflow-x-auto flex flex-col items-center bg-white dark:bg-slate-900 touch-pan-y ${
           useNativeViewer ? "p-0" : "p-2 sm:p-4 gap-4"
         }`}
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {isLoading && (
-          <div className="flex flex-col items-center justify-center my-auto py-12 gap-3 text-center">
-            <RefreshCw className="size-7 text-[#003461] dark:text-sky-400 animate-spin" />
-            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{loadingProgress}</p>
-            <p className="text-[11px] text-slate-400">Merender halaman dokumen...</p>
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs p-6 text-center animate-in fade-in duration-150">
+            <div className="w-full max-w-sm flex flex-col items-center gap-4 p-5 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 shadow-xl">
+              <div className="relative flex items-center justify-center">
+                <div className="size-12 rounded-xl bg-[#003461]/10 dark:bg-sky-500/10 flex items-center justify-center text-[#003461] dark:text-sky-400">
+                  <FileText className="size-6 animate-pulse" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 size-5 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold shadow-xs">
+                  ⚡
+                </div>
+              </div>
+
+              <div className="w-full space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-800 dark:text-slate-200 flex items-center gap-1.5 truncate pr-2">
+                    <RefreshCw className="size-3 animate-spin text-[#003461] dark:text-sky-400 shrink-0" />
+                    <span className="truncate">{loadingProgress}</span>
+                  </span>
+                  <span className="font-mono text-sm font-bold text-[#003461] dark:text-sky-400 shrink-0">
+                    {progressPercent}%
+                  </span>
+                </div>
+
+                {/* Animated Progress Bar */}
+                <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200/60 dark:border-slate-700/60">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#003461] via-[#005299] to-emerald-500 rounded-full transition-all duration-300 ease-out shadow-xs"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+
+                {/* Dynamic Estimated Time */}
+                <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-0.5">
+                  <span className="text-[10px] text-slate-400">
+                    {useNativeViewer ? "⚡ Mode Cepat (Browser)" : "🎨 Mode Canvas (PDF.js)"}
+                  </span>
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <Clock className="size-3" />
+                    {progressPercent >= 100
+                      ? "Selesai!"
+                      : `Estimasi ~${estimatedSeconds} detik`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Helper Switch Action if taking longer */}
+              {showSlowNotice && (
+                <div className="w-full pt-2 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-2 animate-in fade-in">
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                    Dokumen membutuhkan waktu lebih lama?
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setShowSlowNotice(false);
+                      setUseNativeViewer((prev) => !prev);
+                    }}
+                    className="h-7 text-xs border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-800"
+                  >
+                    {useNativeViewer ? "🔄 Beralih ke Mode Canvas" : "⚡ Beralih ke Mode Cepat"}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -615,10 +719,12 @@ export function PdfCanvasViewer({
                 key={reloadKey}
                 data={nativePdfUrl}
                 type="application/pdf"
+                onLoad={handleNativeLoaded}
                 className="w-full h-full border-0 flex-grow bg-white"
               >
                 <iframe
                   src={nativePdfUrl}
+                  onLoad={handleNativeLoaded}
                   className="w-full h-full border-0 flex-grow bg-white"
                   title={filename}
                 />
