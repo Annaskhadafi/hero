@@ -39,7 +39,7 @@ export function PdfCanvasViewer({
   filename = "Dokumen",
   className = "",
   defaultViewMode = "single",
-  preferNativeViewer = true,
+  preferNativeViewer = false,
   hideToolbar = true,
   hideDownload = true,
   onLoaded,
@@ -610,13 +610,30 @@ export function PdfCanvasViewer({
         {/* Render Page(s) or Native iframe */}
         {!isLoading && !errorMsg && (
           useNativeViewer ? (
-            <div className="w-full h-full flex-grow flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden">
-              <iframe
+            <div className="w-full h-full flex-grow flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
+              <object
                 key={reloadKey}
-                src={nativePdfUrl}
+                data={nativePdfUrl}
+                type="application/pdf"
                 className="w-full h-full border-0 flex-grow bg-white"
-                title={filename}
-              />
+              >
+                <iframe
+                  src={nativePdfUrl}
+                  className="w-full h-full border-0 flex-grow bg-white"
+                  title={filename}
+                />
+              </object>
+              <div className="absolute top-2 right-2 z-10 pointer-events-auto">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setUseNativeViewer(false)}
+                  className="text-[10px] h-6 px-2 py-0 bg-white/90 backdrop-blur shadow-xs text-slate-700 hover:text-slate-900 border-slate-300 dark:bg-slate-800/90 dark:text-slate-200"
+                >
+                  Pratinjau kosong? Beralih ke Canvas
+                </Button>
+              </div>
             </div>
           ) : (
             pdfDoc && (

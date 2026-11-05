@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { PdfCanvasViewer } from "./pdf-canvas-viewer";
 import { MarkdownDocViewer } from "./markdown-doc-viewer";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -66,10 +67,11 @@ export function DocumentPreviewModal({
     /\.(md|markdown|txt)$/i.test(filename || url);
 
   // Avoid double-wrapping if url is already a document-stream route
-  const streamUrl = url.startsWith("/api/hero-genius/document-stream")
-    ? url
+  const resolvedRaw = resolveUploadUrl(url) || url;
+  const streamUrl = resolvedRaw.startsWith("/api/hero-genius/document-stream") || resolvedRaw.startsWith("/api/uploads/")
+    ? resolvedRaw
     : `/api/hero-genius/document-stream?url=${encodeURIComponent(
-        url
+        resolvedRaw
       )}&filename=${encodeURIComponent(filename)}&format=${encodeURIComponent(format || "")}`;
 
   return (
@@ -163,7 +165,7 @@ export function DocumentPreviewModal({
             <PdfCanvasViewer
               url={streamUrl}
               filename={filename}
-              preferNativeViewer={true}
+              preferNativeViewer={false}
               hideToolbar={true}
               hideDownload={true}
               onLoaded={(pages) => setTotalPages(pages)}
