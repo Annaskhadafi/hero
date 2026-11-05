@@ -57,6 +57,11 @@ test('SOP & WIN Dynamic Department Approval Matrix - Schema, Actions & UI Parity
     /export async function seedDefaultSopWinDepartmentWorkflowsAction/,
     'actions must export seedDefaultSopWinDepartmentWorkflowsAction'
   )
+  assert.match(
+    actionsContent,
+    /export async function getSopWinApproverCandidatesAction/,
+    'actions must export getSopWinApproverCandidatesAction'
+  )
 
   const panelContent = fs.readFileSync(panelPath, 'utf8')
   assert.match(
@@ -69,6 +74,21 @@ test('SOP & WIN Dynamic Department Approval Matrix - Schema, Actions & UI Parity
     /getSopWinDepartmentWorkflowsAction/,
     'panel must call getSopWinDepartmentWorkflowsAction'
   )
+  assert.match(
+    panelContent,
+    /HeroSearchableSelect/,
+    'panel must use HeroSearchableSelect for approver name'
+  )
+  assert.match(
+    panelContent,
+    /handleApproverSelect/,
+    'panel must implement handleApproverSelect for auto-filling email and name'
+  )
+  assert.match(
+    panelContent,
+    /Auto-filled/,
+    'panel must display Auto-filled indicator when email is populated'
+  )
 
   const pageContent = fs.readFileSync(pagePath, 'utf8')
   assert.match(
@@ -80,5 +100,10 @@ test('SOP & WIN Dynamic Department Approval Matrix - Schema, Actions & UI Parity
     pageContent,
     /SopWinApprovalMatrixPanel/,
     'page must render SopWinApprovalMatrixPanel'
+  )
+  assert.match(
+    pageContent,
+    /initialEmployees=\{approverCandidatesList\}/,
+    'page must pass initialEmployees to SopWinApprovalMatrixPanel'
   )
 })
