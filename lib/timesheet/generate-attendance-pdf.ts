@@ -1122,6 +1122,7 @@ async function drawSummarySplSignatures(
   })
 }
 
+// ============================================================
 async function drawOvertimeRecordSignatures(
   doc: PDFDocument,
   page: PDFPage,
@@ -1187,6 +1188,288 @@ async function drawOvertimeRecordSignatures(
       maxWidth: lineWidth,
     })
   })
+}
+
+// ============================================================
+// SITE SUMMARY SPL PDF (Consolidated All-Employee Overtime by Site)
+// ============================================================
+export type SiteSummarySplRow = {
+  dateStr: string
+  dayName: string
+  splNumber: string
+  employeeName: string
+  employeeSn?: string
+  department?: string
+  startTime: string
+  endTime: string
+  durationHours: number
+  taskSummary: string
+  isWeekend?: boolean
+}
+
+export type SiteSummaryEmployeeStat = {
+  employeeName: string
+  employeeSn?: string
+  department?: string
+  splCount: number
+  totalHours: number
+}
+
+export type SiteSummarySplInput = {
+  documentTitle?: string
+  period: string
+  siteName: string
+  totalSplCount: number
+  totalHours: number
+  totalEmployees: number
+  rows: SiteSummarySplRow[]
+  employeeStats: SiteSummaryEmployeeStat[]
+  signatures: {
+    preparedBy?: string
+    pjoLeader?: string
+    approvedBy?: string
+    isPjo?: boolean
+    logoUrl?: string
+  }
+}
+
+export async function generateSiteSummarySplPdf(input: SiteSummarySplInput): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  let page = doc.addPage([595, 842])
+  const { width } = page.getSize()
+  const logo = await embedLogo(doc)
+
+  const LM = 45
+  let y = 790
+
+  // === LOGO + HEADER ===
+  if (logo) {
+    page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
+  }
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
+
+  const title1 = 'PT. CHITRA PARATAMA'
+  const title2 = input.documentTitle || 'SUMMARY SPL PER SITE'
+  page.drawText(title1, { x: centerX(width, title1, fontBold, 13), y, font: fontBold, size: 13 })
+  y -= 16
+  page.drawText(title2, { x: centerX(width, title2, fontBold, 10.5), y, font: fontBold, size: 10.5 })
+  y -= 13
+  const subTitle = 'HUMAN CAPITAL • REKAPITULASI LEMBUR KARYAWAN SITE'
+  page.drawText(subTitle, { x: centerX(width, subTitle, font, 7.5), y, font, size: 7.5, color: rgb(0.2, 0.25, 0.3) })
+  y -= 25
+
+  // === INFO / METADATA ===
+  const colonX = LM + 110
+  const valX = colonX + 15
+  page.drawText('MONTH / BULAN', { x: LM, y, font, size: 8.5 })
+  page.drawText(':', { x: colonX, y, font, size: 8.5 })
+  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 8.5 })
+  page.drawText(`TOTAL SPL: ${input.totalSplCount} Dokumen`, { x: width - 180, y, font: fontBold, size: 8.5 })
+  y -= 14
+
+  page.drawText('SITE / LOKASI', { x: LM, y, font, size: 8.5 })
+  page.drawText(':', { x: colonX, y, font, size: 8.5 })
+  page.drawText(input.siteName.toUpperCase(), { x: valX, y, font: fontBold, size: 8.5 })
+  page.drawText(`TOTAL PEKERJA: ${input.totalEmployees} Orang`, { x: width - 180, y, font: fontBold, size: 8.5 })
+  y -= 14
+
+  page.drawText('TOTAL JAM LEMBUR', { x: LM, y, font, size: 8.5 })
+  page.drawText(':', { x: colonX, y, font, size: 8.5 })
+  page.drawText(`${input.totalHours} Jam`, { x: valX, y, font: fontBold, size: 8.5, color: rgb(0, 0.45, 0.7) })
+  y -= 20
+
+  // === TABLE HEADER ===
+  // cols: Tgl (28), Hari (42), Karyawan (85), Dept (60), Mulai (35), Selesai (35), Total Jam (40), Pekerjaan (180) = 505
+  const cols = [28, 42, 85, 60, 35, 35, 40, 180]
+  const tableStartX = LM
+  const colX: number[] = []
+  let cx = tableStartX
+  for (const w of cols) {
+    colX.push(cx)
+    cx += w
+  }
+
+  const hH = 22
+  const drawTableHeader = (pg: PDFPage, curY: number) => {
+    drawCell(pg, colX[0], curY - hH, cols[0], hH, { text: 'Tgl', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[1], curY - hH, cols[1], hH, { text: 'Hari', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[2], curY - hH, cols[2], hH, { text: 'Nama Karyawan', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[3], curY - hH, cols[3], hH, { text: 'Departemen', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[4], curY - 11, cols[4] + cols[5], 11, { text: 'Jam Lembur', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[4], curY - hH, cols[4], 11, { text: 'Mulai', font: fontBold, fontSize: 6.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[5], curY - hH, cols[5], 11, { text: 'Selesai', font: fontBold, fontSize: 6.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[6], curY - hH, cols[6], hH, { text: 'Total Jam', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[7], curY - hH, cols[7], hH, { text: 'Yang Dikerjakan / No. SPL', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+  }
+
+  drawTableHeader(page, y)
+  y -= hH
+
+  // === TABLE ROWS ===
+  let pageNum = 1
+  for (const row of input.rows) {
+    const isWeekend = row.isWeekend || row.dayName === 'Minggu' || row.dayName === 'Sabtu'
+    const bgColor = isWeekend ? rgb(1, 0.95, 0.95) : undefined
+    const textRedColor = isWeekend ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
+
+    // Dynamic row height
+    const maxTextW = cols[7] - 8
+    let taskLines = 1
+    if (row.taskSummary && font) {
+      let linesCount = 0
+      for (const paragraph of row.taskSummary.split('\n')) {
+        let line = ''
+        for (const word of paragraph.split(/\s+/)) {
+          const test = line ? `${line} ${word}` : word
+          if (line && font.widthOfTextAtSize(test, 6.5) > maxTextW) {
+            linesCount++
+            line = word
+          } else {
+            line = test
+          }
+        }
+        if (line) linesCount++
+      }
+      taskLines = Math.max(1, linesCount)
+    }
+    const dynamicRowH = Math.max(15, taskLines * 8 + 6)
+
+    // Page break check
+    if (y - dynamicRowH < 85) {
+      page = doc.addPage([595, 842])
+      pageNum++
+      y = 790
+
+      const subTitleCont = `PT. CHITRA PARATAMA — SUMMARY SPL PER SITE (Halaman ${pageNum})`
+      page.drawText(subTitleCont, { x: centerX(width, subTitleCont, fontBold, 9.5), y, font: fontBold, size: 9.5 })
+      y -= 18
+      drawTableHeader(page, y)
+      y -= hH
+    }
+
+    y -= dynamicRowH
+
+    const tglOnly = row.dateStr.split(' ')[0] || row.dateStr
+    drawCell(page, colX[0], y, cols[0], dynamicRowH, { text: tglOnly, font, fontSize: 7, align: 'center', bgColor, color: textRedColor })
+    drawCell(page, colX[1], y, cols[1], dynamicRowH, { text: row.dayName, font, fontSize: 7, align: 'center', bgColor, color: textRedColor })
+    drawCell(page, colX[2], y, cols[2], dynamicRowH, { text: row.employeeName, font: fontBold, fontSize: 7, align: 'left', wrap: true, bgColor })
+    drawCell(page, colX[3], y, cols[3], dynamicRowH, { text: row.department || '—', font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
+    drawCell(page, colX[4], y, cols[4], dynamicRowH, { text: row.startTime, font, fontSize: 6.5, align: 'center', bgColor })
+    drawCell(page, colX[5], y, cols[5], dynamicRowH, { text: row.endTime, font, fontSize: 6.5, align: 'center', bgColor })
+    drawCell(page, colX[6], y, cols[6], dynamicRowH, { text: `${row.durationHours} Jam`, font: fontBold, fontSize: 7, align: 'center', color: rgb(0, 0.4, 0.7), bgColor })
+    drawCell(page, colX[7], y, cols[7], dynamicRowH, { text: row.taskSummary, font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
+  }
+
+  // Check room for Total Row + Employee Recap + Signatures
+  if (y - 140 < 50) {
+    page = doc.addPage([595, 842])
+    pageNum++
+    y = 790
+  }
+
+  // === TOTAL ROW ===
+  const rowH = 16
+  y -= rowH
+  const tBg = rgb(0.85, 0.98, 0.88)
+  const tMergeW = cols[0] + cols[1] + cols[2] + cols[3] + cols[4] + cols[5]
+  drawCell(page, colX[0], y, tMergeW, rowH, { text: 'TOTAL JAM LEMBUR SITE:', font: fontBold, fontSize: 8, align: 'center', bgColor: tBg, color: rgb(0.1, 0.5, 0.2) })
+  drawCell(page, colX[6], y, cols[6], rowH, { text: `${input.totalHours} Jam`, font: fontBold, fontSize: 8.5, align: 'center', bgColor: tBg, color: rgb(0, 0.5, 0) })
+  drawCell(page, colX[7], y, cols[7], rowH, { text: `(${input.totalSplCount} SPL • ${input.totalEmployees} Karyawan)`, font: fontBold, fontSize: 7, align: 'left', bgColor: tBg, color: rgb(0.1, 0.5, 0.2) })
+
+  // === REKAPITULASI PER KARYAWAN TABLE ===
+  if (input.employeeStats && input.employeeStats.length > 0) {
+    if (y - (input.employeeStats.length * 14 + 40) < 70) {
+      page = doc.addPage([595, 842])
+      pageNum++
+      y = 790
+    }
+
+    y -= 18
+    const recapTitle = `REKAPITULASI TOTAL LEMBUR PER KARYAWAN (SITE: ${input.siteName.toUpperCase()})`
+    page.drawText(recapTitle, { x: LM, y, font: fontBold, size: 8, color: rgb(0, 0.2, 0.45) })
+    y -= 6
+
+    const rCols = [25, 180, 120, 80, 100]
+    const rColX: number[] = []
+    let rcx = LM
+    for (const w of rCols) {
+      rColX.push(rcx)
+      rcx += w
+    }
+
+    const rHH = 14
+    y -= rHH
+    drawCell(page, rColX[0], y, rCols[0], rHH, { text: 'No', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[1], y, rCols[1], rHH, { text: 'Nama Karyawan', font: fontBold, fontSize: 7, align: 'left', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[2], y, rCols[2], rHH, { text: 'Departemen', font: fontBold, fontSize: 7, align: 'left', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[3], y, rCols[3], rHH, { text: 'Jumlah SPL', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[4], y, rCols[4], rHH, { text: 'Total Jam Lembur', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.9, 0.93, 0.96) })
+
+    input.employeeStats.forEach((st, idx) => {
+      const rH = 13
+      if (y - rH < 75) {
+        page = doc.addPage([595, 842])
+        pageNum++
+        y = 790
+      }
+      y -= rH
+      const rBg = idx % 2 === 1 ? rgb(0.98, 0.98, 0.99) : undefined
+      drawCell(page, rColX[0], y, rCols[0], rH, { text: String(idx + 1), font, fontSize: 7, align: 'center', bgColor: rBg })
+      drawCell(page, rColX[1], y, rCols[1], rH, { text: `${st.employeeName}${st.employeeSn && st.employeeSn !== '—' ? ` (${st.employeeSn})` : ''}`, font: fontBold, fontSize: 7, align: 'left', bgColor: rBg })
+      drawCell(page, rColX[2], y, rCols[2], rH, { text: st.department || '—', font, fontSize: 7, align: 'left', bgColor: rBg })
+      drawCell(page, rColX[3], y, rCols[3], rH, { text: `${st.splCount} SPL`, font, fontSize: 7, align: 'center', bgColor: rBg })
+      drawCell(page, rColX[4], y, rCols[4], rH, { text: `${st.totalHours} Jam`, font: fontBold, fontSize: 7, align: 'center', color: rgb(0, 0.4, 0.7), bgColor: rBg })
+    })
+  }
+
+  // === SIGNATURES ===
+  if (y - 75 < 45) {
+    page = doc.addPage([595, 842])
+    pageNum++
+    y = 790
+  }
+  y -= 25
+
+  const sigCols = 3
+  const sigW = (width - LM * 2) / sigCols
+  const sigData = [
+    { label: 'Dibuat oleh :', name: input.signatures.preparedBy || 'Admin Site' },
+    { label: 'Diketahui oleh :', name: input.signatures.pjoLeader || 'PJO Site' },
+    { label: 'Approved by :', name: input.signatures.approvedBy || 'Site Leader' },
+  ]
+
+  sigData.forEach((sig, idx) => {
+    const sx = LM + idx * sigW
+    page.drawText(sig.label, { x: sx, y, font: fontItalic, size: 7.5, color: rgb(0.3, 0.3, 0.3) })
+    page.drawLine({
+      start: { x: sx, y: y - 38 },
+      end: { x: sx + sigW - 20, y: y - 38 },
+      color: rgb(0.4, 0.4, 0.4),
+      thickness: 0.5,
+    })
+    page.drawText(sig.name, {
+      x: sx,
+      y: y - 48,
+      font: fontBold,
+      size: 7.5,
+      maxWidth: sigW - 20,
+    })
+  })
+
+  return doc.save()
 }
 
 // ============================================================

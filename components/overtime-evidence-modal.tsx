@@ -40,36 +40,45 @@ export function OvertimeEvidenceModal({
         const res = await fetch(`/api/overtime-evidence/${encodeURIComponent(String(splId))}`, {
           cache: 'no-store',
         })
-        if (res.ok) {
-          const json = await res.json()
-          if (json.success && json.data && isMounted) {
-            setData(json.data)
-            return
-          }
+        const json = await res.json().catch(() => null)
+        if (res.ok && json?.success && json?.data && isMounted) {
+          setData(json.data)
+          return
         }
 
-        // 2. Fallback ke Server Action
-        const actionRes = await getOvertimeEvidenceDataAction(splId)
-        if (!isMounted) return
-        if (actionRes.success && actionRes.data) {
-          setData(actionRes.data)
-        } else {
-          setError(actionRes.error || 'Dokumen bukti SPL tidak ditemukan.')
+        // Jika API route mengembalikan error spesifik (misal 404 Tidak Ditemukan)
+        if (json && !json.success) {
+          if (isMounted) setError(json.error || 'Dokumen bukti SPL tidak ditemukan.')
+          return
+        }
+
+        // 2. Fallback ke Server Action jika fetch API tidak memberikan respon
+        try {
+          const actionRes = await getOvertimeEvidenceDataAction(splId)
+          if (!isMounted) return
+          if (actionRes.success && actionRes.data) {
+            setData(actionRes.data)
+            return
+          } else {
+            setError(actionRes.error || 'Dokumen bukti SPL tidak ditemukan.')
+            return
+          }
+        } catch (actionErr: any) {
+          const msg = String(actionErr?.message || '')
+          if (msg.includes('was not found on the server') || msg.includes('Server Action')) {
+            setError('Versi aplikasi baru saja diperbarui di server. Silakan muat ulang halaman (tekan tombol Muat Ulang di bawah).')
+            return
+          }
+          throw actionErr
         }
       } catch (err: any) {
         if (!isMounted) return
-        // Coba ulang via API route jika Server Action error
-        try {
-          const retryRes = await fetch(`/api/overtime-evidence/${encodeURIComponent(String(splId))}`)
-          if (retryRes.ok) {
-            const retryJson = await retryRes.json()
-            if (retryJson.success && retryJson.data && isMounted) {
-              setData(retryJson.data)
-              return
-            }
-          }
-        } catch {}
-        setError(err?.message || 'Gagal memuat galeri bukti SPL.')
+        const msg = String(err?.message || '')
+        if (msg.includes('was not found on the server') || msg.includes('Server Action')) {
+          setError('Versi aplikasi baru saja diperbarui di server. Silakan muat ulang halaman (tekan tombol Muat Ulang di bawah).')
+        } else {
+          setError(msg || 'Gagal memuat galeri bukti SPL.')
+        }
       } finally {
         if (isMounted) setIsLoading(false)
       }
@@ -102,14 +111,26 @@ export function OvertimeEvidenceModal({
             </div>
             <h3 className="text-base font-bold text-slate-900">Gagal Memuat Bukti</h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onClose}
-              className="mt-4 rounded-xl text-xs font-bold"
-            >
-              Tutup
-            </Button>
+            <div className="mt-4 flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onClose}
+                className="rounded-xl text-xs font-bold"
+              >
+                Tutup
+              </Button>
+              {(error.includes('muat ulang') || error.includes('Server Action') || error.includes('diperbarui')) && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                  className="rounded-xl text-xs font-bold bg-[#003f78] hover:bg-[#002f5a] text-white"
+                >
+                  Muat Ulang Halaman
+                </Button>
+              )}
+            </div>
           </div>
         ) : data ? (
           <OvertimeEvidenceViewer data={data} isModal={true} onClose={onClose} />
