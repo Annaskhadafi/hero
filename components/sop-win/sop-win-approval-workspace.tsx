@@ -54,6 +54,7 @@ import {
   getSopWinDocumentRequestsAction,
   getSopWinDocumentRequestDetailAction,
   updateSopWinAccessSettingsAction,
+  syncSopWinRequestWorkflowAction,
 } from "@/app/dashboard/sop-win/actions";
 import { getUserSignatureAction } from "@/app/actions/user-signature";
 import { downloadFilesAsZip } from "@/lib/pdf-download";
@@ -340,6 +341,32 @@ export function SopWinApprovalWorkspace({
 
   // Single Review Modal State
   const [activeReviewReq, setActiveReviewReq] = useState<SopWinRequestItem | null>(null);
+  const [isSyncingWorkflow, setIsSyncingWorkflow] = useState(false);
+
+  const handleSyncWorkflow = async () => {
+    if (!activeReviewReq) return;
+    setIsSyncingWorkflow(true);
+    try {
+      const res = await syncSopWinRequestWorkflowAction(activeReviewReq.id);
+      if (res.success && res.data) {
+        toast.success(res.message);
+        const updatedReq = {
+          ...activeReviewReq,
+          approvals: res.data,
+        };
+        setActiveReviewReq(updatedReq as any);
+        setDocRequests((prev) =>
+          prev.map((r) => (r.id === activeReviewReq.id ? (updatedReq as any) : r))
+        );
+      } else {
+        toast.error(res.message || "Gagal menyinkronkan alur approval.");
+      }
+    } catch {
+      toast.error("Terjadi kesalahan jaringan.");
+    } finally {
+      setIsSyncingWorkflow(false);
+    }
+  };
   const [expiryDays, setExpiryDays] = useState<number>(3);
   const [canDownload, setCanDownload] = useState<boolean>(true);
   const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
@@ -1342,7 +1369,20 @@ export function SopWinApprovalWorkspace({
                               {/* Embedded Catatan Approval Table */}
                               <tr>
                                 <td colSpan={2} className="bg-white p-2">
-                                  <div className="font-bold mb-1.5 text-[8.5pt]">Catatan Approval (Opsional)</div>
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <div className="font-bold text-[8.5pt]">Catatan Approval (Opsional)</div>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={isSyncingWorkflow}
+                                      onClick={handleSyncWorkflow}
+                                      className="h-6 px-2 text-[8pt] text-blue-700 hover:text-blue-900 hover:bg-blue-50 font-bold gap-1 rounded"
+                                    >
+                                      <RefreshCw className={`size-3 ${isSyncingWorkflow ? "animate-spin" : ""}`} />
+                                      Sinkronkan Matrix
+                                    </Button>
+                                  </div>
                                   <table className="w-full border-collapse border border-black [&_td]:border [&_td]:border-black [&_td]:px-1.5 [&_td]:py-1 [&_th]:border [&_th]:border-black [&_th]:px-1.5 [&_th]:py-1 text-[8pt]" style={{ tableLayout: 'fixed' }}>
                                     <thead>
                                       <tr className="bg-white font-bold text-center">
