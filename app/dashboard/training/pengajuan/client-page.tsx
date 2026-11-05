@@ -25,6 +25,8 @@ import {
   Trash2,
   ExternalLink,
   Loader2,
+  FileUp,
+  Edit2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,6 +42,7 @@ import {
 import { TrainingRequestFormDialog } from '@/components/training/training-request-form-dialog'
 import { TrainingRequestPdfDialog } from '@/components/training/training-request-pdf-dialog'
 import { TrainingRequestApprovalDialog } from '@/components/training/training-request-approval-dialog'
+import { TrainingRequestAttachmentDialog } from '@/components/training/training-request-attachment-dialog'
 import {
   syncTrainingRequestToRecords,
   deleteTrainingRequest,
@@ -70,6 +73,8 @@ export function TrainingRequestsClientPage({
   const [activeTab, setActiveTab] = useState<'all' | 'my_pending' | 'my_requests' | 'approved' | 'rejected'>('all')
   const [isSyncing, startSyncTransition] = useTransition()
   const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [selectedForAttachment, setSelectedForAttachment] = useState<any | null>(null)
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false)
 
   // Find target item if highlightId exists
   const targetHighlightItem = useMemo(() => {
@@ -387,15 +392,41 @@ export function TrainingRequestsClientPage({
                               })
                             : '-'}
                         </div>
-                        {req.attachmentUrl && (
-                          <a
-                            href={resolveUploadUrl(req.attachmentUrl)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:underline mt-0.5"
+                        {req.attachmentUrl ? (
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <a
+                              href={resolveUploadUrl(req.attachmentUrl)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              <Paperclip className="w-3 h-3 text-blue-600" />
+                              <span className="truncate max-w-[130px]">{req.attachmentName || 'Lampiran'}</span>
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedForAttachment(req)
+                                setIsAttachmentDialogOpen(true)
+                              }}
+                              className="inline-flex items-center gap-0.5 text-[10px] text-slate-500 hover:text-blue-700 bg-slate-100 hover:bg-blue-50 px-1 py-0.5 rounded border border-slate-200 transition-colors"
+                              title="Ganti Berkas Penawaran"
+                            >
+                              <Edit2 className="w-2.5 h-2.5" /> Ganti
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedForAttachment(req)
+                              setIsAttachmentDialogOpen(true)
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded mt-1 transition-colors"
+                            title="Lampirkan berkas penawaran"
                           >
-                            <Paperclip className="w-3 h-3" /> Lampiran
-                          </a>
+                            <FileUp className="w-3 h-3 text-blue-600" /> + Lampirkan Penawaran
+                          </button>
                         )}
                       </td>
 
@@ -547,6 +578,16 @@ export function TrainingRequestsClientPage({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="text-xs">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedForAttachment(req)
+                                  setIsAttachmentDialogOpen(true)
+                                }}
+                                className="cursor-pointer"
+                              >
+                                <Paperclip className="w-3.5 h-3.5 mr-2 text-blue-600" />
+                                {req.attachmentUrl ? 'Ganti Penawaran' : 'Upload Penawaran'}
+                              </DropdownMenuItem>
                               {req.status !== 'approved' && (
                                 <DropdownMenuItem
                                   onClick={() => handleDelete(req.id)}
@@ -567,6 +608,23 @@ export function TrainingRequestsClientPage({
           </table>
         </div>
       </div>
+
+      {selectedForAttachment && (
+        <TrainingRequestAttachmentDialog
+          open={isAttachmentDialogOpen}
+          onOpenChange={(open) => {
+            setIsAttachmentDialogOpen(open)
+            if (!open) setSelectedForAttachment(null)
+          }}
+          requestId={selectedForAttachment.id}
+          requestNumber={selectedForAttachment.requestNumber}
+          trainingTitle={selectedForAttachment.trainingTitle}
+          providerName={selectedForAttachment.providerName}
+          currentAttachmentUrl={selectedForAttachment.attachmentUrl}
+          currentAttachmentName={selectedForAttachment.attachmentName}
+          onSuccess={() => router.refresh()}
+        />
+      )}
     </div>
   )
 }

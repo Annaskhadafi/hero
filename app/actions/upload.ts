@@ -17,8 +17,8 @@ import { join } from 'path'
 import { randomUUID } from 'crypto'
 
 const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024
-const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024
-const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024
+const MAX_PDF_FILE_SIZE = 15 * 1024 * 1024
+const MAX_DOC_FILE_SIZE = 15 * 1024 * 1024
 const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
 const OFFICE_MIME_TYPES = new Set([
@@ -26,8 +26,12 @@ const OFFICE_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+  'text/csv',
 ])
-const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx'])
+const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv'])
 const BANNED_EXTENSIONS = new Set([
   'html',
   'htm',
@@ -85,7 +89,8 @@ async function requireUploadSession() {
 
 export async function uploadFile(formData: FormData) {
   try {
-    const uploadTarget = (formData.get('uploadTarget') as string | null)?.trim()
+    const rawTarget = (formData.get('uploadTarget') as string | null) || (formData.get('folder') as string | null)
+    const uploadTarget = rawTarget?.trim()
     const isPublicCareerCv = uploadTarget === 'public-career-cv'
     const isContractReviewAttachment = uploadTarget === 'contract-review-attachment'
 
@@ -124,7 +129,7 @@ export async function uploadFile(formData: FormData) {
     const isImage =
       (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif)$/i.test(file.name)) &&
       file.type !== 'image/svg+xml'
-    const isPdf = file.type === 'application/pdf'
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || fileExt === 'pdf'
     if (isPublicCareerCv && !isPdf) {
       return { success: false, error: 'CV harus berformat PDF.' }
     }
@@ -132,19 +137,19 @@ export async function uploadFile(formData: FormData) {
     const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt)
 
     if (!isImage && !isPdf && !isVideo && !isOffice) {
-      return { success: false, error: 'File must be an image, PDF, Office document, or video.' }
+      return { success: false, error: 'Format berkas tidak didukung. Harap unggah PDF, Office (Word/Excel/PowerPoint), atau Gambar.' }
     }
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
       return { success: false, error: 'Ukuran foto maksimal 15MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
-      return { success: false, error: 'PDF size max 10MB.' }
+      return { success: false, error: 'Ukuran berkas PDF maksimal 15MB.' }
     }
     if (isVideo && file.size > MAX_VIDEO_FILE_SIZE) {
       return { success: false, error: 'Video size max 100MB.' }
     }
     if (isOffice && file.size > MAX_DOC_FILE_SIZE) {
-      return { success: false, error: 'Document size max 10MB.' }
+      return { success: false, error: 'Ukuran dokumen Office maksimal 15MB.' }
     }
 
     // Automatically optimize raster images to WebP with target-tuned dimensions

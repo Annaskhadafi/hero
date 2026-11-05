@@ -29,6 +29,8 @@ import {
   Check,
   AlertCircle,
   BookOpenCheck,
+  FileUp,
+  Edit2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,6 +50,7 @@ import {
 import { TrainingRequestFormDialog } from '@/components/training/training-request-form-dialog'
 import { TrainingRequestPdfDialog } from '@/components/training/training-request-pdf-dialog'
 import { TrainingRequestApprovalDialog } from '@/components/training/training-request-approval-dialog'
+import { TrainingRequestAttachmentDialog } from '@/components/training/training-request-attachment-dialog'
 import {
   syncTrainingRequestToRecords,
   deleteTrainingRequest,
@@ -97,6 +100,8 @@ export function MobileTrainingRequestsClient({
   const [isSyncing, startSyncTransition] = useTransition()
   const [syncingId, setSyncingId] = useState<number | null>(null)
   const [selectedDetailRequest, setSelectedDetailRequest] = useState<any | null>(null)
+  const [selectedForAttachment, setSelectedForAttachment] = useState<any | null>(null)
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false)
 
   // Auto-open highlight item
   const targetHighlightItem = useMemo(() => {
