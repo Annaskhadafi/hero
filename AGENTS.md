@@ -143,17 +143,23 @@ Untuk memastikan setiap progress pekerjaan harian, perbaikan bug (fix), dan pena
   3. **Menambahkan Poin Ringkasan di Slide 4**: Menambahkan poin bullet `• <Judul Fitur/Fix>` ke dalam kotak `HERO ECOSYSTEM` atau `ONE-CHITRA ECOSYSTEM` pada slide *"What We Have Done / List (Evidance)"*.
   4. **Membuat Slide Detail "HERO Update" Baru**: Menambahkan slide baru lengkap dengan badge kategori di pojok kanan atas, judul fitur, deskripsi singkat, dan menyematkan 1 atau 2 screenshot E2E secara rapi dan presisi berdampingan (*side-by-side*) tepat sebelum slide *"Planning on next months"*.
 
-### 2. Format Wajib Laporan Akhir ke Pengguna (MANDATORI - SELALU DISERTAKAN)
-Di akhir setiap respons pengerjaan tugas (fitur/fix), Agent **WAJIB** menyajikan secara lengkap:
-1. **Ringkasan Progress Harian**: Rekapitulasi apa saja yang telah dikerjakan pada sesi/hari ini.
+### 2. Format Wajib Laporan Akhir ke Pengguna (MANDATORI - OTOMATIS & LANGSUNG TANPA DIMINTA)
+> [!CRITICAL]
+> **DILARANG KERAS** berhenti sebelum seluruh rangkaian selesai atau menunggu user meminta manual "buatkan broadcast wa", "lanjutkan", atau "minta ss". Begitu suatu fitur/fix/tugas selesai dikerjakan, Agent **WAJIB OTOMATIS LANGSUNG** mengeksekusi E2E, mengambil screenshot, update presentasi PPT bulanan, git commit & push, dan menyajikan di respons akhir:
+
+Di akhir setiap respons penyelesaian tugas (fitur baru, perbaikan bug, atau refactoring), Agent **WAJIB LANGSUNG MENYERTAKAN SECARA LENGKAP DALAM SATU JAWABAN**:
+1. **Template Broadcast WhatsApp (WA) Simple & Profesional dari TIM SDS**:
+   - Ditempatkan paling atas atau prominen, format siap copy-paste langsung oleh user tanpa perlu diedit lagi.
 2. **Bukti Visual Tangkapan Layar (Screenshot / SS)**:
-   - Tampilkan bukti visual nyata tangkapan layar (screenshot UI / hasil tes E2E) yang relevan, baik berupa preview gambar maupun link file lokal yang dapat langsung dilihat user.
-3. **Template Broadcast WhatsApp (WA) Simple dari TIM SDS**:
-   - Sertakan format pesan WhatsApp singkat, jelas, profesional, dan siap di-copy-paste oleh pengguna untuk dibagikan kepada user/group terkait.
+   - Wajib menyalin screenshot E2E ke `<appDataDir>\brain\<conversation-id>\` dan menampilkannya langsung sebagai inline image markdown (`![Deskripsi](...)`) serta clickable file link (`file:///...`) agar visualnya langsung terlihat di chat.
+3. **Ringkasan Progress Pekerjaan**:
+   - Rekapitulasi apa saja masalahnya, akar penyebab, dan solusi teknis yang telah diterapkan.
 4. **Status Slide Presentasi Bulanan**:
    - File target yang diperbarui: `D:\\[01] PROJECT\\HERO\\Monthly\\MONTHLY [BULAN] [TAHUN] SDS.pptx`
-   - Nomor slide detail baru yang ditambahkan (misal: Slide #6 atau #39).
+   - Nomor slide detail baru yang ditambahkan (misal: Slide #40 atau #41).
    - Bukti screenshot E2E yang telah disematkan ke dalam slide presentasi sebagai bukti resmi (*official evidence*).
+5. **Status Git & Deploy**:
+   - Hash commit dan konfirmasi push ke `origin/main`.
 
 ---
 
