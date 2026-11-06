@@ -2403,22 +2403,51 @@ export function OvertimeListingClient({
         fallbackEmployeeName: 'Admin Site',
       })
 
-      return renderSiteSummarySplPdfHtml({
-        siteName: siteSummaryData.siteName,
-        siteLogoUrl,
-        periodLabel: formatMonthYearLabel(summaryMonth),
-        totalSplCount: siteSummaryData.totalSplCount,
-        totalHours: siteSummaryData.totalHours,
-        totalEmployees: siteSummaryData.totalEmployees,
-        rows: siteSummaryData.rows,
-        employeeStats: siteSummaryData.employeeStats,
-        signatories: {
-          preparedBy: signatories.preparedByName || 'Admin Site',
-          pjoLeader: signatories.pjoName || 'PJO Site',
-          approvedBy: signatories.leaderName || 'Site Leader',
-          isPjo: signatories.isPjo,
-        },
-      })
+      const siteEmployees = siteSummaryData.employeeStats
+      const pagesHtml = siteEmployees.map((empStat, idx) => {
+        const empRows = approvedSummaryFilteredRows.filter((r) => {
+          const rName = (r.requesterName || '').trim().toLowerCase()
+          const empName = empStat.employeeName.trim().toLowerCase()
+          if (rName === empName) return true
+          if (Array.isArray(r.participants) && r.participants.some((p: any) => (p.employeeName || '').trim().toLowerCase() === empName)) {
+            return true
+          }
+          return false
+        })
+
+        const empSignatories = resolveSummarySplSignatories({
+          selectedEmployee: null,
+          allEmployees: employees,
+          firstRowApprovals: empRows[0]?.approvals || siteSummaryData.uniqueSpls[0]?.approvals,
+          fallbackEmployeeName: empStat.employeeName,
+        })
+
+        const sheetHtml = renderSinglePersonSplSheetContent(empRows, {
+          employeeName: empStat.employeeName,
+          employeeSn: empStat.employeeSn,
+          department: empStat.department || 'Central Services',
+          siteName: siteSummaryData.siteName,
+          period: summaryMonth || '2026-10',
+          periodLabel: formatMonthYearLabel(summaryMonth),
+          totalHours: empStat.totalHours,
+          totalCount: empStat.splCount,
+          isPjo: empSignatories.isPjo,
+          pjoName: empSignatories.pjoName,
+          leaderName: empSignatories.leaderName,
+          preparedByName: empSignatories.preparedByName,
+        })
+
+        return `
+          <div class="page-wrapper">
+            <div class="page-number-badge">Halaman ${idx + 1} dari ${siteEmployees.length} • ${empStat.employeeName} (SN: ${empStat.employeeSn || '—'})</div>
+            <div class="a4-page">
+              ${sheetHtml}
+            </div>
+          </div>
+        `
+      }).join('')
+
+      return wrapSplSheetsInDocument(pagesHtml, `SUMMARY SPL PER SITE - ${siteSummaryData.siteName}`)
     }
 
     if (!approvedSummaryFilteredRows || approvedSummaryFilteredRows.length === 0) {
@@ -2512,16 +2541,6 @@ export function OvertimeListingClient({
   }
 
   const handleOpenSiteSummaryPreview = () => {
-    if (!summarySiteId || summarySiteId === 'ALL') {
-      toast.error('Silakan pilih Lokasi Site / Unit Kerja terlebih dahulu pada filter.')
-      return
-    }
-
-    if (siteSummaryData.rows.length === 0) {
-      toast.error('Tidak ada data SPL untuk site ini pada periode terpilih.')
-      return
-    }
-
     if (summaryPdfPreviewUrl) {
       URL.revokeObjectURL(summaryPdfPreviewUrl)
       setSummaryPdfPreviewUrl(null)
@@ -2606,7 +2625,7 @@ export function OvertimeListingClient({
 
   const handleDownloadSummaryPdf = async () => {
     if (summaryPreviewMode === 'site') {
-      return handleDownloadSiteTableSummaryPdf()
+      return handleDownloadSiteSummaryPdf()
     }
 
     if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
