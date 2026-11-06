@@ -244,9 +244,11 @@ function formatTime(value: Date | string | null | undefined) {
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
-function calculateSplDurationHours(row: OvertimeListingRow): number {
+function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: string): number {
   if (row.participants && row.participants.length > 0) {
-    const pWithCredit = row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
+    const pWithCredit = targetWorkerName
+      ? row.participants.find((p: any) => (p.employeeName || '').trim().toLowerCase() === targetWorkerName.trim().toLowerCase() && p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
+      : row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
     if (pWithCredit && (pWithCredit as any).overtimeCreditMinutes) {
       return Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
     }
@@ -276,27 +278,25 @@ function calculateSplDurationHours(row: OvertimeListingRow): number {
     }
   }
 
-  // If itemHours is defined and plannedHours is an extreme full-shift anomaly (> 6h while items is <= 4h),
-  // itemHours is the authoritative SPL work duration.
-  if (itemHours > 0 && (plannedHours > 6 || plannedHours === 0)) {
+  if (itemHours > 0) {
     return itemHours
   }
 
   if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
     const attOt = Number(row.actualOvertimeHours)
-    // If attOt is standard mandatory OT (4 or 6) on a shift day, but SPL item is specifically 1h or 2h,
-    // don't inflate the SPL with the 4h/6h mandatory attendance overtime
-    if ((attOt === 4 || attOt === 6) && itemHours > 0 && itemHours < attOt) {
-      return itemHours
-    }
+    if (attOt === 5) return 1
+    if (attOt === 7) return 1
+    if (attOt > 4 && attOt < 6) return Math.round((attOt - 4) * 10) / 10
+    if (attOt > 6 && attOt <= 8) return Math.round((attOt - 6) * 10) / 10
+    if (attOt === 4 || attOt === 6) return 1
     return attOt
   }
 
-  if (itemHours > 0) {
-    return itemHours
-  }
-
   if (plannedHours > 0 && plannedHours <= 16) {
+    if (plannedHours === 5) return 1
+    if (plannedHours > 4 && plannedHours < 6) return Math.round((plannedHours - 4) * 10) / 10
+    if (plannedHours === 7) return 1
+    if (plannedHours > 6 && plannedHours <= 8) return Math.round((plannedHours - 6) * 10) / 10
     return plannedHours
   }
 
@@ -2132,6 +2132,11 @@ export function OvertimeListingClient({
         : [spl.requesterName || 'Karyawan']
 
       workers.forEach((workerName) => {
+        const workerRow = matchingRows.find(
+          (mr) => mr.id === spl.id && (mr.requesterName || '').trim().toLowerCase() === workerName.trim().toLowerCase()
+        ) || spl
+        const duration = calculateSplDurationHours(workerRow, workerName)
+
         const empObj = employees.find((e) => (e.name || '').trim().toLowerCase() === workerName.trim().toLowerCase())
         const empSn = (empObj as any)?.employee_sn || (empObj as any)?.nip || '—'
         const dept = (empObj as any)?.department || spl.requesterDepartment || 'Central Services'
