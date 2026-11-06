@@ -217,6 +217,7 @@ export default async function OvertimeRequestsPage() {
             shiftCode: overtimeCommandLetterParticipants.shiftCode,
             rosterType: overtimeCommandLetterParticipants.rosterType,
             category: overtimeCommandLetterParticipants.category,
+            overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
           })
           .from(overtimeCommandLetterParticipants)
           .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))

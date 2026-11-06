@@ -245,43 +245,30 @@ function formatTime(value: Date | string | null | undefined) {
 }
 
 function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: string): number {
+  // 1. Specific worker credit minutes in participants (Authoritative per employee)
   if (row.participants && row.participants.length > 0) {
     const pWithCredit = targetWorkerName
       ? row.participants.find((p: any) => (p.employeeName || '').trim().toLowerCase() === targetWorkerName.trim().toLowerCase() && p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
       : row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
     if (pWithCredit && (pWithCredit as any).overtimeCreditMinutes) {
-      return Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
+      const crHours = Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
+      if (crHours > 0 && crHours <= 12) return crHours
     }
   }
 
+  // 2. Line items task duration (e.g. Assembly TS tire 1 unit = 60 mins / 1h, Washing tire = 60 mins / 1h)
   let itemHours = 0
   if (row.lineItems && row.lineItems.length > 0) {
     const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
-    if (mins > 0) {
+    if (mins > 0 && mins <= 720) {
       itemHours = Math.round((mins / 60) * 10) / 10
     }
   }
-
-  let plannedHours = 0
-  if (row.plannedStartAt && row.plannedEndAt) {
-    const startObj = new Date(row.plannedStartAt)
-    const endObj = new Date(row.plannedEndAt)
-    if (!isNaN(startObj.getTime()) && !isNaN(endObj.getTime())) {
-      const diffMs = endObj.getTime() - startObj.getTime()
-      let diffHours = diffMs / (1000 * 60 * 60)
-      if (diffHours === 25 || diffHours === 24) {
-        diffHours = 1
-      }
-      if (diffHours > 0) {
-        plannedHours = Math.round(diffHours * 10) / 10
-      }
-    }
-  }
-
   if (itemHours > 0) {
-    return itemHours
+    return Math.min(itemHours, 8)
   }
 
+  // 3. Attendance actualOvertimeHours (excess beyond standard 4h/6h mandatory shift)
   if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
     const attOt = Number(row.actualOvertimeHours)
     if (attOt === 5) return 1
@@ -289,18 +276,36 @@ function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: s
     if (attOt > 4 && attOt < 6) return Math.round((attOt - 4) * 10) / 10
     if (attOt > 6 && attOt <= 8) return Math.round((attOt - 6) * 10) / 10
     if (attOt === 4 || attOt === 6) return 1
-    return attOt
+    if (attOt <= 8) return attOt
   }
 
-  if (plannedHours > 0 && plannedHours <= 16) {
-    if (plannedHours === 5) return 1
-    if (plannedHours > 4 && plannedHours < 6) return Math.round((plannedHours - 4) * 10) / 10
-    if (plannedHours === 7) return 1
-    if (plannedHours > 6 && plannedHours <= 8) return Math.round((plannedHours - 6) * 10) / 10
-    return plannedHours
+  // 4. Planned start & end times fallback
+  if (row.plannedStartAt && row.plannedEndAt) {
+    const startObj = new Date(row.plannedStartAt)
+    const endObj = new Date(row.plannedEndAt)
+    if (!isNaN(startObj.getTime()) && !isNaN(endObj.getTime())) {
+      const sMin = startObj.getHours() * 60 + startObj.getMinutes()
+      const eMin = endObj.getHours() * 60 + endObj.getMinutes()
+      let diffMin = eMin - sMin
+      if (diffMin < 0) diffMin += 24 * 60
+      if (diffMin === 0) {
+        // e.g. 08.00 to 08.00 (same time placeholder) -> 1 hour
+        return 1
+      }
+      let pH = Math.round((diffMin / 60) * 10) / 10
+      // If planned span is a whole working shift (e.g. 08.00 to 18.00 = 10h), standard shift is 8h, excess OT is 1-2h
+      if (pH >= 8 && pH <= 12) {
+        pH = Math.max(1, Math.round((pH - 8) * 10) / 10)
+      } else if (pH > 12) {
+        pH = 1
+      }
+      if (pH > 0 && pH <= 8) {
+        return pH
+      }
+    }
   }
 
-  return 0
+  return 1 // Default minimum 1h for an approved SPL
 }
 
 function formatMonthYearLabel(monthStr: string): string {
@@ -372,7 +377,6 @@ function buildOvertimeRecordMonthlyDays(
 
     if (matchingRows.length > 0) {
       const primaryRow = matchingRows[0]
-      const durHours = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
 
       const startStr = primaryRow.plannedStartAt
         ? formatTime(primaryRow.plannedStartAt).replace(':', '.')
@@ -380,15 +384,28 @@ function buildOvertimeRecordMonthlyDays(
         ? primaryRow.attendanceClockIn.replace(':', '.')
         : '17.00'
 
-      let endStr = primaryRow.plannedEndAt ? formatTime(primaryRow.plannedEndAt).replace(':', '.') : '21.00'
-      if (durHours > 0) {
-        const [sH, sM] = startStr.split('.').map((v) => parseInt(v, 10) || 0)
-        const totalStartMin = sH * 60 + sM
-        const totalEndMin = totalStartMin + Math.round(durHours * 60)
-        const endH = Math.floor(totalEndMin / 60) % 24
-        const endM = totalEndMin % 60
-        endStr = `${String(endH).padStart(2, '0')}.${String(endM).padStart(2, '0')}`
+      const endStr = primaryRow.plannedEndAt
+        ? formatTime(primaryRow.plannedEndAt).replace(':', '.')
+        : primaryRow.attendanceClockOut
+        ? primaryRow.attendanceClockOut.replace(':', '.')
+        : '21.00'
+
+      // Calculate realistic time-of-day span between start and end (strictly eliminates 101h / 22h bugs)
+      const [sH, sM] = startStr.split('.').map((v) => parseInt(v, 10) || 0)
+      const [eH, eM] = endStr.split('.').map((v) => parseInt(v, 10) || 0)
+      let timeDiffMin = (eH * 60 + eM) - (sH * 60 + sM)
+      if (timeDiffMin < 0) {
+        timeDiffMin += 24 * 60 // crosses midnight (e.g. 14.00 to 01.00 = 11h, 20.00 to 01.00 = 5h)
+      } else if (timeDiffMin === 0 && primaryRow.plannedStartAt) {
+        timeDiffMin = 60
       }
+      let spanHours = Math.round((timeDiffMin / 60) * 10) / 10
+      if (spanHours > 12) spanHours = 12
+
+      const itemHoursSum = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
+      let durHours = (itemHoursSum > 0 && itemHoursSum <= spanHours) ? itemHoursSum : spanHours
+      if (durHours > 12) durHours = 12
+      if (durHours <= 0) durHours = spanHours > 0 ? spanHours : 1
 
       const taskSummaries = Array.from(
         new Set(
@@ -435,7 +452,7 @@ function buildOvertimeRecordMonthlyDays(
   return days
 }
 
-function renderSummarySplPdfHtml(
+function renderSinglePersonSplSheetContent(
   summaryRows: OvertimeListingRow[],
   filterInfo: {
     employeeName: string
@@ -457,6 +474,7 @@ function renderSummarySplPdfHtml(
 ): string {
   const daysData = buildOvertimeRecordMonthlyDays(summaryRows, filterInfo.period)
   const siteLogoUrl = resolveSiteLogoUrl(filterInfo.siteName, filterInfo.siteLogoUrl)
+  let computedTotalHours = 0
 
   const rowsHtml = daysData
     .map((day) => {
@@ -465,10 +483,13 @@ function renderSummarySplPdfHtml(
       const isWeekend = isSunday || isSaturday
       const rowBg = isWeekend ? 'background-color: #fef08a;' : 'background-color: #ffffff;'
       const dayColor = isWeekend ? 'color: #dc2626; font-weight: bold;' : 'color: #000000;'
-      const startTime = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? day.clockIn : ''
-      const endTime = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? day.clockOut : ''
-      const totalHoursStr = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? String(day.overtime.totalHours) : ''
-      const taskStr = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? (day.splTitle || '') : ''
+      const hasOt = day.overtime?.totalHours != null && Number(day.overtime.totalHours) > 0
+      const startTime = hasOt ? day.clockIn : ''
+      const endTime = hasOt ? day.clockOut : ''
+      const totalHoursNum = hasOt ? Number(day.overtime.totalHours) : 0
+      if (totalHoursNum > 0) computedTotalHours += totalHoursNum
+      const totalHoursStr = totalHoursNum > 0 ? String(totalHoursNum) : ''
+      const taskStr = hasOt ? (day.splTitle || '') : ''
 
       return `
         <tr style="${rowBg} height: 16px;">
@@ -483,113 +504,209 @@ function renderSummarySplPdfHtml(
     })
     .join('')
 
+  const displayTotal = computedTotalHours > 0 ? Math.round(computedTotalHours * 10) / 10 : (filterInfo.totalHours > 0 ? filterInfo.totalHours : 0)
+
+  return `
+    <div class="header-box">
+      <div style="width: 140px; text-align: left;">
+        <img src="/cp_logo-removebg-preview.png" style="height: 48px; max-width: 130px; object-fit: contain;" />
+      </div>
+      <div class="header-title">
+        <div style="font-weight: bold; font-size: 14pt; letter-spacing: 0.5px;">PT. CHITRA PARATAMA</div>
+        <div style="font-weight: bold; font-size: 11pt; margin-top: 3px; letter-spacing: 0.5px;">SUMMARY SPL</div>
+      </div>
+      <div style="width: 140px; text-align: right;">
+        ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 48px; max-width: 130px; object-fit: contain;" />` : ''}
+      </div>
+    </div>
+
+    <table class="meta-table">
+      <tr>
+        <td style="width: 130px;">MONTH</td>
+        <td style="width: 15px;">:</td>
+        <td style="font-weight: bold;">${filterInfo.periodLabel}</td>
+        <td style="text-align: right; font-weight: normal; width: 140px;">SN ${filterInfo.employeeSn || '—'}</td>
+      </tr>
+      <tr>
+        <td>Name of Employee</td>
+        <td>:</td>
+        <td colspan="2" style="font-weight: bold;">${filterInfo.employeeName}</td>
+      </tr>
+      <tr>
+        <td>Department</td>
+        <td>:</td>
+        <td colspan="2">${filterInfo.department || filterInfo.section || 'Central Services'}</td>
+      </tr>
+      <tr>
+        <td>Site</td>
+        <td>:</td>
+        <td colspan="2">${filterInfo.siteName || 'Balikpapan'}</td>
+      </tr>
+    </table>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th rowspan="2" style="width: 35px;">Tanggal</th>
+          <th rowspan="2" style="width: 70px;">Hari</th>
+          <th colspan="2" style="width: 110px;">Jam Lembur</th>
+          <th rowspan="2" style="width: 70px;">Total Lembur</th>
+          <th rowspan="2">Yang Dikerjakan</th>
+        </tr>
+        <tr>
+          <th style="width: 55px; font-size: 7pt;">Mulai</th>
+          <th style="width: 55px; font-size: 7pt;">Selesai</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+        <tr class="total-row" style="height: 18px;">
+          <td colspan="4" style="border: 1px solid #000000; padding: 4px; text-align: right; font-weight: bold;">TOTAL :</td>
+          <td style="border: 1px solid #000000; padding: 4px; text-align: center; font-weight: bold;">${displayTotal}</td>
+          <td style="border: 1px solid #000000; padding: 4px;"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="signatures-table">
+      <tr>
+        <td>
+          <div>Dibuat oleh:</div>
+          <div class="sign-line"></div>
+          <div style="font-weight: bold;">${filterInfo.preparedByName || filterInfo.employeeName}</div>
+        </td>
+        <td>
+          <div>Approved by:</div>
+          <div class="sign-line"></div>
+          <div style="font-weight: bold;">${filterInfo.leaderName || 'Apriyanto'}</div>
+        </td>
+        <td>
+          <div>Approved by:</div>
+          <div class="sign-line"></div>
+          <div style="font-weight: bold;">${filterInfo.pjoName || 'Romy Hidayat'}</div>
+        </td>
+      </tr>
+    </table>
+  `
+}
+
+function wrapSplSheetsInDocument(pagesHtml: string, title: string): string {
   return `
     <!DOCTYPE html>
     <html>
       <head>
         <meta charset="utf-8" />
-        <title>SUMMARY SPL - ${filterInfo.employeeName}</title>
+        <title>${title}</title>
         <style>
-          @page { size: A4 portrait; margin: 12mm 15mm; }
-          body { font-family: Arial, sans-serif; color: #000000; margin: 0; padding: 20px; background: #fff; box-sizing: border-box; }
-          .header-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+          @page { size: A4 portrait; margin: 10mm 12mm; }
+          * { box-sizing: border-box; }
+          body {
+            font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #334155;
+            margin: 0;
+            padding: 24px 16px 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #000000;
+            -webkit-font-smoothing: antialiased;
+          }
+          .page-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 24px;
+            width: 100%;
+          }
+          .page-indicator-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #1e293b;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 4px 14px;
+            border-radius: 9999px;
+            margin-bottom: 10px;
+            border: 1px solid #475569;
+            letter-spacing: 0.3px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+          }
+          .a4-page {
+            background: #ffffff;
+            width: 210mm;
+            max-width: calc(100vw - 32px);
+            min-height: 297mm;
+            padding: 12mm 15mm;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.12);
+            border-radius: 3px;
+            box-sizing: border-box;
+            position: relative;
+          }
+          .header-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
           .header-title { text-align: center; flex: 1; }
-          .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9pt; }
+          .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 8.5pt; }
           .meta-table td { padding: 2px 0; vertical-align: top; }
-          .data-table { width: 100%; border-collapse: collapse; font-size: 8pt; margin-bottom: 16px; }
-          .data-table th { border: 1px solid #000000; padding: 4px; font-weight: bold; font-size: 7.5pt; text-align: center; background: #ffffff; }
+          .data-table { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-bottom: 14px; }
+          .data-table th { border: 1px solid #000000; padding: 3px; font-weight: bold; font-size: 7pt; text-align: center; background: #ffffff; }
           .total-row { background-color: #dcfce7; font-weight: bold; }
-          .signatures-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 8.5pt; }
-          .signatures-table td { width: 33.33%; text-align: left; vertical-align: top; padding: 0 10px; }
-          .sign-line { border-bottom: 1px solid #000; margin-top: 55px; margin-bottom: 4px; width: 85%; }
+          .signatures-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 8pt; }
+          .signatures-table td { width: 33.33%; text-align: left; vertical-align: top; padding: 0 8px; }
+          .sign-line { border-bottom: 1px solid #000; margin-top: 45px; margin-bottom: 4px; width: 85%; }
+
+          @media print {
+            body { background: transparent; padding: 0; }
+            .page-indicator-badge { display: none !important; }
+            .page-wrapper { margin: 0; }
+            .a4-page {
+              box-shadow: none;
+              border: none;
+              width: 100%;
+              margin: 0;
+              padding: 10mm 12mm;
+              page-break-after: always;
+            }
+          }
         </style>
       </head>
       <body>
-        <div class="header-box">
-          <div style="width: 140px; text-align: left;">
-            <img src="/cp_logo-removebg-preview.png" style="height: 48px; max-width: 130px; object-fit: contain;" />
-          </div>
-          <div class="header-title">
-            <div style="font-weight: bold; font-size: 14pt; letter-spacing: 0.5px;">PT. CHITRA PARATAMA</div>
-            <div style="font-weight: bold; font-size: 11pt; margin-top: 3px; letter-spacing: 0.5px;">SUMMARY SPL</div>
-          </div>
-          <div style="width: 140px; text-align: right;">
-            ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 48px; max-width: 130px; object-fit: contain;" />` : ''}
-          </div>
-        </div>
-
-        <table class="meta-table">
-          <tr>
-            <td style="width: 130px;">MONTH</td>
-            <td style="width: 15px;">:</td>
-            <td style="font-weight: bold;">${filterInfo.periodLabel}</td>
-            <td style="text-align: right; font-weight: normal; width: 140px;">SN ${filterInfo.employeeSn || '—'}</td>
-          </tr>
-          <tr>
-            <td>Name of Employee</td>
-            <td>:</td>
-            <td colspan="2" style="font-weight: bold;">${filterInfo.employeeName}</td>
-          </tr>
-          <tr>
-            <td>Department</td>
-            <td>:</td>
-            <td colspan="2">${filterInfo.department || filterInfo.section || 'Central Services'}</td>
-          </tr>
-          <tr>
-            <td>Site</td>
-            <td>:</td>
-            <td colspan="2">${filterInfo.siteName || 'Balikpapan'}</td>
-          </tr>
-        </table>
-
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th rowspan="2" style="width: 35px;">Tanggal</th>
-              <th rowspan="2" style="width: 70px;">Hari</th>
-              <th colspan="2" style="width: 110px;">Jam Lembur</th>
-              <th rowspan="2" style="width: 70px;">Total Lembur</th>
-              <th rowspan="2">Yang Dikerjakan</th>
-            </tr>
-            <tr>
-              <th style="width: 55px; font-size: 7pt;">Mulai</th>
-              <th style="width: 55px; font-size: 7pt;">Selesai</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-            <tr class="total-row" style="height: 18px;">
-              <td colspan="4" style="border: 1px solid #000000; padding: 4px; text-align: right; font-weight: bold;">TOTAL :</td>
-              <td style="border: 1px solid #000000; padding: 4px; text-align: center; font-weight: bold;">${filterInfo.totalHours > 0 ? filterInfo.totalHours : 0}</td>
-              <td style="border: 1px solid #000000; padding: 4px;"></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <table class="signatures-table">
-          <tr>
-            <td>
-              <div>Dibuat oleh:</div>
-              <div class="sign-line"></div>
-              <div style="font-weight: bold;">${filterInfo.preparedByName || filterInfo.employeeName}</div>
-            </td>
-            <td>
-              <div>Approved by:</div>
-              <div class="sign-line"></div>
-              <div style="font-weight: bold;">${filterInfo.leaderName || 'Apriyanto'}</div>
-            </td>
-            <td>
-              <div>Approved by:</div>
-              <div class="sign-line"></div>
-              <div style="font-weight: bold;">${filterInfo.pjoName || 'Romy Hidayat'}</div>
-            </td>
-          </tr>
-        </table>
+        ${pagesHtml}
       </body>
     </html>
   `
 }
 
+function renderSummarySplPdfHtml(
+  summaryRows: OvertimeListingRow[],
+  filterInfo: {
+    employeeName: string
+    employeeSn?: string
+    department?: string
+    section?: string
+    siteName?: string
+    siteLogoUrl?: string
+    period: string
+    periodLabel: string
+    totalHours: number
+    totalCount: number
+    isPjo?: boolean
+    leaderName?: string
+    pjoName?: string
+    hcName?: string
+    preparedByName?: string
+  }
+): string {
+  const sheetHtml = renderSinglePersonSplSheetContent(summaryRows, filterInfo)
+  const pageHtml = `
+    <div class="page-wrapper">
+      <div class="a4-page">
+        ${sheetHtml}
+      </div>
+    </div>
+  `
+  return wrapSplSheetsInDocument(pageHtml, `SUMMARY SPL - ${filterInfo.employeeName}`)
+}
 function renderSiteSummarySplPdfHtml(
   siteData: {
     siteName: string
@@ -2113,12 +2230,9 @@ export function OvertimeListingClient({
     const siteRows: SiteSummarySplRow[] = []
 
     uniqueSpls.forEach((spl) => {
-      const duration = calculateSplDurationHours(spl)
       const dateStr = formatDate(spl.workDate)
       const dayName = getIndonesianDayName(spl.workDate)
       const isWeekend = dayName === 'Minggu' || dayName === 'Sabtu'
-      const startTime = spl.plannedStartAt ? formatTime(spl.plannedStartAt) : '—'
-      const endTime = spl.plannedEndAt ? formatTime(spl.plannedEndAt) : '—'
 
       const uniqueLineItems = Array.from(
         new Map((spl.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
@@ -2127,11 +2241,32 @@ export function OvertimeListingClient({
         ? uniqueLineItems.map((l) => `${l.name || l.lineLabel || l.code || 'Aktivitas'}${l.unitNumber ? ` (${l.unitNumber})` : ''}${l.tireCount ? ` [${l.tireCount} ban]` : ''}`).join(', ')
         : spl.title || 'Penugasan Lembur'
 
-      const workers = spl.participants && spl.participants.length > 0
-        ? spl.participants.map((p) => p.employeeName)
-        : [spl.requesterName || 'Karyawan']
+      // Collect raw worker names
+      const rawWorkerNames: string[] = []
+      if (spl.participants && spl.participants.length > 0) {
+        spl.participants.forEach((p: any) => {
+          if (p.employeeName && p.employeeName.trim()) {
+            rawWorkerNames.push(p.employeeName.trim())
+          }
+        })
+      }
+      if (rawWorkerNames.length === 0 && spl.requesterName && spl.requesterName.trim()) {
+        rawWorkerNames.push(spl.requesterName.trim())
+      }
 
-      workers.forEach((workerName) => {
+      // Deduplicate workers for this SPL to guarantee NO worker is doubled
+      const seenWorkersForThisSpl = new Set<string>()
+      const uniqueWorkers: string[] = []
+      rawWorkerNames.forEach((wName) => {
+        const cleanName = wName.trim()
+        const lower = cleanName.toLowerCase()
+        if (!seenWorkersForThisSpl.has(lower)) {
+          seenWorkersForThisSpl.add(lower)
+          uniqueWorkers.push(cleanName)
+        }
+      })
+
+      uniqueWorkers.forEach((workerName) => {
         const workerRow = matchingRows.find(
           (mr) => mr.id === spl.id && (mr.requesterName || '').trim().toLowerCase() === workerName.trim().toLowerCase()
         ) || spl
@@ -2141,6 +2276,17 @@ export function OvertimeListingClient({
         const empSn = (empObj as any)?.employee_sn || (empObj as any)?.nip || '—'
         const dept = (empObj as any)?.department || spl.requesterDepartment || 'Central Services'
 
+        // Clean consistent startTime and endTime (endTime = startTime + duration)
+        let startStr = spl.plannedStartAt ? formatTime(spl.plannedStartAt).replace(':', '.') : '17.00'
+        if (!startStr || startStr === '—') startStr = '17.00'
+
+        const [sH, sM] = startStr.split('.').map((v) => parseInt(v, 10) || 0)
+        const totalStartMin = sH * 60 + sM
+        const totalEndMin = totalStartMin + Math.round(duration * 60)
+        const endH = Math.floor(totalEndMin / 60) % 24
+        const endM = totalEndMin % 60
+        const endStr = `${String(endH).padStart(2, '0')}.${String(endM).padStart(2, '0')}`
+
         siteRows.push({
           dateStr,
           dayName,
@@ -2148,8 +2294,8 @@ export function OvertimeListingClient({
           employeeName: workerName,
           employeeSn: empSn,
           department: dept,
-          startTime,
-          endTime,
+          startTime: startStr,
+          endTime: endStr,
           durationHours: duration,
           taskSummary: `${spl.splNumber ? `[${spl.splNumber}] ` : ''}${taskSummary}`,
           isWeekend,
@@ -2157,8 +2303,9 @@ export function OvertimeListingClient({
 
         totalSiteHours += duration
 
-        if (!employeeMap.has(workerName)) {
-          employeeMap.set(workerName, {
+        const normKey = workerName.trim().toLowerCase()
+        if (!employeeMap.has(normKey)) {
+          employeeMap.set(normKey, {
             employeeName: workerName,
             employeeSn: empSn,
             department: dept,
@@ -2166,9 +2313,9 @@ export function OvertimeListingClient({
             totalHours: 0,
           })
         }
-        const stat = employeeMap.get(workerName)!
+        const stat = employeeMap.get(normKey)!
         stat.splCount += 1
-        stat.totalHours += duration
+        stat.totalHours = Math.round((stat.totalHours + duration) * 10) / 10
       })
     })
 
@@ -2246,7 +2393,8 @@ export function OvertimeListingClient({
           </html>
         `
       }
-      const siteLogoUrl = resolveSiteLogoUrl(siteSummaryData.siteName)
+      const siteName = siteSummaryData.siteName
+      const siteLogoUrl = resolveSiteLogoUrl(siteName)
       const firstRow = siteSummaryData.uniqueSpls[0]
       const signatories = resolveSummarySplSignatories({
         selectedEmployee: null,
@@ -3667,33 +3815,11 @@ export function OvertimeListingClient({
               Summary Per User (PDF)
             </Button>
 
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleOpenSiteSummaryPreview}
-              disabled={summarySiteId === 'ALL' || siteSummaryData.rows.length === 0}
-              title={
-                summarySiteId === 'ALL'
-                  ? 'Pilih Lokasi Site terlebih dahulu pada dropdown di bawah'
-                  : siteSummaryData.rows.length === 0
-                  ? 'Tidak ada data SPL untuk site ini'
-                  : `Preview & Unduh Summary SPL Per Site (${siteSummaryData.siteName})`
-              }
-              className={cn(
-                "h-9 gap-1.5 rounded-xl text-white text-xs font-semibold px-3.5 shadow-xs cursor-pointer",
-                summarySiteId === 'ALL' || siteSummaryData.rows.length === 0
-                  ? "bg-slate-400 opacity-60 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              )}
-            >
-              <Building2 className="size-3.5" />
-              Summary Per Site (PDF)
-            </Button>
 
             <Button
               type="button"
               size="sm"
-              onClick={handleDownloadSiteSummaryPdf}
+              onClick={handleOpenSiteSummaryPreview}
               disabled={isGeneratingSitePdf}
               className="h-9 gap-2 rounded-xl text-white text-xs font-bold px-4 shadow-sm bg-blue-600 hover:bg-blue-700 cursor-pointer"
             >
