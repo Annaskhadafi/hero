@@ -204,12 +204,11 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
   const repairCountsByLocation: Record<string, number> = {}
 
   for (const emp of activeEmployees) {
-    const rawLoc = emp.workLocation || emp.siteName || emp.siteLocation || ""
+    const rawLoc = emp.siteName || emp.workLocation || emp.siteLocation || ""
     if (!rawLoc) continue
     const canonLoc = locationMapping[rawLoc] || rawLoc
+    // Count each active employee exactly once into the canonical location
     employeeCountsByLocation[canonLoc] = (employeeCountsByLocation[canonLoc] || 0) + 1
-    if (emp.workLocation) employeeCountsByLocation[emp.workLocation] = (employeeCountsByLocation[emp.workLocation] || 0) + 1
-    if (emp.siteName) employeeCountsByLocation[emp.siteName] = (employeeCountsByLocation[emp.siteName] || 0) + 1
 
     const jt = (emp.jobTitle || "").toLowerCase()
     const sec = (emp.section || "").toLowerCase()
@@ -218,33 +217,53 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
 
     if (isService) {
       serviceCountsByLocation[canonLoc] = (serviceCountsByLocation[canonLoc] || 0) + 1
-      if (emp.workLocation) serviceCountsByLocation[emp.workLocation] = (serviceCountsByLocation[emp.workLocation] || 0) + 1
-      if (emp.siteName) serviceCountsByLocation[emp.siteName] = (serviceCountsByLocation[emp.siteName] || 0) + 1
     }
-
     if (isRepair) {
       repairCountsByLocation[canonLoc] = (repairCountsByLocation[canonLoc] || 0) + 1
-      if (emp.workLocation) repairCountsByLocation[emp.workLocation] = (repairCountsByLocation[emp.workLocation] || 0) + 1
-      if (emp.siteName) repairCountsByLocation[emp.siteName] = (repairCountsByLocation[emp.siteName] || 0) + 1
     }
   }
 
-  // Sync employee counts in monthlyManHours and manHours with User Management data
+  // Populate alias mappings so lookups by raw workLocation or siteName resolve to the same canonical count
+  for (const [rawKey, targetCanon] of Object.entries(locationMapping)) {
+    if (rawKey !== targetCanon && employeeCountsByLocation[targetCanon] !== undefined) {
+      if (employeeCountsByLocation[rawKey] === undefined) {
+        employeeCountsByLocation[rawKey] = employeeCountsByLocation[targetCanon]
+      }
+      if (serviceCountsByLocation[targetCanon] !== undefined && serviceCountsByLocation[rawKey] === undefined) {
+        serviceCountsByLocation[rawKey] = serviceCountsByLocation[targetCanon]
+      }
+      if (repairCountsByLocation[targetCanon] !== undefined && repairCountsByLocation[rawKey] === undefined) {
+        repairCountsByLocation[rawKey] = repairCountsByLocation[targetCanon]
+      }
+    }
+  }
+
+  // Sync employee counts in monthlyManHours and manHours:
+  // Priority: If user has explicitly entered an employeeCount (> 0), RESPECT IT!
+  // Otherwise, fallback to the real-time active headcount from User Management.
   const monthlyManHours = rawMonthlyManHours.map((row) => {
     const canonLoc = locationMapping[row.workLocation] || row.workLocation
     const countFromEmployees = employeeCountsByLocation[canonLoc] ?? employeeCountsByLocation[row.workLocation]
+    const hasManual = row.employeeCount !== null && row.employeeCount !== undefined && Number(row.employeeCount) > 0
     return {
       ...row,
-      employeeCount: typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0),
+      employeeCount: hasManual
+        ? Number(row.employeeCount)
+        : (typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0)),
+      isManualEmployeeCount: hasManual,
     }
   })
 
   const manHours = rawManHours.map((row) => {
     const canonLoc = locationMapping[row.workLocation] || row.workLocation
     const countFromEmployees = employeeCountsByLocation[canonLoc] ?? employeeCountsByLocation[row.workLocation]
+    const hasManual = row.employeeCount !== null && row.employeeCount !== undefined && Number(row.employeeCount) > 0
     return {
       ...row,
-      employeeCount: typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0),
+      employeeCount: hasManual
+        ? Number(row.employeeCount)
+        : (typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0)),
+      isManualEmployeeCount: hasManual,
     }
   })
 
@@ -253,6 +272,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     siteId: number | null
     workLocation: string
     employeeCount: number
+    isManualEmployeeCount?: boolean
     initialManHours: number
     actualMonthlyManHours: number
     safetyManHours: number
@@ -269,6 +289,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
       siteId: siteItem.id,
       workLocation: siteItem.name,
       employeeCount: empCount,
+      isManualEmployeeCount: false,
       initialManHours: 0,
       actualMonthlyManHours: 0,
       safetyManHours: 0,
@@ -325,9 +346,12 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     }
     if (entry) {
       if (mhRow.safeTarget) entry.safeTarget = mhRow.safeTarget
-      // Only carry over per-site initial man hours in legacy mode (no global start data set)
       if (!hasGlobalStartData && mhRow.safetyManHours) {
         entry.initialManHours = parseFloat(`${mhRow.safetyManHours || "0"}`.replace(/,/g, "")) || 0
+      }
+      if (mhRow.employeeCount && Number(mhRow.employeeCount) > 0) {
+        entry.employeeCount = Number(mhRow.employeeCount)
+        entry.isManualEmployeeCount = Boolean((mhRow as any).isManualEmployeeCount)
       }
       if (mhRow.updatedAt) {
         const mhDate = new Date(mhRow.updatedAt)
@@ -338,13 +362,27 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     }
   }
 
-  const siteManHoursSummary = Array.from(siteManHoursMap.values()).map((item) => ({
-    ...item,
-    // In global-start-data mode: per-site bar = actual monthly only (initial is in global bar)
-    // In legacy mode: per-site bar = initialManHours + actualMonthlyManHours
-    safetyManHours: hasGlobalStartData ? item.actualMonthlyManHours : item.initialManHours + item.actualMonthlyManHours,
-    monthlyDetails: item.monthlyDetails.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()),
-  }))
+  const siteManHoursSummary = Array.from(siteManHoursMap.values()).map((item) => {
+    let finalEmpCount = item.employeeCount
+    let isManual = item.isManualEmployeeCount ?? false
+
+    // If parent was not manually edited, check if any monthly detail has manual count
+    if (!isManual && item.monthlyDetails.length > 0) {
+      const latestManual = item.monthlyDetails.find((m) => (m as any).isManualEmployeeCount && m.employeeCount > 0)
+      if (latestManual) {
+        finalEmpCount = latestManual.employeeCount
+        isManual = true
+      }
+    }
+
+    return {
+      ...item,
+      employeeCount: finalEmpCount,
+      isManualEmployeeCount: isManual,
+      safetyManHours: hasGlobalStartData ? item.actualMonthlyManHours : item.initialManHours + item.actualMonthlyManHours,
+      monthlyDetails: item.monthlyDetails.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()),
+    }
+  })
 
   let filteredMonthlySummaries = monthlySummaries
   let filteredIncidentReports = incidentReports

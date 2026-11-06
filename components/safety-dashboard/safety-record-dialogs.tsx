@@ -621,6 +621,7 @@ export function EditBatchManHoursButton({
   const [inputType, setInputType] = React.useState<"auto" | "manual">("manual")
   const [initialManHours, setInitialManHours] = React.useState(`${siteRow.initialManHours ?? 0}`)
   const [safeTarget, setSafeTarget] = React.useState(`${siteRow.safeTarget ?? 0}`)
+  const [employeeCount, setEmployeeCount] = React.useState(`${siteRow.employeeCount ?? 0}`)
   const [year, setYear] = React.useState(new Date().getFullYear().toString())
   const [monthIndex, setMonthIndex] = React.useState(() => new Date().getMonth().toString())
   const [monthlyValues, setMonthlyValues] = React.useState<Record<string, string>>({
@@ -651,6 +652,7 @@ export function EditBatchManHoursButton({
     if (open) {
       setInitialManHours(`${siteRow.initialManHours ?? 0}`)
       setSafeTarget(`${siteRow.safeTarget ?? 0}`)
+      setEmployeeCount(`${siteRow.employeeCount ?? 0}`)
       if (siteRow.monthlyDetails) {
         const monthKeys = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "okt", "nov", "des"]
         const initial: Record<string, string> = {
@@ -823,8 +825,9 @@ export function EditBatchManHoursButton({
                   <p className="text-xs text-emerald-700 mt-0.5">{autoPreview.message}</p>
                 ) : null}
               </div>
-              {/* Pass safeTarget even in auto mode */}
+              {/* Pass safeTarget and employeeCount in auto mode */}
               <input type="hidden" name="safeTarget" value={safeTarget} />
+              <input type="hidden" name="employeeCount" value={employeeCount} />
             </div>
           ) : (
             <div className="space-y-4 rounded-xl border border-border/80 bg-slate-50/50 p-4">
@@ -848,25 +851,41 @@ export function EditBatchManHoursButton({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-                <Label className="grid gap-1.5 text-xs font-semibold text-amber-900">
-                  🎯 Target Aman per Tahun (Jam)
-                  <Input
-                    name="safeTarget"
-                    type="number"
-                    step="0.01"
-                    placeholder="Contoh: 500000"
-                    value={safeTarget}
-                    onChange={(e) => setSafeTarget(e.target.value)}
-                    className="h-8 text-xs bg-white border-amber-200 focus-visible:ring-amber-400"
-                  />
-                  <span className="text-[10px] font-normal text-amber-700">
-                    Target total jam kerja aman yang ingin dicapai untuk lokasi ini dalam setahun.
-                    {safeTarget && parseFloat(safeTarget) > 0 && calculatedManualTotal > 0 ? (
-                      <> &nbsp;Pencapaian saat ini: <strong>{Math.round(calculatedManualTotal / parseFloat(safeTarget) * 100)}%</strong></>
-                    ) : null}
-                  </span>
-                </Label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <Label className="grid gap-1.5 text-xs font-semibold text-amber-900">
+                    🎯 Target Aman per Tahun (Jam)
+                    <Input
+                      name="safeTarget"
+                      type="number"
+                      step="0.01"
+                      placeholder="Contoh: 500000"
+                      value={safeTarget}
+                      onChange={(e) => setSafeTarget(e.target.value)}
+                      className="h-8 text-xs bg-white border-amber-200 focus-visible:ring-amber-400"
+                    />
+                    <span className="text-[10px] font-normal text-amber-700">
+                      Target total jam kerja aman setahun untuk lokasi ini.
+                    </span>
+                  </Label>
+                </div>
+
+                <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+                  <Label className="grid gap-1.5 text-xs font-semibold text-blue-900">
+                    👥 Jumlah Karyawan / Manpower
+                    <Input
+                      name="employeeCount"
+                      type="number"
+                      placeholder="0"
+                      value={employeeCount}
+                      onChange={(e) => setEmployeeCount(e.target.value)}
+                      className="h-8 text-xs bg-white border-blue-200 focus-visible:ring-blue-400"
+                    />
+                    <span className="text-[10px] font-normal text-blue-700">
+                      Jumlah tenaga kerja aktif di lokasi ini (bisa disesuaikan manual).
+                    </span>
+                  </Label>
+                </div>
               </div>
 
               <p className="text-xs text-muted-foreground font-medium">Input / Edit jam kerja per bulan (Januari - Desember):</p>

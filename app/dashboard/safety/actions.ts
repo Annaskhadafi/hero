@@ -624,10 +624,14 @@ export async function saveBatchMonthlyManHoursAction(formData: FormData): Promis
 
     const rawInitial = formData.get("initialManHours")
     const rawTarget = formData.get("safeTarget")
+    const rawEmpCount = formData.get("employeeCount")
+    const customEmpCount = rawEmpCount !== null && rawEmpCount !== "" ? Number(readNumberString(formData, "employeeCount")) : undefined
+    const finalEmpCount = customEmpCount && customEmpCount > 0 ? customEmpCount : defaultEmpCount
 
-    if (rawInitial !== null || rawTarget !== null) {
+    if (rawInitial !== null || rawTarget !== null || rawEmpCount !== null) {
       const initialVal = rawInitial !== null ? readNumberString(formData, "initialManHours") : undefined
       const targetVal = rawTarget !== null ? readNumberString(formData, "safeTarget") : undefined
+      const empCountVal = customEmpCount && customEmpCount > 0 ? customEmpCount : undefined
 
       const [existingMh] = await db
         .select()
@@ -641,13 +645,14 @@ export async function saveBatchMonthlyManHoursAction(formData: FormData): Promis
           .set({
             ...(initialVal !== undefined ? { safetyManHours: initialVal } : {}),
             ...(targetVal !== undefined ? { safeTarget: targetVal } : {}),
+            ...(empCountVal !== undefined ? { employeeCount: empCountVal } : {}),
             updatedAt: new Date(),
           })
           .where(eq(safetyManHours.id, existingMh.id))
       } else {
         await db.insert(safetyManHours).values({
           workLocation,
-          employeeCount: defaultEmpCount,
+          employeeCount: empCountVal ?? defaultEmpCount,
           safetyManHours: initialVal || "0",
           safeTarget: targetVal || "0",
           updatedAt: new Date(),
@@ -713,7 +718,7 @@ export async function saveBatchMonthlyManHoursAction(formData: FormData): Promis
           .update(safetyMonthlyManHours)
           .set({
             safetyManHours: manHoursVal,
-            employeeCount: defaultEmpCount || existing.employeeCount,
+            employeeCount: customEmpCount && customEmpCount > 0 ? customEmpCount : (existing.employeeCount || defaultEmpCount),
             sourceSheet: "manual",
             updatedAt: new Date(),
           })
@@ -723,7 +728,7 @@ export async function saveBatchMonthlyManHoursAction(formData: FormData): Promis
           workLocation,
           month: dateStr,
           safetyManHours: manHoursVal,
-          employeeCount: defaultEmpCount,
+          employeeCount: customEmpCount && customEmpCount > 0 ? customEmpCount : defaultEmpCount,
           sourceSheet: "manual",
           updatedAt: new Date(),
         })

@@ -234,7 +234,14 @@ function CollapsibleManHoursTable({ data }: { data: SafetyData }) {
                             </div>
                           </TableCell>
                           <TableCell className="text-center font-medium text-sm py-3 tabular-nums">
-                            {formatNumber(siteRow.employeeCount)}
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span>{formatNumber(siteRow.employeeCount)}</span>
+                              {(siteRow as any).isManualEmployeeCount ? (
+                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-amber-50 text-amber-700 border-amber-200 font-medium" title="Diedit manual">
+                                  Manual
+                                </Badge>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell className="text-right text-sm py-3 tabular-nums text-emerald-700 font-semibold">
                             {formatNumber(siteRow.actualMonthlyManHours)}
@@ -337,7 +344,14 @@ function CollapsibleManHoursTable({ data }: { data: SafetyData }) {
                                                 {formatDate(mRow.month)}
                                               </TableCell>
                                               <TableCell className="py-2 text-center tabular-nums">
-                                                {formatNumber(mRow.employeeCount)}
+                                                <div className="flex items-center justify-center gap-1">
+                                                  <span>{formatNumber(mRow.employeeCount)}</span>
+                                                  {(mRow as any).isManualEmployeeCount ? (
+                                                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-amber-50 text-amber-700 border-amber-200 font-medium" title="Diedit manual">
+                                                      Manual
+                                                    </Badge>
+                                                  ) : null}
+                                                </div>
                                               </TableCell>
                                               <TableCell className="py-2 text-right font-semibold tabular-nums text-foreground">
                                                 {formatNumber(mRow.safetyManHours)}
