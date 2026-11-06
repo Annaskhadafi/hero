@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   Bug,
+  Building2,
   Camera,
   Check,
   CheckCheck,
@@ -49,7 +50,8 @@ import { compressImageFile } from '@/lib/client-image-compression'
 import type { RouteFolder } from '@/lib/daily-activity'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import QRCode from 'qrcode'
-import { generateOvertimeRecordPdf, generateSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
+import { generateOvertimeRecordPdf, generateSummarySplPdf,
+  generateSiteSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
 import { resolveSummarySplSignatories } from '@/lib/timesheet/summary-spl-signatures'
 import {
   getOvertimeSummaryWorkspaceDataAction,
@@ -161,6 +163,10 @@ export type OvertimeListingRow = {
   plannedStartAt: Date | string | null
   plannedEndAt: Date | string | null
   status: string
+  siteId?: number | null
+  actualOvertimeHours?: number | null
+  attendanceClockIn?: string | null
+  attendanceClockOut?: string | null
   requestedByEmployeeId?: number | null
   requesterName: string
   requesterDepartment: string
@@ -228,25 +234,61 @@ function formatTime(value: Date | string | null | undefined) {
 }
 
 function calculateSplDurationHours(row: OvertimeListingRow): number {
+  if (row.participants && row.participants.length > 0) {
+    const pWithCredit = row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
+    if (pWithCredit && (pWithCredit as any).overtimeCreditMinutes) {
+      return Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
+    }
+  }
+
+  let itemHours = 0
+  if (row.lineItems && row.lineItems.length > 0) {
+    const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
+    if (mins > 0) {
+      itemHours = Math.round((mins / 60) * 10) / 10
+    }
+  }
+
+  let plannedHours = 0
   if (row.plannedStartAt && row.plannedEndAt) {
     const startObj = new Date(row.plannedStartAt)
     const endObj = new Date(row.plannedEndAt)
     if (!isNaN(startObj.getTime()) && !isNaN(endObj.getTime())) {
-      let startMin = startObj.getHours() * 60 + startObj.getMinutes()
-      let endMin = endObj.getHours() * 60 + endObj.getMinutes()
-      if (endMin <= startMin) {
-        endMin += 1440 // Handles overnight shift crossing midnight (e.g. 14:00 to 02:00)
+      const diffMs = endObj.getTime() - startObj.getTime()
+      let diffHours = diffMs / (1000 * 60 * 60)
+      if (diffHours === 25 || diffHours === 24) {
+        diffHours = 1
       }
-      const durationMin = endMin - startMin
-      if (durationMin > 0 && durationMin <= 1440) {
-        return Math.round((durationMin / 60) * 10) / 10
+      if (diffHours > 0) {
+        plannedHours = Math.round(diffHours * 10) / 10
       }
     }
   }
-  if (row.lineItems && row.lineItems.length > 0) {
-    const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
-    if (mins > 0) return Math.round((mins / 60) * 10) / 10
+
+  // If itemHours is defined and plannedHours is an extreme full-shift anomaly (> 6h while items is <= 4h),
+  // itemHours is the authoritative SPL work duration.
+  if (itemHours > 0 && (plannedHours > 6 || plannedHours === 0)) {
+    return itemHours
   }
+
+  if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
+    const attOt = Number(row.actualOvertimeHours)
+    // If attOt is standard mandatory OT (4 or 6) on a shift day, but SPL item is specifically 1h or 2h,
+    // don't inflate the SPL with the 4h/6h mandatory attendance overtime
+    if ((attOt === 4 || attOt === 6) && itemHours > 0 && itemHours < attOt) {
+      return itemHours
+    }
+    return attOt
+  }
+
+  if (itemHours > 0) {
+    return itemHours
+  }
+
+  if (plannedHours > 0 && plannedHours <= 16) {
+    return plannedHours
+  }
+
   return 0
 }
 
@@ -321,8 +363,21 @@ function buildOvertimeRecordMonthlyDays(
       const primaryRow = matchingRows[0]
       const durHours = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
 
-      const startStr = primaryRow.plannedStartAt ? formatTime(primaryRow.plannedStartAt).replace(':', '.') : '17.00'
-      const endStr = primaryRow.plannedEndAt ? formatTime(primaryRow.plannedEndAt).replace(':', '.') : '21.00'
+      const startStr = primaryRow.plannedStartAt
+        ? formatTime(primaryRow.plannedStartAt).replace(':', '.')
+        : primaryRow.attendanceClockIn
+        ? primaryRow.attendanceClockIn.replace(':', '.')
+        : '17.00'
+
+      let endStr = primaryRow.plannedEndAt ? formatTime(primaryRow.plannedEndAt).replace(':', '.') : '21.00'
+      if (durHours > 0) {
+        const [sH, sM] = startStr.split('.').map((v) => parseInt(v, 10) || 0)
+        const totalStartMin = sH * 60 + sM
+        const totalEndMin = totalStartMin + Math.round(durHours * 60)
+        const endH = Math.floor(totalEndMin / 60) % 24
+        const endM = totalEndMin % 60
+        endStr = `${String(endH).padStart(2, '0')}.${String(endM).padStart(2, '0')}`
+      }
 
       const taskSummaries = Array.from(
         new Set(
@@ -378,6 +433,7 @@ function renderSummarySplPdfHtml(
     section?: string
     siteName?: string
     siteLogoUrl?: string
+    period: string
     periodLabel: string
     totalHours: number
     totalCount: number
@@ -385,234 +441,33 @@ function renderSummarySplPdfHtml(
     leaderName?: string
     pjoName?: string
     hcName?: string
+    preparedByName?: string
   }
 ): string {
-  const ROWS_PER_PAGE = 14
-  const totalRows = summaryRows.length
+  const daysData = buildOvertimeRecordMonthlyDays(summaryRows, filterInfo.period)
   const siteLogoUrl = resolveSiteLogoUrl(filterInfo.siteName, filterInfo.siteLogoUrl)
 
-  const pageChunks: OvertimeListingRow[][] = []
-  if (totalRows === 0) {
-    pageChunks.push([])
-  } else {
-    for (let i = 0; i < totalRows; i += ROWS_PER_PAGE) {
-      pageChunks.push(summaryRows.slice(i, i + ROWS_PER_PAGE))
-    }
-  }
-
-  const totalPages = pageChunks.length
-
-  const pagesHtml = pageChunks
-    .map((chunk, pageIndex) => {
-      const isFirstPage = pageIndex === 0
-      const isLastPage = pageIndex === totalPages - 1
-
-      const rowsHtml = chunk
-        .map((row) => {
-          const dateStr = formatDate(row.workDate)
-          const dayNameStr = getIndonesianDayName(row.workDate)
-          const isWeekend = dayNameStr === 'Minggu' || dayNameStr === 'Sabtu'
-
-          const startTime = row.plannedStartAt ? formatTime(row.plannedStartAt) : '—'
-          const endTime = row.plannedEndAt ? formatTime(row.plannedEndAt) : '—'
-          const durationHours = calculateSplDurationHours(row)
-
-          const uniqueLineItems = Array.from(
-            new Map((row.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
-          )
-
-          const lineItemsSummary = uniqueLineItems.length
-            ? uniqueLineItems
-                .map(
-                  (l) =>
-                    `• ${l.name || l.lineLabel || l.code || 'Aktivitas'}${
-                      l.unitNumber ? ` (Unit: ${l.unitNumber})` : ''
-                    }${l.tireCount ? ` [${l.tireCount} pcs/qty]` : ''}`
-                )
-                .join('<br/>')
-            : row.title || 'Penugasan Lembur'
-
-          const taskContent = lineItemsSummary
-
-          const rowBgStyle = isWeekend ? 'background-color: #fef2f2;' : 'background-color: #ffffff;'
-          const textRedStyle = isWeekend ? 'color: #dc2626; font-weight: bold;' : ''
-
-          return `
-            <tr style="${rowBgStyle}">
-              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; ${textRedStyle}">${dateStr}</td>
-              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; ${textRedStyle}">${dayNameStr}</td>
-              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${startTime}</td>
-              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${endTime}</td>
-              <td style="border: 1px solid #1e293b; padding: 4px 6px; text-align: center; font-size: 8.5pt; vertical-align: middle; font-weight: bold; color: #0369a1;">${durationHours} Jam</td>
-              <td style="border: 1px solid #1e293b; padding: 4px 6px; font-size: 7.5pt; vertical-align: top; line-height: 1.3;">${taskContent}</td>
-            </tr>
-          `
-        })
-        .join('')
-
-      const headerHtml = isFirstPage
-        ? `
-          <!-- Header Kop Matching Official Attendance / Overtime Record Standard -->
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 8px;">
-            <div style="width: 130px; text-align: left;">
-              <img src="/cp_logo-removebg-preview.png" style="height: 48px; max-width: 120px; object-fit: contain;" />
-            </div>
-            <div style="flex: 1; text-align: center;">
-              <div style="font-weight: 800; font-size: 13pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000;">PT. CHITRA PARATAMA</div>
-              <div style="font-weight: 700; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 2px;">SUMMARY SPL</div>
-              <div style="font-weight: 600; font-size: 7.5pt; color: #334155; margin-top: 2px; letter-spacing: 0.5px;">HUMAN CAPITAL • PAYABLE SITE ALLOWANCE</div>
-            </div>
-            <div style="width: 130px; text-align: right;">
-              ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 48px; max-width: 120px; object-fit: contain;" />` : '<div style="width: 120px;"></div>'}
-            </div>
-          </div>
-
-          <!-- Employee Metadata Grid Matching Official Payble Site Allowance Standard -->
-          <div style="margin-bottom: 12px; font-size: 8.5pt; color: #000;">
-            <table style="border-collapse: collapse; width: 100%;">
-              <tr>
-                <td style="width: 140px; font-weight: bold; padding: 2px 0;">MONTH / BULAN</td>
-                <td style="width: 12px; text-align: center;">:</td>
-                <td style="font-weight: bold;">${filterInfo.periodLabel}</td>
-                <td style="text-align: right; font-weight: bold;">SN: ${filterInfo.employeeSn || '—'}</td>
-              </tr>
-              <tr>
-                <td style="font-weight: bold; padding: 2px 0;">Name of Employee</td>
-                <td style="text-align: center;">:</td>
-                <td colSpan="2" style="font-weight: bold;">${filterInfo.employeeName}</td>
-              </tr>
-              <tr>
-                <td style="font-weight: bold; padding: 2px 0;">Department</td>
-                <td style="text-align: center;">:</td>
-                <td colSpan="2">${filterInfo.department || '—'}</td>
-              </tr>
-              <tr>
-                <td style="font-weight: bold; padding: 2px 0;">Section</td>
-                <td style="text-align: center;">:</td>
-                <td colSpan="2">${filterInfo.section || '—'}</td>
-              </tr>
-              <tr>
-                <td style="font-weight: bold; padding: 2px 0;">Site / Lokasi</td>
-                <td style="text-align: center;">:</td>
-                <td colSpan="2">${filterInfo.siteName || 'All Sites'}</td>
-              </tr>
-            </table>
-          </div>
-
-          <div style="text-align: center; font-weight: 800; font-size: 10pt; text-transform: uppercase; margin-bottom: 8px; color: #000; letter-spacing: 0.5px;">
-            PAYABLE SITE ALLOWANCE / REKAP LEMBUR
-          </div>
-        `
-        : `
-          <div style="text-align: center; margin-bottom: 10px; border-bottom: 1.5px solid #000; padding-bottom: 6px;">
-            <div style="font-size: 11pt; font-weight: 800; color: #000; letter-spacing: 0.5px;">PT. CHITRA PARATAMA</div>
-            <div style="font-size: 9pt; font-weight: 700; color: #334155; margin-top: 1px;">SURAT PERINTAH LEMBUR — Lanjutan (Halaman ${pageIndex + 1} dari ${totalPages})</div>
-            <div style="font-size: 7.5pt; color: #475569; margin-top: 2px;">Karyawan: <strong>${filterInfo.employeeName}</strong> • Periode: <strong>${filterInfo.periodLabel}</strong></div>
-          </div>
-        `
-
-      const footerNotice = !isLastPage
-        ? `<div style="text-align: right; font-size: 7.5pt; color: #64748b; margin-top: 8px; font-style: italic;">Halaman ${pageIndex + 1} dari ${totalPages} (Berlanjut ke Halaman ${pageIndex + 2}...)</div>`
-        : ''
-
-      const totalRowHtml = isLastPage
-        ? `
-          <tr style="background: #dcfce7; font-weight: bold; font-size: 8.5pt;">
-            <td colspan="4" style="border: 1px solid #16a34a; padding: 6px; text-align: right; color: #15803d;">Total Amount / Jam Lembur:</td>
-            <td style="border: 1px solid #16a34a; padding: 6px; text-align: center; color: #15803d; font-size: 9.5pt; font-weight: 800;">${filterInfo.totalHours} Jam</td>
-            <td style="border: 1px solid #16a34a; padding: 6px; text-align: left; color: #166534; font-size: 7.5pt;">(${filterInfo.totalCount} Dokumen Pengajuan SPL)</td>
-          </tr>
-        `
-        : ''
-
-      const signatureSectionHtml = isLastPage
-        ? `
-          <!-- Signature Table (2 Columns if PJO, 3 Columns if regular employee) -->
-          <table style="width: 100%; border-collapse: collapse; margin-top: 28px; page-break-inside: avoid;">
-            <tr>
-              ${
-                filterInfo.isPjo
-                  ? `
-                <td style="width: 50%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 20px;">
-                  Dibuat oleh :
-                  <div style="height: 44px;"></div>
-                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                    ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'PJO'}
-                  </div>
-                </td>
-                <td style="width: 50%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 20px;">
-                  Approved by :
-                  <div style="height: 44px;"></div>
-                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                    ${filterInfo.leaderName || 'Leader'}
-                  </div>
-                </td>
-              `
-                  : `
-                <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 15px;">
-                  Dibuat oleh :
-                  <div style="height: 44px;"></div>
-                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                    ${filterInfo.employeeName !== 'Semua Karyawan' ? filterInfo.employeeName : 'Pengaju'}
-                  </div>
-                </td>
-                <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 15px;">
-                  Approved by :
-                  <div style="height: 44px;"></div>
-                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                    ${filterInfo.pjoName || 'PJO'}
-                  </div>
-                </td>
-                <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 8pt; font-style: italic; color: #334155; padding-right: 15px;">
-                  Approved by :
-                  <div style="height: 44px;"></div>
-                  <div style="border-bottom: 1px solid #000; width: 85%;"></div>
-                  <div style="font-weight: bold; font-style: normal; font-size: 8pt; color: #000; margin-top: 3px;">
-                    ${filterInfo.leaderName || 'Leader'}
-                  </div>
-                </td>
-              `
-              }
-            </tr>
-          </table>
-          <div style="text-align: right; font-size: 7.5pt; color: #64748b; margin-top: 10px;">Halaman ${pageIndex + 1} dari ${totalPages}</div>
-        `
-        : ''
+  const rowsHtml = daysData
+    .map((day) => {
+      const isSunday = day.dayName === 'Sunday'
+      const isSaturday = day.dayName === 'Saturday'
+      const isWeekend = isSunday || isSaturday
+      const rowBg = isWeekend ? 'background-color: #fef08a;' : 'background-color: #ffffff;'
+      const dayColor = isWeekend ? 'color: #dc2626; font-weight: bold;' : 'color: #000000;'
+      const startTime = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? day.clockIn : ''
+      const endTime = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? day.clockOut : ''
+      const totalHoursStr = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? String(day.overtime.totalHours) : ''
+      const taskStr = (day.overtime?.totalHours && day.overtime.totalHours > 0) ? (day.splTitle || '') : ''
 
       return `
-        <div class="pdf-page">
-          ${headerHtml}
-
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width: 8%;" rowspan="2">Date</th>
-                <th style="width: 12%;" rowspan="2">Day</th>
-                <th style="width: 20%;" colspan="2">Jam Lembur</th>
-                <th style="width: 12%;" rowspan="2">Total Lembur</th>
-                <th style="width: 48%;" rowspan="2">Remarks / Yang Dikerjakan</th>
-              </tr>
-              <tr>
-                <th style="width: 10%;">Mulai</th>
-                <th style="width: 10%;">Selesai</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                rowsHtml ||
-                `<tr><td colspan="6" style="text-align: center; padding: 16px; color: #64748b; font-style: italic;">Tidak ada dokumen SPL pada periode ini.</td></tr>`
-              }
-              ${totalRowHtml}
-            </tbody>
-          </table>
-
-          ${footerNotice}
-          ${signatureSectionHtml}
-        </div>
+        <tr style="${rowBg} height: 16px;">
+          <td style="border: 1px solid #000000; padding: 2px 4px; text-align: center; font-size: 8pt; vertical-align: middle;">${day.day}</td>
+          <td style="border: 1px solid #000000; padding: 2px 4px; text-align: center; font-size: 8pt; vertical-align: middle; ${dayColor}">${day.dayName}</td>
+          <td style="border: 1px solid #000000; padding: 2px 4px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${startTime}</td>
+          <td style="border: 1px solid #000000; padding: 2px 4px; text-align: center; font-size: 8pt; vertical-align: middle; font-family: monospace;">${endTime}</td>
+          <td style="border: 1px solid #000000; padding: 2px 4px; text-align: center; font-size: 8.5pt; vertical-align: middle; font-weight: bold;">${totalHoursStr}</td>
+          <td style="border: 1px solid #000000; padding: 2px 6px; font-size: 7.5pt; vertical-align: middle; text-align: left; white-space: pre-line;">${taskStr}</td>
+        </tr>
       `
     })
     .join('')
@@ -620,49 +475,109 @@ function renderSummarySplPdfHtml(
   return `
     <!DOCTYPE html>
     <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Summary SPL - ${filterInfo.employeeName}</title>
-      <style>
-        body {
-          font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
-          color: #0f172a;
-          margin: 0;
-          padding: 20px;
-          background: #f1f5f9;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-        .pdf-page {
-          width: 210mm;
-          min-height: 297mm;
-          padding-top: 15mm;
-          padding-bottom: 20mm;
-          padding-left: 15mm;
-          padding-right: 15mm;
-          background-color: #ffffff;
-          box-sizing: border-box;
-          margin-bottom: 20px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-          position: relative;
-        }
-        .data-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-        .data-table th { background: #f8fafc; color: #000; font-size: 8pt; font-weight: bold; padding: 5px; text-align: center; border: 1px solid #1e293b; }
-        @media print {
-          body { background: white; padding: 0; }
-          .pdf-page { box-shadow: none; margin-bottom: 0; page-break-after: always; }
-        }
-      </style>
-    </head>
-    <body>
-      ${pagesHtml}
-    </body>
+      <head>
+        <meta charset="utf-8" />
+        <title>SUMMARY SPL - ${filterInfo.employeeName}</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm 15mm; }
+          body { font-family: Arial, sans-serif; color: #000000; margin: 0; padding: 20px; background: #fff; box-sizing: border-box; }
+          .header-box { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+          .header-title { text-align: center; flex: 1; }
+          .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 9pt; }
+          .meta-table td { padding: 2px 0; vertical-align: top; }
+          .data-table { width: 100%; border-collapse: collapse; font-size: 8pt; margin-bottom: 16px; }
+          .data-table th { border: 1px solid #000000; padding: 4px; font-weight: bold; font-size: 7.5pt; text-align: center; background: #ffffff; }
+          .total-row { background-color: #dcfce7; font-weight: bold; }
+          .signatures-table { width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 8.5pt; }
+          .signatures-table td { width: 33.33%; text-align: left; vertical-align: top; padding: 0 10px; }
+          .sign-line { border-bottom: 1px solid #000; margin-top: 55px; margin-bottom: 4px; width: 85%; }
+        </style>
+      </head>
+      <body>
+        <div class="header-box">
+          <div style="width: 140px; text-align: left;">
+            <img src="/cp_logo-removebg-preview.png" style="height: 48px; max-width: 130px; object-fit: contain;" />
+          </div>
+          <div class="header-title">
+            <div style="font-weight: bold; font-size: 14pt; letter-spacing: 0.5px;">PT. CHITRA PARATAMA</div>
+            <div style="font-weight: bold; font-size: 11pt; margin-top: 3px; letter-spacing: 0.5px;">SUMMARY SPL</div>
+          </div>
+          <div style="width: 140px; text-align: right;">
+            ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 48px; max-width: 130px; object-fit: contain;" />` : ''}
+          </div>
+        </div>
+
+        <table class="meta-table">
+          <tr>
+            <td style="width: 130px;">MONTH</td>
+            <td style="width: 15px;">:</td>
+            <td style="font-weight: bold;">${filterInfo.periodLabel}</td>
+            <td style="text-align: right; font-weight: normal; width: 140px;">SN ${filterInfo.employeeSn || '—'}</td>
+          </tr>
+          <tr>
+            <td>Name of Employee</td>
+            <td>:</td>
+            <td colspan="2" style="font-weight: bold;">${filterInfo.employeeName}</td>
+          </tr>
+          <tr>
+            <td>Department</td>
+            <td>:</td>
+            <td colspan="2">${filterInfo.department || filterInfo.section || 'Central Services'}</td>
+          </tr>
+          <tr>
+            <td>Site</td>
+            <td>:</td>
+            <td colspan="2">${filterInfo.siteName || 'Balikpapan'}</td>
+          </tr>
+        </table>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th rowspan="2" style="width: 35px;">Tanggal</th>
+              <th rowspan="2" style="width: 70px;">Hari</th>
+              <th colspan="2" style="width: 110px;">Jam Lembur</th>
+              <th rowspan="2" style="width: 70px;">Total Lembur</th>
+              <th rowspan="2">Yang Dikerjakan</th>
+            </tr>
+            <tr>
+              <th style="width: 55px; font-size: 7pt;">Mulai</th>
+              <th style="width: 55px; font-size: 7pt;">Selesai</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+            <tr class="total-row" style="height: 18px;">
+              <td colspan="4" style="border: 1px solid #000000; padding: 4px; text-align: right; font-weight: bold;">TOTAL :</td>
+              <td style="border: 1px solid #000000; padding: 4px; text-align: center; font-weight: bold;">${filterInfo.totalHours > 0 ? filterInfo.totalHours : 0}</td>
+              <td style="border: 1px solid #000000; padding: 4px;"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table class="signatures-table">
+          <tr>
+            <td>
+              <div>Dibuat oleh:</div>
+              <div class="sign-line"></div>
+              <div style="font-weight: bold;">${filterInfo.preparedByName || filterInfo.employeeName}</div>
+            </td>
+            <td>
+              <div>Approved by:</div>
+              <div class="sign-line"></div>
+              <div style="font-weight: bold;">${filterInfo.leaderName || 'Apriyanto'}</div>
+            </td>
+            <td>
+              <div>Approved by:</div>
+              <div class="sign-line"></div>
+              <div style="font-weight: bold;">${filterInfo.pjoName || 'Romy Hidayat'}</div>
+            </td>
+          </tr>
+        </table>
+      </body>
     </html>
   `
 }
-
-
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     approved: 'bg-emerald-50 text-emerald-700 border-0',
@@ -710,6 +625,7 @@ export function OvertimeListingClient({
   currentEmployeeEmail = null,
   currentEmployeeName = '',
   isAdmin = false,
+  sites = [],
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
@@ -720,6 +636,7 @@ export function OvertimeListingClient({
   currentEmployeeEmail?: string | null
   currentEmployeeName?: string | null
   isAdmin?: boolean
+  sites?: Array<{ id: number; name: string }>
 }) {
   const router = useRouter()
   const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true }
@@ -1350,9 +1267,16 @@ export function OvertimeListingClient({
   const statusFilterOptions = ['Approved', 'Submitted', 'Draft', 'Rejected']
   const workerCountFilterOptions = ['1 - 3 Orang', '4 - 10 Orang', '> 10 Orang']
 
+  const [summarySiteId, setSummarySiteId] = useState<string>('ALL')
   const [summaryEmployeeId, setSummaryEmployeeId] = useState<string>('ALL')
   const [summaryMonth, setSummaryMonth] = useState<string>('')
   const [isGeneratingSummaryPdf, setIsGeneratingSummaryPdf] = useState<boolean>(false)
+  const [isGeneratingSitePdf, setIsGeneratingSitePdf] = useState<boolean>(false)
+
+  const siteOptions = useMemo(() => {
+    const list = (sites || []).map((s) => ({ value: String(s.id), label: s.name }))
+    return [{ value: 'ALL', label: 'Semua Site / Lokasi' }, ...list]
+  }, [sites])
   const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState<boolean>(false)
   const [summaryPreviewZoom, setSummaryPreviewZoom] = useState<number>(1.0)
   const [summaryPdfPreviewUrl, setSummaryPdfPreviewUrl] = useState<string | null>(null)
@@ -1370,6 +1294,7 @@ export function OvertimeListingClient({
 
   const hasActiveFilters =
     activeTab !== 'all' ||
+    summarySiteId !== 'ALL' ||
     summaryEmployeeId !== 'ALL' ||
     Boolean(summaryMonth) ||
     searchQuery.trim().length > 0 ||
@@ -1379,6 +1304,7 @@ export function OvertimeListingClient({
 
   const handleResetFilters = () => {
     setActiveTab('all')
+    setSummarySiteId('ALL')
     setSummaryEmployeeId('ALL')
     setSummaryMonth('')
     setSearchQuery('')
@@ -1792,12 +1718,14 @@ export function OvertimeListingClient({
       department,
       section,
       siteName,
+      period: summaryMonth || '2026-11',
       periodLabel: formatMonthYearLabel(summaryMonth),
       totalHours: summaryStats.totalHours,
       totalCount: summaryStats.totalCount,
       isPjo: signatories.isPjo,
       pjoName: signatories.pjoName,
       leaderName: signatories.leaderName,
+      preparedByName: signatories.preparedByName,
     })
   }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees])
 
@@ -1965,6 +1893,161 @@ export function OvertimeListingClient({
       toast.error('Gagal mengunduh PDF Overtime Record.', { id: toastId })
     } finally {
       setIsGeneratingSummaryPdf(false)
+    }
+  }
+
+  const handleDownloadSiteSummaryPdf = async () => {
+    setIsGeneratingSitePdf(true)
+    const toastId = 'download-site-summary-pdf'
+    toast.loading('Menyiapkan dokumen Summary SPL Per Site (PDF)...', { id: toastId })
+
+    try {
+      // 1. Determine site
+      let targetSiteId: number | null = summarySiteId !== 'ALL' ? Number(summarySiteId) : null
+      let targetSiteName = ''
+
+      if (targetSiteId) {
+        const found = sites?.find((s) => s.id === targetSiteId)
+        targetSiteName = found?.name || `Site #${targetSiteId}`
+      } else {
+        // If 'ALL' is selected, check if selected employee has a site
+        const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
+        if (selectedEmpInfo?.siteId) {
+          targetSiteId = selectedEmpInfo.siteId
+          targetSiteName = selectedEmpInfo.siteName || (selectedEmpInfo as any).site || `Site #${targetSiteId}`
+        } else if (sites && sites.length > 0) {
+          const bpn = sites.find((s) => s.name.toLowerCase().includes('balikpapan')) || sites[0]
+          targetSiteId = bpn.id
+          targetSiteName = bpn.name
+        } else {
+          targetSiteName = 'Balikpapan'
+        }
+      }
+
+      // 2. Collect all employees for this site
+      let siteEmployees = employees.filter((e) => {
+        if (!e) return false
+        if (targetSiteId && e.siteId === targetSiteId) return true
+        if (
+          targetSiteName &&
+          ((e.siteName && e.siteName.toLowerCase() === targetSiteName.toLowerCase()) ||
+            ((e as any).site && (e as any).site.toLowerCase() === targetSiteName.toLowerCase()))
+        )
+          return true
+        return false
+      })
+
+      // If no employees directly match siteId, find employees who have SPL rows in this site
+      if (siteEmployees.length === 0) {
+        const empIdsWithSpl = new Set<string>()
+        rows.forEach((r) => {
+          if (r.siteId === targetSiteId || !targetSiteId) {
+            if (r.requestedByEmployeeId) empIdsWithSpl.add(String(r.requestedByEmployeeId))
+            if (r.requesterName) empIdsWithSpl.add(r.requesterName)
+            r.participants?.forEach((p: any) => {
+              if (p.employeeId) empIdsWithSpl.add(String(p.employeeId))
+              if (p.employeeName) empIdsWithSpl.add(p.employeeName)
+            })
+          }
+        })
+        siteEmployees = employees.filter((e) => empIdsWithSpl.has(String(e.id)) || empIdsWithSpl.has(e.name))
+      }
+
+      // If still empty, collect unique names from rows
+      if (siteEmployees.length === 0) {
+        toast.error(`Tidak ada data karyawan ditemukan untuk site ${targetSiteName}.`, { id: toastId })
+        return
+      }
+
+      // Sort employees alphabetically by name
+      siteEmployees.sort((a, b) => a.name.localeCompare(b.name))
+
+      // 3. Build OvertimeRecordInput for each employee
+      const siteInputs: any[] = []
+      const siteLogoUrl = resolveSiteLogoUrl(targetSiteName)
+
+      for (const emp of siteEmployees) {
+        const empIdStr = String(emp.id)
+        const empName = emp.name.toLowerCase()
+
+        // Get SPL rows for this employee in summaryMonth
+        const empRows = rows.filter((r) => {
+          if (summaryMonth && r.workDate) {
+            const d = r.workDate instanceof Date ? r.workDate : new Date(r.workDate)
+            if (!isNaN(d.getTime())) {
+              const y = d.getFullYear()
+              const m = String(d.getMonth() + 1).padStart(2, '0')
+              if (`${y}-${m}` !== summaryMonth) return false
+            }
+          }
+          if (r.requestedByEmployeeId && String(r.requestedByEmployeeId) === empIdStr) return true
+          const reqName = (r.requesterName || '').toLowerCase()
+          if (reqName === empName || reqName.includes(empName) || empName.includes(reqName)) return true
+          if (
+            r.participants?.some(
+              (p: any) =>
+                (p.employeeId && String(p.employeeId) === empIdStr) ||
+                (p.employeeName && p.employeeName.toLowerCase().includes(empName))
+            )
+          )
+            return true
+          return false
+        })
+
+        const daysData = buildOvertimeRecordMonthlyDays(empRows, summaryMonth || '2026-11')
+        const firstRow = empRows[0]
+        const signatories = resolveSummarySplSignatories({
+          selectedEmployee: emp,
+          allEmployees: employees,
+          firstRowApprovals: firstRow?.approvals,
+          fallbackEmployeeName: emp.name,
+        })
+
+        siteInputs.push({
+          documentTitle: 'SUMMARY SPL',
+          period: summaryMonth || '2026-11',
+          employeeName: emp.name,
+          employeeSn: (emp as any).employee_sn || (emp as any).nip || '—',
+          department: emp.department || emp.section || 'Central Services',
+          section: emp.section || 'Service Operation Others',
+          siteName: targetSiteName,
+          isPjo: signatories.isPjo,
+          signatures: {
+            preparedBy: signatories.preparedByName,
+            pjoLeader: signatories.pjoName,
+            approvedBy: signatories.leaderName,
+            isPjo: signatories.isPjo,
+            logoUrl: siteLogoUrl,
+          },
+          days: daysData,
+          isNonStaff: true,
+          showTotalOvertime: true,
+        })
+      }
+
+      const pdfBytes = await generateSiteSummarySplPdf(siteInputs)
+      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+      const cleanSite = targetSiteName.replace(/[^a-zA-Z0-9]/g, '_')
+      const fileName = `Summary_SPL_Site_${cleanSite}_${summaryMonth || 'Semua'}.pdf`
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success(
+        `Berhasil mengunduh Summary SPL Site ${targetSiteName} (${siteInputs.length} Karyawan)!`,
+        { id: toastId }
+      )
+    } catch (err: any) {
+      console.error('Error generating site summary PDF:', err)
+      toast.error('Gagal mengunduh PDF Summary SPL Site.', { id: toastId })
+    } finally {
+      setIsGeneratingSitePdf(false)
     }
   }
 
@@ -2847,6 +2930,20 @@ export function OvertimeListingClient({
             </Button>
             <Button
               type="button"
+              size="sm"
+              onClick={handleDownloadSiteSummaryPdf}
+              disabled={isGeneratingSitePdf}
+              className="h-9 gap-2 rounded-xl text-white text-xs font-bold px-4 shadow-sm bg-blue-600 hover:bg-blue-700 cursor-pointer"
+            >
+              {isGeneratingSitePdf ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Building2 className="size-4" />
+              )}
+              SUMMARY PER SITE (PDF)
+            </Button>
+            <Button
+              type="button"
               variant="outline"
               size="sm"
               onClick={handleExportSummaryExcel}
@@ -2860,8 +2957,31 @@ export function OvertimeListingClient({
         </div>
 
         {/* Filter Controls Grid inside Dedicated Card */}
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {/* 1. Nama Karyawan */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 1. Site / Lokasi */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+              Site / Lokasi
+            </Label>
+            <SearchableSelect
+              label="Site"
+              options={siteOptions}
+              value={summarySiteId}
+              onValueChange={(val) => {
+                setSummarySiteId(val)
+                if (val !== 'ALL') {
+                  const emp = employees.find((e) => String(e.id) === summaryEmployeeId)
+                  if (emp && emp.siteId && String(emp.siteId) !== val) {
+                    setSummaryEmployeeId('ALL')
+                  }
+                }
+              }}
+              placeholder="Pilih Site / Lokasi..."
+              widthClassName="w-full h-9 rounded-xl border-slate-200 text-xs shadow-xs"
+            />
+          </div>
+
+          {/* 2. Nama Karyawan */}
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
               Nama Karyawan
@@ -2876,7 +2996,7 @@ export function OvertimeListingClient({
             />
           </div>
 
-          {/* 2. Bulan & Tahun */}
+          {/* 3. Bulan & Tahun */}
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
               Periode Bulan & Tahun
@@ -4265,30 +4385,22 @@ export function OvertimeListingClient({
           </div>
 
           {/* Preview Sheet Canvas Area */}
-          <div className="flex-1 overflow-hidden bg-[#383d47] p-2 flex justify-center items-center">
-            {summaryPdfPreviewUrl ? (
+          <div className="flex-1 overflow-auto bg-[#383d47] p-4 flex justify-center items-start">
+            <div
+              className="bg-white shadow-2xl rounded-xs transition-transform duration-200 origin-top my-2"
+              style={{
+                transform: `scale(${summaryPreviewZoom})`,
+                width: '210mm',
+                minHeight: '297mm',
+              }}
+            >
               <iframe
-                title="Overtime Record PDF Preview"
-                src={summaryPdfPreviewUrl}
-                className="w-full h-full border-0 rounded-lg shadow-2xl bg-white"
+                title="Summary SPL Preview"
+                srcDoc={summaryPreviewHtmlContent}
+                className="w-full h-full min-h-[297mm] border-0"
+                style={{ width: '100%', minHeight: '297mm' }}
               />
-            ) : (
-              <div
-                className="bg-white shadow-2xl rounded-xs transition-transform duration-200 origin-top"
-                style={{
-                  transform: `scale(${summaryPreviewZoom})`,
-                  width: '210mm',
-                  minHeight: '297mm',
-                }}
-              >
-                <iframe
-                  title="Summary SPL Preview"
-                  srcDoc={summaryPreviewHtmlContent}
-                  className="w-full h-full min-h-[297mm] border-0"
-                  style={{ width: '100%', minHeight: '297mm' }}
-                />
-              </div>
-            )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -15,6 +15,7 @@ import {
   overtimeCommandLetterParticipants,
   sites,
 } from '@/db/schema/hero'
+import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { OvertimeListingClient, type OvertimeListingRow } from './client'
 import { getOvertimeWorkflowSettings } from './actions'
@@ -307,14 +308,43 @@ export default async function OvertimeRequestsPage() {
     approvalsMap.set(a.overtimeCommandLetterId, list)
   }
 
+  const employeeIds = allEmployees.map((e) => e.id)
+  const attendanceOverrides =
+    employeeIds.length > 0
+      ? await db
+          .select({
+            employeeId: timesheetAttendanceRealOverrides.employeeId,
+            period: timesheetAttendanceRealOverrides.period,
+            day: timesheetAttendanceRealOverrides.day,
+            overtimeHours: timesheetAttendanceRealOverrides.overtimeHours,
+            clockIn: timesheetAttendanceRealOverrides.clockIn,
+            clockOut: timesheetAttendanceRealOverrides.clockOut,
+          })
+          .from(timesheetAttendanceRealOverrides)
+          .where(inArray(timesheetAttendanceRealOverrides.employeeId, employeeIds))
+      : []
+
+  const attendanceOverrideMap = new Map<string, { overtimeHours: number | null; clockIn: string | null; clockOut: string | null }>()
+  for (const att of attendanceOverrides) {
+    if (att.employeeId != null && att.period && att.day != null) {
+      attendanceOverrideMap.set(`${att.employeeId}:${att.period}:${att.day}`, {
+        overtimeHours: att.overtimeHours != null ? Number(att.overtimeHours) : null,
+        clockIn: att.clockIn || null,
+        clockOut: att.clockOut || null,
+      })
+    }
+  }
+
   const participantsMap = new Map<number, any[]>()
   for (const p of participantsList) {
     const list = participantsMap.get(p.overtimeCommandLetterId) || []
     list.push({
+      employeeId: p.employeeId ? Number(p.employeeId) : null,
       employeeName: p.employeeName || 'Karyawan',
       shiftCode: p.shiftCode || 'DS',
       rosterType: p.rosterType || '5:2',
       category: p.category || 'after_mandatory_ot',
+      overtimeCreditMinutes: p.overtimeCreditMinutes != null ? Number(p.overtimeCreditMinutes) : null,
     })
     participantsMap.set(p.overtimeCommandLetterId, list)
   }
@@ -356,6 +386,13 @@ export default async function OvertimeRequestsPage() {
       .filter((p) => p.employeeName && p.employeeName.toLowerCase() !== (r.requesterName || '').toLowerCase().trim())
       .map((p) => p.employeeName)
 
+    const workDateObj = r.workDate ? new Date(r.workDate) : new Date()
+    const pYear = workDateObj.getFullYear()
+    const pMonth = String(workDateObj.getMonth() + 1).padStart(2, '0')
+    const pDay = workDateObj.getDate()
+    const periodKey = `${pYear}-${pMonth}`
+    const reqAtt = r.requestedByEmployeeId ? attendanceOverrideMap.get(`${r.requestedByEmployeeId}:${periodKey}:${pDay}`) : undefined
+
     // 1. Requester / Koordinator Row
     rows.push({
       id: Number(r.id),
@@ -375,6 +412,10 @@ export default async function OvertimeRequestsPage() {
       participants: parts,
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
+      siteId: r.siteId ? Number(r.siteId) : null,
+      actualOvertimeHours: reqAtt?.overtimeHours ?? null,
+      attendanceClockIn: reqAtt?.clockIn ?? null,
+      attendanceClockOut: reqAtt?.clockOut ?? null,
     })
 
     // 2. Participant Team Member Rows (e.g. Sanudin, mechanics in the team)
@@ -387,6 +428,11 @@ export default async function OvertimeRequestsPage() {
         r.requesterName,
         ...parts.filter((other) => other.employeeName !== p.employeeName && other.employeeName !== r.requesterName).map((o) => o.employeeName)
       ].filter(Boolean).join(', ')
+
+      const partAtt = p.employeeId ? attendanceOverrideMap.get(`${p.employeeId}:${periodKey}:${pDay}`) : undefined
+      const effectivePartOt = p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0
+        ? p.overtimeCreditMinutes / 60
+        : (partAtt?.overtimeHours != null ? partAtt.overtimeHours : null)
 
       rows.push({
         id: Number(r.id),
@@ -406,6 +452,10 @@ export default async function OvertimeRequestsPage() {
         participants: parts,
         lineItems: itemsMap.get(r.id) || [],
         approvals: approvalsMap.get(r.id) || [],
+        siteId: r.siteId ? Number(r.siteId) : null,
+        actualOvertimeHours: effectivePartOt,
+        attendanceClockIn: partAtt?.clockIn ?? null,
+        attendanceClockOut: partAtt?.clockOut ?? null,
       })
     }
   }
@@ -433,6 +483,7 @@ export default async function OvertimeRequestsPage() {
   return (
     <OvertimeListingClient
       rows={rows}
+      sites={(rawSites || []).map((s) => ({ id: Number(s.id), name: s.name || '' }))}
       employees={sanitizedEmployees}
       activityLibraries={rawActivityLibraries || []}
       routeFolders={availableRouteFolders || []}

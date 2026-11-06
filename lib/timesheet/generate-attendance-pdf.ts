@@ -648,14 +648,21 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 // ============================================================
 // SUMMARY SPL PDF (6 Columns matching user PDF standard)
 // ============================================================
-export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise<Uint8Array> {
-  const doc = await PDFDocument.create()
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
-  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+// SUMMARY SPL PDF (6 Columns matching official PT Chitra Paratama standard)
+// ============================================================
+export async function appendSummarySplPersonPages(
+  doc: PDFDocument,
+  input: OvertimeRecordInput,
+  sharedAssets: {
+    font: PDFFont
+    fontBold: PDFFont
+    fontItalic: PDFFont
+    logo: { image: any; width: number; height: number } | null
+  }
+): Promise<void> {
+  const { font, fontBold, fontItalic, logo } = sharedAssets
   let page = doc.addPage([595, 842])
   const { width } = page.getSize()
-  const logo = await embedLogo(doc)
 
   const LM = 45
   let y = 790
@@ -982,7 +989,29 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
   // Signatures (3 equal columns)
   y -= 30
   await drawSummarySplSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
+}
 
+export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const logo = await embedLogo(doc)
+
+  await appendSummarySplPersonPages(doc, input, { font, fontBold, fontItalic, logo })
+  return doc.save()
+}
+
+export async function generateSiteSummarySplPdf(inputs: OvertimeRecordInput[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const logo = await embedLogo(doc)
+
+  for (const input of inputs) {
+    await appendSummarySplPersonPages(doc, input, { font, fontBold, fontItalic, logo })
+  }
   return doc.save()
 }
 

@@ -87,7 +87,7 @@ async function notifyDailyReportDelivery(input: {
   })
 }
 
-import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, isNotNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import {
@@ -1875,6 +1875,64 @@ export async function saveAttendanceRealOverridesAction(
         target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
         set: { attendanceStatus: 'saved', lastSavedAt: now, savedByUserId, updatedAt: now },
       })
+
+    // Synchronize attendance overtime to existing SPLs for matching employees & dates
+    for (const ov of validOverrides) {
+      if (ov.overtimeHours != null && ov.employeeId && ov.day) {
+        const dateStr = `${payload.period}-${String(ov.day).padStart(2, '0')}`
+        const startDay = new Date(`${dateStr}T00:00:00.000Z`)
+        const endDay = new Date(`${dateStr}T23:59:59.999Z`)
+        const otHours = Number(ov.overtimeHours)
+
+        if (otHours > 0) {
+          // Find matching SPLs
+          const partSplRows = await tx
+            .select({ splId: overtimeCommandLetterParticipants.overtimeCommandLetterId })
+            .from(overtimeCommandLetterParticipants)
+            .where(eq(overtimeCommandLetterParticipants.employeeId, ov.employeeId))
+
+          const partSplIds = partSplRows.map((p) => p.splId)
+
+          const matchingSpls = await tx
+            .select({
+              id: overtimeCommandLetters.id,
+              plannedStartAt: overtimeCommandLetters.plannedStartAt,
+            })
+            .from(overtimeCommandLetters)
+            .where(
+              and(
+                partSplIds.length > 0
+                  ? or(
+                      eq(overtimeCommandLetters.requestedByEmployeeId, ov.employeeId),
+                      inArray(overtimeCommandLetters.id, partSplIds)
+                    )
+                  : eq(overtimeCommandLetters.requestedByEmployeeId, ov.employeeId),
+                gte(overtimeCommandLetters.workDate, startDay),
+                lte(overtimeCommandLetters.workDate, endDay)
+              )
+            )
+
+          for (const spl of matchingSpls) {
+            const start = spl.plannedStartAt ? new Date(spl.plannedStartAt) : new Date(`${dateStr}T17:00:00.000Z`)
+            const newEnd = new Date(start.getTime() + Math.round(otHours * 60) * 60 * 1000)
+            await tx
+              .update(overtimeCommandLetters)
+              .set({ plannedEndAt: newEnd, updatedAt: now })
+              .where(eq(overtimeCommandLetters.id, spl.id))
+
+            await tx
+              .update(overtimeCommandLetterParticipants)
+              .set({ overtimeCreditMinutes: Math.round(otHours * 60), updatedAt: now })
+              .where(
+                and(
+                  eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, spl.id),
+                  eq(overtimeCommandLetterParticipants.employeeId, ov.employeeId)
+                )
+              )
+          }
+        }
+      }
+    }
   })
 
   await logAuditEvent({
