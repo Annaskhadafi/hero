@@ -57,12 +57,17 @@ import {
   CheckCircle2,
   Send,
   MessageSquare,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   createFormAction,
   deleteFormAction,
   broadcastWhatsAppFormAction,
+  exportFormResponsesAction,
 } from '@/app/dashboard/form-studio/actions'
+import { exportFormResponsesToExcel } from '@/lib/export-form-excel'
 import { getFormBaseUrl } from '@/lib/form-config'
 
 export function FormStudioClient({
@@ -86,8 +91,33 @@ export function FormStudioClient({
   const [broadcastPhones, setBroadcastPhones] = useState('')
   const [broadcastCustomMessage, setBroadcastCustomMessage] = useState('')
   const [isBroadcasting, setIsBroadcasting] = useState(false)
+  const [exportingFormId, setExportingFormId] = useState<number | null>(null)
 
   const baseUrl = getFormBaseUrl()
+
+  async function handleExportExcel(form: any) {
+    try {
+      setExportingFormId(form.id)
+      const res = await exportFormResponsesAction(form.id)
+      if (!res.success || !res.data) {
+        toast.error(res.error || 'Gagal mengambil data respon formulir.')
+        return
+      }
+
+      if (res.data.rows.length === 0) {
+        toast.info(`Belum ada respon yang dikirim untuk formulir "${form.name}".`)
+        return
+      }
+
+      await exportFormResponsesToExcel(res.data)
+      toast.success(`Berhasil mengekspor ${res.data.rows.length} respon "${form.name}" ke Excel!`)
+    } catch (err: any) {
+      console.error('Error handleExportExcel:', err)
+      toast.error('Terjadi kesalahan saat memproses file Excel.')
+    } finally {
+      setExportingFormId(null)
+    }
+  }
 
   const totalForms = customForms.length
   const totalViews = customForms.reduce((acc, f) => acc + (f.viewCount || 0), 0)
@@ -384,6 +414,23 @@ export function FormStudioClient({
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleExportExcel(form)}
+                                  disabled={exportingFormId === form.id}
+                                  className="text-emerald-700 dark:text-emerald-400 font-medium focus:text-emerald-800"
+                                >
+                                  {exportingFormId === form.id ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 mr-2 animate-spin text-emerald-600" />
+                                      Mengekspor Excel...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                                      Export Excel Respon
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => openBroadcastDialog(form)}>
                                   <MessageSquare className="h-4 w-4 mr-2 text-emerald-600" />
                                   Broadcast WhatsApp

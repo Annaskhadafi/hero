@@ -18,6 +18,7 @@ import {
   Dumbbell,
   Trophy,
   Route,
+  Video,
   HardHat,
   BookOpen,
   TrendingUp,
@@ -446,6 +447,15 @@ export function MobileDashboardServices({
       bg: 'bg-gradient-to-tr from-blue-500/10 to-indigo-500/10 text-indigo-600',
       section: 'Standar Mutu',
       description: 'Instruksi kerja & SOP resmi',
+    },
+    {
+      title: 'Road Hazard Live AI',
+      href: '/mobile/hse/road-hazard',
+      resource: 'hse_road_hazard',
+      icon: Video,
+      bg: 'bg-blue-500/10 text-blue-600',
+      section: 'HSE & Safety',
+      description: 'Live scan & record kendala jalan rusak',
     },
     {
       title: 'Site Condition',

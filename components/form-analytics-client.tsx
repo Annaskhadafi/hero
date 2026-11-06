@@ -41,10 +41,14 @@ import {
   Meh,
   Frown,
   Eye,
+  Loader2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { FormAnalyticsSummary, QuestionAnalytics } from '@/lib/form-analytics-service'
 import type { FormTemplateDetail } from '@/lib/form-builder-types'
 import { getFormBaseUrl } from '@/lib/form-config'
+import { exportFormResponsesAction } from '@/app/dashboard/form-studio/actions'
+import { exportFormResponsesToExcel } from '@/lib/export-form-excel'
 
 export function FormAnalyticsClient({
   formDetail,
@@ -54,8 +58,33 @@ export function FormAnalyticsClient({
   initialAnalytics: FormAnalyticsSummary
 }) {
   const [data] = useState<FormAnalyticsSummary>(initialAnalytics)
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
   const baseUrl = getFormBaseUrl()
   const publicFormUrl = `${baseUrl}/f/${formDetail.slug}`
+
+  async function handleExportExcel() {
+    try {
+      setIsExportingExcel(true)
+      const res = await exportFormResponsesAction(formDetail.id)
+      if (!res.success || !res.data) {
+        toast.error(res.error || 'Gagal mengambil data respon formulir.')
+        return
+      }
+
+      if (res.data.rows.length === 0) {
+        toast.info('Belum ada respon responden yang tersimpan pada formulir ini.')
+        return
+      }
+
+      await exportFormResponsesToExcel(res.data)
+      toast.success(`Berhasil mengekspor ${res.data.rows.length} respon ke format Excel!`)
+    } catch (err: any) {
+      console.error('Error handleExportExcel:', err)
+      toast.error('Terjadi kesalahan saat memproses file Excel.')
+    } finally {
+      setIsExportingExcel(false)
+    }
+  }
 
   function exportToCsv() {
     if (!data.recentSubmissions || data.recentSubmissions.length === 0) {
@@ -104,9 +133,32 @@ export function FormAnalyticsClient({
               Buka Form Publik
             </Button>
           </a>
-          <Button onClick={exportToCsv} size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white">
-            <FileSpreadsheet className="h-4 w-4" />
-            Export ke CSV
+          <Button
+            onClick={handleExportExcel}
+            disabled={isExportingExcel}
+            size="sm"
+            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+          >
+            {isExportingExcel ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Mengekspor...
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="h-4 w-4" />
+                Export ke Excel (.xlsx)
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={exportToCsv}
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-slate-700 hover:bg-slate-100"
+            title="Download CSV sederhana"
+          >
+            CSV
           </Button>
         </div>
       }

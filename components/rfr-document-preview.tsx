@@ -9,8 +9,10 @@ import {
   ExternalLink,
   Loader2,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
+import { PdfCanvasViewer } from '@/components/hero-genius/pdf-canvas-viewer'
 
 export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: number }) {
   const cleanUrl = (rawUrl || '').trim()
@@ -23,18 +25,9 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
   const isWord = /\.(docx?|rtf)($|\?)/i.test(cleanUrl)
   const isExcel = /\.(xlsx?|csv)($|\?)/i.test(cleanUrl)
 
-  const [isLoading, setIsLoading] = useState(isPdf || isImage)
-  const [loadError, setLoadError] = useState(false)
-
-  // Safety timer: stop spinner after 6 seconds so user is never stuck in endless loading
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        setIsLoading(false)
-      }, 6000)
-      return () => clearTimeout(timer)
-    }
-  }, [isLoading])
+  const [isImageLoading, setIsImageLoading] = useState(isImage)
+  const [imageLoadError, setImageLoadError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const handleOpenInNewTab = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -75,13 +68,13 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
       {/* Image Preview with Loading Spinner */}
       {isImage && (
         <div className="relative flex max-h-[500px] min-h-[140px] justify-center overflow-hidden rounded border bg-black/5 p-2">
-          {isLoading && !loadError && (
+          {isImageLoading && !imageLoadError && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/80 backdrop-blur-xs">
               <Loader2 className="mb-1 h-6 w-6 animate-spin text-blue-600" />
               <span className="text-[11px] font-medium text-slate-500">Memuat gambar...</span>
             </div>
           )}
-          {loadError ? (
+          {imageLoadError ? (
             <div className="space-y-2 p-6 text-center">
               <AlertCircle className="mx-auto h-8 w-8 text-amber-500" />
               <p className="text-xs text-slate-600">
@@ -99,10 +92,10 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
             <img
               src={resolvedUrl}
               alt={filename}
-              onLoad={() => setIsLoading(false)}
+              onLoad={() => setIsImageLoading(false)}
               onError={() => {
-                setIsLoading(false)
-                setLoadError(true)
+                setIsImageLoading(false)
+                setImageLoadError(true)
               }}
               className="max-h-[480px] max-w-full rounded object-contain shadow-xs"
             />
@@ -110,57 +103,40 @@ export function RfrAttachmentItem({ rawUrl, index }: { rawUrl: string; index: nu
         </div>
       )}
 
-      {/* PDF Embedded View with Clean Iframe & Real Loading State */}
+      {/* PDF Embedded View with Canvas & Native Option */}
       {isPdf && (
         <div className="space-y-2">
-          <div className="relative h-[520px] overflow-hidden rounded border bg-white shadow-inner">
-            {isLoading && !loadError && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center space-y-2 bg-slate-50/90">
-                <Loader2 className="h-8 w-8 animate-spin text-[#003461]" />
-                <p className="text-xs font-medium text-slate-700">
-                  Memuat pratinjau dokumen PDF...
-                </p>
-                <p className="text-[11px] text-slate-500">Mohon tunggu sebentar</p>
-              </div>
-            )}
-            {loadError ? (
-              <div className="flex h-full flex-col items-center justify-center space-y-3 bg-slate-50 p-8 text-center">
-                <FileText className="mx-auto h-12 w-12 text-slate-400" />
-                <p className="max-w-sm text-xs text-slate-600">
-                  Pratinjau PDF tidak didukung otomatis oleh browser pada perangkat ini. Silakan
-                  buka dokumen di tab baru atau unduh langsung.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleOpenInNewTab}
-                  className="cursor-pointer rounded bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
-                >
-                  Buka Dokumen PDF
-                </button>
-              </div>
-            ) : (
-              <iframe
-                src={`${resolvedUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                className="h-full w-full border-0 bg-white"
-                title={`Preview ${filename}`}
-                onLoad={() => setIsLoading(false)}
-                onError={() => {
-                  setIsLoading(false)
-                  setLoadError(true)
-                }}
-              />
-            )}
+          <div className="relative h-[600px] overflow-hidden rounded-lg border border-slate-300 bg-white shadow-inner">
+            <PdfCanvasViewer
+              key={reloadKey}
+              url={resolvedUrl}
+              filename={filename}
+              defaultViewMode="single"
+              preferNativeViewer={false}
+              hideToolbar={false}
+              hideDownload={false}
+              className="h-full w-full"
+            />
           </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-[11px] text-slate-500">
-            <span>Dokumen PDF: {filename}</span>
-            <button
-              type="button"
-              onClick={handleOpenInNewTab}
-              className="flex cursor-pointer items-center gap-1 font-semibold text-blue-600 underline hover:text-blue-800"
-            >
-              <ExternalLink className="h-3 w-3" /> Jika pratinjau tidak muncul atau lambat, klik di
-              sini untuk membuka PDF
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-100/80 px-3 py-2 text-[11px] text-slate-600">
+            <span className="font-medium truncate max-w-sm">Dokumen PDF: {filename}</span>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setReloadKey((k) => k + 1)}
+                className="flex cursor-pointer items-center gap-1 text-slate-500 hover:text-slate-800"
+                title="Muat ulang preview PDF"
+              >
+                <RefreshCw className="h-3 w-3" /> Muat Ulang
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenInNewTab}
+                className="flex cursor-pointer items-center gap-1 font-semibold text-blue-600 underline hover:text-blue-800"
+              >
+                <ExternalLink className="h-3 w-3" /> Buka PDF di Tab Baru
+              </button>
+            </div>
           </div>
         </div>
       )}

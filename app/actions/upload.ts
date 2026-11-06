@@ -16,9 +16,9 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 
-const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024
-const MAX_PDF_FILE_SIZE = 10 * 1024 * 1024
-const MAX_DOC_FILE_SIZE = 10 * 1024 * 1024
+const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024
+const MAX_PDF_FILE_SIZE = 15 * 1024 * 1024
+const MAX_DOC_FILE_SIZE = 15 * 1024 * 1024
 const MAX_VIDEO_FILE_SIZE = 100 * 1024 * 1024 // 100MB
 
 const OFFICE_MIME_TYPES = new Set([
@@ -26,8 +26,12 @@ const OFFICE_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel.sheet.macroEnabled.12',
+  'text/csv',
 ])
-const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx'])
+const OFFICE_EXTENSIONS = new Set(['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv'])
 const BANNED_EXTENSIONS = new Set([
   'html',
   'htm',
@@ -73,19 +77,20 @@ function isPrivateIpOrHost(urlString: string): boolean {
 
 async function requireUploadSession() {
   const session = await getServerSession()
-  if (session?.user?.email) {
+  if (session?.user?.email || session?.user?.id) {
     return { success: true as const, session }
   }
   const maestroSession = await getMaestroServerSession()
-  if (maestroSession?.user?.email) {
+  if (maestroSession?.user?.email || maestroSession?.user?.id) {
     return { success: true as const, session: maestroSession }
   }
-  return { success: false as const, error: 'Unauthorized' }
+  return { success: false as const, error: 'Unauthorized: Sesi login tidak ditemukan.' }
 }
 
 export async function uploadFile(formData: FormData) {
   try {
-    const uploadTarget = (formData.get('uploadTarget') as string | null)?.trim()
+    const rawTarget = (formData.get('uploadTarget') as string | null) || (formData.get('folder') as string | null)
+    const uploadTarget = rawTarget?.trim()
     const isPublicCareerCv = uploadTarget === 'public-career-cv'
     const isContractReviewAttachment = uploadTarget === 'contract-review-attachment'
 
@@ -121,8 +126,10 @@ export async function uploadFile(formData: FormData) {
       return { success: false, error: 'Tipe file ini dilarang demi alasan keamanan.' }
     }
 
-    const isImage = file.type.startsWith('image/') && file.type !== 'image/svg+xml'
-    const isPdf = file.type === 'application/pdf'
+    const isImage =
+      (file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif)$/i.test(file.name)) &&
+      file.type !== 'image/svg+xml'
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || fileExt === 'pdf'
     if (isPublicCareerCv && !isPdf) {
       return { success: false, error: 'CV harus berformat PDF.' }
     }
@@ -130,19 +137,19 @@ export async function uploadFile(formData: FormData) {
     const isOffice = OFFICE_MIME_TYPES.has(file.type) || OFFICE_EXTENSIONS.has(fileExt)
 
     if (!isImage && !isPdf && !isVideo && !isOffice) {
-      return { success: false, error: 'File must be an image, PDF, Office document, or video.' }
+      return { success: false, error: 'Format berkas tidak didukung. Harap unggah PDF, Office (Word/Excel/PowerPoint), atau Gambar.' }
     }
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: 'Photo size max 5MB.' }
+      return { success: false, error: 'Ukuran foto maksimal 15MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
-      return { success: false, error: 'PDF size max 10MB.' }
+      return { success: false, error: 'Ukuran berkas PDF maksimal 15MB.' }
     }
     if (isVideo && file.size > MAX_VIDEO_FILE_SIZE) {
       return { success: false, error: 'Video size max 100MB.' }
     }
     if (isOffice && file.size > MAX_DOC_FILE_SIZE) {
-      return { success: false, error: 'Document size max 10MB.' }
+      return { success: false, error: 'Ukuran dokumen Office maksimal 15MB.' }
     }
 
     // Automatically optimize raster images to WebP with target-tuned dimensions
@@ -153,17 +160,16 @@ export async function uploadFile(formData: FormData) {
         })
       : file
     const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
+    const isS3Ready = isS3UploadConfigured()
 
-    if (isS3UploadConfigured()) {
+    if (isS3Ready) {
       try {
         const result =
           uploadTarget === 'attendance'
             ? await uploadAttendancePhotoToS3(fileToUpload)
-            : await uploadAnyFileToS3(
-                fileToUpload,
-                uploadTarget || undefined,
-                AbortSignal.timeout(15_000)
-              )
+            : uploadTarget
+              ? await uploadAnyFileToS3(fileToUpload, uploadTarget)
+              : await uploadAnyFileToS3(fileToUpload, undefined, AbortSignal.timeout(30_000))
         const proxyUrl = `/api/uploads/${result.key}`
         return {
           success: true,
@@ -172,8 +178,12 @@ export async function uploadFile(formData: FormData) {
           fileName: fileToUpload.name,
           fileSize: fileToUpload.size,
         }
-      } catch (s3Error) {
-        console.warn('S3 Upload failed, falling back to local storage:', s3Error)
+      } catch (s3Error: any) {
+        console.error('S3 Upload failed:', s3Error)
+        return {
+          success: false,
+          error: `Gagal mengunggah berkas ke S3 Cloud Storage (${s3Error?.message || 'Koneksi S3 terputus'}). Berkas wajib disimpan ke S3 agar tidak hilang saat redeploy. Silakan coba lagi.`,
+        }
       }
     }
 
@@ -191,6 +201,19 @@ export async function uploadFile(formData: FormData) {
     const buffer = Buffer.from(await fileToUpload.arrayBuffer())
 
     await writeFile(filePath, buffer)
+
+    // Also persist to persistent host bind mount if present (e.g. Dokploy /mnt/data/one-chitra/uploads)
+    const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
+    try {
+      const { existsSync } = await import('fs')
+      if (existsSync(customUploadsDir)) {
+        const persistentDir = subFolder ? join(customUploadsDir, subFolder) : customUploadsDir
+        await mkdir(persistentDir, { recursive: true })
+        await writeFile(join(persistentDir, uniqueName), buffer)
+      }
+    } catch (e) {
+      console.warn('Could not write to persistent bind mount fallback:', e)
+    }
 
     const publicUrl = subFolder
       ? `/api/uploads/${subFolder}/${uniqueName}`
@@ -298,7 +321,7 @@ export async function uploadCurhatAttachment(formData: FormData) {
     }
 
     if (isImage && file.size > MAX_IMAGE_FILE_SIZE) {
-      return { success: false, error: 'Image size max 5MB.' }
+      return { success: false, error: 'Ukuran foto maksimal 15MB.' }
     }
     if (isPdf && file.size > MAX_PDF_FILE_SIZE) {
       return { success: false, error: 'PDF size max 10MB.' }

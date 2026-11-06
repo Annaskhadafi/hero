@@ -223,6 +223,71 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [letterIssuance, setLetterIssuance] = useState<string>(review.letterIssuance || '')
   const [currentStatus, setCurrentStatus] = useState<string>(approval.status || 'pending')
 
+  // Public Approval Draft Auto-Save
+  const approvalDraftKey = `hero_cr_approval_draft_${token}`
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false)
+  const isInitialApprovalMount = useRef(true)
+
+  // 1. Restore approval draft on mount
+  useEffect(() => {
+    if (typeof window === 'undefined' || done) return
+    try {
+      const raw = localStorage.getItem(approvalDraftKey)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed) {
+          let hasRestored = false
+          if (parsed.remarks && parsed.remarks !== approval.remarks) {
+            setRemarks(parsed.remarks)
+            hasRestored = true
+          }
+          if (parsed.recommendation && parsed.recommendation !== review.recommendation) {
+            setRecommendation(parsed.recommendation)
+            hasRestored = true
+          }
+          if (parsed.contractExtendedMonths !== undefined) {
+            setContractExtendedMonths(parsed.contractExtendedMonths)
+            hasRestored = true
+          }
+          if (parsed.letterIssuance && parsed.letterIssuance !== review.letterIssuance) {
+            setLetterIssuance(parsed.letterIssuance)
+            hasRestored = true
+          }
+          if (hasRestored) {
+            setHasRestoredDraft(true)
+            toast.info('Catatan persetujuan dipulihkan dari draf lokal.')
+          }
+        }
+      }
+    } catch {}
+  }, [token, done, approval.remarks, review.recommendation, review.letterIssuance, approvalDraftKey])
+
+  // 2. Debounced auto-save of approval remarks & recommendation
+  useEffect(() => {
+    if (isInitialApprovalMount.current) {
+      isInitialApprovalMount.current = false
+      return
+    }
+    if (typeof window === 'undefined' || done) return
+    const timer = setTimeout(() => {
+      try {
+        if (remarks || recommendation || contractExtendedMonths || letterIssuance) {
+          localStorage.setItem(
+            approvalDraftKey,
+            JSON.stringify({
+              remarks,
+              recommendation,
+              contractExtendedMonths,
+              letterIssuance,
+              savedAt: new Date().toISOString(),
+            })
+          )
+        }
+      } catch {}
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [remarks, recommendation, contractExtendedMonths, letterIssuance, done, approvalDraftKey])
+
   const isWaitingForPreviousStep = currentStatus === 'waiting'
 
   const isSectionHead = approval.approverRole === 'section_head_confirmation' || approval.approverRole === 'section_head_initial'
@@ -415,24 +480,57 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     setPreviewSignatureDataUrl(signatureDataUrl)
     setPreviewSignedAt(signedAt)
     startTransition(async () => {
-      const result = await approveContractReviewStep(token, {
-        signatureDataUrl,
-        remarks,
-        recommendation: canEditRecommendation ? recommendation : undefined,
-        contractExtendedMonths: canEditRecommendation ? contractExtendedMonths : undefined,
-        letterIssuance: canEditLetterIssuance ? letterIssuance : undefined,
-      })
-      if (result.success) {
-        setDone(true)
-        setCurrentStatus('approved')
-        setApprovalHistory((current) =>
-          current.map((step: any) =>
-            step.id === approval.id
-              ? { ...step, status: 'approved', signatureDataUrl, remarks, signedAt }
-              : step
+      try {
+        const result = await approveContractReviewStep(token, {
+          signatureDataUrl,
+          remarks,
+          recommendation: canEditRecommendation ? recommendation : undefined,
+          contractExtendedMonths: canEditRecommendation ? contractExtendedMonths : undefined,
+          letterIssuance: canEditLetterIssuance ? letterIssuance : undefined,
+        })
+        if (result.success) {
+          try {
+            localStorage.removeItem(approvalDraftKey)
+          } catch {}
+          setDone(true)
+          setCurrentStatus('approved')
+          setApprovalHistory((current) =>
+            current.map((step: any) =>
+              step.id === approval.id
+                ? { ...step, status: 'approved', signatureDataUrl, remarks, signedAt }
+                : step
+            )
           )
-        )
-      } else setError(result.error || 'Gagal menyimpan approval.')
+        } else {
+          try {
+            localStorage.setItem(
+              approvalDraftKey,
+              JSON.stringify({
+                remarks,
+                recommendation,
+                contractExtendedMonths,
+                letterIssuance,
+                savedAt: new Date().toISOString(),
+              })
+            )
+          } catch {}
+          setError((result.error || 'Gagal menyimpan approval.') + ' (Catatan Anda tetap aman tersimpan di draf).')
+        }
+      } catch (err: any) {
+        try {
+          localStorage.setItem(
+            approvalDraftKey,
+            JSON.stringify({
+              remarks,
+              recommendation,
+              contractExtendedMonths,
+              letterIssuance,
+              savedAt: new Date().toISOString(),
+            })
+          )
+        } catch {}
+        setError((err?.message || 'Gagal menyimpan approval.') + ' (Catatan Anda tetap aman tersimpan di draf).')
+      }
     })
   }
 
@@ -1586,7 +1684,14 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-500 font-medium">Catatan Persetujuan (Opsional):</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-slate-500 font-medium">Catatan Persetujuan (Opsional):</label>
+                    {hasRestoredDraft && (
+                      <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        Draf Dipulihkan
+                      </span>
+                    )}
+                  </div>
                   <Textarea
                     value={remarks}
                     onChange={(event) => setRemarks(event.target.value)}

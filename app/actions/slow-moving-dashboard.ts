@@ -6,6 +6,35 @@ import { sql } from "drizzle-orm"
 
 const REVENUE_DOC_CURR_SQL = sql`COALESCE(NULLIF(revenue_in_doc_curr, 'NaN'::float8), 0)`
 
+let slowMovingDashboardTableEnsured = false
+let slowMovingDashboardTablePromise: Promise<void> | null = null
+
+async function ensureSlowMovingDashboardTable() {
+    if (slowMovingDashboardTableEnsured) return
+    if (slowMovingDashboardTablePromise) return slowMovingDashboardTablePromise
+
+    slowMovingDashboardTablePromise = (async () => {
+        await db.execute(sql`
+            CREATE TABLE IF NOT EXISTS "slow_moving_products" (
+                "id" serial PRIMARY KEY NOT NULL,
+                "material_key" varchar(150) NOT NULL UNIQUE,
+                "material_number" varchar(150) NOT NULL,
+                "description" text,
+                "created_by" text REFERENCES "user"("id"),
+                "created_at" timestamp DEFAULT now() NOT NULL,
+                "updated_at" timestamp DEFAULT now() NOT NULL
+            )
+        `)
+        await db.execute(sql`ALTER TABLE "slow_moving_products" ADD COLUMN IF NOT EXISTS "initial_stock" integer DEFAULT 0 NOT NULL;`)
+        slowMovingDashboardTableEnsured = true
+    })().catch((err) => {
+        slowMovingDashboardTablePromise = null
+        throw err
+    })
+
+    return slowMovingDashboardTablePromise
+}
+
 export type TrendData = {
     period: string
     qty: number
@@ -106,18 +135,7 @@ export async function getSlowMovingDashboardData(
 
     try {
     // Ensure table exists
-    await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS "slow_moving_products" (
-            "id" serial PRIMARY KEY NOT NULL,
-            "material_key" varchar(150) NOT NULL UNIQUE,
-            "material_number" varchar(150) NOT NULL,
-            "description" text,
-            "created_by" text REFERENCES "user"("id"),
-            "created_at" timestamp DEFAULT now() NOT NULL,
-            "updated_at" timestamp DEFAULT now() NOT NULL
-        )
-    `)
-    await db.execute(sql`ALTER TABLE "slow_moving_products" ADD COLUMN IF NOT EXISTS "initial_stock" integer DEFAULT 0 NOT NULL;`)
+    await ensureSlowMovingDashboardTable()
 
     // Get slow moving material keys
     const products = await db.execute(sql`SELECT material_key FROM slow_moving_products`)

@@ -3066,6 +3066,110 @@ export async function upsertSopWinDepartmentWorkflowAction(input: {
   }
 }
 
+
+
+export async function syncSopWinRequestWorkflowAction(requestId: number) {
+  try {
+    const [req] = await db
+      .select()
+      .from(sopWinRequests)
+      .where(eq(sopWinRequests.id, requestId))
+      .limit(1);
+
+    if (!req) {
+      return { success: false, message: "Permohonan dokumen tidak ditemukan." };
+    }
+
+    const reqDept = (req.requesterDepartment || "").trim().toUpperCase();
+    const ownDept = (req.ownDepartment || "").trim().toUpperCase();
+    const docText = (req.requestedDocTitleAndNumber || "").toUpperCase();
+
+    const allWfs = await db.select().from(sopWinDepartmentWorkflows);
+    let matchedWf = allWfs.find(
+      (w) =>
+        w.departmentCode.toUpperCase() === reqDept ||
+        w.departmentCode.toUpperCase() === ownDept
+    );
+
+    if (!matchedWf) {
+      matchedWf = allWfs.find(
+        (w) =>
+          docText.includes(w.departmentCode.toUpperCase()) ||
+          docText.includes(w.departmentName.toUpperCase()) ||
+          reqDept.includes(w.departmentCode.toUpperCase())
+      );
+    }
+
+    if (!matchedWf || !matchedWf.steps || (matchedWf.steps as any[]).length === 0) {
+      return { success: false, message: "Workflow matriks untuk departemen ini belum dikonfigurasi." };
+    }
+
+    const sortedSteps = (matchedWf.steps as any[]).sort((a: any, b: any) => a.stepOrder - b.stepOrder);
+
+    await db
+      .delete(sopWinRequestApprovals)
+      .where(eq(sopWinRequestApprovals.requestId, req.id));
+
+    const newSteps = sortedSteps.map((s: any, idx: number) => ({
+      requestId: req.id,
+      stepOrder: idx + 1,
+      stepLabel: s.stepLabel || `Tahap ${idx + 1}`,
+      approvalToken: `step_${idx + 1}_${randomUUID().replace(/-/g, "")}`,
+      approverName: s.approverName || "Approver",
+      approverEmail: s.approverEmail || "",
+      approverEmployeeId: s.approverEmployeeId || null,
+      status: (idx === 0 ? "pending" : "waiting") as "pending" | "waiting",
+    }));
+
+    await db.insert(sopWinRequestApprovals).values(newSteps);
+
+    try {
+      revalidatePath("/dashboard/sop-win");
+    } catch {}
+
+    return {
+      success: true,
+      message: `Alur approval berhasil disinkronkan dengan matriks departemen ${matchedWf.departmentName} (${newSteps.length} tahapan).`,
+      data: newSteps,
+    };
+  } catch (error: any) {
+    console.error("[syncSopWinRequestWorkflowAction] error:", error);
+    return { success: false, message: error.message || "Gagal menyinkronkan alur approval." };
+  }
+}
+
+export async function getSopWinApproverCandidatesAction() {
+  try {
+    const candidateList = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+      })
+      .from(employees)
+      .where(or(eq(employees.employmentStatus, "active"), eq(employees.isActive, true)))
+      .orderBy(asc(employees.name));
+
+    return {
+      success: true,
+      data: candidateList.map((emp) => ({
+        id: emp.id,
+        name: (emp.name || "").trim(),
+        email: (emp.email || "").trim(),
+        employeeSn: emp.employeeSn ? emp.employeeSn.trim() : "",
+        jobTitle: emp.jobTitle ? emp.jobTitle.trim() : "",
+        department: emp.department ? emp.department.trim() : "",
+      })),
+    };
+  } catch (error: any) {
+    console.error("[getSopWinApproverCandidatesAction] error:", error);
+    return { success: false, message: error.message || "Gagal memuat kandidat approver.", data: [] };
+  }
+}
+
 export async function seedDefaultSopWinDepartmentWorkflowsAction() {
   try {
     const depts = await db.select().from(sopWinDepartments);

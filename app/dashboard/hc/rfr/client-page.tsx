@@ -103,13 +103,18 @@ function getStatusBadge(status: string, currentStepOrder: number) {
           <span>Ditolak</span>
         </Badge>
       )
-    case 'in_progress':
+    case 'in_progress': {
+      const approvedCount = Math.max(0, currentStepOrder - 1)
       return (
-        <Badge className="bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30 font-semibold text-xs py-0.5 px-2 flex items-center gap-1 w-fit">
+        <Badge
+          className="bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30 font-semibold text-xs py-0.5 px-2 flex items-center gap-1 w-fit"
+          title={`Menunggu approval tahap ${currentStepOrder} dari 6`}
+        >
           <Clock className="w-3 h-3 text-sky-600" />
-          <span>Approval ({currentStepOrder}/6)</span>
+          <span>Approval ({approvedCount}/6)</span>
         </Badge>
       )
+    }
     default:
       return (
         <Badge variant="outline" className="text-xs py-0.5 px-2 w-fit">

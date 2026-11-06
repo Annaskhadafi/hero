@@ -97,6 +97,11 @@ const ITEM_NAME_MAP: Record<string, string> = {
   'Kaos Tangan Dotting': 'Sarung Tangan Dotting',
   'Hand Glove (Knit)': 'Sarung Tangan Dotting',
   'Hand Glove (Cotton)': 'Sarung Tangan Dotting',
+  'Sarung Tangan Kulit (Vale)': 'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kulit': 'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kleenguard G40 (Vale)': 'Sarung Tangan Kleenguard G40 (Vale)',
+  'Sarung Tangan Kleenguard': 'Sarung Tangan Kleenguard G40 (Vale)',
+  'Kleenguard G40': 'Sarung Tangan Kleenguard G40 (Vale)',
   // Lockout / Tagout & Tools
   'Padlock Merah': 'Padlock Merah',
   'Padlock Kuning': 'Padlock Kuning',

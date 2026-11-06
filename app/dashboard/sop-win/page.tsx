@@ -7,6 +7,7 @@ import {
   getSopWinApprovalsAction,
   getSopWinDocumentRequestsAction,
   getSopWinDepartmentWorkflowsAction,
+  getSopWinApproverCandidatesAction,
 } from "@/app/dashboard/sop-win/actions";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
@@ -33,7 +34,7 @@ export default async function SopWinPage({
   const resolvedParams = searchParams ? await searchParams : {};
   const activeTab = resolvedParams?.tab || "explorer";
 
-  const [rawDashboard, rawDocs, rawEmployees, rawDepts, rawApprovals, rawDocRequests, rawMatrixWorkflows, permission, session] = await Promise.all([
+  const [rawDashboard, rawDocs, rawEmployees, rawDepts, rawApprovals, rawDocRequests, rawMatrixWorkflows, rawApproverCandidates, permission, session] = await Promise.all([
     getSopWinDashboardAction().catch((err) => {
       console.error('[SopWinPage] dashboard action failed:', err);
       return null;
@@ -60,6 +61,10 @@ export default async function SopWinPage({
     }),
     getSopWinDepartmentWorkflowsAction().catch((err) => {
       console.error('[SopWinPage] department workflows action failed:', err);
+      return { success: false as const, data: [] };
+    }),
+    getSopWinApproverCandidatesAction().catch((err) => {
+      console.error('[SopWinPage] approver candidates action failed:', err);
       return { success: false as const, data: [] };
     }),
     getCurrentMenuPermission("sop-win").catch(() => null),
@@ -110,6 +115,8 @@ export default async function SopWinPage({
   const pendingRequestsCount = docRequestsList.filter((r: any) => r.status === "pending_ria" || r.status === "pending_creator" || r.status === "pending_owner" || r.status === "pending_bardynia").length;
   const matrixWorkflowsData = rawMatrixWorkflows && typeof rawMatrixWorkflows === "object" ? JSON.parse(JSON.stringify(rawMatrixWorkflows)) : { data: [] };
   const matrixWorkflowsList = Array.isArray(matrixWorkflowsData?.data) ? matrixWorkflowsData.data : [];
+  const approverCandidatesData = rawApproverCandidates && typeof rawApproverCandidates === "object" ? JSON.parse(JSON.stringify(rawApproverCandidates)) : { data: [] };
+  const approverCandidatesList = Array.isArray(approverCandidatesData?.data) ? approverCandidatesData.data : [];
 
   const canEdit = !!permission?.canEdit;
   const canDelete = !!permission?.canDelete;
@@ -196,7 +203,7 @@ export default async function SopWinPage({
         </TabsContent>
 
         <TabsContent value="matrix" className="space-y-4 outline-none">
-          <SopWinApprovalMatrixPanel initialWorkflows={matrixWorkflowsList} />
+          <SopWinApprovalMatrixPanel initialWorkflows={matrixWorkflowsList} initialEmployees={approverCandidatesList} />
         </TabsContent>
       </Tabs>
     </div>

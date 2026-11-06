@@ -35,6 +35,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  User,
   UserPlus,
   X,
   XCircle,
@@ -50,8 +51,14 @@ import { compressImageFile } from '@/lib/client-image-compression'
 import type { RouteFolder } from '@/lib/daily-activity'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import QRCode from 'qrcode'
-import { generateOvertimeRecordPdf, generateSummarySplPdf,
-  generateSiteSummarySplPdf, type AttendanceDayData } from '@/lib/timesheet/generate-attendance-pdf'
+import {
+  generateOvertimeRecordPdf,
+  generateSummarySplPdf,
+  generateSiteSummarySplPdf,
+  type AttendanceDayData,
+  type SiteSummarySplRow,
+  type SiteSummaryEmployeeStat,
+} from '@/lib/timesheet/generate-attendance-pdf'
 import { resolveSummarySplSignatories } from '@/lib/timesheet/summary-spl-signatures'
 import {
   getOvertimeSummaryWorkspaceDataAction,
@@ -95,6 +102,7 @@ import { HeroSearchableSelect } from '@/components/templates'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { SignatureFloatingWidget } from '@/components/signature-floating-widget'
+import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import {
   batchApproveOvertimeRequestsAction,
@@ -109,6 +117,8 @@ import {
   generateTestOvertimeApproval,
   sendDueOvertimeReminders,
   saveOvertimeWorkflowSettings,
+  getSplSignaturesAction,
+  getBatchSplSignaturesAction,
 } from '@/app/dashboard/overtime-requests/actions'
 import {
   type OvertimeWorkflowSettings,
@@ -156,6 +166,7 @@ export type OvertimeCreateLineItem = {
 }
 
 export type OvertimeListingRow = {
+  siteId?: number | null
   id: number
   splNumber: string
   title: string
@@ -206,6 +217,7 @@ export type OvertimeListingRow = {
     approverEmail?: string | null
     approverEmployeeId?: number | null
     signatureDataUrl?: string | null
+    hasSignature?: boolean | null
     signedAt: Date | string | null
     remarks?: string | null
   }>
@@ -578,6 +590,276 @@ function renderSummarySplPdfHtml(
     </html>
   `
 }
+
+function renderSiteSummarySplPdfHtml(
+  siteData: {
+    siteName: string
+    siteLogoUrl?: string
+    periodLabel: string
+    totalSplCount: number
+    totalHours: number
+    totalEmployees: number
+    rows: SiteSummarySplRow[]
+    employeeStats: SiteSummaryEmployeeStat[]
+    signatories: {
+      preparedBy?: string
+      pjoLeader?: string
+      approvedBy?: string
+      isPjo?: boolean
+    }
+  }
+): string {
+  const ROWS_PER_PAGE = 16
+  const totalRows = siteData.rows.length
+  const siteLogoUrl = resolveSiteLogoUrl(siteData.siteName, siteData.siteLogoUrl)
+
+  const pageChunks: SiteSummarySplRow[][] = []
+  if (totalRows === 0) {
+    pageChunks.push([])
+  } else {
+    for (let i = 0; i < totalRows; i += ROWS_PER_PAGE) {
+      pageChunks.push(siteData.rows.slice(i, i + ROWS_PER_PAGE))
+    }
+  }
+
+  const totalPages = pageChunks.length
+
+  const pagesHtml = pageChunks
+    .map((chunk, pageIndex) => {
+      const isFirstPage = pageIndex === 0
+      const isLastPage = pageIndex === totalPages - 1
+
+      const rowsHtml = chunk
+        .map((row, idx) => {
+          const rowBgStyle = row.isWeekend ? 'background-color: #fef2f2;' : 'background-color: #ffffff;'
+          const textRedStyle = row.isWeekend ? 'color: #dc2626; font-weight: bold;' : ''
+          const globalIdx = pageIndex * ROWS_PER_PAGE + idx + 1
+
+          return `
+            <tr style="${rowBgStyle}">
+              <td style="border: 1px solid #1e293b; padding: 4px; text-align: center; font-size: 7.5pt; vertical-align: middle;">${globalIdx}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px; text-align: center; font-size: 7.5pt; vertical-align: middle; ${textRedStyle}">${row.dateStr}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px; text-align: center; font-size: 7.5pt; vertical-align: middle; ${textRedStyle}">${row.dayName}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; font-size: 7.5pt; vertical-align: middle; font-weight: bold;">${row.employeeName}${row.employeeSn && row.employeeSn !== '—' ? `<br/><span style="font-size: 6.5pt; color: #475569; font-weight: normal;">SN: ${row.employeeSn}</span>` : ''}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; font-size: 7pt; vertical-align: middle;">${row.department || '—'}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px; text-align: center; font-size: 7.5pt; vertical-align: middle; font-family: monospace;">${row.startTime}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px; text-align: center; font-size: 7.5pt; vertical-align: middle; font-family: monospace;">${row.endTime}</td>
+              <td style="border: 1px solid #1e293b; padding: 4px; text-align: center; font-size: 8pt; vertical-align: middle; font-weight: bold; color: #0369a1;">${row.durationHours} Jam</td>
+              <td style="border: 1px solid #1e293b; padding: 4px 6px; font-size: 7pt; vertical-align: top; line-height: 1.25;">${row.taskSummary}</td>
+            </tr>
+          `
+        })
+        .join('')
+
+      const headerHtml = isFirstPage
+        ? `
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 2px solid #000; padding-bottom: 6px;">
+            <div style="width: 120px; text-align: left;">
+              <img src="/cp_logo-removebg-preview.png" style="height: 44px; max-width: 110px; object-fit: contain;" />
+            </div>
+            <div style="flex: 1; text-align: center;">
+              <div style="font-weight: 800; font-size: 12pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000;">PT. CHITRA PARATAMA</div>
+              <div style="font-weight: 700; font-size: 10pt; text-transform: uppercase; letter-spacing: 0.5px; color: #000; margin-top: 1px;">SUMMARY SPL PER SITE</div>
+              <div style="font-weight: 600; font-size: 7.5pt; color: #334155; margin-top: 1px; letter-spacing: 0.5px;">HUMAN CAPITAL • REKAPITULASI LEMBUR KARYAWAN SITE</div>
+            </div>
+            <div style="width: 120px; text-align: right;">
+              ${siteLogoUrl ? `<img src="${siteLogoUrl}" style="height: 44px; max-width: 110px; object-fit: contain;" />` : '<div style="width: 110px;"></div>'}
+            </div>
+          </div>
+
+          <div style="margin-bottom: 10px; font-size: 8pt; color: #000;">
+            <table style="border-collapse: collapse; width: 100%;">
+              <tr>
+                <td style="width: 120px; font-weight: bold; padding: 2px 0;">MONTH / BULAN</td>
+                <td style="width: 10px; text-align: center;">:</td>
+                <td style="font-weight: bold;">${siteData.periodLabel}</td>
+                <td style="text-align: right; font-weight: bold;">TOTAL SPL: ${siteData.totalSplCount} Dokumen</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold; padding: 2px 0;">Site / Lokasi</td>
+                <td style="text-align: center;">:</td>
+                <td style="font-weight: bold; text-transform: uppercase;">${siteData.siteName}</td>
+                <td style="text-align: right; font-weight: bold;">TOTAL PEKERJA: ${siteData.totalEmployees} Orang</td>
+              </tr>
+              <tr>
+                <td style="font-weight: bold; padding: 2px 0;">Total Jam Lembur</td>
+                <td style="text-align: center;">:</td>
+                <td colSpan="2" style="font-weight: 800; color: #0369a1;">${siteData.totalHours} Jam</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="text-align: center; font-weight: 800; font-size: 9pt; text-transform: uppercase; margin-bottom: 6px; color: #000; letter-spacing: 0.5px;">
+            DAFTAR RINCIAN PENUGASAN LEMBUR SITE (PAYABLE SITE ALLOWANCE)
+          </div>
+        `
+        : `
+          <div style="text-align: center; margin-bottom: 8px; border-bottom: 1.5px solid #000; padding-bottom: 4px;">
+            <div style="font-size: 10pt; font-weight: 800; color: #000; letter-spacing: 0.5px;">PT. CHITRA PARATAMA</div>
+            <div style="font-size: 8.5pt; font-weight: 700; color: #334155; margin-top: 1px;">SUMMARY SPL PER SITE — Lanjutan (Halaman ${pageIndex + 1} dari ${totalPages})</div>
+            <div style="font-size: 7pt; color: #475569; margin-top: 1px;">Site: <strong>${siteData.siteName}</strong> • Periode: <strong>${siteData.periodLabel}</strong></div>
+          </div>
+        `
+
+      const totalRowHtml = isLastPage
+        ? `
+          <tr style="background: #dcfce7; font-weight: bold; font-size: 8pt;">
+            <td colspan="7" style="border: 1px solid #16a34a; padding: 5px; text-align: center; color: #15803d; font-weight: 800;">TOTAL JAM LEMBUR SITE:</td>
+            <td style="border: 1px solid #16a34a; padding: 5px; text-align: center; color: #15803d; font-size: 8.5pt; font-weight: 800;">${siteData.totalHours} Jam</td>
+            <td style="border: 1px solid #16a34a; padding: 5px; text-align: left; color: #166534; font-size: 7pt;">(${siteData.totalSplCount} Dokumen SPL • ${siteData.totalEmployees} Karyawan)</td>
+          </tr>
+        `
+        : ''
+
+      const employeeRecapHtml = isLastPage && siteData.employeeStats && siteData.employeeStats.length > 0
+        ? `
+          <div style="margin-top: 14px; margin-bottom: 6px;">
+            <div style="font-size: 7.5pt; font-weight: 800; color: #003f78; margin-bottom: 4px; text-transform: uppercase;">
+              REKAPITULASI TOTAL LEMBUR PER KARYAWAN (SITE: ${siteData.siteName.toUpperCase()})
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 7pt;">
+              <thead>
+                <tr style="background: #f1f5f9; font-weight: bold;">
+                  <th style="border: 1px solid #1e293b; padding: 3px 5px; text-align: center; width: 30px;">No</th>
+                  <th style="border: 1px solid #1e293b; padding: 3px 5px; text-align: left;">Nama Karyawan</th>
+                  <th style="border: 1px solid #1e293b; padding: 3px 5px; text-align: left; width: 140px;">Departemen</th>
+                  <th style="border: 1px solid #1e293b; padding: 3px 5px; text-align: center; width: 80px;">Jumlah SPL</th>
+                  <th style="border: 1px solid #1e293b; padding: 3px 5px; text-align: center; width: 100px;">Total Jam Lembur</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${siteData.employeeStats.map((st, sIdx) => `
+                  <tr style="${sIdx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                    <td style="border: 1px solid #1e293b; padding: 3px; text-align: center;">${sIdx + 1}</td>
+                    <td style="border: 1px solid #1e293b; padding: 3px 5px; font-weight: bold;">${st.employeeName}${st.employeeSn && st.employeeSn !== '—' ? ` <span style="font-size: 6.5pt; color: #64748b; font-weight: normal;">(${st.employeeSn})</span>` : ''}</td>
+                    <td style="border: 1px solid #1e293b; padding: 3px 5px;">${st.department || '—'}</td>
+                    <td style="border: 1px solid #1e293b; padding: 3px; text-align: center;">${st.splCount} SPL</td>
+                    <td style="border: 1px solid #1e293b; padding: 3px; text-align: center; font-weight: bold; color: #0369a1;">${st.totalHours} Jam</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `
+        : ''
+
+      const signatureSectionHtml = isLastPage
+        ? `
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px; page-break-inside: avoid;">
+            <tr>
+              <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 7.5pt; font-style: italic; color: #334155; padding-right: 15px;">
+                Dibuat oleh :
+                <div style="height: 38px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 7.5pt; color: #000; margin-top: 3px;">
+                  ${siteData.signatories.preparedBy || 'Admin Site'}
+                </div>
+              </td>
+              <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 7.5pt; font-style: italic; color: #334155; padding-right: 15px;">
+                Diketahui oleh :
+                <div style="height: 38px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 7.5pt; color: #000; margin-top: 3px;">
+                  ${siteData.signatories.pjoLeader || 'PJO Site'}
+                </div>
+              </td>
+              <td style="width: 33.3%; text-align: left; vertical-align: top; font-size: 7.5pt; font-style: italic; color: #334155; padding-right: 15px;">
+                Approved by :
+                <div style="height: 38px;"></div>
+                <div style="border-bottom: 1px solid #000; width: 85%;"></div>
+                <div style="font-weight: bold; font-style: normal; font-size: 7.5pt; color: #000; margin-top: 3px;">
+                  ${siteData.signatories.approvedBy || 'Site Leader'}
+                </div>
+              </td>
+            </tr>
+          </table>
+          <div style="text-align: right; font-size: 7pt; color: #64748b; margin-top: 8px;">Halaman ${pageIndex + 1} dari ${totalPages}</div>
+        `
+        : ''
+
+      return `
+        <div class="pdf-page">
+          ${headerHtml}
+          <table style="width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 7pt;">
+            <thead>
+              <tr style="background: #f8fafc; font-weight: bold;">
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px; text-align: center; width: 24px;">No</th>
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px; text-align: center; width: 44px;">Tanggal</th>
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px; text-align: center; width: 38px;">Hari</th>
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px 6px; text-align: left; width: 85px;">Nama Karyawan</th>
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px 6px; text-align: left; width: 65px;">Departemen</th>
+                <th colspan="2" style="border: 1px solid #1e293b; padding: 3px; text-align: center; width: 68px;">Jam Lembur</th>
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px; text-align: center; width: 40px;">Total Jam</th>
+                <th rowspan="2" style="border: 1px solid #1e293b; padding: 4px 6px; text-align: left;">Yang Dikerjakan / No. SPL</th>
+              </tr>
+              <tr style="background: #f8fafc; font-weight: bold;">
+                <th style="border: 1px solid #1e293b; padding: 2px; text-align: center; width: 34px; font-size: 6.5pt;">Mulai</th>
+                <th style="border: 1px solid #1e293b; padding: 2px; text-align: center; width: 34px; font-size: 6.5pt;">Selesai</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+              ${totalRowHtml}
+            </tbody>
+          </table>
+          ${employeeRecapHtml}
+          ${signatureSectionHtml}
+        </div>
+      `
+    })
+    .join('')
+
+  return `
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="utf-8"/>
+      <title>Summary SPL Per Site - ${siteData.siteName}</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+          color: #0f172a;
+          margin: 0;
+          padding: 20px;
+          background: #f1f5f9;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        .pdf-page {
+          width: 210mm;
+          min-height: 297mm;
+          padding-top: 14mm;
+          padding-bottom: 18mm;
+          padding-left: 14mm;
+          padding-right: 14mm;
+          background-color: #ffffff;
+          box-sizing: border-box;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+          margin-bottom: 20px;
+        }
+        @media print {
+          body {
+            background: transparent;
+            padding: 0;
+          }
+          .pdf-page {
+            box-shadow: none;
+            margin-bottom: 0;
+            page-break-after: always;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      ${pagesHtml}
+    </body>
+    </html>
+  `
+}
+
+
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     approved: 'bg-emerald-50 text-emerald-700 border-0',
@@ -595,7 +877,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function ApprovalProgressBadge({ approvals }: { approvals: OvertimeListingRow['approvals'] }) {
-  const approved = approvals.filter((a) => a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.signatureDataUrl) || Boolean(a.signedAt)).length
+  const approved = approvals.filter((a) => a.status === 'approved' || a.status === 'signed' || a.status === 'completed' || Boolean(a.hasSignature) || Boolean(a.signatureDataUrl) || Boolean(a.signedAt)).length
   const total = approvals.length
   const anyRejected = approvals.some((a) => a.status === 'rejected')
 
@@ -618,6 +900,8 @@ function ApprovalProgressBadge({ approvals }: { approvals: OvertimeListingRow['a
 export function OvertimeListingClient({
   rows: propRows,
   employees = [],
+  sites = [],
+  currentEmployeeSiteId = null,
   activityLibraries = [],
   routeFolders = [],
   initialSettings,
@@ -629,6 +913,8 @@ export function OvertimeListingClient({
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
+  sites?: Array<{ id: number; name: string }>
+  currentEmployeeSiteId?: number | null
   activityLibraries?: OvertimeActivityLibraryItem[]
   routeFolders?: RouteFolder[]
   initialSettings?: OvertimeWorkflowSettings
@@ -1229,6 +1515,8 @@ export function OvertimeListingClient({
 
   // PDF Preview Dialog
   const [previewSplTarget, setPreviewSplTarget] = useState<OvertimeListingRow | null>(null)
+  const [signatureCache, setSignatureCache] = useState<Record<number, Record<number, string | null>>>({})
+  const [evidenceModalSplId, setEvidenceModalSplId] = useState<number | null>(null)
 
   // Batch Approval & Signature Registry State
   const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -1245,6 +1533,27 @@ export function OvertimeListingClient({
       }
     })
   }, [])
+
+  // On-demand signature fetch for single preview target
+  useEffect(() => {
+    if (!previewSplTarget?.id) return
+    const id = previewSplTarget.id
+    if (signatureCache[id]) return
+
+    const hasSig = previewSplTarget.approvals?.some((a) => Boolean(a.signatureDataUrl))
+    if (hasSig) return
+
+    getSplSignaturesAction(id).then((sigs) => {
+      if (!sigs || sigs.length === 0) return
+      const stepMap: Record<number, string | null> = {}
+      for (const s of sigs) {
+        if (s.signatureDataUrl) {
+          stepMap[s.stepOrder] = s.signatureDataUrl
+        }
+      }
+      setSignatureCache((prev) => ({ ...prev, [id]: stepMap }))
+    })
+  }, [previewSplTarget?.id, signatureCache])
 
   // Filters & Tabs State
   const [activeTab, setActiveTab] = useState<'all' | 'submitted' | 'approved' | 'draft' | 'rejected'>('all')
@@ -1267,9 +1576,28 @@ export function OvertimeListingClient({
   const statusFilterOptions = ['Approved', 'Submitted', 'Draft', 'Rejected']
   const workerCountFilterOptions = ['1 - 3 Orang', '4 - 10 Orang', '> 10 Orang']
 
-  const [summarySiteId, setSummarySiteId] = useState<string>('ALL')
+  const defaultSiteFilter = currentEmployeeSiteId ? String(currentEmployeeSiteId) : 'ALL'
+  const [summarySiteId, setSummarySiteId] = useState<string>(defaultSiteFilter)
   const [summaryEmployeeId, setSummaryEmployeeId] = useState<string>('ALL')
-  const [summaryMonth, setSummaryMonth] = useState<string>('')
+
+  const summarySiteOptions = useMemo(() => {
+    return [
+      { value: 'ALL', label: 'Semua Site' },
+      ...(sites || []).map((s) => ({
+        value: String(s.id),
+        label: s.name,
+      })),
+    ]
+  }, [sites])
+
+  const handleSiteChange = (val: string) => {
+    setSummarySiteId(val)
+    setSummaryEmployeeId('ALL')
+  }
+  const [summaryMonth, setSummaryMonth] = useState<string>(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  })
   const [isGeneratingSummaryPdf, setIsGeneratingSummaryPdf] = useState<boolean>(false)
   const [isGeneratingSitePdf, setIsGeneratingSitePdf] = useState<boolean>(false)
 
@@ -1280,6 +1608,7 @@ export function OvertimeListingClient({
   const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState<boolean>(false)
   const [summaryPreviewZoom, setSummaryPreviewZoom] = useState<number>(1.0)
   const [summaryPdfPreviewUrl, setSummaryPdfPreviewUrl] = useState<string | null>(null)
+  const [summaryPreviewMode, setSummaryPreviewMode] = useState<'employee' | 'site'>('employee')
 
   // Online Summary SPL Approval State
   const [summaryOnlineData, setSummaryOnlineData] = useState<OvertimeSummaryDetail | null>(null)
@@ -1292,11 +1621,16 @@ export function OvertimeListingClient({
   const [summaryRejectionReason, setSummaryRejectionReason] = useState<string>('')
   const [isSummaryActionRunning, setIsSummaryActionRunning] = useState<boolean>(false)
 
+  const currentMonthStr = useMemo(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }, [])
+
   const hasActiveFilters =
     activeTab !== 'all' ||
-    summarySiteId !== 'ALL' ||
+    summarySiteId !== defaultSiteFilter ||
     summaryEmployeeId !== 'ALL' ||
-    Boolean(summaryMonth) ||
+    Boolean(summaryMonth && summaryMonth !== currentMonthStr) ||
     searchQuery.trim().length > 0 ||
     selectedDepartments.length > 0 ||
     selectedStatuses.length > 0 ||
@@ -1304,9 +1638,10 @@ export function OvertimeListingClient({
 
   const handleResetFilters = () => {
     setActiveTab('all')
-    setSummarySiteId('ALL')
+    setSummarySiteId(defaultSiteFilter)
     setSummaryEmployeeId('ALL')
-    setSummaryMonth('')
+    const now = new Date()
+    setSummaryMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
     setSearchQuery('')
     setSelectedDepartments([])
     setSelectedStatuses([])
@@ -1487,9 +1822,12 @@ export function OvertimeListingClient({
     const map = new Map<string, { id: string; name: string; dept?: string }>()
     map.set('ALL', { id: 'ALL', name: 'Semua Karyawan' })
 
+    const filterBySite = summarySiteId && summarySiteId !== 'ALL'
+
     if (Array.isArray(employees)) {
       employees.forEach((emp) => {
         if (!emp) return
+        if (filterBySite && String(emp.siteId) !== summarySiteId) return
         const key = String(emp.id || emp.name || '')
         if (key && emp.name) {
           map.set(key, {
@@ -1504,6 +1842,15 @@ export function OvertimeListingClient({
     if (Array.isArray(rows)) {
       rows.forEach((row) => {
         if (!row) return
+        if (filterBySite && row.siteId != null && String(row.siteId) !== summarySiteId) {
+          return
+        }
+        if (filterBySite && row.requestedByEmployeeId) {
+          const matchedEmp = employees.find((e) => Number(e.id) === Number(row.requestedByEmployeeId))
+          if (matchedEmp && matchedEmp.siteId != null && String(matchedEmp.siteId) !== summarySiteId) {
+            return
+          }
+        }
         if (row.requestedByEmployeeId && !map.has(String(row.requestedByEmployeeId))) {
           map.set(String(row.requestedByEmployeeId), {
             id: String(row.requestedByEmployeeId),
@@ -1521,6 +1868,12 @@ export function OvertimeListingClient({
         if (Array.isArray(row.participants)) {
           row.participants.forEach((p) => {
             if (p && p.employeeName && !map.has(p.employeeName)) {
+              if (filterBySite && (p as any).employeeId) {
+                const matchedEmp = employees.find((e) => Number(e.id) === Number((p as any).employeeId))
+                if (matchedEmp && matchedEmp.siteId != null && String(matchedEmp.siteId) !== summarySiteId) {
+                  return
+                }
+              }
               map.set(p.employeeName, {
                 id: p.employeeName,
                 name: p.employeeName,
@@ -1535,7 +1888,7 @@ export function OvertimeListingClient({
       value: emp.id,
       label: emp.id === 'ALL' ? 'Semua Karyawan' : (emp.dept ? `${emp.name || ''} (${emp.dept})` : emp.name || emp.id),
     }))
-  }, [employees, rows, isManagementOrAdmin, currentEmployeeId, currentEmployeeName])
+  }, [employees, rows, isManagementOrAdmin, currentEmployeeId, currentEmployeeName, summarySiteId])
 
   const filteredRows = useMemo(() => {
     if (!Array.isArray(rows)) return []
@@ -1554,6 +1907,20 @@ export function OvertimeListingClient({
         if (activeTab === 'approved' && rowStatus !== 'approved') return false
         if (activeTab === 'draft' && rowStatus !== 'draft') return false
         if (activeTab === 'rejected' && rowStatus !== 'rejected' && rowStatus !== 'cancelled') return false
+      }
+
+      // 0.1 Site Filter
+      if (summarySiteId && summarySiteId !== 'ALL') {
+        const rowSiteId = row.siteId != null ? String(row.siteId) : null
+        if (rowSiteId && rowSiteId !== summarySiteId) {
+          return false
+        }
+        if (!rowSiteId && row.requestedByEmployeeId) {
+          const emp = employees.find((e) => Number(e.id) === Number(row.requestedByEmployeeId))
+          if (emp && emp.siteId != null && String(emp.siteId) !== summarySiteId) {
+            return false
+          }
+        }
       }
 
       // 1. Employee Filter (Strictly match row created for the selected employee)
@@ -1636,7 +2003,7 @@ export function OvertimeListingClient({
 
       return true
     })
-  }, [rows, activeTab, summaryEmployeeId, summaryMonth, searchQuery, selectedDepartments, selectedStatuses, selectedWorkerCounts, summaryEmployeeOptions])
+  }, [rows, activeTab, summarySiteId, summaryEmployeeId, summaryMonth, searchQuery, selectedDepartments, selectedStatuses, selectedWorkerCounts, summaryEmployeeOptions])
 
   const summaryFilteredRows = useMemo(() => {
     if (summaryEmployeeId && summaryEmployeeId !== 'ALL') {
@@ -1662,6 +2029,162 @@ export function OvertimeListingClient({
     })
   }, [filteredRows, summaryEmployeeId])
 
+  // Official Payable Allowance Filter: only approved SPLs unless user specifically picked statuses
+  const approvedSummaryFilteredRows = useMemo(() => {
+    return summaryFilteredRows.filter((r) => {
+      const rowStatus = (r.status || '').toLowerCase()
+      if (selectedStatuses.length > 0) {
+        return selectedStatuses.some((status) => {
+          const s = status.toLowerCase()
+          if (s.includes('approved')) return rowStatus === 'approved'
+          if (s.includes('submitted')) return rowStatus === 'submitted'
+          if (s.includes('draft')) return rowStatus === 'draft'
+          if (s.includes('rejected')) return rowStatus === 'rejected' || rowStatus === 'cancelled'
+          return rowStatus === s
+        })
+      }
+      return rowStatus === 'approved'
+    })
+  }, [summaryFilteredRows, selectedStatuses])
+
+  const siteSummaryData = useMemo(() => {
+    const matchingRows = (rows || []).filter((r) => {
+      // 0. Status Guard: Payable Site Allowance must only count Approved SPLs by default, or follow specific status filters
+      const rowStatus = (r.status || '').toLowerCase()
+      if (selectedStatuses.length > 0) {
+        const match = selectedStatuses.some((status) => {
+          const s = status.toLowerCase()
+          if (s.includes('approved')) return rowStatus === 'approved'
+          if (s.includes('submitted')) return rowStatus === 'submitted'
+          if (s.includes('draft')) return rowStatus === 'draft'
+          if (s.includes('rejected')) return rowStatus === 'rejected' || rowStatus === 'cancelled'
+          return rowStatus === s
+        })
+        if (!match) return false
+      } else {
+        if (rowStatus !== 'approved') return false
+      }
+      if (summarySiteId && summarySiteId !== 'ALL') {
+        const rowSiteId = r.siteId != null ? String(r.siteId) : null
+        if (rowSiteId && rowSiteId !== summarySiteId) {
+          return false
+        }
+        if (!rowSiteId && r.requestedByEmployeeId) {
+          const emp = employees.find((e) => Number(e.id) === Number(r.requestedByEmployeeId))
+          if (emp && emp.siteId != null && String(emp.siteId) !== summarySiteId) {
+            return false
+          }
+        }
+      }
+
+      if (summaryMonth && r.workDate) {
+        const d = r.workDate instanceof Date ? r.workDate : new Date(r.workDate)
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const rowMonthStr = `${year}-${month}`
+          if (rowMonthStr !== summaryMonth) return false
+        }
+      }
+
+      return true
+    })
+
+    const seen = new Set<number>()
+    const uniqueSpls = matchingRows.filter((r) => {
+      if (seen.has(r.id)) return false
+      seen.add(r.id)
+      return true
+    })
+
+    uniqueSpls.sort((a, b) => {
+      const da = new Date(a.workDate).getTime() || 0
+      const db = new Date(b.workDate).getTime() || 0
+      if (da !== db) return da - db
+      return (a.splNumber || '').localeCompare(b.splNumber || '')
+    })
+
+    const employeeMap = new Map<string, {
+      employeeName: string
+      employeeSn?: string
+      department?: string
+      splCount: number
+      totalHours: number
+    }>()
+
+    let totalSiteHours = 0
+    const siteRows: SiteSummarySplRow[] = []
+
+    uniqueSpls.forEach((spl) => {
+      const duration = calculateSplDurationHours(spl)
+      const dateStr = formatDate(spl.workDate)
+      const dayName = getIndonesianDayName(spl.workDate)
+      const isWeekend = dayName === 'Minggu' || dayName === 'Sabtu'
+      const startTime = spl.plannedStartAt ? formatTime(spl.plannedStartAt) : '—'
+      const endTime = spl.plannedEndAt ? formatTime(spl.plannedEndAt) : '—'
+
+      const uniqueLineItems = Array.from(
+        new Map((spl.lineItems || []).map((l) => [`${l.code || ''}-${l.name || l.lineLabel || ''}-${l.unitNumber || ''}`, l])).values()
+      )
+      const taskSummary = uniqueLineItems.length
+        ? uniqueLineItems.map((l) => `${l.name || l.lineLabel || l.code || 'Aktivitas'}${l.unitNumber ? ` (${l.unitNumber})` : ''}${l.tireCount ? ` [${l.tireCount} ban]` : ''}`).join(', ')
+        : spl.title || 'Penugasan Lembur'
+
+      const workers = spl.participants && spl.participants.length > 0
+        ? spl.participants.map((p) => p.employeeName)
+        : [spl.requesterName || 'Karyawan']
+
+      workers.forEach((workerName) => {
+        const empObj = employees.find((e) => (e.name || '').trim().toLowerCase() === workerName.trim().toLowerCase())
+        const empSn = (empObj as any)?.employee_sn || (empObj as any)?.nip || '—'
+        const dept = (empObj as any)?.department || spl.requesterDepartment || 'Central Services'
+
+        siteRows.push({
+          dateStr,
+          dayName,
+          splNumber: spl.splNumber || '—',
+          employeeName: workerName,
+          employeeSn: empSn,
+          department: dept,
+          startTime,
+          endTime,
+          durationHours: duration,
+          taskSummary: `${spl.splNumber ? `[${spl.splNumber}] ` : ''}${taskSummary}`,
+          isWeekend,
+        })
+
+        totalSiteHours += duration
+
+        if (!employeeMap.has(workerName)) {
+          employeeMap.set(workerName, {
+            employeeName: workerName,
+            employeeSn: empSn,
+            department: dept,
+            splCount: 0,
+            totalHours: 0,
+          })
+        }
+        const stat = employeeMap.get(workerName)!
+        stat.splCount += 1
+        stat.totalHours += duration
+      })
+    })
+
+    const employeeStats = Array.from(employeeMap.values()).sort((a, b) => b.totalHours - a.totalHours)
+    const siteObj = sites?.find((s) => String(s.id) === summarySiteId)
+    const siteName = siteObj?.name || (summarySiteId !== 'ALL' ? summarySiteId : 'Semua Site')
+
+    return {
+      siteName,
+      totalSplCount: uniqueSpls.length,
+      totalHours: Math.round(totalSiteHours * 10) / 10,
+      totalEmployees: employeeStats.length,
+      rows: siteRows,
+      employeeStats,
+      uniqueSpls,
+    }
+  }, [rows, summarySiteId, summaryMonth, employees, sites, selectedStatuses])
+
   const summaryStats = useMemo(() => {
     let totalHours = 0
     let approvedCount = 0
@@ -1669,7 +2192,7 @@ export function OvertimeListingClient({
     let draftCount = 0
     let rejectedCount = 0
 
-    summaryFilteredRows.forEach((row) => {
+    approvedSummaryFilteredRows.forEach((row) => {
       totalHours += calculateSplDurationHours(row)
       const st = (row.status || '').toLowerCase()
       if (st === 'approved') approvedCount++
@@ -1679,17 +2202,106 @@ export function OvertimeListingClient({
     })
 
     return {
-      totalCount: summaryFilteredRows.length,
+      totalCount: approvedSummaryFilteredRows.length,
       totalHours: Math.round(totalHours * 10) / 10,
       approvedCount,
       submittedCount,
       draftCount,
       rejectedCount,
     }
-  }, [summaryFilteredRows])
+  }, [approvedSummaryFilteredRows])
 
   const summaryPreviewHtmlContent = useMemo(() => {
-    if (!summaryFilteredRows || summaryFilteredRows.length === 0) return ''
+    if (!isSummaryPreviewOpen) return ''
+
+    if (summaryPreviewMode === 'site') {
+      if (siteSummaryData.rows.length === 0) {
+        return `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f8fafc; margin: 0; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+              .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px 32px; max-width: 520px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+              .icon { font-size: 40px; margin-bottom: 16px; }
+              .title { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+              .desc { font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }
+              .badge { display: inline-block; background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="icon">🏢</div>
+              <div class="title">Belum Ada SPL Approved</div>
+              <div class="desc">
+                Tidak ditemukan dokumen SPL berstatus <strong>Approved</strong> untuk lokasi <strong>${siteSummaryData.siteName}</strong> pada periode <strong>${formatMonthYearLabel(summaryMonth)}</strong>.<br/><br/>
+                Sistem secara otomatis hanya menghitung dokumen lembur yang telah disetujui (Approved) atasan untuk menjamin keakuratan laporan resmi Payable Site Allowance.
+              </div>
+              <div class="badge">Site: ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)}</div>
+            </div>
+          </body>
+          </html>
+        `
+      }
+      const siteLogoUrl = resolveSiteLogoUrl(siteSummaryData.siteName)
+      const firstRow = siteSummaryData.uniqueSpls[0]
+      const signatories = resolveSummarySplSignatories({
+        selectedEmployee: null,
+        allEmployees: employees,
+        firstRowApprovals: firstRow?.approvals,
+        fallbackEmployeeName: 'Admin Site',
+      })
+
+      return renderSiteSummarySplPdfHtml({
+        siteName: siteSummaryData.siteName,
+        siteLogoUrl,
+        periodLabel: formatMonthYearLabel(summaryMonth),
+        totalSplCount: siteSummaryData.totalSplCount,
+        totalHours: siteSummaryData.totalHours,
+        totalEmployees: siteSummaryData.totalEmployees,
+        rows: siteSummaryData.rows,
+        employeeStats: siteSummaryData.employeeStats,
+        signatories: {
+          preparedBy: signatories.preparedByName || 'Admin Site',
+          pjoLeader: signatories.pjoName || 'PJO Site',
+          approvedBy: signatories.leaderName || 'Site Leader',
+          isPjo: signatories.isPjo,
+        },
+      })
+    }
+
+    if (!approvedSummaryFilteredRows || approvedSummaryFilteredRows.length === 0) {
+      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
+      const empName = selectedEmpObj && selectedEmpObj.value !== 'ALL' ? selectedEmpObj.label.split(' (')[0] : 'Karyawan'
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f8fafc; margin: 0; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+            .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px 32px; max-width: 520px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+            .icon { font-size: 40px; margin-bottom: 16px; }
+            .title { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+            .desc { font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }
+            .badge { display: inline-block; background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">👤</div>
+            <div class="title">Belum Ada SPL Approved</div>
+            <div class="desc">
+              Tidak ditemukan dokumen SPL berstatus <strong>Approved</strong> untuk <strong>${empName}</strong> pada periode <strong>${formatMonthYearLabel(summaryMonth)}</strong>.<br/><br/>
+              Sistem hanya memasukkan lembur yang telah disetujui (Approved) ke dalam perhitungan resmi Payable Site Allowance per karyawan.
+            </div>
+            <div class="badge">Karyawan: ${empName} • ${formatMonthYearLabel(summaryMonth)}</div>
+          </div>
+        </body>
+        </html>
+      `
+    }
     const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
     const employeeName =
       selectedEmpObj && selectedEmpObj.value !== 'ALL'
@@ -1702,9 +2314,9 @@ export function OvertimeListingClient({
     const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
     const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
     const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-    const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+    const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
 
-    const firstRow = summaryFilteredRows[0]
+    const firstRow = approvedSummaryFilteredRows[0]
     const signatories = resolveSummarySplSignatories({
       selectedEmployee: selectedEmpInfo,
       allEmployees: employees,
@@ -1712,7 +2324,7 @@ export function OvertimeListingClient({
       fallbackEmployeeName: employeeName,
     })
 
-    return renderSummarySplPdfHtml(summaryFilteredRows, {
+    return renderSummarySplPdfHtml(approvedSummaryFilteredRows, {
       employeeName,
       employeeSn,
       department,
@@ -1727,9 +2339,10 @@ export function OvertimeListingClient({
       leaderName: signatories.leaderName,
       preparedByName: signatories.preparedByName,
     })
-  }, [summaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees])
+  }, [approvedSummaryFilteredRows, summaryEmployeeId, summaryMonth, summaryEmployeeOptions, summaryStats, employees, isSummaryPreviewOpen, summaryPreviewMode, siteSummaryData, sites, summarySiteId])
 
-  const handleOpenSummaryPreview = async () => {
+  const handleOpenSummaryPreview = () => {
+    setSummaryPreviewMode('employee')
     if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
       toast.error('Silakan pilih karyawan terlebih dahulu untuk melihat preview PDF Summary SPL.')
       return
@@ -1740,65 +2353,96 @@ export function OvertimeListingClient({
       return
     }
 
+    if (summaryPdfPreviewUrl) {
+      URL.revokeObjectURL(summaryPdfPreviewUrl)
+      setSummaryPdfPreviewUrl(null)
+    }
+    setSummaryPreviewZoom(1.0)
+    setIsSummaryPreviewOpen(true)
+  }
+
+  const handleOpenSiteSummaryPreview = () => {
+    if (!summarySiteId || summarySiteId === 'ALL') {
+      toast.error('Silakan pilih Lokasi Site / Unit Kerja terlebih dahulu pada filter.')
+      return
+    }
+
+    if (siteSummaryData.rows.length === 0) {
+      toast.error('Tidak ada data SPL untuk site ini pada periode terpilih.')
+      return
+    }
+
+    if (summaryPdfPreviewUrl) {
+      URL.revokeObjectURL(summaryPdfPreviewUrl)
+      setSummaryPdfPreviewUrl(null)
+    }
+    setSummaryPreviewMode('site')
+    setSummaryPreviewZoom(1.0)
+    setIsSummaryPreviewOpen(true)
+  }
+
+  const handleDownloadSiteSummaryPdf = async () => {
+    if (!summarySiteId || summarySiteId === 'ALL') {
+      toast.error('Silakan pilih Lokasi Site terlebih dahulu.')
+      return
+    }
+    if (siteSummaryData.rows.length === 0) {
+      toast.error('Tidak ada data SPL untuk dibuatkan PDF Summary Site.')
+      return
+    }
+
+    setIsGeneratingSummaryPdf(true)
+    const toastId = 'download-site-summary-pdf'
+    toast.loading('Menyiapkan dokumen PDF Summary SPL Per Site...', { id: toastId })
+
     try {
-      const selectedEmpObj = summaryEmployeeOptions.find((e) => e.value === summaryEmployeeId)
-      const employeeName =
-        selectedEmpObj && selectedEmpObj.value !== 'ALL'
-          ? selectedEmpObj.label.split(' (')[0]
-          : 'Semua Karyawan'
-      const deptName =
-        selectedEmpObj && selectedEmpObj.label.includes('(')
-          ? selectedEmpObj.label.split('(')[1].replace(')', '')
-          : 'Central Services'
-
-      const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
-      const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
-      const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+      const siteName = siteSummaryData.siteName
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
-
-      const firstRow = summaryFilteredRows[0]
+      const firstRow = siteSummaryData.uniqueSpls[0]
       const signatories = resolveSummarySplSignatories({
-        selectedEmployee: selectedEmpInfo,
+        selectedEmployee: null,
         allEmployees: employees,
         firstRowApprovals: firstRow?.approvals,
-        fallbackEmployeeName: employeeName,
+        fallbackEmployeeName: 'Admin Site',
       })
 
-      const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
-
-      const pdfBytes = await generateSummarySplPdf({
-        documentTitle: 'SUMMARY SPL',
-        period: summaryMonth || '2026-10',
-        employeeName,
-        employeeSn,
-        department: deptName,
-        section,
+      const pdfBytes = await generateSiteSummarySplPdf({
+        documentTitle: 'SUMMARY SPL PER SITE',
+        period: summaryMonth || '2026-11',
         siteName,
-        isPjo: signatories.isPjo,
+        totalSplCount: siteSummaryData.totalSplCount,
+        totalHours: siteSummaryData.totalHours,
+        totalEmployees: siteSummaryData.totalEmployees,
+        rows: siteSummaryData.rows,
+        employeeStats: siteSummaryData.employeeStats,
         signatures: {
-          preparedBy: signatories.preparedByName,
-          pjoLeader: signatories.pjoName,
-          approvedBy: signatories.leaderName,
+          preparedBy: signatories.preparedByName || 'Admin Site',
+          pjoLeader: signatories.pjoName || 'PJO Site',
+          approvedBy: signatories.leaderName || 'Site Leader',
           isPjo: signatories.isPjo,
           logoUrl: siteLogoUrl,
         },
-        days: daysData,
-        isNonStaff: true,
-        showTotalOvertime: true,
       })
 
       const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
-      if (summaryPdfPreviewUrl) {
-        URL.revokeObjectURL(summaryPdfPreviewUrl)
-      }
+      const cleanSite = siteName.replace(/[^a-zA-Z0-9]/g, '_')
+      const fileName = `Summary_SPL_Site_${cleanSite}_${summaryMonth || 'Semua'}.pdf`
+
       const url = URL.createObjectURL(blob)
-      setSummaryPdfPreviewUrl(url)
-      setSummaryPreviewZoom(1.0)
-      setIsSummaryPreviewOpen(true)
-    } catch (err) {
-      console.error('Preview error:', err)
-      toast.error('Gagal memuat preview Summary SPL.')
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast.success('Dokumen PDF Summary SPL Per Site berhasil diunduh!', { id: toastId })
+    } catch (err: any) {
+      console.error('Error downloading site summary PDF:', err)
+      toast.error('Gagal mengunduh PDF Summary SPL Per Site.', { id: toastId })
+    } finally {
+      setIsGeneratingSummaryPdf(false)
     }
   }
 
@@ -1811,13 +2455,17 @@ export function OvertimeListingClient({
   }
 
   const handleDownloadSummaryPdf = async () => {
+    if (summaryPreviewMode === 'site') {
+      return handleDownloadSiteSummaryPdf()
+    }
+
     if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
       toast.error('Silakan pilih karyawan terlebih dahulu untuk mengunduh PDF Summary SPL.')
       return
     }
 
-    if (summaryFilteredRows.length === 0) {
-      toast.error('Tidak ada data summary SPL untuk dibuatkan PDF.')
+    if (approvedSummaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL approved untuk dibuatkan PDF.')
       return
     }
 
@@ -1839,11 +2487,11 @@ export function OvertimeListingClient({
       const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
       const employeeSn = (selectedEmpInfo as any)?.employee_sn || (selectedEmpInfo as any)?.nip || (summaryEmployeeId !== 'ALL' ? summaryEmployeeId : '—')
       const section = (selectedEmpInfo as any)?.section || (selectedEmpInfo as any)?.sectionName || 'Service Operation Others'
-      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || 'AMM Mifa Hauling'
+      const siteName = (selectedEmpInfo as any)?.siteName || (selectedEmpInfo as any)?.site || (sites?.find((s) => Number(s.id) === Number(selectedEmpInfo?.siteId))?.name) || (summarySiteId !== 'ALL' ? sites?.find((s) => String(s.id) === summarySiteId)?.name : null) || 'AMM Mifa Hauling'
 
       const siteLogoUrl = resolveSiteLogoUrl(siteName)
 
-      const firstRow = summaryFilteredRows[0]
+      const firstRow = approvedSummaryFilteredRows[0]
       const signatories = resolveSummarySplSignatories({
         selectedEmployee: selectedEmpInfo,
         allEmployees: employees,
@@ -1851,7 +2499,7 @@ export function OvertimeListingClient({
         fallbackEmployeeName: employeeName,
       })
 
-      const daysData = buildOvertimeRecordMonthlyDays(summaryFilteredRows, summaryMonth)
+      const daysData = buildOvertimeRecordMonthlyDays(approvedSummaryFilteredRows, summaryMonth)
 
       const pdfBytes = await generateSummarySplPdf({
         documentTitle: 'SUMMARY SPL',
@@ -2052,12 +2700,56 @@ export function OvertimeListingClient({
   }
 
   const handleExportSummaryExcel = async () => {
-    if (summaryFilteredRows.length === 0) {
-      toast.error('Tidak ada data summary SPL untuk diekspor ke Excel.')
+    const isSiteExport = summaryEmployeeId === 'ALL' && summarySiteId !== 'ALL'
+
+    if (isSiteExport) {
+      if (siteSummaryData.rows.length === 0) {
+        toast.error(`Tidak ada data summary SPL approved untuk site ${siteSummaryData.siteName} pada periode ini.`)
+        return
+      }
+      const data = siteSummaryData.rows.map((row, idx) => ({
+        No: idx + 1,
+        Tanggal: row.dateStr,
+        Hari: row.dayName,
+        'No. SPL': row.splNumber,
+        'Nama Karyawan': row.employeeName,
+        'NIP/SN': row.employeeSn || '—',
+        Departemen: row.department || '—',
+        'Jam Mulai': row.startTime,
+        'Jam Selesai': row.endTime,
+        'Total Jam Lembur': row.durationHours,
+        'Uraian Tugas': row.taskSummary,
+      }))
+      const XLSX = await import('xlsx')
+      const ws = XLSX.utils.json_to_sheet(data)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Summary Site')
+
+      if (siteSummaryData.employeeStats.length > 0) {
+        const recapData = siteSummaryData.employeeStats.map((st, idx) => ({
+          No: idx + 1,
+          'Nama Karyawan': st.employeeName,
+          'NIP/SN': st.employeeSn || '—',
+          Departemen: st.department || '—',
+          'Jumlah SPL': st.splCount,
+          'Total Jam Lembur': st.totalHours,
+        }))
+        const recapWs = XLSX.utils.json_to_sheet(recapData)
+        XLSX.utils.book_append_sheet(wb, recapWs, 'Rekapitulasi Karyawan')
+      }
+
+      const cleanSite = siteSummaryData.siteName.replace(/[^a-zA-Z0-9]/g, '_')
+      XLSX.writeFile(wb, `Summary_SPL_Site_${cleanSite}_${summaryMonth || 'Semua'}.xlsx`)
+      toast.success('File Excel Summary SPL Per Site berhasil diunduh!')
       return
     }
 
-    const data = summaryFilteredRows.map((row, idx) => ({
+    if (approvedSummaryFilteredRows.length === 0) {
+      toast.error('Tidak ada data summary SPL approved untuk diekspor ke Excel.')
+      return
+    }
+
+    const data = approvedSummaryFilteredRows.map((row, idx) => ({
       No: idx + 1,
       Tanggal: formatDate(row.workDate),
       'No. SPL': row.splNumber,
@@ -2107,6 +2799,18 @@ export function OvertimeListingClient({
   const [isBatchReviewOpen, setIsBatchReviewOpen] = useState(false)
   const [batchReviewIndex, setBatchReviewIndex] = useState(0)
   const [isBatchActionRunning, setIsBatchActionRunning] = useState(false)
+
+  // On-demand signature fetch for batch review
+  useEffect(() => {
+    if (!isBatchReviewOpen || selectedIds.length === 0) return
+    const missingIds = selectedIds.filter((id) => !signatureCache[id])
+    if (missingIds.length === 0) return
+
+    getBatchSplSignaturesAction(missingIds).then((batchMap) => {
+      if (!batchMap || Object.keys(batchMap).length === 0) return
+      setSignatureCache((prev) => ({ ...prev, ...batchMap }))
+    })
+  }, [isBatchReviewOpen, selectedIds, signatureCache])
 
   const isRowReviewableByCurrentUser = (row: OvertimeListingRow) => {
     const status = (row.status || '').toLowerCase()
@@ -2588,7 +3292,39 @@ export function OvertimeListingClient({
           console.error('QR code generation error:', e)
         }
 
-        const contentHtml = renderSplHtmlTemplate(row, qrImgHtml)
+        let targetRow = row
+        const cached = signatureCache[row.id]
+        if (cached) {
+          targetRow = {
+            ...row,
+            approvals: row.approvals.map((app) => ({
+              ...app,
+              signatureDataUrl: cached[app.stepOrder] || app.signatureDataUrl,
+            })),
+          }
+        } else if (!row.approvals?.some((a) => Boolean(a.signatureDataUrl))) {
+          try {
+            const sigs = await getSplSignaturesAction(row.id)
+            if (sigs && sigs.length > 0) {
+              const stepMap: Record<number, string | null> = {}
+              for (const s of sigs) {
+                if (s.signatureDataUrl) stepMap[s.stepOrder] = s.signatureDataUrl
+              }
+              setSignatureCache((prev) => ({ ...prev, [row.id]: stepMap }))
+              targetRow = {
+                ...row,
+                approvals: row.approvals.map((app) => {
+                  const matched = sigs.find((s) => s.stepOrder === app.stepOrder)
+                  return matched?.signatureDataUrl ? { ...app, signatureDataUrl: matched.signatureDataUrl } : app
+                }),
+              }
+            }
+          } catch (e) {
+            console.error('Failed to load signatures for PDF download:', e)
+          }
+        }
+
+        const contentHtml = renderSplHtmlTemplate(targetRow, qrImgHtml)
         await downloadHtmlAsPdf(contentHtml, `SPL_${row.splNumber.replace(/[\/\\]/g, '_')}.pdf`)
       }
       toast.success('PDF berhasil diunduh!', { id: 'spl-pdf-dl' })
@@ -2902,32 +3638,56 @@ export function OvertimeListingClient({
               <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 Rekapitulasi & Export Summary SPL (PDF Standard)
                 <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 px-2 py-0.5 text-[10px] font-bold border-0">
-                  {summaryStats.totalCount} SPL • {summaryStats.totalHours} Jam
+                  {summaryStats.totalCount} SPL Approved • {summaryStats.totalHours} Jam
                 </Badge>
               </h3>
               <p className="text-xs text-slate-500">
-                Filter rekapitulasi lembur karyawan per periode bulan untuk diunduh sebagai dokumen PDF resmi (Payble Site Allowance) atau Excel.
+                Filter rekapitulasi lembur karyawan per periode bulan untuk diunduh sebagai dokumen PDF resmi (Payable Site Allowance) atau Excel. Laporan resmi otomatis memvalidasi dokumen yang telah Approved.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               type="button"
               size="sm"
               onClick={handleOpenSummaryPreview}
               disabled={filteredRows.length === 0 || summaryEmployeeId === 'ALL'}
-              title={summaryEmployeeId === 'ALL' ? 'Pilih karyawan terlebih dahulu untuk melihat preview PDF' : ''}
+              title={summaryEmployeeId === 'ALL' ? 'Pilih karyawan terlebih dahulu untuk melihat preview PDF per orang' : 'Preview & Unduh Summary SPL per Karyawan'}
               className={cn(
-                "h-9 gap-2 rounded-xl text-white text-xs font-semibold px-4 shadow-xs cursor-pointer",
+                "h-9 gap-1.5 rounded-xl text-white text-xs font-semibold px-3.5 shadow-xs cursor-pointer",
                 summaryEmployeeId === 'ALL'
                   ? "bg-slate-400 opacity-60 cursor-not-allowed"
                   : "bg-emerald-600 hover:bg-emerald-700"
               )}
             >
-              <Eye className="size-4" />
-              Preview & Unduh Summary SPL (PDF)
+              <User className="size-3.5" />
+              Summary Per User (PDF)
             </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenSiteSummaryPreview}
+              disabled={summarySiteId === 'ALL' || siteSummaryData.rows.length === 0}
+              title={
+                summarySiteId === 'ALL'
+                  ? 'Pilih Lokasi Site terlebih dahulu pada dropdown di bawah'
+                  : siteSummaryData.rows.length === 0
+                  ? 'Tidak ada data SPL untuk site ini'
+                  : `Preview & Unduh Summary SPL Per Site (${siteSummaryData.siteName})`
+              }
+              className={cn(
+                "h-9 gap-1.5 rounded-xl text-white text-xs font-semibold px-3.5 shadow-xs cursor-pointer",
+                summarySiteId === 'ALL' || siteSummaryData.rows.length === 0
+                  ? "bg-slate-400 opacity-60 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              )}
+            >
+              <Building2 className="size-3.5" />
+              Summary Per Site (PDF)
+            </Button>
+
             <Button
               type="button"
               size="sm"
@@ -2948,9 +3708,9 @@ export function OvertimeListingClient({
               size="sm"
               onClick={handleExportSummaryExcel}
               disabled={filteredRows.length === 0}
-              className="h-9 gap-2 rounded-xl border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 cursor-pointer"
+              className="h-9 gap-1.5 rounded-xl border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 cursor-pointer px-3"
             >
-              <FileSpreadsheet className="size-4 text-emerald-600" />
+              <FileSpreadsheet className="size-3.5 text-emerald-600" />
               Ekspor Excel
             </Button>
           </div>
@@ -2958,25 +3718,17 @@ export function OvertimeListingClient({
 
         {/* Filter Controls Grid inside Dedicated Card */}
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* 1. Site / Lokasi */}
+          {/* 1. Lokasi Site / Unit Kerja */}
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-              Site / Lokasi
+              Lokasi Site / Unit Kerja
             </Label>
             <SearchableSelect
               label="Site"
-              options={siteOptions}
+              options={summarySiteOptions}
               value={summarySiteId}
-              onValueChange={(val) => {
-                setSummarySiteId(val)
-                if (val !== 'ALL') {
-                  const emp = employees.find((e) => String(e.id) === summaryEmployeeId)
-                  if (emp && emp.siteId && String(emp.siteId) !== val) {
-                    setSummaryEmployeeId('ALL')
-                  }
-                }
-              }}
-              placeholder="Pilih Site / Lokasi..."
+              onValueChange={handleSiteChange}
+              placeholder="Pilih Site..."
               widthClassName="w-full h-9 rounded-xl border-slate-200 text-xs shadow-xs"
             />
           </div>
@@ -3009,7 +3761,7 @@ export function OvertimeListingClient({
             />
           </div>
 
-          {/* Active Summary Filter Status & Reset */}
+          {/* 4. Active Summary Filter Status & Reset */}
           <div className="space-y-1 flex flex-col justify-end">
             {hasActiveFilters ? (
               <div className="flex items-center justify-between h-9 rounded-xl bg-slate-50 px-3 border border-slate-200/80 dark:bg-slate-800/50 dark:border-slate-800">
@@ -3405,6 +4157,18 @@ export function OvertimeListingClient({
                               <Eye className="size-4" />
                             </Button>
 
+                            {/* Tombol Lihat Bukti Foto */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="denseIcon"
+                              onClick={() => setEvidenceModalSplId(row.id)}
+                              title="Lihat Galeri Foto Bukti Lembur"
+                              className="text-slate-600 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                            >
+                              <Camera className="size-4" />
+                            </Button>
+
                             {/* Tombol Edit Form HANYA JIKA DRAFT, REVISI, ATAU REJECT (TIDAK MUNCUL JIKA SUBMITTED / APPROVED) */}
                             {canEdit && access?.canEdit ? (
                               <Button
@@ -3653,7 +4417,14 @@ export function OvertimeListingClient({
                                 <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
                                 <td className="text-center text-[7pt]">
                                   {hasPhoto ? (
-                                    <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => currentBatchDoc && setEvidenceModalSplId(currentBatchDoc.id)}
+                                      className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer inline-flex items-center gap-0.5"
+                                      title="Klik untuk melihat galeri foto bukti pekerjaan"
+                                    >
+                                      📷 Ada Foto
+                                    </button>
                                   ) : (
                                     <span className="text-slate-400">—</span>
                                   )}
@@ -3714,8 +4485,8 @@ export function OvertimeListingClient({
                       {/* 1. Serviceman / Karyawan */}
                       {(() => {
                         const step1 = currentBatchDoc.approvals.find(a => a.stepOrder === 1)
-                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.signedAt)
-                        const sigUrl1 = step1?.signatureDataUrl
+                        const isSigned1 = step1?.status === 'approved' || step1?.status === 'signed' || step1?.status === 'completed' || Boolean(step1?.hasSignature) || Boolean(step1?.signedAt)
+                        const sigUrl1 = step1?.signatureDataUrl || (currentBatchDoc ? signatureCache[currentBatchDoc.id]?.[1] : undefined)
 
                         return (
                           <div className="flex flex-col items-center text-center">
@@ -3745,8 +4516,8 @@ export function OvertimeListingClient({
                       {/* 2. Leader / PJO */}
                       {(() => {
                         const step2 = currentBatchDoc.approvals.find(a => a.stepOrder === 2 || a.stepOrder === 3)
-                        const isApproved2 = step2?.status === 'approved' || Boolean(step2?.signedAt)
-                        const sigUrl2 = step2?.signatureDataUrl
+                        const isApproved2 = step2?.status === 'approved' || Boolean(step2?.hasSignature) || Boolean(step2?.signedAt)
+                        const sigUrl2 = step2?.signatureDataUrl || (currentBatchDoc ? (signatureCache[currentBatchDoc.id]?.[2] || signatureCache[currentBatchDoc.id]?.[3]) : undefined)
 
                         return (
                           <div className="flex flex-col items-center text-center">
@@ -4091,7 +4862,14 @@ export function OvertimeListingClient({
                               <td className="text-center font-bold">{item.plannedPoints || 0} pts</td>
                               <td className="text-center text-[7pt]">
                                 {hasPhoto ? (
-                                  <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEvidenceModalSplId(previewSplTarget.id)}
+                                    className="font-bold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer inline-flex items-center gap-0.5"
+                                    title="Klik untuk melihat galeri foto bukti pekerjaan"
+                                  >
+                                    📷 Ada Foto
+                                  </button>
                                 ) : (
                                   <span className="text-slate-400">—</span>
                                 )}
@@ -4144,9 +4922,12 @@ export function OvertimeListingClient({
                     <div>
                       <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
                       <div className="h-16 flex items-end">
-                        {previewSplTarget.approvals.find(a => a.stepOrder === 1)?.signatureDataUrl && (
-                          <img src={previewSplTarget.approvals.find(a => a.stepOrder === 1)!.signatureDataUrl!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                        {(() => {
+                          const sig1 = previewSplTarget.approvals.find(a => a.stepOrder === 1)?.signatureDataUrl || signatureCache[previewSplTarget.id]?.[1]
+                          return sig1 ? (
+                            <img src={sig1} alt="TTD" className="h-14 object-contain" />
+                          ) : null
+                        })()}
                       </div>
                       <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
                         {previewSplTarget.approvals.find(a => a.stepOrder === 1)?.approverName || createForm.requesterName || previewSplTarget.requesterName}
@@ -4158,9 +4939,12 @@ export function OvertimeListingClient({
                     <div>
                       <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
                       <div className="h-16 flex items-end">
-                        {(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl) && (
-                          <img src={(previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl)!} alt="TTD" className="h-14 object-contain" />
-                        )}
+                        {(() => {
+                          const sig2 = previewSplTarget.approvals.find(a => a.stepOrder === 2)?.signatureDataUrl || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.signatureDataUrl || signatureCache[previewSplTarget.id]?.[2] || signatureCache[previewSplTarget.id]?.[3]
+                          return sig2 ? (
+                            <img src={sig2} alt="TTD" className="h-14 object-contain" />
+                          ) : null
+                        })()}
                       </div>
                       <div className="mb-1 border-b" style={{ width: '65%', borderColor: '#9ca3af' }}>
                         {previewSplTarget.approvals.find(a => a.stepOrder === 2)?.approverName || previewSplTarget.approvals.find(a => a.stepOrder === 3)?.approverName || createForm.leaderName || createForm.superiorName || 'Leader / PJO Site'}
@@ -4350,7 +5134,10 @@ export function OvertimeListingClient({
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm">📄</span>
               <span className="font-semibold text-xs text-slate-100 truncate">
-                Preview Summary SPL (A4) • {formatMonthYearLabel(summaryMonth)} ({summaryStats.totalCount} Dokumen, {summaryStats.totalHours} Jam)
+                {summaryPreviewMode === 'site'
+                  ? `Preview Summary SPL Per Site (A4) • ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)} (${siteSummaryData.totalSplCount} Dokumen, ${siteSummaryData.totalHours} Jam, ${siteSummaryData.totalEmployees} Karyawan)`
+                  : `Preview Summary SPL Per User (A4) • ${formatMonthYearLabel(summaryMonth)} (${summaryStats.totalCount} Dokumen, ${summaryStats.totalHours} Jam)`
+                }
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -4385,22 +5172,18 @@ export function OvertimeListingClient({
           </div>
 
           {/* Preview Sheet Canvas Area */}
-          <div className="flex-1 overflow-auto bg-[#383d47] p-4 flex justify-center items-start">
-            <div
-              className="bg-white shadow-2xl rounded-xs transition-transform duration-200 origin-top my-2"
-              style={{
-                transform: `scale(${summaryPreviewZoom})`,
-                width: '210mm',
-                minHeight: '297mm',
-              }}
-            >
+          <div className="flex-1 overflow-hidden bg-[#2d3238] p-0 flex justify-center items-stretch">
+            {summaryPreviewHtmlContent ? (
               <iframe
                 title="Summary SPL Preview"
                 srcDoc={summaryPreviewHtmlContent}
-                className="w-full h-full min-h-[297mm] border-0"
-                style={{ width: '100%', minHeight: '297mm' }}
+                className="w-full h-full border-0 bg-[#f1f5f9]"
               />
-            </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 text-slate-300 text-xs">
+                Tidak ada data dokumen untuk ditampilkan.
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -6139,6 +6922,13 @@ export function OvertimeListingClient({
         onSignatureUpdated={handleSignatureSaved}
         openModalDirectly={openDirectSignatureModal}
         onCloseDirectModal={() => setOpenDirectSignatureModal(false)}
+      />
+
+      {/* Overtime Evidence Photo Gallery Modal */}
+      <OvertimeEvidenceModal
+        isOpen={Boolean(evidenceModalSplId)}
+        onClose={() => setEvidenceModalSplId(null)}
+        splId={evidenceModalSplId}
       />
     </AdminPageShell>
   )

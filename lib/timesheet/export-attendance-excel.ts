@@ -929,8 +929,15 @@ export interface TimesheetEmployeeExportRow {
   }
   allowanceTotal?: number
   overtimeTotal?: number
+  overtimeSplitSummary?: {
+    mandatoryHours: number
+    splHours: number
+    payrollEquivalentHours: number
+  }
   payrollOvertimeSummary?: {
     totalOvertimeCalculated: number
+    mandatoryHours?: number
+    splHours?: number
     workDaysPresent: number
     offDaysPresent: number
   }
@@ -1144,9 +1151,9 @@ export function buildTimesheetWorksheet(
   } else if (tab === 'meals') {
     topHeaderRow.push('Total Meals (Rp)')
   } else if (isOvertime) {
-    topHeaderRow.push('Total Overtime (Jam)')
+    topHeaderRow.push('Overtime Wajib (Jam)', 'Overtime SPL (Jam)', 'Total Overtime Payroll (Jam)')
   } else if (isPayrollOvertime) {
-    topHeaderRow.push('Total Hitungan Lembur', 'Hari Kerja (HK)', 'Hari Libur (HL)')
+    topHeaderRow.push('Overtime Wajib (Jam)', 'Overtime SPL (Jam)', 'Total Hitungan Payroll (Jam)', 'Hari Kerja (HK)', 'Hari Libur (HL)')
   }
 
   const header1 = sheet.addRow(topHeaderRow)
@@ -1164,9 +1171,9 @@ export function buildTimesheetWorksheet(
   } else if (isAllowance) {
     subHeaderRow.push('Nominal')
   } else if (isOvertime) {
-    subHeaderRow.push('SPL Jam')
+    subHeaderRow.push('Jam Wajib', 'Jam SPL', 'Jam Payroll')
   } else if (isPayrollOvertime) {
-    subHeaderRow.push('Hitungan Lembur', 'HK Masuk', 'HL Masuk')
+    subHeaderRow.push('Jam Wajib', 'Jam SPL', 'Jam Payroll', 'HK Masuk', 'HL Masuk')
   }
 
   const header2 = sheet.addRow(subHeaderRow)
@@ -1180,7 +1187,7 @@ export function buildTimesheetWorksheet(
   }
 
   // If single summary column (TU, MSA, Meals, OVT), merge row 6 & 7 vertically
-  if (!isAttendance && !isPayrollOvertime) {
+  if (!isAttendance && !isPayrollOvertime && !isOvertime) {
     sheet.mergeCells(6, totalCols, 7, totalCols)
   }
 
@@ -1286,9 +1293,11 @@ export function buildTimesheetWorksheet(
     totalHours: 0,
   }
   let grandTotalAllowance = 0
-  let grandTotalOvertime = 0
+  let grandTotalOvertime = { mandatory: 0, spl: 0, payroll: 0 }
   let grandTotalPayrollOvertime = {
     totalCalculated: 0,
+    mandatory: 0,
+    spl: 0,
     hk: 0,
     hl: 0,
   }
@@ -1682,17 +1691,26 @@ export function buildTimesheetWorksheet(
           grandTotalAllowance += tot
           rowData.push(tot)
         } else if (isOvertime) {
-          const tot = row.overtimeTotal || 0
-          grandTotalOvertime += tot
-          rowData.push(tot)
+          const summary = row.overtimeSplitSummary
+          const mandatory = summary?.mandatoryHours ?? row.overtimeTotal ?? 0
+          const spl = summary?.splHours ?? 0
+          const payroll = summary?.payrollEquivalentHours ?? 0
+          grandTotalOvertime.mandatory += mandatory
+          grandTotalOvertime.spl += spl
+          grandTotalOvertime.payroll += payroll
+          rowData.push(mandatory, spl, payroll)
         } else if (isPayrollOvertime) {
           const totCalc = row.payrollOvertimeSummary?.totalOvertimeCalculated ?? 0
+          const mandatory = row.payrollOvertimeSummary?.mandatoryHours ?? 0
+          const spl = row.payrollOvertimeSummary?.splHours ?? 0
           const hk = row.payrollOvertimeSummary?.workDaysPresent ?? 0
           const hl = row.payrollOvertimeSummary?.offDaysPresent ?? 0
           grandTotalPayrollOvertime.totalCalculated += totCalc
+          grandTotalPayrollOvertime.mandatory += mandatory
+          grandTotalPayrollOvertime.spl += spl
           grandTotalPayrollOvertime.hk += hk
           grandTotalPayrollOvertime.hl += hl
-          rowData.push(totCalc, hk, hl)
+          rowData.push(mandatory, spl, totCalc, hk, hl)
         }
 
         const addedRow = sheet.addRow(rowData)
@@ -1758,21 +1776,25 @@ export function buildTimesheetWorksheet(
             } else if (isPayrollOvertime) {
               const summaryOffset = c - (totalBaseCols + days.length)
               currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
-              if (summaryOffset === 1) {
-                // Total Hitungan Lembur
+              if (summaryOffset === 1 || summaryOffset === 2) {
+                // Separate mandatory and SPL hours
                 currentCell.font = {
                   name: 'Calibri',
                   size: 9.5,
                   bold: true,
-                  color: { argb: TIMESHEET_PALETTE.totalOtText },
+                  color: { argb: summaryOffset === 1 ? TIMESHEET_PALETTE.totalOtText : TIMESHEET_PALETTE.splText },
                 }
                 currentCell.fill = {
                   type: 'pattern',
                   pattern: 'solid',
-                  fgColor: { argb: TIMESHEET_PALETTE.totalOtBg },
+                  fgColor: { argb: summaryOffset === 1 ? TIMESHEET_PALETTE.totalOtBg : TIMESHEET_PALETTE.splBg },
                 }
                 currentCell.numFmt = '0.0'
-              } else if (summaryOffset === 2) {
+              } else if (summaryOffset === 3) {
+                currentCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.totalOtText } }
+                currentCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TIMESHEET_PALETTE.totalOtBg } }
+                currentCell.numFmt = '0.0'
+              } else if (summaryOffset === 4) {
                 // Hari Kerja (HK)
                 currentCell.font = {
                   name: 'Calibri',
@@ -1786,7 +1808,7 @@ export function buildTimesheetWorksheet(
                   fgColor: { argb: 'FFF0FDF4' }, // Emerald 50
                 }
                 currentCell.numFmt = '#,##0'
-              } else if (summaryOffset === 3) {
+              } else if (summaryOffset === 5) {
                 // Hari Libur (HL)
                 currentCell.font = {
                   name: 'Calibri',
@@ -1856,9 +1878,15 @@ export function buildTimesheetWorksheet(
   } else if (isAllowance) {
     summaryRowData.push(grandTotalAllowance)
   } else if (isOvertime) {
-    summaryRowData.push(Number(grandTotalOvertime.toFixed(1)))
+    summaryRowData.push(
+      Number(grandTotalOvertime.mandatory.toFixed(1)),
+      Number(grandTotalOvertime.spl.toFixed(1)),
+      Number(grandTotalOvertime.payroll.toFixed(1))
+    )
   } else if (isPayrollOvertime) {
     summaryRowData.push(
+      Number(grandTotalPayrollOvertime.mandatory.toFixed(1)),
+      Number(grandTotalPayrollOvertime.spl.toFixed(1)),
       Number(grandTotalPayrollOvertime.totalCalculated.toFixed(1)),
       grandTotalPayrollOvertime.hk,
       grandTotalPayrollOvertime.hl
@@ -1888,11 +1916,11 @@ export function buildTimesheetWorksheet(
     if (isAllowance && c > totalBaseCols) {
       cell.numFmt = '"Rp "#,##0'
       cell.alignment = { vertical: 'middle', horizontal: 'right' }
-    } else if (isOvertime && c === totalCols) {
+    } else if (isOvertime && c > totalBaseCols + days.length) {
       cell.numFmt = '0.0 "Jam"'
     } else if (isPayrollOvertime && c > totalBaseCols + days.length) {
       const summaryOffset = c - (totalBaseCols + days.length)
-      if (summaryOffset === 1) {
+      if (summaryOffset <= 3) {
         cell.numFmt = '0.0'
       } else {
         cell.numFmt = '#,##0'

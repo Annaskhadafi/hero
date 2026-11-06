@@ -40,6 +40,28 @@ export function isClockTime(value: unknown): value is string {
   return typeof value === 'string' && CLOCK_TIME_PATTERN.test(value)
 }
 
+export function isNightShiftScheduleCode(code?: string | null): boolean {
+  if (!code) return false
+  const upper = String(code).trim().toUpperCase()
+  return (
+    [
+      'NS',
+      'NG',
+      'N',
+      'NIGHT',
+      'NIGHTSHIFT',
+      'NIGHT SHIFT',
+      'MALAM',
+      'SHIFT MALAM',
+      'SHIFT 2',
+      'SHIFT-2',
+      'SHIFT2',
+      '2',
+      'S2',
+    ].includes(upper) || upper.startsWith('NS')
+  )
+}
+
 export function normalizeSiteAttendanceClockConfig(value: unknown): SiteAttendanceClockConfig {
   const config = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const legacyDayClock = isClockTime(config.defaultClockIn) ? config.defaultClockIn : null
@@ -526,25 +548,17 @@ export async function resolveNightShiftCheckoutContext(input: {
   // Look for an unclosed night check-in in the past 24 hours
   const past24h = new Date(input.eventTime.getTime() - 24 * 60 * 60 * 1000)
 
-  const { db } = await import('@/db')
-  const { attendanceRecords } = await import('@/db/schema/hero')
-  const { and, desc, eq, gte, lte } = await import('drizzle-orm')
+  let recentPunches: Array<{ id: number; eventType: string; eventTime: Date }> = []
 
-  const recentPunches = await db
-    .select({
-      id: attendanceRecords.id,
-      eventType: attendanceRecords.eventType,
-      eventTime: attendanceRecords.eventTime,
-    })
-    .from(attendanceRecords)
-    .where(
-      and(
-        eq(attendanceRecords.employeeId, input.employeeId),
-        gte(attendanceRecords.eventTime, past24h),
-        lte(attendanceRecords.eventTime, input.eventTime)
-      )
-    )
-    .orderBy(desc(attendanceRecords.eventTime))
+  if (typeof window === 'undefined') {
+    try {
+      const loadDbHelper = new Function('p', 'return import(p)')
+      const { getRecentPunchesForNightShift } = await loadDbHelper('./attendance-night-shift-db')
+      recentPunches = await getRecentPunchesForNightShift(input.employeeId, past24h, input.eventTime)
+    } catch {
+      recentPunches = []
+    }
+  }
 
   const lastCheckIn = recentPunches.find(
     (p) =>

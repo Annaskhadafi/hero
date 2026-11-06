@@ -875,12 +875,18 @@ export async function getCandidatesPaginated(filters: CandidateFilter = {}): Pro
       currentStage: hcCandidates.currentStage,
       rating: hcCandidates.rating,
       notes: hcCandidates.notes,
+      address: hcCandidates.address,
+      gender: hcCandidates.gender,
+      drivingLicenses: hcCandidates.drivingLicenses,
+      certificates: hcCandidates.certificates,
+      achievements: hcCandidates.achievements,
       cvUrl: hcCandidates.cvUrl,
       workExperience: hcCandidates.workExperience,
       education: hcCandidates.education,
       aiScore: hcCandidates.aiScore,
       aiSummary: hcCandidates.aiSummary,
       aiDetails: hcCandidates.aiDetails,
+      aiAssessmentDate: hcCandidates.aiAssessmentDate,
       rejectionReason: hcCandidates.rejectionReason,
       createdAt: hcCandidates.createdAt,
     })
@@ -908,14 +914,23 @@ type CandidateRow = {
   fullName: string;
   email: string;
   phone: string;
+  dateOfBirth?: Date | null;
+  address?: string;
+  gender?: string;
+  drivingLicenses?: string[] | null;
+  certificates?: Array<{ name: string; year: string; publisher: string }> | null;
+  achievements?: string;
   source: string;
   currentStage: string;
   rating: number | null;
   notes: string;
   cvUrl: string;
+  workExperience?: Array<{ company?: string; role?: string; yearIn?: string; yearOut?: string; description?: string }> | null;
+  education?: Array<{ level?: string; institution?: string; major?: string; yearIn?: string; yearOut?: string }> | null;
   aiScore: number | null;
   aiSummary: string;
   aiDetails?: { breakdown?: Array<{ criterion: string; score: number; weight: number; reason: string }>; knockout?: Array<{ criterion: string; passed: boolean; reason: string }>; recommendation?: string } | null;
+  aiAssessmentDate?: Date | null;
   rejectionReason: string;
   createdAt: Date;
 };
@@ -1948,6 +1963,76 @@ export async function getCvDownloadUrl(cvUrl: string | null) {
   const resolved = resolveUploadUrl(cvUrl);
   if (resolved && resolved.startsWith("/api/uploads/")) return resolved;
   return (await getS3ObjectReadUrl(cvUrl, 3600)) || resolved;
+}
+
+export async function getCvDetails(cvUrl: string | null): Promise<{
+  url: string | null;
+  exists: boolean;
+  fileName: string;
+}> {
+  if (!cvUrl) {
+    return { url: null, exists: false, fileName: "" };
+  }
+  const { resolveUploadUrl } = await import("@/lib/resolve-upload-url");
+  const { checkS3ObjectExists, getS3ObjectReadUrl, isS3UploadConfigured } = await import("@/lib/s3-storage");
+  const resolved = resolveUploadUrl(cvUrl);
+  const cleanUrl = resolved || cvUrl;
+  const fileName = cleanUrl.split("/").pop()?.split("?")[0] || "CV.pdf";
+
+  // 1. Check local disk candidates
+  const publicDir = path.join(process.cwd(), "public");
+  const customUploadsDir = process.env.UPLOADS_DIR || "/mnt/data/one-chitra/uploads";
+  const cleanRelative = cleanUrl.replace(/^\/api\/uploads\//, "").replace(/^\/+/, "");
+  const localCandidates = [
+    path.join(publicDir, "uploads", cleanRelative),
+    path.join(publicDir, "uploads", fileName),
+    path.join(publicDir, cleanRelative),
+    path.join(publicDir, fileName),
+    path.join(customUploadsDir, cleanRelative),
+    path.join(customUploadsDir, fileName),
+    path.join(customUploadsDir, "public-career-cv", fileName),
+  ];
+
+  let exists = localCandidates.some((p) => fs.existsSync(p));
+
+  // 2. If not on local disk, check S3
+  if (!exists && isS3UploadConfigured()) {
+    exists = await checkS3ObjectExists(cvUrl);
+  }
+
+  let finalUrl = resolved;
+  if (!resolved || !resolved.startsWith("/api/uploads/")) {
+    finalUrl = (await getS3ObjectReadUrl(cvUrl, 3600)) || resolved;
+  }
+
+  return {
+    url: finalUrl,
+    exists,
+    fileName,
+  };
+}
+
+export async function updateCandidateCv(candidateId: number, cvUrl: string) {
+  if (!candidateId || !cvUrl) {
+    return { success: false, error: "Candidate ID dan berkas CV wajib diisi." };
+  }
+
+  const [updated] = await db
+    .update(hcCandidates)
+    .set({
+      cvUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(hcCandidates.id, candidateId))
+    .returning();
+
+  if (!updated) {
+    return { success: false, error: "Kandidat tidak ditemukan." };
+  }
+
+  revalidatePath("/dashboard/hc/recruitment");
+  revalidatePath(`/dashboard/hc/recruitment/candidates/${candidateId}`);
+  return { success: true, candidate: updated };
 }
 
 // ─── AI Assessment (OpenAI & 9router Compatible) ──────────────────────────

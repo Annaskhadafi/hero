@@ -805,7 +805,9 @@ function ItemTeamPicker({
   const [isOpen, setIsOpen] = useState(false)
 
   const isCustomized = itemTeamMemberIds !== undefined
-  const effectiveIds = isCustomized ? itemTeamMemberIds : sessionTeamIds
+  const effectiveIds = isCustomized
+    ? (isSessionTeamLog ? itemTeamMemberIds.filter((id) => sessionTeamIds.includes(id)) : itemTeamMemberIds)
+    : sessionTeamIds
 
   // Session team members selected in top form
   const sessionTeamMembers = useMemo(() => {
@@ -3785,14 +3787,17 @@ export function MobileDailyActivityForm({
 
               const u = (entry.equipmentNo || '').trim()
 
-              const itemTeamMemberIds = entry.itemTeamMemberIds !== undefined
+              const rawItemTeamIds = entry.itemTeamMemberIds !== undefined
                 ? entry.itemTeamMemberIds
                 : (isTeamLog ? selectedMemberIds : [])
-              const itemTeamMembers = entry.itemTeamMembers && entry.itemTeamMembers.length > 0
-                ? entry.itemTeamMembers
+              const itemTeamMemberIds = isTeamLog
+                ? rawItemTeamIds.filter((id) => selectedMemberIds.includes(id))
+                : rawItemTeamIds
+              const itemTeamMembers = (entry.itemTeamMembers && entry.itemTeamMembers.length > 0
+                ? (isTeamLog ? entry.itemTeamMembers.filter((m: any) => selectedMemberIds.includes(m.id)) : entry.itemTeamMembers)
                 : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
                     .filter((m: any) => itemTeamMemberIds.includes(m.id))
-                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn })))
 
               return {
                 id: matchingSessionItem?.id,
@@ -3857,14 +3862,17 @@ export function MobileDailyActivityForm({
                 state?.restoredPhotoPayload,
                 state?.previewUrls
               )
-              const itemTeamMemberIds = state?.itemTeamMemberIds !== undefined
+              const rawRouteItemTeamIds = state?.itemTeamMemberIds !== undefined
                 ? state.itemTeamMemberIds
                 : (isTeamLog ? selectedMemberIds : [])
-              const itemTeamMembers = state?.itemTeamMembers && state.itemTeamMembers.length > 0
-                ? state.itemTeamMembers
+              const itemTeamMemberIds = isTeamLog
+                ? rawRouteItemTeamIds.filter((id) => selectedMemberIds.includes(id))
+                : rawRouteItemTeamIds
+              const itemTeamMembers = (state?.itemTeamMembers && state.itemTeamMembers.length > 0
+                ? (isTeamLog ? state.itemTeamMembers.filter((m: any) => selectedMemberIds.includes(m.id)) : state.itemTeamMembers)
                 : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
                     .filter((m: any) => itemTeamMemberIds.includes(m.id))
-                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn })))
 
               return {
                 routeItemId: item.routeItemId,
@@ -4097,7 +4105,7 @@ export function MobileDailyActivityForm({
       <Dialog open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen}>
         <DialogContent
           showCloseButton={false}
-          className="max-h-[88dvh] max-w-[min(420px,94vw)] sm:max-w-[420px] w-full gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl flex flex-col z-50"
+          className="max-h-[88dvh] max-w-[min(420px,94vw)] sm:max-w-[420px] w-full gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl flex flex-col"
         >
           <DialogHeader className="bg-[linear-gradient(135deg,#003461,#004b87)] px-4 py-3 text-left text-white flex flex-row items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -5555,7 +5563,7 @@ export function MobileDailyActivityForm({
         <Dialog open={isDraftSavedModalOpen} onOpenChange={setIsDraftSavedModalOpen}>
           <DialogContent
             showCloseButton={true}
-            className="max-w-[min(400px,92vw)] p-6 rounded-3xl bg-white border border-slate-200 text-slate-900 shadow-2xl z-50 text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
+            className="max-w-[min(400px,92vw)] p-6 rounded-3xl bg-white border border-slate-200 text-slate-900 shadow-2xl text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
           >
             <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 mb-2 ring-8 ring-emerald-50/50 shadow-xs">
               <CheckCircle2 className="size-9 stroke-[2.5]" />
@@ -5619,7 +5627,7 @@ export function MobileDailyActivityForm({
         <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
           <DialogContent
             showCloseButton={false}
-            className="max-w-4xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-white border border-slate-200 text-slate-900 shadow-2xl z-50"
+            className="max-w-4xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-white border border-slate-200 text-slate-900 shadow-2xl"
           >
             <DialogHeader className="p-3 bg-[linear-gradient(135deg,#003461,#004b87)] border-b border-blue-900 flex flex-row items-center justify-between space-y-0 shrink-0 text-white">
               <DialogTitle className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">

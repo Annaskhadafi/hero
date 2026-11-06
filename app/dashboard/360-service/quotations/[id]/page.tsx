@@ -116,12 +116,16 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
   rentalItems.forEach(item => {
     let backupProrate = 0;
     if (item.quotationItem.isBackup) {
-      const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-      backupProrate = calculateStartMonthProrateFactor(
-        item.quotationItem.backupStartDate,
-        item.quotationItem.backupEndDate,
-        billingStart || item.quotationItem.backupStartDate,
-      ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      if (quotation.isFlatPrice) {
+        backupProrate = (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      } else {
+        const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+        backupProrate = calculateStartMonthProrateFactor(
+          item.quotationItem.backupStartDate,
+          item.quotationItem.backupEndDate,
+          billingStart || item.quotationItem.backupStartDate,
+        ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+      }
     }
     const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
     totalRental += quotation.hideBackupPrice ? (primaryProrate + backupProrate) : primaryProrate;
@@ -468,6 +472,11 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
             <Button variant="outline" size="sm">Edit</Button>
           </Link>
           <h1 className="text-lg font-bold tracking-tight text-slate-800 ml-2">Quotation Preview</h1>
+          {quotation.isFlatPrice && (
+            <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/80">
+              Flat Price
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Suspense fallback={<Button disabled className="bg-teal-600 text-white">Loading...</Button>}>
@@ -621,13 +630,17 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                           const isProrateEligible = PRORATE_CATS.includes(itemCategory) || itemCategory === "";
 
                           let backupProrate = 0;
-                          if (item.quotationItem.isBackup && isProrateEligible) {
-                            const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
-                            backupProrate = calculateStartMonthProrateFactor(
-                              item.quotationItem.backupStartDate,
-                              item.quotationItem.backupEndDate,
-                              billingStart || item.quotationItem.backupStartDate,
-                            ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                          if (item.quotationItem.isBackup) {
+                            if (quotation.isFlatPrice) {
+                              backupProrate = (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                            } else if (isProrateEligible) {
+                              const billingStart = item.quotationItem.monthPeriod?.match(/\d{4}-\d{2}-\d{2}/)?.[0];
+                              backupProrate = calculateStartMonthProrateFactor(
+                                item.quotationItem.backupStartDate,
+                                item.quotationItem.backupEndDate,
+                                billingStart || item.quotationItem.backupStartDate,
+                              ) * (Number(item.quotationItem.backupPrice) || 0) * Number(item.quotationItem.quantity);
+                            }
                           }
                           const primaryProrate = Number(item.quotationItem.subtotal) - backupProrate;
 
@@ -767,29 +780,82 @@ export default async function QuotationPrintPreview({ params }: { params: Promis
                     </div>
                   </div>
                   
-                  <div className="mt-12 flex justify-between text-[9pt] w-full px-4">
-                    <div className="flex flex-col items-center">
-                      <p className="font-bold text-slate-400 mb-10 uppercase text-[7.5pt] tracking-widest">Prepared By</p>
-                      <div className="h-0 w-40 border-b-2 border-dashed border-slate-300 relative">
-                        {signatureUrl && (
-                          <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                  {/* Signature Section */}
+                  {(() => {
+                    const preparedByEl = (
+                      <div className="flex flex-col items-center min-w-[120px] max-w-[180px] text-center">
+                        <p className="font-bold text-slate-400 mb-10 uppercase text-[7.5pt] tracking-widest">Prepared By</p>
+                        <div className="h-0 w-32 md:w-36 border-b-2 border-dashed border-slate-300 relative">
+                          {signatureUrl && (
+                            <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-28 h-20 flex items-end justify-center pointer-events-none">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={signatureUrl} alt="Signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                            </div>
+                          )}
+                        </div>
+                        <p className="font-bold text-slate-800 text-[9.5pt] mt-3 leading-tight">{quotation.fromName || 'Nur Sabrina F.U'}</p>
+                        <p className="text-slate-500 text-[7.5pt] font-medium uppercase tracking-wider mt-0.5">PT. Chitra Paratama</p>
+                      </div>
+                    );
+
+                    const acknowledgedByEl = (
+                      <div className="flex flex-col items-center min-w-[120px] max-w-[180px] text-center">
+                        <p className="font-bold text-slate-400 mb-10 uppercase text-[7.5pt] tracking-widest">Acknowledged By</p>
+                        <div className="h-0 w-32 md:w-36 border-b-2 border-dashed border-slate-300 relative">
+                          {/* Placeholder for Signature */}
+                        </div>
+                        <p className="font-bold text-slate-800 text-[9.5pt] mt-3 leading-tight">{quotation.attn || 'Client Representative'}</p>
+                        <p className="text-slate-500 text-[7.5pt] font-medium uppercase tracking-wider mt-0.5">{quotation.customer?.customerName || 'PT. Cipta Kridatama'}</p>
+                      </div>
+                    );
+
+                    const customApprovalsList = quotation.showCustomApproval && Array.isArray(quotation.customApprovals)
+                      ? quotation.customApprovals.map((appr: any, idx: number) => (
+                          <div key={idx} className="flex flex-col items-center min-w-[120px] max-w-[180px] text-center">
+                            <p className="font-bold text-slate-400 mb-10 uppercase text-[7.5pt] tracking-widest">
+                              {appr.label || 'Approved By'}
+                            </p>
+                            <div className="h-0 w-32 md:w-36 border-b-2 border-dashed border-slate-300 relative">
+                              {/* Placeholder for Signature */}
+                            </div>
+                            <p className="font-bold text-slate-800 text-[9.5pt] mt-3 leading-tight">{appr.name || '-'}</p>
+                            {appr.position && (
+                              <p className="text-slate-700 text-[8pt] font-semibold leading-tight mt-0.5">{appr.position}</p>
+                            )}
+                            <p className="text-slate-500 text-[7.5pt] font-medium uppercase tracking-wider mt-0.5">
+                              {appr.company || quotation.customer?.customerName || '-'}
+                            </p>
                           </div>
-                        )}
+                        ))
+                      : null;
+
+                    if (!quotation.showCustomApproval || !customApprovalsList || customApprovalsList.length === 0) {
+                      return (
+                        <div className="mt-12 flex justify-between items-start text-[9pt] w-full px-6">
+                          {preparedByEl}
+                          {acknowledgedByEl}
+                        </div>
+                      );
+                    }
+
+                    if (quotation.customApprovalPosition === "right") {
+                      return (
+                        <div className="mt-12 flex justify-between items-start text-[9pt] w-full px-2 gap-2">
+                          {preparedByEl}
+                          {acknowledgedByEl}
+                          {customApprovalsList}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="mt-12 flex justify-between items-start text-[9pt] w-full px-2 gap-2">
+                        {preparedByEl}
+                        {customApprovalsList}
+                        {acknowledgedByEl}
                       </div>
-                      <p className="font-bold text-slate-800 text-[10pt] mt-3">{quotation.fromName || 'Nur Sabrina F.U'}</p>
-                      <p className="text-slate-500 text-[8pt] font-medium uppercase tracking-wider">PT. Chitra Paratama</p>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <p className="font-bold text-slate-400 mb-10 uppercase text-[7.5pt] tracking-widest">Acknowledged By</p>
-                      <div className="h-0 w-40 border-b-2 border-dashed border-slate-300 relative">
-                        {/* Placeholder for Signature */}
-                      </div>
-                      <p className="font-bold text-slate-800 text-[10pt] mt-3">{quotation.attn || 'Client Representative'}</p>
-                      <p className="text-slate-500 text-[8pt] font-medium uppercase tracking-wider">{quotation.customer?.customerName || 'PT. Cipta Kridatama'}</p>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

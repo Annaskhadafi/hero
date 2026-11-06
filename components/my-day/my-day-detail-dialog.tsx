@@ -128,6 +128,21 @@ interface MyDayDetailDialogProps {
   onClose: () => void;
 }
 
+function formatSafeWallClockTime(d: Date | string | null | undefined): string {
+  if (!d) return "-";
+  if (typeof d === "string") {
+    const timeMatch = d.match(/[T\s](\d{2}):(\d{2})/i) || d.match(/^(\d{2}):(\d{2})/);
+    if (timeMatch) {
+      return `${timeMatch[1]}.${timeMatch[2]}`;
+    }
+  }
+  const dateObj = typeof d === "string" ? new Date(d) : d;
+  if (isNaN(dateObj.getTime())) return "-";
+  const h = String(dateObj.getUTCHours()).padStart(2, "0");
+  const m = String(dateObj.getUTCMinutes()).padStart(2, "0");
+  return `${h}.${m}`;
+}
+
 function formatSafeTime(d: Date | string | null | undefined): string {
   if (!d) return "-";
   const dateObj = typeof d === "string" ? new Date(d) : d;
@@ -192,8 +207,8 @@ export function MyDayDetailDialog({
   const workDateFormatted = formatSafeDate(
     activity.workDate || activity.startTime
   );
-  const startTimeFormatted = formatSafeTime(activity.startTime);
-  const endTimeFormatted = formatSafeTime(activity.endTime);
+  const startTimeFormatted = formatSafeWallClockTime(activity.startTime);
+  const endTimeFormatted = formatSafeWallClockTime(activity.endTime);
 
   const employeeName =
     activity.employeeName || employee?.name || "Karyawan Hero";
@@ -204,7 +219,14 @@ export function MyDayDetailDialog({
     [employee?.department, employee?.section].filter(Boolean).join(" / ") ||
     "Operasional Site";
   const siteName = site?.name || "Site Hero";
-  const customerName = site?.customerName || site?.location || "PT Chitra Paratama";
+  const sessionCustomerMatch =
+    (activity.remarks || "").match(/\[Customer:\s*([^\]]+)\]/i)?.[1]?.trim() ||
+    (activity.remarks || "").match(/Customer:\s*([^\n;]+)/i)?.[1]?.trim();
+  const customerName =
+    sessionCustomerMatch ||
+    site?.customerName ||
+    site?.location ||
+    "PT Chitra Paratama";
 
   // Parse tasks / items
   const hasItems = Array.isArray(activity.items) && activity.items.length > 0;
@@ -241,8 +263,8 @@ export function MyDayDetailDialog({
           label: it.snapshotLabel || `Tugas #${idx + 1}`,
           groupName: it.snapshotGroupName || activity.activityType || "Checklist",
           unitNumber: it.unitNumber || activity.unitNumber || "-",
-          startedAt: formatSafeTime(it.startedAt || activity.startTime),
-          endedAt: formatSafeTime(it.endedAt || activity.endTime),
+          startedAt: formatSafeWallClockTime(it.startedAt || activity.startTime),
+          endedAt: formatSafeWallClockTime(it.endedAt || activity.endTime),
           durationLabel: it.startedAt && it.endedAt ? null : activity.durationLabel,
           points: it.actualPoints ?? 5,
           status: activity.status || "Completed",

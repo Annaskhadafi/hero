@@ -5,7 +5,10 @@ import { hcRecruitmentBatches } from "@/db/schema/hero";
 import { eq, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+let batchesTableEnsured = false;
+
 async function ensureBatchesTable() {
+  if (batchesTableEnsured) return;
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS hero_hc_recruitment_batches (
       id SERIAL PRIMARY KEY,
@@ -17,6 +20,7 @@ async function ensureBatchesTable() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+  batchesTableEnsured = true;
 }
 
 export type BatchData = {

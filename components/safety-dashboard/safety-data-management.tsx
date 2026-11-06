@@ -434,6 +434,7 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
         <TabsTrigger value="certifications">Certifications</TabsTrigger>
         <TabsTrigger value="performance">Performance</TabsTrigger>
         <TabsTrigger value="man-hours">Safety Man Hours</TabsTrigger>
+        <TabsTrigger value="monthly-man-hours">Monthly Man Hours</TabsTrigger>
         <TabsTrigger value="weekly">Weekly Activities</TabsTrigger>
       </TabsList>
 
@@ -538,7 +539,33 @@ export function SafetyDataManagement({ data }: { data: SafetyData }) {
 
 
 
-      <TabsContent value="weekly">
+            <TabsContent value="monthly-man-hours">
+        <CollapsibleTabDashboard title="Monthly Man Hours Overview">
+          <MonthlyManHoursDashboard data={data} />
+        </CollapsibleTabDashboard>
+        <AdminTableCard
+          title="Monthly safety man hours"
+          description="Form, import, export, dan CRUD safe manhours bulanan."
+          columns={["Lokasi", "Karyawan", "Bulan", "Safety Man Hours", "Action"]}
+          dateFilter
+          access={data.access}
+          actions={<CreateMonthlyManHoursButton access={data.access} options={data.filterOptions} />}
+          filters={<TableMultiFilter key="lokasi" label="lokasi" filterKey="location" options={locationOptions} />}
+          rows={data.monthlyManHours.map((row) => [
+            row.workLocation,
+            formatNumber(row.employeeCount),
+            formatDate(row.month),
+            formatNumber(row.safetyManHours),
+            <MonthlyManHoursRowActions key={`${row.id}-actions`} row={row} access={data.access} options={data.filterOptions} />
+          ])}
+          rowAttributes={data.monthlyManHours.map((row) => ({
+            "data-date-value": `${row.month}`,
+            "data-filter-location": row.workLocation
+          }))}
+        />
+      </TabsContent>
+
+<TabsContent value="weekly">
         <CollapsibleTabDashboard title="Weekly Activities Overview">
           <WeeklyActivitiesDashboard data={data} />
         </CollapsibleTabDashboard>

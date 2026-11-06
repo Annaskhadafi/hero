@@ -2951,18 +2951,20 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                         <span className="text-muted-foreground mb-1 block text-[10px]">
                           Belum ada foto temuan awal
                         </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setManagePhotosFinding(f)
-                            setEditingFindingPhotos([])
-                          }}
-                          className="h-6 gap-1 text-[10px] font-semibold text-blue-600"
-                        >
-                          <Camera className="size-3" />+ Tambah Foto
-                        </Button>
+                        {!s.isLocked && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setManagePhotosFinding(f)
+                              setEditingFindingPhotos([])
+                            }}
+                            className="h-6 gap-1 text-[10px] font-semibold text-blue-600"
+                          >
+                            <Camera className="size-3" />+ Tambah Foto
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -3017,16 +3019,18 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                     </span>
 
                     <div className="flex items-center gap-1.5">
-                      {f.status === 'OPEN' && (
+                      {(f.status === 'OPEN' || f.status === 'REJECTED') && (
                         <Button
                           size="sm"
                           onClick={() => {
                             setActionFinding(f)
+                            setActionTakenText(f.actionTaken || '')
+                            setActionPhotos(f.actionPhotoUrls || [])
                             setActionMode('action')
                           }}
                           className="h-7 bg-amber-600 px-2.5 text-xs text-white hover:bg-amber-700"
                         >
-                          Tindak Lanjuti
+                          {f.status === 'REJECTED' ? 'Perbaiki Ulang' : 'Tindak Lanjuti'}
                         </Button>
                       )}
 

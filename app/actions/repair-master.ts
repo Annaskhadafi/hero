@@ -40,46 +40,60 @@ function cleanText(value: string | null | undefined) {
   return trimmed || null
 }
 
+let repairMasterTablesEnsured = false
+let repairMasterTablesPromise: Promise<void> | null = null
+
 async function ensureRepairMasterTables() {
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS "repair_master_items" (
-      "id" serial PRIMARY KEY NOT NULL,
-      "material_code" varchar(100) NOT NULL,
-      "material_name" text NOT NULL,
-      "valuation_stock_value" varchar(100),
-      "currency" varchar(20),
-      "valuated_stock" varchar(100),
-      "uom" varchar(30),
-      "category" varchar(100),
-      "smu" varchar(50),
-      "default_qty" varchar(50),
-      "standard_time" varchar(50),
-      "notes" text,
-      "is_active" boolean DEFAULT true NOT NULL,
-      "sort_order" integer DEFAULT 0 NOT NULL,
-      "created_at" timestamp DEFAULT now() NOT NULL,
-      "updated_at" timestamp DEFAULT now() NOT NULL,
-      CONSTRAINT "unq_repair_master_item_code" UNIQUE("material_code")
-    )
-  `)
+  if (repairMasterTablesEnsured) return
+  if (repairMasterTablesPromise) return repairMasterTablesPromise
 
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuation_stock_value" varchar(100)`)
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "currency" varchar(20)`)
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuated_stock" varchar(100)`)
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "uom" varchar(30)`)
+  repairMasterTablesPromise = (async () => {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "repair_master_items" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "material_code" varchar(100) NOT NULL,
+        "material_name" text NOT NULL,
+        "valuation_stock_value" varchar(100),
+        "currency" varchar(20),
+        "valuated_stock" varchar(100),
+        "uom" varchar(30),
+        "category" varchar(100),
+        "smu" varchar(50),
+        "default_qty" varchar(50),
+        "standard_time" varchar(50),
+        "notes" text,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "sort_order" integer DEFAULT 0 NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL,
+        CONSTRAINT "unq_repair_master_item_code" UNIQUE("material_code")
+      )
+    `)
 
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS "repair_master_sites" (
-      "id" serial PRIMARY KEY NOT NULL,
-      "site_code" varchar(50) NOT NULL,
-      "site_name" text NOT NULL,
-      "sort_order" integer DEFAULT 0 NOT NULL,
-      "is_active" boolean DEFAULT true NOT NULL,
-      "created_at" timestamp DEFAULT now() NOT NULL,
-      "updated_at" timestamp DEFAULT now() NOT NULL,
-      CONSTRAINT "unq_repair_master_site_code" UNIQUE("site_code")
-    )
-  `)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuation_stock_value" varchar(100)`)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "currency" varchar(20)`)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuated_stock" varchar(100)`)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "uom" varchar(30)`)
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "repair_master_sites" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "site_code" varchar(50) NOT NULL,
+        "site_name" text NOT NULL,
+        "sort_order" integer DEFAULT 0 NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL,
+        CONSTRAINT "unq_repair_master_site_code" UNIQUE("site_code")
+      )
+    `)
+    repairMasterTablesEnsured = true
+  })().catch((err) => {
+    repairMasterTablesPromise = null
+    throw err
+  })
+
+  return repairMasterTablesPromise
 }
 
 async function ensureDefaultRepairSites() {

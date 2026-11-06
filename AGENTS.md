@@ -122,6 +122,47 @@ Jika skenario pengetesan membutuhkan akses login ke dalam HERO, **WAJIB** menggu
 
 ---
 
+# Standar Wajib Pelaporan Progress & Update Slide PPT Bulanan (MANDATORI - SETIAP FITUR / PERBAIKAN)
+
+## 📊 Aturan Wajib Pembaruan Slide Presentasi Bulanan (`D:\\[01] PROJECT\\HERO\\Monthly`)
+
+Untuk memastikan setiap progress pekerjaan harian, perbaikan bug (fix), dan penambahan fitur baru terdokumentasi secara resmi, rapi, dan transparan bersama bukti nyata tangkapan layar (screenshot E2E):
+
+### 1. Eksekusi Skrip Pembaruan Presentasi Otomatis
+* **WAJIB HUKUMNYA** setelah pengujian E2E selesai dan screenshot berhasil diambil, Agent **WAJIB** mengeksekusi skrip otomasi:
+  ```bash
+  python scripts/update-monthly-presentation.py \
+    --title "Nama Fitur atau Perbaikan" \
+    --description "Penjelasan singkat mengenai perbaikan/fitur dan tujuannya" \
+    --screenshots "path/to/screenshot1.png" "path/to/screenshot2.png" \
+    --system "HERO" # Atau "ONE-CHITRA" jika modul terkait ONE-CHITRA
+  ```
+* Skrip ini secara otomatis:
+  1. **Mendeteksi Bulan Berjalan**: Menyesuaikan dengan bulan dan tahun aktif sistem dalam Bahasa Indonesia (misal: `MONTHLY NOVEMBER 2026 SDS.pptx`).
+  2. **Inisialisasi Otomatis File Baru**: Jika file bulan berjalan belum ada, skrip otomatis menyalin (*copy*) dari file bulan sebelumnya di folder `Monthly/`, memperbarui cover Slide 1 (Bulan & Tahun), judul SI Gantt di Slide 5, mengosongkan daftar lama di Slide 4, dan menghapus slide detail bulan lalu agar siap digunakan dengan bersih.
+  3. **Menambahkan Poin Ringkasan di Slide 4**: Menambahkan poin bullet `• <Judul Fitur/Fix>` ke dalam kotak `HERO ECOSYSTEM` atau `ONE-CHITRA ECOSYSTEM` pada slide *"What We Have Done / List (Evidance)"*.
+  4. **Membuat Slide Detail "HERO Update" Baru**: Menambahkan slide baru lengkap dengan badge kategori di pojok kanan atas, judul fitur, deskripsi singkat, dan menyematkan 1 atau 2 screenshot E2E secara rapi dan presisi berdampingan (*side-by-side*) tepat sebelum slide *"Planning on next months"*.
+
+### 2. Format Wajib Laporan Akhir ke Pengguna (MANDATORI - OTOMATIS & LANGSUNG TANPA DIMINTA)
+> [!CRITICAL]
+> **DILARANG KERAS** berhenti sebelum seluruh rangkaian selesai atau menunggu user meminta manual "buatkan broadcast wa", "lanjutkan", atau "minta ss". Begitu suatu fitur/fix/tugas selesai dikerjakan, Agent **WAJIB OTOMATIS LANGSUNG** mengeksekusi E2E, mengambil screenshot, update presentasi PPT bulanan, git commit & push, dan menyajikan di respons akhir:
+
+Di akhir setiap respons penyelesaian tugas (fitur baru, perbaikan bug, atau refactoring), Agent **WAJIB LANGSUNG MENYERTAKAN SECARA LENGKAP DALAM SATU JAWABAN**:
+1. **Template Broadcast WhatsApp (WA) Simple & Profesional dari TIM SDS**:
+   - Ditempatkan paling atas atau prominen, format siap copy-paste langsung oleh user tanpa perlu diedit lagi.
+2. **Bukti Visual Tangkapan Layar (Screenshot / SS)**:
+   - Wajib menyalin screenshot E2E ke `<appDataDir>\brain\<conversation-id>\` dan menampilkannya langsung sebagai inline image markdown (`![Deskripsi](...)`) serta clickable file link (`file:///...`) agar visualnya langsung terlihat di chat.
+3. **Ringkasan Progress Pekerjaan**:
+   - Rekapitulasi apa saja masalahnya, akar penyebab, dan solusi teknis yang telah diterapkan.
+4. **Status Slide Presentasi Bulanan**:
+   - File target yang diperbarui: `D:\\[01] PROJECT\\HERO\\Monthly\\MONTHLY [BULAN] [TAHUN] SDS.pptx`
+   - Nomor slide detail baru yang ditambahkan (misal: Slide #40 atau #41).
+   - Bukti screenshot E2E yang telah disematkan ke dalam slide presentasi sebagai bukti resmi (*official evidence*).
+5. **Status Git & Deploy**:
+   - Hash commit dan konfirmasi push ke `origin/main`.
+
+---
+
 # MAESTRO Trigger (`/maestro`)
 
 Jika request user menyertakan marker `/maestro`, perlakukan seluruh request
@@ -182,9 +223,18 @@ disimpan pada URL atau nama file.
 
 ### 4\. Requirement Clarification \& Feature Alignment (Grill-Me Mode)
 
-* **Kondisi:** Setiap kali ada fitur baru yang spesifikasinya kurang jelas, ambigu, atau memiliki banyak percabangan keputusan desain/flow.
-* **Aturan:** WAJIB gunakan mode interview `/grill-me` (tanya detail, bongkar asumsi, kunci requirements) sebelum eksekusi coding.
-* **Output:** Dokumen planning/spec yang matang, komprehensif, dan presisi ("gacor") sebelum mulai penulisan kode.
+* **Default sesi baru:** Mulai setiap session HERO dengan menilai permintaan memakai `grill-me` (`.agents/skills/grill-me/SKILL.md`). Skill ini mengarah ke `grilling` (`.agents/skills/grilling/SKILL.md`); baca dan ikuti alur interview interaktifnya.
+* **Pemicu ulang:** Gunakan lagi ketika maksud user, target, kriteria selesai, atau keputusan desain/flow belum jelas. Untuk tugas yang sudah jelas dan trivial, langsung kerjakan tanpa interview yang tidak perlu.
+* **Interaksi:** Susun pohon keputusan; tanyakan hanya keputusan yang sudah siap dijawab, maksimal 3 pertanyaan per ronde, dengan opsi yang bisa dipilih dan rekomendasi yang jelas. Tunggu jawaban sebelum ronde berikutnya. Cari sendiri fakta yang bisa diperiksa dari repo/tools; jangan lempar pencarian fakta ke user.
+* **Sebelum coding:** Nyatakan asumsi, alternatif tafsir, dan tradeoff yang relevan. Jika keputusan penting masih terbuka, jangan memilih diam-diam; kunci pemahaman bersama dan minta konfirmasi ringkasan requirements sebelum implementasi. Buat spec hanya bila kompleksitas tugas memang memerlukannya.
+
+### Behavioral Guidelines for Coding
+
+* **Think before coding:** Pahami alur nyata dan kriteria sukses lebih dulu. Ungkapkan asumsi dan kebingungan, tampilkan interpretasi yang berbeda, serta sarankan cara lebih sederhana bila ada.
+* **Simplicity first:** Tulis kode minimum untuk permintaan yang disepakati. Jangan menambah fitur spekulatif, abstraksi sekali pakai, konfigurasi tanpa kebutuhan, atau penanganan kondisi yang mustahil. Sederhanakan solusi yang membesar tanpa alasan.
+* **Surgical changes:** Ubah hanya baris yang terkait langsung dengan permintaan; ikuti gaya lokal. Jangan merapikan atau menghapus kode lama yang tidak terkait. Hapus import, variabel, dan fungsi yang menjadi tidak terpakai akibat perubahan sendiri; cukup laporkan temuan lama di luar scope.
+* **Goal-driven execution:** Untuk tugas bertahap, tulis rencana singkat dengan verifikasi tiap langkah. Reproduksi bug sebelum memperbaikinya; validasi input dengan kasus gagal; untuk refactor pastikan perilaku lolos sebelum dan sesudah. Ulangi sampai kriteria sukses terbukti.
+* Pedoman ini mengutamakan kehati-hatian; gunakan penilaian untuk tugas trivial dan ikuti aturan keamanan, RBAC, integritas data, serta pengujian khusus HERO yang lebih ketat.
 
 ### 5\. Multi-Agent \& Teamwork Delegation (Teamwork \& Sub-agents)
 

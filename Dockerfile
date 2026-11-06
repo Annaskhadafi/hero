@@ -6,7 +6,7 @@
 
 # Stage 1: Base image
 FROM node:20.19-alpine AS base
-RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
+RUN apk add --no-cache libc6-compat gcompat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 ENV NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 
@@ -25,6 +25,10 @@ COPY . .
 # Build arguments for environment variables needed at build time
 ARG NEXT_PUBLIC_BETTER_AUTH_URL
 ENV NEXT_PUBLIC_BETTER_AUTH_URL=$NEXT_PUBLIC_BETTER_AUTH_URL
+ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=CCswG+rtVTs0QrZCZm3kAPlYPerqKGDGYyvr615W9BU=
+ENV NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+ARG NEXT_DEPLOYMENT_ID
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
 # Memory management for Dokploy build
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -35,10 +39,11 @@ RUN --mount=type=cache,id=hero-next,target=/app/.next/cache \
 
 # Stage 4: Production runner
 FROM node:20.19-alpine AS runner
-RUN apk add --no-cache libc6-compat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
+RUN apk add --no-cache libc6-compat gcompat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=CCswG+rtVTs0QrZCZm3kAPlYPerqKGDGYyvr615W9BU=
 
 # Security: run as non-root user
 RUN addgroup --system --gid 1001 nodejs && \
@@ -48,6 +53,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/Weight ./Weight
 
 # Setup migration directory
 RUN mkdir -p /app/migration && chown nextjs:nodejs /app/migration

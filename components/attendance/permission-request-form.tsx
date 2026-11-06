@@ -38,7 +38,9 @@ export function PermissionRequestForm({
   const [date, setDate] = useState(() => getTodayDateString())
   const [endDate, setEndDate] = useState(() => getTodayDateString())
   const [sickCategory, setSickCategory] = useState('Demam')
+  const [customSickCategory, setCustomSickCategory] = useState('')
   const [lateReason, setLateReason] = useState('Keperluan Keluarga')
+  const [customLateReason, setCustomLateReason] = useState('')
   const [returnTime, setReturnTime] = useState('')
   const [reason, setReason] = useState('')
   const [message, setMessage] = useState('')
@@ -95,6 +97,18 @@ export function PermissionRequestForm({
   function handleSubmit(formData: FormData) {
     setError('')
     setMessage('')
+    if (type === 'late' && lateReason === 'Lainnya' && !customLateReason.trim()) {
+      const nextError = 'Mohon ketikkan alasan terlambat kustom.'
+      setError(nextError)
+      toast.error(nextError)
+      return
+    }
+    if (type === 'sick' && sickCategory === 'Lainnya' && !customSickCategory.trim()) {
+      const nextError = 'Mohon ketikkan kategori sakit kustom.'
+      setError(nextError)
+      toast.error(nextError)
+      return
+    }
     startTransition(async () => {
       const result = await submitAttendancePermission(formData)
       if (!result.success) {
@@ -106,6 +120,10 @@ export function PermissionRequestForm({
       const nextMessage = result.message || 'Izin tersimpan.'
       setMessage(nextMessage)
       toast.success(nextMessage)
+      setReason('')
+      setReturnTime('')
+      setCustomLateReason('')
+      setCustomSickCategory('')
       router.refresh()
     })
   }
@@ -152,57 +170,105 @@ export function PermissionRequestForm({
           </div>
         </div>
         {type === 'sick' ? (
-          <div className={cn("grid gap-3", variant === 'mobile' ? "grid-cols-1" : "sm:grid-cols-2")}>
-            <div className="space-y-1.5 min-w-0">
-              <Label>Tanggal Akhir Sakit</Label>
-              <Input
-                type="date"
-                name="endDate"
-                value={endDate}
-                min={date}
-                onChange={(event) => setEndDate(event.target.value)}
-                required
-                suppressHydrationWarning
-              />
+          <div className="space-y-3">
+            <div className={cn("grid gap-3", variant === 'mobile' ? "grid-cols-1" : "sm:grid-cols-2")}>
+              <div className="space-y-1.5 min-w-0">
+                <Label>Tanggal Akhir Sakit</Label>
+                <Input
+                  type="date"
+                  name="endDate"
+                  value={endDate}
+                  min={date}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  required
+                  suppressHydrationWarning
+                />
+              </div>
+              <div className="space-y-1.5 min-w-0">
+                <Label>Kategori Sakit</Label>
+                <select
+                  value={sickCategory}
+                  onChange={(event) => setSickCategory(event.target.value)}
+                  className="flex h-10 w-full min-w-0 max-w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
+                >
+                  <option value="Demam">Demam</option>
+                  <option value="Flu / Batuk">Flu / Batuk</option>
+                  <option value="Sakit Kepala">Sakit Kepala</option>
+                  <option value="Gangguan Pencernaan">Gangguan Pencernaan</option>
+                  <option value="Nyeri Badan">Nyeri Badan</option>
+                  <option value="Rawat Jalan">Rawat Jalan</option>
+                  <option value="Lainnya">Lainnya (Kustom)...</option>
+                </select>
+                <input
+                  type="hidden"
+                  name="sickCategory"
+                  value={sickCategory === 'Lainnya' ? (customSickCategory.trim() || 'Lainnya') : sickCategory}
+                />
+              </div>
             </div>
-            <div className="space-y-1.5 min-w-0">
-              <Label>Kategori Sakit</Label>
-              <select
-                name="sickCategory"
-                value={sickCategory}
-                onChange={(event) => setSickCategory(event.target.value)}
-                className="flex h-10 w-full min-w-0 max-w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
-              >
-                <option>Demam</option>
-                <option>Flu / Batuk</option>
-                <option>Sakit Kepala</option>
-                <option>Gangguan Pencernaan</option>
-                <option>Nyeri Badan</option>
-                <option>Rawat Jalan</option>
-                <option>Lainnya</option>
-              </select>
-            </div>
+            {sickCategory === 'Lainnya' && (
+              <div className="space-y-1.5 min-w-0 animate-in fade-in-50 duration-200">
+                <Label className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                  Kategori Sakit Kustom <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  type="text"
+                  name="customSickCategory"
+                  value={customSickCategory}
+                  onChange={(event) => setCustomSickCategory(event.target.value)}
+                  placeholder="Contoh: Gejala Vertigo / Migrain Akut"
+                  required
+                />
+              </div>
+            )}
           </div>
         ) : (
-          <div className={cn("grid gap-3", variant === 'mobile' ? "grid-cols-1" : "sm:grid-cols-2")}>
-            <div className="space-y-1.5 min-w-0">
-              <Label>Alasan Terlambat</Label>
-              <select
-                name="lateReason"
-                value={lateReason}
-                onChange={(event) => setLateReason(event.target.value)}
-                className="flex h-10 w-full min-w-0 max-w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
-              >
-                <option>Keperluan Keluarga</option>
-                <option>Keperluan Pribadi</option>
-                <option>Kendala Cuaca</option>
-                <option>Ban Bocor</option>
-              </select>
+          <div className="space-y-3">
+            <div className={cn("grid gap-3", variant === 'mobile' ? "grid-cols-1" : "sm:grid-cols-2")}>
+              <div className="space-y-1.5 min-w-0">
+                <Label>Alasan Terlambat</Label>
+                <select
+                  value={lateReason}
+                  onChange={(event) => setLateReason(event.target.value)}
+                  className="flex h-10 w-full min-w-0 max-w-full rounded-md border-0 border-b-2 border-b-transparent bg-surface-container-low px-3 text-sm shadow-[inset_0_-1px_0_rgba(66,71,80,0.08)] outline-none focus:border-b-primary focus:bg-surface-container-lowest"
+                >
+                  <option value="Keperluan Keluarga">Keperluan Keluarga</option>
+                  <option value="Keperluan Pribadi">Keperluan Pribadi</option>
+                  <option value="Kendala Cuaca">Kendala Cuaca</option>
+                  <option value="Ban Bocor">Ban Bocor</option>
+                  <option value="Tugas / Kegiatan KPC & Perusahaan">Tugas / Kegiatan KPC & Perusahaan</option>
+                  <option value="Dispensasi (Olahraga / Acara)">Dispensasi (Olahraga / Acara)</option>
+                  <option value="Lainnya">Lainnya (Kustom)...</option>
+                </select>
+                <input
+                  type="hidden"
+                  name="lateReason"
+                  value={lateReason === 'Lainnya' ? (customLateReason.trim() || 'Lainnya') : lateReason}
+                />
+              </div>
+              <div className="space-y-1.5 min-w-0">
+                <Label>Jam Kembali / Masuk Kantor</Label>
+                <Input type="time" name="returnTime" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} required />
+              </div>
             </div>
-            <div className="space-y-1.5 min-w-0">
-              <Label>Jam Kembali / Masuk Kantor</Label>
-              <Input type="time" name="returnTime" value={returnTime} onChange={(event) => setReturnTime(event.target.value)} required />
-            </div>
+            {lateReason === 'Lainnya' && (
+              <div className="space-y-1.5 min-w-0 animate-in fade-in-50 duration-200">
+                <Label className="flex items-center gap-1 text-xs font-semibold text-slate-700">
+                  Kategori / Alasan Kustom <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  type="text"
+                  name="customLateReason"
+                  value={customLateReason}
+                  onChange={(event) => setCustomLateReason(event.target.value)}
+                  placeholder="Contoh: Memperkuat Tim Bola KPC / Kegiatan Resmi Lainnya"
+                  required
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Tuliskan kategori atau alasan khusus Anda secara spesifik.
+                </p>
+              </div>
+            )}
           </div>
         )}
         <div className="space-y-1.5 min-w-0">

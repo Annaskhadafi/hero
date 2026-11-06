@@ -2936,6 +2936,7 @@ const siteOvertimeConfigSchema = z
     z.object({
       enabled: z.boolean(),
       mode: z.enum(['template', 'realtime']).optional().default('template'),
+      requireSpl: z.boolean().optional().default(false),
       splPolicy: z.object({
         enabled: z.boolean(),
         allowBreak: z.boolean(),

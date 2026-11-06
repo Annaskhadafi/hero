@@ -85,12 +85,17 @@ function statusBadgeClass(status: string) {
 
 function formatSafeTime(d: Date | string | null | undefined): string {
   if (!d) return "-";
+  if (typeof d === "string") {
+    const timeMatch = d.match(/[T\s](\d{2}):(\d{2})/i) || d.match(/^(\d{2}):(\d{2})/);
+    if (timeMatch) {
+      return `${timeMatch[1]}.${timeMatch[2]}`;
+    }
+  }
   const dateObj = typeof d === "string" ? new Date(d) : d;
   if (isNaN(dateObj.getTime())) return "-";
-  return dateObj.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const h = String(dateObj.getUTCHours()).padStart(2, "0");
+  const m = String(dateObj.getUTCMinutes()).padStart(2, "0");
+  return `${h}.${m}`;
 }
 
 function formatSafeIso(d: Date | string | null | undefined): string {

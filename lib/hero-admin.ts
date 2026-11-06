@@ -121,7 +121,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'maestro-menu-v2'
+const HERO_GOVERNANCE_SEED_VERSION = 'road-hazard-rbac-v1'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -1586,6 +1586,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'alert-triangle',
     resource: 'hse_incident_report',
     sortOrder: 12,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'Road Hazard Live AI',
+    url: '/dashboard/hse/road-hazard',
+    iconName: 'video',
+    resource: 'hse_road_hazard',
+    sortOrder: 13,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4674,6 +4686,7 @@ const HSE_MANAGED_RESOURCES = new Set([
   'hse_incident_report',
   'hse_tire_inspection',
   'hse_road_condition_analysis',
+  'hse_road_hazard',
 ])
 
 const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])
@@ -7576,8 +7589,13 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
   )
   const authSession = await getServerSession()
   const now = new Date()
-  const fromDate = new Date(now.getFullYear(), now.getMonth() - 4, 1)
-  const toDate = new Date(now.getFullYear(), now.getMonth() + 3, 1)
+  const isAttendanceResource = resource === 'scheduling_timesheet_attendance'
+  const isSetupResource = resource === 'scheduling_timesheet_setup'
+  const isFieldBreakResource = resource === 'scheduling_timesheet_field_break'
+  const pastMonths = isAttendanceResource ? 1 : 4
+  const futureMonths = isAttendanceResource ? 1 : 3
+  const fromDate = new Date(now.getFullYear(), now.getMonth() - pastMonths, 1)
+  const toDate = new Date(now.getFullYear(), now.getMonth() + futureMonths, 1)
   const fromPeriodStr = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}`
   const toPeriodStr = `${toDate.getFullYear()}-${String(toDate.getMonth() + 1).padStart(2, '0')}`
 
@@ -7649,89 +7667,99 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         console.error('[getSchedulingTimesheetOptions:sites] Query failed:', err)
         return []
       }),
-    db
-      .select()
-      .from(timesheetSchedulingPlans)
-      .where(
-        and(
-          gte(timesheetSchedulingPlans.period, fromPeriodStr),
-          lte(timesheetSchedulingPlans.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlans] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        id: timesheetSchedulingPlansV2.id,
-        siteId: timesheetSchedulingPlansV2.siteId,
-        period: timesheetSchedulingPlansV2.period,
-        status: timesheetSchedulingPlansV2.status,
-        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
-        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
-        createdByUserId: timesheetSchedulingPlansV2.createdByUserId,
-        updatedByUserId: timesheetSchedulingPlansV2.updatedByUserId,
-        creatorName: employees.name,
-        activatedAt: timesheetSchedulingPlansV2.activatedAt,
-        createdAt: timesheetSchedulingPlansV2.createdAt,
-        updatedAt: timesheetSchedulingPlansV2.updatedAt,
-      })
-      .from(timesheetSchedulingPlansV2)
-      .leftJoin(employees, eq(timesheetSchedulingPlansV2.createdByUserId, employees.authUserId))
-      .where(
-        and(
-          gte(timesheetSchedulingPlansV2.period, fromPeriodStr),
-          lte(timesheetSchedulingPlansV2.period, toPeriodStr)
-        )
-      )
-      .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
-      .catch((err) => {
-        console.error(
-          '[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:',
-          err
-        )
-        return []
-      }),
-    db
-      .select()
-      .from(timesheetFieldBreakPlans)
-      .where(
-        and(
-          gte(timesheetFieldBreakPlans.period, fromPeriodStr),
-          lte(timesheetFieldBreakPlans.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetFieldBreakPlans] Query failed:', err)
-        return []
-      }),
-    db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(gte(attendanceRecords.eventTime, fromDate), lte(attendanceRecords.eventTime, toDate))
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:attendanceRecords] Query failed:', err)
-        return []
-      }),
-    db
-      .select()
-      .from(timesheetAttendanceRealOverrides)
-      .where(
-        and(
-          gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
-          lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error(
-          '[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:',
-          err
-        )
-        return []
-      }),
+    isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetSchedulingPlans)
+          .where(
+            and(
+              gte(timesheetSchedulingPlans.period, fromPeriodStr),
+              lte(timesheetSchedulingPlans.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlans] Query failed:', err)
+            return []
+          }),
+    isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: timesheetSchedulingPlansV2.id,
+            siteId: timesheetSchedulingPlansV2.siteId,
+            period: timesheetSchedulingPlansV2.period,
+            status: timesheetSchedulingPlansV2.status,
+            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+            createdByUserId: timesheetSchedulingPlansV2.createdByUserId,
+            updatedByUserId: timesheetSchedulingPlansV2.updatedByUserId,
+            creatorName: employees.name,
+            activatedAt: timesheetSchedulingPlansV2.activatedAt,
+            createdAt: timesheetSchedulingPlansV2.createdAt,
+            updatedAt: timesheetSchedulingPlansV2.updatedAt,
+          })
+          .from(timesheetSchedulingPlansV2)
+          .leftJoin(employees, eq(timesheetSchedulingPlansV2.createdByUserId, employees.authUserId))
+          .where(
+            and(
+              gte(timesheetSchedulingPlansV2.period, fromPeriodStr),
+              lte(timesheetSchedulingPlansV2.period, toPeriodStr)
+            )
+          )
+          .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
+          .catch((err) => {
+            console.error(
+              '[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:',
+              err
+            )
+            return []
+          }),
+    isAttendanceResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetFieldBreakPlans)
+          .where(
+            and(
+              gte(timesheetFieldBreakPlans.period, fromPeriodStr),
+              lte(timesheetFieldBreakPlans.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:timesheetFieldBreakPlans] Query failed:', err)
+            return []
+          }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(attendanceRecords)
+          .where(
+            and(gte(attendanceRecords.eventTime, fromDate), lte(attendanceRecords.eventTime, toDate))
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:attendanceRecords] Query failed:', err)
+            return []
+          }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetAttendanceRealOverrides)
+          .where(
+            and(
+              gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
+              lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error(
+              '[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:',
+              err
+            )
+            return []
+          }),
     db
       .select()
       .from(timesheetSchedulingConfigs)
@@ -7758,63 +7786,58 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
         return []
       }),
-    db
-      .select()
-      .from(timesheetAttendanceImportPreviews)
-      .where(
-        and(
-          gte(timesheetAttendanceImportPreviews.period, fromPeriodStr),
-          lte(timesheetAttendanceImportPreviews.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error(
-          '[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:',
-          err
-        )
-        return []
-      }),
-    db
-      .select({
-        id: activities.id,
-        employeeId: activities.employeeId,
-        activityCode: activities.activityCode,
-        title: activities.title,
-        startTime: activities.startTime,
-        endTime: activities.endTime,
-        status: activities.status,
-      })
-      .from(activities)
-      .where(and(gte(activities.startTime, fromDate), lte(activities.startTime, toDate)))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:activities] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        employeeId: trainingRecords.employeeId,
-        trainingName: trainingRecords.trainingName,
-        status: trainingRecords.status,
-      })
-      .from(trainingRecords)
-      .where(inArray(sql`lower(${trainingRecords.status})`, ['valid', 'active', 'aktif']))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:trainingRecords] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        employeeId: sioCertifications.employeeId,
-        certName: sioCertifications.certName,
-        certType: sioCertifications.certType,
-        status: sioCertifications.status,
-      })
-      .from(sioCertifications)
-      .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:sioCertifications] Query failed:', err)
-        return []
-      }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetAttendanceImportPreviews)
+          .where(
+            and(
+              gte(timesheetAttendanceImportPreviews.period, fromPeriodStr),
+              lte(timesheetAttendanceImportPreviews.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error(
+              '[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:',
+              err
+            )
+            return []
+          }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: activities.id,
+            employeeId: activities.employeeId,
+            activityCode: activities.activityCode,
+            title: activities.title,
+            startTime: activities.startTime,
+            endTime: activities.endTime,
+            status: activities.status,
+          })
+          .from(activities)
+          .where(and(gte(activities.startTime, fromDate), lte(activities.startTime, toDate)))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:activities] Query failed:', err)
+            return []
+          }),
+    Promise.resolve([] as Array<{ employeeId: number; trainingName: string; status: string }>),
+    isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            employeeId: sioCertifications.employeeId,
+            certName: sioCertifications.certName,
+            certType: sioCertifications.certType,
+            status: sioCertifications.status,
+          })
+          .from(sioCertifications)
+          .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:sioCertifications] Query failed:', err)
+            return []
+          }),
     db
       .select({
         id: masterSections.id,
@@ -7832,98 +7855,104 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         console.error('[getSchedulingTimesheetOptions:masterSections] Query failed:', err)
         return []
       }),
-    db
-      .select({
-        id: approvalMatrices.id,
-        name: approvalMatrices.name,
-        siteId: approvalMatrices.siteId,
-        departmentId: approvalMatrices.departmentId,
-        departmentName: masterDepartments.name,
-        sectionId: approvalMatrices.sectionId,
-        sectionName: masterSections.name,
-      })
-      .from(approvalMatrices)
-      .leftJoin(masterDepartments, eq(approvalMatrices.departmentId, masterDepartments.id))
-      .leftJoin(masterSections, eq(approvalMatrices.sectionId, masterSections.id))
-      .where(
-        and(
-          eq(approvalMatrices.isActive, true),
-          eq(approvalMatrices.transactionType, 'overtime_request'),
-          isNotNull(approvalMatrices.sectionId)
-        )
-      )
-      .orderBy(asc(masterDepartments.name), asc(masterSections.name), asc(approvalMatrices.name))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:approvalMatrices] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        matrixId: approvalMatrixSteps.matrixId,
-        stepOrder: approvalMatrixSteps.stepOrder,
-        nodeEmployeeId: orgChartNodes.employeeId,
-        assignmentEmployeeId: orgNodeAssignments.employeeId,
-      })
-      .from(approvalMatrixSteps)
-      .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
-      .leftJoin(
-        orgNodeAssignments,
-        and(
-          eq(orgNodeAssignments.nodeId, orgChartNodes.id),
-          eq(orgNodeAssignments.assignmentType, 'primary'),
-          eq(orgNodeAssignments.isActive, true)
-        )
-      )
-      .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:approvalMatrixSteps] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        id: overtimeCommandLetters.id,
-        splNumber: overtimeCommandLetters.splNumber,
-        title: overtimeCommandLetters.title,
-        siteId: overtimeCommandLetters.siteId,
-        employeeId: overtimeCommandLetterParticipants.employeeId,
-        workDate: overtimeCommandLetters.workDate,
-        plannedStartAt: overtimeCommandLetters.plannedStartAt,
-        plannedEndAt: overtimeCommandLetters.plannedEndAt,
-        status: overtimeCommandLetters.status,
-        category: overtimeCommandLetterParticipants.category,
-        overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
-        evidenceStatus: overtimeCommandLetterParticipants.evidenceStatus,
-        payrollPeriod: overtimeCommandLetterParticipants.payrollPeriod,
-      })
-      .from(overtimeCommandLetters)
-      .innerJoin(
-        overtimeCommandLetterParticipants,
-        eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
-      )
-      .where(
-        and(
-          inArray(sql`lower(${overtimeCommandLetters.status})`, [
-            'approved',
-            'closed',
-            'submitted',
-            'pending',
-          ]),
-          or(
+    isSetupResource
+      ? db
+          .select({
+            id: approvalMatrices.id,
+            name: approvalMatrices.name,
+            siteId: approvalMatrices.siteId,
+            departmentId: approvalMatrices.departmentId,
+            departmentName: masterDepartments.name,
+            sectionId: approvalMatrices.sectionId,
+            sectionName: masterSections.name,
+          })
+          .from(approvalMatrices)
+          .leftJoin(masterDepartments, eq(approvalMatrices.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(approvalMatrices.sectionId, masterSections.id))
+          .where(
             and(
-              gte(overtimeCommandLetters.workDate, fromDate),
-              lte(overtimeCommandLetters.workDate, toDate)
-            ),
-            and(
-              gte(overtimeCommandLetters.plannedStartAt, fromDate),
-              lte(overtimeCommandLetters.plannedStartAt, toDate)
+              eq(approvalMatrices.isActive, true),
+              eq(approvalMatrices.transactionType, 'overtime_request'),
+              isNotNull(approvalMatrices.sectionId)
             )
           )
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:overtimeCommandLetters] Query failed:', err)
-        return []
-      }),
+          .orderBy(asc(masterDepartments.name), asc(masterSections.name), asc(approvalMatrices.name))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:approvalMatrices] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    isSetupResource
+      ? db
+          .select({
+            matrixId: approvalMatrixSteps.matrixId,
+            stepOrder: approvalMatrixSteps.stepOrder,
+            nodeEmployeeId: orgChartNodes.employeeId,
+            assignmentEmployeeId: orgNodeAssignments.employeeId,
+          })
+          .from(approvalMatrixSteps)
+          .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+          .leftJoin(
+            orgNodeAssignments,
+            and(
+              eq(orgNodeAssignments.nodeId, orgChartNodes.id),
+              eq(orgNodeAssignments.assignmentType, 'primary'),
+              eq(orgNodeAssignments.isActive, true)
+            )
+          )
+          .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:approvalMatrixSteps] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: overtimeCommandLetters.id,
+            splNumber: overtimeCommandLetters.splNumber,
+            title: overtimeCommandLetters.title,
+            siteId: overtimeCommandLetters.siteId,
+            employeeId: overtimeCommandLetterParticipants.employeeId,
+            workDate: overtimeCommandLetters.workDate,
+            plannedStartAt: overtimeCommandLetters.plannedStartAt,
+            plannedEndAt: overtimeCommandLetters.plannedEndAt,
+            status: overtimeCommandLetters.status,
+            category: overtimeCommandLetterParticipants.category,
+            overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
+            evidenceStatus: overtimeCommandLetterParticipants.evidenceStatus,
+            payrollPeriod: overtimeCommandLetterParticipants.payrollPeriod,
+          })
+          .from(overtimeCommandLetters)
+          .innerJoin(
+            overtimeCommandLetterParticipants,
+            eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
+          )
+          .where(
+            and(
+              inArray(sql`lower(${overtimeCommandLetters.status})`, [
+                'approved',
+                'closed',
+                'submitted',
+                'pending',
+              ]),
+              or(
+                and(
+                  gte(overtimeCommandLetters.workDate, fromDate),
+                  lte(overtimeCommandLetters.workDate, toDate)
+                ),
+                and(
+                  gte(overtimeCommandLetters.plannedStartAt, fromDate),
+                  lte(overtimeCommandLetters.plannedStartAt, toDate)
+                )
+              )
+            )
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:overtimeCommandLetters] Query failed:', err)
+            return []
+          }),
   ])
 
   const kimperMap = new Map<number, { isLV: boolean; isTH: boolean; sioNames: string[] }>()
@@ -7945,32 +7974,31 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
     'vibro',
     'roller',
   ]
+  const thRegex = /\b(forklift|loader|tyrehandler|tyre handler|heavy|excavator|dozer|grader|crane|buldozer|bulldozer|compactor|vibro|roller)\b/i
   const thFuse = new Fuse(
     thKeywords.map((k) => ({ keyword: k })),
     {
       keys: ['keyword'],
-      threshold: 0.4,
+      threshold: 0.35,
     }
   )
 
   // We can also use simple regex for LV since it's short, or a strict match
   const isLV = (name: string) => /\b(lv|light vehicle|sim a|sim b)\b/i.test(name)
 
-  const allRecords = [
-    ...sioCertificationsRows.map((r) => {
-      let combinedName = r.certName || ''
-      if (
-        r.certType &&
-        r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()
-      ) {
-        combinedName = combinedName ? `${combinedName} ${r.certType}` : r.certType
-      }
-      return {
-        employeeId: r.employeeId,
-        name: combinedName.trim(),
-      }
-    }),
-  ]
+  const allRecords = sioCertificationsRows.map((r) => {
+    let combinedName = r.certName || ''
+    if (
+      r.certType &&
+      r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()
+    ) {
+      combinedName = combinedName ? `${combinedName} ${r.certType}` : r.certType
+    }
+    return {
+      employeeId: r.employeeId,
+      name: combinedName.trim(),
+    }
+  })
 
   for (const record of allRecords) {
     const name = record.name.toLowerCase()
@@ -7985,25 +8013,24 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       state.isLV = true
     }
 
-    // Also check TH using Fuse
-    const words = name.split(/[\s,/-]+/)
-    const thFuse = new Fuse(
-      thKeywords.map((kw) => ({ kw })),
-      { keys: ['kw'], threshold: 0.3 }
-    )
-
-    let matchedTH = false
-    for (const w of words) {
-      if (thFuse.search(w).length > 0) {
-        matchedTH = true
-        break
+    // Check TH fast with regex and exact keyword check first
+    let matchedTH = thRegex.test(name)
+    if (!matchedTH) {
+      for (const kw of thKeywords) {
+        if (name.includes(kw)) {
+          matchedTH = true
+          break
+        }
       }
     }
-    // Check exact matches just in case the phrase has spaces like 'tyre handler'
-    for (const kw of thKeywords) {
-      if (name.includes(kw)) {
-        matchedTH = true
-        break
+    // Fallback to pre-built thFuse (never recreate Fuse in loop)
+    if (!matchedTH) {
+      const words = name.split(/[\s,/-]+/)
+      for (const w of words) {
+        if (w.length >= 3 && thFuse.search(w).length > 0) {
+          matchedTH = true
+          break
+        }
       }
     }
 
@@ -8107,7 +8134,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
     })
   }
 
-  const approvalSections = [...activeSectionSites.values()].flatMap((scope) =>
+  const approvalSections =
+    approvalSectionRows.length === 0
+      ? []
+      : [...activeSectionSites.values()].flatMap((scope) =>
     masterSectionRows
       .filter(
         (section) => section.id === scope.sectionId && section.departmentId === scope.departmentId
@@ -8250,6 +8280,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
           ? override.source
           : 'manual',
         overtimeHours: override.overtimeHours ?? null,
+        validationFlags: (Array.isArray(override.validationFlags) ? (override.validationFlags as string[]) : []) as string[],
         updatedAt: override.updatedAt.toISOString(),
       })),
     approvedSplWindows: approvedSplRows

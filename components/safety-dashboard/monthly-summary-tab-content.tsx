@@ -53,6 +53,7 @@ import { LaggingK3Dialog } from './lagging-k3-dialog'
 import { LaggingHealthDialog } from './lagging-health-dialog'
 import { ManageSiteCoordinatesDialog } from './manage-site-coordinates-dialog'
 import { deleteSiteMonthlySummaryAction } from '@/app/dashboard/safety/data/monthly-summary-actions'
+import { matchesSiteName, toYearMonthString } from '@/lib/safety-dashboard/site-name-matcher'
 import type { getSafetyDashboardData } from '@/lib/safety-dashboard/queries'
 
 type SafetyData = Awaited<ReturnType<typeof getSafetyDashboardData>>
@@ -114,32 +115,62 @@ export function MonthlySummaryTabContent({ data }: { data: SafetyData }) {
         return sMonth === selectedMonth
       })
 
-      // Jika belum ada di hero_safety_site_monthly_summary, cari dari safetyMonthlyManHours
-      const manHoursFallback = data.monthlyManHours.find((mh) => {
-        const mhMonth = mh.month ? String(mh.month).substring(0, 7) : ''
-        return mh.workLocation === site.name && mhMonth === selectedMonth
+      // Cari data Safe Man Hours dari Monthly Man Hours di menu Safety Data Management
+      const matchingMhList = (data.monthlyManHours || []).filter((mh) => {
+        const mhMonth = toYearMonthString(mh.month)
+        if (mhMonth !== selectedMonth) return false
+        return matchesSiteName(mh.workLocation, site.name, site.location)
       })
 
-      const rawSummary = summary || {
-        id: 0,
-        siteId: site.id,
-        siteName: site.name,
-        month: `${selectedMonth}-01`,
-        nearmiss: 0,
-        propertyDamage: 0,
-        firstAid: 0,
-        medicalTreatment: 0,
-        environmental: 0,
-        majorInjury: 0,
-        fatality: 0,
-        safetyManHours: manHoursFallback ? Number(manHoursFallback.safetyManHours) : 0,
-        totalManpower: manHoursFallback ? manHoursFallback.employeeCount : 0,
-        sickEmployeesCount: 0,
-        lostDaysCount: 0,
-        sickLettersCount: 0,
-        occupationalDiseasesCount: 0,
-        incidentNotes: 'Nihil',
+      let totalMhFromMgmt = 0
+      let hasMhRecord = false
+      let matchedEmpCount = 0
+
+      for (const mh of matchingMhList) {
+        const val = parseFloat(String(mh.safetyManHours || 0).replace(/,/g, ''))
+        if (Number.isFinite(val)) {
+          totalMhFromMgmt += val
+          hasMhRecord = true
+        }
+        if (mh.employeeCount && mh.employeeCount > matchedEmpCount) {
+          matchedEmpCount = mh.employeeCount
+        }
       }
+
+      const finalSafetyManHours = hasMhRecord
+        ? totalMhFromMgmt
+        : summary?.safetyManHours != null && String(summary.safetyManHours).trim() !== '' && String(summary.safetyManHours) !== '0'
+        ? Number(summary.safetyManHours)
+        : 0
+
+      const finalTotalManpower = site.totalManpower ?? summary?.totalManpower ?? (matchedEmpCount > 0 ? matchedEmpCount : 0)
+
+      const rawSummary = summary
+        ? {
+            ...summary,
+            safetyManHours: finalSafetyManHours,
+            totalManpower: finalTotalManpower,
+          }
+        : {
+            id: 0,
+            siteId: site.id,
+            siteName: site.name,
+            month: `${selectedMonth}-01`,
+            nearmiss: 0,
+            propertyDamage: 0,
+            firstAid: 0,
+            medicalTreatment: 0,
+            environmental: 0,
+            majorInjury: 0,
+            fatality: 0,
+            safetyManHours: finalSafetyManHours,
+            totalManpower: finalTotalManpower,
+            sickEmployeesCount: 0,
+            lostDaysCount: 0,
+            sickLettersCount: 0,
+            occupationalDiseasesCount: 0,
+            incidentNotes: 'Nihil',
+          }
 
       const mapSite: SiteMapData = {
         id: site.id,
@@ -608,6 +639,7 @@ export function MonthlySummaryTabContent({ data }: { data: SafetyData }) {
         selectedMonth={selectedMonth}
         allSiteSummaries={siteSummaries}
         incidentReports={incidentReports}
+        monthlyManHours={data.monthlyManHours}
       />
 
       <LaggingK3Dialog

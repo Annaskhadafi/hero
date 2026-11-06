@@ -935,7 +935,7 @@ export function TrainingRequestFormDialog({
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept="application/pdf,image/*"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={handleFileUpload}
                     className="hidden"
                   />
@@ -946,7 +946,7 @@ export function TrainingRequestFormDialog({
                       </>
                     ) : (
                       <>
-                        <Upload className="w-4 h-4 text-blue-600" /> Pilih File Lampiran (PDF / Gambar)
+                        <Upload className="w-4 h-4 text-blue-600" /> Pilih File Lampiran (PDF / Excel / Word / Gambar)
                       </>
                     )}
                   </span>
@@ -964,11 +964,22 @@ export function TrainingRequestFormDialog({
                     >
                       Buka
                     </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachmentUrl('')
+                        setAttachmentName('')
+                      }}
+                      className="text-slate-400 hover:text-rose-600 ml-1 p-0.5 rounded transition-colors"
+                      title="Hapus lampiran"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
-                Format yang didukung: PDF, JPG, PNG. Berkas otomatis tersimpan di cloud proxy sistem.
+                Format yang didukung: PDF, Excel (.xlsx/.xls), Word (.docx), Gambar JPG/PNG (Maks. 15MB). Berkas otomatis tersimpan di cloud proxy sistem.
               </p>
             </div>
           </div>

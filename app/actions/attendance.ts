@@ -1060,8 +1060,18 @@ export async function submitAttendancePermission(formData: FormData) {
     const permissionType = getTrimmedFormValue(formData, 'permissionType')
     const requestDate = getTrimmedFormValue(formData, 'requestDate') || getTodayDateString()
     const endDate = getTrimmedFormValue(formData, 'endDate') || requestDate
-    const sickCategory = getTrimmedFormValue(formData, 'sickCategory')
-    const lateReason = getTrimmedFormValue(formData, 'lateReason')
+    let sickCategory = getTrimmedFormValue(formData, 'sickCategory')
+    const customSickCategory = getTrimmedFormValue(formData, 'customSickCategory')
+    if (sickCategory === 'Lainnya' && customSickCategory) {
+      sickCategory = customSickCategory
+    }
+
+    let lateReason = getTrimmedFormValue(formData, 'lateReason')
+    const customLateReason = getTrimmedFormValue(formData, 'customLateReason')
+    if (lateReason === 'Lainnya' && customLateReason) {
+      lateReason = customLateReason
+    }
+
     const returnTime = getTrimmedFormValue(formData, 'returnTime')
     const reason = getTrimmedFormValue(formData, 'reason')
     const targetApproverIdRaw = getTrimmedFormValue(formData, 'targetApproverId')

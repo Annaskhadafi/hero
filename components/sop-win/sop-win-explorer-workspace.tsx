@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import {
   Folder,
   FolderOpen,
@@ -1108,7 +1109,8 @@ export function SopWinExplorerWorkspace({
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  const targetStream = `/api/hero-genius/document-stream?url=${encodeURIComponent(
+                  const resolved = activeDoc.pdfFileUrl ? resolveUploadUrl(activeDoc.pdfFileUrl) : "";
+                  const targetStream = resolved || `/api/hero-genius/document-stream?url=${encodeURIComponent(
                     activeDoc.pdfFileUrl
                   )}&filename=${encodeURIComponent(activeDoc.documentNumber || activeDoc.title)}#toolbar=0&navpanes=0&scrollbar=1`;
                   window.open(targetStream, "_blank");
@@ -1126,7 +1128,7 @@ export function SopWinExplorerWorkspace({
                 onClick={() =>
                   setFullscreenPreviewDoc({
                     filename: activeDoc.title,
-                    url: activeDoc.pdfFileUrl,
+                    url: resolveUploadUrl(activeDoc.pdfFileUrl) || activeDoc.pdfFileUrl,
                   })
                 }
                 className="size-7 p-0 text-white/80 hover:bg-white/15 hover:text-white rounded-lg"
@@ -1157,7 +1159,7 @@ export function SopWinExplorerWorkspace({
                 <div className="flex h-full w-full items-center justify-center p-4 overflow-auto bg-slate-50 dark:bg-slate-900">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+                    src={resolveUploadUrl(activeDoc.pdfFileUrl) || `/api/hero-genius/document-stream?url=${encodeURIComponent(
                       activeDoc.pdfFileUrl
                     )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
                     alt={activeDoc.title}
@@ -1166,7 +1168,7 @@ export function SopWinExplorerWorkspace({
                 </div>
               ) : (
                 <PdfCanvasViewer
-                  url={`/api/hero-genius/document-stream?url=${encodeURIComponent(
+                  url={resolveUploadUrl(activeDoc.pdfFileUrl) || `/api/hero-genius/document-stream?url=${encodeURIComponent(
                     activeDoc.pdfFileUrl
                   )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
                   filename={activeDoc.documentNumber || activeDoc.title}

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { db } from '@/db'
-import { employees } from '@/db/schema/hero'
+import { employees, biometricConsents } from '@/db/schema/hero'
+import { encryptBiometricEmbedding } from '@/lib/security/biometric-crypto'
 import { eq } from 'drizzle-orm'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 import { rarayRegisterFace } from '@/lib/raray-vision/client'
@@ -140,9 +141,29 @@ export async function POST(request: NextRequest) {
         faceRarayId,
         faceRarayRegisteredAt: registeredAt,
         faceRegisteredAt: registeredAt,
-        faceEmbedding: newLocalEmbedding, // Purges any previous person's vector embedding
+        faceEmbedding: newLocalEmbedding ? encryptBiometricEmbedding(newLocalEmbedding) : null, // Irreversible AES-256 vector embedding (UU PDP)
       })
       .where(eq(employees.id, employee.id))
+
+    // Record explicit biometric consent for UU PDP compliance audit trail
+    try {
+      const forwardedFor = request.headers.get('x-forwarded-for')
+      const ipAddress = forwardedFor ? forwardedFor.split(',')[0].trim() : request.headers.get('x-real-ip') || 'unknown'
+      const userAgent = request.headers.get('user-agent') || 'unknown'
+
+      await db.insert(biometricConsents).values({
+        employeeId: employee.id,
+        consentType: 'face_recognition',
+        status: 'agreed',
+        consentVersion: 'v1.0-uupdp',
+        legalNoticeText: 'Persetujuan Pemrosesan Biometrik Wajah (In-Memory, Vektor 512-D Terenkripsi AES-256)',
+        ipAddress,
+        userAgent,
+        consentedAt: registeredAt,
+      })
+    } catch (consentErr) {
+      console.warn('[face-registration-v2] Non-fatal consent log warning:', consentErr)
+    }
 
     revalidatePath('/mobile/attendance')
     revalidatePath('/mobile/attendance/face-v2')

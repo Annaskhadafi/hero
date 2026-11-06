@@ -155,7 +155,7 @@ export function MobileOvertimeRequestForm({
   const initialTargetId = doc?.requestedByEmployeeId || currentEmployee?.id || employees[0]?.id;
   const initialHierarchy = initialTargetId
     ? resolveEmployeeApproverHierarchy(initialTargetId, employees)
-    : { leader: null, superior: null, department: "Central Services" };
+    : { requester: null, leader: null, superior: null, pjo: null, defaultApprover: null, department: "Central Services", section: "" };
 
   const [title, setTitle] = useState(
     doc?.title
@@ -251,16 +251,21 @@ export function MobileOvertimeRequestForm({
   // Jika sedang revisi / edit SPL (doc?.id), prioritaskan approver yang tersimpan di existing approval. Jika baru buat, gunakan hierarchy.
   const isEditingExistingSpl = Boolean(doc?.id || editSplId || parentSplId);
 
+  // Default approver untuk 1-Tier Approval SPL Mobile (Leader / PJO Site):
+  // Di site operasional tambang/cabang, izin lembur lapangan WAJIB disetujui PJO Site (Head Location dari hero_sites, misal Andika Septiadi di Vale).
+  // Jangan default langsung ke Section Head (Junaidi/Ary Maulana) karena di satu site ada banyak section (service, repair, retread, dll), sehingga PJO terlewat!
+  const defaultPjoApprover = initialHierarchy.defaultApprover || initialHierarchy.pjo || initialHierarchy.superior || initialHierarchy.leader;
+
   const initialLeaderId = isEditingExistingSpl && (existingLeaderApproval || matchedLeaderByEmployee)
     ? (existingLeaderApproval?.approverEmployeeId
         ? String(existingLeaderApproval.approverEmployeeId)
         : matchedLeaderByEmployee
           ? String(matchedLeaderByEmployee.id)
-          : initialHierarchy.leader?.id
-            ? String(initialHierarchy.leader.id)
+          : defaultPjoApprover?.id
+            ? String(defaultPjoApprover.id)
             : "")
-    : (initialHierarchy.leader?.id
-        ? String(initialHierarchy.leader.id)
+    : (defaultPjoApprover?.id
+        ? String(defaultPjoApprover.id)
         : existingLeaderApproval?.approverEmployeeId
           ? String(existingLeaderApproval.approverEmployeeId)
           : matchedLeaderByEmployee
@@ -270,9 +275,9 @@ export function MobileOvertimeRequestForm({
   const initialLeaderName = isEditingExistingSpl && (existingLeaderApproval || matchedLeaderByEmployee)
     ? (existingLeaderApproval?.approverName ||
         matchedLeaderByEmployee?.name ||
-        initialHierarchy.leader?.name ||
+        defaultPjoApprover?.name ||
         "")
-    : (initialHierarchy.leader?.name ||
+    : (defaultPjoApprover?.name ||
         matchedLeaderByEmployee?.name ||
         existingLeaderApproval?.approverName ||
         "");
@@ -282,11 +287,11 @@ export function MobileOvertimeRequestForm({
         ? String(existingSuperiorApproval.approverEmployeeId)
         : matchedSuperiorByEmployee
           ? String(matchedSuperiorByEmployee.id)
-          : initialHierarchy.superior?.id
-            ? String(initialHierarchy.superior.id)
+          : defaultPjoApprover?.id
+            ? String(defaultPjoApprover.id)
             : "")
-    : (initialHierarchy.superior?.id
-        ? String(initialHierarchy.superior.id)
+    : (defaultPjoApprover?.id
+        ? String(defaultPjoApprover.id)
         : existingSuperiorApproval?.approverEmployeeId
           ? String(existingSuperiorApproval.approverEmployeeId)
           : matchedSuperiorByEmployee
@@ -296,9 +301,9 @@ export function MobileOvertimeRequestForm({
   const initialSuperiorName = isEditingExistingSpl && (existingSuperiorApproval || matchedSuperiorByEmployee)
     ? (existingSuperiorApproval?.approverName ||
         matchedSuperiorByEmployee?.name ||
-        initialHierarchy.superior?.name ||
+        defaultPjoApprover?.name ||
         "")
-    : (initialHierarchy.superior?.name ||
+    : (defaultPjoApprover?.name ||
         matchedSuperiorByEmployee?.name ||
         existingSuperiorApproval?.approverName ||
         "");
@@ -507,13 +512,13 @@ export function MobileOvertimeRequestForm({
     if (hierarchy.department) {
       setRequesterDepartment(hierarchy.department);
     }
-    if (hierarchy.leader && !isLeaderLocked) {
-      setLeaderEmployeeId(String(hierarchy.leader.id));
-      setLeaderName(hierarchy.leader.name);
-    }
-    if (hierarchy.superior && !isSuperiorLocked) {
-      setSuperiorEmployeeId(String(hierarchy.superior.id));
-      setSuperiorName(hierarchy.superior.name);
+    // Di site operasional, izin lembur lapangan WAJIB diprioritaskan ke PJO Site (Head Location dari master data site)
+    const defaultApprover = hierarchy.defaultApprover || hierarchy.pjo || hierarchy.superior || hierarchy.leader;
+    if (defaultApprover && !isLeaderLocked && !isSuperiorLocked) {
+      setLeaderEmployeeId(String(defaultApprover.id));
+      setLeaderName(defaultApprover.name);
+      setSuperiorEmployeeId(String(defaultApprover.id));
+      setSuperiorName(defaultApprover.name);
     }
   }
 
@@ -685,16 +690,37 @@ export function MobileOvertimeRequestForm({
       const fd = new FormData();
       fd.append('file', compressedFile);
       fd.append('uploadTarget', 'activity-photos');
-      const result = await uploadFile(fd);
+      // Primary: Server action upload
+      let result = await uploadFile(fd);
+
+      // Fallback: If Server Action fails (network glitch, origin check, or timeout), try direct HTTP endpoint
+      if (!result.success) {
+        try {
+          const res = await fetch('/api/uploads/document', {
+            method: 'POST',
+            body: fd,
+          });
+          if (res.ok) {
+            const apiRes = await res.json();
+            if (apiRes.success && (apiRes.readableUrl || apiRes.url)) {
+              result = apiRes;
+            }
+          }
+        } catch (apiErr) {
+          console.warn('[MobileSPL] Fallback API upload failed:', apiErr);
+        }
+      }
       if (result.success && (result.readableUrl || result.url)) {
         const finalUrl = result.readableUrl || result.url;
         updateLineItem(idx, 'photoUrl', finalUrl);
+        if (!photoUrl) setPhotoUrl(finalUrl);
         toast.success('Foto evidence berhasil diunggah');
       } else {
-        toast.error('Gagal mengunggah foto evidence');
+        toast.error(result.error || 'Gagal mengunggah foto evidence');
       }
-    } catch {
-      toast.error('Gagal mengunggah foto evidence');
+    } catch (err: any) {
+      console.error('[MobileSPL] Photo upload exception:', err);
+      toast.error(err?.message || 'Gagal mengunggah foto evidence. Periksa jaringan.');
     } finally {
       setIsUploadingLinePhoto((prev) => {
         const next = [...prev];
@@ -737,6 +763,7 @@ export function MobileOvertimeRequestForm({
       }
       const startDateTime = new Date(`${baseDate}T${cleanStartTime}`);
       const endDateTime = new Date(`${effectiveEndDate}T${cleanEndTime}`);
+      const effectiveDocPhotoUrl = photoUrl || validItems.find((it) => it.photoUrl)?.photoUrl || null;
 
       if (editSplId) {
         const res = await resubmitOvertimeCommandLetterAction({
@@ -745,7 +772,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
-          photoUrl: photoUrl,
+          photoUrl: effectiveDocPhotoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           status: 'Submitted',
@@ -794,7 +821,7 @@ export function MobileOvertimeRequestForm({
           workDate,
           plannedStartAt: startDateTime,
           plannedEndAt: endDateTime,
-          photoUrl: photoUrl,
+          photoUrl: effectiveDocPhotoUrl,
           requestedByEmployeeId: Number(requesterEmployeeId) || currentEmployee?.id || null,
           requestNotes: requestNotes.trim(),
           workerParticipants: validWorkers.map((w) => ({
@@ -810,10 +837,10 @@ export function MobileOvertimeRequestForm({
             plannedPoints: Number(item.plannedPoints) || 0,
             photoUrl: item.photoUrl || undefined,
           })),
-          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : null,
-          leaderName: leaderName || null,
-          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : null,
-          superiorName: superiorName || null,
+          leaderEmployeeId: leaderEmployeeId ? Number(leaderEmployeeId) : (superiorEmployeeId ? Number(superiorEmployeeId) : null),
+          leaderName: leaderName || superiorName || null,
+          superiorEmployeeId: superiorEmployeeId ? Number(superiorEmployeeId) : (leaderEmployeeId ? Number(leaderEmployeeId) : null),
+          superiorName: superiorName || leaderName || null,
         });
 
         if (!res.success) {
@@ -1364,8 +1391,12 @@ export function MobileOvertimeRequestForm({
                           isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
                         )}
                       >
-                        <Camera className="size-3.5 text-slate-500" />
-                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Kamera"}
+                        {isUploadingLinePhoto[idx] ? (
+                          <Loader2 className="size-3.5 animate-spin text-blue-600" />
+                        ) : (
+                          <Camera className="size-3.5 text-slate-500" />
+                        )}
+                        {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Kamera"}
                         <input
                           type="file"
                           accept="image/*"
@@ -1385,8 +1416,12 @@ export function MobileOvertimeRequestForm({
                           isUploadingLinePhoto[idx] && "opacity-50 pointer-events-none"
                         )}
                       >
-                        <FileText className="size-3.5 text-slate-500" />
-                        {isUploadingLinePhoto[idx] ? "Uploading..." : "Galeri"}
+                        {isUploadingLinePhoto[idx] ? (
+                          <Loader2 className="size-3.5 animate-spin text-blue-600" />
+                        ) : (
+                          <FileText className="size-3.5 text-slate-500" />
+                        )}
+                        {isUploadingLinePhoto[idx] ? "Mengunggah..." : "Galeri"}
                         <input
                           type="file"
                           accept="image/*"
@@ -1509,7 +1544,7 @@ export function MobileOvertimeRequestForm({
       <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
         <DialogContent
           showCloseButton={false}
-          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl"
         >
           {/* Top Viewer Navbar */}
           <div className="bg-white px-3 sm:px-4 py-2.5 flex items-center justify-between border-b border-slate-200 shrink-0 select-none">
@@ -1806,7 +1841,16 @@ export function MobileOvertimeRequestForm({
                             <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
                             <td className="text-center text-[7pt]">
                               {hasPhoto ? (
-                                <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                <a
+                                  href={resolveUploadUrl(item.photoUrl || (Array.isArray(item.photos) ? item.photos[0] : ''))}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-bold text-emerald-600 hover:text-emerald-700 underline inline-flex items-center justify-center gap-0.5"
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Klik untuk melihat foto bukti lembur"
+                                >
+                                  📷 Ada Foto
+                                </a>
                               ) : (
                                 <span className="text-slate-400">—</span>
                               )}

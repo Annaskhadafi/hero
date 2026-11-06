@@ -15,6 +15,7 @@ export type PdfSignatureNames = {
   customSigners?: PdfSigner[]
   logoUrl?: string
   useExternalOnly?: boolean
+  externalSignatureCount?: 2 | 3 | 4 | number
   omitExternal?: boolean
   includeExternal?: boolean
   isPjo?: boolean
@@ -75,10 +76,20 @@ export function drawPdfSignatures(
   let labels: [string, string][] = []
 
   if (names.useExternalOnly) {
+    const count = names.externalSignatureCount ?? 2
     labels = [
       ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || '-'],
       ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
     ]
+    if (count === 3) {
+      const thirdSigner = names.customSigners?.[0]
+      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
+    } else if (count >= 4) {
+      const thirdSigner = names.customSigners?.[0]
+      const fourthSigner = names.customSigners?.[1]
+      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
+      labels.push([fourthSigner?.label || 'Diketahui oleh:', fourthSigner?.name || names.hrName || '-'])
+    }
   } else {
     labels = [
       ['Dibuat oleh :', names.preparedBy || '-'],

@@ -1012,3 +1012,104 @@ export async function raraySubmitTireDamageFeedback(params: {
     }
   }
 }
+
+export interface RarayRoadHazardDetection {
+  class_name: string
+  confidence: number
+  box?: [number, number, number, number] | { x: number; y: number; width: number; height: number }
+  [key: string]: unknown
+}
+
+export interface RarayRoadHazardResult {
+  status: 'success' | 'error'
+  result?: {
+    prediction_id: string
+    endpoint: { name: string; slug: string }
+    model_id?: number
+    model_name: string
+    model_version: string
+    original_image_url?: string
+    annotated_image_url?: string
+    detections: RarayRoadHazardDetection[]
+    detection_count: number
+    top_confidence: number
+    latency_ms?: number
+    image_width?: number
+    image_height?: number
+    quality?: {
+      is_usable: boolean
+      is_blurry: boolean
+      is_dark: boolean
+      is_overexposed?: boolean
+      blur_score?: number
+      brightness?: number
+      warnings?: string[]
+    }
+    feedback_status?: string
+    is_audit_sample?: boolean
+    [key: string]: unknown
+  }
+  message?: string
+}
+
+export async function rarayPredictRoadHazard(params: {
+  fileBuffer: Buffer
+  fileName: string
+  mimeType: string
+  confidenceThreshold?: number
+  iouThreshold?: number
+  baseUrlOverride?: string
+}): Promise<RarayRoadHazardResult> {
+  const dynamicBaseUrl = params.baseUrlOverride || getBaseUrl()
+  const apiKey = getApiKey()
+  const confidenceThreshold = params.confidenceThreshold ?? 0.25
+  const iouThreshold = params.iouThreshold ?? 0.45
+
+  try {
+    const isVideo = params.mimeType.startsWith('video/')
+    const targetSlug = isVideo ? 'roadhazard-video' : 'roadhazard'
+    const formData = new FormData()
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(params.fileBuffer)], { type: params.mimeType }),
+      params.fileName
+    )
+    formData.append('conf_threshold', String(confidenceThreshold))
+    formData.append('iou_threshold', String(iouThreshold))
+
+    const headers: Record<string, string> = {
+      Authorization: await getAuthHeader(params.baseUrlOverride),
+    }
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey
+    }
+
+    const response = await fetch(
+      `${dynamicBaseUrl}/api/v1/models/endpoints/${targetSlug}/predict`,
+      {
+        method: 'POST',
+        headers,
+        body: formData,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(isVideo ? 120_000 : 45_000),
+      }
+    )
+
+    if (response.ok) {
+      const data = await response.json()
+      return { status: 'success', result: data }
+    }
+
+    const details = await response.text().catch(() => '')
+    return {
+      status: 'error',
+      message: `Vision API error (${response.status}): ${details.slice(0, 240)}`,
+    }
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Gagal menghubungi Vision API road hazard.',
+    }
+  }
+}
+

@@ -29,6 +29,8 @@ import {
   Check,
   AlertCircle,
   BookOpenCheck,
+  FileUp,
+  Edit2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -48,6 +50,7 @@ import {
 import { TrainingRequestFormDialog } from '@/components/training/training-request-form-dialog'
 import { TrainingRequestPdfDialog } from '@/components/training/training-request-pdf-dialog'
 import { TrainingRequestApprovalDialog } from '@/components/training/training-request-approval-dialog'
+import { TrainingRequestAttachmentDialog } from '@/components/training/training-request-attachment-dialog'
 import {
   syncTrainingRequestToRecords,
   deleteTrainingRequest,
@@ -97,6 +100,8 @@ export function MobileTrainingRequestsClient({
   const [isSyncing, startSyncTransition] = useTransition()
   const [syncingId, setSyncingId] = useState<number | null>(null)
   const [selectedDetailRequest, setSelectedDetailRequest] = useState<any | null>(null)
+  const [selectedForAttachment, setSelectedForAttachment] = useState<any | null>(null)
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false)
 
   // Auto-open highlight item
   const targetHighlightItem = useMemo(() => {
@@ -473,6 +478,47 @@ export function MobileTrainingRequestsClient({
                       {formatRupiah(req.costTotal)}
                     </span>
                   </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+                    <span className="text-slate-500 flex items-center gap-1 shrink-0">
+                      <Paperclip className="size-3 text-slate-400" />
+                      Penawaran:
+                    </span>
+                    {req.attachmentUrl ? (
+                      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <a
+                          href={resolveUploadUrl(req.attachmentUrl)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-blue-600 hover:underline inline-flex items-center gap-0.5 truncate max-w-[120px]"
+                        >
+                          {req.attachmentName || 'Lihat Berkas'}
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedForAttachment(req)
+                            setIsAttachmentDialogOpen(true)
+                          }}
+                          className="text-[10px] text-slate-500 bg-slate-100 hover:bg-blue-50 px-1 py-0.5 rounded border border-slate-200"
+                        >
+                          Ganti
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedForAttachment(req)
+                          setIsAttachmentDialogOpen(true)
+                        }}
+                        className="text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200"
+                      >
+                        + Lampirkan
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Approval Stepper Progress Dots */}
@@ -580,6 +626,16 @@ export function MobileTrainingRequestsClient({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-xs"
+                          onClick={() => {
+                            setSelectedForAttachment(req)
+                            setIsAttachmentDialogOpen(true)
+                          }}
+                        >
+                          <Paperclip className="size-3.5 mr-2 text-blue-600" />
+                          {req.attachmentUrl ? 'Ganti Penawaran' : 'Upload Penawaran'}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive text-xs focus:text-destructive"
                           onClick={() => handleDelete(req.id)}
@@ -778,24 +834,40 @@ export function MobileTrainingRequestsClient({
                 </div>
 
                 {/* Lampiran berkas */}
-                {selectedDetailRequest.attachmentUrl && (
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between">
-                    <div className="flex items-center gap-2 truncate">
-                      <Paperclip className="size-4 text-slate-400 shrink-0" />
-                      <span className="truncate font-medium text-slate-700">
-                        {selectedDetailRequest.attachmentName || 'Lampiran Dokumen Proposal'}
-                      </span>
-                    </div>
-                    <a
-                      href={resolveUploadUrl(selectedDetailRequest.attachmentUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 shrink-0"
-                    >
-                      Buka
-                    </a>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 truncate">
+                    <Paperclip className="size-4 text-slate-400 shrink-0" />
+                    <span className="truncate font-medium text-xs text-slate-700">
+                      {selectedDetailRequest.attachmentUrl
+                        ? (selectedDetailRequest.attachmentName || 'Lampiran Dokumen Proposal')
+                        : 'Belum ada berkas penawaran terlampir'}
+                    </span>
                   </div>
-                )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {selectedDetailRequest.attachmentUrl && (
+                      <a
+                        href={resolveUploadUrl(selectedDetailRequest.attachmentUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      >
+                        Buka
+                      </a>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedForAttachment(selectedDetailRequest)
+                        setIsAttachmentDialogOpen(true)
+                      }}
+                      className="h-7 text-xs font-medium px-2"
+                    >
+                      {selectedDetailRequest.attachmentUrl ? 'Ganti' : '+ Lampirkan'}
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {/* Bottom Sheet Actions */}
@@ -864,6 +936,28 @@ export function MobileTrainingRequestsClient({
           )}
         </SheetContent>
       </Sheet>
+
+      {selectedForAttachment && (
+        <TrainingRequestAttachmentDialog
+          open={isAttachmentDialogOpen}
+          onOpenChange={(open) => {
+            setIsAttachmentDialogOpen(open)
+            if (!open) setSelectedForAttachment(null)
+          }}
+          requestId={selectedForAttachment.id}
+          requestNumber={selectedForAttachment.requestNumber}
+          trainingTitle={selectedForAttachment.trainingTitle}
+          providerName={selectedForAttachment.providerName}
+          currentAttachmentUrl={selectedForAttachment.attachmentUrl}
+          currentAttachmentName={selectedForAttachment.attachmentName}
+          onSuccess={() => {
+            router.refresh()
+            if (selectedDetailRequest && selectedDetailRequest.id === selectedForAttachment.id) {
+              setSelectedDetailRequest(null)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

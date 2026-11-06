@@ -2018,9 +2018,30 @@ export async function createOvertimeCommandLetterAction(payload: {
     // Ensure or insert sequential approval steps (2 steps total: Pemohon -> Leader / PJO -> Selesai)
     if (payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId) {
       let targetApproverId =
-        payload.leaderEmployeeId || payload.superiorEmployeeId || payload.managerEmployeeId || null
+        payload.superiorEmployeeId || payload.leaderEmployeeId || payload.managerEmployeeId || null
       let targetApproverName =
-        payload.leaderName || payload.superiorName || payload.managerName || 'Leader / PJO'
+        payload.superiorName || payload.leaderName || payload.managerName || 'Leader / PJO'
+
+      // Jika requester berada di site operasional yang memiliki Head Location (PJO Site) di master data hero_sites,
+      // dan approver belum diset atau sama dengan requester, prioritaskan PJO Site agar tidak terlewat
+      if (siteId && (!targetApproverId || targetApproverId === requesterId)) {
+        const [siteRec] = await db
+          .select({ headEmployeeId: sites.headEmployeeId })
+          .from(sites)
+          .where(eq(sites.id, siteId))
+          .limit(1)
+        if (siteRec?.headEmployeeId && siteRec.headEmployeeId !== requesterId) {
+          targetApproverId = siteRec.headEmployeeId
+          const [pjoEmp] = await db
+            .select({ name: employees.name, email: employees.email })
+            .from(employees)
+            .where(eq(employees.id, siteRec.headEmployeeId))
+            .limit(1)
+          if (pjoEmp) {
+            targetApproverName = pjoEmp.name
+          }
+        }
+      }
 
       // Jika yang mengajukan adalah PJO, approver tahap 2 langsung ke Leadernya PJO (bukan PJO itu sendiri)
       if (
@@ -3260,5 +3281,55 @@ export async function getOvertimeEvidenceDataAction(idOrSplNumber: number | stri
   } catch (err: any) {
     console.error('Error fetching overtime evidence data:', err)
     return { success: false as const, error: err?.message || 'Gagal memuat bukti lembur' }
+  }
+}
+
+
+export async function getSplSignaturesAction(
+  splId: number
+): Promise<{ stepOrder: number; signatureDataUrl: string | null }[]> {
+  if (!splId || isNaN(splId)) return []
+  try {
+    const rows = await db
+      .select({
+        stepOrder: overtimeApprovals.stepOrder,
+        signatureDataUrl: overtimeApprovals.signatureDataUrl,
+      })
+      .from(overtimeApprovals)
+      .where(eq(overtimeApprovals.overtimeCommandLetterId, splId))
+      .orderBy(asc(overtimeApprovals.stepOrder))
+    return rows
+  } catch (err) {
+    console.error('Failed to get SPL signatures:', err)
+    return []
+  }
+}
+
+export async function getBatchSplSignaturesAction(
+  splIds: number[]
+): Promise<Record<number, Record<number, string | null>>> {
+  if (!splIds || splIds.length === 0) return {}
+  try {
+    const rows = await db
+      .select({
+        overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
+        stepOrder: overtimeApprovals.stepOrder,
+        signatureDataUrl: overtimeApprovals.signatureDataUrl,
+      })
+      .from(overtimeApprovals)
+      .where(inArray(overtimeApprovals.overtimeCommandLetterId, splIds))
+      .orderBy(asc(overtimeApprovals.stepOrder))
+
+    const result: Record<number, Record<number, string | null>> = {}
+    for (const r of rows) {
+      if (!result[r.overtimeCommandLetterId]) {
+        result[r.overtimeCommandLetterId] = {}
+      }
+      result[r.overtimeCommandLetterId][r.stepOrder] = r.signatureDataUrl
+    }
+    return result
+  } catch (err) {
+    console.error('Failed to get batch SPL signatures:', err)
+    return {}
   }
 }

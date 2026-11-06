@@ -206,7 +206,7 @@ async function resolveDeptHeadByDepartment(sectionDepartmentStr: string) {
   }
 
   const parts = norm.split('/')
-  const deptTerm = (parts.length > 1 ? parts[1] : parts[0]).trim()
+  const deptTerm = parts[parts.length - 1].trim()
   const deptRow = (await findMasterDepartmentByKeyword(deptTerm)) || (await findMasterDepartmentByKeyword(parts[0].trim()))
 
   if (deptRow && deptRow.headEmployeeId) {
@@ -276,7 +276,7 @@ export async function resolveRfrMatrixAction(sectionDepartment: string): Promise
 export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<RfrMatrixStep[]> {
   const normDept = (sectionDepartment || '').trim()
   const parts = normDept.split('/')
-  const deptTerm = (parts.length > 1 ? parts[1] : parts[0]).trim()
+  const deptTerm = parts[parts.length - 1].trim()
 
   // 1. Check workflow builder matrix (approvalMatrices where transactionType = 'rfr_approval')
   try {
@@ -376,10 +376,12 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
             if (!approverEmployeeId) approverEmployeeId = 970
           } else if (labelNorm.includes('manager departemen') || labelNorm.includes('dept head') || labelNorm.includes('manager department')) {
             stepKey = 'acknowledge_dept_head'
-            approverName = dh.name
-            approverEmail = dh.email
-            approverTitle = dh.title || `${deptTerm || 'Departemen'} Manager`
-            approverEmployeeId = dh.employeeId || s.empId || null
+            if (!s.empId) {
+              approverName = dh.name
+              approverEmail = dh.email
+              approverTitle = dh.title || `${deptTerm || 'Departemen'} Manager`
+              approverEmployeeId = dh.employeeId || null
+            }
           } else if (labelNorm.includes('general manager') || labelNorm.includes('gm')) {
             stepKey = 'approval_gm'
             if (!approverName) approverName = 'Person Sihaloho'

@@ -56,7 +56,10 @@ async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
   }
 }
 
+let trainingRequestSchemaEnsured = false
+
 export async function ensureTrainingRequestSchema() {
+  if (trainingRequestSchemaEnsured) return
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS hero_training_requests (
@@ -118,6 +121,7 @@ export async function ensureTrainingRequestSchema() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `)
+    trainingRequestSchemaEnsured = true
   } catch (err) {
     console.warn('[ensureTrainingRequestSchema] schema check error:', err)
   }
@@ -1011,5 +1015,50 @@ export async function deleteTrainingRequest(requestId: number) {
   } catch (err: any) {
     console.error('[deleteTrainingRequest] Error:', err)
     return { success: false, error: err?.message || 'Gagal menghapus pengajuan training.' }
+  }
+}
+
+export async function updateTrainingRequestAttachment(input: {
+  requestId: number
+  attachmentUrl: string
+  attachmentName?: string
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, error: 'Unauthorized: Sesi login tidak ditemukan.' }
+    }
+
+    const [request] = await db
+      .select()
+      .from(trainingRequests)
+      .where(eq(trainingRequests.id, input.requestId))
+      .limit(1)
+
+    if (!request) {
+      return { success: false, error: 'Pengajuan training tidak ditemukan.' }
+    }
+
+    await db
+      .update(trainingRequests)
+      .set({
+        attachmentUrl: input.attachmentUrl,
+        attachmentName: input.attachmentName || 'Berkas Penawaran Training',
+        updatedAt: new Date(),
+      })
+      .where(eq(trainingRequests.id, input.requestId))
+
+    safeRevalidatePath('/dashboard/training/pengajuan')
+    safeRevalidatePath('/mobile/training/pengajuan')
+    safeRevalidatePath('/dashboard/approval')
+    safeRevalidatePath('/mobile/approval')
+
+    return {
+      success: true,
+      message: 'Berkas penawaran berhasil diperbarui.',
+    }
+  } catch (err: any) {
+    console.error('[updateTrainingRequestAttachment] Error:', err)
+    return { success: false, error: err?.message || 'Gagal memperbarui berkas penawaran.' }
   }
 }

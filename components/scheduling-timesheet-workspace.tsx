@@ -38,7 +38,7 @@ import type { PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
@@ -130,9 +130,11 @@ import {
 } from '@/components/ui/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
+import { generateElementAsPdfBlob } from '@/lib/pdf-download'
 import {
   INDONESIA_TIMEZONES,
   IndonesiaTimezoneCode,
+  getTimezoneDateParts,
   inferTimezoneFromLocation,
   normalizeIndonesiaTimezone,
 } from '@/lib/indonesia-timezone'
@@ -185,6 +187,7 @@ import {
   resolveConfiguredShiftClockIn,
   resolveSiteAttendanceClockConfig,
   updatePunctualityInNote,
+  isNightShiftScheduleCode,
   type SiteAttendanceClockConfig,
 } from '@/lib/timesheet/attendance-punctuality'
 import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
@@ -292,8 +295,11 @@ type EmployeeScheduleProfile = {
   isLokal?: boolean
 }
 
+export type SummaryView = 'ovt' | 'ovt_spl' | 'msa' | 'meals' | 'lokasi'
+
 export type AttendancePdfDocType =
   | 'overtime_summary'
+  | 'ovt_spl_summary'
   | 'msa_summary'
   | 'mls_summary'
   | 'tu_summary'
@@ -313,32 +319,38 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
     description: 'Tabel Rekapitulasi Overtime seluruh karyawan',
   },
   {
-    id: 'msa_summary',
+    id: 'ovt_spl_summary',
     number: 2,
+    label: 'OVERTIME SPL SUMMARY',
+    description: 'Tabel Rekapitulasi Overtime SPL (Surat Perintah Lembur) harian',
+  },
+  {
+    id: 'msa_summary',
+    number: 3,
     label: 'MSA summary',
     description: 'Tabel Rekapitulasi Meal & Site Allowance (MSA)',
   },
   {
     id: 'mls_summary',
-    number: 3,
+    number: 4,
     label: 'MLS summary',
     description: 'Tabel Rekapitulasi Meals Allowance (MLS)',
   },
   {
     id: 'tu_summary',
-    number: 4,
+    number: 5,
     label: 'TU summary',
     description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
   },
   {
     id: 'overtime_record',
-    number: 5,
+    number: 6,
     label: 'OVERTIME RECORD',
     description: 'Summary Overtime Record per orang (Lembar rincian lembur karyawan)',
   },
   {
     id: 'payable_site_allowance',
-    number: 6,
+    number: 7,
     label: 'payable site allowance',
     description: 'Lembar rincian tunjangan site per karyawan',
   },
@@ -444,6 +456,8 @@ type ManualAttendanceCell = {
   overtimeHours?: number | null
   scheduledClockIn?: string | null
   shiftCode?: string | null
+  isCrossDay?: boolean
+  validationFlags?: string[]
 }
 
 type SavedAttendanceOverride = {
@@ -457,6 +471,8 @@ type SavedAttendanceOverride = {
   note: string
   source?: string
   overtimeHours?: number | string | null
+  validationFlags?: string[]
+  isCrossDay?: boolean
   updatedAt: string
 }
 
@@ -504,6 +520,7 @@ type PdfConfig = {
   hrName: string
   externalPreparedBy?: string
   externalApprovedBy?: string
+  externalSignatureCount?: 2 | 3 | 4
   customSigners: PdfConfigSigner[]
   logoUrl: string
 }
@@ -629,6 +646,7 @@ const defaultSiteConfig: SiteSchedulingConfig = {
     hrName: '',
     externalPreparedBy: '',
     externalApprovedBy: '',
+    externalSignatureCount: 2,
     customSigners: [],
     logoUrl: '',
   },
@@ -743,6 +761,7 @@ function normalizePdfConfig(
     hrName: (cfg.hrName as string) || '',
     externalPreparedBy: (cfg.externalPreparedBy as string) || '',
     externalApprovedBy: (cfg.externalApprovedBy as string) || '',
+    externalSignatureCount: (Number(cfg.externalSignatureCount) as 2 | 3 | 4) || 2,
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
   }
@@ -1335,9 +1354,18 @@ function attendanceKey(employeeId: number, day: number) {
   return `${employeeId}-${day}`
 }
 
-function attendanceCellClass(status: AttendanceCellStatus, scheduleCode?: string) {
+function attendanceCellClass(
+  status: AttendanceCellStatus,
+  scheduleCode?: string,
+  isNightShift?: boolean
+) {
   if (scheduleCode === 'AL') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 font-bold'
-  if (status === 'present') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200'
+  if (status === 'present') {
+    if (isNightShift) {
+      return 'bg-indigo-600 text-white ring-1 ring-indigo-700 hover:bg-indigo-700 shadow-sm'
+    }
+    return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 hover:bg-emerald-200 shadow-sm'
+  }
   if (status === 'sick') return 'bg-amber-100 text-amber-950 ring-1 ring-amber-200'
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
@@ -1823,14 +1851,14 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false)
   const [attendanceView, setAttendanceView] = useState<
-    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
+    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt' | 'ovt_spl'
   >('attendance')
   const [attendanceSearch, setAttendanceSearch] = useState('')
   const [attendanceGridExportMode, setAttendanceGridExportMode] = useState<
     'attendance' | 'checkin-checkout' | 'work-hours'
   >('attendance')
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<
-    'all' | 'present' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
+    'all' | 'present' | 'present_pagi' | 'present_malam' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
   >('all')
   const [importHistoryOpen, setImportHistoryOpen] = useState(false)
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
@@ -1841,8 +1869,11 @@ export function SchedulingTimesheetWorkspace({
   const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
   const [pdfIncludeHse, setPdfIncludeHse] = useState<boolean>(true)
   const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
+  const [pdfExternalSignatureCount, setPdfExternalSignatureCount] = useState<2 | 3 | 4>(2)
+
   const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
     'overtime_summary',
+    'ovt_spl_summary',
     'msa_summary',
     'mls_summary',
     'tu_summary',
@@ -1851,6 +1882,12 @@ export function SchedulingTimesheetWorkspace({
   ])
   const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
+  const [summaryGridPdfModalOpen, setSummaryGridPdfModalOpen] = useState(false)
+  const [summaryGridSiteId, setSummaryGridSiteId] = useState<string>(siteId)
+  const [summaryGridType, setSummaryGridType] = useState<SummaryView>('ovt_spl')
+  const [summaryGridSelectAllEmployees, setSummaryGridSelectAllEmployees] = useState(true)
+  const [summaryGridSelectedEmployeeIds, setSummaryGridSelectedEmployeeIds] = useState<number[]>([])
+  const [summaryGridEmployeeSearch, setSummaryGridEmployeeSearch] = useState('')
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -2006,6 +2043,13 @@ export function SchedulingTimesheetWorkspace({
   const siteConfig = useMemo(() => {
     return resolveCurrentSiteConfig(siteId)
   }, [resolveCurrentSiteConfig, siteId])
+  useEffect(() => {
+    if (siteConfig?.pdfConfig?.externalSignatureCount) {
+      setPdfExternalSignatureCount(
+        (Number(siteConfig.pdfConfig.externalSignatureCount) as 2 | 3 | 4) || 2
+      )
+    }
+  }, [siteConfig?.pdfConfig?.externalSignatureCount])
 
   const getEmployeeSiteConfig = useCallback(
     (empSiteId: number | null | undefined): SiteSchedulingConfig => {
@@ -2415,15 +2459,60 @@ export function SchedulingTimesheetWorkspace({
   // raw-punch heuristic below, which only knows each punch's calendar date.
   const attendanceOverrideByCell = useMemo(() => {
     const map = new Map<string, SavedAttendanceOverride>()
+    const employeeIds = new Set<number>()
+
     for (const override of attendanceOverrides) {
       if (
         override.period === period &&
-        override.source === 'attendance' &&
+        (override.source === 'attendance' || override.source === 'manual') &&
         (siteId === 'all' || String(override.siteId) === siteId)
       ) {
-        map.set(attendanceKey(override.employeeId, override.day), override)
+        map.set(attendanceKey(override.employeeId, override.day), { ...override })
+        employeeIds.add(override.employeeId)
       }
     }
+
+    const daysInCurrentPeriod = daysInMonth(period)
+
+    // Cross-day reconciliation for overrides:
+    // 1) Mark any existing overnight checkout (clockOut < clockIn or flag) as isCrossDay = true.
+    // 2) If Day d has check-in but no check-out, and Day d+1 has check-out with no check-in (orphan checkout):
+    //    Attribute Day d+1's check-out to Day d, mark Day d as isCrossDay = true,
+    //    and remove the consumed override on Day d+1 so Day d+1 follows its normal roster schedule.
+    for (const empId of employeeIds) {
+      for (let d = 1; d <= daysInCurrentPeriod; d++) {
+        const curKey = attendanceKey(empId, d)
+        const curOverride = map.get(curKey)
+
+        if (curOverride) {
+          if (
+            (curOverride.clockIn && curOverride.clockOut && curOverride.clockOut < curOverride.clockIn) ||
+            curOverride.validationFlags?.includes('cross-day-checkout')
+          ) {
+            curOverride.isCrossDay = true
+          }
+
+          if (curOverride.clockIn && !curOverride.clockOut && d < daysInCurrentPeriod) {
+            const nextKey = attendanceKey(empId, d + 1)
+            const nextOverride = map.get(nextKey)
+
+            if (nextOverride && !nextOverride.clockIn && nextOverride.clockOut) {
+              curOverride.clockOut = nextOverride.clockOut
+              curOverride.isCrossDay = true
+              if (nextOverride.note && !curOverride.note) {
+                curOverride.note = nextOverride.note
+              }
+              const flags = new Set(curOverride.validationFlags || [])
+              flags.delete('missing-check-out')
+              flags.add('cross-day-checkout')
+              curOverride.validationFlags = Array.from(flags)
+              map.delete(nextKey)
+            }
+          }
+        }
+      }
+    }
+
     return map
   }, [attendanceOverrides, period, siteId])
 
@@ -2882,6 +2971,111 @@ export function SchedulingTimesheetWorkspace({
       const list = grouped.get(key) ?? []
       list.push(record)
       grouped.set(key, list)
+    }
+
+    // Cross-day reconciliation for night shifts:
+    // If day d-1 was a night shift (schedule is NS or had evening check-in),
+    // and day d has early morning check-out (< 12:00 local time),
+    // attribute that check-out to day d-1 and remove it from day d.
+    const employeeIds = new Set<number>()
+    for (const record of attendanceRecords) {
+      if (siteId === 'all' || record.siteId == null || String(record.siteId) === siteId) {
+        employeeIds.add(record.employeeId)
+      }
+    }
+    const daysInCurrentPeriod = daysInMonth(period)
+
+    for (const empId of employeeIds) {
+      const empRow = rows.find((r) => r.employee.id === empId)
+      for (let d = 2; d <= daysInCurrentPeriod; d++) {
+        const curKey = attendanceKey(empId, d)
+        const curRecords = grouped.get(curKey)
+        if (!curRecords || curRecords.length === 0) continue
+
+        const prevKey = attendanceKey(empId, d - 1)
+        const prevRecords = grouped.get(prevKey) || []
+        const prevScheduleCode = empRow?.schedule[d - 2]
+        const prevIsScheduledNight = isNightShiftScheduleCode(prevScheduleCode)
+
+        const prevHasNightPunch = prevRecords.some((r) => {
+          const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
+          const isCheckIn =
+            r.eventType === 'checked-in' ||
+            (!r.eventType.toLowerCase().includes('out') &&
+              !r.eventType.toLowerCase().includes('pulang') &&
+              !r.eventType.toLowerCase().includes('checkout'))
+          return isCheckIn && (h >= 15 || h < 5)
+        })
+
+        const prevHasOpenCheckIn =
+          prevRecords.some((r) => {
+            const isCheckIn =
+              r.eventType === 'checked-in' ||
+              (!r.eventType.toLowerCase().includes('out') &&
+                !r.eventType.toLowerCase().includes('pulang') &&
+                !r.eventType.toLowerCase().includes('checkout'))
+            return isCheckIn
+          }) &&
+          !prevRecords.some((r) => {
+            return (
+              r.eventType.toLowerCase().includes('out') ||
+              r.eventType.toLowerCase().includes('pulang') ||
+              r.eventType.toLowerCase().includes('checkout')
+            )
+          })
+
+        const isYesterdayNightShift = prevIsScheduledNight || prevHasNightPunch || prevHasOpenCheckIn
+
+        if (isYesterdayNightShift) {
+          const curCheckIns = curRecords.filter((r) => {
+            return (
+              r.eventType === 'checked-in' ||
+              (!r.eventType.toLowerCase().includes('out') &&
+                !r.eventType.toLowerCase().includes('pulang') &&
+                !r.eventType.toLowerCase().includes('checkout'))
+            )
+          })
+          const hasCurCheckIn = curCheckIns.length > 0
+
+          const morningCheckouts = curRecords.filter((r) => {
+            const isOut =
+              r.eventType.toLowerCase().includes('out') ||
+              r.eventType.toLowerCase().includes('pulang') ||
+              r.eventType.toLowerCase().includes('checkout')
+            if (!isOut) return false
+            const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
+            return h < 12 || !hasCurCheckIn
+          })
+
+          if (morningCheckouts.length > 0) {
+            morningCheckouts.sort((a, b) => a.eventTime.localeCompare(b.eventTime))
+            const morningCheckout = morningCheckouts[morningCheckouts.length - 1]
+
+            const prevHasCheckout = prevRecords.some((r) => {
+              return (
+                r.eventType.toLowerCase().includes('out') ||
+                r.eventType.toLowerCase().includes('pulang') ||
+                r.eventType.toLowerCase().includes('checkout')
+              )
+            })
+
+            if (!prevHasCheckout) {
+              prevRecords.push(morningCheckout)
+              grouped.set(prevKey, prevRecords)
+            }
+
+            const remainingCurRecords = curRecords.filter(
+              (r) => !morningCheckouts.some((mc) => mc.id === r.id)
+            )
+
+            if (remainingCurRecords.length > 0) {
+              grouped.set(curKey, remainingCurRecords)
+            } else {
+              grouped.delete(curKey)
+            }
+          }
+        }
+      }
     }
 
     for (const [key, records] of grouped.entries()) {
@@ -3964,6 +4158,22 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function updateRequireSpl(requireSpl: boolean) {
+    if (!guardOpenPeriod('Edit site settings')) return
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          overtimeConfig: { ...currentConfig.overtimeConfig, requireSpl },
+        },
+      }
+    })
+  }
+
+
   function updateApprovalApprover(
     rowId: string,
     key: keyof ApprovalApproverDraft,
@@ -4136,7 +4346,7 @@ export function SchedulingTimesheetWorkspace({
     setAllowanceVariables((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
-  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[]) {
+  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[] | number) {
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -5003,9 +5213,26 @@ export function SchedulingTimesheetWorkspace({
         'Face/location attendance'
 
     let effectiveStatus = rawStatus
+    const isOffSchedule = ['OFF', 'Libur', 'FB', 'Sakit', 'AL'].includes(rowCode || '')
+    const prevDaySchedule = day > 1 ? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 2] : null
+    const prevIsNight = isNightShiftScheduleCode(prevDaySchedule)
+    const prevCell = day > 1 ? attendanceOverrideByCell.get(attendanceKey(employeeId, day - 1)) : null
+    const prevHasNightIn = prevCell?.clockIn && prevCell.clockIn >= '15:00'
+
+    // If day is scheduled as OFF, has no check-in, and only has an early morning checkout (< 12:00)
+    // that belongs to yesterday's night shift: do NOT treat as present!
+    const isOrphanNightCheckoutOnDayOff =
+      !isManual &&
+      isOffSchedule &&
+      !clockIn &&
+      clockOut &&
+      (clockOut < '12:00' || prevCell?.clockOut === clockOut || prevIsNight || prevHasNightIn)
+
     if (isManual) {
       // Manual status explicitly set by admin/user MUST take precedence
       effectiveStatus = normalizeAttendanceStatus(effectiveOverride.status)
+    } else if (isOrphanNightCheckoutOnDayOff) {
+      effectiveStatus = normalizeAttendanceStatus(rowCode)
     } else if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
       if (effectiveStatus === 'empty' || effectiveStatus === 'off') {
         effectiveStatus = 'present'
@@ -5024,7 +5251,7 @@ export function SchedulingTimesheetWorkspace({
 
     // Jika tidak ada absensi fisik (clock-in / clock-out) dan tidak ada override manual,
     // maka status kehadiran wajib mengikuti jadwal roster yang diset (FB, AL/Cuti, OFF, ST)
-    if (!isManual && !clockIn && !clockOut) {
+    if (!isManual && !clockIn && (!clockOut || isOrphanNightCheckoutOnDayOff)) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
       if (
         rosterStatus === 'field_break' ||
@@ -5035,6 +5262,7 @@ export function SchedulingTimesheetWorkspace({
         effectiveStatus = rosterStatus
       }
     }
+    const finalClockOut = isOrphanNightCheckoutOnDayOff ? '' : clockOut
 
     const punctuality = evaluateAttendanceGridPunctuality({
       clockIn,
@@ -5057,11 +5285,20 @@ export function SchedulingTimesheetWorkspace({
           : Number(effectiveOverride.overtimeHours)
         : undefined
 
+    const isCrossDay = Boolean(
+      effectiveStatus === 'present' &&
+        clockIn &&
+        finalClockOut &&
+        (effectiveOverride?.isCrossDay ||
+          finalClockOut < clockIn ||
+          effectiveOverride?.validationFlags?.includes('cross-day-checkout'))
+    )
+
     return {
       ...(overrideOvertimeHours !== undefined ? { overtimeHours: overrideOvertimeHours } : {}),
       status: effectiveStatus,
       clockIn,
-      clockOut,
+      clockOut: finalClockOut,
       note,
       source: !effectiveOverride
         ? 'attendance'
@@ -5074,6 +5311,7 @@ export function SchedulingTimesheetWorkspace({
       isLatePending,
       scheduledClockIn: punctuality.scheduledClockIn,
       shiftCode: punctuality.shiftCode,
+      isCrossDay,
     }
   }
 
@@ -5734,6 +5972,24 @@ export function SchedulingTimesheetWorkspace({
       list = list.filter((r) => {
         const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
         if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
+        if (attendanceStatusFilter === 'present_pagi') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return !isNight
+          })
+        }
+        if (attendanceStatusFilter === 'present_malam') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return isNight
+          })
+        }
         if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
         if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
         if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
@@ -6076,6 +6332,7 @@ export function SchedulingTimesheetWorkspace({
         pjoLeader: '',
         hrName: '',
         useExternalOnly: true,
+        externalSignatureCount: pdfExternalSignatureCount,
         omitExternal: false,
         logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
         customSigners: cfg.customSigners || baseSignatures.customSigners,
@@ -6210,17 +6467,23 @@ export function SchedulingTimesheetWorkspace({
         splTitle: splTitles.join('; '),
         splDetails,
         workingTimeFrom:
-          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+          (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
             ? ''
             : (day.clockIn || defaultWorkFrom),
         workingTimeTo:
-          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+          (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
             ? ''
             : (day.clockOut || defaultWorkTo),
         configuredOvertimeIntervals:
           (isOffsiteOrAbsent && !hasRealAttendance) || (isOffDay && !hasRealAttendance)
             ? []
-            : (configuredIntervals as OvertimeInterval[]),
+            : isOffDay && hasRealAttendance && cell.clockIn && cell.clockOut
+              ? (day.overtime?.intervals && day.overtime.intervals.length > 0
+                  ? day.overtime.intervals
+                  : [{ start: cell.clockIn, end: cell.clockOut }])
+              : (day.overtime?.intervals && day.overtime.intervals.length > 0
+                  ? day.overtime.intervals
+                  : (configuredIntervals as OvertimeInterval[])),
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
@@ -6237,6 +6500,7 @@ export function SchedulingTimesheetWorkspace({
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
+      overtimeMode: empSiteConfig.overtimeConfig.mode ?? 'template',
     })
   }
 
@@ -6300,10 +6564,8 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  type SummaryView = 'ovt' | 'msa' | 'meals' | 'lokasi'
-
   function currentSummaryView(): SummaryView {
-    return attendanceView === 'attendance' ? 'ovt' : attendanceView
+    return attendanceView === 'attendance' ? 'ovt' : (attendanceView as SummaryView)
   }
 
   function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
@@ -6384,28 +6646,39 @@ export function SchedulingTimesheetWorkspace({
                 if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
                 return ''
               }
-              // Prioritize manually saved overtime hours (from attendance override)
-              if (
-                cell.overtimeHours !== undefined &&
-                cell.overtimeHours !== null &&
-                cell.overtimeHours > 0
-              ) {
-                return String(roundOvertimeHours(cell.overtimeHours as number))
-              }
               const overtime = calculateDayOvertime(
                 row.schedule,
                 day,
                 cell.clockIn,
                 cell.clockOut,
                 staff,
-                row.employee.id
+                row.employee.id,
+                false
               )
-              if (overtime.totalHours > 0) return String(overtime.totalHours)
+              const otVal = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
+              if (otVal > 0) return String(roundOvertimeHours(otVal))
               if (overtime.unauthorizedMinutes > 0) return 'SPL'
               if (code === 'ST') return 'ST'
               if (code === 'GD') return 'GD'
               if (code === 'FB' || isFieldBreakDay) return 'FB'
               if (code === 'AL') return 'AL'
+              return ''
+            }
+            if (view === 'ovt_spl') {
+              if (staff) return '-'
+              const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
+              const splHours = roundOvertimeHours((overtime?.splMinutes ?? 0) / 60)
+              if (splHours > 0) return String(splHours)
+              if (cell.status !== 'present') {
+                if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
+                if (cell.status === 'standby' || code === 'ST') return 'ST'
+                if (code === 'GD') return 'GD'
+                if (cell.status === 'off' || isRosterOff || code === 'OFF') return 'OFF'
+                if (cell.status === 'sick' || code === 'Sakit') return 'Sakit'
+                if (cell.status === 'leave' || code === 'Izin') return 'Izin'
+                if (cell.status === 'absent') return 'Alpha'
+                if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
+              }
               return ''
             }
             if (view === 'msa') {
@@ -6440,20 +6713,22 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt' && cell.status !== 'present') continue
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
-            else if (!staff) {
-              // Prioritize manually saved overtime hours
-              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-                total += Number(cell.overtimeHours)
-              } else {
-                total += calculateDayOvertime(
+            else if (view === 'ovt_spl') {
+              if (!staff) {
+                const splMin = splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0
+                total += roundOvertimeHours(splMin / 60)
+              }
+            } else if (!staff) {
+              const dayOt = calculateDayOvertime(
                   row.schedule,
                   day,
                   cell.clockIn,
                   cell.clockOut,
                   staff,
-                  row.employee.id
-                ).totalHours
-              }
+                  row.employee.id,
+                  false
+                )
+              total += dayOt.totalHours > 0 ? dayOt.totalHours : mandatoryOvertimeHours(dayOt)
             }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
@@ -6473,7 +6748,7 @@ export function SchedulingTimesheetWorkspace({
             department: dept,
             section,
             dailyValues,
-            total: view === 'ovt' ? String(roundOvertimeHours(total)) : String(total),
+            total: view === 'ovt' || view === 'ovt_spl' ? String(roundOvertimeHours(total)) : String(total),
             remark: 'NORMAL',
           })
           no++
@@ -6491,7 +6766,7 @@ export function SchedulingTimesheetWorkspace({
     const { generateSummaryTablePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
     const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures)
     return generateSummaryTablePdf({
-      view: view === 'ovt' ? 'ot' : view,
+      view: view === 'ovt' ? 'ot' : view === 'ovt_spl' ? 'spl' : view,
       period,
       siteName: site?.name || '',
       project: rate.project,
@@ -6502,7 +6777,7 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  async function downloadSummaryPdf(view: SummaryView) {
+  async function downloadSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
     try {
       if (
         availableSiteSectionCategories.size > 1 &&
@@ -6516,16 +6791,20 @@ export function SchedulingTimesheetWorkspace({
       }
 
       const allEmps = rows.map((r) => r.employee)
-      const selectedEmps = allEmps.filter((emp) => {
-        const cat = getEmployeeSectionCategory(emp)
-        if (availableSiteSectionCategories.size > 1) {
+      let selectedEmps = allEmps
+      if (customEmpIds && customEmpIds.length > 0) {
+        const idSet = new Set(customEmpIds)
+        selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
+      } else if (availableSiteSectionCategories.size > 1) {
+        selectedEmps = allEmps.filter((emp) => {
+          const cat = getEmployeeSectionCategory(emp)
           if (cat === 'Repair' && !pdfIncludeRepair) return false
           if (cat === 'Services' && !pdfIncludeServices) return false
           if (cat === 'Technical' && !pdfIncludeTechnical) return false
           if (cat === 'HSE' && !pdfIncludeHse) return false
-        }
-        return true
-      })
+          return true
+        })
+      }
 
       if (selectedEmps.length === 0) {
         toast.error('Tidak ada baris karyawan di site ini yang cocok dengan section yang dipilih.')
@@ -6542,7 +6821,15 @@ export function SchedulingTimesheetWorkspace({
       a.href = url
       const sitePart = (site?.name || 'Semua Site').replace(/\s+/g, '_')
       const label =
-        view === 'ovt' ? 'Overtime' : view === 'msa' ? 'MSA' : view === 'meals' ? 'MLS' : 'TU'
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'ovt_spl'
+            ? 'Overtime_SPL'
+            : view === 'msa'
+              ? 'MSA'
+              : view === 'meals'
+                ? 'MLS'
+                : 'TU'
       const activeSections = [
         pdfIncludeRepair ? 'Repair' : '',
         pdfIncludeServices ? 'Services' : '',
@@ -6561,6 +6848,51 @@ export function SchedulingTimesheetWorkspace({
     } catch (error) {
       console.error('[PDF Summary Error]', error)
       toast.error('Download PDF Summary gagal', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function previewSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
+    try {
+      const allEmps = rows.map((r) => r.employee)
+      let selectedEmps = allEmps
+      if (customEmpIds && customEmpIds.length > 0) {
+        const idSet = new Set(customEmpIds)
+        selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
+      } else if (availableSiteSectionCategories.size > 1) {
+        selectedEmps = allEmps.filter((emp) => {
+          const cat = getEmployeeSectionCategory(emp)
+          if (cat === 'Repair' && !pdfIncludeRepair) return false
+          if (cat === 'Services' && !pdfIncludeServices) return false
+          if (cat === 'Technical' && !pdfIncludeTechnical) return false
+          if (cat === 'HSE' && !pdfIncludeHse) return false
+          return true
+        })
+      }
+
+      if (selectedEmps.length === 0) {
+        toast.error('Tidak ada karyawan di site ini yang cocok.')
+        return
+      }
+
+      const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
+      const empIds = selectedEmps.map((e) => e.id)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+      const label =
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'ovt_spl'
+            ? 'Overtime SPL'
+            : view === 'msa'
+              ? 'MSA'
+              : view === 'meals'
+                ? 'MLS'
+                : 'TU'
+      openPdfPreview(pdf, `${label} Summary Grid – ${site?.name || ''} – ${period}`)
+    } catch (error) {
+      console.error('[Preview Summary PDF Error]', error)
+      toast.error('Gagal menampilkan preview PDF', {
         description: error instanceof Error ? error.message : String(error),
       })
     }
@@ -6633,6 +6965,21 @@ export function SchedulingTimesheetWorkspace({
         pages.forEach((page) => merged.addPage(page))
       }
 
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 1.b OVERTIME SPL SUMMARY
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
       // 2. MSA summary
       if (selectedPdfDocTypes.includes('msa_summary')) {
         const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
@@ -6695,6 +7042,7 @@ export function SchedulingTimesheetWorkspace({
       const selectedDocLabels = selectedPdfDocTypes
         .map((t) => {
           if (t === 'overtime_summary') return 'OT-Summary'
+          if (t === 'ovt_spl_summary') return 'SPL-Summary'
           if (t === 'msa_summary') return 'MSA-Summary'
           if (t === 'mls_summary') return 'MLS-Summary'
           if (t === 'tu_summary') return 'TU-Summary'
@@ -6856,6 +7204,39 @@ export function SchedulingTimesheetWorkspace({
     setPdfPreview({ url, title })
   }
 
+  async function previewSplDocument(documentId: number, splNumber: string) {
+    const toastId = `spl-preview-${documentId}`
+    toast.loading('Menyiapkan preview SPL…', { id: toastId })
+    try {
+      const response = await fetch(`/dashboard/scheduling-timesheet/attendance/spl/${documentId}`)
+      if (!response.ok) throw new Error('Dokumen SPL tidak dapat dibuka dengan hak akses ini.')
+      const html = await response.text()
+      const article = new DOMParser().parseFromString(html, 'text/html').querySelector('article')
+      if (!article) throw new Error('Isi dokumen SPL tidak ditemukan.')
+      const page = document.createElement('div')
+      page.className = 'bg-white p-8'
+      page.style.width = '794px'
+      page.style.position = 'fixed'
+      page.style.left = '-9999px'
+      page.style.top = '0'
+      page.style.zIndex = '-1'
+      page.append(article.cloneNode(true))
+      document.body.append(page)
+      try {
+        const blob = await generateElementAsPdfBlob(page, { orientation: 'portrait' })
+        openPdfPreview(new Uint8Array(await blob.arrayBuffer()), `SPL ${splNumber}`)
+      } finally {
+        page.remove()
+      }
+      toast.success('Preview SPL siap.', { id: toastId })
+    } catch (error) {
+      toast.error('Preview SPL gagal dibuka.', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   async function previewAllSiteOvertimePdf() {
     if (selectedPdfDocTypes.length === 0) {
       toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
@@ -6903,6 +7284,13 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('overtime_summary')) {
         const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7119,7 +7507,7 @@ export function SchedulingTimesheetWorkspace({
   const approvedSplByEmployee = useMemo(() => {
     const result = new Map<number, ApprovedSplWindow[]>()
     for (const window of approvedSplWindows) {
-      if (String(window.siteId) !== siteId) continue
+      if (siteId !== 'all' && String(window.siteId) !== siteId) continue
       const employeeWindows = result.get(window.employeeId) ?? []
       employeeWindows.push(window)
       result.set(window.employeeId, employeeWindows)
@@ -7148,6 +7536,9 @@ export function SchedulingTimesheetWorkspace({
         item.dayType === dayType &&
         item.totalHours === totalHours
     )
+    if (dayType === 'off') {
+      return roundOvertimeHours(configured?.overtimeHours ?? totalHours)
+    }
     return roundOvertimeHours(configured?.overtimeHours ?? Math.max(0, totalHours - 8))
   }
 
@@ -7158,13 +7549,18 @@ export function SchedulingTimesheetWorkspace({
     clockOut: string,
     staff: boolean,
     employeeId: number,
-    ignoreOverride = false
+    ignoreOverride = false,
+    approvedSplOnly = false
   ): OvertimeCalculationResult {
     if (!ignoreOverride) {
       const key = attendanceKey(employeeId, day)
       const cell = manualAttendance[key]
       if (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-        return legacyOvertimeResult(cell.overtimeHours)
+        return legacyOvertimeResult(Number(cell.overtimeHours))
+      }
+      const override = attendanceOverrideByCell.get(key)
+      if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
+        return legacyOvertimeResult(Number(override.overtimeHours))
       }
     }
 
@@ -7230,7 +7626,9 @@ export function SchedulingTimesheetWorkspace({
       workDate: `${period}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
-      splWindows: approvedSplByEmployee.get(employeeId) ?? [],
+      splWindows: (approvedSplByEmployee.get(employeeId) ?? []).filter(
+        (window) => !approvedSplOnly || window.status.toLowerCase() === 'approved'
+      ),
       legacyHours: calculateLegacyOvertime(
         schedule,
         day,
@@ -7240,6 +7638,38 @@ export function SchedulingTimesheetWorkspace({
       ),
     })
     return { ...calculated, totalHours: roundOvertimeHours(calculated.totalHours) }
+  }
+
+  function mandatoryOvertimeHours(result: OvertimeCalculationResult) {
+    return roundOvertimeHours(result.autoMinutes / 60)
+  }
+
+  function overtimeHoursBySource(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
+    const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
+    const result = calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
+    const mandatoryHours = result.source === 'Legacy' ? result.totalHours : result.autoMinutes / 60
+    const splHours = result.splMinutes / 60
+    return { mandatoryHours, splHours, totalHours: mandatoryHours + splHours }
+  }
+
+  function splOvertimeForDay(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
+    const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
+    if (cell.status !== 'present' || !cell.clockIn || !cell.clockOut) return null
+    return calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
+  }
+
+  function approvedSplDocumentsForDay(employeeId: number, day: number) {
+    const workDate = `${period}-${String(day).padStart(2, '0')}`
+    return (approvedSplByEmployee.get(employeeId) ?? []).filter((spl) => {
+      if (spl.status.toLowerCase() !== 'approved') return false
+      const dateValue = spl.workDate || spl.plannedStartAt
+      if (!dateValue) return false
+      const splDate = new Date(dateValue)
+      if (Number.isNaN(splDate.getTime())) return false
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(splDate) === workDate
+    })
   }
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
@@ -7551,7 +7981,11 @@ export function SchedulingTimesheetWorkspace({
       let attTotalHours = 0
       let allowanceTotal = 0
       let overtimeTotal = 0
+      let overtimeSplTotal = 0
+      let overtimePayrollEquivalentTotal = 0
       let payrollOvertimeTotal = 0
+      let payrollMandatoryTotal = 0
+      let payrollSplTotal = 0
       let payrollWorkDaysPresent = 0
       let payrollOffDaysPresent = 0
 
@@ -7733,30 +8167,13 @@ export function SchedulingTimesheetWorkspace({
               cellType = 'other'
             }
           } else {
-            if (
-              cell.overtimeHours !== undefined &&
-              cell.overtimeHours !== null &&
-              cell.overtimeHours > 0
-            ) {
-              numericVal = roundOvertimeHours(cell.overtimeHours as number)
-              displayVal = numericVal
-              cellType = 'ot'
-            } else {
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              )
-              if (overtime.totalHours > 0) {
-                numericVal = overtime.totalHours
-                displayVal = overtime.totalHours
+              const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
+              const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
+              const splHours = roundOvertimeHours(buckets.splHours)
+              if (mandatoryHours > 0) {
+                numericVal = mandatoryHours
+                displayVal = numericVal
                 cellType = 'ot'
-              } else if (overtime.unauthorizedMinutes > 0) {
-                displayVal = 'SPL'
-                cellType = 'spl'
               } else if (scheduleCode === 'ST') {
                 displayVal = 'ST'
                 cellType = 'st'
@@ -7770,7 +8187,17 @@ export function SchedulingTimesheetWorkspace({
                 displayVal = '-'
                 cellType = 'dash'
               }
-            }
+              overtimeSplTotal += splHours
+              const empSiteId = row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))
+              const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+              const dayAttendanceType = classifyPayrollAttendanceDay(
+                row.schedule, period, day - 1, empSiteConfig.rosterType, holidays
+              )
+              if (buckets.totalHours > 0) {
+                overtimePayrollEquivalentTotal += roundOvertimeHours(
+                  calculatePayrollOvertimeValue(empSiteConfig.rosterType, dayAttendanceType, buckets.totalHours, overtimeVariables)
+                )
+              }
             overtimeTotal += numericVal
           }
 
@@ -7836,32 +8263,17 @@ export function SchedulingTimesheetWorkspace({
               payrollOffDaysPresent++
             }
 
-            let rawOtHours = 0
-            if (
-              cell.overtimeHours !== undefined &&
-              cell.overtimeHours !== null &&
-              cell.overtimeHours > 0
-            ) {
-              rawOtHours = roundOvertimeHours(cell.overtimeHours as number)
-            } else {
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              )
-              if (overtime.totalHours > 0) {
-                rawOtHours = overtime.totalHours
-              }
-            }
+            const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
+            const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
+            const splHours = roundOvertimeHours(buckets.splHours)
+            payrollMandatoryTotal += mandatoryHours
+            payrollSplTotal += splHours
 
-            if (rawOtHours > 0) {
+            if (buckets.totalHours > 0) {
               const calculatedVal = calculatePayrollOvertimeValue(
                 empRosterType,
                 dayAttendanceType,
-                rawOtHours,
+                buckets.totalHours,
                 overtimeVariables
               )
               numericVal = roundOvertimeHours(calculatedVal)
@@ -7899,8 +8311,15 @@ export function SchedulingTimesheetWorkspace({
         },
         allowanceTotal,
         overtimeTotal: roundOvertimeHours(overtimeTotal),
+        overtimeSplitSummary: {
+          mandatoryHours: roundOvertimeHours(overtimeTotal),
+          splHours: roundOvertimeHours(overtimeSplTotal),
+          payrollEquivalentHours: roundOvertimeHours(overtimePayrollEquivalentTotal),
+        },
         payrollOvertimeSummary: {
           totalOvertimeCalculated: roundOvertimeHours(payrollOvertimeTotal),
+          mandatoryHours: roundOvertimeHours(payrollMandatoryTotal),
+          splHours: roundOvertimeHours(payrollSplTotal),
           workDaysPresent: payrollWorkDaysPresent,
           offDaysPresent: payrollOffDaysPresent,
         },
@@ -9591,6 +10010,26 @@ export function SchedulingTimesheetWorkspace({
                         ? '✓ Mengikuti Template: Overtime wajib sesuai konfigurasi template (misal 4 jam) otomatis diakui tanpa perlukan SPL. Hanya jika lembur MELEBIHI jam wajib baru memerlukan SPL.'
                         : '✓ Realtime: Memperhitungkan jam aktual clock in/out dan seluruh jam di luar shift normal memerlukan persetujuan SPL.'}
                     </p>
+                    <div className="mt-3.5 border-t border-border/40 pt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">Wajib SPL untuk Lembur di Luar Shift / Hari OFF</p>
+                        <p className="text-muted-foreground mt-0.5 text-[11px]">
+                          {siteConfig.overtimeConfig.requireSpl
+                            ? "Wajib SPL: Jam lembur di luar sesi wajib atau di hari OFF memerlukan dokumen SPL approved agar terhitung."
+                            : "Tidak Wajib SPL: Jam kerja aktual otomatis dihitung sebagai lembur tanpa memerlukan dokumen SPL."}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {siteConfig.overtimeConfig.requireSpl ? "Wajib SPL" : "Bebas (Data Aktual)"}
+                        </span>
+                        <Switch
+                          aria-label="Wajib SPL untuk Lembur"
+                          checked={Boolean(siteConfig.overtimeConfig.requireSpl)}
+                          onCheckedChange={updateRequireSpl}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="border-border/40 bg-background mb-4 rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -10013,13 +10452,40 @@ export function SchedulingTimesheetWorkspace({
 
                   {/* Alur Tanda Tangan Eksternal */}
                   <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
-                        Eksternal
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        Alur Penandatangan Eksternal (Customer / Pihak Luar)
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                          Eksternal
+                        </span>
+                        <span className="text-xs font-semibold text-slate-700">
+                          Alur Penandatangan Eksternal (Customer / Pihak Luar)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-muted-foreground mr-1">Default:</span>
+                        {([2, 3, 4] as const).map((cnt) => {
+                          const isActive = (siteConfig.pdfConfig.externalSignatureCount ?? 2) === cnt
+                          return (
+                            <button
+                              key={cnt}
+                              type="button"
+                              onClick={() => {
+                                updatePdfConfig('externalSignatureCount', cnt)
+                                setPdfExternalSignatureCount(cnt)
+                              }}
+                              className={cn(
+                                'h-6 px-2 text-[11px] font-semibold rounded transition-colors cursor-pointer border',
+                                isActive
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              )}
+                              title={`Set default ${cnt} tanda tangan untuk eksternal`}
+                            >
+                              {cnt} TTD
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
@@ -10897,6 +11363,30 @@ export function SchedulingTimesheetWorkspace({
                           ? `(${selectedOvertimeEmployeeIds.length})`
                           : ''}
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSummaryGridSiteId(siteId)
+                          setSummaryGridType(
+                            attendanceView === 'attendance'
+                              ? 'ovt_spl'
+                              : (attendanceView as SummaryView)
+                          )
+                          setSummaryGridSelectAllEmployees(
+                            selectedOvertimeEmployeeIds.length === 0
+                          )
+                          setSummaryGridSelectedEmployeeIds(
+                            selectedOvertimeEmployeeIds
+                          )
+                          setSummaryGridPdfModalOpen(true)
+                        }}
+                        className="h-8.5 rounded-lg border-blue-200 bg-blue-50/70 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:text-blue-800 shadow-2xs gap-1.5"
+                        title="Buka dialog Cetak & Download PDF Summary Grid per Site dan Karyawan terpilih (SPL, OT, MSA, MLS, TU)"
+                      >
+                        <FileText className="size-3.5 text-blue-600" />
+                        <span>PDF Summary Grid</span>
+                      </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -11017,6 +11507,30 @@ export function SchedulingTimesheetWorkspace({
                           <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                             Dokumen & Ringkasan
                           </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSummaryGridSiteId(siteId)
+                              setSummaryGridType(
+                                attendanceView === 'attendance'
+                                  ? 'ovt_spl'
+                                  : (attendanceView as SummaryView)
+                              )
+                              setSummaryGridSelectAllEmployees(
+                                selectedOvertimeEmployeeIds.length === 0
+                              )
+                              setSummaryGridSelectedEmployeeIds(
+                                selectedOvertimeEmployeeIds
+                              )
+                              setSummaryGridPdfModalOpen(true)
+                            }}
+                            className="cursor-pointer gap-2 py-2 bg-blue-50/50 hover:bg-blue-100/70"
+                          >
+                            <FileText className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs text-blue-900">PDF Summary Grid (Pilih Site & Karyawan)</span>
+                              <span className="text-[10px] text-blue-600/80">Format Landscape A4 Resmi lengkap tanggal 1–31</span>
+                            </div>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => {
                               const columns = [
@@ -11208,10 +11722,52 @@ export function SchedulingTimesheetWorkspace({
                           <label
                             htmlFor="toggle-external-pdf-bulk"
                             className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                            title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada 4 dokumen summary"
+                            title="Gunakan alur tanda tangan eksternal pada dokumen Overtime Record & Summary"
                           >
                             Eksternal
                           </label>
+                          {pdfUseExternalSignatures && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  id="btn-external-signature-count-bulk"
+                                  className="flex items-center gap-1 border-l border-slate-200 pl-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer select-none"
+                                  title="Pilih jumlah tanda tangan / approval eksternal"
+                                >
+                                  <span>{pdfExternalSignatureCount} Approval</span>
+                                  <ChevronDown className="size-3 opacity-60" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48 text-xs">
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                  Format Approval Eksternal
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(2)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 2 && 'font-bold text-primary')}
+                                >
+                                  <span>2 Approval (Dibuat & Approved)</span>
+                                  {pdfExternalSignatureCount === 2 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(3)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 3 && 'font-bold text-primary')}
+                                >
+                                  <span>3 Approval (+ TTD Tambahan)</span>
+                                  {pdfExternalSignatureCount === 3 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(4)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 4 && 'font-bold text-primary')}
+                                >
+                                  <span>4 Approval (Lengkap 4 Kolom)</span>
+                                  {pdfExternalSignatureCount === 4 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
 
                         {/* Multi-select Dropdown Pilihan Dokumen PDF */}
@@ -11657,19 +12213,22 @@ export function SchedulingTimesheetWorkspace({
                         { key: 'msa', label: 'MSA' },
                         { key: 'meals', label: 'Meals' },
                         { key: 'ovt', label: 'Overtime' },
+                        { key: 'ovt_spl', label: 'Overtime SPL' },
                       ].map((tab) => (
-                        <button
+                        <Button
                           key={tab.key}
+                          type="button"
+                          variant="ghost"
                           onClick={() => setAttendanceView(tab.key as any)}
                           className={cn(
-                            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
+                            'h-9 rounded-lg px-3 text-xs font-semibold transition-all',
                             attendanceView === tab.key
                               ? 'bg-white text-slate-900 shadow-xs'
                               : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                           )}
                         >
                           {tab.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -11699,7 +12258,9 @@ export function SchedulingTimesheetWorkspace({
                         </span>
                         {[
                           { key: 'all', label: 'Semua' },
-                          { key: 'present', label: 'Masuk' },
+                          { key: 'present', label: 'Semua Masuk' },
+                          { key: 'present_pagi', label: 'Masuk Pagi' },
+                          { key: 'present_malam', label: 'Masuk Malam' },
                           { key: 'sick', label: 'Sakit' },
                           { key: 'leave', label: 'Izin' },
                           { key: 'absent', label: 'Alpha' },
@@ -11761,17 +12322,43 @@ export function SchedulingTimesheetWorkspace({
                   ) : null}
                   {/* View title & Actions Bar (All 5 Tabs) */}
                   <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-                    <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                      {attendanceView === 'attendance' &&
-                        `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
-                      {attendanceView === 'msa' &&
-                        `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
-                      {attendanceView === 'lokasi' &&
-                        `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
-                      {attendanceView === 'meals' &&
-                        `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
-                      {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
-                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                        {attendanceView === 'attendance' &&
+                          `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
+                        {attendanceView === 'msa' &&
+                          `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'lokasi' &&
+                          `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
+                        {attendanceView === 'meals' &&
+                          `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'ovt' && 'OVERTIME WAJIB SUMMARY'}
+                        {attendanceView === 'ovt_spl' && 'OVERTIME SPL SUMMARY'} {period} · {rate.project}
+                      </p>
+                      {attendanceView === 'attendance' && (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="text-slate-500 font-semibold text-[10.5px]">Indikator:</span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-950 ring-1 ring-emerald-300">
+                            <span className="size-2 rounded-full bg-emerald-600" /> Masuk Pagi
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-2xs">
+                            <span className="size-2 rounded-full bg-indigo-200" /> Masuk Malam
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-950 ring-1 ring-red-400">
+                            <span className="size-2 rounded-full bg-red-600" /> Terlambat
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-950 ring-1 ring-orange-400">
+                            <span className="size-2 rounded-full bg-orange-600" /> Beda Roster
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-950 ring-1 ring-purple-300">
+                            <span className="size-2 rounded-full bg-purple-600" /> Field Break
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-300">
+                            <span className="size-2 rounded-full bg-slate-500" /> OFF
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {attendanceView !== 'attendance' ? (
                         <>
@@ -11784,25 +12371,78 @@ export function SchedulingTimesheetWorkspace({
                             <label
                               htmlFor="toggle-external-pdf-summary"
                               className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                              title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada dokumen summary"
+                              title="Gunakan alur tanda tangan eksternal pada dokumen summary"
                             >
                               Eksternal
                             </label>
+                            {pdfUseExternalSignatures && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    id="btn-external-signature-count-summary"
+                                    className="flex items-center gap-1 border-l border-slate-200 pl-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer select-none"
+                                    title="Pilih jumlah tanda tangan / approval eksternal"
+                                  >
+                                    <span>{pdfExternalSignatureCount} Approval</span>
+                                    <ChevronDown className="size-3 opacity-60" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                  <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                    Format Approval Eksternal
+                                  </DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(2)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 2 && 'font-bold text-primary')}
+                                  >
+                                    <span>2 Approval (Dibuat & Approved)</span>
+                                    {pdfExternalSignatureCount === 2 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(3)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 3 && 'font-bold text-primary')}
+                                  >
+                                    <span>3 Approval (+ TTD Tambahan)</span>
+                                    {pdfExternalSignatureCount === 3 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(4)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 4 && 'font-bold text-primary')}
+                                  >
+                                    <span>4 Approval (Lengkap 4 Kolom)</span>
+                                    {pdfExternalSignatureCount === 4 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                           <Button
                             size="sm"
                             variant="outline"
                             disabled={rows.length === 0 || siteId === 'all'}
-                            onClick={() => void downloadSummaryPdf(attendanceView)}
-                            title="Download PDF Summary sesuai tabel di halaman ini"
+                            onClick={() => void previewSummaryPdf(attendanceView as SummaryView)}
+                            title="Preview PDF Summary Grid sesuai tabel di halaman ini"
+                            className="h-8 rounded-lg text-xs"
                           >
-                            <Download className="mr-2 size-4" /> Download PDF
+                            <Eye className="mr-1.5 size-3.5 text-slate-500" /> Preview PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={rows.length === 0 || siteId === 'all'}
+                            onClick={() => void downloadSummaryPdf(attendanceView as SummaryView)}
+                            title="Download PDF Summary Grid sesuai tabel di halaman ini"
+                            className="h-8 rounded-lg text-xs font-semibold text-slate-800"
+                          >
+                            <Download className="mr-1.5 size-3.5 text-slate-600" /> Download PDF
                           </Button>
                         </>
                       ) : null}
 
                       {/* Export Excel Button with Dropdown for Current Tab or All 5 Tabs */}
-                      <DropdownMenu>
+                      {attendanceView !== 'ovt_spl' && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             size="sm"
@@ -11865,7 +12505,7 @@ export function SchedulingTimesheetWorkspace({
                             </div>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
                   </div>
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
@@ -12005,6 +12645,7 @@ export function SchedulingTimesheetWorkspace({
                                             </div>
                                             {/* PDF Action Buttons (Visible and easy to click) */}
                                             <div className="flex items-center gap-1 border-t border-slate-100 pt-0.5 text-[10px]">
+                                              {attendanceView !== 'ovt' && attendanceView !== 'ovt_spl' && <>
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title="Preview record PDF karyawan sesuai view ini"
@@ -12035,6 +12676,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'TU'
                                                       : 'OT'}
                                               </button>
+                                              </>}
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
@@ -12072,6 +12714,43 @@ export function SchedulingTimesheetWorkspace({
                                             scheduleCode === 'Libur' ||
                                             scheduleCode === 'Sakit'
                                           const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+
+                                          if (attendanceView === 'ovt_spl') {
+                                            const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
+                                            const documents = approvedSplDocumentsForDay(row.employee.id, day)
+                                            const splHours = roundOvertimeHours((overtime?.splMinutes ?? 0) / 60)
+                                            return (
+                                              <td key={day} className="w-[52px] min-w-[52px] border-x border-b border-slate-200/80 bg-white px-0.5 py-1.5 text-center text-[10px]">
+                                                {documents.length === 1 ? (
+                                                  <Button
+                                                    variant="ghost"
+                                                    className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50"
+                                                    aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}
+                                                    title={`${documents[0].splNumber} · ${documents[0].title}`}
+                                                    onClick={() => void previewSplDocument(documents[0].id, documents[0].splNumber)}
+                                                  >
+                                                    {splHours || ''}
+                                                  </Button>
+                                                ) : documents.length > 1 ? (
+                                                  <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                      <Button variant="ghost" className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50" aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}>
+                                                        {splHours || ''}
+                                                      </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="start">
+                                                      <DropdownMenuLabel>Dokumen SPL</DropdownMenuLabel>
+                                                      {documents.map((spl) => (
+                                                        <DropdownMenuItem key={spl.id} onSelect={() => void previewSplDocument(spl.id, spl.splNumber)}>
+                                                            {spl.splNumber || `SPL ${spl.id}`} {spl.title ? `· ${spl.title}` : ''}
+                                                        </DropdownMenuItem>
+                                                      ))}
+                                                    </DropdownMenuContent>
+                                                  </DropdownMenu>
+                                                ) : null}
+                                              </td>
+                                            )
+                                          }
 
                                           // MSA/Meals/OVT view
                                           if (attendanceView !== 'attendance') {
@@ -12224,10 +12903,11 @@ export function SchedulingTimesheetWorkspace({
                                                    cell.clockIn,
                                                    cell.clockOut,
                                                    staff,
-                                                   row.employee.id
+                                                   row.employee.id,
+                                                   true
                                                  )
-                                                 if (overtime.totalHours > 0) {
-                                                   cellValue = overtime.totalHours
+                                                 if (mandatoryOvertimeHours(overtime) > 0) {
+                                                   cellValue = mandatoryOvertimeHours(overtime)
                                                    cellBg = 'bg-white text-foreground font-semibold'
                                                  } else if (overtime.unauthorizedMinutes > 0) {
                                                    cellValue = 'SPL'
@@ -12245,20 +12925,10 @@ export function SchedulingTimesheetWorkspace({
                                                    cellValue = ''
                                                    cellBg = ''
                                                  }
-                                                overtimeMeta =
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`
-                                                    : overtime.source === 'Auto + SPL'
-                                                      ? 'Auto+SPL'
-                                                      : overtime.source === 'None'
-                                                        ? ''
-                                                        : overtime.source
+                                                overtimeMeta = overtime.unauthorizedMinutes > 0 ? 'Perlu SPL' : ''
                                                 cellTitle = [
                                                   `${scheduleCode} · ${cell.status}`,
-                                                  `Sumber: ${overtime.source}`,
-                                                  overtime.splNumbers.length
-                                                    ? `SPL: ${overtime.splNumbers.join(', ')}`
-                                                    : '',
+                                                  'Overtime wajib',
                                                   overtime.unauthorizedMinutes > 0
                                                     ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
                                                     : '',
@@ -12330,6 +13000,17 @@ export function SchedulingTimesheetWorkspace({
                                             : `Beda Roster · Seharusnya ${expectedShiftCode}`
                                           const scheduledClockIn =
                                             row.schedule[day - 1]?.split('-')[0]?.trim() || ''
+                                          const isNightShift =
+                                            inferredShift?.shiftCode === 'night' ||
+                                            (!inferredShift &&
+                                              (isNightShiftScheduleCode(scheduleCode) ||
+                                                isNightShiftScheduleCode(cell.shiftCode)))
+                                          const isNightPresentCell =
+                                            cell.status === 'present' &&
+                                            isNightShift &&
+                                            !cell.isLatePending &&
+                                            !isRosterMismatch &&
+                                            !isHolidayDay
                                           return (
                                             <td
                                               key={day}
@@ -12349,7 +13030,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
                                                       : isHolidayDay
                                                         ? attendanceHolidayCellClass
-                                                        : attendanceCellClass(cell.status, scheduleCode)
+                                                        : attendanceCellClass(cell.status, scheduleCode, isNightShift)
                                                 } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                                 onClick={() =>
                                                   multiSelectAttendance
@@ -12364,12 +13045,14 @@ export function SchedulingTimesheetWorkspace({
                                                 }
                                                 title={
                                                   cell.isLatePending
-                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
+                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk ${isNightShift ? 'Malam' : 'Pagi'}: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
                                                     : isConflict
                                                       ? rosterMismatchLabel
                                                       : holidayName ||
                                                         cell.note ||
-                                                        attendanceStatusLabel(cell.status)
+                                                        (cell.status === 'present'
+                                                          ? `Masuk ${isNightShift ? 'Malam (Night Shift)' : 'Pagi (Day Shift)'}`
+                                                          : attendanceStatusLabel(cell.status))
                                                 }
                                               >
                                                 {isConflict ? (
@@ -12392,23 +13075,69 @@ export function SchedulingTimesheetWorkspace({
                                                     <span className="block text-[9.5px] font-extrabold tracking-tight text-red-700">
                                                       Terlambat
                                                     </span>
-                                                    {cell.lateMinutes ? (
-                                                      <span className="mt-0.5 block text-[8px] font-bold text-red-600">
-                                                        +{cell.lateMinutes}m
+                                                    <span className="flex items-center gap-0.5">
+                                                      {cell.lateMinutes ? (
+                                                        <span className="block text-[8px] font-bold text-red-600">
+                                                          +{cell.lateMinutes}m
+                                                        </span>
+                                                      ) : null}
+                                                      <span className="block text-[7.5px] font-bold uppercase text-red-800">
+                                                        ({isNightShift ? 'NS' : 'DS'})
+                                                      </span>
+                                                    </span>
+                                                  </span>
+                                                ) : cell.status === 'present' ? (
+                                                  <span className="block leading-tight">
+                                                    <span
+                                                      className={`block text-[10px] font-bold ${
+                                                        isNightPresentCell ? 'text-white' : 'text-emerald-950'
+                                                      }`}
+                                                    >
+                                                      Masuk
+                                                    </span>
+                                                    <span
+                                                      className={`block text-[7.5px] font-black uppercase tracking-wider ${
+                                                        isNightPresentCell ? 'text-indigo-200' : 'text-emerald-700'
+                                                      }`}
+                                                    >
+                                                      {isNightShift ? 'Malam' : 'Pagi'}
+                                                    </span>
+                                                  </span>
+                                                ) : (
+                                                  <span>
+                                                    {scheduleCode === 'AL' && (!cell.clockIn && !cell.clockOut)
+                                                      ? 'AL'
+                                                      : cell.status === 'field_break'
+                                                        ? 'FB'
+                                                        : attendanceStatusLabel(cell.status)}
+                                                  </span>
+                                                )}
+                                                {cell.clockIn || cell.clockOut ? (
+                                                  <span
+                                                    className={`mt-1 block font-mono text-[9.5px] leading-tight ${
+                                                      isNightPresentCell
+                                                        ? 'text-indigo-100 font-semibold'
+                                                        : 'text-slate-800'
+                                                    }`}
+                                                  >
+                                                    {cell.clockIn || '--:--'}-
+                                                    {cell.clockOut || '--:--'}
+                                                    {cell.isCrossDay ? (
+                                                      <span
+                                                        className={`ml-0.5 inline-block text-[8px] font-bold ${
+                                                          isNightPresentCell
+                                                            ? 'text-amber-300'
+                                                            : 'text-amber-600'
+                                                        } cursor-help`}
+                                                        title="Checkout di hari berikutnya (H+1)"
+                                                      >
+                                                        (+1)
                                                       </span>
                                                     ) : null}
                                                   </span>
-                                                ) : (
-                                                  <span>{scheduleCode === 'AL' && (!cell.clockIn && !cell.clockOut) ? 'AL' : cell.status === 'field_break' ? 'FB' : attendanceStatusLabel(cell.status)}</span>
-                                                )}
-                                                {cell.clockIn || cell.clockOut ? (
-                                                  <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
-                                                    {cell.clockIn || '--:--'}-
-                                                    {cell.clockOut || '--:--'}
-                                                  </span>
                                                 ) : null}
                                                 {cell.status !== 'empty' && cell.source ? (
-                                                  <span className="absolute right-1 bottom-1">
+                                                  <span className={`absolute right-1 bottom-1 ${isNightPresentCell ? 'rounded-full bg-white/20 p-0.5' : ''}`}>
                                                     <AttendanceSourceIndicator
                                                       source={cell.source}
                                                       timestamp={
@@ -12481,7 +13210,7 @@ export function SchedulingTimesheetWorkspace({
                                                 // Skip if no allowance (izin/sakit/alpha/empty workday)
                                                 // OVT: only count present days
                                                 if (
-                                                  attendanceView === 'ovt' &&
+                                                  (attendanceView === 'ovt' || attendanceView === 'ovt_spl') &&
                                                   cell.status !== 'present'
                                                 )
                                                   continue
@@ -12492,21 +13221,27 @@ export function SchedulingTimesheetWorkspace({
                                                 } else {
                                                   // OVT only for non-staff
                                                   if (!staff) {
-                                                    total += calculateDayOvertime(
+                                                    const overtime = calculateDayOvertime(
                                                       row.schedule,
                                                       day,
                                                       cell.clockIn,
                                                       cell.clockOut,
                                                       staff,
-                                                      row.employee.id
-                                                    ).totalHours
+                                                      row.employee.id,
+                                                      true
+                                                    )
+                                                    total += attendanceView === 'ovt_spl'
+                                                      ? roundOvertimeHours((splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0) / 60)
+                                                      : mandatoryOvertimeHours(overtime)
                                                   }
                                                 }
                                               }
                                               return (
                                                 <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
-                                                  {attendanceView === 'ovt'
-                                                    ? roundOvertimeHours(total)
+                                                  {attendanceView === 'ovt_spl'
+                                                    ? (roundOvertimeHours(total) || '')
+                                                    : attendanceView === 'ovt'
+                                                      ? roundOvertimeHours(total)
                                                     : `Rp ${total.toLocaleString('id-ID')}`}
                                                 </td>
                                               )
@@ -14200,6 +14935,309 @@ export function SchedulingTimesheetWorkspace({
                 disabled={isSavingSchedule || !reopenReason.trim()}
               >
                 Reopen
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Export PDF Summary Grid (Pilih Site & Karyawan) */}
+      <Dialog
+        open={summaryGridPdfModalOpen}
+        onOpenChange={setSummaryGridPdfModalOpen}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <FileText className="size-5 text-blue-600" />
+              <span>Export PDF Summary Grid (Landscape A4)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pilih Site, Jenis Dokumen Grid, dan Karyawan untuk mengunduh rekapitulasi matriks harian (tanggal 1–31) lengkap dengan approval resmi.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* 1. Pilih Site & Periode */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Pilih Site Lokasi</label>
+                <HeroSearchableSelect
+                  options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+                  value={summaryGridSiteId}
+                  onChange={(val) => {
+                    setSummaryGridSiteId(val)
+                    setSiteId(val)
+                    setSummaryGridSelectedEmployeeIds([])
+                    setSummaryGridSelectAllEmployees(true)
+                  }}
+                  placeholder="Pilih Site..."
+                  className="w-full h-9 bg-white text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Periode Aktif</label>
+                <div className="h-9 px-3 flex items-center rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-800">
+                  {period} ({rate.project || 'Project Standard'})
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Pilih Tipe Summary Grid */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Jenis Dokumen Summary Grid</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { key: 'ovt_spl', label: 'Overtime SPL', desc: 'Surat Perintah Lembur harian' },
+                  { key: 'ovt', label: 'Overtime Reguler', desc: 'Rekapitulasi lembur harian' },
+                  { key: 'msa', label: 'MSA Summary', desc: 'Meal & Site Allowance' },
+                  { key: 'meals', label: 'MLS Summary', desc: 'Uang makan harian' },
+                  { key: 'lokasi', label: 'TU Summary', desc: 'Tunjangan khusus / lokasi' },
+                ].map((item) => {
+                  const isActive = summaryGridType === item.key
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setSummaryGridType(item.key as SummaryView)}
+                      className={cn(
+                        'flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none',
+                        isActive
+                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20 text-blue-900'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      )}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-bold text-xs">{item.label}</span>
+                        {isActive && <Check className="size-3.5 text-blue-600 shrink-0" />}
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{item.desc}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 3. Pilih Karyawan */}
+            <div className="space-y-2.5 p-3 rounded-xl border border-slate-200 bg-white shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Pilihan Karyawan</p>
+                  <p className="text-[11px] text-slate-500">
+                    {summaryGridSelectAllEmployees
+                      ? `Semua karyawan di site ini (${rows.length} orang)`
+                      : `${summaryGridSelectedEmployeeIds.length} dari ${rows.length} karyawan dipilih`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSummaryGridSelectAllEmployees(true)
+                      setSummaryGridSelectedEmployeeIds([])
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer select-none',
+                      summaryGridSelectAllEmployees
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    )}
+                  >
+                    Semua Karyawan ({rows.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryGridSelectAllEmployees(false)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer select-none',
+                      !summaryGridSelectAllEmployees
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    )}
+                  >
+                    Pilih Tertentu {summaryGridSelectedEmployeeIds.length > 0 ? `(${summaryGridSelectedEmployeeIds.length})` : ''}
+                  </button>
+                </div>
+              </div>
+
+              {!summaryGridSelectAllEmployees && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="size-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama karyawan, NIK / SN, divisi..."
+                        value={summaryGridEmployeeSearch}
+                        onChange={(e) => setSummaryGridEmployeeSearch(e.target.value)}
+                        className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSummaryGridSelectedEmployeeIds(rows.map((r) => r.employee.id))}
+                      className="text-xs text-blue-600 font-semibold hover:underline shrink-0 cursor-pointer"
+                    >
+                      Pilih Semua
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSummaryGridSelectedEmployeeIds([])}
+                      className="text-xs text-slate-500 font-semibold hover:text-rose-600 hover:underline shrink-0 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  </div>
+
+                  <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/30 p-1">
+                    {rows
+                      .map((r) => r.employee)
+                      .filter((emp) => {
+                        if (!summaryGridEmployeeSearch.trim()) return true
+                        const q = summaryGridEmployeeSearch.toLowerCase().trim()
+                        return (
+                          emp.name.toLowerCase().includes(q) ||
+                          (emp.employeeSn && emp.employeeSn.toLowerCase().includes(q)) ||
+                          (emp.department && emp.department.toLowerCase().includes(q)) ||
+                          (emp.section && emp.section.toLowerCase().includes(q))
+                        )
+                      })
+                      .map((emp) => {
+                        const isChecked = summaryGridSelectedEmployeeIds.includes(emp.id)
+                        return (
+                          <label
+                            key={emp.id}
+                            className={cn(
+                              'flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs select-none',
+                              isChecked ? 'bg-blue-50/70 text-blue-950 font-medium' : 'hover:bg-slate-100/70 text-slate-700'
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSummaryGridSelectedEmployeeIds((prev) => [...prev, emp.id])
+                                } else {
+                                  setSummaryGridSelectedEmployeeIds((prev) => prev.filter((id) => id !== emp.id))
+                                }
+                              }}
+                              className="size-4 rounded accent-blue-600 cursor-pointer shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-slate-900 leading-tight">
+                                {emp.name}{' '}
+                                <span className="font-normal text-slate-500">
+                                  ({emp.employeeSn || '-'})
+                                </span>
+                              </p>
+                              <p className="truncate text-[10px] text-slate-500">
+                                {emp.department || 'Tanpa Dept'} • {emp.section || emp.role || 'Umum'}
+                              </p>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    {rows.length === 0 && (
+                      <p className="p-4 text-center text-xs text-slate-500">
+                        Tidak ada karyawan di site ini.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Opsi Tanda Tangan Approval */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-white">
+              <div>
+                <p className="text-xs font-semibold text-slate-800">Format Approval & Tanda Tangan</p>
+                <p className="text-[11px] text-slate-500">
+                  {pdfUseExternalSignatures
+                    ? `Format Approval Eksternal (${pdfExternalSignatureCount} kolom tanda tangan)`
+                    : 'Format Standar Internal HERO'}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="toggle-modal-external-pdf"
+                    checked={pdfUseExternalSignatures}
+                    onCheckedChange={setPdfUseExternalSignatures}
+                  />
+                  <label htmlFor="toggle-modal-external-pdf" className="text-xs font-medium text-slate-700 cursor-pointer select-none">
+                    Eksternal
+                  </label>
+                </div>
+                {pdfUseExternalSignatures && (
+                  <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+                    {([2, 3, 4] as const).map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setPdfExternalSignatureCount(cnt)}
+                        className={cn(
+                          'px-2 py-0.5 text-xs font-semibold rounded cursor-pointer select-none',
+                          pdfExternalSignatureCount === cnt
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        )}
+                      >
+                        {cnt} Kolom
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSummaryGridPdfModalOpen(false)}
+              className="h-9 px-4 text-xs"
+            >
+              Tutup
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  rows.length === 0 ||
+                  (!summaryGridSelectAllEmployees && summaryGridSelectedEmployeeIds.length === 0)
+                }
+                onClick={() =>
+                  void previewSummaryPdf(
+                    summaryGridType,
+                    summaryGridSelectAllEmployees ? undefined : summaryGridSelectedEmployeeIds
+                  )
+                }
+                className="h-9 px-4 text-xs"
+              >
+                <Eye className="mr-1.5 size-3.5 text-slate-500" />
+                Preview PDF Grid
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={
+                  rows.length === 0 ||
+                  (!summaryGridSelectAllEmployees && summaryGridSelectedEmployeeIds.length === 0)
+                }
+                onClick={() =>
+                  void downloadSummaryPdf(
+                    summaryGridType,
+                    summaryGridSelectAllEmployees ? undefined : summaryGridSelectedEmployeeIds
+                  )
+                }
+                className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+              >
+                <Download className="mr-1.5 size-3.5" />
+                Download PDF Grid
               </Button>
             </div>
           </div>

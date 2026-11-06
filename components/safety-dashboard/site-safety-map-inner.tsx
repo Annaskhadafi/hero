@@ -230,7 +230,7 @@ export function SiteSafetyMapInner({
   }, [sites])
 
   return (
-    <div className="relative h-[520px] w-full overflow-hidden rounded-2xl border border-border/80 bg-slate-100 shadow-md">
+    <div className="relative isolate z-0 h-[520px] w-full overflow-hidden rounded-2xl border border-border/80 bg-slate-100 shadow-md">
       <MapContainer
         center={indonesiaCenter}
         zoom={5}
@@ -419,7 +419,7 @@ export function SiteSafetyMapInner({
       </MapContainer>
 
       {/* Floating Top Right: Map Style Switcher & Setting Koordinat */}
-      <div className="absolute top-3 right-3 z-[400] flex flex-wrap items-center justify-end gap-2">
+      <div className="absolute top-3 right-3 z-20 flex flex-wrap items-center justify-end gap-2">
         <div className="flex items-center rounded-xl border border-slate-300 bg-white/95 p-1 shadow-md backdrop-blur-md">
           <Button
             type="button"
@@ -473,7 +473,7 @@ export function SiteSafetyMapInner({
       </div>
 
       {/* Floating Map Legend */}
-      <div className="absolute bottom-3 left-3 z-[400] flex flex-wrap items-center gap-2 rounded-xl border border-white/40 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-md text-xs font-medium text-slate-800">
+      <div className="absolute bottom-3 left-3 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-white/40 bg-white/95 px-3 py-1.5 shadow-lg backdrop-blur-md text-xs font-medium text-slate-800">
         <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mr-1">
           Status Site:
         </span>

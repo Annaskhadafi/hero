@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { SiteMapData } from './site-safety-map-inner'
+import { matchesSiteName, toYearMonthString } from '@/lib/safety-dashboard/site-name-matcher'
 
 export type IncidentReportItem = {
   id: number
@@ -62,6 +63,13 @@ type Props = {
   selectedMonth: string // YYYY-MM
   allSiteSummaries: SiteMonthlySummaryItem[]
   incidentReports: IncidentReportItem[]
+  monthlyManHours?: {
+    id?: number
+    workLocation: string
+    month: string | Date
+    safetyManHours: string | number
+    employeeCount?: number
+  }[]
 }
 
 const MONTH_NAMES = [
@@ -88,6 +96,7 @@ export function SiteOshePerformanceDialog({
   selectedMonth,
   allSiteSummaries,
   incidentReports,
+  monthlyManHours = [],
 }: Props) {
   if (!site) return null
 
@@ -139,31 +148,78 @@ export function SiteOshePerformanceDialog({
   const ytdMinorInjury = ytdFirstAid + ytdMti
   const ytdPD = ytdSummaries.reduce((a, c) => a + (c.propertyDamage || 0), 0)
   const ytdNearmiss = ytdSummaries.reduce((a, c) => a + (c.nearmiss || 0), 0)
-  const ytdManHours = ytdSummaries.reduce((a, c) => a + Number(c.safetyManHours || 0), 0)
 
-  const mtdManHours = parseFloat(String(site.summary?.safetyManHours ?? mtdSummary.safetyManHours ?? 0).replace(/,/g, '')) || 0
+  // Ambil MTD Man Hours dari monthlyManHours jika tersedia (fallback ke site.summary / mtdSummary)
+  const matchedMtdMhList = (monthlyManHours || []).filter((mh) => {
+    const mhMonth = toYearMonthString(mh.month)
+    return mhMonth === selectedMonth && matchesSiteName(mh.workLocation, site.name, site.location)
+  })
+
+  let mtdMhSum = 0
+  let mtdEmpMax = 0
+  for (const mh of matchedMtdMhList) {
+    const val = parseFloat(String(mh.safetyManHours || 0).replace(/,/g, ''))
+    if (Number.isFinite(val)) mtdMhSum += val
+    if (mh.employeeCount && mh.employeeCount > mtdEmpMax) mtdEmpMax = mh.employeeCount
+  }
+
+  const mtdManHours =
+    mtdMhSum > 0
+      ? mtdMhSum
+      : parseFloat(String(site.summary?.safetyManHours ?? mtdSummary.safetyManHours ?? 0).replace(/,/g, '')) || 0
+
+  // Ambil YTD Man Hours dari monthlyManHours untuk tahun berjalan s/d bulan terpilih
+  const matchedYtdMhList = (monthlyManHours || []).filter((mh) => {
+    const mhMonth = toYearMonthString(mh.month)
+    if (!mhMonth.startsWith(String(currentYear))) return false
+    return mhMonth <= selectedMonth && matchesSiteName(mh.workLocation, site.name, site.location)
+  })
+
+  let ytdMhSum = 0
+  for (const mh of matchedYtdMhList) {
+    const val = parseFloat(String(mh.safetyManHours || 0).replace(/,/g, ''))
+    if (Number.isFinite(val)) ytdMhSum += val
+  }
+
+  const fallbackYtdMh = ytdSummaries.reduce((a, c) => a + Number(c.safetyManHours || 0), 0)
+  const ytdManHours = ytdMhSum > 0 ? ytdMhSum : fallbackYtdMh > 0 ? fallbackYtdMh : mtdManHours
+
+  const totalManpowerDisplay =
+    mtdEmpMax > 0
+      ? mtdEmpMax
+      : site.totalManpower ?? site.summary?.totalManpower ?? mtdSummary.totalManpower ?? 0
+
   const mtdMinorInjury = (mtdSummary.firstAid || 0) + (mtdSummary.medicalTreatment || 0)
 
-  // Rasio MTD & YTD
+  // Rasio MTD & YTD Otomatis (Standar OSHE Pertambangan: Konstanta 1.000.000 Man Hours)
   const calcRate = (qty: number, hours: number) => {
     if (!hours || hours <= 0) return 0
     return Number(((qty * 1_000_000) / hours).toFixed(2))
   }
 
+  const formatRate = (rate: number) => {
+    return new Intl.NumberFormat('id-ID', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(rate)
+  }
+
+  // 1. PDFR (Property Damage Frequency Rate) = (Total PD * 1.000.000) / Total Man Hours
   const mtdPDFR = calcRate(mtdSummary.propertyDamage || 0, mtdManHours)
-  const ytdPDFR = calcRate(ytdPD, ytdManHours || mtdManHours)
+  const ytdPDFR = calcRate(ytdPD, ytdManHours)
 
-  const mtdHPNMFR = calcRate(mtdSummary.nearmiss || 0, mtdManHours)
-  const ytdHPNMFR = calcRate(ytdNearmiss, ytdManHours || mtdManHours)
+  // 2. High Potential Near Miss (25% nearmiss atau dari incident reports) & HPNMFR
+  const mtdHPNM = Math.floor((mtdSummary.nearmiss || 0) * 0.25)
+  const ytdHPNM = Math.floor(ytdNearmiss * 0.25)
+  const mtdHPNMFR = calcRate(mtdHPNM, mtdManHours)
+  const ytdHPNMFR = calcRate(ytdHPNM, ytdManHours)
 
-  const mtdTRIFR = calcRate(
-    (mtdSummary.fatality || 0) + (mtdSummary.majorInjury || 0) + (mtdSummary.medicalTreatment || 0),
-    mtdManHours
-  )
-  const ytdTRIFR = calcRate(
-    ytdFatality + ytdMajor + ytdMti,
-    ytdManHours || mtdManHours
-  )
+  // 3. TRIFR (Total Recordable Injury Frequency Rate) = (Recordable Injuries * 1.000.000) / Total Man Hours
+  // Recordable: Fatality + Major Injury (LTI) + Medical Treatment (MTI)
+  const mtdRecordable = (mtdSummary.fatality || 0) + (mtdSummary.majorInjury || 0) + (mtdSummary.medicalTreatment || 0)
+  const ytdRecordable = ytdFatality + ytdMajor + ytdMti
+  const mtdTRIFR = calcRate(mtdRecordable, mtdManHours)
+  const ytdTRIFR = calcRate(ytdRecordable, ytdManHours)
 
   // Incident Reports spesifik site & bulan ini
   const siteIncidents = incidentReports.filter((inc) => {
@@ -205,7 +261,7 @@ export function SiteOshePerformanceDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] sm:max-w-7xl overflow-y-auto p-0 border-0 bg-slate-100 shadow-2xl">
+      <DialogContent overlayClassName="z-[999]" className="max-h-[92vh] sm:max-w-7xl overflow-y-auto p-0 border-0 bg-slate-100 shadow-2xl z-[1000]">
         <DialogHeader className="sr-only">
           <DialogTitle>OSHE Performance {site.name}</DialogTitle>
         </DialogHeader>
@@ -217,14 +273,14 @@ export function SiteOshePerformanceDialog({
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
                 <div className="size-8 rounded-lg bg-white/20 grid place-items-center font-bold text-white text-sm">
-                  CK
+                  CP
                 </div>
                 <h1 className="font-extrabold text-xl sm:text-2xl tracking-wide uppercase font-display">
                   OSHE PERFORMANCE {site.name}
                 </h1>
               </div>
               <p className="text-xs text-blue-100 font-medium">
-                PT. Cipta Kridatama &bull; Periode: {monthName} {currentYear} &bull; MTD & YTD Monitoring
+                PT. Chitra Paratama &bull; Periode: {monthName} {currentYear} &bull; MTD & YTD Monitoring
               </p>
             </div>
 
@@ -422,18 +478,18 @@ export function SiteOshePerformanceDialog({
                       </tr>
                       <tr className="bg-blue-50/50 hover:bg-blue-50">
                         <td className="py-2 px-3 font-bold text-blue-900">PDFR (Property Damage Freq. Rate)</td>
-                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{mtdPDFR}</td>
-                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{ytdPDFR}</td>
+                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{formatRate(mtdPDFR)}</td>
+                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{formatRate(ytdPDFR)}</td>
                       </tr>
                       <tr className="bg-blue-50/50 hover:bg-blue-50">
                         <td className="py-2 px-3 font-bold text-blue-900">HPNMFR</td>
-                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{mtdHPNMFR}</td>
-                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{ytdHPNMFR}</td>
+                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{formatRate(mtdHPNMFR)}</td>
+                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{formatRate(ytdHPNMFR)}</td>
                       </tr>
                       <tr className="bg-blue-50/50 hover:bg-blue-50">
                         <td className="py-2 px-3 font-bold text-blue-900">TRIFR (Recordable Incident Freq.)</td>
-                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{mtdTRIFR}</td>
-                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{ytdTRIFR}</td>
+                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{formatRate(mtdTRIFR)}</td>
+                        <td className="py-2 px-3 text-center font-bold text-blue-900 tabular-nums">{formatRate(ytdTRIFR)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -454,7 +510,7 @@ export function SiteOshePerformanceDialog({
                     Manpower Update :
                   </span>
                   <span className="font-extrabold text-sm text-slate-900 tabular-nums">
-                    {mtdSummary.totalManpower || 0} Orang
+                    {totalManpowerDisplay} Orang
                   </span>
                 </div>
               </div>
@@ -469,7 +525,7 @@ export function SiteOshePerformanceDialog({
                   ZERO INCIDENT CALENDER
                 </h3>
                 <p className="text-xs text-slate-600 font-medium">
-                  PT. Cipta Kridatama &bull; Site {site.name} &bull; Periode {monthName} {currentYear}
+                  PT. Chitra Paratama &bull; Site {site.name} &bull; Periode {monthName} {currentYear}
                 </p>
               </div>
 
@@ -567,7 +623,7 @@ export function SiteOshePerformanceDialog({
                     <div className="text-center">
                       <span className="text-[9px] block text-blue-200">Actual Est.</span>
                       <span className="text-sm font-bold bg-rose-600 text-white px-1.5 py-0.5 rounded">
-                        {mtdPDFR > 0 ? mtdPDFR : '3,02'}
+                        {formatRate(mtdPDFR)}
                       </span>
                     </div>
                   </div>
