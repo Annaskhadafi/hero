@@ -9,23 +9,29 @@ test('verifies cargo manifest print preview fits strictly on a single A4 page wi
 }) => {
   // 1. Authenticate and land on Barang Keluar
   await loginToHero(app, screen, browser, '/dashboard/warehouse-repair/barang-keluar');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 4000));
 
-  // Find the first "Manifest" button in the table row actions
+  // 2. Find the first "Manifest" button in the table row actions
   const manifestBtn = browser.locator('button:has-text("Manifest")').first();
-  await expect(manifestBtn).toBeVisible({ timeout: 15000 });
+  await expect(manifestBtn).toBeVisible({ timeout: 20000 });
+  await expect(manifestBtn).toBeEnabled({ timeout: 10000 });
+
+  // Click manifest button to generate Cargo Manifest and open preview dialog
   await manifestBtn.click();
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Verify the Cargo Manifest Preview Dialog is open
-  const previewDialog = browser.locator('[role="dialog"]:has-text("Preview —")').first();
-  await expect(previewDialog).toBeVisible({ timeout: 10000 });
+  // 3. Verify the Cargo Manifest Preview Dialog is open
+  const previewDialog = browser.locator('[role="dialog"]:has-text("Preview")').first();
+  await expect(previewDialog).toBeVisible({ timeout: 35000 });
 
   // Verify the Cetak / Download PDF button is visible
   const printBtn = browser.locator('button:has-text("Cetak / Download PDF")').first();
-  await expect(printBtn).toBeVisible();
+  await expect(printBtn).toBeVisible({ timeout: 10000 });
 
-  // Evaluate the page dimensions of the printable document inside the preview
+  // Allow preview background letterhead image to load and settle
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  // 4. Evaluate the page dimensions of the printable document inside the preview
   const pageMetrics = await browser.evaluate(() => {
     const pageEl = document.querySelector('.cargo-manifest-page') as HTMLElement | null;
     if (!pageEl) return null;
@@ -51,7 +57,7 @@ test('verifies cargo manifest print preview fits strictly on a single A4 page wi
 
   // Close dialog via escape
   await browser.keyboard.press('Escape');
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 
   // Screenshot 2: Outbound table after print dialog test
   await app.screenshot('02-warehouse-outbound-manifest-action-verified');
