@@ -1091,18 +1091,6 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
   return doc.save()
 }
 
-export async function generateSiteSummarySplPdf(inputs: OvertimeRecordInput[]): Promise<Uint8Array> {
-  const doc = await PDFDocument.create()
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
-  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
-  const logo = await embedLogo(doc)
-
-  for (const input of inputs) {
-    await appendSummarySplPersonPages(doc, input, { font, fontBold, fontItalic, logo })
-  }
-  return doc.save()
-}
 
 async function drawSummarySplSignatures(
   doc: PDFDocument,
@@ -1262,7 +1250,23 @@ export type SiteSummarySplInput = {
   }
 }
 
-export async function generateSiteSummarySplPdf(input: SiteSummarySplInput): Promise<Uint8Array> {
+export async function generateSiteSummarySplPdf(
+  inputOrInputs: SiteSummarySplInput | OvertimeRecordInput[]
+): Promise<Uint8Array> {
+  if (Array.isArray(inputOrInputs)) {
+    const doc = await PDFDocument.create()
+    const font = await doc.embedFont(StandardFonts.Helvetica)
+    const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+    const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+    const logo = await embedLogo(doc)
+
+    for (const input of inputOrInputs) {
+      await appendSummarySplPersonPages(doc, input, { font, fontBold, fontItalic, logo })
+    }
+    return doc.save()
+  }
+
+  const input = inputOrInputs
   const doc = await PDFDocument.create()
   const font = await doc.embedFont(StandardFonts.Helvetica)
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)

@@ -347,7 +347,7 @@ export default async function OvertimeRequestsPage() {
       shiftCode: p.shiftCode || 'DS',
       rosterType: p.rosterType || '5:2',
       category: p.category || 'after_mandatory_ot',
-      overtimeCreditMinutes: p.overtimeCreditMinutes != null ? Number(p.overtimeCreditMinutes) : null,
+      overtimeCreditMinutes: (p as any).overtimeCreditMinutes != null ? Number((p as any).overtimeCreditMinutes) : null,
     })
     participantsMap.set(p.overtimeCommandLetterId, list)
   }
@@ -439,7 +439,7 @@ export default async function OvertimeRequestsPage() {
       const participantSiteId = participantEmp?.siteId ? Number(participantEmp.siteId) : splSiteId
 
       const partAtt = p.employeeId ? attendanceOverrideMap.get(`${p.employeeId}:${periodKey}:${pDay}`) : undefined
-      const effectivePartOt = p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0
+      const effectivePartOt = (p as any).overtimeCreditMinutes != null && (p as any).overtimeCreditMinutes > 0
         ? p.overtimeCreditMinutes / 60
         : (partAtt?.overtimeHours != null ? partAtt.overtimeHours : null)
 
@@ -463,7 +463,6 @@ export default async function OvertimeRequestsPage() {
         participants: parts,
         lineItems: itemsMap.get(r.id) || [],
         approvals: approvalsMap.get(r.id) || [],
-        siteId: r.siteId ? Number(r.siteId) : null,
         actualOvertimeHours: effectivePartOt,
         attendanceClockIn: partAtt?.clockIn ?? null,
         attendanceClockOut: partAtt?.clockOut ?? null,
@@ -494,7 +493,6 @@ export default async function OvertimeRequestsPage() {
       rows={rows}
       sites={(rawSites || []).map((s) => ({ id: Number(s.id), name: s.name || '' }))}
       employees={sanitizedEmployees}
-      sites={(rawSites || []).map((s) => ({ id: Number(s.id), name: s.name }))}
       currentEmployeeSiteId={activeEmployee?.siteId ? Number(activeEmployee.siteId) : null}
       activityLibraries={rawActivityLibraries || []}
       routeFolders={availableRouteFolders || []}

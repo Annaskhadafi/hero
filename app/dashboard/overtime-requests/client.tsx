@@ -174,7 +174,6 @@ export type OvertimeListingRow = {
   plannedStartAt: Date | string | null
   plannedEndAt: Date | string | null
   status: string
-  siteId?: number | null
   actualOvertimeHours?: number | null
   attendanceClockIn?: string | null
   attendanceClockOut?: string | null
@@ -909,7 +908,6 @@ export function OvertimeListingClient({
   currentEmployeeEmail = null,
   currentEmployeeName = '',
   isAdmin = false,
-  sites = [],
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
@@ -922,7 +920,6 @@ export function OvertimeListingClient({
   currentEmployeeEmail?: string | null
   currentEmployeeName?: string | null
   isAdmin?: boolean
-  sites?: Array<{ id: number; name: string }>
 }) {
   const router = useRouter()
   const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true }
@@ -2381,7 +2378,7 @@ export function OvertimeListingClient({
     setIsSummaryPreviewOpen(true)
   }
 
-  const handleDownloadSiteSummaryPdf = async () => {
+  const handleDownloadSiteTableSummaryPdf = async () => {
     if (!summarySiteId || summarySiteId === 'ALL') {
       toast.error('Silakan pilih Lokasi Site terlebih dahulu.')
       return
@@ -2456,7 +2453,7 @@ export function OvertimeListingClient({
 
   const handleDownloadSummaryPdf = async () => {
     if (summaryPreviewMode === 'site') {
-      return handleDownloadSiteSummaryPdf()
+      return handleDownloadSiteTableSummaryPdf()
     }
 
     if (!summaryEmployeeId || summaryEmployeeId === 'ALL') {
@@ -2562,7 +2559,7 @@ export function OvertimeListingClient({
         const selectedEmpInfo = employees.find((e) => String(e.id) === summaryEmployeeId)
         if (selectedEmpInfo?.siteId) {
           targetSiteId = selectedEmpInfo.siteId
-          targetSiteName = selectedEmpInfo.siteName || (selectedEmpInfo as any).site || `Site #${targetSiteId}`
+          targetSiteName = (selectedEmpInfo as any).siteName || (selectedEmpInfo as any).site || `Site #${targetSiteId}`
         } else if (sites && sites.length > 0) {
           const bpn = sites.find((s) => s.name.toLowerCase().includes('balikpapan')) || sites[0]
           targetSiteId = bpn.id
@@ -2578,7 +2575,7 @@ export function OvertimeListingClient({
         if (targetSiteId && e.siteId === targetSiteId) return true
         if (
           targetSiteName &&
-          ((e.siteName && e.siteName.toLowerCase() === targetSiteName.toLowerCase()) ||
+          (((e as any).siteName && (e as any).siteName.toLowerCase() === targetSiteName.toLowerCase()) ||
             ((e as any).site && (e as any).site.toLowerCase() === targetSiteName.toLowerCase()))
         )
           return true
