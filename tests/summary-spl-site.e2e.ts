@@ -1,7 +1,7 @@
 import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 
-test('Verifikasi Summary SPL Per Site: 1 Tombol, Preview Dahulu, Layout A4 Rapi, & Jam Lembur Valid (No 101h/22h)', { timeout: 300000 }, async ({
+test('Verifikasi Summary SPL Per Site: Rekap Tabel Site & Lembar Per Orang (Tanpa Switch, Preview Dahulu, & Layout A4 Rapi)', { timeout: 300000 }, async ({
   app,
   screen,
   browser,
@@ -19,38 +19,54 @@ test('Verifikasi Summary SPL Per Site: 1 Tombol, Preview Dahulu, Layout A4 Rapi,
   const submitBtn = screen.getByRole('button', { name: /Masuk ke HERO/i })
   await submitBtn.click()
 
-  // Tunggu login dan redirect selesai ke /dashboard/overtime-requests
-  await new Promise((resolve) => setTimeout(resolve, 12000))
+  // Tunggu login dan data table overtime requests selesai ter-load
+  await new Promise((resolve) => setTimeout(resolve, 15000))
 
   // 2. Verifikasi Dedicated Card Summary SPL
   const summaryCard = browser.locator('text=Rekapitulasi & Export Summary SPL').first()
   await expect(summaryCard).toBeVisible({ timeout: 60000 })
 
-  // 3. Pastikan hanya ada SATU tombol SUMMARY PER SITE (PDF) (tombol abu-abu duplikat sudah dibuang)
-  const siteButtons = browser.locator('button:has-text("SUMMARY PER SITE (PDF)")')
-  await expect(siteButtons).toHaveCount(1)
+  // 3. Verifikasi ketersediaan tombol terpisah tanpa toggle switch:
+  // - "REKAP TABEL SITE (PDF)" (Format Master Rekap Tabel Log SPL Site)
+  // - "LEMBAR PER ORANG (PDF)" (Format Bundled Multi-A4 Per Karyawan)
+  const rekapTabelBtn = browser.locator('button:has-text("REKAP TABEL SITE (PDF)")').first()
+  await expect(rekapTabelBtn).toBeVisible({ timeout: 20000 })
 
-  // Screenshot 1: Card Summary SPL dengan HANYA 1 tombol biru SUMMARY PER SITE (PDF)
-  await app.screenshot('01-card-summary-spl-single-site-button')
+  const lembarPerOrangBtn = browser.locator('button:has-text("LEMBAR PER ORANG (PDF)")').first()
+  await expect(lembarPerOrangBtn).toBeVisible({ timeout: 20000 })
 
-  // 4. Klik tombol "SUMMARY PER SITE (PDF)" -> harus buka PREVIEW terlebih dahulu (tidak langsung download)
-  const siteSummaryBtn = browser.locator('button:has-text("SUMMARY PER SITE (PDF)")').first()
-  await expect(siteSummaryBtn).toBeEnabled({ timeout: 20000 })
-  await siteSummaryBtn.click()
-  await new Promise((resolve) => setTimeout(resolve, 6000))
+  // Screenshot 1: Card Toolbar dengan tombol REKAP TABEL SITE (PDF) dan LEMBAR PER ORANG (PDF)
+  await app.screenshot('01-card-summary-spl-dual-site-buttons')
 
-  // 5. Verifikasi Modal Preview Terbuka (bukan langsung download file)
+  // 4. Klik tombol "REKAP TABEL SITE (PDF)" -> Membuka Preview Rekap Tabel Site (2 Hal)
+  await rekapTabelBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 5000))
+
+  // Verifikasi Modal Preview Terbuka
   const previewModal = browser.locator('div[role="dialog"]').first()
   await expect(previewModal).toBeVisible({ timeout: 30000 })
 
-  // Verifikasi judul modal mengindikasikan mode Preview Summary SPL Per Site
-  const previewTitle = browser.locator('text=Preview Summary SPL Per Site').first()
-  await expect(previewTitle).toBeVisible({ timeout: 15000 })
+  // Verifikasi Header Modal memuat judul Rekap Tabel Site
+  const tableTitle = browser.locator('div[role="dialog"] span:has-text("Rekap Tabel Site")').first()
+  await expect(tableTitle).toBeVisible({ timeout: 30000 })
 
-  // Verifikasi tombol "Unduh PDF" tersedia di dalam modal toolbar
-  const unduhBtn = browser.locator('button:has-text("Unduh PDF")').first()
+  // Verifikasi Tombol Unduh PDF siap digunakan
+  const unduhBtn = browser.locator('div[role="dialog"] button:has-text("Unduh PDF")').first()
   await expect(unduhBtn).toBeVisible({ timeout: 15000 })
 
-  // Screenshot 2: Modal Preview Resmi Summary SPL Multi-Page A4 Rapi & Tidak Gepeng
-  await app.screenshot('02-modal-preview-site-multipage-a4-rapi')
+  // Screenshot 2: Modal Preview Format Rekap Tabel Site (Master Log)
+  await app.screenshot('02-modal-preview-rekap-tabel-site')
+
+  // 5. Uji Segmented Pill di Header Preview: Klik tab "Lembar Per Orang" di dalam modal
+  const tabLembarPerOrang = browser.locator('div[role="dialog"] button:has-text("Lembar Per Orang")').first()
+  await expect(tabLembarPerOrang).toBeVisible({ timeout: 15000 })
+  await tabLembarPerOrang.click()
+  await new Promise((resolve) => setTimeout(resolve, 5000))
+
+  // Verifikasi header beralih ke "Lembar Per Orang Multi-A4"
+  const bundledTitle = browser.locator('div[role="dialog"] span:has-text("Lembar Per Orang Multi-A4")').first()
+  await expect(bundledTitle).toBeVisible({ timeout: 15000 })
+
+  // Screenshot 3: Modal Preview Format Lembar Per Orang Multi-A4 (Indonesian day names, pastel amber, signatures rapi)
+  await app.screenshot('03-modal-preview-lembar-per-orang-multi-a4')
 })

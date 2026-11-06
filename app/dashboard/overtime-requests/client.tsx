@@ -364,9 +364,9 @@ function buildOvertimeRecordMonthlyDays(
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateObj = new Date(year, month - 1, d)
-    const dayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(dateObj)
-    const isSunday = dayName === 'Sunday'
-    const isSaturday = dayName === 'Saturday'
+    const dayName = getIndonesianDayName(dateObj)
+    const isSunday = dayName === 'Minggu'
+    const isSaturday = dayName === 'Sabtu'
     const isWeekend = isSunday || isSaturday
 
     const matchingRows = (summaryRows || []).filter((r) => {
@@ -478,15 +478,15 @@ function renderSinglePersonSplSheetContent(
 
   const rowsHtml = daysData
     .map((day) => {
-      const isSunday = day.dayName === 'Sunday'
-      const isSaturday = day.dayName === 'Saturday'
+      const isSunday = day.dayName === 'Minggu' || day.dayName === 'Sunday'
+      const isSaturday = day.dayName === 'Sabtu' || day.dayName === 'Saturday'
       const isWeekend = isSunday || isSaturday
-      const rowBg = isWeekend ? 'background-color: #fef08a;' : 'background-color: #ffffff;'
-      const dayColor = isWeekend ? 'color: #dc2626; font-weight: bold;' : 'color: #000000;'
+      const rowBg = isWeekend ? 'background-color: #fffbeb;' : 'background-color: #ffffff;'
+      const dayColor = isWeekend ? 'color: #dc2626; font-weight: 600;' : 'color: #1e293b;'
       const hasOt = day.overtime?.totalHours != null && Number(day.overtime.totalHours) > 0
       const startTime = hasOt ? day.clockIn : ''
       const endTime = hasOt ? day.clockOut : ''
-      const totalHoursNum = hasOt ? Number(day.overtime.totalHours) : 0
+      const totalHoursNum = hasOt ? Number(day.overtime?.totalHours) : 0
       if (totalHoursNum > 0) computedTotalHours += totalHoursNum
       const totalHoursStr = totalHoursNum > 0 ? String(totalHoursNum) : ''
       const taskStr = hasOt ? (day.splTitle || '') : ''
@@ -598,18 +598,20 @@ function wrapSplSheetsInDocument(pagesHtml: string, title: string): string {
         <meta charset="utf-8" />
         <title>${title}</title>
         <style>
-          @page { size: A4 portrait; margin: 10mm 12mm; }
+          @page { size: A4 portrait; margin: 8mm 10mm; }
           * { box-sizing: border-box; }
           body {
-            font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #334155;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #1e293b;
             margin: 0;
-            padding: 24px 16px 40px;
+            padding: 20px 16px 40px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            color: #000000;
+            color: #0f172a;
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
           }
           .page-wrapper {
             display: flex;
@@ -622,25 +624,25 @@ function wrapSplSheetsInDocument(pagesHtml: string, title: string): string {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            background: #1e293b;
-            color: #94a3b8;
+            background: #0f172a;
+            color: #cbd5e1;
             font-size: 11px;
             font-weight: 600;
-            padding: 4px 14px;
+            padding: 4px 16px;
             border-radius: 9999px;
-            margin-bottom: 10px;
-            border: 1px solid #475569;
+            margin-bottom: 12px;
+            border: 1px solid #334155;
             letter-spacing: 0.3px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
           }
           .a4-page {
             background: #ffffff;
             width: 210mm;
             max-width: calc(100vw - 32px);
             min-height: 297mm;
-            padding: 12mm 15mm;
-            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.12);
-            border-radius: 3px;
+            padding: 8mm 12mm 10mm;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
             box-sizing: border-box;
             position: relative;
           }
@@ -653,7 +655,7 @@ function wrapSplSheetsInDocument(pagesHtml: string, title: string): string {
           .total-row { background-color: #dcfce7; font-weight: bold; }
           .signatures-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 8pt; }
           .signatures-table td { width: 33.33%; text-align: left; vertical-align: top; padding: 0 8px; }
-          .sign-line { border-bottom: 1px solid #000; margin-top: 45px; margin-bottom: 4px; width: 85%; }
+          .sign-line { border-bottom: 1px solid #000; margin-top: 26px; margin-bottom: 4px; width: 85%; }
 
           @media print {
             body { background: transparent; padding: 0; }
@@ -894,7 +896,9 @@ function renderSiteSummarySplPdfHtml(
         : ''
 
       return `
-        <div class="pdf-page">
+        <div class="page-wrapper">
+          <div class="page-indicator-badge">Halaman ${pageIndex + 1} dari ${totalPages} • Rekapitulasi Tabel Site (${siteData.siteName})</div>
+          <div class="a4-page">
           ${headerHtml}
           <table style="width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 7pt;">
             <thead>
@@ -920,6 +924,7 @@ function renderSiteSummarySplPdfHtml(
           </table>
           ${employeeRecapHtml}
           ${signatureSectionHtml}
+          </div>
         </div>
       `
     })
@@ -932,36 +937,71 @@ function renderSiteSummarySplPdfHtml(
       <meta charset="utf-8"/>
       <title>Summary SPL Per Site - ${siteData.siteName}</title>
       <style>
+        @page { size: A4 portrait; margin: 8mm 10mm; }
+        * { box-sizing: border-box; }
         body {
-          font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
           color: #0f172a;
           margin: 0;
-          padding: 20px;
-          background: #f1f5f9;
+          padding: 20px 16px 40px;
+          background-color: #1e293b;
           display: flex;
           flex-direction: column;
           align-items: center;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
         }
-        .pdf-page {
+        .page-wrapper {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin-bottom: 24px;
+          width: 100%;
+        }
+        .page-indicator-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #0f172a;
+          color: #cbd5e1;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 4px 16px;
+          border-radius: 9999px;
+          margin-bottom: 12px;
+          border: 1px solid #334155;
+          letter-spacing: 0.3px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .a4-page {
           width: 210mm;
+          max-width: calc(100vw - 32px);
           min-height: 297mm;
-          padding-top: 14mm;
-          padding-bottom: 18mm;
-          padding-left: 14mm;
-          padding-right: 14mm;
+          padding: 8mm 12mm 10mm;
           background-color: #ffffff;
           box-sizing: border-box;
-          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-          margin-bottom: 20px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+          border-radius: 4px;
+          position: relative;
         }
         @media print {
           body {
             background: transparent;
             padding: 0;
           }
-          .pdf-page {
+          .page-indicator-badge {
+            display: none !important;
+          }
+          .page-wrapper {
+            margin: 0;
+          }
+          .a4-page {
             box-shadow: none;
-            margin-bottom: 0;
+            border: none;
+            width: 100%;
+            margin: 0;
+            padding: 10mm 12mm;
             page-break-after: always;
           }
         }
@@ -1722,7 +1762,7 @@ export function OvertimeListingClient({
   const [isSummaryPreviewOpen, setIsSummaryPreviewOpen] = useState<boolean>(false)
   const [summaryPreviewZoom, setSummaryPreviewZoom] = useState<number>(1.0)
   const [summaryPdfPreviewUrl, setSummaryPdfPreviewUrl] = useState<string | null>(null)
-  const [summaryPreviewMode, setSummaryPreviewMode] = useState<'employee' | 'site'>('employee')
+  const [summaryPreviewMode, setSummaryPreviewMode] = useState<'employee' | 'site-table' | 'site-bundled'>('employee')
 
   // Online Summary SPL Approval State
   const [summaryOnlineData, setSummaryOnlineData] = useState<OvertimeSummaryDetail | null>(null)
@@ -2363,7 +2403,63 @@ export function OvertimeListingClient({
   const summaryPreviewHtmlContent = useMemo(() => {
     if (!isSummaryPreviewOpen) return ''
 
-    if (summaryPreviewMode === 'site') {
+    if (summaryPreviewMode === 'site-table') {
+      if (siteSummaryData.rows.length === 0) {
+        return `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: #f8fafc; margin: 0; padding: 40px 20px; display: flex; align-items: center; justify-content: center; min-height: 80vh; }
+              .card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 36px 32px; max-width: 520px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+              .icon { font-size: 40px; margin-bottom: 16px; }
+              .title { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+              .desc { font-size: 13px; color: #64748b; line-height: 1.6; margin-bottom: 16px; }
+              .badge { display: inline-block; background: #f1f5f9; color: #334155; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="icon">🏢</div>
+              <div class="title">Belum Ada SPL Approved</div>
+              <div class="desc">
+                Tidak ditemukan dokumen SPL berstatus <strong>Approved</strong> untuk lokasi <strong>${siteSummaryData.siteName}</strong> pada periode <strong>${formatMonthYearLabel(summaryMonth)}</strong>.<br/><br/>
+                Sistem secara otomatis hanya menghitung dokumen lembur yang telah disetujui (Approved) atasan untuk menjamin keakuratan laporan resmi Payable Site Allowance.
+              </div>
+              <div class="badge">Site: ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)}</div>
+            </div>
+          </body>
+          </html>
+        `
+      }
+      const firstRow = siteSummaryData.uniqueSpls[0]
+      const signatories = resolveSummarySplSignatories({
+        selectedEmployee: null,
+        allEmployees: employees,
+        firstRowApprovals: firstRow?.approvals,
+        fallbackEmployeeName: 'Admin Site',
+      })
+
+      return renderSiteSummarySplPdfHtml({
+        siteName: siteSummaryData.siteName,
+        siteLogoUrl: resolveSiteLogoUrl(siteSummaryData.siteName),
+        periodLabel: formatMonthYearLabel(summaryMonth),
+        totalSplCount: siteSummaryData.totalSplCount,
+        totalHours: siteSummaryData.totalHours,
+        totalEmployees: siteSummaryData.totalEmployees,
+        rows: siteSummaryData.rows,
+        employeeStats: siteSummaryData.employeeStats,
+        signatories: {
+          preparedBy: signatories.preparedByName || 'Admin Site',
+          pjoLeader: signatories.pjoName || 'PJO Site',
+          approvedBy: signatories.leaderName || 'Site Leader',
+          isPjo: signatories.isPjo,
+        },
+      })
+    }
+
+    if (summaryPreviewMode === 'site-bundled') {
       if (siteSummaryData.rows.length === 0) {
         return `
           <!DOCTYPE html>
@@ -2439,7 +2535,7 @@ export function OvertimeListingClient({
 
         return `
           <div class="page-wrapper">
-            <div class="page-number-badge">Halaman ${idx + 1} dari ${siteEmployees.length} • ${empStat.employeeName} (SN: ${empStat.employeeSn || '—'})</div>
+            <div class="page-indicator-badge">Halaman ${idx + 1} dari ${siteEmployees.length} • ${empStat.employeeName} (SN: ${empStat.employeeSn || '—'})</div>
             <div class="a4-page">
               ${sheetHtml}
             </div>
@@ -2540,15 +2636,27 @@ export function OvertimeListingClient({
     setIsSummaryPreviewOpen(true)
   }
 
-  const handleOpenSiteSummaryPreview = () => {
+  const handleOpenSiteTablePreview = () => {
     if (summaryPdfPreviewUrl) {
       URL.revokeObjectURL(summaryPdfPreviewUrl)
       setSummaryPdfPreviewUrl(null)
     }
-    setSummaryPreviewMode('site')
+    setSummaryPreviewMode('site-table')
     setSummaryPreviewZoom(1.0)
     setIsSummaryPreviewOpen(true)
   }
+
+  const handleOpenSiteBundledPreview = () => {
+    if (summaryPdfPreviewUrl) {
+      URL.revokeObjectURL(summaryPdfPreviewUrl)
+      setSummaryPdfPreviewUrl(null)
+    }
+    setSummaryPreviewMode('site-bundled')
+    setSummaryPreviewZoom(1.0)
+    setIsSummaryPreviewOpen(true)
+  }
+
+  const handleOpenSiteSummaryPreview = handleOpenSiteBundledPreview
 
   const handleDownloadSiteTableSummaryPdf = async () => {
     if (!summarySiteId || summarySiteId === 'ALL') {
@@ -2624,7 +2732,10 @@ export function OvertimeListingClient({
   }
 
   const handleDownloadSummaryPdf = async () => {
-    if (summaryPreviewMode === 'site') {
+    if (summaryPreviewMode === 'site-table') {
+      return handleDownloadSiteTableSummaryPdf()
+    }
+    if (summaryPreviewMode === 'site-bundled') {
       return handleDownloadSiteSummaryPdf()
     }
 
@@ -3835,19 +3946,38 @@ export function OvertimeListingClient({
             </Button>
 
 
+            {/* Button 2: Rekap Tabel Site (PDF) - Format Master Log Sesuai PDF Resmi */}
             <Button
               type="button"
               size="sm"
-              onClick={handleOpenSiteSummaryPreview}
+              onClick={handleOpenSiteTablePreview}
               disabled={isGeneratingSitePdf}
-              className="h-9 gap-2 rounded-xl text-white text-xs font-bold px-4 shadow-sm bg-blue-600 hover:bg-blue-700 cursor-pointer"
+              className="h-9 gap-1.5 rounded-xl text-white text-xs font-bold px-3.5 shadow-sm bg-indigo-600 hover:bg-indigo-700 cursor-pointer"
+              title="Pratinjau & Unduh Dokumen Rekapitulasi Tabel Site (2 Halaman)"
             >
               {isGeneratingSitePdf ? (
-                <Loader2 className="size-4 animate-spin" />
+                <Loader2 className="size-3.5 animate-spin" />
               ) : (
-                <Building2 className="size-4" />
+                <FileSpreadsheet className="size-3.5" />
               )}
-              SUMMARY PER SITE (PDF)
+              REKAP TABEL SITE (PDF)
+            </Button>
+
+            {/* Button 3: Lembar Per Orang (Multi-A4 Bundled PDF) */}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenSiteBundledPreview}
+              disabled={isGeneratingSitePdf}
+              className="h-9 gap-1.5 rounded-xl text-white text-xs font-bold px-3.5 shadow-sm bg-blue-600 hover:bg-blue-700 cursor-pointer"
+              title="Pratinjau & Unduh Bundled SPL 1 Lembar Per Orang untuk Seluruh Site"
+            >
+              {isGeneratingSitePdf ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Building2 className="size-3.5" />
+              )}
+              LEMBAR PER ORANG (PDF)
             </Button>
             <Button
               type="button"
@@ -5277,16 +5407,52 @@ export function OvertimeListingClient({
           showCloseButton={false}
         >
           {/* Top Viewer Toolbar */}
-          <div className="bg-[#1e232a] px-4 py-2.5 flex items-center justify-between border-b border-slate-700/80 select-none text-white">
+          <div className="bg-[#1e232a] px-4 py-2.5 flex items-center justify-between border-b border-slate-700/80 select-none text-white gap-3 relative z-30 shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm">📄</span>
               <span className="font-semibold text-xs text-slate-100 truncate">
-                {summaryPreviewMode === 'site'
-                  ? `Preview Summary SPL Per Site (A4) • ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)} (${siteSummaryData.totalSplCount} Dokumen, ${siteSummaryData.totalHours} Jam, ${siteSummaryData.totalEmployees} Karyawan)`
-                  : `Preview Summary SPL Per User (A4) • ${formatMonthYearLabel(summaryMonth)} (${summaryStats.totalCount} Dokumen, ${summaryStats.totalHours} Jam)`
+                {summaryPreviewMode === 'site-table'
+                  ? `Rekap Tabel Site (2 Hal) • ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)} (${siteSummaryData.totalSplCount} Dokumen, ${siteSummaryData.totalHours} Jam)`
+                  : summaryPreviewMode === 'site-bundled'
+                    ? `Lembar Per Orang Multi-A4 • ${siteSummaryData.siteName} • ${formatMonthYearLabel(summaryMonth)} (${siteSummaryData.totalEmployees} Karyawan, ${siteSummaryData.totalHours} Jam)`
+                    : `Summary SPL Per User (A4) • ${formatMonthYearLabel(summaryMonth)} (${summaryStats.totalCount} Dokumen, ${summaryStats.totalHours} Jam)`
                 }
               </span>
             </div>
+
+            {/* Segmented Pills for Site Formats: Switch directly without needing a toggle switch */}
+            {(summaryPreviewMode === 'site-table' || summaryPreviewMode === 'site-bundled') && (
+              <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700/80 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setSummaryPreviewMode('site-table')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                    summaryPreviewMode === 'site-table'
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                  )}
+                  title="Format Master Rekap Tabel Log SPL Site (Sesuai PDF Resmi)"
+                >
+                  <FileSpreadsheet className="size-3.5" />
+                  <span>📋 Tabel Rekap Site</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSummaryPreviewMode('site-bundled')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5",
+                    summaryPreviewMode === 'site-bundled'
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                  )}
+                  title="Format Lembar Per Orang (1 Halaman A4 Per Karyawan Bundled)"
+                >
+                  <Building2 className="size-3.5" />
+                  <span>📄 Lembar Per Orang ({siteSummaryData.employeeStats.length} A4)</span>
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
