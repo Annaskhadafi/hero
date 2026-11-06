@@ -349,10 +349,6 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
       if (!hasGlobalStartData && mhRow.safetyManHours) {
         entry.initialManHours = parseFloat(`${mhRow.safetyManHours || "0"}`.replace(/,/g, "")) || 0
       }
-      if (mhRow.employeeCount && Number(mhRow.employeeCount) > 0) {
-        entry.employeeCount = Number(mhRow.employeeCount)
-        entry.isManualEmployeeCount = Boolean((mhRow as any).isManualEmployeeCount)
-      }
       if (mhRow.updatedAt) {
         const mhDate = new Date(mhRow.updatedAt)
         if (!entry.lastUpdate || new Date(entry.lastUpdate).getTime() < mhDate.getTime()) {
@@ -362,27 +358,11 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     }
   }
 
-  const siteManHoursSummary = Array.from(siteManHoursMap.values()).map((item) => {
-    let finalEmpCount = item.employeeCount
-    let isManual = item.isManualEmployeeCount ?? false
-
-    // If parent was not manually edited, check if any monthly detail has manual count
-    if (!isManual && item.monthlyDetails.length > 0) {
-      const latestManual = item.monthlyDetails.find((m) => (m as any).isManualEmployeeCount && m.employeeCount > 0)
-      if (latestManual) {
-        finalEmpCount = latestManual.employeeCount
-        isManual = true
-      }
-    }
-
-    return {
-      ...item,
-      employeeCount: finalEmpCount,
-      isManualEmployeeCount: isManual,
-      safetyManHours: hasGlobalStartData ? item.actualMonthlyManHours : item.initialManHours + item.actualMonthlyManHours,
-      monthlyDetails: item.monthlyDetails.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()),
-    }
-  })
+  const siteManHoursSummary = Array.from(siteManHoursMap.values()).map((item) => ({
+    ...item,
+    safetyManHours: hasGlobalStartData ? item.actualMonthlyManHours : item.initialManHours + item.actualMonthlyManHours,
+    monthlyDetails: item.monthlyDetails.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()),
+  }))
 
   let filteredMonthlySummaries = monthlySummaries
   let filteredIncidentReports = incidentReports
