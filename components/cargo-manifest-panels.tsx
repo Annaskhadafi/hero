@@ -761,21 +761,38 @@ export function CargoManifestPdfDialog({
       <base href="${window.location.origin}" />
       <title>Cargo Manifest ${row.manifestNumber}</title>
       <style>
-        @page { 
-          size: A4; 
-          margin: 0; 
+        @page {
+          size: A4 portrait;
+          margin: 0;
         }
-        * {
+        *,
+        *::before,
+        *::after {
           margin: 0;
           padding: 0;
-          box-sizing: border-box;
+          box-sizing: border-box !important;
         }
-        body { 
-          margin: 0; 
-          padding: 0;
-          -webkit-print-color-adjust: exact; 
+        html, body {
+          width: 210mm;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+          -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
           background: white;
+        }
+        .cargo-manifest-page {
+          width: 210mm !important;
+          height: 296mm !important;
+          max-height: 296mm !important;
+          box-sizing: border-box !important;
+          overflow: hidden !important;
+          position: relative !important;
+          page-break-after: always;
+          page-break-inside: avoid;
+        }
+        .cargo-manifest-page:last-child {
+          page-break-after: auto !important;
         }
         .no-print { display: none !important; }
       </style>
@@ -853,8 +870,12 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
           <base href="${window.location.origin}" />
           <title>Cargo Manifest ${row.manifestNumber}</title>
           <style>
-            @page { size: A4; margin: 0; }
-            body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A4 portrait; margin: 0; }
+            * { margin: 0; padding: 0; box-sizing: border-box !important; }
+            html, body { width: 210mm; margin: 0 !important; padding: 0 !important; overflow: hidden !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white; }
+            .cargo-manifest-page { width: 210mm !important; height: 296mm !important; max-height: 296mm !important; box-sizing: border-box !important; overflow: hidden !important; position: relative !important; page-break-after: always; page-break-inside: avoid; }
+            .cargo-manifest-page:last-child { page-break-after: auto !important; }
+            .no-print { display: none !important; }
           </style>
         </head><body>${root.innerHTML}</body></html>`)
         win.document.close()
@@ -894,25 +915,28 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
       {pages.map((pageItems, pageIndex) => (
         <div
           key={pageIndex}
+          className="cargo-manifest-page"
           style={{
             fontFamily: 'Arial, sans-serif',
-            fontSize: '10pt',
+            fontSize: '9.5pt',
             color: '#000',
-            minHeight: '297mm',
-            height: '297mm',
+            boxSizing: 'border-box',
+            height: '296mm',
+            maxHeight: '296mm',
             width: '210mm',
             backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
+            backgroundSize: '100% 100%',
+            backgroundPosition: 'top center',
             backgroundRepeat: 'no-repeat',
-            padding: '50mm 20mm 70mm 20mm',
+            padding: '40mm 18mm 56mm 18mm',
             position: 'relative',
+            overflow: 'hidden',
             pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto',
             pageBreakInside: 'avoid',
           }}
         >
           {/* Header - Title Only (Logo sudah di background) */}
-          <div style={{ textAlign: 'right', marginBottom: '20px' }}>
+          <div style={{ textAlign: 'right', marginBottom: '12px' }}>
             <div
               style={{
                 fontWeight: 700,
@@ -929,7 +953,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
           </div>
 
           {/* Document Info */}
-          <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
               <div style={{ fontSize: '10pt' }}>
                 <strong>Manifest No:</strong>{' '}
@@ -949,8 +973,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
               style={{
                 border: '1px solid #003366',
                 borderRadius: '4px',
-                padding: '12px',
-                marginBottom: '20px',
+                padding: '10px 12px',
+                marginBottom: '12px',
                 backgroundColor: 'rgba(248, 249, 250, 0.95)',
               }}
             >
@@ -991,7 +1015,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
               borderCollapse: 'collapse',
               width: '100%',
               fontSize: '9pt',
-              marginBottom: pageIndex === pages.length - 1 ? '92px' : '24px',
+              marginBottom: '12px',
               backgroundColor: 'rgba(255, 255, 255, 0.95)',
             }}
           >
@@ -1127,20 +1151,20 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
             <div
               style={{
                 position: 'absolute',
-                bottom: '48mm',
-                left: '20mm',
-                right: '20mm',
+                bottom: '26mm',
+                left: '18mm',
+                right: '18mm',
                 display: 'grid',
                 gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '30px',
-                fontSize: '9.5pt',
+                gap: '24px',
+                fontSize: '9pt',
                 backgroundColor: 'rgba(255, 255, 255, 0.86)',
-                paddingTop: '8px',
+                paddingTop: '6px',
               }}
             >
-              <div style={{ position: 'relative', minHeight: '118px', textAlign: 'center' }}>
+              <div style={{ position: 'relative', minHeight: '95px', textAlign: 'center' }}>
                 <div
-                  style={{ marginBottom: row.signatureDataUrl ? '18px' : '86px', fontWeight: 600 }}
+                  style={{ marginBottom: row.signatureDataUrl ? '10px' : '60px', fontWeight: 600 }}
                 >
                   <div>Delivered By</div>
                   <div>PT Chitra Paratama</div>
@@ -1150,7 +1174,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                     src={row.signatureDataUrl}
                     alt="Signature"
                     style={{
-                      height: '62px',
+                      height: '50px',
                       maxWidth: '100%',
                       objectFit: 'contain',
                       margin: '0 auto 6px',
@@ -1174,8 +1198,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   </div>
                 </div>
               </div>
-              <div style={{ position: 'relative', minHeight: '118px', textAlign: 'center' }}>
-                <div style={{ marginBottom: '90px', fontWeight: 600 }}>Forwarder</div>
+              <div style={{ position: 'relative', minHeight: '95px', textAlign: 'center' }}>
+                <div style={{ marginBottom: '62px', fontWeight: 600 }}>Forwarder</div>
                 <div
                   style={{
                     position: 'absolute',
@@ -1189,8 +1213,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   <div>&nbsp;</div>
                 </div>
               </div>
-              <div style={{ position: 'relative', minHeight: '118px', textAlign: 'center' }}>
-                <div style={{ marginBottom: '90px', fontWeight: 600 }}>Received by</div>
+              <div style={{ position: 'relative', minHeight: '95px', textAlign: 'center' }}>
+                <div style={{ marginBottom: '62px', fontWeight: 600 }}>Received by</div>
                 <div
                   style={{
                     position: 'absolute',

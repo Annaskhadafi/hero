@@ -1,19 +1,22 @@
 import React from "react"
 import { Package } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export function WarehouseRepairPageShell({
   title,
   description,
   badge = "Warehouse Repair",
+  className,
   children,
 }: {
   title: string
   description: string
   badge?: string
+  className?: string
   children: React.ReactNode
 }) {
   return (
-    <div className="space-y-6 p-4 md:p-8 max-w-[1600px] mx-auto">
+    <div className={cn("w-full space-y-6 p-4 md:p-6 lg:p-8", className)}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/70 pb-5">
         <div className="flex items-center gap-3.5">
           <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm border border-primary/20">

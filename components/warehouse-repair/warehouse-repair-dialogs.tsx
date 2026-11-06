@@ -264,6 +264,8 @@ export function ItemFormDialog({
           <HeroFormField label="Stok Minimum (Alert Buffer)" helperText="Sistem memberi peringatan jika stok di bawah nilai ini.">
             <HeroNumberInput
               min={0}
+              isCurrency={false}
+              prefix=""
               value={form.minimumStock}
               onChange={(val) => setForm({ ...form, minimumStock: val || 0 })}
             />
@@ -573,6 +575,8 @@ export function TransactionFormDialog({
                 min={1}
                 max={kind === "out" && selectedItem && !transaction ? selectedItem.stock : 999999}
                 value={quantity}
+                isCurrency={false}
+                prefix=""
                 onChange={(val) => setQuantity(val || 1)}
               />
             </HeroFormField>
@@ -850,6 +854,8 @@ export function TransferStockDialog({
               min={1}
               max={selectedItem?.stock || 99999}
               value={quantity}
+              isCurrency={false}
+              prefix=""
               onChange={(val) => setQuantity(val || 1)}
             />
           </HeroFormField>
