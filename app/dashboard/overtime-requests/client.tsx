@@ -256,7 +256,14 @@ function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: s
     }
   }
 
-  // 2. Line items task duration (e.g. Assembly TS tire 1 unit = 60 mins / 1h, Washing tire = 60 mins / 1h)
+  // 2. Attendance actualOvertimeHours (From Timesheet / Attendance Real Overrides)
+  // When an employee has an explicit attendance overtime override (e.g. 11h, 10h, 12h, etc.), this reflects real worked hours
+  if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
+    const attOt = Number(row.actualOvertimeHours)
+    if (attOt > 0 && attOt <= 12) return attOt
+  }
+
+  // 3. Line items task duration (e.g. 660 mins = 11h, 60 mins = 1h)
   let itemHours = 0
   if (row.lineItems && row.lineItems.length > 0) {
     const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
@@ -265,18 +272,7 @@ function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: s
     }
   }
   if (itemHours > 0) {
-    return Math.min(itemHours, 8)
-  }
-
-  // 3. Attendance actualOvertimeHours (excess beyond standard 4h/6h mandatory shift)
-  if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
-    const attOt = Number(row.actualOvertimeHours)
-    if (attOt === 5) return 1
-    if (attOt === 7) return 1
-    if (attOt > 4 && attOt < 6) return Math.round((attOt - 4) * 10) / 10
-    if (attOt > 6 && attOt <= 8) return Math.round((attOt - 6) * 10) / 10
-    if (attOt === 4 || attOt === 6) return 1
-    if (attOt <= 8) return attOt
+    return Math.min(itemHours, 12)
   }
 
   // 4. Planned start & end times fallback
@@ -289,19 +285,11 @@ function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: s
       let diffMin = eMin - sMin
       if (diffMin < 0) diffMin += 24 * 60
       if (diffMin === 0) {
-        // e.g. 08.00 to 08.00 (same time placeholder) -> 1 hour
         return 1
       }
       let pH = Math.round((diffMin / 60) * 10) / 10
-      // If planned span is a whole working shift (e.g. 08.00 to 18.00 = 10h), standard shift is 8h, excess OT is 1-2h
-      if (pH >= 8 && pH <= 12) {
-        pH = Math.max(1, Math.round((pH - 8) * 10) / 10)
-      } else if (pH > 12) {
-        pH = 1
-      }
-      if (pH > 0 && pH <= 8) {
-        return pH
-      }
+      if (pH > 12) pH = 12
+      return pH
     }
   }
 
@@ -402,10 +390,21 @@ function buildOvertimeRecordMonthlyDays(
       let spanHours = Math.round((timeDiffMin / 60) * 10) / 10
       if (spanHours > 12) spanHours = 12
 
-      const itemHoursSum = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
-      let durHours = (itemHoursSum > 0 && itemHoursSum <= spanHours) ? itemHoursSum : spanHours
-      if (durHours > 12) durHours = 12
-      if (durHours <= 0) durHours = spanHours > 0 ? spanHours : 1
+      // Check if primaryRow or any matching row has an attendance real actualOvertimeHours (e.g. 11h override)
+      const rowWithAtt = matchingRows.find((r) => r.actualOvertimeHours != null && !isNaN(Number(r.actualOvertimeHours)) && Number(r.actualOvertimeHours) > 0)
+      const attHours = rowWithAtt ? Number(rowWithAtt.actualOvertimeHours) : null
+
+      let durHours: number
+      if (attHours != null && attHours > 0 && attHours <= 12) {
+        durHours = attHours
+      } else {
+        const itemHoursSum = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
+        durHours = (itemHoursSum > 0 && itemHoursSum <= spanHours)
+          ? itemHoursSum
+          : (itemHoursSum > 0 && itemHoursSum <= 12 ? itemHoursSum : spanHours)
+        if (durHours > 12) durHours = 12
+        if (durHours <= 0) durHours = spanHours > 0 ? spanHours : 1
+      }
 
       const taskSummaries = Array.from(
         new Set(
