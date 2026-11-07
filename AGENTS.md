@@ -300,6 +300,7 @@ disimpan pada URL atau nama file.
 
 ### Git Commit \& Push Guard
 
+* **WAJIB CEK REMOTE SEBELUM PUSH (MANDATORI)**: Setiap kali akan melakukan git push, DILARANG KERAS langsung push secara asal/buta. Agent **WAJIB** mengecek remote terlebih dahulu (git remote -v, git fetch origin, git status, dan git pull --rebase origin main jika ada commit baru di remote) untuk memastikan repository lokal dan remote telah sinkron, terverifikasi, dan aman sebelum eksekusi git push.
 * Dilarang melakukan `git commit` dan `git push` tanpa perintah eksplisit dari user.
 * Selalu minta konfirmasi sebelum setiap `git commit` atau `git push`, meskipun user pernah menyetujui di sesi/percakapan sebelumnya.
 * Operasi git read-only seperti `git status`, `git diff`, `git log`, `git branch` boleh dilakukan tanpa konfirmasi.

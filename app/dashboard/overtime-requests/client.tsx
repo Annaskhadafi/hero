@@ -1,3 +1,12 @@
+export interface AttendanceOverrideItem {
+  employeeId: number
+  period: string
+  day: number
+  overtimeHours: number | null
+  clockIn: string | null
+  clockOut: string | null
+}
+
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -244,38 +253,53 @@ function formatTime(value: Date | string | null | undefined) {
   return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 }
 
-function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: string): number {
-  // 1. Specific worker credit minutes in participants (Authoritative per employee)
+function calculateSplDurationHours(
+  row: OvertimeListingRow,
+  targetWorkerName?: string,
+  targetEmployeeId?: number | null,
+  periodMonth?: string,
+  dayNum?: number,
+  attendanceLookupMap?: Map<string, AttendanceOverrideItem>
+): number {
+  // 1. Direct Attendance Real Override Lookup if targetEmployeeId, period, and day provided
+  if (targetEmployeeId && periodMonth && dayNum && attendanceLookupMap) {
+    const att = attendanceLookupMap.get(`${targetEmployeeId}:${periodMonth}:${dayNum}`)
+    if (att && att.overtimeHours != null && !isNaN(Number(att.overtimeHours)) && Number(att.overtimeHours) > 0) {
+      const ot = Number(att.overtimeHours)
+      if (ot > 0 && ot <= 16) return ot
+    }
+  }
+
+  // 2. Specific worker credit minutes in participants (Authoritative per employee)
   if (row.participants && row.participants.length > 0) {
     const pWithCredit = targetWorkerName
       ? row.participants.find((p: any) => (p.employeeName || '').trim().toLowerCase() === targetWorkerName.trim().toLowerCase() && p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
       : row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
     if (pWithCredit && (pWithCredit as any).overtimeCreditMinutes) {
       const crHours = Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
-      if (crHours > 0 && crHours <= 12) return crHours
+      if (crHours > 0 && crHours <= 16) return crHours
     }
   }
 
-  // 2. Attendance actualOvertimeHours (From Timesheet / Attendance Real Overrides)
-  // When an employee has an explicit attendance overtime override (e.g. 11h, 10h, 12h, etc.), this reflects real worked hours
+  // 3. Attendance actualOvertimeHours attached on the row
   if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
     const attOt = Number(row.actualOvertimeHours)
-    if (attOt > 0 && attOt <= 12) return attOt
+    if (attOt > 0 && attOt <= 16) return attOt
   }
 
-  // 3. Line items task duration (e.g. 660 mins = 11h, 60 mins = 1h)
+  // 4. Line items task duration (e.g. 660 mins = 11h, 120 mins = 2h, 60 mins = 1h)
   let itemHours = 0
   if (row.lineItems && row.lineItems.length > 0) {
     const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
-    if (mins > 0 && mins <= 720) {
+    if (mins > 0 && mins <= 960) {
       itemHours = Math.round((mins / 60) * 10) / 10
     }
   }
   if (itemHours > 0) {
-    return Math.min(itemHours, 12)
+    return Math.min(itemHours, 16)
   }
 
-  // 4. Planned start & end times fallback
+  // 5. Planned start & end times fallback
   if (row.plannedStartAt && row.plannedEndAt) {
     const startObj = new Date(row.plannedStartAt)
     const endObj = new Date(row.plannedEndAt)
@@ -288,7 +312,7 @@ function calculateSplDurationHours(row: OvertimeListingRow, targetWorkerName?: s
         return 1
       }
       let pH = Math.round((diffMin / 60) * 10) / 10
-      if (pH > 12) pH = 12
+      if (pH > 16) pH = 16
       return pH
     }
   }
@@ -1064,6 +1088,7 @@ export function OvertimeListingClient({
   currentEmployeeEmail = null,
   currentEmployeeName = '',
   isAdmin = false,
+  attendanceOverrides = [],
 }: {
   rows: OvertimeListingRow[]
   employees?: EmployeeHierarchyInfo[]
@@ -1076,7 +1101,17 @@ export function OvertimeListingClient({
   currentEmployeeEmail?: string | null
   currentEmployeeName?: string | null
   isAdmin?: boolean
+  attendanceOverrides?: AttendanceOverrideItem[]
 }) {
+  const attendanceLookupMap = useMemo(() => {
+    const map = new Map<string, AttendanceOverrideItem>()
+    for (const a of attendanceOverrides || []) {
+      if (a.employeeId != null && a.period && a.day != null) {
+        map.set(`${a.employeeId}:${a.period}:${a.day}`, a)
+      }
+    }
+    return map
+  }, [attendanceOverrides])
   const router = useRouter()
   const access: TableRbacAccess = { canView: true, canEdit: true, canDelete: true }
 
@@ -2778,7 +2813,8 @@ export function OvertimeListingClient({
         fallbackEmployeeName: employeeName,
       })
 
-      const daysData = buildOvertimeRecordMonthlyDays(approvedSummaryFilteredRows, summaryMonth)
+      const selectedEmpId = summaryEmployeeId !== 'ALL' ? Number(summaryEmployeeId) : null
+      const daysData = buildOvertimeRecordMonthlyDays(approvedSummaryFilteredRows, summaryMonth, selectedEmpId, attendanceLookupMap)
 
       const pdfBytes = await generateSummarySplPdf({
         documentTitle: 'SUMMARY SPL',
@@ -2921,7 +2957,7 @@ export function OvertimeListingClient({
           return false
         })
 
-        const daysData = buildOvertimeRecordMonthlyDays(empRows, summaryMonth || '2026-11')
+        const daysData = buildOvertimeRecordMonthlyDays(empRows, summaryMonth || '2026-10', emp.id, attendanceLookupMap)
         const firstRow = empRows[0]
         const signatories = resolveSummarySplSignatories({
           selectedEmployee: emp,

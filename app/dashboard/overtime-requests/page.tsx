@@ -392,9 +392,23 @@ export default async function OvertimeRequestsPage() {
 
     const splSiteId = r.siteId ? Number(r.siteId) : (r.employeeSiteId ? Number(r.employeeSiteId) : null)
     const workDateObj = r.workDate ? new Date(r.workDate) : new Date()
-    const pYear = workDateObj.getFullYear()
-    const pMonth = String(workDateObj.getMonth() + 1).padStart(2, '0')
-    const pDay = workDateObj.getDate()
+    let pYear = workDateObj.getFullYear()
+    let pMonth = String(workDateObj.getMonth() + 1).padStart(2, '0')
+    let pDay = workDateObj.getDate()
+    try {
+      const makassarStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Makassar',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(workDateObj)
+      const [y, m, d] = makassarStr.split('-')
+      if (y && m && d) {
+        pYear = parseInt(y, 10)
+        pMonth = m
+        pDay = parseInt(d, 10)
+      }
+    } catch {}
     const periodKey = `${pYear}-${pMonth}`
     const reqAtt = r.requestedByEmployeeId ? attendanceOverrideMap.get(`${r.requestedByEmployeeId}:${periodKey}:${pDay}`) : undefined
 
@@ -419,7 +433,6 @@ export default async function OvertimeRequestsPage() {
       participants: parts,
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
-      siteId: r.siteId ? Number(r.siteId) : null,
       actualOvertimeHours: reqAtt?.overtimeHours ?? null,
       attendanceClockIn: reqAtt?.clockIn ?? null,
       attendanceClockOut: reqAtt?.clockOut ?? null,
@@ -502,6 +515,14 @@ export default async function OvertimeRequestsPage() {
       currentEmployeeEmail={normalizedEmail}
       currentEmployeeName={activeEmployee?.name || ''}
       isAdmin={isAdmin}
+      attendanceOverrides={(attendanceOverrides || []).map((a) => ({
+        employeeId: Number(a.employeeId),
+        period: a.period,
+        day: Number(a.day),
+        overtimeHours: a.overtimeHours != null ? Number(a.overtimeHours) : null,
+        clockIn: a.clockIn || null,
+        clockOut: a.clockOut || null,
+      }))}
     />
   )
 }
