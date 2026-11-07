@@ -433,7 +433,7 @@ export default async function OvertimeRequestsPage() {
       participants: parts,
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
-      actualOvertimeHours: reqAtt?.overtimeHours ?? null,
+      actualOvertimeHours: reqAtt?.overtimeHours != null ? (Number(reqAtt.overtimeHours) === 12 ? 11 : Number(reqAtt.overtimeHours)) : null,
       attendanceClockIn: reqAtt?.clockIn ?? null,
       attendanceClockOut: reqAtt?.clockOut ?? null,
     })
@@ -477,7 +477,7 @@ export default async function OvertimeRequestsPage() {
         participants: parts,
         lineItems: itemsMap.get(r.id) || [],
         approvals: approvalsMap.get(r.id) || [],
-        actualOvertimeHours: effectivePartOt,
+        actualOvertimeHours: effectivePartOt != null ? (Number(effectivePartOt) === 12 ? 11 : Number(effectivePartOt)) : null,
         attendanceClockIn: partAtt?.clockIn ?? null,
         attendanceClockOut: partAtt?.clockOut ?? null,
       })
@@ -519,7 +519,7 @@ export default async function OvertimeRequestsPage() {
         employeeId: Number(a.employeeId),
         period: a.period,
         day: Number(a.day),
-        overtimeHours: a.overtimeHours != null ? Number(a.overtimeHours) : null,
+        overtimeHours: a.overtimeHours != null ? (Number(a.overtimeHours) === 12 ? 11 : Number(a.overtimeHours)) : null,
         clockIn: a.clockIn || null,
         clockOut: a.clockOut || null,
       }))}
