@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   FileText,
   Search,
@@ -29,7 +30,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DocumentPreviewModal } from "@/components/hero-genius/document-preview-modal";
+import { HeroSearchableSelect } from "@/components/templates";
+
+const DocumentPreviewModal = dynamic(() => import("@/components/hero-genius/document-preview-modal").then((mod) => mod.DocumentPreviewModal));
+const PAGE_SIZE = 20;
 
 interface MobileSopWinViewProps {
   initialDocuments: Array<{
@@ -63,6 +67,7 @@ export function MobileSopWinView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("ALL");
   const [selectedDept, setSelectedDept] = useState<string>("ALL");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Document Detail & Preview Modal State
   const [detailDoc, setDetailDoc] = useState<any | null>(null);
@@ -239,13 +244,14 @@ export function MobileSopWinView({
           <Input
             placeholder="Cari nomor dokumen, judul, atau PIC..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(PAGE_SIZE); }}
             className="h-9.5 rounded-2xl pl-9.5 pr-8 text-xs bg-white/10 border-white/20 text-white placeholder:text-blue-200/70 focus-visible:ring-white/30 focus-visible:bg-white/15"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => { setSearchQuery(""); setVisibleCount(PAGE_SIZE); }}
+              aria-label="Hapus pencarian"
               className="absolute right-2.5 top-2.5 text-blue-200 hover:text-white"
             >
               <X className="size-4" />
@@ -256,16 +262,17 @@ export function MobileSopWinView({
         {/* Type Filter Select Dropdown */}
         <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-white/10 text-xs">
           <span className="font-semibold text-blue-100">Filter Tipe Dokumen:</span>
-          <select
+          <HeroSearchableSelect
             value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value as any)}
-            className="bg-white/15 text-white font-bold text-xs py-1 px-2.5 rounded-xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-amber-300"
-          >
-            <option value="ALL" className="text-slate-900 font-bold">Semua Tipe ({counts.all})</option>
-            <option value="SOP" className="text-slate-900 font-bold">SOP ({counts.sop})</option>
-            <option value="WIN" className="text-slate-900 font-bold">WIN ({counts.win})</option>
-            <option value="POL" className="text-slate-900 font-bold">POL ({counts.pol})</option>
-          </select>
+            onChange={(value) => { setSelectedType(value || "ALL"); setVisibleCount(PAGE_SIZE); }}
+            options={[
+              { value: "ALL", label: `Semua Tipe (${counts.all})` },
+              { value: "SOP", label: `SOP (${counts.sop})` },
+              { value: "WIN", label: `WIN (${counts.win})` },
+              { value: "POL", label: `POL (${counts.pol})` },
+            ]}
+            className="w-44 h-9 text-slate-900"
+          />
         </div>
       </div>
 
@@ -275,7 +282,7 @@ export function MobileSopWinView({
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
-              onClick={() => setSelectedDept("ALL")}
+              onClick={() => { setSelectedDept("ALL"); setVisibleCount(PAGE_SIZE); }}
               className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all ${
                 selectedDept === "ALL"
                   ? "bg-[#003461] text-white shadow-xs"
@@ -290,7 +297,7 @@ export function MobileSopWinView({
                 <button
                   key={dept.code}
                   type="button"
-                  onClick={() => setSelectedDept(dept.code)}
+                  onClick={() => { setSelectedDept(dept.code); setVisibleCount(PAGE_SIZE); }}
                   className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all ${
                     isSelected
                       ? "bg-[#003461] text-white shadow-xs"
@@ -322,6 +329,7 @@ export function MobileSopWinView({
               setSelectedType("ALL");
               setSelectedDept("ALL");
               setSearchQuery("");
+              setVisibleCount(PAGE_SIZE);
             }}
             className="text-[11px] font-semibold text-blue-600 hover:underline"
           >
@@ -343,7 +351,7 @@ export function MobileSopWinView({
             </p>
           </div>
         ) : (
-          filteredDocuments.map((doc) => {
+          filteredDocuments.slice(0, visibleCount).map((doc) => {
             const isSop = doc.documentType === "SOP";
             const isWin = doc.documentType === "WIN";
 
@@ -461,6 +469,11 @@ export function MobileSopWinView({
           })
         )}
       </div>
+      {visibleCount < filteredDocuments.length && (
+        <Button type="button" variant="outline" className="mt-3 h-9 w-full" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+          Tampilkan lebih banyak ({filteredDocuments.length - visibleCount} tersisa)
+        </Button>
+      )}
 
       {/* Detail Dialog with Direct Chat Prompting */}
       <Dialog open={!!detailDoc} onOpenChange={(open) => !open && setDetailDoc(null)}>

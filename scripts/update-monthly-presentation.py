@@ -183,6 +183,15 @@ def append_to_slide_4(slide, title, system="HERO"):
 
     print(f"[UPDATED] Added bullet to Slide 4 under {system} ECOSYSTEM: '{bullet_text}'")
 
+def add_fitted_screenshot(slide, filename, left, top, width, height):
+    picture = slide.shapes.add_picture(filename, left, top)
+    image_width, image_height = picture.image.size
+    scale = min(width / image_width, height / image_height)
+    picture.width, picture.height = int(image_width * scale), int(image_height * scale)
+    picture.left = left + (width - picture.width) // 2
+    picture.top = top + (height - picture.height) // 2
+
+
 def add_detail_slide(prs, title, description, screenshots, system="HERO"):
     """
     Creates a new detail slide with HERO Update / ONE-CHITRA Update badge,
@@ -236,7 +245,7 @@ def add_detail_slide(prs, title, description, screenshots, system="HERO"):
     if len(valid_ss) == 1:
         # Single wide screenshot centered
         ss_path = valid_ss[0]
-        slide.shapes.add_picture(
+        add_fitted_screenshot(slide,
             ss_path,
             left=2000000,
             top=1850000,
@@ -248,14 +257,14 @@ def add_detail_slide(prs, title, description, screenshots, system="HERO"):
         # Two screenshots side by side
         ss1 = valid_ss[0]
         ss2 = valid_ss[1]
-        slide.shapes.add_picture(
+        add_fitted_screenshot(slide,
             ss1,
             left=500000,
             top=1850000,
             width=5400000,
             height=4400000
         )
-        slide.shapes.add_picture(
+        add_fitted_screenshot(slide,
             ss2,
             left=6300000,
             top=1850000,

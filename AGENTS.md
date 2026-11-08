@@ -30,9 +30,11 @@ Untuk memastikan seluruh berkas yang diunggah dapat diakses secara persisten di 
 * Daftar prefix standar sistem:
   `upload`, `uploads`, `activity-photos`, `attendance-photos`, `profile-photos`, `curhat`, `curhat-attachments`, `mcu-wellness-results`, `mcu-referral-letters`, `mcu-results`, `offering-letters`, `sop-win-requests`, `sop-win`, `lms-materials`, `lms-covers`, `chitralearning`, `emergency-reports`, `safety`, `face-attendance`, `face-attendance-v2`, `contract-review-attachment`, `public-career-cv`.
 
-### 4. Penyimpanan Lokal Dokploy (Fallback Persistence)
-* Direktori `public/uploads` di production (Dokploy) dipetakan ke Persistent Bind Mount di `/mnt/data/one-chitra/uploads`.
-* Gunakan centralized `uploadFile` action di `app/actions/upload.ts`. Jangan gunakan `fs` langsung di komponen klien.
+### 4. S3 Wajib, Tanpa Fallback Lokal
+* Semua upload baru wajib berhasil disimpan ke S3 sebelum URL berkas disimpan ke database. Jika konfigurasi atau upload S3 gagal, batalkan aksi dan tampilkan error; dilarang beralih ke disk lokal.
+* Gunakan centralized `uploadFile` action di `app/actions/upload.ts` atau helper S3 baku. Dokumen SOP/WIN, revisi, dan lampiran permintaan mengikuti aturan yang sama.
+* Proxy upload tidak boleh menyalin hasil unduhan S3 ke disk lokal. Berkas lokal lama hanya boleh dipakai sebagai sumber migrasi; verifikasi objek S3 sebelum menghapus atau mengganti referensinya.
+* Pertahankan seluruh segmen object key, termasuk nama dokumen yang mengandung `/`, saat memetakan URL S3 menjadi URL proxy.
 
 ---
 
@@ -123,6 +125,14 @@ Jika skenario pengetesan membutuhkan akses login ke dalam HERO, **WAJIB** menggu
 ---
 
 # Standar Wajib Pelaporan Progress & Update Slide PPT Bulanan (MANDATORI - SETIAP FITUR / PERBAIKAN)
+
+## Monthly report design and language
+
+* Use the approved revised November 2026 monthly report as the visual reference for future monthly reports and feature or fix slides once that revision has been finalized.
+* Write all slide titles, summaries, descriptions, labels, and planning content in clear, professional English. Preserve official product names and acronyms. Screenshots are evidence and may retain the application's original language; do not alter their contents or imply that they are translated.
+* Preserve the existing corporate backgrounds, logos, footer artwork, and slide dimensions. Keep the report colorful and readable with the same typography, spacing, accent colors, and evidence layout as the reference deck.
+* Keep screenshots proportional and legible, use concise descriptions, and verify the rendered slides for clipping, overlap, and readability. Do not remove prior work or evidence when updating an existing monthly report.
+* The monthly presentation automation must follow this reference. Review and adapt its generated slide and summary text to these requirements before saving; do not assume the script's default layout or language is compliant.
 
 ## 📊 Aturan Wajib Pembaruan Slide Presentasi Bulanan (`D:\\[01] PROJECT\\HERO\\Monthly`)
 

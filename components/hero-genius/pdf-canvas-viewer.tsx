@@ -265,7 +265,7 @@ export function PdfCanvasViewer({
           const paddingX = window.innerWidth < 640 ? 12 : 24;
           const availableWidth = Math.max(containerWidth - paddingX, 240);
 
-          if (viewMode === "single" && containerHeight > 220) {
+          if (viewMode === "single" && containerHeight > 220 && window.innerWidth >= 640) {
             const paddingY = 24;
             const availableHeight = Math.max(containerHeight - paddingY, 220);
             const scaleX = availableWidth / unscaledViewport.width;
@@ -408,9 +408,9 @@ export function PdfCanvasViewer({
   return (
     <div className={`flex flex-col h-full w-full bg-white dark:bg-slate-900 select-none overflow-hidden ${className}`}>
       {/* Floating / Sticky Control Bar */}
-      <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 shrink-0 z-20 gap-2 text-xs">
+      <div className="flex items-center justify-between overflow-x-auto px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 shrink-0 z-20 gap-2 text-xs">
         {/* Page Nav & Viewer Mode */}
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {!useNativeViewer && (
             <>
               <Button
@@ -495,7 +495,7 @@ export function PdfCanvasViewer({
         </div>
 
         {/* Zoom & View Controls */}
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {!useNativeViewer ? (
             <>
               <Button
@@ -757,6 +757,7 @@ export function PdfCanvasViewer({
                     className="relative flex flex-col items-center group shadow-md rounded-sm bg-white overflow-hidden border border-slate-200/90 dark:border-slate-800"
                   >
                     <canvas
+                      data-rendered={renderedPages[currentPage] ? "true" : "false"}
                       ref={(el) => {
                         canvasRefs.current[currentPage] = el;
                       }}
@@ -782,6 +783,7 @@ export function PdfCanvasViewer({
                         className="relative flex flex-col items-center group shadow-md rounded-sm bg-white overflow-hidden transition-transform duration-150 border border-slate-200/90 dark:border-slate-800 min-h-[300px] w-full max-w-3xl justify-center"
                       >
                         <canvas
+                          data-rendered={renderedPages[pageNum] ? "true" : "false"}
                           ref={(el) => {
                             canvasRefs.current[pageNum] = el;
                           }}

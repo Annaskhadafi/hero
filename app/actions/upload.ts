@@ -12,9 +12,6 @@ import { getMaestroServerSession } from '@/lib/maestro-session'
 import { db } from '@/db'
 import { hcContractReviewApprovals } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
-import { writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
-import { randomUUID } from 'crypto'
 
 const MAX_IMAGE_FILE_SIZE = 15 * 1024 * 1024
 const MAX_PDF_FILE_SIZE = 15 * 1024 * 1024
@@ -159,7 +156,6 @@ export async function uploadFile(formData: FormData) {
           quality: 78,
         })
       : file
-    const finalFileExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
     const isS3Ready = isS3UploadConfigured()
 
     if (isS3Ready) {
@@ -187,43 +183,9 @@ export async function uploadFile(formData: FormData) {
       }
     }
 
-    // Local fallback storage when S3 is not configured or failed
-    const subFolder = uploadTarget ? uploadTarget : ''
-    const uploadDir = subFolder
-      ? join(process.cwd(), 'public', 'uploads', subFolder)
-      : join(process.cwd(), 'public', 'uploads')
-    await mkdir(uploadDir, { recursive: true })
-
-    const ext = finalFileExt
-    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, '')) || 'file'
-    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${ext}`
-    const filePath = join(uploadDir, uniqueName)
-    const buffer = Buffer.from(await fileToUpload.arrayBuffer())
-
-    await writeFile(filePath, buffer)
-
-    // Also persist to persistent host bind mount if present (e.g. Dokploy /mnt/data/one-chitra/uploads)
-    const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
-    try {
-      const { existsSync } = await import('fs')
-      if (existsSync(customUploadsDir)) {
-        const persistentDir = subFolder ? join(customUploadsDir, subFolder) : customUploadsDir
-        await mkdir(persistentDir, { recursive: true })
-        await writeFile(join(persistentDir, uniqueName), buffer)
-      }
-    } catch (e) {
-      console.warn('Could not write to persistent bind mount fallback:', e)
-    }
-
-    const publicUrl = subFolder
-      ? `/api/uploads/${subFolder}/${uniqueName}`
-      : `/api/uploads/${uniqueName}`
     return {
-      success: true,
-      url: publicUrl,
-      readableUrl: publicUrl,
-      fileName: fileToUpload.name,
-      fileSize: fileToUpload.size,
+      success: false,
+      error: 'S3 Cloud Storage belum dikonfigurasi. Berkas tidak disimpan secara lokal.',
     }
   } catch (error: any) {
     console.error('Upload error:', error)
@@ -275,13 +237,6 @@ export async function uploadImageFromUrl(imageUrl: string) {
   }
 }
 
-function sanitizeFileName(fileName: string) {
-  return fileName
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9._-]/g, '_')
-}
-
 function getCurhatFileExtension(fileName: string, contentType: string) {
   const ext = fileName.split('.').pop()?.toLowerCase()
   if (ext && !BANNED_EXTENSIONS.has(ext) && /^[a-z0-9]{1,10}$/.test(ext)) return ext
@@ -331,29 +286,22 @@ export async function uploadCurhatAttachment(formData: FormData) {
     }
 
     const fileToUpload = isImage ? await optimizeUploadFile(file) : file
-    const finalExt = getCurhatFileExtension(fileToUpload.name, fileToUpload.type)
-
     if (isS3UploadConfigured()) {
       const result = await uploadAnyFileToS3(fileToUpload, 'curhat-attachments')
       const proxyUrl = `/api/uploads/${result.key}`
       return { success: true, url: proxyUrl, readableUrl: proxyUrl, fileName: fileToUpload.name }
     }
 
-    // Local fallback storage when S3 is not configured
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'curhat')
-    await mkdir(uploadDir, { recursive: true })
-
-    const safeName = sanitizeFileName(fileToUpload.name.replace(/\.[^/.]+$/, '')) || 'attachment'
-    const uniqueName = `${safeName}-${randomUUID().slice(0, 8)}.${finalExt}`
-    const filePath = join(uploadDir, uniqueName)
-    const buffer = Buffer.from(await fileToUpload.arrayBuffer())
-
-    await writeFile(filePath, buffer)
-
-    const publicUrl = `/api/uploads/curhat/${uniqueName}`
-    return { success: true, url: publicUrl, readableUrl: publicUrl, fileName: fileToUpload.name }
+    return {
+      success: false,
+      error: 'S3 Cloud Storage belum dikonfigurasi. Lampiran tidak disimpan secara lokal.',
+    }
   } catch (error) {
     console.error('Curhat upload error:', error)
-    return { success: false, error: 'Failed to upload attachment.' }
+    const message = error instanceof Error ? error.message : 'Koneksi S3 terputus'
+    return {
+      success: false,
+      error: `Gagal mengunggah lampiran ke S3 Cloud Storage (${message}). Lampiran tidak disimpan secara lokal. Silakan coba lagi.`,
+    }
   }
 }

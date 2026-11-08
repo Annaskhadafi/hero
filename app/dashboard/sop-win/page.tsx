@@ -18,6 +18,7 @@ import { SopWinApprovalMatrixPanel } from "@/components/sop-win/sop-win-approval
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Files, BarChart3, FolderKanban, CheckCircle2, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "SOP / WIN Document System | HERO",
@@ -137,8 +138,11 @@ export default async function SopWinPage({
       </div>
 
       {/* Tabs Layout */}
+      <Link href="/mobile/sop-win" className="lg:hidden flex h-9 items-center justify-center rounded-lg bg-[#0753e7] px-3 text-sm font-semibold text-white">
+        Buka tampilan SOP/WIN untuk HP
+      </Link>
       <Tabs defaultValue={activeTab} className="space-y-4">
-        <TabsList className="bg-slate-100/90 p-1 dark:bg-slate-900">
+        <TabsList className="max-w-full justify-start overflow-x-auto bg-slate-100/90 p-1 dark:bg-slate-900">
           <TabsTrigger
             value="explorer"
             className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-[#003461] data-[state=active]:shadow-sm"

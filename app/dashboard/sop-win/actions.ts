@@ -25,8 +25,6 @@ import {
   deleteRagDocument,
   sendRagChat,
 } from "@/lib/hero-genius/client";
-import path, { join } from "path";
-import { mkdir, writeFile } from "fs/promises";
 import {
   enqueueSopWinRag,
   getSopWinRagQueueStatus,
@@ -49,6 +47,14 @@ function safeRevalidatePath(path: string) {
   try {
     revalidatePath(path);
   } catch (_) {}
+}
+
+async function uploadSopWinFile(file: File) {
+  if (!isS3UploadConfigured()) {
+    throw new Error("S3 Cloud Storage belum dikonfigurasi. Dokumen SOP/WIN tidak disimpan ke penyimpanan lokal.");
+  }
+  const result = await uploadAnyFileToS3(file, "upload");
+  return `/api/uploads/${result.key}`;
 }
 
 /**
@@ -582,6 +588,7 @@ export async function getSopWinDocumentsAction(filters?: {
       })),
       totalCount: docs.length,
       departmentCounts: counts,
+      departments: deptsList,
     };
   } catch (error: any) {
     console.error("[getSopWinDocumentsAction] error:", error);
@@ -909,44 +916,12 @@ export async function createSopWinDocumentAction(formData: FormData) {
       return { success: false, error: "File PDF wajib diunggah untuk pratinjau dokumen." };
     }
 
-    // Save PDF to persistent uploads & S3
-    const pdfBytes = await pdfFile.arrayBuffer();
-    const pdfBuffer = Buffer.from(pdfBytes);
-    const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const uploadDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-    let pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-    if (isS3UploadConfigured()) {
-      try {
-        const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
-        if (s3Res?.url) {
-          pdfFileUrl = s3Res.url;
-        }
-      } catch (s3Err) {
-        console.warn("[createSopWinDocumentAction] S3 upload error:", s3Err);
-      }
-    }
+    // SOP/WIN files must be durable S3 objects. Upload both files before touching the database.
+    const pdfFileUrl = await uploadSopWinFile(pdfFile);
 
     let docxFileUrl: string | null = null;
     if (docxFile && docxFile.size > 0) {
-      const docxBytes = await docxFile.arrayBuffer();
-      const docxBuffer = Buffer.from(docxBytes);
-      const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await writeFile(join(uploadDir, docxFilename), docxBuffer);
-      docxFileUrl = `/api/uploads/${docxFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
-          if (s3DocxRes?.url) {
-            docxFileUrl = s3DocxRes.url;
-          }
-        } catch (s3Err) {
-          console.warn("[createSopWinDocumentAction] S3 docx upload error:", s3Err);
-        }
-      }
+      docxFileUrl = await uploadSopWinFile(docxFile);
     }
 
 
@@ -1071,30 +1046,13 @@ export async function updateSopWinDocumentAction(formData: FormData) {
     if (effectiveDate) updatePayload.effectiveDate = effectiveDate;
 
     // Optional File Replacements
-    const uploadDir = join(process.cwd(), "public", "uploads");
     let hasNewFile = false;
     let newFileUrl = "";
     let newFileName = "";
     let newFileType: "pdf" | "docx" = "pdf";
 
     if (pdfFile && pdfFile.size > 0) {
-      const pdfBytes = await pdfFile.arrayBuffer();
-      const pdfBuffer = Buffer.from(pdfBytes);
-      const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-      updatePayload.pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
-          if (s3Res?.url) {
-            updatePayload.pdfFileUrl = s3Res.url;
-          }
-        } catch (s3Err) {
-          console.warn("[updateSopWinDocumentAction] S3 upload error:", s3Err);
-        }
-      }
+      updatePayload.pdfFileUrl = await uploadSopWinFile(pdfFile);
 
       hasNewFile = true;
       newFileUrl = updatePayload.pdfFileUrl;
@@ -1103,23 +1061,7 @@ export async function updateSopWinDocumentAction(formData: FormData) {
     }
 
     if (docxFile && docxFile.size > 0) {
-      const docxBytes = await docxFile.arrayBuffer();
-      const docxBuffer = Buffer.from(docxBytes);
-      const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(join(uploadDir, docxFilename), docxBuffer);
-      updatePayload.docxFileUrl = `/api/uploads/${docxFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
-          if (s3DocxRes?.url) {
-            updatePayload.docxFileUrl = s3DocxRes.url;
-          }
-        } catch (s3Err) {
-          console.warn("[updateSopWinDocumentAction] S3 docx upload error:", s3Err);
-        }
-      }
+      updatePayload.docxFileUrl = await uploadSopWinFile(docxFile);
 
       hasNewFile = true;
       newFileUrl = updatePayload.docxFileUrl;
@@ -1195,44 +1137,12 @@ export async function createSopWinRevisionAction(formData: FormData) {
       return { success: false, error: "File PDF revisi baru wajib diunggah." };
     }
 
-    // Save PDF
-    const pdfBytes = await pdfFile.arrayBuffer();
-    const pdfBuffer = Buffer.from(pdfBytes);
-    const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const uploadDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-    let pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-    if (isS3UploadConfigured()) {
-      try {
-        const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
-        if (s3Res?.url) {
-          pdfFileUrl = s3Res.url;
-        }
-      } catch (s3Err) {
-        console.warn("[createSopWinRevisionAction] S3 upload error:", s3Err);
-      }
-    }
+    // Upload every revision file to S3 before mutating either document table.
+    const pdfFileUrl = await uploadSopWinFile(pdfFile);
 
     let docxFileUrl: string | null = null;
     if (docxFile && docxFile.size > 0) {
-      const docxBytes = await docxFile.arrayBuffer();
-      const docxBuffer = Buffer.from(docxBytes);
-      const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await writeFile(join(uploadDir, docxFilename), docxBuffer);
-      docxFileUrl = `/api/uploads/${docxFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
-          if (s3DocxRes?.url) {
-            docxFileUrl = s3DocxRes.url;
-          }
-        } catch (s3Err) {
-          console.warn("[createSopWinRevisionAction] S3 docx upload error:", s3Err);
-        }
-      }
+      docxFileUrl = await uploadSopWinFile(docxFile);
     }
 
 

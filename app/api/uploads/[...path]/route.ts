@@ -5,9 +5,6 @@ import {
   isS3UploadConfigured,
 } from '@/lib/s3-storage'
 import { getServerSession } from '@/lib/auth-session'
-import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
-import { createHash } from 'crypto'
 import sharp from 'sharp'
 
 export const dynamic = 'force-dynamic'
@@ -80,9 +77,7 @@ function isAllowedUploadPath(path: string[]) {
 async function prepareResponseBuffer(
   buffer: Buffer,
   fileName: string,
-  targetWidth?: number | null,
-  cachedThumbPath?: string,
-  cacheDir?: string
+  targetWidth?: number | null
 ): Promise<{ data: Buffer; contentType: string; isThumbnail?: boolean }> {
   const lower = fileName.toLowerCase()
   const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif')
@@ -105,13 +100,6 @@ async function prepareResponseBuffer(
         .jpeg({ quality: targetWidth ? 82 : 85, mozjpeg: true })
         .toBuffer()
 
-      if (targetWidth && cachedThumbPath && cacheDir) {
-        try {
-          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
-          writeFileSync(cachedThumbPath, converted)
-        } catch {}
-      }
-
       return { data: converted, contentType: 'image/jpeg', isThumbnail: !!targetWidth }
     } catch (e) {
       console.warn('HEIC auto-conversion failed in uploads proxy:', e)
@@ -125,13 +113,6 @@ async function prepareResponseBuffer(
         .resize({ width: targetWidth, withoutEnlargement: true })
         .jpeg({ quality: 82, mozjpeg: true })
         .toBuffer()
-
-      if (cachedThumbPath && cacheDir) {
-        try {
-          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
-          writeFileSync(cachedThumbPath, resized)
-        } catch {}
-      }
 
       return { data: resized, contentType: 'image/jpeg', isThumbnail: true }
     } catch (resizeErr) {
@@ -223,28 +204,6 @@ export async function HEAD(request: Request, { params }: { params: Promise<{ pat
 
   const relativePath = path.join('/')
   const fileName = path[path.length - 1]
-  const publicDir = join(process.cwd(), 'public')
-  const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
-  const candidateLocalPaths = [
-    join(publicDir, 'uploads', relativePath),
-    join(publicDir, 'uploads', fileName),
-    join(publicDir, relativePath),
-    join(publicDir, fileName),
-    join(customUploadsDir, relativePath),
-    join(customUploadsDir, fileName),
-  ]
-
-  for (const localPath of candidateLocalPaths) {
-    if (existsSync(localPath)) {
-      const contentType = getContentType(fileName)
-      const headers = new Headers()
-      headers.set('Content-Type', contentType)
-      headers.set('Accept-Ranges', 'bytes')
-      headers.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800')
-      return new NextResponse(null, { status: 200, headers })
-    }
-  }
-
   if (isS3UploadConfigured()) {
     try {
       const meta = await getS3ObjectMetadataForProxy(relativePath)
@@ -316,64 +275,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       ? Math.min(Math.max(Math.round(Number(widthParam)), 32), 2560)
       : null
 
-  // Fast disk cache check for generated thumbnails
-  const publicDir = join(/*turbopackIgnore: true*/ process.cwd(), 'public')
-  const thumbCacheDir = join(publicDir, 'uploads', 'cache', 'thumbnails')
-  let cachedThumbPath: string | undefined
-  if (targetWidth) {
-    const thumbHash = createHash('md5').update(`${relativePath}_w${targetWidth}`).digest('hex')
-    cachedThumbPath = join(thumbCacheDir, `${thumbHash}.jpg`)
-    if (existsSync(cachedThumbPath)) {
-      try {
-        const cachedThumbBuf = readFileSync(cachedThumbPath)
-        return new NextResponse(new Uint8Array(cachedThumbBuf), {
-          headers: {
-            'Content-Type': 'image/jpeg',
-            'Cache-Control': 'public, max-age=31536000, immutable',
-            'X-Content-Type-Options': 'nosniff',
-            'Content-Disposition': `inline; filename="thumb-${encodeURIComponent(fileName)}"`,
-          },
-        })
-      } catch (err) {
-        console.warn('Failed reading cached thumbnail:', err)
-      }
-    }
-  }
-
-  // 1. Check local public/uploads directory candidates
-  const customUploadsDir = process.env.UPLOADS_DIR || '/mnt/data/one-chitra/uploads'
-  const candidateLocalPaths = [
-    join(publicDir, 'uploads', relativePath),
-    join(publicDir, 'uploads', fileName),
-    join(publicDir, relativePath),
-    join(publicDir, fileName),
-    join(customUploadsDir, relativePath),
-    join(customUploadsDir, fileName),
-    join(customUploadsDir, 'public-career-cv', fileName),
-  ]
-
-  for (const localPath of candidateLocalPaths) {
-    if (existsSync(localPath)) {
-      try {
-        const rawBuffer = readFileSync(localPath)
-        const {
-          data: fileBuffer,
-          contentType,
-          isThumbnail,
-        } = await prepareResponseBuffer(
-          rawBuffer,
-          fileName,
-          targetWidth,
-          cachedThumbPath,
-          thumbCacheDir
-        )
-        return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
-      } catch (e) {
-        console.error('Local file read error:', e)
-      }
-    }
-  }
-
   // 2. Fetch from S3 proxy with fast, targeted lookup
   if (isS3UploadConfigured()) {
     try {
@@ -381,24 +282,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       if (object && object.body) {
         const rawBuffer = Buffer.from(object.body)
 
-        // Persist S3 download to local public/uploads disk cache so future requests are instantaneous (0 ms)
-        try {
-          const localCachePath = join(publicDir, 'uploads', relativePath)
-          const localCacheDir = join(publicDir, 'uploads', ...path.slice(0, -1))
-          if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
-          writeFileSync(localCachePath, rawBuffer)
-
-          // Also persist to Dokploy host persistent bind mount if directory exists
-          if (existsSync(customUploadsDir)) {
-            const persistentPath = join(customUploadsDir, relativePath)
-            const persistentDir = join(customUploadsDir, ...path.slice(0, -1))
-            if (!existsSync(persistentDir)) mkdirSync(persistentDir, { recursive: true })
-            writeFileSync(persistentPath, rawBuffer)
-          }
-        } catch (writeErr) {
-          console.warn('Failed caching S3 file to local disk:', writeErr)
-        }
-
         const {
           data: fileBuffer,
           contentType,
@@ -406,9 +289,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
         } = await prepareResponseBuffer(
           rawBuffer,
           fileName,
-          targetWidth,
-          cachedThumbPath,
-          thumbCacheDir
+          targetWidth
         )
         return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
       }

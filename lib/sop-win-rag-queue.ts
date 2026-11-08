@@ -7,8 +7,6 @@ import {
 import { eq, asc, sql, desc, or, and, inArray } from "drizzle-orm";
 import { ingestRagDocument, getRagDocumentChunks, listRagDocuments } from "@/lib/hero-genius/client";
 import { isS3UploadConfigured, getS3ObjectForProxy } from "@/lib/s3-storage";
-import { readFile } from "fs/promises";
-import { join } from "path";
 
 let isWorkerProcessing = false;
 
@@ -184,22 +182,6 @@ export async function processSopWinRagQueue() {
           }
         }
 
-        // 2. Secondary: Try local filesystem (public/uploads)
-        if (!fileBuffer && item.fileUrl) {
-          try {
-            const rawFilename = item.fileUrl.split("/").pop() || "";
-            const decodedFilename = decodeURIComponent(rawFilename);
-            const filePath = join(process.cwd(), "public", "uploads", decodedFilename);
-            fileBuffer = await readFile(filePath);
-          } catch (_) {
-            try {
-              const rawFilename = item.fileUrl.split("/").pop() || "";
-              const filePath = join(process.cwd(), "public", "uploads", rawFilename);
-              fileBuffer = await readFile(filePath);
-            } catch (_) {}
-          }
-        }
-
         // 3. Fallback: Authenticated HTTP fetch via Vision proxy
         if (!fileBuffer && item.fileUrl) {
           const resolvedUrl = item.fileUrl.startsWith("http")
@@ -214,7 +196,7 @@ export async function processSopWinRagQueue() {
         }
 
         if (!fileBuffer || fileBuffer.length === 0) {
-          throw new Error("File dokumen tidak ditemukan di penyimpanan server (S3 / Local).");
+          throw new Error("File dokumen tidak ditemukan di penyimpanan server (S3).");
         }
 
         const mimeType =
