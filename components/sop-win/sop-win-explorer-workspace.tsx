@@ -1173,7 +1173,7 @@ export function SopWinExplorerWorkspace({
                   )}&filename=${encodeURIComponent(activeDoc.documentNumber)}`}
                   filename={activeDoc.documentNumber || activeDoc.title}
                   defaultViewMode="single"
-                  preferNativeViewer={true}
+                  preferNativeViewer={false}
                   hideToolbar={true}
                   hideDownload={true}
                   className="h-full w-full"

@@ -46,6 +46,8 @@ export function PdfCanvasViewer({
   onLoaded,
 }: PdfCanvasViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onLoadedRef = useRef(onLoaded);
+  onLoadedRef.current = onLoaded;
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -105,6 +107,9 @@ export function PdfCanvasViewer({
 
     if (useNativeViewer) {
       setLoadingProgress("Menyiapkan penampil dokumen...");
+      setIsLoading(false);
+      clearInterval(progressTicker);
+      clearTimeout(timer);
       return () => {
         isMounted = false;
         clearInterval(progressTicker);
@@ -187,7 +192,7 @@ export function PdfCanvasViewer({
         setPdfDoc(doc);
         setNumPages(doc.numPages);
         setShowSlowNotice(false);
-        if (onLoaded) onLoaded(doc.numPages);
+        onLoadedRef.current?.(doc.numPages);
         setTimeout(() => {
           if (isMounted) setIsLoading(false);
         }, 200);
@@ -200,6 +205,7 @@ export function PdfCanvasViewer({
         }
       } finally {
         clearTimeout(timer);
+        clearInterval(progressTicker);
       }
     }
 
@@ -208,6 +214,7 @@ export function PdfCanvasViewer({
     return () => {
       isMounted = false;
       clearTimeout(timer);
+      clearInterval(progressTicker);
       // Cancel any ongoing render tasks on unmount
       Object.values(renderTasksRef.current).forEach((task) => {
         try {
@@ -216,7 +223,7 @@ export function PdfCanvasViewer({
       });
       renderTasksRef.current = {};
     };
-  }, [url, onLoaded, useNativeViewer, reloadKey]);
+  }, [url, useNativeViewer, reloadKey]);
 
   const handleNativeLoaded = useCallback(() => {
     setProgressPercent(100);
@@ -308,7 +315,7 @@ export function PdfCanvasViewer({
   // Re-render pages when scale, rotation, viewMode, or doc changes
   useEffect(() => {
     if (useNativeViewer) return;
-    if (!pdfDoc || numPages === 0) return;
+    if (isLoading || !pdfDoc || numPages === 0) return;
 
     if (viewMode === "single") {
       renderPage(currentPage);
@@ -326,7 +333,7 @@ export function PdfCanvasViewer({
         }
       });
     }
-  }, [pdfDoc, numPages, renderPage, scale, fitToWidth, rotation, viewMode, currentPage, visiblePages, useNativeViewer]);
+  }, [pdfDoc, numPages, renderPage, scale, fitToWidth, rotation, viewMode, currentPage, visiblePages, useNativeViewer, isLoading]);
 
   // Handle intersection observer to update current page indicator and trigger lazy render on scroll
   useEffect(() => {
@@ -712,7 +719,7 @@ export function PdfCanvasViewer({
         )}
 
         {/* Render Page(s) or Native iframe */}
-        {!isLoading && !errorMsg && (
+        {!errorMsg && (useNativeViewer || !isLoading) && (
           useNativeViewer ? (
             <div className="w-full h-full flex-grow flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden relative">
               <object

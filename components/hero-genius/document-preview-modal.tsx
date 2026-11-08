@@ -165,7 +165,7 @@ export function DocumentPreviewModal({
             <PdfCanvasViewer
               url={streamUrl}
               filename={filename}
-              preferNativeViewer={true}
+              preferNativeViewer={false}
               hideToolbar={true}
               hideDownload={true}
               onLoaded={(pages) => setTotalPages(pages)}
