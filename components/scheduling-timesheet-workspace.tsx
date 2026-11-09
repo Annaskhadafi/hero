@@ -12906,8 +12906,9 @@ export function SchedulingTimesheetWorkspace({
                                                    row.employee.id,
                                                    true
                                                  )
-                                                 if (mandatoryOvertimeHours(overtime) > 0) {
-                                                   cellValue = mandatoryOvertimeHours(overtime)
+                                                 const otVal = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
+                                                 if (otVal > 0) {
+                                                   cellValue = otVal
                                                    cellBg = 'bg-white text-foreground font-semibold'
                                                  } else if (overtime.unauthorizedMinutes > 0) {
                                                    cellValue = 'SPL'
@@ -12928,7 +12929,9 @@ export function SchedulingTimesheetWorkspace({
                                                 overtimeMeta = overtime.unauthorizedMinutes > 0 ? 'Perlu SPL' : ''
                                                 cellTitle = [
                                                   `${scheduleCode} · ${cell.status}`,
-                                                  'Overtime wajib',
+                                                  overtime.splMinutes > 0
+                                                    ? `Wajib: ${roundOvertimeHours(overtime.autoMinutes / 60)}j + SPL: ${roundOvertimeHours(overtime.splMinutes / 60)}j (Total: ${otVal}j)`
+                                                    : 'Overtime wajib',
                                                   overtime.unauthorizedMinutes > 0
                                                     ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
                                                     : '',
@@ -13232,7 +13235,7 @@ export function SchedulingTimesheetWorkspace({
                                                     )
                                                     total += attendanceView === 'ovt_spl'
                                                       ? roundOvertimeHours((splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0) / 60)
-                                                      : mandatoryOvertimeHours(overtime)
+                                                      : (overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime))
                                                   }
                                                 }
                                               }
