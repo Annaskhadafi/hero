@@ -27,6 +27,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import {
   ArrowLeft,
   Download,
   Share2,
@@ -42,6 +50,12 @@ import {
   Frown,
   Eye,
   Loader2,
+  UserCheck,
+  Calendar,
+  Building2,
+  MapPin,
+  Briefcase,
+  Sliders,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { FormAnalyticsSummary, QuestionAnalytics } from '@/lib/form-analytics-service'
@@ -59,8 +73,12 @@ export function FormAnalyticsClient({
 }) {
   const [data] = useState<FormAnalyticsSummary>(initialAnalytics)
   const [isExportingExcel, setIsExportingExcel] = useState(false)
+  const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null)
   const baseUrl = getFormBaseUrl()
   const publicFormUrl = `${baseUrl}/f/${formDetail.slug}`
+
+  const settings = formDetail.settings || {}
+  const customFields = settings.customIdentityFields || []
 
   async function handleExportExcel() {
     try {
@@ -88,22 +106,59 @@ export function FormAnalyticsClient({
 
   function exportToCsv() {
     if (!data.recentSubmissions || data.recentSubmissions.length === 0) {
-      alert('Belum ada data submission untuk diexport.')
+      toast.info('Belum ada data submission untuk diexport.')
       return
     }
 
-    const headers = ['ID', 'Nama Responden', 'Email', 'No Telepon', 'Tanggal Kirim', 'Durasi (Detik)']
-    const rows = data.recentSubmissions.map((s) => [
-      s.id,
-      `"${s.respondentName.replace(/"/g, '""')}"`,
-      `"${s.respondentEmail}"`,
-      `"${s.respondentPhone}"`,
-      s.submittedAt || '-',
-      s.durationSeconds,
-    ])
+    const headers = [
+      'ID Respon',
+      settings.identityLabel || 'Nama Responden',
+      settings.emailLabel || 'Email',
+      settings.phoneLabel || 'No Telepon / WA',
+    ]
+
+    if (settings.requireCompany) {
+      headers.push(settings.companyLabel || 'Nama Customer / Perusahaan')
+    }
+    if (settings.requireSite) {
+      headers.push(settings.siteLabel || 'Nama Site / Lokasi Operasional')
+    }
+    if (settings.requireDepartment) {
+      headers.push(settings.departmentLabel || 'Departemen / Divisi')
+    }
+    for (const cf of customFields) {
+      headers.push(cf.label)
+    }
+    headers.push('Durasi Pengerjaan', 'Waktu Kirim')
+
+    const rows = data.recentSubmissions.map((s) => {
+      const row = [
+        s.id,
+        `"${(s.respondentName || '').replace(/"/g, '""')}"`,
+        `"${(s.respondentEmail || '').replace(/"/g, '""')}"`,
+        `"${(s.respondentPhone || '').replace(/"/g, '""')}"`,
+      ]
+
+      if (settings.requireCompany) {
+        row.push(`"${(s.metadata?.company || '').replace(/"/g, '""')}"`)
+      }
+      if (settings.requireSite) {
+        row.push(`"${(s.metadata?.site || '').replace(/"/g, '""')}"`)
+      }
+      if (settings.requireDepartment) {
+        row.push(`"${(s.metadata?.department || '').replace(/"/g, '""')}"`)
+      }
+      for (const cf of customFields) {
+        const val = s.metadata?.customFields?.[cf.key] ?? s.metadata?.customFields?.[cf.id] ?? ''
+        row.push(`"${String(val).replace(/"/g, '""')}"`)
+      }
+      row.push(`${s.durationSeconds || 0} detik`)
+      row.push(`"${s.submittedAt ? new Date(s.submittedAt).toLocaleString('id-ID') : '-'}"`)
+      return row
+    })
 
     const csvContent =
-      'data:text/csv;charset=utf-8,' +
+      'data:text/csv;charset=utf-8,\uFEFF' +
       [headers.join(','), ...rows.map((e) => e.join(','))].join('\n')
 
     const encodedUri = encodeURI(csvContent)
@@ -113,6 +168,7 @@ export function FormAnalyticsClient({
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    toast.success('File CSV respon formulir berhasil diunduh!')
   }
 
   return (
@@ -223,55 +279,186 @@ export function FormAnalyticsClient({
 
         {/* TAB 2: DATA SUBMISSION & INDIVIDUAL RESPONSES */}
         <TabsContent value="responses" className="space-y-6 mt-6">
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base font-bold">Daftar Pengisian Responden</CardTitle>
-                <CardDescription>
-                  Data waktu, durasi, dan identitas responden yang telah mengirim jawaban.
-                </CardDescription>
+          <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+            <CardHeader className="flex flex-col gap-3 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Daftar Pengisian Responden
+                  </CardTitle>
+                  <CardDescription>
+                    Data identitas, custom fields, durasi pengisian, dan riwayat kirim respon formulir.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs font-medium border-slate-300">
+                    {data.recentSubmissions.length} Responden
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Aturan Identitas Aktif Overview */}
+              <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300">
+                <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1 mr-1">
+                  <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                  Aturan Identitas Aktif:
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded bg-white dark:bg-slate-800 border text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                  {settings.identityLabel || 'Nama Lengkap'}
+                </span>
+                {settings.requireEmail && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-white dark:bg-slate-800 border text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                    {settings.emailLabel || 'Email'}
+                  </span>
+                )}
+                {settings.requirePhone && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-white dark:bg-slate-800 border text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                    {settings.phoneLabel || 'No. HP / WA'}
+                  </span>
+                )}
+                {settings.requireCompany && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-white dark:bg-slate-800 border text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                    {settings.companyLabel || 'Perusahaan'}
+                  </span>
+                )}
+                {settings.requireSite && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-white dark:bg-slate-800 border text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                    {settings.siteLabel || 'Site'}
+                  </span>
+                )}
+                {settings.requireDepartment && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-white dark:bg-slate-800 border text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                    {settings.departmentLabel || 'Departemen'}
+                  </span>
+                )}
+                {customFields.map((cf) => (
+                  <span
+                    key={cf.id || cf.key}
+                    className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-900 text-[11px] font-semibold"
+                  >
+                    Custom: {cf.label}
+                  </span>
+                ))}
               </div>
             </CardHeader>
+
             <CardContent>
               {data.recentSubmissions.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 text-sm">
                   Belum ada responden yang mengisi formulir ini.
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-slate-50 dark:bg-slate-900">
                       <TableRow>
-                        <TableHead>No. Respon</TableHead>
-                        <TableHead>Nama Responden</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>No. Telepon / WA</TableHead>
-                        <TableHead>Durasi Pengerjaan</TableHead>
-                        <TableHead>Waktu Kirim</TableHead>
+                        <TableHead className="w-16 font-semibold"># ID</TableHead>
+                        <TableHead className="font-semibold">
+                          {settings.identityLabel || 'Nama Responden'}
+                        </TableHead>
+                        <TableHead className="font-semibold">
+                          {settings.emailLabel || 'Email'}
+                        </TableHead>
+                        <TableHead className="font-semibold">
+                          {settings.phoneLabel || 'No. Telepon / WA'}
+                        </TableHead>
+                        {settings.requireCompany && (
+                          <TableHead className="font-semibold">
+                            {settings.companyLabel || 'Customer / Perusahaan'}
+                          </TableHead>
+                        )}
+                        {settings.requireSite && (
+                          <TableHead className="font-semibold">
+                            {settings.siteLabel || 'Site'}
+                          </TableHead>
+                        )}
+                        {settings.requireDepartment && (
+                          <TableHead className="font-semibold">
+                            {settings.departmentLabel || 'Departemen'}
+                          </TableHead>
+                        )}
+                        {customFields.map((cf) => (
+                          <TableHead key={cf.id || cf.key} className="font-semibold text-blue-700 dark:text-blue-400">
+                            {cf.label}
+                          </TableHead>
+                        ))}
+                        <TableHead className="font-semibold">Durasi</TableHead>
+                        <TableHead className="font-semibold">Waktu Kirim</TableHead>
+                        <TableHead className="text-right font-semibold">Aksi</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.recentSubmissions.map((sub, i) => (
-                        <TableRow key={sub.id}>
-                          <TableCell className="font-mono text-xs">#{sub.id}</TableCell>
-                          <TableCell className="font-semibold text-slate-900">
-                            <div>{sub.respondentName}</div>
-                            {(sub.metadata?.company || sub.metadata?.site || sub.metadata?.department) && (
-                              <div className="text-[11px] font-normal text-slate-500">
-                                {[sub.metadata.company, sub.metadata.site, sub.metadata.department].filter(Boolean).join(' • ')}
-                              </div>
+                      {data.recentSubmissions.map((sub) => {
+                        const customValues = (sub.metadata?.customFields as Record<string, any>) || {}
+                        return (
+                          <TableRow key={sub.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/50">
+                            <TableCell className="font-mono text-xs font-semibold text-slate-500">
+                              #{sub.id}
+                            </TableCell>
+                            <TableCell className="font-semibold text-slate-900 dark:text-slate-100">
+                              <div>{sub.respondentName}</div>
+                              {/* Subtitle helper jika kolom company/site/dept tidak ditampilkan tersendiri */}
+                              {!settings.requireCompany && !settings.requireSite && !settings.requireDepartment && (sub.metadata?.company || sub.metadata?.site || sub.metadata?.department) && (
+                                <div className="text-[11px] font-normal text-slate-500">
+                                  {[sub.metadata.company, sub.metadata.site, sub.metadata.department].filter(Boolean).join(' • ')}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                              {sub.respondentEmail || '-'}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                              {sub.respondentPhone || '-'}
+                            </TableCell>
+                            {settings.requireCompany && (
+                              <TableCell className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                                {sub.metadata?.company || '-'}
+                              </TableCell>
                             )}
-                          </TableCell>
-                          <TableCell className="text-sm text-slate-600">{sub.respondentEmail}</TableCell>
-                          <TableCell className="text-sm text-slate-600">{sub.respondentPhone}</TableCell>
-                          <TableCell className="text-sm">
-                            {sub.durationSeconds ? `${sub.durationSeconds} detik` : '-'}
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-500">
-                            {sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('id-ID') : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                            {settings.requireSite && (
+                              <TableCell className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                                {sub.metadata?.site || '-'}
+                              </TableCell>
+                            )}
+                            {settings.requireDepartment && (
+                              <TableCell className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                                {sub.metadata?.department || '-'}
+                              </TableCell>
+                            )}
+                            {customFields.map((cf) => {
+                              const val = customValues[cf.key] ?? customValues[cf.id]
+                              return (
+                                <TableCell key={cf.id || cf.key} className="text-xs">
+                                  {val ? (
+                                    <span className="inline-block px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900 font-medium">
+                                      {val}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400">-</span>
+                                  )}
+                                </TableCell>
+                              )
+                            })}
+                            <TableCell className="text-xs text-slate-600 dark:text-slate-400">
+                              {sub.durationSeconds ? `${sub.durationSeconds} dtk` : '-'}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-500">
+                              {sub.submittedAt ? new Date(sub.submittedAt).toLocaleString('id-ID') : '-'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2.5 text-xs gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                                onClick={() => setSelectedSubmission(sub)}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>Detail</span>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -280,6 +467,123 @@ export function FormAnalyticsClient({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* DETAIL MODAL RESIDUAL/INDIVIDUAL RESPONDENT */}
+      <Dialog open={Boolean(selectedSubmission)} onOpenChange={(open) => !open && setSelectedSubmission(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-blue-600" />
+              Detail Respon #{selectedSubmission?.id}
+            </DialogTitle>
+            <DialogDescription>
+              Informasi lengkap profil dan identitas responden yang tersimpan di sistem.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedSubmission && (
+            <div className="space-y-4 py-2 text-xs">
+              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <span className="text-slate-500 font-medium">
+                    {settings.identityLabel || 'Nama Responden'}
+                  </span>
+                  <span className="font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    {selectedSubmission.respondentName}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">
+                    {settings.emailLabel || 'Alamat Email'}
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedSubmission.respondentEmail || '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">
+                    {settings.phoneLabel || 'No. Telepon / WA'}
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {selectedSubmission.respondentPhone || '-'}
+                  </span>
+                </div>
+                {settings.requireCompany && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">
+                      {settings.companyLabel || 'Customer / Perusahaan'}
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedSubmission.metadata?.company || '-'}
+                    </span>
+                  </div>
+                )}
+                {settings.requireSite && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">
+                      {settings.siteLabel || 'Site / Lokasi'}
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedSubmission.metadata?.site || '-'}
+                    </span>
+                  </div>
+                )}
+                {settings.requireDepartment && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">
+                      {settings.departmentLabel || 'Departemen / Divisi'}
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {selectedSubmission.metadata?.department || '-'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Custom Identity Fields Section in Modal */}
+              {customFields.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 space-y-2">
+                  <div className="font-bold text-blue-900 dark:text-blue-300 text-xs">
+                    Custom Identity Fields:
+                  </div>
+                  <div className="space-y-1.5">
+                    {customFields.map((cf) => {
+                      const cVals = (selectedSubmission.metadata?.customFields as Record<string, any>) || {}
+                      const val = cVals[cf.key] ?? cVals[cf.id] ?? '-'
+                      return (
+                        <div key={cf.id || cf.key} className="flex justify-between items-center py-1 border-b border-blue-100 dark:border-blue-900/50 last:border-b-0">
+                          <span className="text-blue-700 dark:text-blue-400 font-medium">
+                            {cf.label}:
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-slate-100">
+                            {val}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Submission Timestamps */}
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  <div className="text-slate-400">Durasi Pengerjaan:</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {selectedSubmission.durationSeconds ? `${selectedSubmission.durationSeconds} detik` : '-'}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  <div className="text-slate-400">Waktu Kirim:</div>
+                  <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {selectedSubmission.submittedAt ? new Date(selectedSubmission.submittedAt).toLocaleString('id-ID') : '-'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AdminPageShell>
   )
 }

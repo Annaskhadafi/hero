@@ -170,15 +170,35 @@ export async function getFormResponsesExportData(templateId: number): Promise<Fo
         group: 'Metadata',
       })
     }
+
+    // Dynamic Custom Identity Fields (dari template settings & submission data)
+    const customFieldsMap = new Map<string, string>() // key -> label
     if (tplSettings?.customIdentityFields && Array.isArray(tplSettings.customIdentityFields)) {
       for (const cf of tplSettings.customIdentityFields) {
-        columns.push({
-          key: `cf_${cf.key}`,
-          label: cf.label,
-          group: 'Metadata',
-        })
+        if (cf.key) {
+          customFieldsMap.set(cf.key, cf.label || cf.key)
+        }
       }
     }
+
+    // Scan seluruh submissions untuk memastikan tidak ada custom fields yang tertinggal
+    for (const sub of (submissions as any[])) {
+      const meta = safeParse<Record<string, any>>(sub.respondentMetadataJson, {})
+      const customMeta = (meta.customFields as Record<string, any>) || {}
+      for (const k of Object.keys(customMeta)) {
+        if (!customFieldsMap.has(k)) {
+          customFieldsMap.set(k, `Custom: ${k}`)
+        }
+      }
+    }
+
+    customFieldsMap.forEach((label, key) => {
+      columns.push({
+        key: `cf_${key}`,
+        label,
+        group: 'Metadata',
+      })
+    })
 
     columns.push(
       { key: 'submittedAt', label: 'Waktu Kirim', group: 'Metadata' },
@@ -259,11 +279,10 @@ export async function getFormResponsesExportData(templateId: number): Promise<Fo
         duration: formatDurationIndo(sub.durationSeconds),
       }
 
-      if (tplSettings?.customIdentityFields && Array.isArray(tplSettings.customIdentityFields)) {
-        for (const cf of tplSettings.customIdentityFields) {
-          row[`cf_${cf.key}`] = customMeta[cf.key] || '-'
-        }
-      }
+      customFieldsMap.forEach((_, key) => {
+        const val = customMeta[key] ?? '-'
+        row[`cf_${key}`] = val !== '' && val !== null && val !== undefined ? val : '-'
+      })
 
       for (const fl of fieldLookups) {
         const val = valuesForSub.find((v) => v.fieldKey === fl.fieldKey)
