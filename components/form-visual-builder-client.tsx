@@ -72,6 +72,7 @@ import type {
   FormOptionItem,
   LikertRow,
   LikertColumn,
+  CustomIdentityField,
 } from '@/lib/form-builder-types'
 import { saveFormBuilderAction, exportFormResponsesAction } from '@/app/dashboard/form-studio/actions'
 import { exportFormResponsesToExcel } from '@/lib/export-form-excel'
@@ -407,10 +408,10 @@ export function FormVisualBuilderClient({
       })
 
       if (res.success) {
-        alert('Formulir berhasil disimpan!')
+        toast.success('Formulir berhasil disimpan!')
         router.refresh()
       } else {
-        alert(res.error || 'Gagal menyimpan')
+        toast.error(res.error || 'Gagal menyimpan')
       }
     })
   }
@@ -569,12 +570,15 @@ export function FormVisualBuilderClient({
                   <span>
                     Field Identitas aktif:{' '}
                     <b>
-                      Nama
-                      {settings.requireEmail ? ', Email' : ''}
-                      {settings.requirePhone ? ', No HP/WA' : ''}
+                      {settings.identityLabel || 'Nama'}
+                      {settings.requireEmail ? `, ${settings.emailLabel || 'Email'}` : ''}
+                      {settings.requirePhone ? `, ${settings.phoneLabel || 'No HP/WA'}` : ''}
                       {settings.requireCompany ? `, ${settings.companyLabel || 'Nama Customer'}` : ''}
                       {settings.requireSite ? `, ${settings.siteLabel || 'Nama Site'}` : ''}
                       {settings.requireDepartment ? `, ${settings.departmentLabel || 'Departemen'}` : ''}
+                      {settings.customIdentityFields && settings.customIdentityFields.length > 0
+                        ? settings.customIdentityFields.map((cf) => `, ${cf.label || 'Field Kustom'}`).join('')
+                        : ''}
                     </b>
                   </span>
                 </div>
@@ -809,43 +813,105 @@ export function FormVisualBuilderClient({
               </div>
 
               <div className="space-y-3 text-xs">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Wajibkan Identitas</div>
-                    <div className="text-slate-400 text-[11px]">Responden input Nama & Kontak</div>
+                {/* Header Gerbang Identitas */}
+                <div className="p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 space-y-2">
+                  <div className="font-semibold text-slate-800 dark:text-slate-200">
+                    Header Tampilan Identitas
                   </div>
-                  <Switch
-                    checked={settings.requireIdentity}
-                    onCheckedChange={(checked) =>
-                      setSettings({ ...settings, requireIdentity: checked })
+                  <Input
+                    placeholder="Judul (default: Konfirmasi Identitas Responden)"
+                    value={settings.identityTitle || ''}
+                    onChange={(e) =>
+                      setSettings({ ...settings, identityTitle: e.target.value })
                     }
+                    className="text-xs h-7 bg-white dark:bg-slate-800"
+                  />
+                  <Input
+                    placeholder="Subjudul (default: Sebelum memulai kuesioner, silakan lengkapi data diri...)"
+                    value={settings.identitySubtitle || ''}
+                    onChange={(e) =>
+                      setSettings({ ...settings, identitySubtitle: e.target.value })
+                    }
+                    className="text-xs h-7 bg-white dark:bg-slate-800"
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Wajibkan Email</div>
-                    <div className="text-slate-400 text-[11px]">Email aktif responden</div>
+                {/* Field Identitas (Nama) */}
+                <div className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">Wajibkan Identitas (Nama)</div>
+                      <div className="text-slate-400 text-[11px]">Responden wajib input Nama</div>
+                    </div>
+                    <Switch
+                      checked={settings.requireIdentity}
+                      onCheckedChange={(checked) =>
+                        setSettings({ ...settings, requireIdentity: checked })
+                      }
+                    />
                   </div>
-                  <Switch
-                    checked={settings.requireEmail}
-                    onCheckedChange={(checked) =>
-                      setSettings({ ...settings, requireEmail: checked })
-                    }
-                  />
+                  {settings.requireIdentity && (
+                    <Input
+                      placeholder="Label field (misal: Nama Lengkap / Nama Responden)"
+                      value={settings.identityLabel || ''}
+                      onChange={(e) =>
+                        setSettings({ ...settings, identityLabel: e.target.value })
+                      }
+                      className="text-xs h-7 bg-white dark:bg-slate-800"
+                    />
+                  )}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">Wajibkan Nomor HP / WA</div>
-                    <div className="text-slate-400 text-[11px]">Kontak telepon/WhatsApp</div>
+                {/* Field Email */}
+                <div className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">Wajibkan Email</div>
+                      <div className="text-slate-400 text-[11px]">Email aktif responden</div>
+                    </div>
+                    <Switch
+                      checked={settings.requireEmail}
+                      onCheckedChange={(checked) =>
+                        setSettings({ ...settings, requireEmail: checked })
+                      }
+                    />
                   </div>
-                  <Switch
-                    checked={settings.requirePhone}
-                    onCheckedChange={(checked) =>
-                      setSettings({ ...settings, requirePhone: checked })
-                    }
-                  />
+                  {settings.requireEmail && (
+                    <Input
+                      placeholder="Label field (misal: Alamat Email / Email Kantor)"
+                      value={settings.emailLabel || ''}
+                      onChange={(e) =>
+                        setSettings({ ...settings, emailLabel: e.target.value })
+                      }
+                      className="text-xs h-7 bg-white dark:bg-slate-800"
+                    />
+                  )}
+                </div>
+
+                {/* Field Nomor HP / WA */}
+                <div className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">Wajibkan Nomor HP / WA</div>
+                      <div className="text-slate-400 text-[11px]">Kontak telepon/WhatsApp</div>
+                    </div>
+                    <Switch
+                      checked={settings.requirePhone}
+                      onCheckedChange={(checked) =>
+                        setSettings({ ...settings, requirePhone: checked })
+                      }
+                    />
+                  </div>
+                  {settings.requirePhone && (
+                    <Input
+                      placeholder="Label field (misal: Nomor WhatsApp / Telepon)"
+                      value={settings.phoneLabel || ''}
+                      onChange={(e) =>
+                        setSettings({ ...settings, phoneLabel: e.target.value })
+                      }
+                      className="text-xs h-7 bg-white dark:bg-slate-800"
+                    />
+                  )}
                 </div>
 
                 {/* Field Customer / Perusahaan */}
@@ -923,6 +989,110 @@ export function FormVisualBuilderClient({
                       }
                       className="text-xs h-7 bg-white dark:bg-slate-800"
                     />
+                  )}
+                </div>
+
+                {/* CUSTOM FIELD IDENTITAS SECTION */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold text-slate-800 dark:text-slate-200">
+                        Custom Field Identitas
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Field tambahan data responden (NIK, Jabatan, dll)
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs px-2 gap-1 border-dashed hover:border-blue-500 hover:text-blue-600"
+                      onClick={() => {
+                        const current = settings.customIdentityFields || []
+                        const newId = `cid_${Date.now()}`
+                        const newField: CustomIdentityField = {
+                          id: newId,
+                          key: `custom_${Date.now()}`,
+                          label: `Field Kustom ${current.length + 1}`,
+                          placeholder: '',
+                          isRequired: true,
+                        }
+                        setSettings({
+                          ...settings,
+                          customIdentityFields: [...current, newField],
+                        })
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Tambah Field
+                    </Button>
+                  </div>
+
+                  {settings.customIdentityFields && settings.customIdentityFields.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      {settings.customIdentityFields.map((cf, idx) => (
+                        <div
+                          key={cf.id}
+                          className="p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/80 shadow-xs space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                              #{idx + 1} Field Kustom
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <label className="text-[10px] text-slate-500 flex items-center gap-1 cursor-pointer">
+                                <span>Wajib</span>
+                                <Switch
+                                  checked={cf.isRequired}
+                                  onCheckedChange={(checked) => {
+                                    const updated = [...(settings.customIdentityFields || [])]
+                                    updated[idx] = { ...cf, isRequired: checked }
+                                    setSettings({ ...settings, customIdentityFields: updated })
+                                  }}
+                                  className="scale-75"
+                                />
+                              </label>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                onClick={() => {
+                                  const updated = (settings.customIdentityFields || []).filter((_, i) => i !== idx)
+                                  setSettings({ ...settings, customIdentityFields: updated })
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Input
+                              placeholder="Label Field (misal: NIK / Jabatan / No Lambung)"
+                              value={cf.label}
+                              onChange={(e) => {
+                                const updated = [...(settings.customIdentityFields || [])]
+                                updated[idx] = { ...cf, label: e.target.value }
+                                setSettings({ ...settings, customIdentityFields: updated })
+                              }}
+                              className="text-xs h-7 bg-slate-50 dark:bg-slate-800"
+                            />
+                            <Input
+                              placeholder="Placeholder (opsional: Contoh: 71261)"
+                              value={cf.placeholder || ''}
+                              onChange={(e) => {
+                                const updated = [...(settings.customIdentityFields || [])]
+                                updated[idx] = { ...cf, placeholder: e.target.value }
+                                setSettings({ ...settings, customIdentityFields: updated })
+                              }}
+                              className="text-xs h-7 bg-slate-50 dark:bg-slate-800"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 

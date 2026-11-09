@@ -255,7 +255,12 @@ export function FormAnalyticsClient({
                         <TableRow key={sub.id}>
                           <TableCell className="font-mono text-xs">#{sub.id}</TableCell>
                           <TableCell className="font-semibold text-slate-900">
-                            {sub.respondentName}
+                            <div>{sub.respondentName}</div>
+                            {(sub.metadata?.company || sub.metadata?.site || sub.metadata?.department) && (
+                              <div className="text-[11px] font-normal text-slate-500">
+                                {[sub.metadata.company, sub.metadata.site, sub.metadata.department].filter(Boolean).join(' • ')}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-slate-600">{sub.respondentEmail}</TableCell>
                           <TableCell className="text-sm text-slate-600">{sub.respondentPhone}</TableCell>

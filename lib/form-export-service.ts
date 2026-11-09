@@ -8,6 +8,7 @@ import {
   formSubmissionValues,
 } from '@/db/schema/hero'
 import { eq, desc, sql } from 'drizzle-orm'
+import type { FormSettings } from '@/lib/form-builder-types'
 
 export interface FormExportColumn {
   key: string
@@ -80,6 +81,7 @@ export async function getFormResponsesExportData(templateId: number): Promise<Fo
 
     if (tpls.length === 0) return null
     const tpl = tpls[0]
+    const tplSettings = safeParse<FormSettings>(tpl.settingsJson, {} as any)
 
     // Ambil latest version
     const versions = await db
@@ -142,12 +144,46 @@ export async function getFormResponsesExportData(templateId: number): Promise<Fo
     // Susun Kolom Excel
     const columns: FormExportColumn[] = [
       { key: 'id', label: 'ID Respon', group: 'Metadata' },
-      { key: 'respondentName', label: 'Nama Responden', group: 'Metadata' },
-      { key: 'respondentEmail', label: 'Email', group: 'Metadata' },
-      { key: 'respondentPhone', label: 'No. Telepon / WA', group: 'Metadata' },
+      { key: 'respondentName', label: tplSettings?.identityLabel || 'Nama Responden', group: 'Metadata' },
+      { key: 'respondentEmail', label: tplSettings?.emailLabel || 'Email', group: 'Metadata' },
+      { key: 'respondentPhone', label: tplSettings?.phoneLabel || 'No. Telepon / WA', group: 'Metadata' },
+    ]
+
+    if (tplSettings?.requireCompany) {
+      columns.push({
+        key: 'respondentCompany',
+        label: tplSettings.companyLabel || 'Nama Customer / Perusahaan',
+        group: 'Metadata',
+      })
+    }
+    if (tplSettings?.requireSite) {
+      columns.push({
+        key: 'respondentSite',
+        label: tplSettings.siteLabel || 'Nama Site / Lokasi Operasional',
+        group: 'Metadata',
+      })
+    }
+    if (tplSettings?.requireDepartment) {
+      columns.push({
+        key: 'respondentDepartment',
+        label: tplSettings.departmentLabel || 'Departemen / Divisi',
+        group: 'Metadata',
+      })
+    }
+    if (tplSettings?.customIdentityFields && Array.isArray(tplSettings.customIdentityFields)) {
+      for (const cf of tplSettings.customIdentityFields) {
+        columns.push({
+          key: `cf_${cf.key}`,
+          label: cf.label,
+          group: 'Metadata',
+        })
+      }
+    }
+
+    columns.push(
       { key: 'submittedAt', label: 'Waktu Kirim', group: 'Metadata' },
       { key: 'duration', label: 'Durasi Pengisian', group: 'Metadata' },
-    ]
+    )
 
     // Map field definitions untuk lookup saat iterasi baris
     interface FieldLookup {
@@ -208,13 +244,25 @@ export async function getFormResponsesExportData(templateId: number): Promise<Fo
     // Susun Baris Data
     const rows: FormExportRow[] = submissions.map((sub) => {
       const valuesForSub = allValues.filter((v) => v.submissionId === sub.id)
+      const meta = safeParse<Record<string, any>>(sub.respondentMetadataJson, {})
+      const customMeta = (meta.customFields as Record<string, any>) || {}
+
       const row: FormExportRow = {
         id: sub.id,
         respondentName: sub.respondentName || 'Anonim',
         respondentEmail: sub.respondentEmail || '-',
         respondentPhone: sub.respondentPhone || '-',
+        respondentCompany: meta.company || '-',
+        respondentSite: meta.site || '-',
+        respondentDepartment: meta.department || '-',
         submittedAt: formatDateTimeIndo(sub.submittedAt || sub.createdAt),
         duration: formatDurationIndo(sub.durationSeconds),
+      }
+
+      if (tplSettings?.customIdentityFields && Array.isArray(tplSettings.customIdentityFields)) {
+        for (const cf of tplSettings.customIdentityFields) {
+          row[`cf_${cf.key}`] = customMeta[cf.key] || '-'
+        }
       }
 
       for (const fl of fieldLookups) {

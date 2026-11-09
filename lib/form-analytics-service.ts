@@ -59,6 +59,7 @@ export interface SubmissionSummaryItem {
   submittedAt: string | null
   durationSeconds: number
   isPublic: boolean
+  metadata?: Record<string, any>
 }
 
 export async function getFormAnalytics(formId: number): Promise<FormAnalyticsSummary | null> {
@@ -299,6 +300,7 @@ export async function getFormAnalytics(formId: number): Promise<FormAnalyticsSum
       submittedAt: s.submittedAt ? s.submittedAt.toISOString() : null,
       durationSeconds: s.durationSeconds || 0,
       isPublic: s.isPublicSubmission,
+      metadata: safeParse(s.respondentMetadataJson, {}),
     }))
 
     return {

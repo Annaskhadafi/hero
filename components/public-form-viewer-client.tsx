@@ -41,6 +41,7 @@ export function PublicFormViewerClient({
   const [respondentCompany, setRespondentCompany] = useState('')
   const [respondentSite, setRespondentSite] = useState('')
   const [respondentDepartment, setRespondentDepartment] = useState('')
+  const [customIdentityValues, setCustomIdentityValues] = useState<Record<string, string>>({})
 
   // State Jawaban
   const [answers, setAnswers] = useState<Record<string, any>>({})
@@ -75,6 +76,15 @@ export function PublicFormViewerClient({
     if (formDetail.settings.requireDepartment && !respondentDepartment.trim()) {
       setErrorMsg(`Silakan isi ${formDetail.settings.departmentLabel || 'Departemen / Divisi'}`)
       return
+    }
+
+    if (formDetail.settings.customIdentityFields && formDetail.settings.customIdentityFields.length > 0) {
+      for (const cf of formDetail.settings.customIdentityFields) {
+        if (cf.isRequired && !customIdentityValues[cf.key]?.trim()) {
+          setErrorMsg(`Silakan isi ${cf.label}`)
+          return
+        }
+      }
     }
 
     setErrorMsg(null)
@@ -121,6 +131,7 @@ export function PublicFormViewerClient({
         respondentCompany,
         respondentSite,
         respondentDepartment,
+        customIdentityValues,
         durationSeconds,
         answers,
       })
@@ -234,10 +245,10 @@ export function PublicFormViewerClient({
                 <div className="space-y-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">
-                      Nama Lengkap <span className="text-red-500">*</span>
+                      {formDetail.settings.identityLabel || 'Nama Lengkap'} <span className="text-red-500">*</span>
                     </Label>
                     <Input
-                      placeholder="Masukkan nama lengkap Anda"
+                      placeholder={formDetail.settings.identityPlaceholder || 'Masukkan nama lengkap Anda'}
                       value={respondentName}
                       onChange={(e) => setRespondentName(e.target.value)}
                       required
@@ -247,11 +258,12 @@ export function PublicFormViewerClient({
 
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">
-                      Alamat Email {formDetail.settings.requireEmail && <span className="text-red-500">*</span>}
+                      {formDetail.settings.emailLabel || 'Alamat Email'}{' '}
+                      {formDetail.settings.requireEmail && <span className="text-red-500">*</span>}
                     </Label>
                     <Input
                       type="email"
-                      placeholder="nama@email.com"
+                      placeholder={formDetail.settings.emailPlaceholder || 'nama@email.com'}
                       value={respondentEmail}
                       onChange={(e) => setRespondentEmail(e.target.value)}
                       required={formDetail.settings.requireEmail}
@@ -262,11 +274,11 @@ export function PublicFormViewerClient({
                   {formDetail.settings.requirePhone && (
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold">
-                        Nomor WhatsApp / HP <span className="text-red-500">*</span>
+                        {formDetail.settings.phoneLabel || 'Nomor WhatsApp / HP'} <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         type="tel"
-                        placeholder="Contoh: 08123456789"
+                        placeholder={formDetail.settings.phonePlaceholder || 'Contoh: 08123456789'}
                         value={respondentPhone}
                         onChange={(e) => setRespondentPhone(e.target.value)}
                         required
@@ -324,6 +336,26 @@ export function PublicFormViewerClient({
                         className="h-10 text-sm"
                       />
                     </div>
+                  )}
+
+                  {/* CUSTOM IDENTITY FIELDS */}
+                  {formDetail.settings.customIdentityFields && formDetail.settings.customIdentityFields.length > 0 && (
+                    formDetail.settings.customIdentityFields.map((cf) => (
+                      <div key={cf.id || cf.key} className="space-y-1.5">
+                        <Label className="text-xs font-semibold">
+                          {cf.label} {cf.isRequired && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Input
+                          placeholder={cf.placeholder || `Masukkan ${cf.label}`}
+                          value={customIdentityValues[cf.key] || ''}
+                          onChange={(e) =>
+                            setCustomIdentityValues((prev) => ({ ...prev, [cf.key]: e.target.value }))
+                          }
+                          required={cf.isRequired}
+                          className="h-10 text-sm"
+                        />
+                      </div>
+                    ))
                   )}
                 </div>
 

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { notFound } from 'next/navigation'
 import { getFormTemplateBySlugOrKey, incrementFormMetric } from '@/lib/form-service'
 import { PublicFormViewerClient } from '@/components/public-form-viewer-client'

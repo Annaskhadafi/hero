@@ -290,6 +290,8 @@ export async function saveFormBuilderAction(data: {
     revalidatePath(`/dashboard/form-studio/${data.formId}`)
     revalidatePath(`/dashboard/form-studio/${data.formId}/builder`)
     revalidatePath(`/dashboard/form-studio`)
+    revalidatePath(`/form/f/${data.slug.trim().toLowerCase()}`)
+    revalidatePath(`/form`)
     return { success: true }
   } catch (err: any) {
     console.error('Error saveFormBuilderAction:', err)
@@ -305,6 +307,7 @@ export async function submitPublicResponseAction(data: {
   respondentCompany?: string
   respondentSite?: string
   respondentDepartment?: string
+  customIdentityValues?: Record<string, string>
   durationSeconds?: number
   answers: Record<string, any>
 }) {
@@ -362,6 +365,7 @@ export async function submitPublicResponseAction(data: {
       company: data.respondentCompany?.trim() || '',
       site: data.respondentSite?.trim() || '',
       department: data.respondentDepartment?.trim() || '',
+      customFields: data.customIdentityValues || {},
       tenantSource: maestroSession?.user ? 'maestro' : (heroSession?.user ? 'hero' : 'public'),
       userEmail: heroSession?.user?.email || maestroSession?.user?.email || '',
       userName: heroSession?.user?.name || maestroSession?.user?.name || '',
