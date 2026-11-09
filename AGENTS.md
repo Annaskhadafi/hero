@@ -169,7 +169,8 @@ Di akhir setiap respons penyelesaian tugas (fitur baru, perbaikan bug, atau refa
    - Nomor slide detail baru yang ditambahkan (misal: Slide #40 atau #41).
    - Bukti screenshot E2E yang telah disematkan ke dalam slide presentasi sebagai bukti resmi (*official evidence*).
 5. **Status Git & Deploy**:
-   - Hash commit dan konfirmasi push ke `origin/main`.
+   - Konfirmasi sinkronisasi git pull origin main (atau git pull --rebase origin main) sebelum commit/push untuk menjaga kelancaran kolaborasi tim.
+   - Hash commit dan konfirmasi push ke origin/main.
 
 ---
 
@@ -309,6 +310,15 @@ disimpan pada URL atau nama file.
 * Setelah mengubah layout/root shell, wajib cek ulang agar tidak muncul error hydration/console seperti `<html> cannot contain a nested <script>` atau `Cannot render a sync or defer <script> outside the main document without knowing its order`.
 
 ### Git Commit \& Push Guard
+
+* **WAJIB PULL DARI REMOTE SEBELUM COMMIT & PUSH (MANDATORI - KOLABORASI TIM)**:
+  Karena repositori HERO dikerjakan secara kolaboratif bersama tim lainnya, **SEBELUM** mengeksekusi git commit dan git push, Agent **WAJIB HUKUMNYA** melakukan sinkronisasi dengan remote repository terlebih dahulu (git pull origin main atau git pull --rebase origin main).
+  **Alur Eksekusi Baku**:
+  1. git status (cek daftar berkas kerja lokal)
+  2. git pull --rebase origin main (atau git pull origin main) untuk menarik pembaruan terbaru dari rekan tim ke lokal dan mencegah timbulnya konflik atau stale commits
+  3. Selesaikan conflict jika ada dan pastikan repository bersih
+  4. Lakukan git commit
+  5. Lakukan git push origin main
 
 * **WAJIB CEK REMOTE SEBELUM PUSH (MANDATORI)**: Setiap kali akan melakukan git push, DILARANG KERAS langsung push secara asal/buta. Agent **WAJIB** mengecek remote terlebih dahulu (git remote -v, git fetch origin, git status, dan git pull --rebase origin main jika ada commit baru di remote) untuk memastikan repository lokal dan remote telah sinkron, terverifikasi, dan aman sebelum eksekusi git push.
 * Dilarang melakukan `git commit` dan `git push` tanpa perintah eksplisit dari user.
@@ -773,7 +783,7 @@ Gunakan skill `security-audit` (`.agents/skills/security-audit` / Cloudflare mul
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
