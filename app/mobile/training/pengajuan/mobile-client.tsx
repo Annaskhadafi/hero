@@ -103,6 +103,11 @@ export function MobileTrainingRequestsClient({
   const [selectedForAttachment, setSelectedForAttachment] = useState<any | null>(null)
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false)
 
+  // Keep requests in sync when server revalidates
+  React.useEffect(() => {
+    setRequests(initialRequests)
+  }, [initialRequests])
+
   // Auto-open highlight item
   const targetHighlightItem = useMemo(() => {
     if (!highlightId) return null
@@ -950,11 +955,30 @@ export function MobileTrainingRequestsClient({
           providerName={selectedForAttachment.providerName}
           currentAttachmentUrl={selectedForAttachment.attachmentUrl}
           currentAttachmentName={selectedForAttachment.attachmentName}
-          onSuccess={() => {
-            router.refresh()
+          onSuccess={(data) => {
+            setRequests((prev) =>
+              prev.map((r) =>
+                r.id === selectedForAttachment.id
+                  ? {
+                      ...r,
+                      attachmentUrl: data.attachmentUrl,
+                      attachmentName: data.attachmentName,
+                    }
+                  : r
+              )
+            )
             if (selectedDetailRequest && selectedDetailRequest.id === selectedForAttachment.id) {
-              setSelectedDetailRequest(null)
+              setSelectedDetailRequest((prev: any) =>
+                prev
+                  ? {
+                      ...prev,
+                      attachmentUrl: data.attachmentUrl,
+                      attachmentName: data.attachmentName,
+                    }
+                  : null
+              )
             }
+            router.refresh()
           }}
         />
       )}

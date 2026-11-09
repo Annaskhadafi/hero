@@ -33,7 +33,15 @@ import {
   DollarSign,
   User,
   Users,
+  Paperclip,
+  ExternalLink,
+  FileSpreadsheet,
+  AlertCircle,
+  FileUp,
+  Edit2,
 } from 'lucide-react'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { TrainingRequestAttachmentDialog } from './training-request-attachment-dialog'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -58,6 +66,15 @@ export function TrainingRequestApprovalDialog({
   const [remarks, setRemarks] = useState('')
   const [activeTab, setActiveTab] = useState<'form' | 'details'>('form')
   const [mobileTab, setMobileTab] = useState<'action' | 'pdf'>('action')
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(request?.attachmentUrl || null)
+  const [attachmentName, setAttachmentName] = useState<string | null>(request?.attachmentName || null)
+  const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false)
+
+  // Sync state if prop changes
+  React.useEffect(() => {
+    setAttachmentUrl(request?.attachmentUrl || null)
+    setAttachmentName(request?.attachmentName || null)
+  }, [request?.attachmentUrl, request?.attachmentName])
 
   const activeApproval = currentApproval || approvals.find((a) => a.stepOrder === request.currentStepOrder) || approvals[0]
   const isApproved = activeApproval?.status === 'approved'
@@ -193,7 +210,11 @@ export function TrainingRequestApprovalDialog({
           >
             <div className="w-full max-w-[800px] overflow-x-auto">
               <TrainingRequestFormPdf
-                request={request}
+                request={{
+                  ...request,
+                  attachmentUrl,
+                  attachmentName,
+                }}
                 approvals={approvals}
                 liveSignatureUrl={signatureDataUrl}
                 currentStepOrder={activeApproval?.stepOrder}
@@ -227,13 +248,69 @@ export function TrainingRequestApprovalDialog({
                 <div>
                   <span className="text-slate-400 block">Estimasi Biaya:</span>
                   <span className="font-bold text-blue-700">
-                    {request?.costTotal
-                      ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(request.costTotal)
+                    {request?.costAmount
+                      ? `${request?.costCurrency === 'USD' ? '$' : 'Rp'} ${Number(String(request.costAmount).replace(/[^0-9]/g, '') || 0).toLocaleString('id-ID')}`
                       : 'Rp 0'}
                   </span>
                 </div>
               </div>
             </div>
+
+            {/* Vendor Attachment / Penawaran Card */}
+            {attachmentUrl ? (
+              <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[#003461] flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-blue-600" />
+                    Berkas Penawaran Vendor
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full border border-emerald-200">
+                    Terlampir
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-700 truncate font-semibold">
+                  {attachmentName || 'Proposal_Penawaran.pdf'}
+                </p>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <a
+                    href={resolveUploadUrl(attachmentUrl)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 h-7 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold shadow-2xs transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Buka Penawaran
+                  </a>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAttachmentDialogOpen(true)}
+                    className="h-7 text-xs px-2 gap-1 border-blue-300 text-blue-800 hover:bg-blue-100 bg-white"
+                  >
+                    <Edit2 className="w-3 h-3" /> Ganti
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 text-amber-900 font-semibold">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Belum Ada Berkas Penawaran</span>
+                </div>
+                <p className="text-[11px] text-amber-700">
+                  Pengajuan ini belum melampirkan proposal atau berkas penawaran dari vendor.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAttachmentDialogOpen(true)}
+                  className="h-7 text-xs px-2.5 gap-1.5 bg-white border-amber-300 hover:bg-amber-100 text-amber-900 font-bold shadow-2xs"
+                >
+                  <FileUp className="w-3.5 h-3.5 text-amber-700" /> + Lampirkan Penawaran Sekarang
+                </Button>
+              </div>
+            )}
 
             {/* Progress Stepper */}
             <div>
@@ -370,6 +447,22 @@ export function TrainingRequestApprovalDialog({
           </div>
         </div>
       </DialogContent>
+
+      <TrainingRequestAttachmentDialog
+        open={isAttachmentDialogOpen}
+        onOpenChange={setIsAttachmentDialogOpen}
+        requestId={request.id}
+        requestNumber={request.requestNumber}
+        trainingTitle={request.trainingTitle}
+        providerName={request.providerName}
+        currentAttachmentUrl={attachmentUrl}
+        currentAttachmentName={attachmentName}
+        onSuccess={(data) => {
+          setAttachmentUrl(data.attachmentUrl)
+          setAttachmentName(data.attachmentName)
+          onSuccess?.()
+        }}
+      />
     </Dialog>
   )
 }

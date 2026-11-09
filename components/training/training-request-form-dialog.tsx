@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { SignaturePad } from '@/components/signature-pad'
 import { uploadFile } from '@/app/actions/upload'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import {
   getEmployeesForTrainingPicker,
   createTrainingRequest,
@@ -282,6 +283,7 @@ export function TrainingRequestFormDialog({
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('uploadTarget', 'training-requests')
       formData.append('folder', 'training-requests')
 
       const res = await uploadFile(formData)
@@ -290,7 +292,7 @@ export function TrainingRequestFormDialog({
         setAttachmentName(file.name)
         toast.success(`Berkas ${file.name} berhasil diunggah`)
       } else {
-        toast.error('Gagal mengunggah berkas')
+        toast.error(res?.error || 'Gagal mengunggah berkas')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Gagal mengunggah berkas')
@@ -957,7 +959,7 @@ export function TrainingRequestFormDialog({
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span className="truncate max-w-xs">{attachmentName || 'Berkas Terlampir'}</span>
                     <a
-                      href={attachmentUrl}
+                      href={resolveUploadUrl(attachmentUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className="underline text-blue-700 text-[11px] ml-1"

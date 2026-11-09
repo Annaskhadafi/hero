@@ -318,6 +318,23 @@ export function TrainingRequestFormPdf({
                     Catatan Biaya: {request.costNotes}
                   </span>
                 )}
+                {request.attachmentUrl ? (
+                  <div className="mt-1 pt-1 border-t border-slate-200 flex items-center gap-1.5 text-[9.5px] text-blue-700">
+                    <span className="font-bold text-slate-800">Lampiran Berkas:</span>
+                    <a
+                      href={resolveUploadUrl(request.attachmentUrl)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline font-semibold hover:text-blue-900"
+                    >
+                      {request.attachmentName || 'Dokumen Penawaran Terlampir'}
+                    </a>
+                  </div>
+                ) : (
+                  <div className="mt-0.5 text-[9px] text-amber-700 italic">
+                    (Belum ada berkas penawaran vendor yang dilampirkan)
+                  </div>
+                )}
               </td>
             </tr>
           </tbody>

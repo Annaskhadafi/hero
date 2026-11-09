@@ -76,6 +76,11 @@ export function TrainingRequestsClientPage({
   const [selectedForAttachment, setSelectedForAttachment] = useState<any | null>(null)
   const [isAttachmentDialogOpen, setIsAttachmentDialogOpen] = useState(false)
 
+  // Keep requests in sync when server component revalidates
+  React.useEffect(() => {
+    setRequests(initialRequests)
+  }, [initialRequests])
+
   // Find target item if highlightId exists
   const targetHighlightItem = useMemo(() => {
     if (!highlightId) return null
@@ -622,7 +627,20 @@ export function TrainingRequestsClientPage({
           providerName={selectedForAttachment.providerName}
           currentAttachmentUrl={selectedForAttachment.attachmentUrl}
           currentAttachmentName={selectedForAttachment.attachmentName}
-          onSuccess={() => router.refresh()}
+          onSuccess={(data) => {
+            setRequests((prev) =>
+              prev.map((r) =>
+                r.id === selectedForAttachment.id
+                  ? {
+                      ...r,
+                      attachmentUrl: data.attachmentUrl,
+                      attachmentName: data.attachmentName,
+                    }
+                  : r
+              )
+            )
+            router.refresh()
+          }}
         />
       )}
     </div>

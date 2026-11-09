@@ -1020,8 +1020,8 @@ export async function deleteTrainingRequest(requestId: number) {
 
 export async function updateTrainingRequestAttachment(input: {
   requestId: number
-  attachmentUrl: string
-  attachmentName?: string
+  attachmentUrl: string | null
+  attachmentName?: string | null
 }) {
   try {
     const session = await getServerSession()
@@ -1039,11 +1039,14 @@ export async function updateTrainingRequestAttachment(input: {
       return { success: false, error: 'Pengajuan training tidak ditemukan.' }
     }
 
+    const finalUrl = input.attachmentUrl?.trim() ? input.attachmentUrl.trim() : null
+    const finalName = finalUrl ? (input.attachmentName?.trim() || 'Berkas Penawaran Training') : null
+
     await db
       .update(trainingRequests)
       .set({
-        attachmentUrl: input.attachmentUrl,
-        attachmentName: input.attachmentName || 'Berkas Penawaran Training',
+        attachmentUrl: finalUrl,
+        attachmentName: finalName,
         updatedAt: new Date(),
       })
       .where(eq(trainingRequests.id, input.requestId))
@@ -1055,7 +1058,9 @@ export async function updateTrainingRequestAttachment(input: {
 
     return {
       success: true,
-      message: 'Berkas penawaran berhasil diperbarui.',
+      message: finalUrl ? 'Berkas penawaran berhasil diperbarui.' : 'Berkas penawaran berhasil dihapus.',
+      attachmentUrl: finalUrl,
+      attachmentName: finalName,
     }
   } catch (err: any) {
     console.error('[updateTrainingRequestAttachment] Error:', err)
