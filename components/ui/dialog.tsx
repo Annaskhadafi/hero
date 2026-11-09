@@ -56,6 +56,24 @@ function DialogContent({
   showCloseButton?: boolean
   overlayClassName?: string
 }) {
+  React.useEffect(() => {
+    return () => {
+      if (typeof document !== 'undefined') {
+        setTimeout(() => {
+          const hasOpenDialog = Boolean(document.querySelector('[role="dialog"]'))
+          if (!hasOpenDialog) {
+            if (document.body.style.pointerEvents === 'none') {
+              document.body.style.pointerEvents = ''
+            }
+            if (document.documentElement.style.pointerEvents === 'none') {
+              document.documentElement.style.pointerEvents = ''
+            }
+          }
+        }, 60)
+      }
+    }
+  }, [])
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay className={overlayClassName} />

@@ -444,6 +444,36 @@ export function MobileDailyActivityClient({
   }
 
   const [isMounted, setIsMounted] = useState(false)
+
+  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock on mobile
+  useEffect(() => {
+    const cleanupBodyPointer = () => {
+      if (typeof document !== 'undefined') {
+        const hasOpenDialog = Boolean(
+          document.querySelector('[data-slot="dialog-content"]') ||
+          document.querySelector('[role="dialog"]') ||
+          document.querySelector('[data-radix-portal] [role="dialog"]')
+        )
+        if (!hasOpenDialog) {
+          if (document.body.style.pointerEvents === 'none') {
+            document.body.style.pointerEvents = ''
+          }
+          if (document.documentElement.style.pointerEvents === 'none') {
+            document.documentElement.style.pointerEvents = ''
+          }
+        }
+      }
+    }
+    cleanupBodyPointer()
+    const timer = setInterval(cleanupBodyPointer, 300)
+    window.addEventListener('focus', cleanupBodyPointer)
+    window.addEventListener('touchstart', cleanupBodyPointer, { passive: true })
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', cleanupBodyPointer)
+      window.removeEventListener('touchstart', cleanupBodyPointer)
+    }
+  }, [])
   const [draftsCount, setDraftsCount] = useState<number>(0)
   const [selectedDraftKey, setSelectedDraftKey] = useState<string | null>(() => draftQuery || null)
   const [formInstanceId, setFormInstanceId] = useState(0)
@@ -622,7 +652,7 @@ export function MobileDailyActivityClient({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="apply">
+        <TabsContent value="apply" forceMount className={activeTab === 'apply' ? 'block' : 'hidden'}>
           {isMounted ? (
             <MobileDailyActivityForm
               key={`form-${formInstanceId}-${editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : '')}-${selectedDraftKey || draftQuery || 'form'}`}

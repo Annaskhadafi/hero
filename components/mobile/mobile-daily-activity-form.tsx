@@ -1888,19 +1888,35 @@ export function MobileDailyActivityForm({
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPickerOpen, setMemberPickerOpen] = useState(false)
 
-  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock
+  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock on mobile
   useEffect(() => {
     const cleanupBodyPointer = () => {
-      if (typeof document !== 'undefined' && document.body.style.pointerEvents === 'none') {
-        if (!libraryPickerOpen && !isPdfOpen && !memberPickerOpen) {
-          document.body.style.pointerEvents = ''
+      if (typeof document !== 'undefined') {
+        const hasOpenDialog = Boolean(
+          document.querySelector('[data-slot="dialog-content"]') ||
+          document.querySelector('[role="dialog"]') ||
+          document.querySelector('[data-radix-portal] [role="dialog"]')
+        )
+        if (!hasOpenDialog) {
+          if (document.body.style.pointerEvents === 'none') {
+            document.body.style.pointerEvents = ''
+          }
+          if (document.documentElement.style.pointerEvents === 'none') {
+            document.documentElement.style.pointerEvents = ''
+          }
         }
       }
     }
     cleanupBodyPointer()
-    const timer = setInterval(cleanupBodyPointer, 400)
-    return () => clearInterval(timer)
-  }, [libraryPickerOpen, isPdfOpen, memberPickerOpen])
+    const timer = setInterval(cleanupBodyPointer, 300)
+    window.addEventListener('focus', cleanupBodyPointer)
+    window.addEventListener('touchstart', cleanupBodyPointer, { passive: true })
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', cleanupBodyPointer)
+      window.removeEventListener('touchstart', cleanupBodyPointer)
+    }
+  }, [])
 
   const allTeamMembersPool = useMemo(() => {
     const map = new Map<number, any>()
@@ -4526,19 +4542,45 @@ export function MobileDailyActivityForm({
                 </Button>
 
                 {selectedLibraries.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedLibraries.map((item, idx) => (
-                      <button
-                        key={`${item.id}__${idx}`}
-                        type="button"
-                        onClick={() => removeLibraryAtIndex(idx)}
-                        className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-2 text-[11px] font-black tracking-[0.08em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)] cursor-pointer"
-                        title="Hapus aktivitas ini"
-                      >
-                        <span>{item.activityCode}{item.groupName ? ` (${item.groupName})` : ''}</span>
-                        <X className="size-3.5" />
-                      </button>
-                    ))}
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Daftar Aktivitas ({selectedLibraries.length}) • Ketuk item untuk berpindah:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedLibraries.map((item, idx) => (
+                        <div
+                          key={`${item.id}__${idx}`}
+                          onClick={() => {
+                            const el = document.getElementById(`activity-card-${idx}`)
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                              el.classList.add('ring-2', 'ring-blue-500')
+                              setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500'), 1500)
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#f6fbff] pl-3 pr-1.5 py-1.5 text-[11px] font-black tracking-[0.08em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] cursor-pointer hover:bg-sky-50 active:scale-95 transition-all select-none"
+                          title={`Ketuk untuk pindah ke Aktivitas #${idx + 1}`}
+                        >
+                          <span className="font-bold text-[10px] text-sky-700 bg-sky-100/90 px-1.5 py-0.2 rounded-full">
+                            #{idx + 1}
+                          </span>
+                          <span className="truncate max-w-[130px]">
+                            {item.activityCode}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeLibraryAtIndex(idx)
+                            }}
+                            className="size-5 rounded-full hover:bg-red-100 hover:text-red-600 text-slate-400 inline-flex items-center justify-center transition-colors cursor-pointer"
+                            title={`Hapus aktivitas #${idx + 1}`}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -4651,7 +4693,7 @@ export function MobileDailyActivityForm({
                   ].filter(Boolean)
 
                   return (
-                    <div key={instanceKey} className="rounded-[1rem] bg-[#f6fbff] px-4 py-4">
+                    <div key={instanceKey} id={`activity-card-${index}`} className="rounded-[1rem] bg-[#f6fbff] px-4 py-4 scroll-mt-20 transition-all duration-300">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -4822,6 +4864,26 @@ export function MobileDailyActivityForm({
                             }, index)
                           }}
                         />
+
+                        {index < selectedLibraries.length - 1 ? (
+                          <div className="pt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextEl = document.getElementById(`activity-card-${index + 1}`)
+                                if (nextEl) {
+                                  nextEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                  nextEl.classList.add('ring-2', 'ring-blue-500')
+                                  setTimeout(() => nextEl.classList.remove('ring-2', 'ring-blue-500'), 1500)
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003461] bg-white border border-sky-200 px-3 py-1.5 rounded-xl shadow-2xs hover:bg-sky-50 active:scale-95 transition cursor-pointer select-none"
+                            >
+                              <span>Lanjut ke Aktivitas #{index + 2}</span>
+                              <ChevronDown className="size-3.5" />
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   )

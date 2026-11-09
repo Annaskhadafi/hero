@@ -166,7 +166,7 @@ export function MobileDailyActivityDrafts({
         localKey: activeLocal?.key,
         serverId: sd.id,
         title: bestTitle,
-        workDate: activeLocal?.workDate || sd.workDate,
+        workDate: activeLocal ? activeLocal.workDate : sd['workDate'],
         shiftCode: sd.shiftCode,
         itemCount: preferServer
           ? sd.itemCount || activeLocal?.itemCount || 1
