@@ -57,6 +57,7 @@ export type PendingSummaryRequestItem = {
   requestType: string;
   quantity: number;
   notes: string;
+  photoUrl?: string | null;
 };
 
 export type ManualSummaryItem = {
@@ -65,6 +66,8 @@ export type ManualSummaryItem = {
   quantity: number;
   requestType: string;
   notes?: string;
+  photoUrl?: string;
+  photoUrls?: string[];
 };
 
 export type ManualSummaryEntry = {
@@ -167,4 +170,22 @@ export function getCalendarMonthApdSummaryDateRange(refDate: Date = new Date()):
     startDate: `${year}-${pad(month + 1)}-01`,
     endDate: `${year}-${pad(month + 1)}-${pad(lastDay)}`,
   };
+}
+
+
+export function parsePhotoUrls(raw: string | null | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((u): u is string => typeof u === 'string' && u.trim().length > 0);
+      }
+    } catch {}
+  }
+  if (trimmed.includes(',')) {
+    return trimmed.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  return [trimmed];
 }

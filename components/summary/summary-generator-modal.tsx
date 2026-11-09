@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   Calendar,
+  Camera,
   Check,
   CheckCircle2,
+  Eye,
   Filter,
+  Image as ImageIcon,
   Layers,
   Loader2,
+  Maximize2,
   PackageCheck,
   Plus,
   Search,
@@ -19,6 +23,15 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
+import { uploadFile } from '@/app/actions/upload';
+import { resolveUploadUrl } from '@/lib/resolve-upload-url';
+import { FiveRCameraModal } from '@/components/five-r/five-r-camera-modal';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -41,6 +54,7 @@ import {
   type PendingSummaryRequestItem,
   type ManualSummaryEntry,
   type ManualSummaryItem,
+  parsePhotoUrls,
 } from '@/lib/summary-constants';
 import type { SectionWithSummary } from './summary-list';
 
@@ -111,6 +125,11 @@ export function SummaryGeneratorModal({
   const [endDate, setEndDate] = useState<string>('');
   const [activePreset, setActivePreset] = useState<'active_cutoff' | 'prev_cutoff' | 'calendar_month' | 'all'>('active_cutoff');
 
+  // Camera, Upload & Photo Lightbox States
+  const [activeCameraItemType, setActiveCameraItemType] = useState<string | null>(null);
+  const [uploadingItemTypes, setUploadingItemTypes] = useState<Set<string>>(new Set());
+  const [previewingPhotos, setPreviewingPhotos] = useState<{ title: string; photos: string[] } | null>(null);
+
   // Manual employee entry states
   const [isAddManualOpen, setIsAddManualOpen] = useState(false);
   const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
@@ -119,7 +138,7 @@ export function SummaryGeneratorModal({
   const [apdSearch, setApdSearch] = useState('');
   const [selectedManualEmp, setSelectedManualEmp] = useState<AvailableEmployee | null>(null);
   const [manualSelectedItems, setManualSelectedItems] = useState<ManualSummaryItem[]>([
-    { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
+    { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru', photoUrls: [], photoUrl: '' },
   ]);
   const [manualShoeSize, setManualShoeSize] = useState('');
   const [manualRemarks, setManualRemarks] = useState('');
@@ -242,6 +261,88 @@ export function SummaryGeneratorModal({
     }
   };
 
+  // Convert dataURL from camera to File object
+  function dataURLtoFile(dataurl: string, filename: string): File {
+    const arr = dataurl.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
+  }
+
+  // Upload photos to S3 and append to manual item
+  const uploadAndAppendPhotos = async (itemType: string, files: File[]) => {
+    if (!files || files.length === 0) return;
+    setUploadingItemTypes((prev) => new Set([...prev, itemType]));
+    const toastId = toast.loading(`Mengunggah ${files.length} foto untuk ${itemType}...`);
+
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('folder', 'activity-photos');
+        const res = await uploadFile(fd);
+        if (res.success && res.url) {
+          uploadedUrls.push(res.url);
+        } else {
+          throw new Error(res.error || 'Gagal mengunggah salah satu foto');
+        }
+      }
+
+      setManualSelectedItems((prev) =>
+        prev.map((it) => {
+          if (it.itemType !== itemType) return it;
+          const currentUrls = it.photoUrls || [];
+          const combined = Array.from(new Set([...currentUrls, ...uploadedUrls]));
+          return {
+            ...it,
+            photoUrls: combined,
+            photoUrl: JSON.stringify(combined),
+          };
+        })
+      );
+      toast.success(`${uploadedUrls.length} foto berhasil diunggah!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal mengunggah foto', { id: toastId });
+    } finally {
+      setUploadingItemTypes((prev) => {
+        const next = new Set(prev);
+        next.delete(itemType);
+        return next;
+      });
+    }
+  };
+
+  const handleCameraCapture = (itemType: string, dataUrl: string) => {
+    const file = dataURLtoFile(dataUrl, `apd_manual_${Date.now()}.jpg`);
+    uploadAndAppendPhotos(itemType, [file]);
+  };
+
+  const handleFileSelect = (itemType: string, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    uploadAndAppendPhotos(itemType, Array.from(files));
+  };
+
+  const handleRemovePhoto = (itemType: string, photoIdx: number) => {
+    setManualSelectedItems((prev) =>
+      prev.map((it) => {
+        if (it.itemType !== itemType) return it;
+        const currentUrls = it.photoUrls || [];
+        const nextUrls = currentUrls.filter((_, idx) => idx !== photoIdx);
+        return {
+          ...it,
+          photoUrls: nextUrls,
+          photoUrl: nextUrls.length > 0 ? JSON.stringify(nextUrls) : '',
+        };
+      })
+    );
+  };
+
   const handleToggleItem = (itemType: string) => {
     const existingIndex = manualSelectedItems.findIndex((i) => i.itemType === itemType);
     if (existingIndex >= 0) {
@@ -249,7 +350,7 @@ export function SummaryGeneratorModal({
     } else {
       setManualSelectedItems((prev) => [
         ...prev,
-        { itemType, canonicalName: itemType, quantity: 1, requestType: 'baru' },
+        { itemType, canonicalName: itemType, quantity: 1, requestType: 'baru', photoUrls: [], photoUrl: '' },
       ]);
     }
   };
@@ -281,6 +382,24 @@ export function SummaryGeneratorModal({
       toast.error('Pilih minimal 1 item APD');
       return;
     }
+    if (uploadingItemTypes.size > 0) {
+      toast.error('Mohon tunggu hingga seluruh foto selesai diunggah ke server');
+      return;
+    }
+
+    // Validation: Check photos for replacement and manual request
+    const totalPhotos = manualSelectedItems.reduce((acc, it) => acc + (it.photoUrls?.length || 0), 0);
+    const missingPergantian = manualSelectedItems.find(
+      (it) => it.requestType === 'pergantian' && (!it.photoUrls || it.photoUrls.length === 0)
+    );
+    if (missingPergantian) {
+      toast.error(`Item "${missingPergantian.itemType}" (Pergantian) wajib melampirkan minimal 1 foto bukti fisik barang rusak/lama.`);
+      return;
+    }
+    if (totalPhotos === 0) {
+      toast.error('Wajib melampirkan minimal 1 foto bukti fisik APD untuk pengajuan manual');
+      return;
+    }
 
     const tempId = `manual-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const syntheticId = -Date.now(); // negative ID to distinguish from real DB requests
@@ -308,6 +427,7 @@ export function SummaryGeneratorModal({
         requestType: item.requestType,
         quantity: item.quantity,
         notes: item.notes || '',
+        photoUrl: item.photoUrls && item.photoUrls.length > 0 ? JSON.stringify(item.photoUrls) : (item.photoUrl || ''),
       })),
       safetyShoesSize: hasShoes ? manualShoeSize : '',
       suggestedRemarks: manualRemarks,
@@ -324,7 +444,7 @@ export function SummaryGeneratorModal({
     setIsAddManualOpen(false);
     setSelectedManualEmp(null);
     setManualSelectedItems([
-      { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
+      { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru', photoUrls: [], photoUrl: '' },
     ]);
     setManualShoeSize('');
     setManualRemarks('');
@@ -463,6 +583,7 @@ export function SummaryGeneratorModal({
               quantity: it.quantity,
               requestType: it.requestType,
               notes: it.notes,
+              photoUrl: it.photoUrl || undefined,
             })),
             safetyShoesSize,
             remarks,
@@ -821,53 +942,156 @@ export function SummaryGeneratorModal({
                     </div>
                   </div>
 
-                  {/* Selected Items Config List */}
+                  {/* Selected Items Config List with Photo Upload */}
                   {manualSelectedItems.length > 0 && (
-                    <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
-                      {manualSelectedItems.map((it) => (
-                        <div
-                          key={it.itemType}
-                          className="flex items-center justify-between p-1.5 bg-slate-50 dark:bg-slate-800/60 rounded border border-slate-200 dark:border-slate-700 text-xs"
-                        >
-                          <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px]">
-                            {it.itemType}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
-                              <button
-                                type="button"
-                                onClick={() => handleItemQtyChange(it.itemType, -1)}
-                                className="px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                              >
-                                -
-                              </button>
-                              <span className="px-2 font-bold text-xs">{it.quantity}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleItemQtyChange(it.itemType, 1)}
-                                className="px-1.5 py-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-                              >
-                                +
-                              </button>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {manualSelectedItems.map((it) => {
+                        const isUploading = uploadingItemTypes.has(it.itemType);
+                        const photos = it.photoUrls || [];
+                        const isPergantian = it.requestType === 'pergantian';
+
+                        return (
+                          <div
+                            key={it.itemType}
+                            className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 text-xs space-y-2 shadow-2xs"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                {it.itemType}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 shadow-2xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemQtyChange(it.itemType, -1)}
+                                    className="px-2 py-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="px-2 font-bold text-xs">{it.quantity}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemQtyChange(it.itemType, 1)}
+                                    className="px-2 py-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                <select
+                                  value={it.requestType}
+                                  onChange={(e) => handleItemRequestTypeChange(it.itemType, e.target.value)}
+                                  className="h-7 text-xs px-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md font-medium"
+                                >
+                                  <option value="baru">Baru</option>
+                                  <option value="pergantian">Pergantian</option>
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleItem(it.itemType)}
+                                  className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
+                                  title="Hapus item ini"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
-                            <select
-                              value={it.requestType}
-                              onChange={(e) => handleItemRequestTypeChange(it.itemType, e.target.value)}
-                              className="h-6 text-[11px] px-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded"
-                            >
-                              <option value="baru">Baru</option>
-                              <option value="pergantian">Pergantian</option>
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleItem(it.itemType)}
-                              className="text-slate-400 hover:text-red-500"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+
+                            {/* Foto Bukti Section for this item */}
+                            <div className="pt-2 border-t border-slate-200/80 dark:border-slate-700/80 space-y-1.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                  <Camera className="w-3.5 h-3.5 text-blue-600" />
+                                  Foto Bukti Fisik APD:
+                                  {isPergantian ? (
+                                    <span className="text-rose-600 font-bold text-[10px] ml-0.5">* Wajib</span>
+                                  ) : (
+                                    <span className="text-slate-400 text-[10px] font-normal ml-0.5">(Opsional)</span>
+                                  )}
+                                </span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                  photos.length > 0
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    : isPergantian
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                }`}>
+                                  {photos.length} Foto Terlampir
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isUploading}
+                                  onClick={() => setActiveCameraItemType(it.itemType)}
+                                  className="h-7 px-2 text-[11px] gap-1 bg-white hover:bg-slate-50 border-slate-200 shadow-2xs font-semibold text-slate-700 cursor-pointer"
+                                >
+                                  <Camera className="w-3 h-3 text-blue-600" />
+                                  Kamera
+                                </Button>
+                                <label className="inline-flex items-center justify-center rounded-md text-[11px] font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 h-7 px-2.5 cursor-pointer gap-1 shadow-2xs">
+                                  <ImageIcon className="w-3 h-3 text-slate-600" />
+                                  Pilih File / Galeri
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    disabled={isUploading}
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      handleFileSelect(it.itemType, e.target.files);
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                </label>
+                                {isUploading && (
+                                  <div className="flex items-center gap-1 text-[11px] text-blue-600 font-medium">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    <span>Mengunggah foto...</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Previews Thumbnails Grid */}
+                              {photos.length > 0 && (
+                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 pt-1">
+                                  {photos.map((pUrl, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 aspect-square bg-slate-100 shadow-2xs"
+                                    >
+                                      <img
+                                        src={resolveUploadUrl(pUrl)}
+                                        alt={`Foto ${pIdx + 1}`}
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewingPhotos({ title: `${it.itemType} (Foto #${pIdx + 1})`, photos: [pUrl] })}
+                                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white cursor-pointer"
+                                        title="Perbesar foto"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemovePhoto(it.itemType, pIdx)}
+                                        className="absolute top-0.5 right-0.5 bg-rose-600 hover:bg-rose-700 text-white p-0.5 rounded-full shadow transition-colors cursor-pointer"
+                                        title="Hapus foto ini"
+                                      >
+                                        <X className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -1014,15 +1238,34 @@ export function SummaryGeneratorModal({
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap gap-1">
-                            {req.items.map((item, iIdx) => (
-                              <span
-                                key={iIdx}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium"
-                              >
-                                {item.canonicalName}
-                                <span className="font-bold text-blue-600">x{item.quantity}</span>
-                              </span>
-                            ))}
+                            {req.items.map((item, iIdx) => {
+                              const photos = parsePhotoUrls(item.photoUrl);
+                              return (
+                                <span
+                                  key={iIdx}
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium"
+                                >
+                                  <span>{item.canonicalName}</span>
+                                  <span className="font-bold text-blue-600">x{item.quantity}</span>
+                                  {photos.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPreviewingPhotos({
+                                          title: `${req.employeeName} - ${item.canonicalName}`,
+                                          photos,
+                                        })
+                                      }
+                                      className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 border border-emerald-300 dark:border-emerald-700 px-1 py-0.2 rounded transition-colors cursor-pointer"
+                                      title={`${photos.length} Foto Bukti Terlampir (Klik untuk melihat)`}
+                                    >
+                                      <Camera className="w-2.5 h-2.5" />
+                                      <span>{photos.length}</span>
+                                    </button>
+                                  )}
+                                </span>
+                              );
+                            })}
                           </div>
                         </td>
                         <td className="py-3 px-3">
@@ -1142,6 +1385,54 @@ export function SummaryGeneratorModal({
         </div>
 
       </div>
+
+      {/* Lightbox Modal for Photo Evidence */}
+      <Dialog open={Boolean(previewingPhotos)} onOpenChange={(open) => !open && setPreviewingPhotos(null)}>
+        <DialogContent className="max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <Camera className="w-4 h-4 text-emerald-600" />
+              <span>Foto Bukti Fisik APD: {previewingPhotos?.title}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto p-1">
+            {previewingPhotos?.photos.map((photoUrl, idx) => (
+              <div key={idx} className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950 group">
+                <img
+                  src={resolveUploadUrl(photoUrl)}
+                  alt={`Bukti APD ${idx + 1}`}
+                  className="w-full h-56 object-cover"
+                />
+                <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                  Foto #{idx + 1}
+                </div>
+                <a
+                  href={resolveUploadUrl(photoUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute top-2 right-2 bg-black/60 hover:bg-black/90 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Buka ukuran asli"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Camera Modal */}
+      <FiveRCameraModal
+        isOpen={Boolean(activeCameraItemType)}
+        onClose={() => setActiveCameraItemType(null)}
+        onCapture={(dataUrl) => {
+          if (activeCameraItemType) {
+            handleCameraCapture(activeCameraItemType, dataUrl);
+            setActiveCameraItemType(null);
+          }
+        }}
+        title={`Ambil Foto Bukti APD - ${activeCameraItemType || ''}`}
+      />
     </div>
   );
 }

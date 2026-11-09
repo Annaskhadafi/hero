@@ -412,6 +412,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
         requestType: item.requestType,
         quantity: item.quantity,
         notes: item.notes || '',
+        photoUrl: item.photoUrl || null,
       });
       if (canonical === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu') || item.itemType.toLowerCase().includes('shoes')) {
         hasSafetyShoes = true;
@@ -660,6 +661,7 @@ export async function generateSummary(
         requestType: item.requestType || 'baru',
         quantity: item.quantity || 1,
         notes: item.notes || '',
+        photoUrl: item.photoUrl || (item.photoUrls && item.photoUrls.length > 0 ? JSON.stringify(item.photoUrls) : null),
       });
 
       summaryItems.push({

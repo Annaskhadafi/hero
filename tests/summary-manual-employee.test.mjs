@@ -1,4 +1,4 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -59,4 +59,27 @@ test('components/summary/summary-generator-modal.tsx includes UI to add manual e
     content.includes('manualEntriesPayload'),
     'Must pass manualEntriesPayload to generateSummaryAction'
   );
+});
+
+
+test('photo support: lib/summary-constants.ts and lib/summary-engine.ts persist photoUrl for manual APD requests', () => {
+  const constantsPath = path.join(process.cwd(), 'lib/summary-constants.ts');
+  const constantsContent = fs.readFileSync(constantsPath, 'utf8');
+  assert.ok(constantsContent.includes('photoUrls?: string[]'), 'ManualSummaryItem must include photoUrls');
+  assert.ok(constantsContent.includes('parsePhotoUrls'), 'Must export parsePhotoUrls');
+
+  const enginePath = path.join(process.cwd(), 'lib/summary-engine.ts');
+  const engineContent = fs.readFileSync(enginePath, 'utf8');
+  assert.ok(engineContent.includes('photoUrl: item.photoUrl || (item.photoUrls'), 'generateSummary must insert photoUrl into apdRequestItems');
+});
+
+test('photo support: components/summary/summary-generator-modal.tsx includes camera, file upload, validation, and lightbox for manual APD photos', () => {
+  const modalPath = path.join(process.cwd(), 'components/summary/summary-generator-modal.tsx');
+  const content = fs.readFileSync(modalPath, 'utf8');
+
+  assert.ok(content.includes('FiveRCameraModal'), 'Must include FiveRCameraModal');
+  assert.ok(content.includes('uploadAndAppendPhotos'), 'Must include uploadAndAppendPhotos');
+  assert.ok(content.includes('Foto Bukti Fisik APD'), 'Must render Foto Bukti Fisik APD label');
+  assert.ok(content.includes('Wajib melampirkan minimal 1 foto bukti fisik APD'), 'Must validate required photos for manual APD');
+  assert.ok(content.includes('previewingPhotos'), 'Must support photo lightbox preview');
 });
