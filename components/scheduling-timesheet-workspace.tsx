@@ -1038,6 +1038,11 @@ function isStaffRole(
     if (st.includes('non staff') || st.includes('non-staff') || st.includes('nonstaff')) {
       return false
     }
+    if (st.includes('staff') && !st.includes('non')) {
+      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim())) {
+        return true
+      }
+    }
   }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
@@ -1066,36 +1071,16 @@ function isStaffRole(
   }
   const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
   if (!combined) return false
-  // Explicit "non staff" or "non-staff" = non-staff
   if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
-  // Explicit field operational positions that are strictly non-staff
   if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
     return false
   }
-  // Explicit "staff" without "non" = staff
-  if (employeeStatusType) {
-    const st = employeeStatusType.trim().toLowerCase()
-    if (st.includes('staff') && !st.includes('non')) {
-      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician)/i.test((role ?? '').trim())) {
-        return true
-      }
-    }
-  }
   if (combined.includes('staff')) return true
-  // Managerial, leadership, engineering, specialist, analytical, administrative = staff
   if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
     return true
   }
-  // Default: non-staff
   return false
 }
-
-type ApprovalApproverDraft = {
-  pjoLeaderId: number | null
-  sectionHeadId: number | null
-  departmentHeadId: number | null
-}
-
 function approvalEmployeeOptions(
   candidates: EmployeeOption[],
   currentId: number | null,

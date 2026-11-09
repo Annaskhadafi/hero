@@ -512,21 +512,16 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }, 0)
     }
 
-    if (ot > 0 && otFrom && otTo) {
+    if (otFrom && otTo) {
       const [sh, sm] = otFrom.split(/[:.]/).map(Number)
       const [eh, em] = otTo.split(/[:.]/).map(Number)
       if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
         let startMin = sh * 60 + sm
         let endMin = eh * 60 + em
         if (endMin < startMin) endMin += 1440
-        const intervalHours = (endMin - startMin) / 60
-        if (ot > intervalHours) {
-          const expectedEndMin = startMin + Math.round(ot * 60)
-          const normEnd = expectedEndMin % 1440
-          const hh = String(Math.floor(normEnd / 60)).padStart(2, '0')
-          const mm = String(normEnd % 60).padStart(2, '0')
-          otTo = `${hh}.${mm}`
-        }
+        let diffHours = Math.round(((endMin - startMin) / 60) * 10) / 10
+        if (diffHours >= 12) diffHours = 11
+        if (diffHours > 0) ot = diffHours
       }
     }
 

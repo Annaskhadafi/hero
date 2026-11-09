@@ -261,32 +261,8 @@ function calculateSplDurationHours(
   dayNum?: number,
   attendanceLookupMap?: Map<string, AttendanceOverrideItem>
 ): number {
-  // 1. Specific worker credit minutes in participants (Authoritative per employee for this SPL)
-  if (row.participants && row.participants.length > 0) {
-    const pWithCredit = targetWorkerName
-      ? row.participants.find((p: any) => (p.employeeName || '').trim().toLowerCase() === targetWorkerName.trim().toLowerCase() && p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
-      : row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
-    if (pWithCredit && (pWithCredit as any).overtimeCreditMinutes) {
-      let crHours = Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
-      if (crHours === 12) crHours = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
-      if (crHours > 0 && crHours <= 16) return crHours
-    }
-  }
-
-  // 2. Line items task duration (e.g. 660 mins = 11h, 120 mins = 2h, 60 mins = 1h)
-  let itemHours = 0
-  if (row.lineItems && row.lineItems.length > 0) {
-    const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
-    if (mins > 0 && mins <= 960) {
-      itemHours = Math.round((mins / 60) * 10) / 10
-      if (itemHours === 12) itemHours = 11
-    }
-  }
-  if (itemHours > 0) {
-    return Math.min(itemHours, 16)
-  }
-
-  // 5. Planned start & end times fallback
+  // 1. Authoritative: Planned start & end times (From - To)
+  // e.g. 08.00 - 09.00 = 1h, 13.00 - 14.00 = 1h, 01.00 - 02.00 = 1h, 20.00 - 21.00 = 1h, 07.00 - 19.00 = 11h
   if (row.plannedStartAt && row.plannedEndAt) {
     const startObj = new Date(row.plannedStartAt)
     const endObj = new Date(row.plannedEndAt)
@@ -295,13 +271,33 @@ function calculateSplDurationHours(
       const eMin = endObj.getHours() * 60 + endObj.getMinutes()
       let diffMin = eMin - sMin
       if (diffMin < 0) diffMin += 24 * 60
-      if (diffMin === 0) {
-        return 1
-      }
+      if (diffMin === 0) diffMin = 60
       let pH = Math.round((diffMin / 60) * 10) / 10
-      if (pH === 12) pH = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
+      if (pH >= 12) pH = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
       if (pH > 16) pH = 16
-      return pH
+      return Math.max(1, pH)
+    }
+  }
+
+  // 2. Specific worker credit minutes in participants (fallback if planned times missing)
+  if (row.participants && row.participants.length > 0) {
+    const pWithCredit = targetWorkerName
+      ? row.participants.find((p: any) => (p.employeeName || '').trim().toLowerCase() === targetWorkerName.trim().toLowerCase() && p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
+      : row.participants.find((p: any) => p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
+    if (pWithCredit && (pWithCredit as any).overtimeCreditMinutes) {
+      let crHours = Math.round(((pWithCredit as any).overtimeCreditMinutes / 60) * 10) / 10
+      if (crHours >= 12) crHours = 11
+      if (crHours > 0 && crHours <= 16) return crHours
+    }
+  }
+
+  // 3. Line items task duration fallback
+  if (row.lineItems && row.lineItems.length > 0) {
+    const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
+    if (mins > 0 && mins <= 960) {
+      let itemHours = Math.round((mins / 60) * 10) / 10
+      if (itemHours >= 12) itemHours = 11
+      return Math.min(itemHours, 16)
     }
   }
 
@@ -376,7 +372,12 @@ function buildOvertimeRecordMonthlyDays(
     })
 
     if (matchingRows.length > 0) {
-      const primaryRow = matchingRows[0]
+      const sortedMatching = [...matchingRows].sort((a, b) => {
+        const durA = calculateSplDurationHours(a)
+        const durB = calculateSplDurationHours(b)
+        return durB - durA
+      })
+      const primaryRow = sortedMatching[0]
 
       const startStr = primaryRow.plannedStartAt
         ? formatTime(primaryRow.plannedStartAt).replace(':', '.')
@@ -402,14 +403,8 @@ function buildOvertimeRecordMonthlyDays(
       let spanHours = Math.round((timeDiffMin / 60) * 10) / 10
       if (spanHours >= 12) spanHours = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
 
-      // Summary SPL strictly reflects SPL tasks/duration (NOT attendance mandatory overtime)
-      const itemHoursSum = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
-      let durHours = (itemHoursSum > 0 && itemHoursSum <= spanHours)
-        ? itemHoursSum
-        : (itemHoursSum > 0 && itemHoursSum <= 12 ? itemHoursSum : spanHours)
-      if (durHours >= 12) durHours = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
-      if (durHours <= 0) durHours = spanHours > 0 ? spanHours : 1
-      if (durHours === 12) durHours = 11
+      // Total Lembur SELALU 100% konsisten mengikuti selisih jam Mulai s/d Selesai yang tertera di kolom:
+      const durHours = spanHours > 0 ? spanHours : 1
 
       const taskSummaries = Array.from(
         new Set(

@@ -75,6 +75,11 @@ function isStaffRole(
     if (st.includes('non staff') || st.includes('non-staff') || st.includes('nonstaff')) {
       return false
     }
+    if (st.includes('staff') && !st.includes('non')) {
+      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim())) {
+        return true
+      }
+    }
   }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
@@ -107,21 +112,12 @@ function isStaffRole(
   if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
     return false
   }
-  if (employeeStatusType) {
-    const st = employeeStatusType.trim().toLowerCase()
-    if (st.includes('staff') && !st.includes('non')) {
-      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician)/i.test((role ?? '').trim())) {
-        return true
-      }
-    }
-  }
   if (combined.includes('staff')) return true
   if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
     return true
   }
   return false
 }
-
 function ScheduleV2FilterItem({
   filterKey,
   placeholder,
