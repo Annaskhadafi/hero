@@ -7643,24 +7643,45 @@ export function SchedulingTimesheetWorkspace({
   function getApprovedSplHoursForDay(employeeId: number, day: number): number {
     const docs = approvedSplDocumentsForDay(employeeId, day)
     if (docs.length === 0) return 0
-    let totalSpl = 0
+
+    const intervals: Array<{ start: number; end: number }> = []
+    let fallbackHours = 0
+
     for (const spl of docs) {
       if (!spl.plannedStartAt || !spl.plannedEndAt) {
         if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
-          totalSpl += spl.overtimeCreditMinutes / 60
+          fallbackHours += spl.overtimeCreditMinutes / 60
         }
         continue
       }
       const start = new Date(spl.plannedStartAt)
       const end = new Date(spl.plannedEndAt)
-      let diffMin = (end.getTime() - start.getTime()) / (60 * 1000)
-      if (diffMin < 0) diffMin += 24 * 60
-      if (diffMin === 0) diffMin = 60
-      let spanHours = Math.round((diffMin / 60) * 10) / 10
-      if (spanHours >= 12) spanHours = 11
-      totalSpl += spanHours > 0 ? spanHours : 0
+      let startMin = start.getUTCHours() * 60 + start.getUTCMinutes()
+      let endMin = end.getUTCHours() * 60 + end.getUTCMinutes()
+      if (endMin <= startMin) endMin += 1440
+      intervals.push({ start: startMin, end: endMin })
     }
-    return roundOvertimeHours(totalSpl)
+
+    if (intervals.length === 0) return roundOvertimeHours(fallbackHours)
+
+    intervals.sort((a, b) => a.start - b.start)
+    const merged: Array<{ start: number; end: number }> = []
+    for (const cur of intervals) {
+      const prev = merged[merged.length - 1]
+      if (!prev) {
+        merged.push({ ...cur })
+      } else if (cur.start <= prev.end) {
+        prev.end = Math.max(prev.end, cur.end)
+      } else {
+        merged.push({ ...cur })
+      }
+    }
+
+    let totalMin = 0
+    for (const item of merged) totalMin += (item.end - item.start)
+    let span = Math.round((totalMin / 60) * 10) / 10
+    if (span >= 12) span = 11
+    return roundOvertimeHours(span)
   }
 
   function calculateTotalDayOvertime(
@@ -7741,16 +7762,16 @@ export function SchedulingTimesheetWorkspace({
         return {
           lemburWajib: 0,
           lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'OFF',
+          totalOvertime: Math.min(11, splHours),
+          displayValue: splHours > 0 ? String(roundOvertimeHours(Math.min(11, splHours))) : 'OFF',
         }
       }
       if (splHours > 0) {
         return {
           lemburWajib: 0,
           lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: String(roundOvertimeHours(splHours)),
+          totalOvertime: Math.min(11, splHours),
+          displayValue: String(roundOvertimeHours(Math.min(11, splHours))),
         }
       }
       if (scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS') {
@@ -7788,11 +7809,12 @@ export function SchedulingTimesheetWorkspace({
 
     let totalOvertime = 0
     if (isRosterOff) {
-      // Di hari libur (OFF): Total lembur murni SPL (misal 11 jam) atau override jam libur (tidak ada lembur wajib)
-      totalOvertime = splHours > 0 ? splHours : (cell.overtimeHours ? Number(cell.overtimeHours) : 0)
+      // Di hari libur (OFF): Total lembur murni SPL (misal 11 jam) atau override jam libur (tidak ada lembur wajib), maksimal 11 jam
+      const offTotal = splHours > 0 ? splHours : (cell.overtimeHours ? Number(cell.overtimeHours) : 0)
+      totalOvertime = Math.min(11, roundOvertimeHours(offTotal))
     } else {
-      // Di hari kerja (DS / NS): Total lembur = Lembur Wajib (4j atau 6j) + Lembur SPL
-      totalOvertime = roundOvertimeHours(lemburWajib + splHours)
+      // Di hari kerja (DS / NS): Total lembur = Lembur Wajib (4j atau 6j) + Lembur SPL, maksimal 14 jam
+      totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + splHours))
     }
 
     const displayValue = totalOvertime > 0 ? String(totalOvertime) : (isRosterOff ? 'OFF' : '')
@@ -12843,9 +12865,8 @@ export function SchedulingTimesheetWorkspace({
                                           const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
 
                                           if (attendanceView === 'ovt_spl') {
-                                            const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
                                             const documents = approvedSplDocumentsForDay(row.employee.id, day)
-                                            const splHours = roundOvertimeHours((overtime?.splMinutes ?? 0) / 60)
+                                            const splHours = getApprovedSplHoursForDay(row.employee.id, day)
                                             return (
                                               <td key={day} className="w-[52px] min-w-[52px] border-x border-b border-slate-200/80 bg-white px-0.5 py-1.5 text-center text-[10px]">
                                                 {documents.length === 1 ? (
@@ -13299,32 +13320,26 @@ export function SchedulingTimesheetWorkspace({
                                                 )
                                                   continue
 
-                                                // Skip if no allowance (izin/sakit/alpha/empty workday)
-                                                // OVT: only count present days
-                                                if (
-                                                  (attendanceView === 'ovt' || attendanceView === 'ovt_spl') &&
-                                                  cell.status !== 'present'
-                                                )
-                                                  continue
                                                 if (attendanceView === 'msa') {
+                                                  if (isFbPeriod) continue
                                                   total += allowance.msaAmount
                                                 } else if (attendanceView === 'meals') {
+                                                  if (isFbPeriod) continue
                                                   total += allowance.mealsAmount
-                                                } else {
-                                                  // OVT only for non-staff
+                                                } else if (attendanceView === 'ovt_spl') {
                                                   if (!staff) {
-                                                    const overtime = calculateDayOvertime(
+                                                    total += getApprovedSplHoursForDay(row.employee.id, day)
+                                                  }
+                                                } else if (attendanceView === 'ovt') {
+                                                  if (!staff) {
+                                                    const otInfo = calculateTotalDayOvertime(
                                                       row.schedule,
                                                       day,
-                                                      cell.clockIn,
-                                                      cell.clockOut,
-                                                      staff,
+                                                      cell,
                                                       row.employee.id,
-                                                      true
+                                                      staff
                                                     )
-                                                    total += attendanceView === 'ovt_spl'
-                                                      ? roundOvertimeHours((splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0) / 60)
-                                                      : (overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime))
+                                                    total += otInfo.totalOvertime
                                                   }
                                                 }
                                               }

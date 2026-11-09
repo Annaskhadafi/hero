@@ -61,13 +61,63 @@ function roundOvertimeHours(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function mergeSplIntervals(
+  docs: Array<{ plannedStartAt?: string; plannedEndAt?: string; overtimeCreditMinutes?: number }>
+): number {
+  const intervals: Array<{ start: number; end: number }> = [];
+  let fallbackHours = 0;
+
+  for (const spl of docs) {
+    if (!spl.plannedStartAt || !spl.plannedEndAt) {
+      if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
+        fallbackHours += spl.overtimeCreditMinutes / 60;
+      }
+      continue;
+    }
+    const start = new Date(spl.plannedStartAt);
+    const end = new Date(spl.plannedEndAt);
+    let startMin = start.getUTCHours() * 60 + start.getUTCMinutes();
+    let endMin = end.getUTCHours() * 60 + end.getUTCMinutes();
+    if (endMin <= startMin) endMin += 1440;
+    intervals.push({ start: startMin, end: endMin });
+  }
+
+  if (intervals.length === 0) return Math.round(fallbackHours * 10) / 10;
+
+  intervals.sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [];
+  for (const cur of intervals) {
+    const prev = merged[merged.length - 1];
+    if (!prev) {
+      merged.push({ ...cur });
+    } else if (cur.start <= prev.end) {
+      prev.end = Math.max(prev.end, cur.end);
+    } else {
+      merged.push({ ...cur });
+    }
+  }
+
+  let totalMin = 0;
+  for (const item of merged) totalMin += item.end - item.start;
+  let span = Math.round((totalMin / 60) * 10) / 10;
+  if (span >= 12) span = 11;
+  return span;
+}
+
 function calculateTotalOvertimeForDay(
   isOffOrSunday: boolean,
   baseWajib: number,
-  splHours: number
+  splHours: number,
+  manualOverrideHours?: number
 ): { lemburWajib: number; lemburSpl: number; total: number } {
-  const lemburWajib = isOffOrSunday ? 0 : baseWajib;
-  const total = roundOvertimeHours(lemburWajib + splHours);
+  const lemburWajib = isOffOrSunday ? 0 : (baseWajib === 6 ? 6 : 4);
+  let total = 0;
+  if (isOffOrSunday) {
+    const offHours = splHours > 0 ? splHours : (manualOverrideHours ?? 0);
+    total = Math.min(11, roundOvertimeHours(offHours));
+  } else {
+    total = Math.min(14, roundOvertimeHours(lemburWajib + splHours));
+  }
   return { lemburWajib, lemburSpl: splHours, total };
 }
 
@@ -106,6 +156,32 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(res.lemburWajib).toBe(0);
     expect(res.lemburSpl).toBe(11);
     expect(res.total).toBe(11);
+  });
+
+  it('correctly merges duplicate/overlapping SPL documents into a single time span', () => {
+    const duplicateDocs = [
+      { plannedStartAt: '2026-10-02T08:00:00Z', plannedEndAt: '2026-10-02T12:00:00Z' },
+      { plannedStartAt: '2026-10-02T08:00:00Z', plannedEndAt: '2026-10-02T12:00:00Z' },
+    ];
+    const merged = mergeSplIntervals(duplicateDocs);
+    expect(merged).toBe(4); // Not 4 + 4 = 8
+  });
+
+  it('prevents 22h anomaly on OFF days when manual override exists with SPL (capped at 11h)', () => {
+    // Before fix: 11h override + 11h SPL = 22h
+    // After fix: wajib is 0 on OFF, and total is purely the SPL (11h)
+    const res = calculateTotalOvertimeForDay(true, 4, 11, 11);
+    expect(res.lemburWajib).toBe(0);
+    expect(res.total).toBe(11);
+    expect(res.total).not.toBe(22);
+  });
+
+  it('clamps work day overtime to maximum 14 hours and OFF day to 11 hours', () => {
+    const workDayOvertime = calculateTotalOvertimeForDay(false, 4, 15);
+    expect(workDayOvertime.total).toBe(14);
+
+    const offDayOvertime = calculateTotalOvertimeForDay(true, 0, 15);
+    expect(offDayOvertime.total).toBe(11);
   });
 
   it('generates Overtime Summary PDF with Albert and Aditia data correctly', async () => {
