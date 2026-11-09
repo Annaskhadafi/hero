@@ -83,3 +83,16 @@ test('photo support: components/summary/summary-generator-modal.tsx includes cam
   assert.ok(content.includes('Wajib melampirkan minimal 1 foto bukti fisik APD'), 'Must validate required photos for manual APD');
   assert.ok(content.includes('previewingPhotos'), 'Must support photo lightbox preview');
 });
+
+
+test('camera modal resilience: components/five-r/five-r-camera-modal.tsx handles NotAllowedError and Permission dismissed gracefully without console.error', () => {
+  const cameraModalPath = path.join(process.cwd(), 'components/five-r/five-r-camera-modal.tsx');
+  const content = fs.readFileSync(cameraModalPath, 'utf8');
+
+  assert.ok(!content.includes('console.error'), 'Must not call console.error on camera permission errors to prevent Next.js dev overlay');
+  assert.ok(content.includes('console.warn'), 'Must use console.warn for camera warnings');
+  assert.ok(content.includes('NotAllowedError'), 'Must handle NotAllowedError');
+  assert.ok(content.includes('dismissed'), 'Must detect dismissed permission');
+  assert.ok(content.includes('Pilih dari Galeri / File'), 'Must provide fallback gallery/file picker button');
+  assert.ok(content.includes('fileInputRef'), 'Must support file input ref for direct file upload');
+});

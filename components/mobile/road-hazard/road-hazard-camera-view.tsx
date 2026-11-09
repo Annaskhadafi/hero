@@ -345,7 +345,7 @@ export function RoadHazardCameraView({
       const capabilities: any = track?.getCapabilities?.() || {}
       setHasTorch(Boolean(capabilities.torch))
     } catch (err) {
-      console.error('[road-hazard-camera] Error starting camera:', err)
+      console.warn('[road-hazard-camera] Error starting camera:', err)
       toast.error('Gagal mengakses kamera. Pastikan izin kamera aktif.')
       setCameraActive(false)
     }

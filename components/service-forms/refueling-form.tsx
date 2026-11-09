@@ -206,7 +206,7 @@ function LiveCameraModal({
           await videoRef.current.play().catch(() => {})
         }
       } catch (err: any) {
-        console.error('Camera access error:', err)
+        console.warn('Camera access error:', err)
         setError(
           'Tidak dapat mengakses kamera. Pastikan izin kamera telah diberikan pada browser atau coba pilih file gambar dari Galeri.'
         )

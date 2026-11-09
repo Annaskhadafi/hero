@@ -433,7 +433,7 @@ export default function AttendancePage() {
           await videoRef.current.play().catch(() => undefined);
         }
       } catch (err) {
-        console.error("Camera access error:", err);
+        console.warn("Camera access error:", err);
         setCameraError("Camera belum bisa diakses. Izinkan kamera lalu refresh halaman.");
       }
     }

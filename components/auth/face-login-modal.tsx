@@ -59,7 +59,7 @@ export function FaceLoginModal({ isOpen, onClose, onSuccess, identifier }: FaceL
         };
       }
     } catch (err: any) {
-      console.error("[FaceLoginModal] Camera permission error:", err);
+      console.warn("[FaceLoginModal] Camera permission error:", err);
       setStatus("error");
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
         setErrorMessage("Akses kamera ditolak. Berikan izin kamera di browser untuk menggunakan login biometrik.");
