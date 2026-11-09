@@ -7762,25 +7762,40 @@ export function SchedulingTimesheetWorkspace({
     // Cell is present
     let lemburWajib = 0
     if (isRosterOff) {
+      // Pada hari libur / roster OFF: TIDAK ADA lembur wajib (selalu 0 jam)
       lemburWajib = 0
-    } else if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-      lemburWajib = Number(cell.overtimeHours)
     } else {
-      const overtime = calculateDayOvertime(
-        schedule,
-        day,
-        cell.clockIn,
-        cell.clockOut,
-        staff,
-        employeeId,
-        true
-      )
-      const autoWajib = mandatoryOvertimeHours(overtime)
-      lemburWajib = autoWajib > 0 ? autoWajib : 4
+      // Lembur wajib HANYA 4 jam atau 6 jam untuk shift kerja hadir
+      let wajibCandidate = 4
+      if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
+        const val = Number(cell.overtimeHours)
+        wajibCandidate = val === 6 ? 6 : 4
+      } else {
+        const overtime = calculateDayOvertime(
+          schedule,
+          day,
+          cell.clockIn,
+          cell.clockOut,
+          staff,
+          employeeId,
+          true
+        )
+        const autoWajib = mandatoryOvertimeHours(overtime)
+        wajibCandidate = autoWajib === 6 ? 6 : 4
+      }
+      lemburWajib = wajibCandidate
     }
 
-    const totalOvertime = roundOvertimeHours(lemburWajib + splHours)
-    const displayValue = totalOvertime > 0 ? String(totalOvertime) : ''
+    let totalOvertime = 0
+    if (isRosterOff) {
+      // Di hari libur (OFF): Total lembur murni SPL (misal 11 jam) atau override jam libur (tidak ada lembur wajib)
+      totalOvertime = splHours > 0 ? splHours : (cell.overtimeHours ? Number(cell.overtimeHours) : 0)
+    } else {
+      // Di hari kerja (DS / NS): Total lembur = Lembur Wajib (4j atau 6j) + Lembur SPL
+      totalOvertime = roundOvertimeHours(lemburWajib + splHours)
+    }
+
+    const displayValue = totalOvertime > 0 ? String(totalOvertime) : (isRosterOff ? 'OFF' : '')
     return { lemburWajib, lemburSpl: splHours, totalOvertime, displayValue }
   }
 
