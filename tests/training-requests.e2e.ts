@@ -3,11 +3,10 @@ import { expect } from 'e2e';
 import { loginToHero } from './e2e-auth-helper';
 
 test('verify training request attachment features, full-width, mobile view, and approver selection', async ({ app, screen, browser, agent }) => {
-  // 1. Login to HERO
-  await loginToHero(app, screen, browser);
+  // 1. Login to HERO with targetUrl
+  await loginToHero(app, screen, browser, '/dashboard/training/pengajuan');
 
-  // 2. Navigate to /dashboard/training/pengajuan
-  await app.open('/dashboard/training/pengajuan');
+  // 2. Verify dashboard loaded
   await expect(screen.getByText('Pengajuan Training & Lokakarya')).toBeVisible();
   await app.screenshot('training-requests-desktop-page');
 

@@ -108,6 +108,9 @@ export function TrainingRequestFormDialog({
   const [attachmentUrl, setAttachmentUrl] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [uploadBytes, setUploadBytes] = useState<{ loaded: number; total: number }>({ loaded: 0, total: 0 })
+  const [uploadStage, setUploadStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle')
 
   // Custom Approvers
   const [approvers, setApprovers] = useState<ApproverStepInput[]>([
@@ -279,25 +282,87 @@ export function TrainingRequestFormDialog({
     const file = e.target.files?.[0]
     if (!file) return
 
-    setIsUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('uploadTarget', 'training-requests')
-      formData.append('folder', 'training-requests')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas melebihi batas maksimal 15MB.')
+      return
+    }
 
-      const res = await uploadFile(formData)
-      if (res && res.success && res.url) {
-        setAttachmentUrl(res.url)
+    setIsUploading(true)
+    setUploadProgress(0)
+    setUploadBytes({ loaded: 0, total: file.size })
+    setUploadStage('uploading')
+
+    try {
+      const result = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            const pct = Math.min(99, Math.round((event.loaded / event.total) * 100))
+            setUploadProgress(pct)
+            setUploadBytes({ loaded: event.loaded, total: event.total })
+          }
+        }
+
+        xhr.upload.onload = () => {
+          setUploadProgress(100)
+          setUploadBytes({ loaded: file.size, total: file.size })
+          setUploadStage('processing')
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText))
+            } catch {
+              reject(new Error('Respon server tidak valid'))
+            }
+          } else {
+            try {
+              const err = JSON.parse(xhr.responseText)
+              reject(new Error(err?.error || `Upload gagal (${xhr.status})`))
+            } catch {
+              reject(new Error(`Upload gagal (${xhr.status})`))
+            }
+          }
+        }
+
+        xhr.onerror = () => reject(new Error('Koneksi upload ke server terputus'))
+        xhr.ontimeout = () => reject(new Error('Waktu upload habis (timeout)'))
+        xhr.timeout = 240_000
+
+        xhr.open('POST', '/api/uploads/document')
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('uploadTarget', 'training-requests')
+        formData.append('folder', 'training-requests')
+        xhr.send(formData)
+      }).catch(async (xhrError) => {
+        console.warn('[FormDialog] Direct stream upload error, falling back to Server Action:', xhrError)
+        const fallbackFormData = new FormData()
+        fallbackFormData.append('file', file)
+        fallbackFormData.append('uploadTarget', 'training-requests')
+        fallbackFormData.append('folder', 'training-requests')
+        return await uploadFile(fallbackFormData)
+      })
+
+      if (result && result.success && result.url) {
+        setAttachmentUrl(result.url)
         setAttachmentName(file.name)
+        setUploadStage('done')
         toast.success(`Berkas ${file.name} berhasil diunggah`)
       } else {
-        toast.error(res?.error || 'Gagal mengunggah berkas')
+        toast.error(result?.error || 'Gagal mengunggah berkas')
+        setUploadStage('idle')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Gagal mengunggah berkas')
+      setUploadStage('idle')
     } finally {
       setIsUploading(false)
+      if (e.target) {
+        e.target.value = ''
+      }
     }
   }
 
@@ -932,7 +997,39 @@ export function TrainingRequestFormDialog({
               </h3>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {isUploading && (
+                <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl space-y-2 shadow-xs animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 font-bold text-[#003461]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                      <span>
+                        {uploadStage === 'processing'
+                          ? 'Menyimpan ke S3 Cloud Storage...'
+                          : 'Mengunggah berkas ke server...'}
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-blue-700 tabular-nums text-sm">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-300/70 shadow-inner">
+                    <div
+                      className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 h-full rounded-full transition-all duration-150 ease-out shadow-xs"
+                      style={{ width: `${Math.max(4, uploadProgress)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-600">
+                    <span className="font-medium text-slate-600">Progres Transmisi</span>
+                    <span className="tabular-nums font-semibold text-slate-500">
+                      {(uploadBytes.loaded / (1024 * 1024)).toFixed(2)} MB / {(uploadBytes.total / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 <label className="cursor-pointer">
                   <input
