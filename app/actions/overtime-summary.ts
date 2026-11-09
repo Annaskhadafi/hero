@@ -83,7 +83,8 @@ function calculateDurationHours(startAt?: string | null, endAt?: string | null):
     const s = new Date(startAt).getTime()
     const e = new Date(endAt).getTime()
     if (isNaN(s) || isNaN(e) || e <= s) return 0
-    const diffHours = (e - s) / (1000 * 60 * 60)
+    let diffHours = (e - s) / (1000 * 60 * 60)
+    if (diffHours >= 12) diffHours = 11 // Continuous shift of 12 hours has 1h mandatory rest -> 11h
     return Math.round(diffHours * 10) / 10
   } catch {
     return 0

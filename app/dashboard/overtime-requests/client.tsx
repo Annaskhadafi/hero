@@ -2326,17 +2326,19 @@ export function OvertimeListingClient({
         const empSn = (empObj as any)?.employee_sn || (empObj as any)?.nip || '—'
         const dept = (empObj as any)?.department || spl.requesterDepartment || 'Central Services'
 
-        // Clean consistent startTime and endTime (endTime = startTime + duration)
+        // Clean consistent startTime and endTime
         let startStr = spl.plannedStartAt ? formatTime(spl.plannedStartAt).replace(':', '.') : '17.00'
-        if (!startStr || startStr === '—') startStr = '17.00'
+        if (!startStr || startStr === '—' || startStr === '-') startStr = '17.00'
 
-        const [sH, sM] = startStr.split('.').map((v) => parseInt(v, 10) || 0)
-        const totalStartMin = sH * 60 + sM
-        const totalEndMin = totalStartMin + Math.round(duration * 60)
-        const endH = Math.floor(totalEndMin / 60) % 24
-        const endM = totalEndMin % 60
-        const endStr = `${String(endH).padStart(2, '0')}.${String(endM).padStart(2, '0')}`
-
+        let endStr = spl.plannedEndAt ? formatTime(spl.plannedEndAt).replace(':', '.') : ''
+        if (!endStr || endStr === '—' || endStr === '-') {
+          const [sH, sM] = startStr.split('.').map((v) => parseInt(v, 10) || 0)
+          const totalStartMin = sH * 60 + sM
+          const totalEndMin = totalStartMin + Math.round(duration * 60)
+          const endH = Math.floor(totalEndMin / 60) % 24
+          const endM = totalEndMin % 60
+          endStr = `${String(endH).padStart(2, "0")}.${String(endM).padStart(2, "0")}`
+        }
         siteRows.push({
           dateStr,
           dayName,
