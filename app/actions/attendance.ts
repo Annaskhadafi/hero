@@ -842,7 +842,7 @@ export async function submitAttendance(formData: FormData) {
 
     const siteConfig = await getSiteAttendanceClockConfig(employee.siteId)
     const empLevelName = (employee as Record<string, unknown>).levelName as string | undefined
-    const isStaff = isStaffRole(employee.role, employee.jobTitle, empLevelName)
+    const isStaff = isStaffRole(employee.role, employee.jobTitle, empLevelName, (employee as Record<string, unknown>).employeeStatusType as string | undefined)
     const offDayCheck = checkEmployeeOffDayStatus({
       eventTime: evalDate,
       role: employee.role,

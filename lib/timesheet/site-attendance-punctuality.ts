@@ -84,7 +84,7 @@ export async function resolveSiteAttendancePunctuality(input: {
       .limit(1)
 
     if (emp) {
-      isStaff = isStaffRole(emp.role, emp.jobTitle, emp.levelName)
+      isStaff = isStaffRole(emp.role, emp.jobTitle, emp.levelName, (emp as any).employeeStatusType)
     }
   }
 

@@ -448,7 +448,7 @@ export async function POST(request: NextRequest) {
     const gpsFlag = lat === 0 && lng === 0 ? '[gps-unavailable] ' : ''
     const accuracyNote =
       accuracyMeters === null ? '' : ` | GPS ${Math.round(accuracyMeters)}m accuracy`
-    const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+    const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: sId,
       eventType: resolvedEventType,

@@ -215,6 +215,7 @@ type EmployeeOption = {
   siteLocation?: string | null
   siteId: number | null
   locationName?: string | null
+  employeeStatusType?: string | null
 }
 
 type SiteOption = {
@@ -1029,8 +1030,15 @@ function normalizeLocation(value: string) {
 function isStaffRole(
   role?: string | null,
   jobTitle?: string | null,
-  levelName?: string | null
+  levelName?: string | null,
+  employeeStatusType?: string | null
 ): boolean {
+  if (employeeStatusType) {
+    const st = employeeStatusType.trim().toLowerCase()
+    if (st.includes('non staff') || st.includes('non-staff') || st.includes('nonstaff')) {
+      return false
+    }
+  }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
     if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
@@ -1065,6 +1073,14 @@ function isStaffRole(
     return false
   }
   // Explicit "staff" without "non" = staff
+  if (employeeStatusType) {
+    const st = employeeStatusType.trim().toLowerCase()
+    if (st.includes('staff') && !st.includes('non')) {
+      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician)/i.test((role ?? '').trim())) {
+        return true
+      }
+    }
+  }
   if (combined.includes('staff')) return true
   // Managerial, leadership, engineering, specialist, analytical, administrative = staff
   if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
@@ -2815,7 +2831,7 @@ export function SchedulingTimesheetWorkspace({
 
           // In schedule builder draft mode, generate roster pattern according to site's configured rosterType
           const scheduleType = siteConfig.scheduleType || siteScheduleTypes[siteId] || 'office'
-          const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+          const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
           const effectiveRosterType =
             scheduleType === 'hybrid'
               ? isStaff
@@ -2858,7 +2874,7 @@ export function SchedulingTimesheetWorkspace({
         const msaDays = schedule.filter((code) => isMsaEligibleDay(code)).length
         const fieldBreakDays = schedule.filter((code) => code === 'FB').length
         const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
-        const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+        const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
         const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
         const empRate = getAllowanceRateForEmployee(employee)
         const benefitRule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
@@ -5124,7 +5140,7 @@ export function SchedulingTimesheetWorkspace({
     const empObj = employees.find((e) => e.id === employeeId)
     const empSiteId =
       empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
-    const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName)
+    const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName, empObj?.employeeStatusType)
 
     let cellClockConfig = effectiveSiteClockConfig
     if (empSiteId != null) {
@@ -5884,7 +5900,7 @@ export function SchedulingTimesheetWorkspace({
   const attendanceConflicts =
     mode === 'attendance'
       ? rows.flatMap((row) => {
-          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           return row.schedule
             .map((code, index) => {
               const day = index + 1
@@ -6352,7 +6368,7 @@ export function SchedulingTimesheetWorkspace({
       await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     const employeeSchedule = employeeRow?.schedule ?? []
-    const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+    const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
     const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
     const dayData = buildAttendanceDayData({
       period,
@@ -6607,7 +6623,7 @@ export function SchedulingTimesheetWorkspace({
     for (const [dept, sections] of grouped) {
       for (const [section, sectionRows] of sections) {
         for (const row of sectionRows) {
-          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           // Nilai tiap hari — samakan persis dengan tabel di layar
           const dailyValues = days.map((day) => {
             const code = row.schedule[day - 1] as string
@@ -7726,7 +7742,7 @@ export function SchedulingTimesheetWorkspace({
 
   function getAllowanceAmounts(row: (typeof rows)[number], day: number) {
     const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
-    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
     const rule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
       manpower: row.employee.manpower,
       pointOfHire: row.employee.pointOfHire,
@@ -7767,7 +7783,7 @@ export function SchedulingTimesheetWorkspace({
   const payrollRows =
     mode === 'payroll'
       ? rows.map((row) => {
-          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           let msaDays = 0
           let mealsDays = 0
           let msa = 0
@@ -7856,7 +7872,7 @@ export function SchedulingTimesheetWorkspace({
                     day,
                     cell.clockIn,
                     cell.clockOut,
-                    isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName),
+                    isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType),
                     row.employee.id
                   ).totalHours
                 : 0
@@ -7890,7 +7906,7 @@ export function SchedulingTimesheetWorkspace({
     let totalTlk = 0
     let totalOvertimeHours = 0
     const items = payrollRows.flatMap((row) => {
-      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
       return days.map((day) => {
         const cell = getAttendanceCell(row.employee.id, day)
         const scheduleCode = row.schedule[day - 1] as string
@@ -7971,7 +7987,7 @@ export function SchedulingTimesheetWorkspace({
   function buildTimesheetExportRows(targetTab: TimesheetExportTab): TimesheetEmployeeExportRow[] {
     const sourceRows = displayedAttendanceRows.length > 0 ? displayedAttendanceRows : rows
     return sourceRows.map((row) => {
-      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
       const daysData: TimesheetDayData[] = []
       let attPresent = 0
       let attOff = 0
@@ -12713,7 +12729,7 @@ export function SchedulingTimesheetWorkspace({
                                             scheduleCode === 'FB' ||
                                             scheduleCode === 'Libur' ||
                                             scheduleCode === 'Sakit'
-                                          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+                                          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
 
                                           if (attendanceView === 'ovt_spl') {
                                             const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
@@ -13179,7 +13195,7 @@ export function SchedulingTimesheetWorkspace({
                                         {/* Total column for MSA/Meals/OVT views */}
                                         {attendanceView !== 'attendance'
                                           ? (() => {
-                                              const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+                                              const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
                                               let total = 0
                                               for (const day of days) {
                                                 const cell = getAttendanceCell(row.employee.id, day)
@@ -14220,7 +14236,7 @@ export function SchedulingTimesheetWorkspace({
                     (dialogRosterCode === 'NS' && dialogActualShiftCode === 'DS'))
                 const dialogNeedsShiftCheck =
                   dialogIsShiftMismatch || (selectedAttendanceValue.lateMinutes ?? 0) > 60
-                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role, selectedAttendanceEmployee?.jobTitle, selectedAttendanceEmployee?.levelName)
+                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role, selectedAttendanceEmployee?.jobTitle, selectedAttendanceEmployee?.levelName, selectedAttendanceEmployee?.employeeStatusType)
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,

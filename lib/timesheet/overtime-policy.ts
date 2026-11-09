@@ -567,13 +567,15 @@ export function calculateConfiguredOvertime(params: {
   const hasAuto = autoEligible.length > 0 || outsideEligibleWithoutSpl.length > 0
   const hasSpl = splEligible.length > 0
   const fixedSplMinutes = Math.max(0, ...matchedSpl.map((item) => item.fixedMinutes))
-  const calculatedTotalMinutes = fixedSplMinutes || totalMinutes(eligible)
+  const effectiveSplMinutes = fixedSplMinutes || totalMinutes(splEligible)
+  const autoAndOutsideMinutes = totalMinutes(autoEligible) + totalMinutes(outsideEligibleWithoutSpl)
+  const calculatedTotalMinutes = autoAndOutsideMinutes + effectiveSplMinutes
 
   return {
     totalMinutes: calculatedTotalMinutes,
     totalHours: calculatedTotalMinutes / 60,
     autoMinutes: totalMinutes(autoEligible),
-    splMinutes: totalMinutes(splEligible),
+    splMinutes: effectiveSplMinutes,
     unauthorizedMinutes:
       unauthorizedTotal >= params.config.splPolicy.minimumMinutes ? unauthorizedTotal : 0,
     source: hasAuto && hasSpl ? 'Auto + SPL' : hasAuto ? 'Auto' : hasSpl ? 'SPL' : 'None',

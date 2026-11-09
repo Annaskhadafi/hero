@@ -261,17 +261,7 @@ function calculateSplDurationHours(
   dayNum?: number,
   attendanceLookupMap?: Map<string, AttendanceOverrideItem>
 ): number {
-  // 1. Direct Attendance Real Override Lookup if targetEmployeeId, period, and day provided
-  if (targetEmployeeId && periodMonth && dayNum && attendanceLookupMap) {
-    const att = attendanceLookupMap.get(`${targetEmployeeId}:${periodMonth}:${dayNum}`)
-    if (att && att.overtimeHours != null && !isNaN(Number(att.overtimeHours)) && Number(att.overtimeHours) > 0) {
-      let ot = Number(att.overtimeHours)
-      if (ot === 12) ot = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
-      if (ot > 0 && ot <= 16) return ot
-    }
-  }
-
-  // 2. Specific worker credit minutes in participants (Authoritative per employee)
+  // 1. Specific worker credit minutes in participants (Authoritative per employee for this SPL)
   if (row.participants && row.participants.length > 0) {
     const pWithCredit = targetWorkerName
       ? row.participants.find((p: any) => (p.employeeName || '').trim().toLowerCase() === targetWorkerName.trim().toLowerCase() && p.overtimeCreditMinutes != null && p.overtimeCreditMinutes > 0)
@@ -283,14 +273,7 @@ function calculateSplDurationHours(
     }
   }
 
-  // 3. Attendance actualOvertimeHours attached on the row
-  if (row.actualOvertimeHours != null && !isNaN(Number(row.actualOvertimeHours)) && Number(row.actualOvertimeHours) > 0) {
-    let attOt = Number(row.actualOvertimeHours)
-    if (attOt === 12) attOt = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
-    if (attOt > 0 && attOt <= 16) return attOt
-  }
-
-  // 4. Line items task duration (e.g. 660 mins = 11h, 120 mins = 2h, 60 mins = 1h)
+  // 2. Line items task duration (e.g. 660 mins = 11h, 120 mins = 2h, 60 mins = 1h)
   let itemHours = 0
   if (row.lineItems && row.lineItems.length > 0) {
     const mins = row.lineItems.reduce((acc, item) => acc + (item.estimatedMinutes || 0), 0)
@@ -419,22 +402,13 @@ function buildOvertimeRecordMonthlyDays(
       let spanHours = Math.round((timeDiffMin / 60) * 10) / 10
       if (spanHours >= 12) spanHours = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
 
-      // Check if primaryRow or any matching row has an attendance real actualOvertimeHours (e.g. 11h override)
-      const rowWithAtt = matchingRows.find((r) => r.actualOvertimeHours != null && !isNaN(Number(r.actualOvertimeHours)) && Number(r.actualOvertimeHours) > 0)
-      const attHoursRaw = rowWithAtt ? Number(rowWithAtt.actualOvertimeHours) : null
-      const attHours = attHoursRaw === 12 ? 11 : attHoursRaw
-
-      let durHours: number
-      if (attHours != null && attHours > 0 && attHours <= 12) {
-        durHours = attHours
-      } else {
-        const itemHoursSum = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
-        durHours = (itemHoursSum > 0 && itemHoursSum <= spanHours)
-          ? itemHoursSum
-          : (itemHoursSum > 0 && itemHoursSum <= 12 ? itemHoursSum : spanHours)
-        if (durHours >= 12) durHours = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
-        if (durHours <= 0) durHours = spanHours > 0 ? spanHours : 1
-      }
+      // Summary SPL strictly reflects SPL tasks/duration (NOT attendance mandatory overtime)
+      const itemHoursSum = matchingRows.reduce((acc, r) => acc + calculateSplDurationHours(r), 0)
+      let durHours = (itemHoursSum > 0 && itemHoursSum <= spanHours)
+        ? itemHoursSum
+        : (itemHoursSum > 0 && itemHoursSum <= 12 ? itemHoursSum : spanHours)
+      if (durHours >= 12) durHours = 11 // 12-hour continuous shift has 1h mandatory rest -> 11h
+      if (durHours <= 0) durHours = spanHours > 0 ? spanHours : 1
       if (durHours === 12) durHours = 11
 
       const taskSummaries = Array.from(

@@ -67,8 +67,15 @@ import { isWeekend } from '@/lib/timesheet-scheduling'
 function isStaffRole(
   role?: string | null,
   jobTitle?: string | null,
-  levelName?: string | null
+  levelName?: string | null,
+  employeeStatusType?: string | null
 ): boolean {
+  if (employeeStatusType) {
+    const st = employeeStatusType.trim().toLowerCase()
+    if (st.includes('non staff') || st.includes('non-staff') || st.includes('nonstaff')) {
+      return false
+    }
+  }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
     if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
@@ -99,6 +106,14 @@ function isStaffRole(
   if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
   if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
     return false
+  }
+  if (employeeStatusType) {
+    const st = employeeStatusType.trim().toLowerCase()
+    if (st.includes('staff') && !st.includes('non')) {
+      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician)/i.test((role ?? '').trim())) {
+        return true
+      }
+    }
   }
   if (combined.includes('staff')) return true
   if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
@@ -190,7 +205,7 @@ function createPrefilledScheduleV2(employees: Employee[], period: string, schedu
 
   return emptyRows.map((row) => {
     const employee = employees.find((e) => e.id === row.employeeId)
-    const isStaff = isStaffRole(employee?.role, employee?.jobTitle, employee?.levelName)
+    const isStaff = isStaffRole(employee?.role, employee?.jobTitle, employee?.levelName, (employee as any)?.employeeStatusType)
     if (isOffice || (isHybrid && isStaff)) {
       const schedule = row.schedule.map((code, index) =>
         isWeekend(period, index + 1) ? 'OFF' : code

@@ -136,7 +136,7 @@ export async function verifyAndSubmitFaceAttendanceAction(params: FaceAttendance
     const shiftLabel = shiftCode === 'night' ? 'Shift Malam' : 'Shift Pagi'
 
     // Compute punctuality
-    const isStaff = isStaffRole(currentEmp.role, currentEmp.jobTitle, currentEmp.levelName)
+    const isStaff = isStaffRole(currentEmp.role, currentEmp.jobTitle, currentEmp.levelName, currentEmp.employeeStatusType)
     const punctuality = await resolveSiteAttendancePunctuality({
       siteId: targetSiteId,
       eventType,
