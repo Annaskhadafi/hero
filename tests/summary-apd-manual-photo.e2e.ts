@@ -4,6 +4,16 @@ import { loginToHero } from './e2e-auth-helper';
 import path from 'path';
 import fs from 'fs';
 
+async function hideDevOverlay(browser: any) {
+  try {
+    await browser.evaluate(() => {
+      document.querySelectorAll('nextjs-portal, [data-nextjs-toast], [data-nextjs-dev-overlay]').forEach((el) => {
+        (el as HTMLElement).style.display = 'none';
+      });
+    });
+  } catch {}
+}
+
 test('verifies manual APD request photo upload, validation, and table indicator in Summary APD', async ({
   app,
   screen,
@@ -20,7 +30,8 @@ test('verifies manual APD request photo upload, validation, and table indicator 
   await expect(titleElem).toBeVisible({ timeout: 45000 });
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Screenshot 1: Summary APD Dashboard
+  // Hide dev overlay if any and take Screenshot 1
+  await hideDevOverlay(browser);
   await app.screenshot('01-summary-apd-dashboard');
 
   // 2. Click "Buat Summary" or "Generate" button on the first available section card
@@ -45,7 +56,8 @@ test('verifies manual APD request photo upload, validation, and table indicator 
   const photoSectionLabel = browser.locator('text=Foto Bukti Fisik APD').first();
   await expect(photoSectionLabel).toBeVisible({ timeout: 10000 });
 
-  // Screenshot 2: Manual APD Form with Photo Upload Section (Kamera & Pilih File)
+  // Hide dev overlay and take Screenshot 2
+  await hideDevOverlay(browser);
   await app.screenshot('02-summary-apd-manual-form-photo-upload');
 
   // 5. Test validation: Click "Tambahkan ke Tabel" without uploading photo
@@ -54,7 +66,8 @@ test('verifies manual APD request photo upload, validation, and table indicator 
   await addToTableBtn.click();
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
-  // Screenshot 3: Validation toast requirement
+  // Hide dev overlay and take Screenshot 3
+  await hideDevOverlay(browser);
   await app.screenshot('03-summary-apd-manual-photo-validation');
 
   // 6. Upload a sample photo to fulfill the requirement
@@ -80,14 +93,16 @@ test('verifies manual APD request photo upload, validation, and table indicator 
   await fileInput.setInputFiles(sampleImagePath);
   await new Promise((resolve) => setTimeout(resolve, 4000));
 
-  // Screenshot 4: Manual Form with Photo Thumbnail and "1 Foto Terlampir"
+  // Hide dev overlay and take Screenshot 4
+  await hideDevOverlay(browser);
   await app.screenshot('04-summary-apd-manual-photo-attached');
 
   // 7. Click "Tambahkan ke Tabel" now that photo is attached
   await addToTableBtn.click();
   await new Promise((resolve) => setTimeout(resolve, 2500));
 
-  // Screenshot 5: Summary Table with Manual row and Photo Evidence indicator
+  // Hide dev overlay and take Screenshot 5
+  await hideDevOverlay(browser);
   await app.screenshot('05-summary-apd-table-with-photo-badge');
 
   // Cleanup sample file

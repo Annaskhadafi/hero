@@ -184,7 +184,7 @@ export function SummaryGeneratorModal({
 
     getMasterApdListAction('APD', true).then((res) => {
       if (res.success && res.data && res.data.length > 0) {
-        setMasterApdItems(res.data.map((i) => i.name));
+        setMasterApdItems(Array.from(new Set(res.data.map((i) => i.name).filter(Boolean))));
       }
     });
 
@@ -507,7 +507,8 @@ export function SummaryGeneratorModal({
 
   // Filtered APD items for manual addition
   const filteredApdItems = useMemo(() => {
-    const itemsList = masterApdItems.length > 0 ? masterApdItems : COMMON_APD_ITEMS;
+    const rawList = masterApdItems.length > 0 ? masterApdItems : COMMON_APD_ITEMS;
+    const itemsList = Array.from(new Set(rawList.filter(Boolean)));
     if (!apdSearch.trim()) return itemsList;
     const lower = apdSearch.toLowerCase();
     return itemsList.filter((item) => item.toLowerCase().includes(lower));
@@ -908,11 +909,11 @@ export function SummaryGeneratorModal({
                       {filteredApdItems.length === 0 && !apdSearch.trim() ? (
                         <div className="p-2 text-center text-slate-400 text-[11px] w-full">Tidak ada item APD</div>
                       ) : (
-                        filteredApdItems.map((item) => {
+                        filteredApdItems.map((item, idx) => {
                           const isSelected = manualSelectedItems.some((i) => i.itemType === item);
                           return (
                             <button
-                              key={item}
+                              key={`${item}-${idx}`}
                               type="button"
                               onClick={() => handleToggleItem(item)}
                               className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors ${
