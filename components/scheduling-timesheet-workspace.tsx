@@ -6687,8 +6687,7 @@ export function SchedulingTimesheetWorkspace({
               continue
             }
             const isFbPeriod = code === 'FB' || code === 'AL' || cell.status === 'field_break'
-            if (isFbPeriod && (view === 'msa' || view === 'meals')) continue
-            if (view === 'ovt' && cell.status !== 'present') continue
+            if (isFbPeriod && (view === 'msa' || view === 'meals' || view === 'lokasi')) continue
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
             else if (view === 'ovt_spl') {
@@ -7762,7 +7761,9 @@ export function SchedulingTimesheetWorkspace({
 
     // Cell is present
     let lemburWajib = 0
-    if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
+    if (isRosterOff) {
+      lemburWajib = 0
+    } else if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
       lemburWajib = Number(cell.overtimeHours)
     } else {
       const overtime = calculateDayOvertime(
@@ -7774,7 +7775,8 @@ export function SchedulingTimesheetWorkspace({
         employeeId,
         true
       )
-      lemburWajib = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
+      const autoWajib = mandatoryOvertimeHours(overtime)
+      lemburWajib = autoWajib > 0 ? autoWajib : 4
     }
 
     const totalOvertime = roundOvertimeHours(lemburWajib + splHours)
