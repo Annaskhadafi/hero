@@ -15,7 +15,7 @@ test("mobile shell hides unauthorized links and shows access notice", () => {
   const layoutSource = read("app/mobile/layout.tsx");
 
   assert.match(layoutSource, /buildMobileAllowedLinks/);
-  assert.match(shellSource, /isMobileHrefAllowed\(item\.href, allowedLinks\)/);
+  assert.match(shellSource, /isMobileHrefAllowed\((href|item\.href), allowedLinks\)/);
   assert.match(shellSource, /Anda tidak memiliki akses/);
   assert.match(servicesSource, /visibleServices = mainServices\.filter\(isServiceAllowed\)/);
   assert.match(servicesSource, /allowedResources\.has\(service\.resource\)/);
