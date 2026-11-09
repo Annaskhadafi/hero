@@ -165,7 +165,7 @@ export async function uploadFile(formData: FormData) {
             ? await uploadAttendancePhotoToS3(fileToUpload)
             : uploadTarget
               ? await uploadAnyFileToS3(fileToUpload, uploadTarget)
-              : await uploadAnyFileToS3(fileToUpload, undefined, AbortSignal.timeout(30_000))
+              : await uploadAnyFileToS3(fileToUpload, undefined, AbortSignal.timeout(120_000))
         const proxyUrl = `/api/uploads/${result.key}`
         return {
           success: true,

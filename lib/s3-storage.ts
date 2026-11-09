@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { serverEnv } from '@/lib/server-env'
 
@@ -185,6 +186,11 @@ function getS3Client() {
         secretAccessKey: serverEnv.s3SecretAccessKey,
         sessionToken: serverEnv.s3SessionToken || undefined,
       },
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: 30_000,
+        requestTimeout: 120_000,
+      }),
+      maxAttempts: 3,
     })
   }
 
@@ -265,9 +271,12 @@ export async function uploadAnyFileToS3(
   const maxAttempts = 3
   let lastError: any = null
 
+  // Generous timeout for large files and cross-region transmission (90s base, up to 240s)
+  const timeoutMs = Math.max(90_000, Math.min(240_000, Math.ceil(buffer.length / (25 * 1024)) * 1000))
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const attemptTimeout = AbortSignal.timeout(15_000)
+      const attemptTimeout = AbortSignal.timeout(timeoutMs)
       const putSignal = abortSignal
         ? (typeof AbortSignal.any === 'function' ? AbortSignal.any([abortSignal, attemptTimeout]) : abortSignal)
         : attemptTimeout
@@ -296,7 +305,7 @@ export async function uploadAnyFileToS3(
       console.warn(
         `[uploadAnyFileToS3] Attempt ${attempt}/${maxAttempts} failed (${putError?.message || putError}), retrying in ${attempt * 500}ms...`
       )
-      await new Promise((resolve) => setTimeout(resolve, attempt * 500))
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
     }
   }
 
@@ -490,7 +499,7 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
     const candidateKey = candidateKeys[i]
     // The first candidate (exact requested key) gets up to 12s for larger documents/PDFs.
     // Secondary fallbacks get 3.5s to quickly detect 404/NoSuchKey.
-    const timeoutMs = i === 0 ? 12_000 : 3_500
+    const timeoutMs = i === 0 ? 30_000 : 5_000
     try {
       const response = await client.send(
         new GetObjectCommand({
