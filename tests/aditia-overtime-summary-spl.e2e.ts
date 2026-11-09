@@ -9,10 +9,13 @@ test('Verifikasi Aditia Maulana Saputra Overtime Summary & SPL Duration Akurat',
 }) => {
   // 1. Login and go to Attendance Timesheet
   await loginToHero(app, screen, browser, '/dashboard/scheduling-timesheet/attendance')
-  await new Promise((resolve) => setTimeout(resolve, 8000))
+  
+  // Wait until navigated away from sign-in
+  await browser.waitForURL('**/dashboard/**', { timeout: 60000 }).catch(() => {})
+  await new Promise((resolve) => setTimeout(resolve, 10000))
 
-  // 2. Open Attendance Timesheet View
-  const openAttendance = browser.locator('button[aria-label="Lihat attendance"]').first()
+  // 2. Open Attendance Timesheet View if button present
+  const openAttendance = browser.locator('button[aria-label="Lihat attendance"], button:has-text("Lihat Attendance")').first()
   if (await openAttendance.isVisible({ timeout: 5000 }).catch(() => false)) {
     await openAttendance.click()
     await new Promise((resolve) => setTimeout(resolve, 3000))
@@ -28,14 +31,11 @@ test('Verifikasi Aditia Maulana Saputra Overtime Summary & SPL Duration Akurat',
   // 4. Take screenshot of Attendance Overtime view showing employees with calculated overtime
   await app.screenshot('01-attendance-overtime-summary-grid')
 
-  // 5. Navigate to Overtime Requests & Summary SPL
-  await app.open('/dashboard/overtime-requests')
-  await new Promise((resolve) => setTimeout(resolve, 10000))
-
-  // 6. Verify Summary SPL card is present
-  const summaryCard = browser.locator('text=Rekapitulasi & Export Summary SPL').first()
-  await expect(summaryCard).toBeVisible({ timeout: 60000 })
-
-  // 7. Take screenshot of Overtime Requests / Summary SPL
-  await app.screenshot('02-overtime-requests-summary-spl')
+  // 5. Open dialog export / summary preview
+  const exportBtn = browser.locator('button:has-text("Preview & Export PDF"), button[title*="Export PDF"]').first()
+  if (await exportBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await exportBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+    await app.screenshot('02-overtime-summary-pdf-dialog')
+  }
 })

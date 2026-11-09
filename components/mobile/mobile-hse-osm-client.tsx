@@ -82,6 +82,34 @@ import {
   verifyHseOsmFinding,
 } from '@/app/actions/hse-osm'
 import { uploadFile } from '@/app/actions/upload'
+
+async function uploadPhotoSafe(file: File, uploadTarget = 'hse-osm'): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('uploadTarget', uploadTarget)
+
+  try {
+    const apiRes = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    })
+    if (apiRes.ok) {
+      const data = await apiRes.json()
+      if (data.success && data.url) {
+        return data.url
+      }
+    }
+  } catch (err) {
+    console.warn('[uploadPhotoSafe] API route error, falling back to Server Action:', err)
+  }
+
+  const res = await uploadFile(formData)
+  if (res.success && res.url) {
+    return res.url
+  }
+  throw new Error(res.error || 'Gagal mengunggah foto ke Cloud Storage.')
+}
+
 import { compressImageFile } from '@/lib/client-image-compression'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
 import {
@@ -648,7 +676,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
         setActionPhotos((prev) => [...prev, ...newUrls])
       }
     } catch (err: any) {
-      alert(err?.message || 'Gagal mengunggah foto.')
+      alert(err?.message && err.message !== 'Load failed' ? err.message : 'Gagal mengunggah foto. Pastikan koneksi internet stabil.')
     } finally {
       setIsUploadingPhoto(false)
       setIsUploadingNewFindingPhoto(false)
@@ -690,7 +718,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
       }
       setEditingFindingPhotos((prev) => [...prev, ...newUrls])
     } catch (err: any) {
-      alert(err?.message || 'Gagal mengunggah foto.')
+      alert(err?.message && err.message !== 'Load failed' ? err.message : 'Gagal mengunggah foto. Pastikan koneksi internet stabil.')
     } finally {
       setIsUploadingEditPhoto(false)
       e.target.value = ''

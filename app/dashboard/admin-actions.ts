@@ -1092,10 +1092,16 @@ export async function updateSchedulingTimesheetPlanV2CellAction(
             }
           : row
       )
-    const draftSchedule = updateRows((plan.draftSchedule ?? []) as ScheduleV2Row[])
-    const activeSchedule = updateRows((plan.activeSchedule ?? []) as ScheduleV2Row[])
+    let draftSchedule = updateRows((plan.draftSchedule ?? []) as ScheduleV2Row[])
+    let activeSchedule = updateRows((plan.activeSchedule ?? []) as ScheduleV2Row[])
+    const dayCount = getScheduleV2DayCount(payload.period)
     if (!draftSchedule.some((row) => row.employeeId === payload.employeeId)) {
-      throw new Error('Employee tidak ditemukan pada roster periode ini.')
+      const newSchedule = Array(dayCount).fill('')
+      newSchedule[payload.day - 1] = payload.code
+      draftSchedule = [...draftSchedule, { employeeId: payload.employeeId, schedule: newSchedule }]
+      if (plan.status === 'active') {
+        activeSchedule = [...activeSchedule, { employeeId: payload.employeeId, schedule: [...newSchedule] }]
+      }
     }
     await tx
       .update(timesheetSchedulingPlansV2)

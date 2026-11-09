@@ -1046,7 +1046,7 @@ function isStaffRole(
   }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
-    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
+    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff') || lvl.includes('rookie')) {
       return false
     }
     if (
@@ -3799,7 +3799,12 @@ export function SchedulingTimesheetWorkspace({
   function saveRosterEditFromAttendance(code: ScheduleCode) {
     if (!guardOpenPeriod('Edit roster')) return
     if (!selectedAttendanceCell) return
-    const numericSiteId = Number(siteId)
+    const empObj = employees.find((e) => e.id === selectedAttendanceCell.employeeId)
+    const numericSiteId = Number(
+      siteId !== 'all' && Number(siteId) > 0
+        ? siteId
+        : selectedAttendanceEmployee?.siteId || empObj?.siteId || 0
+    )
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
     const { employeeId, day } = selectedAttendanceCell
     const nextRows = rows.map((row) =>
@@ -6635,41 +6640,13 @@ export function SchedulingTimesheetWorkspace({
                     : '-'
 
             if (view === 'ovt') {
-              if (staff) return '-'
-              if (cell.status !== 'present') {
-                if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
-                if (cell.status === 'standby' || code === 'ST') return 'ST'
-                if (code === 'GD') return 'GD'
-                if (cell.status === 'off' || isRosterOff || code === 'OFF') return 'OFF'
-                if (cell.status === 'sick' || code === 'Sakit') return 'Sakit'
-                if (cell.status === 'leave' || code === 'Izin') return 'Izin'
-                if (cell.status === 'absent') return 'Alpha'
-                if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
-                return ''
-              }
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id,
-                false
-              )
-              const otVal = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
-              if (otVal > 0) return String(roundOvertimeHours(otVal))
-              if (overtime.unauthorizedMinutes > 0) return 'SPL'
-              if (code === 'ST') return 'ST'
-              if (code === 'GD') return 'GD'
-              if (code === 'FB' || isFieldBreakDay) return 'FB'
-              if (code === 'AL') return 'AL'
-              return ''
+              const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+              return otInfo.displayValue
             }
             if (view === 'ovt_spl') {
               if (staff) return '-'
-              const overtime = splOvertimeForDay(row.schedule, day, row.employee.id, staff)
-              const splHours = roundOvertimeHours((overtime?.splMinutes ?? 0) / 60)
-              if (splHours > 0) return String(splHours)
+              const splHours = getApprovedSplHoursForDay(row.employee.id, day)
+              if (splHours > 0) return String(roundOvertimeHours(splHours))
               if (cell.status !== 'present') {
                 if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
                 if (cell.status === 'standby' || code === 'ST') return 'ST'
@@ -6716,20 +6693,11 @@ export function SchedulingTimesheetWorkspace({
             else if (view === 'meals') total += allowance.mealsAmount
             else if (view === 'ovt_spl') {
               if (!staff) {
-                const splMin = splOvertimeForDay(row.schedule, day, row.employee.id, staff)?.splMinutes ?? 0
-                total += roundOvertimeHours(splMin / 60)
+                total += getApprovedSplHoursForDay(row.employee.id, day)
               }
             } else if (!staff) {
-              const dayOt = calculateDayOvertime(
-                  row.schedule,
-                  day,
-                  cell.clockIn,
-                  cell.clockOut,
-                  staff,
-                  row.employee.id,
-                  false
-                )
-              total += dayOt.totalHours > 0 ? dayOt.totalHours : mandatoryOvertimeHours(dayOt)
+              const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+              total += otInfo.totalOvertime
             }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
@@ -7508,13 +7476,12 @@ export function SchedulingTimesheetWorkspace({
   const approvedSplByEmployee = useMemo(() => {
     const result = new Map<number, ApprovedSplWindow[]>()
     for (const window of approvedSplWindows) {
-      if (siteId !== 'all' && String(window.siteId) !== siteId) continue
       const employeeWindows = result.get(window.employeeId) ?? []
       employeeWindows.push(window)
       result.set(window.employeeId, employeeWindows)
     }
     return result
-  }, [approvedSplWindows, siteId])
+  }, [approvedSplWindows])
 
   function calculateLegacyOvertime(
     schedule: ScheduleCode[],
@@ -7662,7 +7629,8 @@ export function SchedulingTimesheetWorkspace({
   function approvedSplDocumentsForDay(employeeId: number, day: number) {
     const workDate = `${period}-${String(day).padStart(2, '0')}`
     return (approvedSplByEmployee.get(employeeId) ?? []).filter((spl) => {
-      if (spl.status.toLowerCase() !== 'approved') return false
+      const status = (spl.status || '').toLowerCase()
+      if (status !== 'approved' && status !== 'closed') return false
       const dateValue = spl.workDate || spl.plannedStartAt
       if (!dateValue) return false
       const splDate = new Date(dateValue)
@@ -7671,6 +7639,147 @@ export function SchedulingTimesheetWorkspace({
         timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit',
       }).format(splDate) === workDate
     })
+  }
+
+  function getApprovedSplHoursForDay(employeeId: number, day: number): number {
+    const docs = approvedSplDocumentsForDay(employeeId, day)
+    if (docs.length === 0) return 0
+    let totalSpl = 0
+    for (const spl of docs) {
+      if (!spl.plannedStartAt || !spl.plannedEndAt) {
+        if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
+          totalSpl += spl.overtimeCreditMinutes / 60
+        }
+        continue
+      }
+      const start = new Date(spl.plannedStartAt)
+      const end = new Date(spl.plannedEndAt)
+      let diffMin = (end.getTime() - start.getTime()) / (60 * 1000)
+      if (diffMin < 0) diffMin += 24 * 60
+      if (diffMin === 0) diffMin = 60
+      let spanHours = Math.round((diffMin / 60) * 10) / 10
+      if (spanHours >= 12) spanHours = 11
+      totalSpl += spanHours > 0 ? spanHours : 0
+    }
+    return roundOvertimeHours(totalSpl)
+  }
+
+  function calculateTotalDayOvertime(
+    schedule: ScheduleCode[],
+    day: number,
+    cell: ManualAttendanceCell,
+    employeeId: number,
+    staff: boolean
+  ): {
+    lemburWajib: number
+    lemburSpl: number
+    totalOvertime: number
+    displayValue: string
+  } {
+    if (staff) {
+      return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: '-' }
+    }
+
+    const scheduleCode = schedule[day - 1] as string
+    const isFieldBreakDay =
+      scheduleCode === 'FB' ||
+      cell.status === 'field_break' ||
+      (fieldBreakDaysByEmployee.get(employeeId)?.has(day) ?? false)
+    const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur' || cell.status === 'off'
+    const isHolidayDay = Boolean(holidaysByDay.get(day))
+    const splHours = getApprovedSplHoursForDay(employeeId, day)
+
+    if (cell.status !== 'present') {
+      if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'FB',
+        }
+      }
+      if (cell.status === 'standby' || scheduleCode === 'ST') {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'ST',
+        }
+      }
+      if (scheduleCode === 'GD') {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'GD',
+        }
+      }
+      if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'Sakit',
+        }
+      }
+      if (cell.status === 'leave' || scheduleCode === 'Izin') {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'Izin',
+        }
+      }
+      if (cell.status === 'absent') {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'Alpha',
+        }
+      }
+      if (isRosterOff || cell.status === 'off' || isHolidayDay) {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'OFF',
+        }
+      }
+      if (splHours > 0) {
+        return {
+          lemburWajib: 0,
+          lemburSpl: splHours,
+          totalOvertime: splHours,
+          displayValue: String(roundOvertimeHours(splHours)),
+        }
+      }
+      if (scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS') {
+        return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: scheduleCode }
+      }
+      return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: '' }
+    }
+
+    // Cell is present
+    let lemburWajib = 0
+    if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
+      lemburWajib = Number(cell.overtimeHours)
+    } else {
+      const overtime = calculateDayOvertime(
+        schedule,
+        day,
+        cell.clockIn,
+        cell.clockOut,
+        staff,
+        employeeId,
+        true
+      )
+      lemburWajib = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
+    }
+
+    const totalOvertime = roundOvertimeHours(lemburWajib + splHours)
+    const displayValue = totalOvertime > 0 ? String(totalOvertime) : ''
+    return { lemburWajib, lemburSpl: splHours, totalOvertime, displayValue }
   }
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
@@ -12862,85 +12971,47 @@ export function SchedulingTimesheetWorkspace({
                                                       : 'bg-slate-50 text-muted-foreground'
                                               }
                                              } else if (attendanceView === 'ovt') {
-                                               // Overtime hanya untuk Non Staff
+                                               const otInfo = calculateTotalDayOvertime(
+                                                 row.schedule,
+                                                 day,
+                                                 cell,
+                                                 row.employee.id,
+                                                 staff
+                                               )
+                                               cellValue = otInfo.displayValue
                                                if (staff) {
-                                                 cellValue = '-'
                                                  cellBg = 'bg-slate-50 text-muted-foreground'
-                                               } else if (cell.status !== 'present') {
-                                                 const isFb = isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB'
-                                                 const isSt = cell.status === 'standby' || scheduleCode === 'ST'
-                                                 const isGd = scheduleCode === 'GD'
-                                                 const isRosterOffDay = isOff || cell.status === 'off' || scheduleCode === 'OFF'
-
-                                                 if (isFb) {
-                                                   cellValue = 'FB'
-                                                   cellBg = 'bg-amber-50 text-amber-800'
-                                                 } else if (isSt) {
-                                                   cellValue = 'ST'
-                                                   cellBg = 'bg-blue-50 text-blue-800'
-                                                 } else if (isGd) {
-                                                   cellValue = 'GD'
-                                                   cellBg = 'bg-purple-50 text-purple-800'
-                                                 } else if (isRosterOffDay) {
-                                                   cellValue = 'OFF'
-                                                   cellBg = 'bg-rose-50 text-rose-700'
-                                                 } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
-                                                   cellValue = 'Sakit'
-                                                   cellBg = 'bg-rose-50 text-rose-700'
-                                                 } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
-                                                   cellValue = 'Izin'
-                                                   cellBg = 'bg-blue-50 text-blue-700'
-                                                 } else if (cell.status === 'absent') {
-                                                   cellValue = 'Alpha'
-                                                   cellBg = 'bg-rose-100 text-rose-900'
-                                                 } else {
-                                                   cellValue = scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS' ? scheduleCode : ''
-                                                   cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
-                                                 }
+                                               } else if (otInfo.totalOvertime > 0) {
+                                                 cellBg = 'bg-white text-foreground font-semibold'
+                                               } else if (cellValue === 'OFF') {
+                                                 cellBg = 'bg-rose-50 text-rose-700'
+                                               } else if (cellValue === 'FB') {
+                                                 cellBg = 'bg-amber-50 text-amber-800'
+                                               } else if (cellValue === 'ST') {
+                                                 cellBg = 'bg-blue-50 text-blue-800'
+                                               } else if (cellValue === 'GD') {
+                                                 cellBg = 'bg-purple-50 text-purple-800'
+                                               } else if (cellValue === 'Sakit' || cellValue === 'Alpha') {
+                                                 cellBg = 'bg-rose-50 text-rose-700'
+                                               } else if (cellValue === 'Izin') {
+                                                 cellBg = 'bg-blue-50 text-blue-700'
                                                } else {
-                                                 const overtime = calculateDayOvertime(
-                                                   row.schedule,
-                                                   day,
-                                                   cell.clockIn,
-                                                   cell.clockOut,
-                                                   staff,
-                                                   row.employee.id,
-                                                   true
-                                                 )
-                                                 const otVal = overtime.totalHours > 0 ? overtime.totalHours : mandatoryOvertimeHours(overtime)
-                                                 if (otVal > 0) {
-                                                   cellValue = otVal
-                                                   cellBg = 'bg-white text-foreground font-semibold'
-                                                 } else if (overtime.unauthorizedMinutes > 0) {
-                                                   cellValue = 'SPL'
-                                                   cellBg = 'bg-orange-100 text-orange-900 font-semibold'
-                                                 } else if (scheduleCode === 'ST') {
-                                                   cellValue = 'ST'
-                                                   cellBg = 'bg-blue-50 text-blue-800'
-                                                 } else if (scheduleCode === 'GD') {
-                                                   cellValue = 'GD'
-                                                   cellBg = 'bg-purple-50 text-purple-800'
-                                                 } else if (scheduleCode === 'FB' || isFieldBreakDay) {
-                                                   cellValue = 'FB'
-                                                   cellBg = 'bg-amber-50 text-amber-800'
-                                                 } else {
-                                                   cellValue = ''
-                                                   cellBg = ''
-                                                 }
-                                                overtimeMeta = overtime.unauthorizedMinutes > 0 ? 'Perlu SPL' : ''
-                                                cellTitle = [
-                                                  `${scheduleCode} · ${cell.status}`,
-                                                  overtime.splMinutes > 0
-                                                    ? `Wajib: ${roundOvertimeHours(overtime.autoMinutes / 60)}j + SPL: ${roundOvertimeHours(overtime.splMinutes / 60)}j (Total: ${otVal}j)`
-                                                    : 'Overtime wajib',
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
-                                                    : '',
-                                                ]
-                                                  .filter(Boolean)
-                                                  .join(' · ')
+                                                 cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
+                                               }
+
+                                               cellTitle = staff
+                                                 ? 'Staff (Tidak ada lembur)'
+                                                 : [
+                                                     `${scheduleCode} · ${cell.status}`,
+                                                     otInfo.lemburSpl > 0
+                                                       ? `Wajib: ${otInfo.lemburWajib}j + SPL: ${otInfo.lemburSpl}j (Total: ${otInfo.totalOvertime}j)`
+                                                       : otInfo.lemburWajib > 0
+                                                         ? `Overtime wajib: ${otInfo.lemburWajib}j`
+                                                         : '',
+                                                   ]
+                                                     .filter(Boolean)
+                                                     .join(' · ')
                                               }
-                                            }
 
                                             return (
                                               <td
@@ -14294,6 +14365,9 @@ export function SchedulingTimesheetWorkspace({
                       ? siteId
                       : selectedAttendanceEmployee?.siteId || empObj?.siteId || 0
                   )
+                  if (rosterEditCode && rosterEditCode !== dialogRosterCode) {
+                    saveRosterEditFromAttendance(rosterEditCode)
+                  }
                   if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) {
                     toast.error('Pilih site terlebih dahulu untuk menyimpan attendance.')
                     return

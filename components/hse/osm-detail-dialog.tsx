@@ -29,6 +29,34 @@ import {
   XCircle,
 } from "lucide-react";
 import { uploadFile } from "@/app/actions/upload";
+
+async function uploadPhotoSafe(file: File, uploadTarget = 'hse-osm'): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('uploadTarget', uploadTarget)
+
+  try {
+    const apiRes = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    })
+    if (apiRes.ok) {
+      const data = await apiRes.json()
+      if (data.success && data.url) {
+        return data.url
+      }
+    }
+  } catch (err) {
+    console.warn('[uploadPhotoSafe] API route error, falling back to Server Action:', err)
+  }
+
+  const res = await uploadFile(formData)
+  if (res.success && res.url) {
+    return res.url
+  }
+  throw new Error(res.error || 'Gagal mengunggah foto ke Cloud Storage.')
+}
+
 import { updateHseOsmFindingPhotos } from "@/app/actions/hse-osm";
 import { compressImageFile } from "@/lib/client-image-compression";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
