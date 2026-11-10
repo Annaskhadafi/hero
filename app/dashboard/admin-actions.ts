@@ -3029,10 +3029,22 @@ const saveSchedulingConfigSchema = z.object({
       z.object({
         sectionId: z.number().int().positive(),
         departmentId: z.number().int().positive(),
-        matrixId: z.number().int().positive().nullable(),
-        pjoLeaderId: z.number().int().positive().nullable(),
-        sectionHeadId: z.number().int().positive().nullable(),
-        departmentHeadId: z.number().int().positive().nullable(),
+        matrixId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
+        pjoLeaderId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
+        sectionHeadId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
+        departmentHeadId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
       })
     )
     .default([]),

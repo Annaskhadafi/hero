@@ -755,10 +755,10 @@ function normalizePdfConfig(
     ? (cfg.customSigners as PdfConfigSigner[])
     : []
   return {
-    preparedBy: (cfg.preparedBy as string) || currentEmployeeName,
-    pjoLeader: (cfg.pjoLeader as string) || headEmp,
+    preparedBy: (cfg.preparedBy as string) || '',
+    pjoLeader: (cfg.pjoLeader as string) || headEmp || '',
     pjoLeaderCk: (cfg.pjoLeaderCk as string) || '',
-    approvedBy: (cfg.approvedBy as string) || defaultApprovedBy,
+    approvedBy: (cfg.approvedBy as string) || '',
     hrName: (cfg.hrName as string) || '',
     externalPreparedBy: (cfg.externalPreparedBy as string) || '',
     externalApprovedBy: (cfg.externalApprovedBy as string) || '',
@@ -4080,7 +4080,7 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function saveSiteConfig() {
-    if (!guardOpenPeriod('Save site settings')) return
+    if (mode !== 'setup' && !guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
     const targetConfig = siteConfigs[siteId] ?? resolveCurrentSiteConfig(siteId)
     const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(targetConfig)
@@ -4106,10 +4106,10 @@ export function SchedulingTimesheetWorkspace({
             return {
               sectionId,
               departmentId,
-              matrixId: row.matrixId ? Number(row.matrixId) : null,
-              pjoLeaderId: pjoId ? Number(pjoId) : null,
-              sectionHeadId: secHeadId ? Number(secHeadId) : null,
-              departmentHeadId: deptHeadId ? Number(deptHeadId) : null,
+              matrixId: row.matrixId && Number(row.matrixId) > 0 ? Number(row.matrixId) : null,
+              pjoLeaderId: pjoId && Number(pjoId) > 0 ? Number(pjoId) : null,
+              sectionHeadId: secHeadId && Number(secHeadId) > 0 ? Number(secHeadId) : null,
+              departmentHeadId: deptHeadId && Number(deptHeadId) > 0 ? Number(deptHeadId) : null,
             }
           })
           .filter((item): item is NonNullable<typeof item> => item != null),
@@ -6128,6 +6128,8 @@ export function SchedulingTimesheetWorkspace({
     employee?: EmployeeOption,
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
+    const empSiteCfg = employee?.siteId != null ? getEmployeeSiteConfig(employee.siteId) : siteConfig
+    const cfg = empSiteCfg?.pdfConfig ?? siteConfig.pdfConfig
     const baseSignatures = customSignatures ?? pdfSignatures
     const normSection = (
       sectionName ||
@@ -6175,8 +6177,6 @@ export function SchedulingTimesheetWorkspace({
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
 
-    const cfg = siteConfig.pdfConfig
-
     const isPlaceholderApprovedBy = (val?: string) =>
       !val || val.trim().toLowerCase().startsWith('plant. spv department')
 
@@ -6194,104 +6194,51 @@ export function SchedulingTimesheetWorkspace({
     const sectionPjo = sectionApproval?.pjoLeaderName?.trim() || ''
     const sectionApprovedBy = sectionApproval?.departmentHeadName?.trim() || ''
 
-    const isKnownServicePjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('junaidi') || v.includes('apriyanto')
-    }
-
-    const isKnownRepairPjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('ary maulana') || v.includes('ary')
-    }
-
-    const isKnownHsePjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('andi safari')
-    }
-
-    const isKnownTechPjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('abian')
-    }
-
+    // Section-based default fallbacks only when site-wide pdfConfig field is not filled:
+    let defaultSectionPjo = ''
     if (
       normSection.includes('hse') ||
       normSection.includes('safety') ||
       normSection.includes('k3') ||
       normSection.includes('lingkungan')
     ) {
-      const hsePjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) ? cfgPjo : '') ||
-        andiSafari
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fathurrahman,
-        pjoLeader: hsePjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || rendra,
-        hrName: cfgHr || kesuma,
-      }
+      defaultSectionPjo = andiSafari
+    } else if (normSection.includes('repair') || normSection.includes('retread')) {
+      defaultSectionPjo = ary
+    } else if (normSection.includes('service') || normSection.includes('servis')) {
+      defaultSectionPjo = isCkSite ? apriyanto : junaidi
+    } else if (normSection.includes('tech') || normSection.includes('teknis')) {
+      defaultSectionPjo = abian
+    } else {
+      defaultSectionPjo = isCkSite ? apriyanto : junaidi
     }
 
-    if (normSection.includes('repair') || normSection.includes('retread')) {
-      const repairPjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
-          ? cfgPjo
-          : '') ||
-        ary
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || arjun,
-        pjoLeader: repairPjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
-        hrName: cfgHr || kesuma,
-      }
-    }
+    const defaultSectionPreparedBy = normSection.includes('hse')
+      ? fathurrahman
+      : normSection.includes('repair')
+        ? arjun
+        : fauzan
+    const defaultSectionApprovedBy = normSection.includes('hse') ? rendra : romy
 
-    if (normSection.includes('service') || normSection.includes('servis')) {
-      const defaultPjo = isCkSite ? apriyanto : junaidi
-      const servicePjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
-          ? cfgPjo
-          : '') ||
-        defaultPjo
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fauzan,
-        pjoLeader: servicePjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
-        hrName: cfgHr || kesuma,
-      }
-    }
-
-    if (normSection.includes('tech') || normSection.includes('teknis')) {
-      const techPjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo)
-          ? cfgPjo
-          : '') ||
-        abian
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-        pjoLeader: techPjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
-        hrName: cfgHr || kesuma,
-      }
-    }
+    const isSingleEmployeeRecord = Boolean(employee && !sectionName)
+    const effectivePreparedBy =
+      cfgPreparedBy || (isSingleEmployeeRecord ? employee?.name : defaultSectionPreparedBy) || baseSignatures.preparedBy
+    const effectivePjo = cfgPjo || sectionPjo || baseSignatures.pjoLeader || defaultSectionPjo
+    const effectiveApprovedBy =
+      cfgApprovedBy || sectionApprovedBy || baseSignatures.approvedBy || defaultSectionApprovedBy
+    const effectiveHr = cfgHr || baseSignatures.hrName || kesuma
 
     return {
       ...baseSignatures,
-      preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-      pjoLeader: cfgPjo || sectionPjo || baseSignatures.pjoLeader,
-      approvedBy: cfgApprovedBy || sectionApprovedBy || baseSignatures.approvedBy,
-      hrName: cfgHr || baseSignatures.hrName,
+      preparedBy: effectivePreparedBy,
+      pjoLeader: effectivePjo,
+      approvedBy: effectiveApprovedBy,
+      hrName: effectiveHr,
+      externalPreparedBy: cfg.externalPreparedBy || baseSignatures.externalPreparedBy,
+      externalApprovedBy: cfg.externalApprovedBy || baseSignatures.externalApprovedBy,
+      externalSignatureCount: cfg.externalSignatureCount || baseSignatures.externalSignatureCount || 2,
+      customSigners: cfg.customSigners || baseSignatures.customSigners,
+      logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
     }
   }
 
@@ -6355,7 +6302,7 @@ export function SchedulingTimesheetWorkspace({
         pjoLeader: '',
         hrName: '',
         useExternalOnly: true,
-        externalSignatureCount: pdfExternalSignatureCount,
+        externalSignatureCount: pdfExternalSignatureCount || cfg.externalSignatureCount || 2,
         omitExternal: false,
         logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
         customSigners: cfg.customSigners || baseSignatures.customSigners,
@@ -6363,6 +6310,13 @@ export function SchedulingTimesheetWorkspace({
     }
     return {
       ...baseSignatures,
+      preparedBy: baseSignatures.preparedBy || cfg.preparedBy || '',
+      pjoLeader: baseSignatures.pjoLeader || cfg.pjoLeader || '',
+      approvedBy: baseSignatures.approvedBy || cfg.approvedBy || '',
+      hrName: baseSignatures.hrName || cfg.hrName || '',
+      externalPreparedBy: cfg.externalPreparedBy || baseSignatures.externalPreparedBy,
+      externalApprovedBy: cfg.externalApprovedBy || baseSignatures.externalApprovedBy,
+      externalSignatureCount: cfg.externalSignatureCount || pdfExternalSignatureCount || 2,
       logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
       customSigners: cfg.customSigners || baseSignatures.customSigners,
       useExternalOnly: false,
@@ -6544,7 +6498,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+      signatures: getSummaryPdfSignatures(secSigs),
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
@@ -6568,7 +6522,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+      signatures: getSummaryPdfSignatures(secSigs),
       days: dayData,
     })
   }
@@ -7118,7 +7072,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+      signatures: getSummaryPdfSignatures(secSigs),
       days: dayData,
     })
   }
@@ -7184,7 +7138,7 @@ export function SchedulingTimesheetWorkspace({
         department: employee.department || '',
         section: employee.section || '',
         siteName: site?.name || '',
-        signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+        signatures: getSummaryPdfSignatures(secSigs),
         activities: monthActivities,
       })
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
@@ -9431,7 +9385,7 @@ export function SchedulingTimesheetWorkspace({
                   {canEdit && (
                     <Button
                       size="sm"
-                      disabled={siteId === 'all' || isFinalized || isSavingSiteConfig}
+                      disabled={siteId === 'all' || (mode !== 'setup' && isFinalized) || isSavingSiteConfig}
                       onClick={() => void saveSiteConfig()}
                     >
                       {isSavingSiteConfig ? (
@@ -10835,7 +10789,7 @@ export function SchedulingTimesheetWorkspace({
                   <div className="border-border/40 mt-5 flex items-center justify-end gap-3 border-t pt-3">
                     <Button
                       size="sm"
-                      disabled={siteId === 'all' || isFinalized || isSavingSiteConfig}
+                      disabled={siteId === 'all' || (mode !== 'setup' && isFinalized) || isSavingSiteConfig}
                       onClick={() => void saveSiteConfig()}
                       className="gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                     >
