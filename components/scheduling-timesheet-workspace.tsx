@@ -7826,35 +7826,44 @@ export function SchedulingTimesheetWorkspace({
       // Pada hari libur / roster OFF: TIDAK ADA lembur wajib (selalu 0 jam)
       lemburWajib = 0
     } else {
-      // Lembur wajib HANYA 4 jam atau 6 jam untuk shift kerja hadir
-      let wajibCandidate = 4
-      if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-        const val = Number(cell.overtimeHours)
-        wajibCandidate = val === 6 ? 6 : 4
-      } else {
-        const overtime = calculateDayOvertime(
-          schedule,
-          day,
-          cell.clockIn,
-          cell.clockOut,
-          staff,
-          employeeId,
-          true
-        )
-        const autoWajib = mandatoryOvertimeHours(overtime)
-        wajibCandidate = autoWajib === 6 ? 6 : 4
-      }
-      lemburWajib = wajibCandidate
+      // Lembur wajib default HANYA 4 jam atau 6 jam untuk shift kerja hadir
+      const overtime = calculateDayOvertime(
+        schedule,
+        day,
+        cell.clockIn,
+        cell.clockOut,
+        staff,
+        employeeId,
+        true
+      )
+      const autoWajib = mandatoryOvertimeHours(overtime)
+      lemburWajib = autoWajib === 6 ? 6 : 4
     }
 
     let totalOvertime = 0
+    const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+    const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
     if (isRosterOff) {
       // Di hari libur (OFF): Total lembur murni SPL (misal 11 jam) atau override jam libur (tidak ada lembur wajib), maksimal 11 jam
-      const offTotal = splHours > 0 ? splHours : (cell.overtimeHours ? Number(cell.overtimeHours) : 0)
+      const offTotal = Math.max(splHours, manualVal !== null ? manualVal : 0)
       totalOvertime = Math.min(11, roundOvertimeHours(offTotal))
     } else {
-      // Di hari kerja (DS / NS): Total lembur = Lembur Wajib (4j atau 6j) + Lembur SPL, maksimal 14 jam
-      totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + splHours))
+      // Di hari kerja (DS / NS):
+      if (manualVal !== null) {
+        if (manualVal === 0) {
+          totalOvertime = 0
+        } else {
+          // Jika ada manual override di modal attendance (Total Overtime):
+          // Hormati nilai override (misal 11 jam untuk lembur SPL/panjang).
+          // Gunakan Math.max untuk mencegah double counting jika manualVal dan splHours sama-sama 11
+          const expectedTotal = splHours > 0 ? lemburWajib + splHours : manualVal
+          totalOvertime = Math.min(14, roundOvertimeHours(Math.max(manualVal, expectedTotal)))
+        }
+      } else {
+        // Tanpa manual override: Total lembur = Lembur Wajib (4j atau 6j) + Lembur SPL, maksimal 14 jam
+        totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + splHours))
+      }
     }
 
     const displayValue = totalOvertime > 0 ? String(totalOvertime) : (isRosterOff ? 'OFF' : '')

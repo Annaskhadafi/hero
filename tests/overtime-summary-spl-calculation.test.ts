@@ -113,10 +113,19 @@ function calculateTotalOvertimeForDay(
   const lemburWajib = isOffOrSunday ? 0 : (baseWajib === 6 ? 6 : 4);
   let total = 0;
   if (isOffOrSunday) {
-    const offHours = splHours > 0 ? splHours : (manualOverrideHours ?? 0);
+    const offHours = Math.max(splHours, manualOverrideHours ?? 0);
     total = Math.min(11, roundOvertimeHours(offHours));
   } else {
-    total = Math.min(14, roundOvertimeHours(lemburWajib + splHours));
+    if (manualOverrideHours !== undefined && manualOverrideHours !== null) {
+      if (manualOverrideHours === 0) {
+        total = 0;
+      } else {
+        const expectedTotal = splHours > 0 ? lemburWajib + splHours : manualOverrideHours;
+        total = Math.min(14, roundOvertimeHours(Math.max(manualOverrideHours, expectedTotal)));
+      }
+    } else {
+      total = Math.min(14, roundOvertimeHours(lemburWajib + splHours));
+    }
   }
   return { lemburWajib, lemburSpl: splHours, total };
 }
@@ -174,6 +183,13 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(res.lemburWajib).toBe(0);
     expect(res.total).toBe(11);
     expect(res.total).not.toBe(22);
+  });
+
+  it('correctly honors manual attendance override on work days (e.g. Benni Day 18 = 11h)', () => {
+    // Benni on Day 18: work day (DS), manual override 11h in modal, splHours 0
+    const res = calculateTotalOvertimeForDay(false, 4, 0, 11);
+    expect(res.lemburWajib).toBe(4);
+    expect(res.total).toBe(11);
   });
 
   it('clamps work day overtime to maximum 14 hours and OFF day to 11 hours', () => {
