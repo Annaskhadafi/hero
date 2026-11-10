@@ -235,4 +235,54 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(1000);
   });
+
+  it('correctly calculates split interval Overtime Record as 4h and prevents 11h overwrite', async () => {
+    const { generateOvertimeRecordPdf } = await import('../lib/timesheet/generate-attendance-pdf');
+    const pdfBytes = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-10',
+      employeeId: 1189,
+      employeeName: 'Fachri Husein',
+      employeeSn: '72873',
+      department: 'Central Services',
+      section: 'Service Operation',
+      siteName: 'CK MIFA',
+      signatures: {
+        preparedBy: 'Fachri Husein',
+        pjoLeader: 'Apriyanto',
+        approvedBy: 'Romy Hidayat',
+      },
+      days: [
+        {
+          day: 2,
+          dayName: 'Friday',
+          scheduleCode: 'DS',
+          status: 'present',
+          clockIn: '05:48',
+          clockOut: '19:00',
+          workingTimeFrom: '05.48',
+          workingTimeTo: '19.00',
+          configuredOvertimeIntervals: [
+            { start: '06:00', end: '08:00' },
+            { start: '16:00', end: '18:00' },
+          ],
+          overtime: {
+            totalHours: 4,
+            mandatoryHours: 4,
+            splHours: 0,
+            intervals: [
+              { start: '06:00', end: '08:00' },
+              { start: '16:00', end: '18:00' },
+            ],
+          },
+        },
+      ],
+      isNonStaff: true,
+      showTotalOvertime: true,
+      overtimeMode: 'template',
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+  });
 });

@@ -512,7 +512,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }, 0)
     }
 
-    if (otFrom && otTo) {
+    if (ot <= 0 && configuredOvertimeIntervals.length === 1 && otFrom && otTo) {
       const [sh, sm] = otFrom.split(/[:.]/).map(Number)
       const [eh, em] = otTo.split(/[:.]/).map(Number)
       if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
@@ -900,7 +900,7 @@ export async function appendSummarySplPersonPages(
       }, 0)
     }
 
-    if (otFrom && otTo) {
+    if (ot <= 0 && configuredOvertimeIntervals.length === 1 && otFrom && otTo) {
       const [sh, sm] = otFrom.split(/[:.]/).map(Number)
       const [eh, em] = otTo.split(/[:.]/).map(Number)
       if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
