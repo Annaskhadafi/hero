@@ -513,6 +513,17 @@ type PdfConfigSigner = {
   employeeId?: number | null
 }
 
+export type SummaryDocTypeKey = 'ot' | 'spl' | 'msa' | 'meals' | 'lokasi'
+
+export type SummarySignaturesConfig = {
+  preparedBy?: string
+  pjoLeader?: string
+  approvedBy?: string
+  hrName?: string
+  externalPreparedBy?: string
+  externalApprovedBy?: string
+}
+
 type PdfConfig = {
   preparedBy: string
   pjoLeader: string
@@ -524,6 +535,7 @@ type PdfConfig = {
   externalSignatureCount?: 2 | 3 | 4
   customSigners: PdfConfigSigner[]
   logoUrl: string
+  summarySignatures?: Partial<Record<SummaryDocTypeKey, SummarySignaturesConfig>>
 }
 
 type BackupAssignment = {
@@ -650,6 +662,13 @@ const defaultSiteConfig: SiteSchedulingConfig = {
     externalSignatureCount: 2,
     customSigners: [],
     logoUrl: '',
+    summarySignatures: {
+      ot: {},
+      spl: {},
+      msa: { preparedBy: "Muhammad As'ar Fauzan" },
+      meals: { preparedBy: "Muhammad As'ar Fauzan" },
+      lokasi: {},
+    },
   },
 }
 
@@ -754,6 +773,34 @@ function normalizePdfConfig(
   const customSigners = Array.isArray(cfg.customSigners)
     ? (cfg.customSigners as PdfConfigSigner[])
     : []
+  const rawSummaries = ((cfg.summarySignatures ?? {}) as Record<string, unknown>) || {}
+  const parseSummaryCfg = (subRaw: unknown): SummarySignaturesConfig => {
+    if (!subRaw || typeof subRaw !== 'object') return {}
+    const s = subRaw as Record<string, unknown>
+    return {
+      preparedBy: typeof s.preparedBy === 'string' ? s.preparedBy : undefined,
+      pjoLeader: typeof s.pjoLeader === 'string' ? s.pjoLeader : undefined,
+      approvedBy: typeof s.approvedBy === 'string' ? s.approvedBy : undefined,
+      hrName: typeof s.hrName === 'string' ? s.hrName : undefined,
+      externalPreparedBy: typeof s.externalPreparedBy === 'string' ? s.externalPreparedBy : undefined,
+      externalApprovedBy: typeof s.externalApprovedBy === 'string' ? s.externalApprovedBy : undefined,
+    }
+  }
+
+  const summarySignatures: Partial<Record<SummaryDocTypeKey, SummarySignaturesConfig>> = {
+    ot: parseSummaryCfg(rawSummaries.ot),
+    spl: parseSummaryCfg(rawSummaries.spl),
+    msa: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.msa),
+    },
+    meals: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.meals),
+    },
+    lokasi: parseSummaryCfg(rawSummaries.lokasi),
+  }
+
   return {
     preparedBy: (cfg.preparedBy as string) || '',
     pjoLeader: (cfg.pjoLeader as string) || headEmp || '',
@@ -765,6 +812,7 @@ function normalizePdfConfig(
     externalSignatureCount: (Number(cfg.externalSignatureCount) as 2 | 3 | 4) || 2,
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
+    summarySignatures,
   }
 }
 
@@ -1767,6 +1815,7 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const [rosterDialogOpen, setRosterDialogOpen] = useState(false)
   const [siteConfigDialogOpen, setSiteConfigDialogOpen] = useState(false)
+  const [activePdfSummaryTab, setActivePdfSummaryTab] = useState<'default' | SummaryDocTypeKey>('default')
   const [openScheduleHistorySiteId, setOpenScheduleHistorySiteId] = useState<number | null>(null)
   const [deletedSchedulePlanKeys, setDeletedSchedulePlanKeys] = useState<string[]>([])
   const [deleteScheduleHistoryTarget, setDeleteScheduleHistoryTarget] = useState<{
@@ -4366,6 +4415,89 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
+  function updateSummaryPdfConfig(
+    docKey: SummaryDocTypeKey,
+    fieldKey: keyof SummarySignaturesConfig,
+    value: string
+  ) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const prevSummaries = currentConfig.pdfConfig.summarySignatures ?? {}
+      const prevDoc = prevSummaries[docKey] ?? {}
+      const nextSummaries = {
+        ...prevSummaries,
+        [docKey]: {
+          ...prevDoc,
+          [fieldKey]: value,
+        },
+      }
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: {
+            ...currentConfig.pdfConfig,
+            summarySignatures: nextSummaries,
+          },
+        },
+      }
+    })
+  }
+
+  function copyDefaultSignaturesToSummary(docKey: SummaryDocTypeKey) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const prevSummaries = currentConfig.pdfConfig.summarySignatures ?? {}
+      const nextSummaries = {
+        ...prevSummaries,
+        [docKey]: {
+          preparedBy: currentConfig.pdfConfig.preparedBy,
+          pjoLeader: currentConfig.pdfConfig.pjoLeader,
+          approvedBy: currentConfig.pdfConfig.approvedBy,
+          hrName: currentConfig.pdfConfig.hrName,
+          externalPreparedBy: currentConfig.pdfConfig.externalPreparedBy,
+          externalApprovedBy: currentConfig.pdfConfig.externalApprovedBy,
+        },
+      }
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: {
+            ...currentConfig.pdfConfig,
+            summarySignatures: nextSummaries,
+          },
+        },
+      }
+    })
+    toast.success('Tanda tangan default disalin ke ringkasan dokumen.')
+  }
+
+  function resetSummarySignaturesToDefault(docKey: SummaryDocTypeKey) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const prevSummaries = currentConfig.pdfConfig.summarySignatures ?? {}
+      const nextSummaries = {
+        ...prevSummaries,
+        [docKey]: {},
+      }
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: {
+            ...currentConfig.pdfConfig,
+            summarySignatures: nextSummaries,
+          },
+        },
+      }
+    })
+    toast.info('Tanda tangan di-reset untuk mengikuti konfigurasi Default.')
+  }
+
   function addCustomSigner() {
     updatePdfConfig('customSigners', [
       ...siteConfig.pdfConfig.customSigners,
@@ -6282,17 +6414,50 @@ export function SchedulingTimesheetWorkspace({
     )
   }
 
-  function getSummaryPdfSignatures(baseSignatures: typeof pdfSignatures): PdfSignatureNames {
+  function normalizeSummaryDocKey(view?: string): SummaryDocTypeKey | null {
+    if (!view) return null
+    const v = view.toLowerCase().trim()
+    if (v === 'ovt' || v === 'ot' || v === 'overtime' || v === 'overtime_summary') return 'ot'
+    if (v === 'ovt_spl' || v === 'spl' || v === 'overtime_spl' || v === 'ovt_spl_summary') return 'spl'
+    if (v === 'msa' || v === 'msa_summary') return 'msa'
+    if (v === 'meals' || v === 'mls' || v === 'mls_summary') return 'meals'
+    if (v === 'tu' || v === 'lokasi' || v === 'tu_summary') return 'lokasi'
+    return null
+  }
+
+  function getSummaryPdfSignatures(
+    baseSignatures: typeof pdfSignatures,
+    view?: string
+  ): PdfSignatureNames {
     const cfg = siteConfig.pdfConfig
+    const docKey = normalizeSummaryDocKey(view)
+    const summaryOverride = docKey ? cfg.summarySignatures?.[docKey] : undefined
+
+    const defaultPrep =
+      docKey === 'msa' || docKey === 'meals'
+        ? "Muhammad As'ar Fauzan"
+        : baseSignatures.preparedBy || cfg.preparedBy || ''
+    const resolvedPreparedBy = summaryOverride?.preparedBy?.trim() || defaultPrep
+    const resolvedPjo =
+      summaryOverride?.pjoLeader?.trim() || baseSignatures.pjoLeader || cfg.pjoLeader || ''
+    const resolvedApprovedBy =
+      summaryOverride?.approvedBy?.trim() || baseSignatures.approvedBy || cfg.approvedBy || ''
+    const resolvedHr =
+      summaryOverride?.hrName?.trim() || baseSignatures.hrName || cfg.hrName || ''
+    const resolvedExtPreparedBy =
+      summaryOverride?.externalPreparedBy?.trim() ||
+      cfg.externalPreparedBy ||
+      baseSignatures.externalPreparedBy ||
+      ''
+    const resolvedExtApprovedBy =
+      summaryOverride?.externalApprovedBy?.trim() ||
+      cfg.externalApprovedBy ||
+      baseSignatures.externalApprovedBy ||
+      ''
+
     if (pdfUseExternalSignatures) {
-      const extPrep =
-        cfg.externalPreparedBy?.trim() ||
-        baseSignatures.externalPreparedBy?.trim() ||
-        baseSignatures.preparedBy
-      const extAppr =
-        cfg.externalApprovedBy?.trim() ||
-        baseSignatures.externalApprovedBy?.trim() ||
-        baseSignatures.approvedBy
+      const extPrep = resolvedExtPreparedBy || resolvedPreparedBy
+      const extAppr = resolvedExtApprovedBy || resolvedApprovedBy
       return {
         ...baseSignatures,
         preparedBy: extPrep,
@@ -6310,12 +6475,12 @@ export function SchedulingTimesheetWorkspace({
     }
     return {
       ...baseSignatures,
-      preparedBy: baseSignatures.preparedBy || cfg.preparedBy || '',
-      pjoLeader: baseSignatures.pjoLeader || cfg.pjoLeader || '',
-      approvedBy: baseSignatures.approvedBy || cfg.approvedBy || '',
-      hrName: baseSignatures.hrName || cfg.hrName || '',
-      externalPreparedBy: cfg.externalPreparedBy || baseSignatures.externalPreparedBy,
-      externalApprovedBy: cfg.externalApprovedBy || baseSignatures.externalApprovedBy,
+      preparedBy: resolvedPreparedBy,
+      pjoLeader: resolvedPjo,
+      approvedBy: resolvedApprovedBy,
+      hrName: resolvedHr,
+      externalPreparedBy: resolvedExtPreparedBy,
+      externalApprovedBy: resolvedExtApprovedBy,
       externalSignatureCount: cfg.externalSignatureCount || pdfExternalSignatureCount || 2,
       logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
       customSigners: cfg.customSigners || baseSignatures.customSigners,
@@ -6728,7 +6893,7 @@ export function SchedulingTimesheetWorkspace({
     customSignatures?: typeof pdfSignatures
   ) {
     const { generateSummaryTablePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
-    const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures)
+    const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures, view)
     return generateSummaryTablePdf({
       view: view === 'ovt' ? 'ot' : view === 'ovt_spl' ? 'spl' : view,
       period,
@@ -6929,14 +7094,7 @@ export function SchedulingTimesheetWorkspace({
         pages.forEach((page) => merged.addPage(page))
       }
 
-      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
-        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
-        const summarySource = await PDFDocument.load(summaryPdf)
-        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
-        pages.forEach((page) => merged.addPage(page))
-      }
-
-      // 1.b OVERTIME SPL SUMMARY
+      // 2. OVERTIME SPL SUMMARY
       if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
         const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
@@ -10486,306 +10644,590 @@ export function SchedulingTimesheetWorkspace({
                         Konfigurasi PDF &amp; Tanda Tangan
                       </p>
                       <p className="text-muted-foreground text-xs">
-                        Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
-                        Site Allowance.
+                        Atur alur tanda tangan terpusat atau pisahkan khusus per jenis dokumen PDF summary.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider whitespace-nowrap uppercase">
-                        Preset TTD:
-                      </Label>
-                      <Select
-                        onValueChange={(val) => {
-                          if (
-                            val === 'repair' ||
-                            val === 'services' ||
-                            val === 'technical' ||
-                            val === 'hse'
-                          ) {
-                            applySignaturePreset(val)
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="border-border/70 h-8.5 min-w-[190px] border bg-white px-3 text-xs font-medium shadow-none">
-                          <SelectValue placeholder="Pilih Preset TTD..." />
-                        </SelectTrigger>
-                        <SelectContent className="z-50 bg-white shadow-md">
-                          <SelectItem value="repair" className="cursor-pointer text-xs font-medium">
-                            Repair TTD
-                          </SelectItem>
-                          <SelectItem
-                            value="services"
-                            className="cursor-pointer text-xs font-medium"
-                          >
-                            Services TTD
-                          </SelectItem>
-                          <SelectItem
-                            value="technical"
-                            className="cursor-pointer text-xs font-medium"
-                          >
-                            Technical TTD
-                          </SelectItem>
-                          <SelectItem value="hse" className="cursor-pointer text-xs font-medium">
-                            HSE TTD
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {activePdfSummaryTab === 'default' && (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider whitespace-nowrap uppercase">
+                          Preset TTD:
+                        </Label>
+                        <Select
+                          onValueChange={(val) => {
+                            if (
+                              val === 'repair' ||
+                              val === 'services' ||
+                              val === 'technical' ||
+                              val === 'hse'
+                            ) {
+                              applySignaturePreset(val)
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="border-border/70 h-8.5 min-w-[190px] border bg-white px-3 text-xs font-medium shadow-none">
+                            <SelectValue placeholder="Pilih Preset TTD..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-50 bg-white shadow-md">
+                            <SelectItem value="repair" className="cursor-pointer text-xs font-medium">
+                              Repair TTD
+                            </SelectItem>
+                            <SelectItem
+                              value="services"
+                              className="cursor-pointer text-xs font-medium"
+                            >
+                              Services TTD
+                            </SelectItem>
+                            <SelectItem
+                              value="technical"
+                              className="cursor-pointer text-xs font-medium"
+                            >
+                              Technical TTD
+                            </SelectItem>
+                            <SelectItem value="hse" className="cursor-pointer text-xs font-medium">
+                              HSE TTD
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
-                  {/* Alur Tanda Tangan Internal */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
-                        Internal
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        Alur Penandatangan Internal (PT Chitra Paratama)
-                      </span>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Dibuat oleh
-                        </Label>
-                        <SearchableSelect
-                          label="Dibuat oleh"
-                          value={siteConfig.pdfConfig.preparedBy}
-                          onValueChange={(v) => updatePdfConfig('preparedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder={currentEmployeeName || 'Pilih atau ketik pembuat...'}
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Approved by
-                        </Label>
-                        <SearchableSelect
-                          label="Approved by"
-                          value={siteConfig.pdfConfig.pjoLeader}
-                          onValueChange={(v) => updatePdfConfig('pjoLeader', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau cari Approved by..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Approved by
-                        </Label>
-                        <SearchableSelect
-                          label="Approved by"
-                          value={siteConfig.pdfConfig.approvedBy}
-                          onValueChange={(v) => updatePdfConfig('approvedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Diketahui oleh
-                        </Label>
-                        <SearchableSelect
-                          label="Diketahui oleh"
-                          value={siteConfig.pdfConfig.hrName}
-                          onValueChange={(v) => updatePdfConfig('hrName', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau ketik nama HR..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
+
+                  {/* 5 Summary Documents + Default Tabs */}
+                  <div className="mb-4 space-y-2">
+                    <Label className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                      Pilih Dokumen PDF untuk Mengatur Tanda Tangan:
+                    </Label>
+                    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-lg border border-slate-200/80">
+                      {[
+                        { id: 'default' as const, label: 'Default / Umum' },
+                        { id: 'ot' as const, label: '1. OVERTIME SUMMARY' },
+                        { id: 'spl' as const, label: '2. OVERTIME SPL SUMMARY' },
+                        { id: 'msa' as const, label: '3. MSA summary' },
+                        { id: 'meals' as const, label: '4. MLS summary' },
+                        { id: 'lokasi' as const, label: '5. TU summary' },
+                      ].map((tab) => {
+                        const isSelected = activePdfSummaryTab === tab.id
+                        const hasCustom =
+                          tab.id !== 'default' &&
+                          Boolean(
+                            siteConfig.pdfConfig.summarySignatures?.[tab.id]?.preparedBy ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.pjoLeader ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.approvedBy ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.hrName ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.externalPreparedBy ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.externalApprovedBy
+                          )
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActivePdfSummaryTab(tab.id)}
+                            className={cn(
+                              'px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer',
+                              isSelected
+                                ? 'bg-white text-indigo-700 shadow-xs font-bold border border-slate-200/90'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                            )}
+                          >
+                            <span>{tab.label}</span>
+                            {hasCustom ? (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                                title="Tanda tangan kustom aktif"
+                              />
+                            ) : null}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
-                  {/* Alur Tanda Tangan Eksternal */}
-                  <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
-                          Eksternal
-                        </span>
-                        <span className="text-xs font-semibold text-slate-700">
-                          Alur Penandatangan Eksternal (Customer / Pihak Luar)
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-muted-foreground mr-1">Default:</span>
-                        {([2, 3, 4] as const).map((cnt) => {
-                          const isActive = (siteConfig.pdfConfig.externalSignatureCount ?? 2) === cnt
-                          return (
-                            <button
-                              key={cnt}
-                              type="button"
-                              onClick={() => {
-                                updatePdfConfig('externalSignatureCount', cnt)
-                                setPdfExternalSignatureCount(cnt)
-                              }}
-                              className={cn(
-                                'h-6 px-2 text-[11px] font-semibold rounded transition-colors cursor-pointer border',
-                                isActive
-                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                              )}
-                              title={`Set default ${cnt} tanda tangan untuk eksternal`}
-                            >
-                              {cnt} TTD
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          1. Dibuat oleh
-                        </Label>
-                        <SearchableSelect
-                          label="Dibuat oleh"
-                          value={siteConfig.pdfConfig.externalPreparedBy || ''}
-                          onValueChange={(v) => updatePdfConfig('externalPreparedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau ketik nama pembuat eksternal..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          <span>2. Approved by</span>
-                          <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
-                            (nama spv)
+                  {activePdfSummaryTab !== 'default' ? (
+                    <div className="space-y-4 rounded-xl border border-indigo-100 bg-indigo-50/30 p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-md border border-indigo-200 bg-indigo-100/70 px-2 py-0.5 text-[10px] font-bold text-indigo-800 uppercase">
+                            Khusus Dokumen
                           </span>
-                        </Label>
-                        <SearchableSelect
-                          label="Approved by (Nama SPV)"
-                          value={siteConfig.pdfConfig.externalApprovedBy || ''}
-                          onValueChange={(v) => updatePdfConfig('externalApprovedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau ketik nama SPV Customer..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-foreground text-xs font-semibold">
-                        Penandatangan Tambahan
-                      </p>
-                      <Button size="sm" variant="outline" onClick={addCustomSigner}>
-                        + Tambah TTD
-                      </Button>
-                    </div>
-                    {siteConfig.pdfConfig.customSigners.length > 0 ? (
-                      <div className="overflow-auto">
-                        <table className="w-full min-w-[500px] text-sm">
-                          <thead>
-                            <tr className="bg-surface-container-low text-muted-foreground text-left text-[10px] tracking-[0.12em] uppercase">
-                              <th className="px-3 py-2 font-medium">Label</th>
-                              <th className="px-3 py-2 font-medium">Nama</th>
-                              <th className="w-20 px-3 py-2 font-medium">Aksi</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {siteConfig.pdfConfig.customSigners.map((s, i) => (
-                              <tr
-                                key={`pdfsig-${i}`}
-                                className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
-                              >
-                                <td className="px-3 py-2">
-                                  <Input
-                                    value={s.label}
-                                    onChange={(e) => updateCustomSigner(i, 'label', e.target.value)}
-                                    placeholder="Misal: Mengetahui"
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <SearchableSelect
-                                    label="Penandatangan"
-                                    value={s.name}
-                                    onValueChange={(v) => updateCustomSigner(i, 'name', v)}
-                                    options={employees.map((e) => ({
-                                      value: e.name,
-                                      label: e.role ? `${e.name} (${e.role})` : e.name,
-                                    }))}
-                                    placeholder="Pilih atau ketik nama..."
-                                    allowCustom={true}
-                                    widthClassName="w-full"
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => removeCustomSigner(i)}
-                                  >
-                                    <X className="size-3.5" />
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="mt-4">
-                    <p className="text-foreground mb-2 text-xs font-semibold">Logo Customer</p>
-                    <p className="text-muted-foreground mb-3 text-xs">
-                      Upload logo customer. Muncul di pojok kanan PDF. Format PNG/JPG, maks 2MB.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-4">
-                      <label className="bg-surface-container-low hover:bg-surface-container-high flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
-                        <Upload className="size-4" /> Pilih Logo
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/jpg"
-                          className="hidden"
-                          onChange={handleLogoUpload}
-                        />
-                      </label>
-                      {siteConfig.pdfConfig.logoUrl ? (
-                        <div className="relative inline-flex">
-                          <img
-                            src={siteConfig.pdfConfig.logoUrl}
-                            alt="Customer Logo"
-                            className="h-14 w-auto rounded-lg border object-contain"
-                          />
-                          <button
-                            type="button"
-                            className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-rose-600 text-white hover:bg-rose-700"
-                            onClick={() => updatePdfConfig('logoUrl', '')}
-                          >
-                            <X className="size-3" />
-                          </button>
+                          <span className="text-xs font-semibold text-slate-800">
+                            {activePdfSummaryTab === 'ot' && '1. OVERTIME SUMMARY'}
+                            {activePdfSummaryTab === 'spl' && '2. OVERTIME SPL SUMMARY'}
+                            {activePdfSummaryTab === 'msa' && '3. MSA summary (Meal & Site Allowance)'}
+                            {activePdfSummaryTab === 'meals' && '4. MLS summary (Meals Allowance)'}
+                            {activePdfSummaryTab === 'lokasi' && '5. TU summary (Tunjangan Khusus / Lokasi)'}
+                          </span>
                         </div>
-                      ) : null}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px] bg-white border-slate-200"
+                            onClick={() => copyDefaultSignaturesToSummary(activePdfSummaryTab)}
+                          >
+                            Salin dari Default
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px] bg-white border-slate-200 text-slate-600"
+                            onClick={() => resetSummarySignaturesToDefault(activePdfSummaryTab)}
+                          >
+                            Reset ke Default
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Internal Signatures for this summary */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
+                            Internal
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">
+                            Alur Penandatangan Internal untuk Ringkasan Ini
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Dibuat oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.preparedBy ??
+                                (activePdfSummaryTab === 'msa' || activePdfSummaryTab === 'meals'
+                                  ? "Muhammad As'ar Fauzan"
+                                  : '')
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'preparedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.preparedBy
+                                  ? `Default: ${siteConfig.pdfConfig.preparedBy}`
+                                  : activePdfSummaryTab === 'msa' || activePdfSummaryTab === 'meals'
+                                    ? "Muhammad As'ar Fauzan"
+                                    : 'Pilih atau ketik pembuat...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by 1
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by 1"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.pjoLeader ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'pjoLeader', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.pjoLeader
+                                  ? `Default: ${siteConfig.pdfConfig.pjoLeader}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by 2
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by 2"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.approvedBy ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'approvedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.approvedBy
+                                  ? `Default: ${siteConfig.pdfConfig.approvedBy}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Diketahui oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Diketahui oleh"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.hrName ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'hrName', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.hrName
+                                  ? `Default: ${siteConfig.pdfConfig.hrName}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Eksternal Signatures for this summary */}
+                      <div className="border-border/40 mt-3 space-y-2 border-t pt-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                            Eksternal
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">
+                            Alur Penandatangan Eksternal untuk Ringkasan Ini
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              1. Dibuat oleh (Eksternal)
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]
+                                  ?.externalPreparedBy ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'externalPreparedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.externalPreparedBy
+                                  ? `Default: ${siteConfig.pdfConfig.externalPreparedBy}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              <span>2. Approved by (Eksternal)</span>
+                              <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
+                                (nama spv)
+                              </span>
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by (Nama SPV)"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]
+                                  ?.externalApprovedBy ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'externalApprovedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.externalApprovedBy
+                                  ? `Default: ${siteConfig.pdfConfig.externalApprovedBy}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Alur Tanda Tangan Internal */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
+                            Internal
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">
+                            Alur Penandatangan Internal (PT Chitra Paratama)
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Dibuat oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={siteConfig.pdfConfig.preparedBy}
+                              onValueChange={(v) => updatePdfConfig('preparedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={currentEmployeeName || 'Pilih atau ketik pembuat...'}
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by"
+                              value={siteConfig.pdfConfig.pjoLeader}
+                              onValueChange={(v) => updatePdfConfig('pjoLeader', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau cari Approved by..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by"
+                              value={siteConfig.pdfConfig.approvedBy}
+                              onValueChange={(v) => updatePdfConfig('approvedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Diketahui oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Diketahui oleh"
+                              value={siteConfig.pdfConfig.hrName}
+                              onValueChange={(v) => updatePdfConfig('hrName', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau ketik nama HR..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Alur Tanda Tangan Eksternal */}
+                      <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                              Eksternal
+                            </span>
+                            <span className="text-xs font-semibold text-slate-700">
+                              Alur Penandatangan Eksternal (Customer / Pihak Luar)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] text-muted-foreground mr-1">Default:</span>
+                            {([2, 3, 4] as const).map((cnt) => {
+                              const isActive =
+                                (siteConfig.pdfConfig.externalSignatureCount ?? 2) === cnt
+                              return (
+                                <button
+                                  key={cnt}
+                                  type="button"
+                                  onClick={() => {
+                                    updatePdfConfig('externalSignatureCount', cnt)
+                                    setPdfExternalSignatureCount(cnt)
+                                  }}
+                                  className={cn(
+                                    'h-6 px-2 text-[11px] font-semibold rounded transition-colors cursor-pointer border',
+                                    isActive
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                  )}
+                                  title={`Set default ${cnt} tanda tangan untuk eksternal`}
+                                >
+                                  {cnt} TTD
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              1. Dibuat oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={siteConfig.pdfConfig.externalPreparedBy || ''}
+                              onValueChange={(v) => updatePdfConfig('externalPreparedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau ketik nama pembuat eksternal..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              <span>2. Approved by</span>
+                              <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
+                                (nama spv)
+                              </span>
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by (Nama SPV)"
+                              value={siteConfig.pdfConfig.externalApprovedBy || ''}
+                              onValueChange={(v) => updatePdfConfig('externalApprovedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau ketik nama SPV Customer..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="text-foreground text-xs font-semibold">
+                            Penandatangan Tambahan
+                          </p>
+                          <Button size="sm" variant="outline" onClick={addCustomSigner}>
+                            + Tambah TTD
+                          </Button>
+                        </div>
+                        {siteConfig.pdfConfig.customSigners.length > 0 ? (
+                          <div className="overflow-auto">
+                            <table className="w-full min-w-[500px] text-sm">
+                              <thead>
+                                <tr className="bg-surface-container-low text-muted-foreground text-left text-[10px] tracking-[0.12em] uppercase">
+                                  <th className="px-3 py-2 font-medium">Label</th>
+                                  <th className="px-3 py-2 font-medium">Nama</th>
+                                  <th className="w-20 px-3 py-2 font-medium">Aksi</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {siteConfig.pdfConfig.customSigners.map((s, i) => (
+                                  <tr
+                                    key={`pdfsig-${i}`}
+                                    className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
+                                  >
+                                    <td className="px-3 py-2">
+                                      <Input
+                                        value={s.label}
+                                        onChange={(e) =>
+                                          updateCustomSigner(i, 'label', e.target.value)
+                                        }
+                                        placeholder="Misal: Mengetahui"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <SearchableSelect
+                                        label="Penandatangan"
+                                        value={s.name}
+                                        onValueChange={(v) => updateCustomSigner(i, 'name', v)}
+                                        options={employees.map((e) => ({
+                                          value: e.name,
+                                          label: e.role ? `${e.name} (${e.role})` : e.name,
+                                        }))}
+                                        placeholder="Pilih atau ketik nama..."
+                                        allowCustom={true}
+                                        widthClassName="w-full"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => removeCustomSigner(i)}
+                                      >
+                                        <X className="size-3.5" />
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-4">
+                        <p className="text-foreground mb-2 text-xs font-semibold">Logo Customer</p>
+                        <p className="text-muted-foreground mb-3 text-xs">
+                          Upload logo customer. Muncul di pojok kanan PDF. Format PNG/JPG, maks 2MB.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <label className="bg-surface-container-low hover:bg-surface-container-high flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
+                            <Upload className="size-4" /> Pilih Logo
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/jpg"
+                              className="hidden"
+                              onChange={handleLogoUpload}
+                            />
+                          </label>
+                          {siteConfig.pdfConfig.logoUrl ? (
+                            <div className="relative inline-flex">
+                              <img
+                                src={siteConfig.pdfConfig.logoUrl}
+                                alt="Customer Logo"
+                                className="h-14 w-auto rounded-lg border object-contain"
+                              />
+                              <button
+                                type="button"
+                                className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-rose-600 text-white hover:bg-rose-700"
+                                onClick={() => updatePdfConfig('logoUrl', '')}
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
+                  )}
                   <div className="border-border/40 mt-5 flex items-center justify-end gap-3 border-t pt-3">
                     <Button
                       size="sm"
