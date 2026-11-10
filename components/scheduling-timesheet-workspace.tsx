@@ -6412,11 +6412,13 @@ export function SchedulingTimesheetWorkspace({
           staff,
           employee.id
         )
-        // Overtime Record HANYA mencatat lembur wajib (autoMinutes), BUKAN gabungan SPL
-        const mandatoryHours = mandatoryOvertimeHours(res)
+        // Jika ada input manual/override di dialog absensi, gunakan nilai manual tersebut
+        const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+        const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+        const finalHours = manualVal !== null ? manualVal : mandatoryOvertimeHours(res)
         return {
           ...res,
-          totalHours: mandatoryHours,
+          totalHours: finalHours,
         }
       },
     }).map((day) => {

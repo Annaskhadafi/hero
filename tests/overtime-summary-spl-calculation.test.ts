@@ -371,4 +371,93 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(1000);
   });
+
+  it('honors manual overtime override on workdays in Overtime Record (Benni Day 18 DS with 11h override)', async () => {
+    const { generateOvertimeRecordPdf } = await import('../lib/timesheet/generate-attendance-pdf');
+    const pdfBytes = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-10',
+      employeeId: 1190,
+      employeeName: 'Benni Sianipar',
+      employeeSn: '62317',
+      department: 'Central Services',
+      section: 'Service Operation',
+      siteName: 'CK MIFA',
+      signatures: {
+        preparedBy: 'Benni Sianipar',
+        pjoLeader: 'Apriyanto',
+        approvedBy: 'Romy Hidayat',
+      },
+      days: Array.from({ length: 31 }, (_, i) => {
+        const day = i + 1;
+        const isSunday = [4, 11, 25].includes(day);
+        const isSaturday = [3, 10, 17, 24, 31].includes(day);
+        if (day === 18) {
+          return {
+            day: 18,
+            dayName: 'Sunday',
+            scheduleCode: 'DS',
+            status: 'present',
+            clockIn: '05:58',
+            clockOut: '18:00',
+            workingTimeFrom: '05.58',
+            workingTimeTo: '18.00',
+            configuredOvertimeIntervals: [
+              { start: '06:00', end: '08:00' },
+              { start: '16:00', end: '18:00' },
+            ],
+            overtime: {
+              totalHours: 11, // Manual override from attendance modal
+              intervals: [
+                { start: '06:00', end: '08:00' },
+                { start: '16:00', end: '18:00' },
+              ],
+            },
+          };
+        }
+        if (isSunday) {
+          return {
+            day,
+            dayName: 'Sunday',
+            scheduleCode: 'OFF',
+            status: 'off',
+            clockIn: '',
+            clockOut: '',
+            workingTimeFrom: '',
+            workingTimeTo: '',
+            configuredOvertimeIntervals: [],
+            overtime: { totalHours: 0, intervals: [] },
+          };
+        }
+        const wajib = isSaturday ? 6 : 4;
+        return {
+          day,
+          dayName: isSaturday ? 'Saturday' : 'Workday',
+          scheduleCode: 'DS',
+          status: 'present',
+          clockIn: '05:40',
+          clockOut: '19:00',
+          workingTimeFrom: '05.40',
+          workingTimeTo: '19.00',
+          configuredOvertimeIntervals: [
+            { start: '06:00', end: isSaturday ? '09:00' : '08:00' },
+            { start: isSaturday ? '15:00' : '16:00', end: '18:00' },
+          ],
+          overtime: { totalHours: wajib, intervals: [] },
+        };
+      }),
+      isNonStaff: true,
+      showTotalOvertime: true,
+      overtimeMode: 'template',
+    });
+
+    const fs = await import('fs');
+    const path = await import('path');
+    const scratchDir = path.resolve('scratch');
+    if (!fs.existsSync(scratchDir)) fs.mkdirSync(scratchDir, { recursive: true });
+    fs.writeFileSync(path.join(scratchDir, 'benni-day18-11h-fixed.pdf'), Buffer.from(pdfBytes));
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+  });
 });
