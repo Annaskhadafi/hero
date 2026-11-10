@@ -8553,15 +8553,18 @@ function serializeAttendanceOverride(
 }
 
 export async function getSchedulingTimesheetOverviewOptions() {
-  return getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions()
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetSetupOptions() {
-  return getSchedulingTimesheetOptions('scheduling_timesheet_setup')
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet_setup')
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetScheduleOptions() {
-  return getSchedulingTimesheetOptions('scheduling_timesheet')
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet')
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetScheduleV2Options() {

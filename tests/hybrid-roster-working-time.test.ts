@@ -31,6 +31,9 @@ describe('Hybrid Shift Dual Roster & Staff vs Non-Staff Working Time', () => {
       expect(isStaffRole('Tyreman', 'Mekanik Ban', 'Non-Staff')).toBe(false)
       expect(isStaffRole('Serviceman', 'Serviceman OTR', 'Non-Staff')).toBe(false)
       expect(isStaffRole('Operator', 'Operator Loader', 'Non Staff')).toBe(false)
+      // Muhammad Fadzri case: Role 'Operation', Level 'Staff', Status 'Permanent'
+      expect(isStaffRole('Operation', 'Operation', 'Staff', 'Permanent')).toBe(true)
+      expect(isStaffRole('Operation', 'Operation', null, null)).toBe(true)
     })
   })
 
@@ -177,6 +180,36 @@ describe('Hybrid Shift Dual Roster & Staff vs Non-Staff Working Time', () => {
       })
       expect(weekdayStaffCheck.isOffDay).toBe(false)
       expect(weekdayStaffCheck.allowAttendance).toBe(true)
+    })
+  })
+
+  describe('Muhammad Fadzri (Staff Operation - Site 127 Sangatta KABO) attendance grid punctuality', () => {
+    const punches = [
+      { day: 2, clockIn: '07:57' },
+      { day: 3, clockIn: '07:53' },
+      { day: 4, clockIn: '08:00' },
+      { day: 5, clockIn: '07:59' },
+      { day: 6, clockIn: '07:55' },
+      { day: 9, clockIn: '07:58' },
+    ]
+
+    punches.forEach(({ day, clockIn }) => {
+      it(`evaluates day ${day} clock-in ${clockIn} as ON TIME (scheduled 08:00)`, () => {
+        const isStaff = isStaffRole('Operation', 'Operation', 'Staff', 'Permanent')
+        expect(isStaff).toBe(true)
+
+        const result = evaluateAttendanceGridPunctuality({
+          clockIn,
+          scheduleCode: 'DS',
+          siteConfig: hybridSiteConfig,
+          isStaff,
+        })
+
+        expect(result.isLate).toBe(false)
+        expect(result.lateMinutes).toBe(0)
+        expect(result.scheduledClockIn).toBe('08:00')
+        expect(result.punctualityNote).toBe('Kehadiran: Tepat waktu (jadwal 08:00)')
+      })
     })
   })
 })

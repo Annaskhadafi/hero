@@ -184,7 +184,7 @@ export function isStaffRole(
     return false
   }
   if (combined.includes('staff')) return true
-  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing|operation/i.test(combined)) {
     return true
   }
   return false

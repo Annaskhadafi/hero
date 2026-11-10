@@ -1076,7 +1076,7 @@ function isStaffRole(
     return false
   }
   if (combined.includes('staff')) return true
-  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing|operation/i.test(combined)) {
     return true
   }
   return false
@@ -5118,24 +5118,41 @@ export function SchedulingTimesheetWorkspace({
   function getAttendanceCell(
     employeeId: number,
     day: number,
-    scheduleCode?: string
+    scheduleCode?: string,
+    employeeObj?: EmployeeOption
   ): ManualAttendanceCell {
     const key = attendanceKey(employeeId, day)
     const manual = manualAttendance[key]
     const authoritativeAttendance = attendanceOverrideByCell.get(key)
     const real = attendanceByCell.get(key)
+    const rowObj = rows.find((r) => r.employee.id === employeeId)
     const rowCode =
-      scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+      scheduleCode ?? rowObj?.schedule[day - 1]
 
-    const empObj = employees.find((e) => e.id === employeeId)
+    const empObj =
+      employeeObj ??
+      rowObj?.employee ??
+      employees.find((e) => e.id === employeeId)
     const empSiteId =
       empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
     const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName, empObj?.employeeStatusType)
 
+    // Defensive check: if the recorded face attendance note already determined
+    // that this was a staff schedule (e.g. "masuk 08:00" or "jadwal 08:00"),
+    // preserve that staff status so punctuality evaluation never regresses.
+    const rawSavedNote = authoritativeAttendance?.note || real?.clockIn?.locationNote || real?.records?.[0]?.locationNote || ''
+    const noteSuggestsStaff = Boolean(
+      rawSavedNote &&
+        (rawSavedNote.includes('08:00') ||
+          rawSavedNote.includes('jadwal 08:00') ||
+          rawSavedNote.includes('masuk 08:00'))
+    )
+    const effectiveIsStaff = isStaff || noteSuggestsStaff
+
     let cellClockConfig = effectiveSiteClockConfig
     if (empSiteId != null) {
       const empSiteConfig = getEmployeeSiteConfig(empSiteId)
-      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && isStaff)
+      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && effectiveIsStaff)
       cellClockConfig = {
         dayShiftClockIn:
           isHybridStaff && empSiteConfig.staffDayShiftClockIn
@@ -5158,7 +5175,7 @@ export function SchedulingTimesheetWorkspace({
 
     if (!manual && !authoritativeAttendance && !real) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig, isStaff)
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig, effectiveIsStaff)
       if (
         rosterStatus === 'off' ||
         rosterStatus === 'field_break' ||
@@ -5274,7 +5291,7 @@ export function SchedulingTimesheetWorkspace({
       clockIn,
       scheduleCode: rowCode,
       siteConfig: cellClockConfig,
-      isStaff,
+      isStaff: effectiveIsStaff,
     })
 
     const isLatePending = effectiveStatus === 'present' && punctuality.isLate
@@ -12852,7 +12869,8 @@ export function SchedulingTimesheetWorkspace({
                                           const cell = getAttendanceCell(
                                             row.employee.id,
                                             day,
-                                            scheduleCode
+                                            scheduleCode,
+                                            row.employee
                                           )
                                           const holiday = holidaysByDay.get(day)
                                           const holidayName = holiday?.localName ?? holiday?.name
