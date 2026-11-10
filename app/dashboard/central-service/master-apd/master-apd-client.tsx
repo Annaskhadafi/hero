@@ -1,50 +1,55 @@
 'use client';
 
-import { useState, useTransition, useMemo } from 'react';
+import React, { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Package,
   Plus,
-  Search,
   Edit2,
   Trash2,
   ShieldCheck,
   Tag,
   Boxes,
   CheckCircle2,
-  AlertTriangle,
+  Sparkles,
+  ToggleLeft,
+  ToggleRight,
+  Wand2,
   X,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog';
+  HeroDataTable,
+  HeroKpiCard,
+  HeroColumnDef,
+  HeroTableFilter,
+  HeroSearchableSelect,
+  HeroFormField,
+  HeroInput,
+  HeroNumberInput,
+  HeroTextarea,
+  HeroSwitch,
+  HeroFormDialog,
+  HeroConfirmDialog,
+  HeroStatusBadge,
+} from '@/components/templates';
 import {
   createMasterApdAction,
   updateMasterApdAction,
   toggleMasterApdStatusAction,
   deleteMasterApdAction,
+  getNextMasterApdCodeAction,
   MasterApdInput,
 } from '@/app/actions/master-apd-actions';
 
-interface MasterApdItem {
+export interface MasterApdItem {
   id: number;
   code: string;
   name: string;
@@ -64,18 +69,37 @@ interface MasterApdClientProps {
   initialItems: MasterApdItem[];
 }
 
+const CATEGORY_OPTIONS = [
+  { value: 'APD', label: 'APD (Alat Pelindung Diri)' },
+  { value: 'Tools', label: 'Tools (Peralatan Kerja)' },
+  { value: 'Material', label: 'Material (Bahan & Komponen)' },
+];
+
+const UNIT_OPTIONS = [
+  { value: 'Pcs', label: 'Pcs (Satuan Buah)' },
+  { value: 'Pasang', label: 'Pasang (Pair)' },
+  { value: 'Set', label: 'Set (Paket Lengkap)' },
+  { value: 'Box', label: 'Box (Kotak)' },
+  { value: 'Roll', label: 'Roll (Gulungan)' },
+  { value: 'Unit', label: 'Unit' },
+];
+
+const SHOE_SIZE_PRESETS = ['38', '39', '40', '41', '42', '43', '44', '45', '46'];
+const APPAREL_SIZE_PRESETS = ['S', 'M', 'L', 'XL', '2XL', '3XL'];
+
 export function MasterApdClient({ initialItems }: MasterApdClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   // Dialog State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MasterApdItem | null>(null);
+
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MasterApdItem | null>(null);
+
+  const [isToggleOpen, setIsToggleOpen] = useState(false);
+  const [itemToToggle, setItemToToggle] = useState<MasterApdItem | null>(null);
 
   // Form Fields
   const [code, setCode] = useState('');
@@ -85,62 +109,10 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
   const [hasSize, setHasSize] = useState(false);
   const [sizeInput, setSizeInput] = useState('');
   const [sizeOptions, setSizeOptions] = useState<string[]>([]);
-  const [minStock, setMinStock] = useState('0');
+  const [minStock, setMinStock] = useState<number>(0);
   const [notes, setNotes] = useState('');
   const [formError, setFormError] = useState('');
-
-  // Filtering
-  const filteredItems = useMemo(() => {
-    return initialItems.filter((item) => {
-      const matchSearch =
-        !search.trim() ||
-        item.code.toLowerCase().includes(search.toLowerCase()) ||
-        item.name.toLowerCase().includes(search.toLowerCase()) ||
-        (item.notes && item.notes.toLowerCase().includes(search.toLowerCase()));
-
-      const matchCategory =
-        categoryFilter === 'ALL' || item.category.toUpperCase() === categoryFilter;
-
-      const matchStatus =
-        statusFilter === 'ALL' ||
-        (statusFilter === 'ACTIVE' && item.isActive) ||
-        (statusFilter === 'INACTIVE' && !item.isActive);
-
-      return matchSearch && matchCategory && matchStatus;
-    });
-  }, [initialItems, search, categoryFilter, statusFilter]);
-
-  const [sortField, setSortField] = useState<string>("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-
-  const handleSort = (field: string) => {
-    if (sortField === field) {
-      setSortDir(prev => prev === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  };
-
-  const sortedItems = useMemo(() => {
-    return [...filteredItems].sort((a, b) => {
-      let aVal = (a as any)[sortField];
-      let bVal = (b as any)[sortField];
-      if (sortField === "minStock") {
-        aVal = Number(aVal || 0);
-        bVal = Number(bVal || 0);
-      } else if (sortField === "status") {
-        aVal = a.isActive ? 1 : 0;
-        bVal = b.isActive ? 1 : 0;
-      } else {
-        aVal = String(aVal || "").toLowerCase();
-        bVal = String(bVal || "").toLowerCase();
-      }
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [filteredItems, sortField, sortDir]);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
 
   // Metrics
   const metrics = useMemo(() => {
@@ -148,29 +120,43 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
     const active = initialItems.filter((i) => i.isActive).length;
     const apdCount = initialItems.filter((i) => i.category.toUpperCase() === 'APD').length;
     const toolsCount = initialItems.filter((i) => i.category.toUpperCase() === 'TOOLS').length;
-    const materialCount = initialItems.filter(
-      (i) => i.category.toUpperCase() === 'MATERIAL'
-    ).length;
-    return { total, active, apdCount, toolsCount, materialCount };
+    const materialCount = initialItems.filter((i) => i.category.toUpperCase() === 'MATERIAL').length;
+    const hasSizeCount = initialItems.filter((i) => i.hasSize).length;
+    return { total, active, apdCount, toolsCount, materialCount, hasSizeCount };
   }, [initialItems]);
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = (defaultCat?: any) => {
+    const validCategory = typeof defaultCat === 'string' ? defaultCat : 'APD';
     setEditingItem(null);
+    setFormError('');
     setCode(`APD-${String(initialItems.length + 1).padStart(3, '0')}`);
     setName('');
-    setCategory('APD');
+    setCategory(validCategory);
     setUnit('Pcs');
     setHasSize(false);
     setSizeOptions([]);
     setSizeInput('');
-    setMinStock('0');
+    setMinStock(0);
     setNotes('');
-    setFormError('');
     setIsFormOpen(true);
+
+    // Fetch next code in background
+    setIsGeneratingCode(true);
+    getNextMasterApdCodeAction(validCategory)
+      .then((codeRes) => {
+        if (codeRes.success && codeRes.nextCode) {
+          setCode(codeRes.nextCode);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setIsGeneratingCode(false);
+      });
   };
 
   const handleOpenEdit = (item: MasterApdItem) => {
     setEditingItem(item);
+    setFormError('');
     setCode(item.code);
     setName(item.name);
     setCategory(item.category);
@@ -178,10 +164,18 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
     setHasSize(item.hasSize);
     setSizeOptions(item.sizeOptions || []);
     setSizeInput('');
-    setMinStock(String(item.minStock || 0));
+    setMinStock(item.minStock || 0);
     setNotes(item.notes || '');
-    setFormError('');
     setIsFormOpen(true);
+  };
+
+  const handleAutoCode = async (cat: string) => {
+    setIsGeneratingCode(true);
+    const codeRes = await getNextMasterApdCodeAction(cat);
+    if (codeRes.success) {
+      setCode(codeRes.nextCode);
+    }
+    setIsGeneratingCode(false);
   };
 
   const handleAddSizeTag = () => {
@@ -201,11 +195,11 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
     setFormError('');
 
     if (!code.trim()) {
-      setFormError('Kode item wajib diisi');
+      setFormError('Kode APD wajib diisi');
       return;
     }
     if (!name.trim()) {
-      setFormError('Nama item wajib diisi');
+      setFormError('Nama APD wajib diisi');
       return;
     }
 
@@ -216,7 +210,7 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
       unit,
       hasSize,
       sizeOptions: hasSize ? sizeOptions : [],
-      minStock: parseInt(minStock, 10) || 0,
+      minStock: Number(minStock) || 0,
       isQtyOnly: true,
       notes: notes.trim(),
     };
@@ -238,10 +232,13 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
     });
   };
 
-  const handleToggleStatus = (item: MasterApdItem) => {
+  const handleToggleStatusConfirm = () => {
+    if (!itemToToggle) return;
     startTransition(async () => {
-      const res = await toggleMasterApdStatusAction(item.id, !item.isActive);
+      const res = await toggleMasterApdStatusAction(itemToToggle.id, !itemToToggle.isActive);
       if (res.success) {
+        setIsToggleOpen(false);
+        setItemToToggle(null);
         router.refresh();
       }
     });
@@ -259,447 +256,429 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
     });
   };
 
+  // Table Filters
+  const filters: HeroTableFilter[] = useMemo(
+    () => [
+      {
+        key: 'category',
+        label: 'Kategori',
+        options: [
+          { value: 'ALL', label: 'Semua Kategori' },
+          { value: 'APD', label: 'APD' },
+          { value: 'Tools', label: 'Tools' },
+          { value: 'Material', label: 'Material' },
+        ],
+      },
+      {
+        key: 'status',
+        label: 'Status',
+        options: [
+          { value: 'ALL', label: 'Semua Status' },
+          { value: 'ACTIVE', label: 'Aktif' },
+          { value: 'INACTIVE', label: 'Nonaktif' },
+        ],
+      },
+    ],
+    []
+  );
+
+  // Table Column Definitions
+  const columns: HeroColumnDef<MasterApdItem>[] = useMemo(
+    () => [
+      {
+        key: 'code',
+        header: 'Kode APD',
+        sortable: true,
+        render: (row) => (
+          <div className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+            <span className="inline-block px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+              {row.code}
+            </span>
+          </div>
+        ),
+      },
+      {
+        key: 'name',
+        header: 'Nama Item / APD',
+        sortable: true,
+        render: (row) => (
+          <div className="flex flex-col py-0.5">
+            <span className="font-semibold text-slate-900 dark:text-slate-100 text-[13px]">
+              {row.name}
+            </span>
+            {row.notes && (
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1 italic">
+                {row.notes}
+              </span>
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'category',
+        header: 'Kategori',
+        sortable: true,
+        render: (row) => {
+          const cat = row.category?.toUpperCase() || 'APD';
+          const badgeStyle =
+            cat === 'APD'
+              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
+              : cat === 'TOOLS'
+              ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+              : 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800';
+          return (
+            <Badge variant="outline" className={`text-[11px] font-semibold px-2 py-0.5 border ${badgeStyle}`}>
+              {cat}
+            </Badge>
+          );
+        },
+      },
+      {
+        key: 'unit',
+        header: 'Satuan',
+        sortable: true,
+        render: (row) => (
+          <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+            {row.unit || 'Pcs'}
+          </span>
+        ),
+      },
+      {
+        key: 'hasSize',
+        header: 'Variasi Ukuran',
+        render: (row) => {
+          if (!row.hasSize || !row.sizeOptions || row.sizeOptions.length === 0) {
+            return <span className="text-xs text-slate-400">-</span>;
+          }
+          return (
+            <div className="flex flex-wrap gap-1 max-w-[200px]">
+              {row.sizeOptions.slice(0, 4).map((size) => (
+                <span
+                  key={size}
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                >
+                  {size}
+                </span>
+              ))}
+              {row.sizeOptions.length > 4 && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
+                  +{row.sizeOptions.length - 4}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
+      {
+        key: 'minStock',
+        header: 'Min. Stock',
+        sortable: true,
+        render: (row) => (
+          <span className="text-xs font-mono font-medium text-slate-800 dark:text-slate-200">
+            {row.minStock || 0} {row.unit || 'Pcs'}
+          </span>
+        ),
+      },
+      {
+        key: 'isActive',
+        header: 'Status',
+        sortable: true,
+        render: (row) => (
+          <HeroStatusBadge
+            status={row.isActive ? 'active' : 'inactive'}
+            className="cursor-pointer"
+          />
+        ),
+      },
+      {
+        key: 'actions',
+        header: 'Aksi',
+        align: 'right',
+        render: (row) => (
+          <div className="flex items-center gap-1 justify-end">
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleOpenEdit(row)}
+                    className="h-8 w-8 text-slate-600 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-xs">Edit Master APD</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setItemToToggle(row);
+                      setIsToggleOpen(true);
+                    }}
+                    className={`h-8 w-8 ${
+                      row.isActive
+                        ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/50'
+                        : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {row.isActive ? (
+                      <ToggleRight className="h-5 w-5" />
+                    ) : (
+                      <ToggleLeft className="h-5 w-5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-xs">
+                  {row.isActive ? 'Nonaktifkan Item' : 'Aktifkan Item'}
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setItemToDelete(row);
+                      setIsDeleteOpen(true);
+                    }}
+                    className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="text-xs">Hapus Master APD</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        ),
+      },
+    ],
+    []
+  );
+
   return (
     <div className="space-y-6 pb-12">
-      {/* Dynamic Header & Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {metrics.total}
-            </div>
-            <div className="text-xs text-slate-500 font-medium">Total Master Item</div>
-          </div>
-        </div>
+      {/* 1. HERO KPI SCORECARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <HeroKpiCard
+          title="Total Katalog Item"
+          value={metrics.total}
+          unit="Item"
+          tone="blue"
+          icon={<Package className="size-5" />}
+          description="Total katalog APD, tools, dan material terdaftar"
+        />
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400">
-            <Package className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {metrics.apdCount}
-            </div>
-            <div className="text-xs text-slate-500 font-medium">Kategori APD</div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Item APD Aktif"
+          value={metrics.active}
+          unit="Siap Pakai"
+          tone="emerald"
+          icon={<ShieldCheck className="size-5" />}
+          description="Item aktif dan dapat diajukan oleh pengguna"
+        />
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
-            <Boxes className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {metrics.toolsCount + metrics.materialCount}
-            </div>
-            <div className="text-xs text-slate-500 font-medium">Tools & Material</div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Kategori APD"
+          value={metrics.apdCount}
+          unit="Katalog"
+          tone="amber"
+          icon={<Tag className="size-5" />}
+          description="Item Alat Pelindung Diri keselamatan kerja"
+        />
 
-        <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {metrics.active} <span className="text-xs font-normal text-slate-400">Aktif</span>
-            </div>
-            <div className="text-xs text-slate-500 font-medium">Item Siap Pakai</div>
-          </div>
-        </div>
+        <HeroKpiCard
+          title="Tools & Material"
+          value={metrics.toolsCount + metrics.materialCount}
+          unit="Item"
+          tone="purple"
+          icon={<Boxes className="size-5" />}
+          description={`${metrics.toolsCount} Tools, ${metrics.materialCount} Material`}
+        />
       </div>
 
-      {/* Action Bar & Controls */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-        <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari kode, nama APD, atau catatan..."
-              className="pl-9 h-9 text-xs bg-slate-50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+      {/* 2. HERO DATA TABLE */}
+      <HeroDataTable
+        data={initialItems}
+        columns={columns}
+        idField="id"
+        title="Katalog Master Data APD"
+        description="Kelola dan tambahkan item Alat Pelindung Diri (APD), Tools, dan Material operasional"
+        searchPlaceholder="Cari kode APD, nama item, merk, atau spesifikasi..."
+        searchKeys={['code', 'name', 'notes', 'category', 'unit']}
+        filters={filters}
+        defaultPageSize={50}
+        exportFileName="Master-Data-APD"
+        pdfTitle="Laporan Katalog Master Data APD HERO"
+        headerActions={
+          <Button
+            onClick={handleOpenAdd}
+            className="h-9 px-4 font-semibold gap-2 bg-[#0753e7] hover:bg-blue-700 text-white shadow-xs"
+          >
+            <Plus className="size-4" />
+            Tambah Master APD
+          </Button>
+        }
+      />
+
+      {/* 3. HERO FORM DIALOG (CREATE / EDIT) */}
+      <HeroFormDialog
+        open={isFormOpen}
+        onOpenChange={setIsFormOpen}
+        title={editingItem ? 'Edit Master Data APD' : 'Tambah Master Data APD Baru'}
+        description={
+          editingItem
+            ? `Perbarui informasi katalog item ${editingItem.code}`
+            : 'Masukkan detail APD, Tools, atau Material baru untuk ditambahkan ke master data'
+        }
+        submitLabel={editingItem ? 'Simpan Perubahan' : 'Tambahkan ke Master APD'}
+        isSubmitting={isPending}
+        onSubmit={handleSubmitForm}
+        maxWidth="lg"
+      >
+        <div className="space-y-4 py-2">
+          {formError && (
+            <div className="p-3 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-lg">
+              {formError}
+            </div>
+          )}
+
+          {/* Kode APD & Auto Code Button */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <HeroFormField
+                label="Kode APD / Item"
+                required
+                tooltip="Kode unik sistem untuk katalog APD (contoh: APD-027)"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-            {['ALL', 'APD', 'TOOLS', 'MATERIAL'].map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setCategoryFilter(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  categoryFilter === cat
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                {cat === 'ALL' ? 'Semua Kategori' : cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <Button
-          onClick={handleOpenAdd}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold h-9 px-4 text-xs gap-2 shadow-xs"
-        >
-          <Plus className="w-4 h-4" />
-          Tambah Item APD
-        </Button>
-      </div>
-
-      {/* Main Data Table Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Tag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="font-bold text-sm text-slate-800 dark:text-slate-200">
-              Katalog Master APD
-            </span>
-            <Badge variant="outline" className="text-[11px] font-medium border-slate-300">
-              {filteredItems.length} Item
-            </Badge>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
-            <thead className="bg-slate-50/80 dark:bg-slate-950/40 text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800 uppercase tracking-wider text-[10px]">
-              <tr>
-                <th className="py-3 px-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
-                    onClick={() => handleSort("name")}
-                  >
-                    Kode & Nama APD
-                    {sortField === "name" ? (
-                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
-                    )}
-                  </Button>
-                </th>
-                <th className="py-3 px-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
-                    onClick={() => handleSort("category")}
-                  >
-                    Kategori
-                    {sortField === "category" ? (
-                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
-                    )}
-                  </Button>
-                </th>
-                <th className="py-3 px-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
-                    onClick={() => handleSort("unit")}
-                  >
-                    Satuan
-                    {sortField === "unit" ? (
-                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
-                    )}
-                  </Button>
-                </th>
-                <th className="py-3 px-4">Opsi Ukuran</th>
-                <th className="py-3 px-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
-                    onClick={() => handleSort("minStock")}
-                  >
-                    Min. Stock
-                    {sortField === "minStock" ? (
-                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
-                    )}
-                  </Button>
-                </th>
-                <th className="py-3 px-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8 text-[10px] font-semibold uppercase hover:bg-transparent"
-                    onClick={() => handleSort("status")}
-                  >
-                    Status
-                    {sortField === "status" ? (
-                      sortDir === "asc" ? <ArrowUp className="ml-1 h-3.5 w-3.5" /> : <ArrowDown className="ml-1 h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpDown className="ml-1 h-3.5 w-3.5 text-muted-foreground/60" />
-                    )}
-                  </Button>
-                </th>
-                <th className="py-3 px-4 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {sortedItems.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Package className="w-8 h-8 text-slate-300 dark:text-slate-700" />
-                      <p className="font-medium text-xs">Tidak ada data Master APD ditemukan</p>
-                      {search && (
-                        <p className="text-[11px] text-slate-400">
-                          Coba atur ulang kata kunci pencarian &quot;{search}&quot;
-                        </p>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                sortedItems.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
-                  >
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-slate-800 dark:text-slate-100">
-                        {item.name}
-                      </div>
-                      <div className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
-                        {item.code}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                          item.category.toUpperCase() === 'APD'
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-900'
-                            : item.category.toUpperCase() === 'TOOLS'
-                            ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-900'
-                            : 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-900'
-                        }`}
-                      >
-                        {item.category}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">
-                      {item.unit}
-                    </td>
-                    <td className="py-3 px-4">
-                      {item.hasSize && item.sizeOptions && item.sizeOptions.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {item.sizeOptions.map((sz) => (
-                            <span
-                              key={sz}
-                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                            >
-                              {sz}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-400 italic">Tanpa Ukuran</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-medium">
-                      <span className="text-slate-700 dark:text-slate-300">
-                        {item.minStock} {item.unit}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleStatus(item)}
-                        disabled={isPending}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all border ${
-                          item.isActive
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900'
-                            : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
-                        }`}
-                      >
-                        {item.isActive ? (
-                          <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Aktif
-                          </>
-                        ) : (
-                          <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                            Nonaktif
-                          </>
-                        )}
-                      </button>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenEdit(item)}
-                          className="h-8 w-8 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
-                          title="Edit APD"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setItemToDelete(item);
-                            setIsDeleteOpen(true);
-                          }}
-                          className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50"
-                          title="Hapus APD"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal Add / Edit Master APD */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold flex items-center gap-2">
-              <Package className="w-4 h-4 text-emerald-600" />
-              {editingItem ? 'Edit Item Master APD' : 'Tambah Item Master APD Baru'}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Isi data detail barang katalog untuk APD, Tools, atau Material.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmitForm} className="space-y-4 pt-2">
-            {formError && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                  Kode APD <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="APD-001"
-                  className="h-9 text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                  Kategori
-                </label>
-                <Select value={category} onValueChange={(val) => setCategory(val)}>
-                  <SelectTrigger className="w-full h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="APD">APD</SelectItem>
-                    <SelectItem value="Tools">Tools</SelectItem>
-                    <SelectItem value="Material">Material</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="flex gap-2">
+                  <HeroInput
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    placeholder="Contoh: APD-027"
+                    className="font-mono font-bold"
+                  />
+                  {!editingItem && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleAutoCode(category)}
+                      disabled={isGeneratingCode}
+                      className="h-9 px-3 gap-1.5 text-xs whitespace-nowrap"
+                    >
+                      <Wand2 className="size-3.5 text-blue-600" />
+                      Auto
+                    </Button>
+                  )}
+                </div>
+              </HeroFormField>
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                Nama Barang / APD <span className="text-red-500">*</span>
-              </label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Contoh: Safety Shoes Krushers, Helmet Kuning"
-                className="h-9 text-xs"
+              <HeroFormField label="Kategori" required>
+                <HeroSearchableSelect
+                  options={CATEGORY_OPTIONS}
+                  value={category}
+                  onChange={(val) => {
+                    setCategory(val);
+                    if (!editingItem) {
+                      handleAutoCode(val);
+                    }
+                  }}
+                  placeholder="Pilih Kategori"
+                />
+              </HeroFormField>
+            </div>
+          </div>
+
+          {/* Nama APD */}
+          <HeroFormField
+            label="Nama Item / APD"
+            required
+            tooltip="Nama lengkap APD, merk, atau jenisnya (contoh: Tudung Kepala / Kupluk, Cotton Filter Respirator Honeywell)"
+          >
+            <HeroInput
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Contoh: Tudung Kepala / Kupluk (Makatac) atau Cotton Filter Respirator Honeywell"
+            />
+          </HeroFormField>
+
+          {/* Satuan & Min Stock */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <HeroFormField label="Satuan (Unit)" required>
+              <HeroSearchableSelect
+                options={UNIT_OPTIONS}
+                value={unit}
+                onChange={(val) => setUnit(val)}
+                placeholder="Pilih Satuan"
               />
-            </div>
+            </HeroFormField>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                  Satuan (Unit)
-                </label>
-                <Select value={unit} onValueChange={(val) => setUnit(val)}>
-                  <SelectTrigger className="w-full h-9 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Pcs">Pcs</SelectItem>
-                    <SelectItem value="Pasang">Pasang</SelectItem>
-                    <SelectItem value="Set">Set</SelectItem>
-                    <SelectItem value="Box">Box</SelectItem>
-                    <SelectItem value="Roll">Roll</SelectItem>
-                    <SelectItem value="Unit">Unit</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <HeroFormField
+              label="Batas Minimum Stok"
+              tooltip="Jumlah minimum stok untuk kebutuhan operasional"
+            >
+              <HeroInput
+                type="number"
+                min={0}
+                value={minStock}
+                onChange={(e) => setMinStock(parseInt(e.target.value, 10) || 0)}
+                placeholder="0"
+              />
+            </HeroFormField>
+          </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                  Minimum Stok
-                </label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={minStock}
-                  onChange={(e) => setMinStock(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Checkbox Has Size */}
-            <div className="pt-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={hasSize}
-                  onChange={(e) => setHasSize(e.target.checked)}
-                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
-                />
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Memiliki Pilihan Ukuran (Size Options)?
-                </span>
-              </label>
-            </div>
+          {/* Switch Opsi Ukuran */}
+          <div className="rounded-lg border border-border/70 p-3 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
+            <HeroSwitch
+              label="Memerlukan Opsi Ukuran (Size)"
+              description="Aktifkan jika item memiliki variasi ukuran seperti nomor sepatu, ukuran baju/celana, dll."
+              checked={hasSize}
+              onCheckedChange={setHasSize}
+            />
 
             {hasSize && (
-              <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 space-y-2">
-                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 block">
-                  Daftar Pilihan Ukuran
-                </label>
-                <div className="flex gap-1.5">
-                  <Input
+              <div className="pt-2 border-t border-border/70 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Daftar Ukuran Tersedia:
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSizeOptions(SHOE_SIZE_PRESETS)}
+                      className="text-[11px] font-medium text-blue-600 hover:underline"
+                    >
+                      + Preset Sepatu
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSizeOptions(APPAREL_SIZE_PRESETS)}
+                      className="text-[11px] font-medium text-blue-600 hover:underline"
+                    >
+                      + Preset Pakaian
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setSizeOptions([])}
+                      className="text-[11px] font-medium text-rose-500 hover:underline"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <HeroInput
                     value={sizeInput}
                     onChange={(e) => setSizeInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -708,113 +687,102 @@ export function MasterApdClient({ initialItems }: MasterApdClientProps) {
                         handleAddSizeTag();
                       }
                     }}
-                    placeholder="Contoh: 39, 40, S, M, XL..."
-                    className="h-8 text-xs bg-white dark:bg-slate-900"
+                    placeholder="Ketik ukuran lalu Enter atau klik Tambah (contoh: 41, XL)"
+                    className="h-8 text-xs"
                   />
                   <Button
                     type="button"
-                    onClick={handleAddSizeTag}
                     variant="outline"
-                    className="h-8 px-3 text-xs"
+                    onClick={handleAddSizeTag}
+                    className="h-8 px-3 text-xs font-medium"
                   >
-                    + Tambah
+                    Tambah
                   </Button>
                 </div>
 
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {sizeOptions.map((sz) => (
-                    <span
-                      key={sz}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-                    >
-                      {sz}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveSizeTag(sz)}
-                        className="text-slate-400 hover:text-red-500"
+                {sizeOptions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {sizeOptions.map((opt) => (
+                      <span
+                        key={opt}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
                       >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {sizeOptions.length === 0 && (
-                    <span className="text-[11px] text-slate-400 italic">
-                      Belum ada ukuran ditambahkan
-                    </span>
-                  )}
-                </div>
+                        {opt}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSizeTag(opt)}
+                          className="hover:text-rose-600"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
+          </div>
 
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                Catatan / Spesifikasi Singkat
-              </label>
-              <Input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Catatan tambahan..."
-                className="h-9 text-xs"
-              />
-            </div>
+          {/* Catatan / Keterangan Spesifikasi */}
+          <HeroFormField
+            label="Catatan / Spesifikasi / Peruntukan"
+            tooltip="Keterangan peruntukan, standar merk, atau lokasi pemakaian (contoh: Maintenance Rim, Site Vale Sorowako, Honeywell 7506N95)"
+          >
+            <HeroTextarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Contoh: Maintenance Rim - Tudung kepala / kupluk katun pelindung panas & kotoran"
+              rows={2}
+            />
+          </HeroFormField>
+        </div>
+      </HeroFormDialog>
 
-            <DialogFooter className="pt-3 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsFormOpen(false)}
-                className="h-9 text-xs"
-              >
-                Batal
-              </Button>
-              <Button
-                type="submit"
-                disabled={isPending}
-                className="h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-              >
-                {isPending ? 'Menyimpan...' : editingItem ? 'Simpan Perubahan' : 'Tambah Item'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* 4. HERO CONFIRM DIALOG (DELETE) */}
+      <HeroConfirmDialog
+        open={isDeleteOpen}
+        onOpenChange={setIsDeleteOpen}
+        title="Hapus Master Data APD"
+        description={
+          <div>
+            Apakah Anda yakin ingin menghapus katalog{' '}
+            <strong className="text-slate-900 dark:text-slate-100">
+              {itemToDelete?.code} - {itemToDelete?.name}
+            </strong>
+            ? Tindakan ini tidak dapat dibatalkan.
+          </div>
+        }
+        confirmLabel="Hapus Item"
+        tone="destructive"
+        isProcessing={isPending}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setIsDeleteOpen(false)}
+      />
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="max-w-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold text-red-600 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Hapus Master APD
-            </DialogTitle>
-            <DialogDescription className="text-xs pt-1">
-              Apakah Anda yakin ingin menghapus item{' '}
-              <strong className="text-slate-800 dark:text-slate-200">
-                {itemToDelete?.name} ({itemToDelete?.code})
-              </strong>
-              ? Aksi ini tidak dapat dibatalkan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="pt-3 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsDeleteOpen(false)}
-              className="h-9 text-xs"
-            >
-              Batal
-            </Button>
-            <Button
-              type="button"
-              disabled={isPending}
-              onClick={handleDeleteConfirm}
-              className="h-9 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold"
-            >
-              {isPending ? 'Menghapus...' : 'Ya, Hapus Item'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* 5. HERO CONFIRM DIALOG (TOGGLE STATUS) */}
+      <HeroConfirmDialog
+        open={isToggleOpen}
+        onOpenChange={setIsToggleOpen}
+        title={itemToToggle?.isActive ? 'Nonaktifkan Master APD' : 'Aktifkan Master APD'}
+        description={
+          <div>
+            Apakah Anda ingin mengubah status{' '}
+            <strong className="text-slate-900 dark:text-slate-100">
+              {itemToToggle?.code} - {itemToToggle?.name}
+            </strong>{' '}
+            menjadi{' '}
+            <strong className={itemToToggle?.isActive ? 'text-rose-600' : 'text-emerald-600'}>
+              {itemToToggle?.isActive ? 'Nonaktif' : 'Aktif'}
+            </strong>
+            ?
+          </div>
+        }
+        confirmLabel={itemToToggle?.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+        tone={itemToToggle?.isActive ? 'warning' : 'primary'}
+        isProcessing={isPending}
+        onConfirm={handleToggleStatusConfirm}
+        onCancel={() => setIsToggleOpen(false)}
+      />
     </div>
   );
 }

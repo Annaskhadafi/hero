@@ -7,7 +7,7 @@ import { getCurrentEmployee } from "@/lib/get-current-employee";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Database, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DeleteApdButton } from "./delete-button";
 import { ApdStatusActions } from "./status-actions";
@@ -85,14 +85,20 @@ export default async function ApdRequestsPage(props: {
       description="Daftar request APD, tools, dan material beserta status prosesnya."
       actions={
         <div className="flex gap-2">
+          <Button asChild variant="outline" className="h-9 gap-2">
+            <Link href="/dashboard/apd/master">
+              <Database className="size-4" />
+              Master APD
+            </Link>
+          </Button>
           {canViewInventory && (
-            <Button asChild variant="outline" className="gap-2">
+            <Button asChild variant="outline" className="h-9 gap-2">
               <Link href="/dashboard/apd/inventory">
                 Inventory Aset
               </Link>
             </Button>
           )}
-          <Button asChild className="gap-2">
+          <Button asChild className="h-9 gap-2">
             <Link href={`/dashboard/apd/new?category=${activeTab === "all" ? "apd" : activeTab}`}>
               <Plus className="size-4" />
               Ajukan Barang

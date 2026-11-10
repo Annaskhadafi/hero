@@ -4687,6 +4687,7 @@ const HSE_MANAGED_RESOURCES = new Set([
   'hse_tire_inspection',
   'hse_road_condition_analysis',
   'hse_road_hazard',
+  'central_service_master_apd',
 ])
 
 const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])

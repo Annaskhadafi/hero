@@ -49,7 +49,34 @@ const DEFAULT_MASTER_APD_ITEMS: Array<{
   { code: 'APD-019', name: 'Face Shield Helmet', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
   { code: 'APD-025', name: 'Sarung Tangan Kulit (Vale)', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
   { code: 'APD-026', name: 'Sarung Tangan Kleenguard G40 (Vale)', category: 'APD', unit: 'Pasang', hasSize: false, sizeOptions: [] },
+  { code: 'APD-027', name: 'Tudung Kepala / Kupluk (Makatac)', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
+  { code: 'APD-028', name: 'Cotton Filter Respirator Honeywell', category: 'APD', unit: 'Pcs', hasSize: false, sizeOptions: [] },
+  { code: 'APD-029', name: 'Jaket & Kaos Tangan Welder', category: 'APD', unit: 'Set', hasSize: false, sizeOptions: [] },
+  { code: 'APD-030', name: 'Helmet + Face Shield 3M', category: 'APD', unit: 'Set', hasSize: false, sizeOptions: [] },
+  { code: 'APD-031', name: 'Sepatu Safety Krusher Texas (Booth)', category: 'APD', unit: 'Pasang', hasSize: true, sizeOptions: ['38', '39', '40', '41', '42', '43', '44', '45', '46'] },
+  { code: 'APD-032', name: 'Sepatu Safety Krusher Nevada (3/4)', category: 'APD', unit: 'Pasang', hasSize: true, sizeOptions: ['36', '37', '38', '39', '40', '41', '42'] },
 ];
+
+export async function getNextMasterApdCodeAction(category: string = 'APD') {
+  try {
+    const items = await db.select({ code: masterApd.code }).from(masterApd);
+    const prefix = category.toUpperCase() === 'TOOLS' ? 'TLS' : category.toUpperCase() === 'MATERIAL' ? 'MAT' : 'APD';
+    let maxNum = 0;
+    for (const item of items) {
+      const match = item.code?.match(new RegExp(`^${prefix}-(\\d+)`, 'i'));
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    const nextCode = `${prefix}-${String(maxNum + 1).padStart(3, '0')}`;
+    return { success: true, nextCode };
+  } catch (error: any) {
+    return { success: false, nextCode: 'APD-033' };
+  }
+}
 
 export async function getMasterApdListAction(category?: string, activeOnly: boolean = false) {
   try {

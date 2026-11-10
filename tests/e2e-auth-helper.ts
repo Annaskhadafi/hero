@@ -58,8 +58,12 @@ export async function loginToHero(
     await submitBtn.click()
 
     // Wait for login processing and redirect away from /sign-in
-    await submitBtn.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {})
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    if (browser?.waitForURL) {
+      await browser.waitForURL(/.*\/dashboard\/.*/, { timeout: 60000 }).catch(() => {})
+    } else {
+      await submitBtn.waitFor({ state: 'detached', timeout: 60000 }).catch(() => {})
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000))
   } else {
     const emailInput = screen.getByPlaceholder(/Email atau SN/i)
     const passwordInput = screen.getByPlaceholder(/kata sandi/i)

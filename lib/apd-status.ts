@@ -50,6 +50,12 @@ export const APD_ITEMS = [
   "Sunbrim Helmet",
   "Sarung Tangan Kulit (Vale)",
   "Sarung Tangan Kleenguard G40 (Vale)",
+  "Tudung Kepala / Kupluk (Makatac)",
+  "Cotton Filter Respirator Honeywell",
+  "Jaket & Kaos Tangan Welder",
+  "Helmet + Face Shield 3M",
+  "Sepatu Safety Krusher Texas (Booth)",
+  "Sepatu Safety Krusher Nevada (3/4)",
 ] as const;
 
 export const APD_SIZE_OPTIONS = [
