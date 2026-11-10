@@ -6384,8 +6384,27 @@ export function SchedulingTimesheetWorkspace({
       getScheduleCode: (day) => employeeSchedule[day - 1] ?? 'IN',
       holidays,
       getOvertime: (day) => {
-        const cell = getAttendanceCell(employee.id, day)
-        return calculateDayOvertime(
+        const scheduleCode = employeeSchedule[day - 1] ?? 'IN'
+        const cell = getAttendanceCell(employee.id, day, scheduleCode)
+        const isOffDay =
+          cell.status === 'off' ||
+          scheduleCode === 'OFF' ||
+          scheduleCode === 'FB' ||
+          scheduleCode === 'Libur'
+        if (isOffDay) {
+          return {
+            totalHours: 0,
+            intervals: [],
+            totalMinutes: 0,
+            autoMinutes: 0,
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'None',
+            splNumbers: [],
+            workingIntervals: [],
+          }
+        }
+        const res = calculateDayOvertime(
           employeeSchedule,
           day,
           cell.clockIn,
@@ -6393,6 +6412,12 @@ export function SchedulingTimesheetWorkspace({
           staff,
           employee.id
         )
+        // Overtime Record HANYA mencatat lembur wajib (autoMinutes), BUKAN gabungan SPL
+        const mandatoryHours = mandatoryOvertimeHours(res)
+        return {
+          ...res,
+          totalHours: mandatoryHours,
+        }
       },
     }).map((day) => {
       const cell = getAttendanceCell(employee.id, day.day)
@@ -6486,27 +6511,25 @@ export function SchedulingTimesheetWorkspace({
 
       return {
         ...day,
-        splNumber: splNumbers.join(', '),
-        splTitle: splTitles.join('; '),
-        splDetails,
+        splNumber: isOffDay ? '' : splNumbers.join(', '),
+        splTitle: isOffDay ? '' : splTitles.join('; '),
+        splDetails: isOffDay ? [] : splDetails,
         workingTimeFrom:
-          (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
-            ? ''
-            : (day.clockIn || defaultWorkFrom),
+          isOffDay
+            ? 'OFF'
+            : (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
+              ? ''
+              : (day.clockIn || defaultWorkFrom),
         workingTimeTo:
-          (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
+          isOffDay
             ? ''
-            : (day.clockOut || defaultWorkTo),
+            : (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
+              ? ''
+              : (day.clockOut || defaultWorkTo),
         configuredOvertimeIntervals:
-          (isOffsiteOrAbsent && !hasRealAttendance) || (isOffDay && !hasRealAttendance)
+          isOffDay || isOffsiteOrAbsent
             ? []
-            : isOffDay && hasRealAttendance && cell.clockIn && cell.clockOut
-              ? (day.overtime?.intervals && day.overtime.intervals.length > 0
-                  ? day.overtime.intervals
-                  : [{ start: cell.clockIn, end: cell.clockOut }])
-              : (day.overtime?.intervals && day.overtime.intervals.length > 0
-                  ? day.overtime.intervals
-                  : (configuredIntervals as OvertimeInterval[])),
+            : (configuredIntervals as OvertimeInterval[]),
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)

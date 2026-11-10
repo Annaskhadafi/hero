@@ -455,7 +455,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       !isAbsent &&
       (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
     const configuredOvertimeIntervals =
-      isOff && !hasManualAttendance
+      isOff
         ? []
         : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
     const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
@@ -465,40 +465,28 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
       interval ? `${String(interval.end).replace(':', '.')}` : ''
 
-    let otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-    let otTo = formatOvertimeIntervalEnd(
-      configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
-    )
+    let otFrom = isOff ? '' : formatOvertimeInterval(configuredOvertimeIntervals[0])
+    let otTo = isOff
+      ? ''
+      : formatOvertimeIntervalEnd(
+          configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+        )
 
-    let ot = day.overtime?.totalHours ?? 0
+    let ot = isOff ? 0 : (day.overtime?.totalHours ?? 0)
     const isRealtimeMode = input.overtimeMode === 'realtime'
 
-    // Jika mode realtime, atau hari libur/OFF: Overtime To mengikuti jam realtime pulang aktual (clockOut)
+    // Jika mode realtime: Overtime To mengikuti jam realtime pulang aktual (clockOut)
     // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
-    if (ot > 0 && hasManualAttendance && day.clockOut && (isRealtimeMode || isOff)) {
+    if (!isOff && ot > 0 && hasManualAttendance && day.clockOut && isRealtimeMode) {
       otTo = day.clockOut.replace(':', '.')
     }
 
     if (otFrom === '00.00' && otTo === '00.00') {
-      if (hasManualAttendance && day.clockIn && day.clockOut) {
-        otFrom = day.clockIn.replace(':', '.')
-        otTo = day.clockOut.replace(':', '.')
-      } else {
-        otFrom = ''
-        otTo = ''
-      }
+      otFrom = ''
+      otTo = ''
     }
-    if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
+    if (isAbsent || isStatusWithoutTime || isOff) {
       ot = 0
-    } else if (ot <= 0 && isOff && hasManualAttendance && day.clockIn && day.clockOut) {
-      const [sh, sm] = day.clockIn.split(/[:.]/).map(Number)
-      const [eh, em] = day.clockOut.split(/[:.]/).map(Number)
-      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
-        let startMin = sh * 60 + sm
-        let endMin = eh * 60 + em
-        if (endMin < startMin) endMin += 1440
-        ot = Math.round(((endMin - startMin) / 60) * 10) / 10
-      }
     } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
@@ -512,20 +500,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }, 0)
     }
 
-    if (ot <= 0 && configuredOvertimeIntervals.length === 1 && otFrom && otTo) {
-      const [sh, sm] = otFrom.split(/[:.]/).map(Number)
-      const [eh, em] = otTo.split(/[:.]/).map(Number)
-      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
-        let startMin = sh * 60 + sm
-        let endMin = eh * 60 + em
-        if (endMin < startMin) endMin += 1440
-        let diffHours = Math.round(((endMin - startMin) / 60) * 10) / 10
-        if (diffHours >= 12) diffHours = 11
-        if (diffHours > 0) ot = diffHours
-      }
-    }
-
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+    if (!isOff && ot > 0 && !isAbsent && !isStatusWithoutTime) {
       totalOT += ot
     }
 
@@ -556,10 +531,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     })
 
     const shouldRenderWorkTimes =
+      !isOff &&
       !isAbsent &&
       (!day.isHoliday || hasManualAttendance) &&
-      Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
-      (!isOff || hasManualAttendance)
+      Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn)
     const workFrom = shouldRenderWorkTimes
       ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
       : ''
@@ -567,18 +542,18 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
       : ''
     const shouldRenderOtTimes =
-      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+      !isOff && hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime
 
     // Col 2-3: Working Time From & To
     drawCell(page, colX[2], y, cols[2], rowH, {
-      text: isOff && !hasManualAttendance ? 'OFF' : workFrom,
-      font: isOff && !hasManualAttendance ? fontBold : font,
+      text: isOff ? 'OFF' : workFrom,
+      font: isOff ? fontBold : font,
       fontSize: 7.5,
       align: 'center',
       bgColor,
     })
     drawCell(page, colX[3], y, cols[3], rowH, {
-      text: workTo,
+      text: isOff ? '' : workTo,
       font,
       fontSize: 7.5,
       align: 'center',
@@ -604,7 +579,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     // Col 6: Total Overtime
     if (showTotal) {
       drawCell(page, colX[6], y, cols[6], rowH, {
-        text: ot > 0 ? String(Math.round(ot * 10) / 10) : '',
+        text: !isOff && ot > 0 ? String(Math.round(ot * 10) / 10) : '',
         font: fontBold,
         fontSize: 8,
         align: 'center',
@@ -616,7 +591,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     // Col 7: WD
     const rawWd = day.status === 'standby' ? 'ST' : day.status === 'field_break' ? 'FB' : day.scheduleCode || ''
-    const wdCode = rawWd === 'OFF' ? '' : rawWd
+    const wdCode = isOff || rawWd === 'OFF' ? '' : rawWd
     drawCell(page, colX[7], y, cols[7], rowH, {
       text: wdCode,
       font,

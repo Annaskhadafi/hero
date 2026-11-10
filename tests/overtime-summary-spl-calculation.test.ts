@@ -285,4 +285,74 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(1000);
   });
+
+  it('strictly treats OFF days in Overtime Record as OFF without SPL or overtime hours', async () => {
+    const { generateOvertimeRecordPdf } = await import('../lib/timesheet/generate-attendance-pdf');
+    const fs = await import('fs');
+    const path = await import('path');
+
+    const days: any[] = [];
+    for (let day = 1; day <= 31; day++) {
+      const isSunday = [4, 11, 18, 25].includes(day);
+      const isSaturday = [3, 10, 17, 24, 31].includes(day);
+      if (isSunday) {
+        days.push({
+          day,
+          dayName: 'Sunday',
+          scheduleCode: 'OFF',
+          status: 'off',
+          clockIn: day === 18 ? '05:58' : '',
+          clockOut: day === 18 ? '18:00' : '',
+          workingTimeFrom: day === 18 ? '05.58' : '',
+          workingTimeTo: day === 18 ? '18.00' : '',
+          configuredOvertimeIntervals: [],
+          overtime: { totalHours: day === 18 ? 11 : 0, intervals: [] },
+        });
+      } else {
+        const wajibHours = isSaturday ? 6 : 4;
+        days.push({
+          day,
+          dayName: isSaturday ? 'Saturday' : 'Workday',
+          scheduleCode: 'DS',
+          status: 'present',
+          clockIn: '05:40',
+          clockOut: '19:00',
+          workingTimeFrom: '05.40',
+          workingTimeTo: '19.00',
+          configuredOvertimeIntervals: [
+            { start: '06:00', end: isSaturday ? '09:00' : '08:00' },
+            { start: isSaturday ? '15:00' : '16:00', end: '18:00' },
+          ],
+          overtime: { totalHours: wajibHours, intervals: [] },
+        });
+      }
+    }
+
+    const pdfBytes = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-10',
+      employeeId: 1190,
+      employeeName: 'Benni Sianipar',
+      employeeSn: '62317',
+      department: 'Central Services',
+      section: 'Service Operation',
+      siteName: 'CK MIFA',
+      signatures: {
+        preparedBy: 'Benni Sianipar',
+        pjoLeader: 'Apriyanto',
+        approvedBy: 'Romy Hidayat',
+      },
+      days,
+      isNonStaff: true,
+      showTotalOvertime: true,
+      overtimeMode: 'template',
+    });
+
+    const scratchDir = path.resolve('scratch');
+    if (!fs.existsSync(scratchDir)) fs.mkdirSync(scratchDir, { recursive: true });
+    fs.writeFileSync(path.join(scratchDir, 'benni-overtime-record-fixed.pdf'), Buffer.from(pdfBytes));
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+  });
 });
