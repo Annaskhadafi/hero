@@ -8370,8 +8370,12 @@ export function SchedulingTimesheetWorkspace({
               const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
               const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
               const splHours = roundOvertimeHours(buckets.splHours)
-              if (mandatoryHours > 0) {
-                numericVal = mandatoryHours
+              const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+              const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+              const effectiveMandatory = manualVal !== null ? manualVal : mandatoryHours
+
+              if (effectiveMandatory > 0) {
+                numericVal = effectiveMandatory
                 displayVal = numericVal
                 cellType = 'ot'
               } else if (scheduleCode === 'ST') {
@@ -8393,9 +8397,10 @@ export function SchedulingTimesheetWorkspace({
               const dayAttendanceType = classifyPayrollAttendanceDay(
                 row.schedule, period, day - 1, empSiteConfig.rosterType, holidays
               )
-              if (buckets.totalHours > 0) {
+              const totalHoursForDay = manualVal !== null ? manualVal : buckets.totalHours
+              if (totalHoursForDay > 0) {
                 overtimePayrollEquivalentTotal += roundOvertimeHours(
-                  calculatePayrollOvertimeValue(empSiteConfig.rosterType, dayAttendanceType, buckets.totalHours, overtimeVariables)
+                  calculatePayrollOvertimeValue(empSiteConfig.rosterType, dayAttendanceType, totalHoursForDay, overtimeVariables)
                 )
               }
             overtimeTotal += numericVal
@@ -8466,14 +8471,19 @@ export function SchedulingTimesheetWorkspace({
             const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
             const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
             const splHours = roundOvertimeHours(buckets.splHours)
-            payrollMandatoryTotal += mandatoryHours
+            const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+            const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+            const effectiveMandatory = manualVal !== null ? manualVal : mandatoryHours
+            const totalHoursForDay = manualVal !== null ? manualVal : buckets.totalHours
+
+            payrollMandatoryTotal += effectiveMandatory
             payrollSplTotal += splHours
 
-            if (buckets.totalHours > 0) {
+            if (totalHoursForDay > 0) {
               const calculatedVal = calculatePayrollOvertimeValue(
                 empRosterType,
                 dayAttendanceType,
-                buckets.totalHours,
+                totalHoursForDay,
                 overtimeVariables
               )
               numericVal = roundOvertimeHours(calculatedVal)
