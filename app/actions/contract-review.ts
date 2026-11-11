@@ -3914,13 +3914,15 @@ Terima kasih.`
       }
     }
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath(`/dashboard/hc/contract-review/${review.id}`)
-    revalidatePath(`/dashboard/hc/contract-review/form/${review.id}`)
-    revalidatePath(`/review/${token}`)
-    revalidatePath(`/review/${targetApproval.approvalToken}`)
-    revalidatePath('/dashboard/approval')
-    revalidatePath('/mobile/approval')
+    try {
+      revalidatePath('/dashboard/hc/contract-review')
+      revalidatePath(`/dashboard/hc/contract-review/${review.id}`)
+      revalidatePath(`/dashboard/hc/contract-review/form/${review.id}`)
+      revalidatePath(`/review/${token}`)
+      revalidatePath(`/review/${targetApproval.approvalToken}`)
+      revalidatePath('/dashboard/approval')
+      revalidatePath('/mobile/approval')
+    } catch {}
 
     return {
       success: true,

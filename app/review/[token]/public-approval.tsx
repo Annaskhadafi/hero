@@ -98,26 +98,35 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
 
-  // Ambil tanda tangan tersimpan jika belum ada dari token dan user sedang login di browser
+  // Ambil tanda tangan tersimpan jika belum ada dari token dan user yang sedang login di browser adalah approver yang sah
   useEffect(() => {
     if (!registeredSig?.signatureDataUrl) {
-      getUserSignatureAction().then((res) => {
+      getUserSignatureAction().then((res: any) => {
         if (res.success && res.signatureDataUrl) {
-          const sigObj = {
-            signatureDataUrl: res.signatureDataUrl,
-            signatureRegisteredAt: res.signatureRegisteredAt || null,
-            employeeName: res.employeeName || approval.approverName,
-          }
-          setRegisteredSig(sigObj)
-          if (!approval.signatureDataUrl) {
-            setUseRegisteredSig(true)
-            setPreviewSignatureDataUrl(res.signatureDataUrl)
-            setPreviewSignedAt(new Date())
+          // Validasi keamanan: Pastikan sesi user yang sedang login benar-benar cocok dengan approver step ini
+          const isMatchingApprover = Boolean(
+            (res.employeeId && approval.approverEmployeeId && res.employeeId === approval.approverEmployeeId) ||
+            (res.employeeEmail && approval.approverEmail && res.employeeEmail.trim().toLowerCase() === approval.approverEmail.trim().toLowerCase()) ||
+            (res.employeeName && approval.approverName && res.employeeName.trim().toLowerCase() === approval.approverName.trim().toLowerCase())
+          )
+
+          if (isMatchingApprover) {
+            const sigObj = {
+              signatureDataUrl: res.signatureDataUrl,
+              signatureRegisteredAt: res.signatureRegisteredAt || null,
+              employeeName: res.employeeName || approval.approverName,
+            }
+            setRegisteredSig(sigObj)
+            if (!approval.signatureDataUrl) {
+              setUseRegisteredSig(true)
+              setPreviewSignatureDataUrl(res.signatureDataUrl)
+              setPreviewSignedAt(new Date())
+            }
           }
         }
       }).catch(() => {})
     }
-  }, [approval.signatureDataUrl, registeredSig?.signatureDataUrl, approval.approverName])
+  }, [approval.signatureDataUrl, registeredSig?.signatureDataUrl, approval.approverName, approval.approverEmployeeId, approval.approverEmail])
 
   // PDF scale for mobile — fit A4 (794px wide) into screen width without horizontal scroll
   const pdfContainerRef = useRef<HTMLDivElement>(null)
