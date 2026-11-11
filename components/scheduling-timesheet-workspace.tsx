@@ -367,6 +367,22 @@ type SiteOvertimeType = 'five-hour' | 'roster' | 'none'
 
 const scheduleTypeLabel = (value: string) => (value === 'office' ? 'Non Shift' : value)
 
+export function rosterTypeLabel(value?: string | null) {
+  if (!value) return '-'
+  if (value === '5:2') return 'Roster 5 : 2'
+  if (value === '6:1') return 'Roster 6 : 1'
+  if (value === '13:1') return 'Roster 13 : 1'
+  if (value === 'vale') return 'Roster 5 : 2 (Vale)'
+  return `Roster ${value}`
+}
+
+export const ROSTER_TYPE_OPTIONS = [
+  { value: '5:2', label: 'Roster 5 : 2' },
+  { value: '6:1', label: 'Roster 6 : 1' },
+  { value: '13:1', label: 'Roster 13 : 1' },
+  { value: 'vale', label: 'Roster 5 : 2 (Vale)' },
+]
+
 type SiteSchedulingConfig = {
   scheduleType: SiteScheduleType
   rosterType: SiteRosterType
@@ -4138,7 +4154,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function saveSiteConfig() {
-    if (mode !== 'setup' && !guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
     const targetConfig = siteConfigs[siteId] ?? resolveCurrentSiteConfig(siteId)
     const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(targetConfig)
@@ -4193,7 +4208,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateOvertimeEnabled(enabled: boolean) {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4208,7 +4222,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateOvertimeMode(mode: 'template' | 'realtime') {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4223,7 +4236,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateRequireSpl(requireSpl: boolean) {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4323,7 +4335,6 @@ export function SchedulingTimesheetWorkspace({
     key: Key,
     value: SiteSchedulingConfig[Key]
   ) {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
 
     setSiteConfigs((current) => {
@@ -4344,7 +4355,6 @@ export function SchedulingTimesheetWorkspace({
     category: keyof EmployeeBenefitConfig,
     patch: Partial<EmployeeBenefitRule>
   ) {
-    if (!guardOpenPeriod('Edit employee benefit settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4362,7 +4372,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateQuotationBillingRule(key: keyof QuotationBillingStatusConfig, checked: boolean) {
-    if (!guardOpenPeriod('Edit quotation billing settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -8887,12 +8896,7 @@ export function SchedulingTimesheetWorkspace({
                 <NativeSelect
                   value={siteConfig.rosterType}
                   onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
-                  options={[
-                    { value: '5:2', label: 'Roster 5 : 2' },
-                    { value: '6:1', label: 'Roster 6 : 1' },
-                    { value: '13:1', label: 'Roster 13 : 1' },
-                    { value: 'vale', label: 'Vale Sorowako' },
-                  ]}
+                  options={ROSTER_TYPE_OPTIONS}
                 />
               </div>
             ) : null}
@@ -8961,7 +8965,7 @@ export function SchedulingTimesheetWorkspace({
                         <td className="px-4 py-3 font-semibold">{row.site.name}</td>
                         <td className="px-4 py-3">{row.employeeCount}</td>
                         <td className="px-4 py-3">{scheduleTypeLabel(row.scheduleType)}</td>
-                        <td className="px-4 py-3">{row.rosterType}</td>
+                        <td className="px-4 py-3">{rosterTypeLabel(row.rosterType)}</td>
                         <td className="px-4 py-3">
                           <Badge variant={row.rosterConfigured ? 'default' : 'secondary'}>
                             {row.rosterConfigured ? 'Sudah setting' : 'Belum setting'}
@@ -9609,12 +9613,7 @@ export function SchedulingTimesheetWorkspace({
                           onValueChange={(value) =>
                             updateSiteConfig('rosterTypeStaff', value as SiteRosterType)
                           }
-                          options={[
-                            { value: '5:2', label: 'Roster 5 : 2' },
-                            { value: '6:1', label: 'Roster 6 : 1' },
-                            { value: '13:1', label: 'Roster 13 : 1' },
-                            { value: 'vale', label: 'Vale Sorowako' },
-                          ]}
+                          options={ROSTER_TYPE_OPTIONS}
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -9635,12 +9634,7 @@ export function SchedulingTimesheetWorkspace({
                             updateSiteConfig('rosterTypeNonStaff', value as SiteRosterType)
                             updateSiteConfig('rosterType', value as SiteRosterType)
                           }}
-                          options={[
-                            { value: '6:1', label: 'Roster 6 : 1' },
-                            { value: '5:2', label: 'Roster 5 : 2' },
-                            { value: '13:1', label: 'Roster 13 : 1' },
-                            { value: 'vale', label: 'Vale Sorowako' },
-                          ]}
+                          options={ROSTER_TYPE_OPTIONS}
                         />
                       </div>
                     </>
@@ -9654,12 +9648,7 @@ export function SchedulingTimesheetWorkspace({
                         onValueChange={(value) =>
                           updateSiteConfig('rosterType', value as SiteRosterType)
                         }
-                        options={[
-                          { value: '5:2', label: 'Roster 5 : 2' },
-                          { value: '6:1', label: 'Roster 6 : 1' },
-                          { value: '13:1', label: 'Roster 13 : 1' },
-                          { value: 'vale', label: 'Vale Sorowako' },
-                        ]}
+                        options={ROSTER_TYPE_OPTIONS}
                       />
                     </div>
                   )}
@@ -11331,7 +11320,7 @@ export function SchedulingTimesheetWorkspace({
                         <td className="px-4 py-3">{row.site.location || '-'}</td>
                         <td className="px-4 py-3">{row.employeeCount}</td>
                         <td className="px-4 py-3">{scheduleTypeLabel(row.scheduleType)}</td>
-                        <td className="px-4 py-3">{row.rosterType}</td>
+                        <td className="px-4 py-3">{rosterTypeLabel(row.rosterType)}</td>
                         <td className="px-4 py-3">
                           <Badge variant={row.hasConfig ? 'default' : 'secondary'}>
                             {row.hasConfig
@@ -11530,7 +11519,7 @@ export function SchedulingTimesheetWorkspace({
                               { value: '5:2', label: '5 : 2' },
                               { value: '6:1', label: '6 : 1' },
                               { value: '13:1', label: '13 : 1' },
-                              { value: 'vale', label: 'Vale Sorowako' },
+                              { value: 'vale', label: '5 : 2 (Vale)' },
                             ]}
                           />
                         </td>

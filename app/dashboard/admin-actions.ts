@@ -2973,10 +2973,14 @@ const employeeBenefitRuleSchema = z.object({
   specialAllowancePeriod: z.enum(['daily', 'monthly']).default('daily'),
   specialAllowanceAmount: z.coerce.number().min(0).max(1_000_000_000).default(0),
 })
-const schedulingClockTimeSchema = z
-  .string()
-  .regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
-  .transform((v) => v.padStart(5, '0'))
+const schedulingClockTimeSchema = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z
+    .string()
+    .regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
+    .transform((v) => v.padStart(5, '0'))
+    .optional()
+)
 const schedulingFieldBreakConfigSchema = z
   .object({
     dayShiftClockIn: schedulingClockTimeSchema.optional(),
