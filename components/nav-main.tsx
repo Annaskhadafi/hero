@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import {
   IconChevronRight,
   IconCirclePlusFilled,
@@ -28,8 +28,30 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
-function isMenuItemActive(pathname: string, url: string) {
-  return url !== "#" && pathname === url
+function isMenuItemActive(pathname: string, url: string, searchParamsStr = "") {
+  if (!url || url === "#") return false
+  if (url.includes("?")) {
+    const [targetPath, targetQuery] = url.split("?")
+    if (pathname !== targetPath) return false
+    const currentParams = new URLSearchParams(searchParamsStr)
+    const targetParams = new URLSearchParams(targetQuery)
+    for (const [key, value] of targetParams.entries()) {
+      if (currentParams.get(key) !== value) return false
+    }
+    return true
+  }
+  if (pathname === url) {
+    if (url === "/dashboard/central-service") {
+      const currentParams = new URLSearchParams(searchParamsStr)
+      if (currentParams.get("tab") === "composition") return false
+    }
+    if (url === "/dashboard/training-records") {
+      const currentParams = new URLSearchParams(searchParamsStr)
+      if (currentParams.get("tab") === "sio") return false
+    }
+    return true
+  }
+  return false
 }
 
 type NavItem = {
@@ -63,14 +85,14 @@ function groupItemsByLabel(items: NavItem[]): Map<string | null, NavItem[]> {
   return groups
 }
 
-function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
+function SubmenuItem({ item, pathname, searchParamsStr = "" }: { item: NavItem; pathname: string; searchParamsStr?: string }) {
   const [isOpen, setIsOpen] = React.useState(() => {
-    return item.children?.some(child => isMenuItemActive(pathname, child.url)) ?? false
+    return item.children?.some(child => isMenuItemActive(pathname, child.url, searchParamsStr)) ?? false
   })
 
-  const hasActiveChild = item.children?.some(child => isMenuItemActive(pathname, child.url)) ?? false
+  const hasActiveChild = item.children?.some(child => isMenuItemActive(pathname, child.url, searchParamsStr)) ?? false
   const hasChildren = item.children && item.children.length > 0
-  const isActive = isMenuItemActive(pathname, item.url)
+  const isActive = isMenuItemActive(pathname, item.url, searchParamsStr)
 
   if (!hasChildren) {
     return (
@@ -116,7 +138,7 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
           </CollapsibleTrigger>
           <CollapsibleContent className="pl-2 border-l border-sidebar-border/60 ml-2 mt-1 flex flex-col gap-1">
             {item.children?.map((child, childIdx) => {
-              const isChildActive = isMenuItemActive(pathname, child.url)
+              const isChildActive = isMenuItemActive(pathname, child.url, searchParamsStr)
               return (
                 <SidebarMenuSubItem key={child.id ? `child-${child.id}` : `${child.url}-${child.title}-${childIdx}`}>
                   <SidebarMenuSubButton
@@ -143,21 +165,23 @@ function SubmenuItem({ item, pathname }: { item: NavItem; pathname: string }) {
   )
 }
 
-export function NavMain({
+function NavMainInner({
   groups,
   showQuickCreate = false,
   groupLabelColor = "#6B7280",
+  searchParamsStr = "",
 }: {
   groups: NavGroup[]
   showQuickCreate?: boolean
   groupLabelColor?: string
+  searchParamsStr?: string
 }) {
   const pathname = usePathname()
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() =>
     Object.fromEntries(
       (groups || []).map((group) => [
         group.title,
-        (group.items || []).some((item) => isMenuItemActive(pathname, item?.url)),
+        (group.items || []).some((item) => isMenuItemActive(pathname, item?.url, searchParamsStr)),
       ])
     )
   )
@@ -168,7 +192,7 @@ export function NavMain({
       let hasChanged = false
 
       for (const group of groups || []) {
-        const hasActiveItem = (group.items || []).some((item) => isMenuItemActive(pathname, item?.url))
+        const hasActiveItem = (group.items || []).some((item) => isMenuItemActive(pathname, item?.url, searchParamsStr))
 
         if (!(group.title in next)) {
           next[group.title] = hasActiveItem
@@ -184,7 +208,7 @@ export function NavMain({
 
       return hasChanged ? next : previous
     })
-  }, [groups, pathname])
+  }, [groups, pathname, searchParamsStr])
 
   function renderItems(items: NavItem[], section?: string) {
     const grouped = groupItemsByLabel(items)
@@ -192,7 +216,7 @@ export function NavMain({
 
     if (!hasGroups) {
       return items.map((item, idx) => (
-        <SubmenuItem key={item.id ? `menu-${item.id}` : `${item.url}-${item.title}-${idx}`} item={item} pathname={pathname} />
+        <SubmenuItem key={item.id ? `menu-${item.id}` : `${item.url}-${item.title}-${idx}`} item={item} pathname={pathname} searchParamsStr={searchParamsStr} />
       ))
     }
 
@@ -207,7 +231,7 @@ export function NavMain({
           </li>
         )}
         {groupItems.map((item, idx) => (
-          <SubmenuItem key={item.id ? `menu-${item.id}` : `${item.url}-${item.title}-${idx}`} item={item} pathname={pathname} />
+          <SubmenuItem key={item.id ? `menu-${item.id}` : `${item.url}-${item.title}-${idx}`} item={item} pathname={pathname} searchParamsStr={searchParamsStr} />
         ))}
       </React.Fragment>
     ))
@@ -234,7 +258,7 @@ export function NavMain({
         ) : null}
         <SidebarMenu className="px-1">
           {groups.map((group, groupIdx) => {
-            const hasActiveItem = group.items.some((item) => isMenuItemActive(pathname, item.url))
+            const hasActiveItem = group.items.some((item) => isMenuItemActive(pathname, item.url, searchParamsStr))
             const isOpen = openGroups[group.title] ?? hasActiveItem
             const prevGroup = groupIdx > 0 ? groups[groupIdx - 1] : null
             const isNewCategory = Boolean(group.category && (!prevGroup || prevGroup.category !== group.category))
@@ -293,5 +317,27 @@ export function NavMain({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+  )
+}
+
+function NavMainWithParams(props: {
+  groups: NavGroup[]
+  showQuickCreate?: boolean
+  groupLabelColor?: string
+}) {
+  const searchParams = useSearchParams()
+  const searchParamsStr = searchParams?.toString() ?? ""
+  return <NavMainInner {...props} searchParamsStr={searchParamsStr} />
+}
+
+export function NavMain(props: {
+  groups: NavGroup[]
+  showQuickCreate?: boolean
+  groupLabelColor?: string
+}) {
+  return (
+    <React.Suspense fallback={<NavMainInner {...props} searchParamsStr="" />}>
+      <NavMainWithParams {...props} />
+    </React.Suspense>
   )
 }

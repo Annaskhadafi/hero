@@ -156,6 +156,65 @@ export function classifyItem(item: { section?: string; title: string; url: strin
     return { section: "Approval", category: "WORKSPACE (GLOBAL)", groupLabel: "Keputusan & Notifikasi" }
   }
 
+  // HR Operations & Administration (Group 1 per spec: checked first so HRGA attendance & composition take precedence in modern mode)
+  if (
+    url === "/dashboard/hc/employee" ||
+    url === "/dashboard/scheduling-timesheet/attendance" ||
+    url === "/dashboard/hc/permission" ||
+    url === "/dashboard/hc/contract-review" ||
+    url === "/dashboard/central-service?tab=composition" ||
+    url === "/dashboard/hc/surat" ||
+    url === "/dashboard/central-service/marital-status" ||
+    url === "/dashboard/hc/turnover"
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "HR Operations & Administration" }
+  }
+
+  // HRGA Group 3: Compensation & Benefit (Payroll)
+  if (url === "/dashboard/scheduling-timesheet/payroll" && item.section === "HRGA") {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Compensation & Benefit" }
+  }
+
+  // HRGA Group 4: Industrial Relation
+  if (url === "/dashboard/hc/kerjasama") {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Industrial Relation" }
+  }
+
+  // HRGA Group 5: Learning Development (for items in HRGA section)
+  if (
+    url === "/dashboard/training-records?tab=sio" ||
+    (url === "/dashboard/training-records" && item.section === "HRGA")
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Learning Development" }
+  }
+
+  // HRGA Group 6: Wellbeing & Engagement
+  if (
+    url === "/dashboard/hc/mcu-wellness" ||
+    (url === "/dashboard/leaderboard" && item.section === "HRGA") ||
+    url === "/dashboard/hc/olahraga" ||
+    url === "/dashboard/curhat"
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Wellbeing & Engagement" }
+  }
+
+  // HRGA Group 7: Performance Management
+  if (
+    url.startsWith("/dashboard/hc/performance") ||
+    url.startsWith("/dashboard/hc/leader-performance")
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Performance Management" }
+  }
+
+  // HRGA Group 8: General Affair
+  if (
+    url.startsWith("/dashboard/ga/vehicles") ||
+    url.startsWith("/dashboard/ga/atk") ||
+    url.startsWith("/dashboard/ga/house-rental")
+  ) {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "General Affair" }
+  }
+
   // 3. OPERASIONAL
   if (url === "/dashboard/activity-hub/team-board" || url === "/dashboard/activity-hub/library" || url === "/dashboard/activity-hub/routes" || url === "/dashboard/activity-hub/configuration") {
     return { section: "Operasional", category: "DEPARTEMEN", groupLabel: "Monitoring Tim" }
@@ -174,59 +233,19 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (url.startsWith("/dashboard/warehouse-repair") || url.startsWith("/dashboard/repair-retread/master-barang") || url.startsWith("/dashboard/repair-retread/stock-material") || url.startsWith("/dashboard/central-service/master-apd")) {
     return { section: "Central Service", category: "DEPARTEMEN", groupLabel: "Gudang & Material" }
   }
-  if (url === "/dashboard/cargo-manifest" || url.startsWith("/dashboard/central-service/forecast") || url.startsWith("/dashboard/central-service/site-condition") || url === "/dashboard/central-service") {
+  if (url === "/dashboard/cargo-manifest" || url.startsWith("/dashboard/central-service/forecast") || url.startsWith("/dashboard/central-service/site-condition") || url === "/dashboard/central-service" || url === "/dashboard/central-service/refueling") {
     return { section: "Central Service", category: "DEPARTEMEN", groupLabel: "Logistik & Fleet" }
   }
   if (url.startsWith("/dashboard/360-service")) {
     return { section: "Central Service", category: "DEPARTEMEN", groupLabel: "Commercial 360" }
   }
 
-  // 5. HUMAN CAPITAL -> HRGA
-  // 5.1 Data & Akses Karyawan
-  if (
-    url === "/dashboard/security/users" ||
-    url === "/dashboard/hc/employee" ||
-    url === "/dashboard/hc/org-chart-v2" ||
-    url === "/dashboard/hc/contract-review" ||
-    url === "/dashboard/hc/turnover" ||
-    url === "/dashboard/hc"
-  ) {
-    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Data & Akses Karyawan" }
-  }
-
-  // 5.2 Layanan & Personalia
-  if (
-    url === "/dashboard/curhat" ||
-    url === "/dashboard/hr-counseling" ||
-    url === "/dashboard/hc/surat" ||
-    url === "/dashboard/hc/permission" ||
-    url === "/dashboard/hc/flight-route-change" ||
-    url === "/dashboard/hc/disciplinary" ||
-    url === "/dashboard/hc/mcu-wellness"
-  ) {
-    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Layanan & Personalia" }
-  }
-
-  // 5.3 General Affairs (GA)
-  if (
-    url === "/dashboard/central-service/marital-status" ||
-    url === "/dashboard/apd" ||
-    url === "/dashboard/central-service/refueling" ||
-    url.startsWith("/dashboard/ga/atk") ||
-    url.startsWith("/dashboard/ga/vehicles") ||
-    url.startsWith("/dashboard/ga/house-rental")
-  ) {
-    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "General Affairs (GA)" }
-  }
-
-  // 5.4 Rekrutmen
+  // 5. HUMAN CAPITAL -> HRGA (Recruitment & Selection, Compensation & Benefit)
   if (url.startsWith("/dashboard/hc/rfr") || url.startsWith("/dashboard/hc/recruitment")) {
-    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Rekrutmen" }
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Recruitment & Selection" }
   }
-
-  // 5.5 Kinerja & KPI
-  if (url.startsWith("/dashboard/hc/performance") || url.startsWith("/dashboard/hc/leader-performance")) {
-    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Kinerja & KPI" }
+  if (url === "/dashboard/hc/compensation") {
+    return { section: "HRGA", category: "HUMAN CAPITAL", groupLabel: "Compensation & Benefit" }
   }
 
   // 6. HUMAN CAPITAL -> Poin & Hadiah
@@ -308,16 +327,34 @@ export function buildModernSidebarGroups(desktopItems: any[]) {
     .map((section) => {
       const sectionItems = modernItems.filter((item) => item.modernSection === section)
 
+      // Deduplicate items with the same URL inside this modern section
+      // E.g. Attendance from Roster & Timesheet vs HRGA -> prefer item whose original section === modernSection
+      const uniqueModernItems: any[] = []
+      const seenUrls = new Set<string>()
+      const sortedCandidates = [...sectionItems].sort((a, b) => {
+        const aMatches = a.section === section ? 0 : 1
+        const bMatches = b.section === section ? 0 : 1
+        if (aMatches !== bMatches) return aMatches - bMatches
+        return (a.sortOrder ?? 999) - (b.sortOrder ?? 999)
+      })
+      for (const item of sortedCandidates) {
+        const key = item.url ? item.url.trim().toLowerCase() : item.title
+        if (!seenUrls.has(key)) {
+          seenUrls.add(key)
+          uniqueModernItems.push(item)
+        }
+      }
+
       const itemMap = new Map<number, any>()
       const rootItems: any[] = []
 
-      sectionItems.forEach((item) => {
+      uniqueModernItems.forEach((item) => {
         if (item.id !== undefined) {
           itemMap.set(item.id, { ...item, children: [] })
         }
       })
 
-      sectionItems.forEach((item) => {
+      uniqueModernItems.forEach((item) => {
         if (item.id !== undefined) {
           const mappedItem = itemMap.get(item.id)
           if (item.parentId && itemMap.has(item.parentId)) {
@@ -336,10 +373,6 @@ export function buildModernSidebarGroups(desktopItems: any[]) {
         title: section,
         icon: modernSectionIconMap[section] ?? IconHelp,
         items: rootItems.sort((left, right) => {
-          // Sort primarily by groupLabel so sub-groups cluster cleanly together
-          if (left.groupLabel !== right.groupLabel) {
-            return (left.groupLabel || "").localeCompare(right.groupLabel || "")
-          }
           return (left.sortOrder ?? 999) - (right.sortOrder ?? 999)
         }),
       }

@@ -980,15 +980,15 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   // HRGA
-  // HRGA - Data & Akses Karyawan
+  // HRGA - HR Operations & Administration (Group 1)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'User Management',
-    url: '/dashboard/security/users',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Data Karyawan',
+    url: '/dashboard/hc/employee',
     iconName: 'users',
-    resource: 'security_users',
+    resource: 'hc_employee',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
@@ -996,11 +996,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Data Karyawan',
-    url: '/dashboard/hc/employee',
-    iconName: 'users',
-    resource: 'hc_employee',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Attendance',
+    url: '/dashboard/scheduling-timesheet/attendance',
+    iconName: 'checklist',
+    resource: 'hrga_attendance',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
@@ -1008,11 +1008,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Org Structure V2',
-    url: '/dashboard/hc/org-chart-v2',
-    iconName: 'list-details',
-    resource: 'hc_org_chart_v2',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Sakit & Terlambat',
+    url: '/dashboard/hc/permission',
+    iconName: 'shield-alert',
+    resource: 'hc_attendance_permission',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
@@ -1020,8 +1020,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Contract Review',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Employee Contract Review',
     url: '/dashboard/hc/contract-review',
     iconName: 'file-signature',
     resource: 'hc_contract_review',
@@ -1032,11 +1032,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Compensation & Benefit',
-    url: '/dashboard/hc/compensation',
-    iconName: 'banknote',
-    resource: 'hc_compensation_benefit',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Composition Manpower',
+    url: '/dashboard/central-service?tab=composition',
+    iconName: 'users',
+    resource: 'hc_manpower_composition',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
@@ -1044,73 +1044,49 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'HC Overview',
-    url: '/dashboard/hc',
-    iconName: 'users',
-    resource: 'hc_safety',
-    sortOrder: 6,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Labour Turn Over',
-    url: '/dashboard/hc/turnover',
-    iconName: 'trending-up',
-    resource: 'hc_labour_turnover',
-    sortOrder: 7,
-    isVisible: true,
-    openInNewTab: false,
-  },
-
-  // HRGA - Layanan & Personalia
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Pengaduan',
-    url: '/dashboard/curhat',
-    iconName: 'users',
-    resource: 'hr_counseling_user',
-    sortOrder: 6,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Dashboard Pengaduan HR',
-    url: '/dashboard/hr-counseling',
-    iconName: 'users',
-    resource: 'hr_counseling_admin',
-    sortOrder: 7,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Surat',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Online Letter',
     url: '/dashboard/hc/surat',
     iconName: 'file-word',
     resource: 'hc_surat',
+    sortOrder: 6,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Marrital Change Status',
+    url: '/dashboard/central-service/marital-status',
+    iconName: 'heart',
+    resource: 'central_service_marital_status',
+    sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Labour Turn over',
+    url: '/dashboard/hc/turnover',
+    iconName: 'trending-up',
+    resource: 'hc_labour_turnover',
     sortOrder: 8,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Recruitment & Selection
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Izin Sakit & Terlambat',
-    url: '/dashboard/hc/permission',
-    iconName: 'shield-alert',
-    resource: 'hc_attendance_permission',
+    groupLabel: 'Recruitment & Selection',
+    title: 'Request For Recruitment',
+    url: '/dashboard/hc/rfr',
+    iconName: 'file-text',
+    resource: 'hc_recruitment',
     sortOrder: 9,
     isVisible: true,
     openInNewTab: false,
@@ -1118,11 +1094,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Perubahan Rute',
-    url: '/dashboard/hc/flight-route-change',
-    iconName: 'plane-takeoff',
-    resource: 'hc_flight_route_change',
+    groupLabel: 'Recruitment & Selection',
+    title: 'Recruitment',
+    url: '/dashboard/hc/recruitment',
+    iconName: 'users',
+    resource: 'hc_recruitment',
     sortOrder: 10,
     isVisible: true,
     openInNewTab: false,
@@ -1130,23 +1106,25 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Disciplinary',
-    url: '/dashboard/hc/disciplinary',
-    iconName: 'shield-alert',
-    resource: 'hc_disciplinary',
+    groupLabel: 'Recruitment & Selection',
+    title: 'Online Test',
+    url: '/dashboard/hc/recruitment/tests',
+    iconName: 'file-text',
+    resource: 'hc_recruitment_tests',
     sortOrder: 11,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Compensation & Benefit
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'MCU Wellness',
-    url: '/dashboard/hc/mcu-wellness',
-    iconName: 'heart-pulse',
-    resource: 'hc_mcu_wellness',
+    groupLabel: 'Compensation & Benefit',
+    title: 'Payroll',
+    url: '/dashboard/scheduling-timesheet/payroll',
+    iconName: 'credit-card',
+    resource: 'hrga_payroll',
     sortOrder: 12,
     isVisible: true,
     openInNewTab: false,
@@ -1154,49 +1132,39 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Kerjasama',
-    url: '/dashboard/hc/kerjasama',
-    iconName: 'handshake',
-    resource: 'hc_kerjasama',
+    groupLabel: 'Compensation & Benefit',
+    title: 'Allowance',
+    url: '/dashboard/hc/compensation',
+    iconName: 'banknote',
+    resource: 'hc_compensation_benefit',
     sortOrder: 13,
     isVisible: true,
     openInNewTab: false,
   },
 
-  // HRGA - General Affairs (GA)
+  // HRGA - Industrial Relation (Group 4)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'Pergantian Status Pernikahan',
-    url: '/dashboard/central-service/marital-status',
-    iconName: 'heart',
-    resource: 'central_service_marital_status',
-    sortOrder: 13,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'Request Barang / APD',
-    url: '/dashboard/apd',
-    iconName: 'shield',
-    resource: 'apd-request',
+    groupLabel: 'Industrial Relation',
+    title: 'Corporate Partnership',
+    url: '/dashboard/hc/kerjasama',
+    iconName: 'handshake',
+    resource: 'hc_kerjasama',
     sortOrder: 14,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Learning Development (Group 5)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'Re-Fueling LV',
-    url: '/dashboard/central-service/refueling',
-    iconName: 'truck',
-    resource: 'central_service_refueling',
+    groupLabel: 'Learning Development',
+    title: 'List Sertifikasi',
+    url: '/dashboard/training-records?tab=sio',
+    iconName: 'award',
+    resource: 'hrga_training_records',
     sortOrder: 15,
     isVisible: true,
     openInNewTab: false,
@@ -1204,37 +1172,25 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'House Rental',
-    url: '/dashboard/ga/house-rental',
-    iconName: 'home',
-    resource: 'ga_house_rental',
+    groupLabel: 'Learning Development',
+    title: 'List Training',
+    url: '/dashboard/training-records',
+    iconName: 'book-open',
+    resource: 'hrga_list_training',
     sortOrder: 16,
     isVisible: true,
     openInNewTab: false,
   },
 
-  // HRGA - Rekrutmen
+  // HRGA - Wellbeing & Engagement (Group 6)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Request For Recruitment',
-    url: '/dashboard/hc/rfr',
-    iconName: 'file-text',
-    resource: 'hc_recruitment',
-    sortOrder: 16,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Recruitment',
-    url: '/dashboard/hc/recruitment',
-    iconName: 'users',
-    resource: 'hc_recruitment',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'MCU',
+    url: '/dashboard/hc/mcu-wellness',
+    iconName: 'heart-pulse',
+    resource: 'hc_mcu_wellness',
     sortOrder: 17,
     isVisible: true,
     openInNewTab: false,
@@ -1242,11 +1198,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Online Tests',
-    url: '/dashboard/hc/recruitment/tests',
-    iconName: 'file-text',
-    resource: 'hc_recruitment_tests',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'Hero Point',
+    url: '/dashboard/leaderboard',
+    iconName: 'award',
+    resource: 'hrga_hero_point',
     sortOrder: 18,
     isVisible: true,
     openInNewTab: false,
@@ -1254,38 +1210,88 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Wawancara',
-    url: '/dashboard/hc/recruitment/wawancara',
-    iconName: 'user-check',
-    resource: 'hc_recruitment',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'List Kegiatan Olahraga',
+    url: '/dashboard/hc/olahraga',
+    iconName: 'activity',
+    resource: 'hc_sports',
     sortOrder: 19,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'Pengaduan',
+    url: '/dashboard/curhat',
+    iconName: 'message-square',
+    resource: 'hr_counseling_user',
+    sortOrder: 20,
     isVisible: true,
     openInNewTab: false,
   },
 
-  // HRGA - Kinerja & KPI
+  // HRGA - Performance Management (Group 7)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Kinerja & KPI',
-    title: 'Performance',
+    groupLabel: 'Performance Management',
+    title: 'Employee Performance',
     url: '/dashboard/hc/performance',
     iconName: 'trending-up',
     resource: 'hc_performance',
-    sortOrder: 19,
+    sortOrder: 21,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Kinerja & KPI',
+    groupLabel: 'Performance Management',
     title: 'Leader Performance',
     url: '/dashboard/hc/leader-performance',
-    iconName: 'users',
+    iconName: 'award',
     resource: 'hc_leader_performance',
-    sortOrder: 20,
+    sortOrder: 22,
+    isVisible: true,
+    openInNewTab: false,
+  },
+
+  // HRGA - General Affair (Group 8)
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affair',
+    title: 'Vehicle Management',
+    url: '/dashboard/ga/vehicles',
+    iconName: 'truck',
+    resource: 'ga-vehicles',
+    sortOrder: 23,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affair',
+    title: 'ATK',
+    url: '/dashboard/ga/atk',
+    iconName: 'pencil',
+    resource: 'ga-atk',
+    sortOrder: 24,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affair',
+    title: 'Rental House',
+    url: '/dashboard/ga/house-rental',
+    iconName: 'home',
+    resource: 'ga_house_rental',
+    sortOrder: 25,
     isVisible: true,
     openInNewTab: false,
   },
@@ -2017,6 +2023,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'shield',
     resource: 'security_roles',
     sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Pengaturan',
+    title: 'User Management',
+    url: '/dashboard/security/users',
+    iconName: 'users',
+    resource: 'security_users',
+    sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4795,9 +4812,15 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
 
   // Always permit core resources for all roles
   if (
-    ['attendance', 'scheduling_timesheet_attendance', 'tire_service', 'overtime_requests'].includes(
-      resource
-    )
+    [
+      'attendance',
+      'scheduling_timesheet_attendance',
+      'hrga_attendance',
+      'scheduling_timesheet_payroll',
+      'hrga_payroll',
+      'tire_service',
+      'overtime_requests',
+    ].includes(resource)
   ) {
     return {
       canView: true,
@@ -5800,12 +5823,7 @@ export async function ensureHeroGovernanceSeedData() {
         sortOrder: 0,
         isVisible: true,
       })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'central_service'),
-          eq(navbarMenuItems.url, '/dashboard/central-service')
-        )
-      )
+      .where(eq(navbarMenuItems.resource, 'central_service'))
 
     await db
       .update(navbarMenuItems)
@@ -5817,12 +5835,7 @@ export async function ensureHeroGovernanceSeedData() {
         sortOrder: 6,
         isVisible: true,
       })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'),
-          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/attendance')
-        )
-      )
+      .where(eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'))
 
     const attMenuItems = await db
       .select()
@@ -5830,7 +5843,7 @@ export async function ensureHeroGovernanceSeedData() {
       .where(
         or(
           eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'),
-          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/attendance')
+          eq(navbarMenuItems.resource, 'hrga_attendance')
         )
       )
 
@@ -5849,16 +5862,17 @@ export async function ensureHeroGovernanceSeedData() {
       .where(
         or(
           eq(navbarMenuItems.resource, 'central_service'),
-          eq(navbarMenuItems.url, '/dashboard/central-service')
+          eq(navbarMenuItems.resource, 'hc_manpower_composition')
         )
       )
 
     if (csMenuItems.length > 0) {
-      const csMenuId = csMenuItems[0].id
-      await db
-        .update(roleMenuPermissions)
-        .set({ canView: true, canEdit: true })
-        .where(eq(roleMenuPermissions.menuItemId, csMenuId))
+      for (const csItem of csMenuItems) {
+        await db
+          .update(roleMenuPermissions)
+          .set({ canView: true, canEdit: true })
+          .where(eq(roleMenuPermissions.menuItemId, csItem.id))
+      }
     }
 
     await db
@@ -5898,36 +5912,22 @@ export async function ensureHeroGovernanceSeedData() {
       }
     }
 
-    // HRGA - Data & Akses Karyawan
+    // HRGA - HR Operations & Administration (Group 1 per spec)
     await db
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
-        menuArea: 'main',
-        sortOrder: 1,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'security_users'),
-          eq(navbarMenuItems.url, '/dashboard/security/users')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
+        groupLabel: 'HR Operations & Administration',
         title: 'Data Karyawan',
-        sortOrder: 2,
+        url: '/dashboard/hc/employee',
+        sortOrder: 1,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'hc_employee'),
-          eq(navbarMenuItems.url, '/dashboard/hc/employee')
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/employee'))
         )
       )
 
@@ -5935,99 +5935,31 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
+        groupLabel: 'HR Operations & Administration',
+        title: 'Attendance',
+        url: '/dashboard/scheduling-timesheet/attendance',
+        iconName: 'checklist',
+        sortOrder: 2,
+        menuArea: 'main',
+        isVisible: true,
+      })
+      .where(eq(navbarMenuItems.resource, 'hrga_attendance'))
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'HR Operations & Administration',
+        title: 'Sakit & Terlambat',
+        url: '/dashboard/hc/permission',
         sortOrder: 3,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_org_chart_v2'),
-          eq(navbarMenuItems.url, '/dashboard/hc/org-chart-v2')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
-        sortOrder: 4,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_contract_review'),
-          eq(navbarMenuItems.url, '/dashboard/hc/contract-review')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
-        sortOrder: 5,
-        isVisible: true,
-      })
-      .where(
-        or(eq(navbarMenuItems.resource, 'hc_safety'), eq(navbarMenuItems.url, '/dashboard/hc'))
-      )
-
-    // HRGA - Layanan & Personalia
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 6,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hr_counseling_user'),
-          eq(navbarMenuItems.url, '/dashboard/curhat')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 7,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hr_counseling_admin'),
-          eq(navbarMenuItems.url, '/dashboard/hr-counseling')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 8,
-        isVisible: true,
-      })
-      .where(
-        or(eq(navbarMenuItems.resource, 'hc_surat'), eq(navbarMenuItems.url, '/dashboard/hc/surat'))
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 9,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'hc_attendance_permission'),
-          eq(navbarMenuItems.url, '/dashboard/hc/permission')
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/permission'))
         )
       )
 
@@ -6035,14 +5967,17 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 10,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Employee Contract Review',
+        url: '/dashboard/hc/contract-review',
+        sortOrder: 4,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
-          eq(navbarMenuItems.resource, 'hc_flight_route_change'),
-          eq(navbarMenuItems.url, '/dashboard/hc/flight-route-change')
+          eq(navbarMenuItems.resource, 'hc_contract_review'),
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/contract-review'))
         )
       )
 
@@ -6050,14 +5985,31 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 11,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Composition Manpower',
+        url: '/dashboard/central-service?tab=composition',
+        iconName: 'users',
+        sortOrder: 5,
+        menuArea: 'main',
+        isVisible: true,
+      })
+      .where(eq(navbarMenuItems.resource, 'hc_manpower_composition'))
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'HR Operations & Administration',
+        title: 'Online Letter',
+        url: '/dashboard/hc/surat',
+        sortOrder: 6,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
-          eq(navbarMenuItems.resource, 'hc_disciplinary'),
-          eq(navbarMenuItems.url, '/dashboard/hc/disciplinary')
+          eq(navbarMenuItems.resource, 'hc_surat'),
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/surat'))
         )
       )
 
@@ -6065,30 +6017,18 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 12,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_mcu_wellness'),
-          eq(navbarMenuItems.url, '/dashboard/hc/mcu-wellness')
-        )
-      )
-
-    // HRGA - General Affairs (GA)
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'General Affairs (GA)',
-        sortOrder: 13,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Marrital Change Status',
+        url: '/dashboard/central-service/marital-status',
+        sortOrder: 7,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'central_service_marital_status'),
-          eq(navbarMenuItems.url, '/dashboard/central-service/marital-status')
+          eq(navbarMenuItems.url, '/dashboard/central-service/marital-status'),
+          eq(navbarMenuItems.url, '/dashboard/ht/marital-status')
         )
       )
 
@@ -6096,37 +6036,28 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'General Affairs (GA)',
-        title: 'Request Barang / APD',
-        sortOrder: 14,
-        isVisible: true,
-      })
-      .where(
-        or(eq(navbarMenuItems.resource, 'apd-request'), eq(navbarMenuItems.url, '/dashboard/apd'))
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'General Affairs (GA)',
-        sortOrder: 15,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Labour Turn over',
+        url: '/dashboard/hc/turnover',
+        sortOrder: 8,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
-          eq(navbarMenuItems.resource, 'central_service_refueling'),
-          eq(navbarMenuItems.url, '/dashboard/central-service/refueling')
+          eq(navbarMenuItems.resource, 'hc_labour_turnover'),
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/turnover'))
         )
       )
 
-    // HRGA - Rekrutmen
+    // HRGA - Recruitment & Selection
     await db
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Rekrutmen',
-        sortOrder: 16,
+        groupLabel: 'Recruitment & Selection',
+        title: 'Request For Recruitment',
+        sortOrder: 9,
         isVisible: true,
       })
       .where(
@@ -6137,13 +6068,14 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Rekrutmen',
-        sortOrder: 17,
+        groupLabel: 'Recruitment & Selection',
+        title: 'Recruitment',
+        sortOrder: 10,
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_recruitment'),
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
           eq(navbarMenuItems.url, '/dashboard/hc/recruitment')
         )
       )
@@ -6152,8 +6084,9 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Rekrutmen',
-        sortOrder: 18,
+        groupLabel: 'Recruitment & Selection',
+        title: 'Online Test',
+        sortOrder: 11,
         isVisible: true,
       })
       .where(
@@ -6163,13 +6096,175 @@ export async function ensureHeroGovernanceSeedData() {
         )
       )
 
-    // HRGA - Kinerja & KPI
     await db
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Kinerja & KPI',
+        groupLabel: 'Recruitment & Selection',
+        title: 'Wawancara',
+        sortOrder: 98,
+        isVisible: false,
+      })
+      .where(
+        eq(navbarMenuItems.url, '/dashboard/hc/recruitment/wawancara')
+      )
+
+    // HRGA - Compensation & Benefit
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Compensation & Benefit',
+        title: 'Payroll',
+        sortOrder: 12,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/payroll')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Compensation & Benefit',
+        title: 'Allowance',
+        sortOrder: 13,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/hc/compensation')
+        )
+      )
+
+    // HRGA - Industrial Relation (Group 4)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Industrial Relation',
+        title: 'Corporate Partnership',
+        sortOrder: 14,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hc_kerjasama'),
+          eq(navbarMenuItems.url, '/dashboard/hc/kerjasama')
+        )
+      )
+
+    // HRGA - Learning Development (Group 5)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Learning Development',
+        title: 'List Sertifikasi',
+        sortOrder: 15,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/training-records?tab=sio')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Learning Development',
+        title: 'List Training',
+        sortOrder: 16,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/training-records')
+        )
+      )
+
+    // HRGA - Wellbeing & Engagement (Group 6)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'MCU',
+        sortOrder: 17,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hc_mcu_wellness'),
+          eq(navbarMenuItems.url, '/dashboard/hc/mcu-wellness')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'Hero Point',
+        sortOrder: 18,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/leaderboard')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'List Kegiatan Olahraga',
         sortOrder: 19,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hc_sports'),
+          eq(navbarMenuItems.url, '/dashboard/hc/olahraga')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'Pengaduan',
+        sortOrder: 20,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hr_counseling_user'),
+          eq(navbarMenuItems.url, '/dashboard/curhat')
+        )
+      )
+
+    // HRGA - Performance Management (Group 7)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Performance Management',
+        title: 'Employee Performance',
+        sortOrder: 21,
         isVisible: true,
       })
       .where(
@@ -6183,14 +6278,126 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Kinerja & KPI',
-        sortOrder: 20,
+        groupLabel: 'Performance Management',
+        title: 'Leader Performance',
+        sortOrder: 22,
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'hc_leader_performance'),
           eq(navbarMenuItems.url, '/dashboard/hc/leader-performance')
+        )
+      )
+
+    // HRGA - General Affair (Group 8)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'General Affair',
+        title: 'Vehicle Management',
+        sortOrder: 23,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'ga-vehicles'),
+          eq(navbarMenuItems.url, '/dashboard/ga/vehicles')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'General Affair',
+        title: 'ATK',
+        sortOrder: 24,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'ga-atk'),
+          eq(navbarMenuItems.url, '/dashboard/ga/atk')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'General Affair',
+        title: 'Rental House',
+        sortOrder: 25,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'ga_house_rental'),
+          eq(navbarMenuItems.url, '/dashboard/ga/house-rental')
+        )
+      )
+
+    // Ensure User Management is in Pengaturan
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Pengaturan',
+        groupLabel: null,
+        title: 'User Management',
+        menuArea: 'main',
+        sortOrder: 2,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.resource, 'security_users'),
+          eq(navbarMenuItems.url, '/dashboard/security/users')
+        )
+      )
+
+    // Ensure Re-Fueling LV is in Central Service
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Central Service',
+        groupLabel: 'Logistik & Fleet',
+        title: 'Re-Fueling LV',
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'central_service_refueling'),
+          eq(navbarMenuItems.url, '/dashboard/central-service/refueling')
+        )
+      )
+
+    // Purge obsolete HRGA legacy navbar items that are not in the 8 official groups
+    const obsoleteHrgaResources = [
+      'hc_org_chart_v2',
+      'hc_safety',
+      'hr_counseling_admin',
+      'hc_flight_route_change',
+      'hc_disciplinary',
+      'apd-request',
+    ]
+    await db
+      .delete(navbarMenuItems)
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          or(
+            inArray(navbarMenuItems.resource, obsoleteHrgaResources),
+            inArray(navbarMenuItems.groupLabel, [
+              'Data & Akses Karyawan',
+              'Layanan & Personalia',
+              'General Affairs (GA)',
+              'Kinerja & KPI',
+              'General Affairs',
+              'Employee Relations & Industrial Relations',
+            ])
+          )
         )
       )
 
@@ -6204,9 +6411,12 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'point_setting'),
-          eq(navbarMenuItems.url, '/dashboard/leaderboard')
+        and(
+          eq(navbarMenuItems.section, 'Poin & Hadiah'),
+          or(
+            eq(navbarMenuItems.resource, 'point_setting'),
+            eq(navbarMenuItems.url, '/dashboard/leaderboard')
+          )
         )
       )
 
@@ -6310,9 +6520,12 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'training_records'),
-          eq(navbarMenuItems.url, '/dashboard/training-records')
+        and(
+          eq(navbarMenuItems.section, 'ChitraLearning & Training'),
+          or(
+            eq(navbarMenuItems.resource, 'training_records'),
+            eq(navbarMenuItems.url, '/dashboard/training-records')
+          )
         )
       )
 
@@ -6340,25 +6553,26 @@ export async function ensureHeroGovernanceSeedData() {
       .from(navbarMenuItems)
       .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id)
 
-    const preferredSeedByUrl = new Map<string, (typeof SIDEBAR_MENU_SEEDS)[number]>(
-      SIDEBAR_MENU_SEEDS.map((item) => [item.url, item])
+    const preferredSeedByPageKey = new Map<string, (typeof SIDEBAR_MENU_SEEDS)[number]>(
+      SIDEBAR_MENU_SEEDS.map((item) => [`${item.section || 'default'}:${item.url}`, item])
     )
-    const menuGroupsByUrl = currentMenuItems.reduce<Map<string, typeof currentMenuItems>>(
+    const menuGroupsByPage = currentMenuItems.reduce<Map<string, typeof currentMenuItems>>(
       (accumulator, item) => {
-        const currentItems = accumulator.get(item.url) ?? []
+        const pageKey = `${item.section || 'default'}:${item.url}`
+        const currentItems = accumulator.get(pageKey) ?? []
         currentItems.push(item)
-        accumulator.set(item.url, currentItems)
+        accumulator.set(pageKey, currentItems)
         return accumulator
       },
       new Map()
     )
 
-    for (const [url, groupedItems] of menuGroupsByUrl) {
+    for (const [pageKey, groupedItems] of menuGroupsByPage) {
       if (groupedItems.length <= 1) {
         continue
       }
 
-      const preferredSeed = preferredSeedByUrl.get(url)
+      const preferredSeed = preferredSeedByPageKey.get(pageKey)
       const keepItem = preferredSeed
         ? (groupedItems.find((item) => item.resource === preferredSeed.resource) ?? groupedItems[0])
         : groupedItems[0]

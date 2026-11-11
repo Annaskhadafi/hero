@@ -64,6 +64,11 @@ import {
   IconTag,
   IconShoppingCart,
   IconGift,
+  IconHeartHandshake,
+  IconHeartRateMonitor,
+  IconHome,
+  IconMessage,
+  IconPencil,
 } from "@tabler/icons-react"
 
 import { useSidebarLayoutMode, buildModernSidebarGroups, sectionCategoryMap } from "@/lib/sidebar-mode"
@@ -147,6 +152,11 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   tag: IconTag,
   "shopping-cart": IconShoppingCart,
   gift: IconGift,
+  handshake: IconHeartHandshake,
+  "heart-pulse": IconHeartRateMonitor,
+  "message-square": IconMessage,
+  pencil: IconPencil,
+  home: IconHome,
 }
 
 type SidebarMenuItem = {
@@ -582,7 +592,12 @@ export function AppSidebar({
                     <div className="flex flex-col gap-0.5">
                       {group.items.map(({ url, title, section, groupLabel, icon: IconComponent, openInNewTab, globalIndex }) => {
                         const isSelected = globalIndex === selectedIndex
-                        const isActive = pathname === url
+                        const isActive = url.includes("?")
+                          ? (typeof window !== "undefined" ? `${pathname}${window.location.search}` : pathname) === url
+                          : (pathname === url && (
+                              (url !== "/dashboard/central-service" || (typeof window !== "undefined" && !window.location.search.includes("tab=composition"))) &&
+                              (url !== "/dashboard/training-records" || (typeof window !== "undefined" && !window.location.search.includes("tab=sio")))
+                            ))
                         return (
                           <SidebarMenuButton
                             key={`${section}-${title}-${url}-${globalIndex}`}

@@ -289,7 +289,7 @@ export default async function TrainingRecordsPage({
         />
       </div>
 
-      <Tabs defaultValue={selectedTab || "workspace"} className="space-y-5">
+      <Tabs key={selectedTab || "workspace"} defaultValue={selectedTab || "workspace"} className="space-y-5">
         <TabsList className="bg-surface-container-low/50">
           <TabsTrigger value="workspace" className="flex items-center gap-1.5">
             <TableProperties className="size-4" />
