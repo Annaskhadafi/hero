@@ -5501,9 +5501,6 @@ async function applyApprovalDecision(params: {
         trimmedNote
       )
 
-      // approveSummaryStep already updated hero_approvals with signatureUrl
-      // No overwrite needed — it would erase the signature
-
       // Bell notification to summary generator
       const summaryDetails = await getSummaryDetails(summaryId)
       if (summaryDetails) {
@@ -5519,53 +5516,35 @@ async function applyApprovalDecision(params: {
             category: 'approval_requests',
             title: `Summary Tahap Disetujui`,
             body: `Summary ${summaryDetails.summaryNumber} telah disetujui pada tahap ${approval.level === 1 ? 'Section Head' : 'Department Head'}.`,
-            url: '/dashboard/summary',
+            url: `/dashboard/summary?preview=${summaryId}`,
             tagPrefix: 'summary',
           }).catch(console.error)
         }
       }
-
-      // Note: approveSummaryStep already handles notification bell and centralized email dispatch
-      // based on hero_apd_summary_notification_config when allApproved is true.
+    } else if (params.decision === 'needs_correction') {
+      const { returnSummaryForRevision } = await import('@/lib/summary-engine')
+      await returnSummaryForRevision(
+        summaryId,
+        approval.level,
+        actor.employeeId,
+        trimmedNote,
+        actorName
+      )
     } else {
-      // Rejected or needs correction
-      await db
-        .update(approvals)
-        .set({
-          status: params.decision === 'rejected' ? 'rejected' : 'needs_correction',
-          reviewedAt: now,
-          decisionNote: trimmedNote || '',
-        })
-        .where(eq(approvals.id, approval.approvalId))
-
-      await db
-        .update(apdSummaries)
-        .set({
-          status: params.decision === 'rejected' ? 'rejected' : 'pending',
-        })
-        .where(eq(apdSummaries.id, summaryId))
-
-      // Notify requester
-      const summaryDetails = await getSummaryDetails(summaryId)
-      if (summaryDetails) {
-        const generatorEmail = await db
-          .select({ email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
-          .limit(1)
-        if (generatorEmail[0]?.email) {
-          notifyWorkflowBellRecipients({
-            recipientEmails: [generatorEmail[0].email],
-            eventType: 'summary_rejected',
-            category: 'approval_requests',
-            title: `Summary Ditolak`,
-            body: `Summary ${summaryDetails.summaryNumber} telah ditolak oleh ${actorName}.`,
-            url: '/dashboard/summary',
-            tagPrefix: 'summary',
-          }).catch(console.error)
-        }
-      }
+      const { rejectSummary } = await import('@/lib/summary-engine')
+      await rejectSummary(
+        summaryId,
+        approval.level,
+        actor.employeeId,
+        trimmedNote,
+        actorName
+      )
     }
+
+    revalidatePath('/dashboard/summary')
+    revalidatePath('/dashboard/approval')
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`)
+    revalidatePath('/mobile/summary')
     return true
   }
 

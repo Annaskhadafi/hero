@@ -53,7 +53,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
   const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
-  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'approved'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'revisi' | 'approved' | 'rejected'>('all');
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -92,16 +92,16 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
   };
 
   const handleDeleteDraft = async (summaryId: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus draft summary ini?')) return;
+    if (!confirm('Apakah Anda yakin ingin menghapus summary ini?')) return;
     setDeletingId(summaryId);
-    const toastId = toast.loading('Menghapus draft summary...');
+    const toastId = toast.loading('Menghapus summary...');
     try {
       const res = await deleteSummaryDraftAction(summaryId);
       if (res.success) {
-        toast.success('Draft summary berhasil dihapus', { id: toastId });
+        toast.success('Summary berhasil dihapus', { id: toastId });
         router.refresh();
       } else {
-        toast.error(res.error || 'Gagal menghapus draft', { id: toastId });
+        toast.error(res.error || 'Gagal menghapus summary', { id: toastId });
       }
     } catch (err: any) {
       toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
@@ -135,11 +135,25 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
             Menunggu Approval
           </span>
         );
+      case 'revisi':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-300">
+            <AlertCircle className="size-3 text-amber-600" />
+            Perlu Revisi
+          </span>
+        );
       case 'draft':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-            <Clock className="size-3 text-amber-600" />
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-slate-100 text-slate-800 border border-slate-300">
+            <Clock className="size-3 text-slate-600" />
             Draft
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+            <AlertCircle className="size-3 text-rose-600" />
+            Ditolak
           </span>
         );
       default:
@@ -158,7 +172,9 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
       if (selectedStatus === 'uncreated' && s.summaryStatus !== null) return false;
       if (selectedStatus === 'draft' && s.summaryStatus !== 'draft') return false;
       if (selectedStatus === 'pending' && s.summaryStatus !== 'pending') return false;
+      if (selectedStatus === 'revisi' && s.summaryStatus !== 'revisi') return false;
       if (selectedStatus === 'approved' && s.summaryStatus !== 'approved') return false;
+      if (selectedStatus === 'rejected' && s.summaryStatus !== 'rejected') return false;
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -171,7 +187,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
   // KPI calculations
   const totalSections = sections.length;
   const totalApprovedRequests = sections.reduce((acc, s) => acc + s.approvedCount, 0);
-  const pendingCount = sections.filter((s) => s.summaryStatus === 'pending' || s.summaryStatus === 'draft').length;
+  const pendingCount = sections.filter((s) => s.summaryStatus === 'pending' || s.summaryStatus === 'draft' || s.summaryStatus === 'revisi').length;
   const approvedCount = sections.filter((s) => s.summaryStatus === 'approved').length;
 
   async function exportToExcel() {
@@ -305,7 +321,9 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
               <option value="uncreated">Belum Dibuat</option>
               <option value="draft">Draft</option>
               <option value="pending">Menunggu Approval</option>
+              <option value="revisi">Perlu Revisi</option>
               <option value="approved">Disetujui (Approved)</option>
+              <option value="rejected">Ditolak</option>
             </select>
 
             {(search || selectedSite !== 'all' || selectedStatus !== 'all') && (

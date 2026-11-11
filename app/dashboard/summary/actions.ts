@@ -7,6 +7,9 @@ import {
   getSummaryDetails,
   getPendingRequestsForSection,
   deleteSummaryDraft,
+  returnSummaryForRevision,
+  rejectSummary,
+  removeItemFromSummary,
   type GenerateSummaryOptions,
 } from '@/lib/summary-engine';
 import { sendSummaryApprovedEmail, sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
@@ -163,5 +166,66 @@ export async function getApdRequestDetailsAction(id: number) {
   } catch (error: any) {
     console.error('Get APD request details error:', error);
     return { success: false, error: error.message || 'Gagal mengambil detail pengajuan' };
+  }
+}
+
+export async function removeItemFromSummaryAction(
+  summaryId: number,
+  employeeId: number,
+  apdRequestId?: number
+) {
+  try {
+    const result = await removeItemFromSummary(summaryId, employeeId, apdRequestId);
+    if ('error' in result) {
+      return { success: false, error: result.error };
+    }
+
+    revalidatePath('/dashboard/summary');
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`);
+    revalidatePath('/mobile/summary');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Remove item from summary error:', error);
+    return { success: false, error: error.message || 'Gagal menghapus item dari summary' };
+  }
+}
+
+export async function reviseSummaryAction(
+  summaryId: number,
+  level: number,
+  approverEmployeeId: number,
+  note: string,
+  actorName?: string
+) {
+  try {
+    const result = await returnSummaryForRevision(summaryId, level, approverEmployeeId, note, actorName);
+    revalidatePath('/dashboard/summary');
+    revalidatePath('/dashboard/approval');
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`);
+    revalidatePath('/mobile/summary');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Revise summary error:', error);
+    return { success: false, error: error.message || 'Gagal mengembalikan summary untuk revisi' };
+  }
+}
+
+export async function rejectSummaryAction(
+  summaryId: number,
+  level: number,
+  approverEmployeeId: number,
+  note: string,
+  actorName?: string
+) {
+  try {
+    const result = await rejectSummary(summaryId, level, approverEmployeeId, note, actorName);
+    revalidatePath('/dashboard/summary');
+    revalidatePath('/dashboard/approval');
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`);
+    revalidatePath('/mobile/summary');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Reject summary error:', error);
+    return { success: false, error: error.message || 'Gagal menolak summary' };
   }
 }

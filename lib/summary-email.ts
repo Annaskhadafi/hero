@@ -114,3 +114,47 @@ export async function sendSummaryPendingApprovalEmail(
     console.error('Error sending summary pending approval email:', error);
   }
 }
+
+export async function sendSummaryReturnedEmail(
+  summary: SummaryDetails,
+  actorName: string,
+  roleLabel: string,
+  decisionNote: string
+) {
+  try {
+    const [generator] = await db.select({
+      email: employees.email,
+      name: employees.name,
+    }).from(employees).where(eq(employees.id, summary.generatedByEmployeeId)).limit(1);
+
+    if (!generator?.email) {
+      console.log('Generator email not found for employee ID:', summary.generatedByEmployeeId);
+      return;
+    }
+
+    const previewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/summary?preview=${summary.id}`;
+
+    await sendWorkflowEmail({
+      to: generator.email,
+      templateCode: 'apd_summary_returned',
+      templateName: 'Summary Dikembalikan untuk Revisi',
+      variables: {
+        summaryNumber: summary.summaryNumber,
+        sectionName: summary.sectionName,
+        departmentName: summary.departmentName,
+        generatedByName: summary.generatedByName,
+        reviewerName: actorName,
+        roleLabel,
+        decisionNote: decisionNote || 'Tidak ada catatan.',
+        previewUrl,
+      },
+      fallbackSubject: `[HERO] Perlu Revisi: Summary APD ${summary.summaryNumber} - ${summary.sectionName}`,
+      fallbackHtml: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:24px;border-radius:12px;border:1px solid #e2e8f0;"><div style="background:#d97706;padding:16px 20px;border-radius:8px 8px 0 0;"><h2 style="color:#ffffff;margin:0;font-size:18px;font-weight:700;">HERO &bull; Summary APD Perlu Revisi</h2><p style="color:#fef3c7;margin:4px 0 0;font-size:12px;">Pengembalian Dokumen untuk Koreksi</p></div><div style="background:#ffffff;padding:24px;border-radius:0 0 8px 8px;border:1px solid #e2e8f0;border-top:none;"><p style="font-size:14px;color:#334155;line-height:1.6;margin:0 0 16px;">Summary Permintaan APD (<b>${summary.summaryNumber}</b>) untuk section <b>${summary.sectionName}</b> dikembalikan oleh <b>${actorName}</b> (${roleLabel}) untuk diperbaiki.</p><div style="background:#fffbeb;border:1px solid #fde68a;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:13px;color:#92400e;"><strong>Catatan Revisi:</strong><br/>${decisionNote || '-'}</div><div style="text-align:center;margin:28px 0 16px 0;"><a href="${previewUrl}" style="background-color:#d97706;color:#ffffff;padding:12px 28px;text-decoration:none;border-radius:8px;font-weight:700;font-size:14px;display:inline-block;">Buka &amp; Perbaiki Summary &rarr;</a></div></div></div>`,
+      fallbackText: `Summary Permintaan APD (${summary.summaryNumber}) untuk section ${summary.sectionName} dikembalikan untuk revisi oleh ${actorName} (${roleLabel}).\n\nCatatan: ${decisionNote || '-'}\n\nSilakan perbaiki dan submit ulang di:\n${previewUrl}`,
+    }).catch(console.error);
+
+    console.log(`Summary returned email sent to ${generator.name} (${generator.email})`);
+  } catch (error) {
+    console.error('Error sending summary returned email:', error);
+  }
+}
