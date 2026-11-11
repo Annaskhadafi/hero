@@ -313,6 +313,10 @@ export function DailyActivityCreateSplModal({
       toast.error('Jam mulai dan jam selesai lembur harus diisi.')
       return
     }
+    if (startTime === endTime) {
+      toast.error('Jam mulai dan jam selesai lembur tidak boleh sama.')
+      return
+    }
     if (!title.trim()) {
       toast.error('Judul SPL harus diisi.')
       return

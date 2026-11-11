@@ -225,40 +225,71 @@ export async function createSplFromDailyActivityAction(
       .limit(1)
 
     // 2. Target worker employee (the person doing the overtime work)
-    const targetConds = []
-    if (input.employeeDbId && Number.isFinite(input.employeeDbId) && input.employeeDbId > 0) {
-      targetConds.push(eq(employees.id, input.employeeDbId))
-    }
-    if (input.employeeSn && input.employeeSn.trim()) {
-      targetConds.push(eq(employees.employeeSn, input.employeeSn.trim()))
-    }
-    if (input.employeeName && input.employeeName.trim()) {
-      targetConds.push(ilike(employees.name, `%${input.employeeName.trim()}%`))
-    }
-    if (targetConds.length === 0 && currentEmp) {
-      targetConds.push(eq(employees.id, currentEmp.id))
+    let targetEmp: {
+      id: number
+      name: string
+      email: string | null
+      employeeSn: string | null
+      jobTitle: string | null
+      role: string | null
+      siteId: number | null
+      departmentId: number | null
+      sectionId: number | null
+      positionId: number | null
+      signatureDataUrl: string | null
+      directManagerId: number | null
+    } | null = null
+
+    const empSelectCols = {
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      employeeSn: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
+      siteId: employees.siteId,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      positionId: employees.positionId,
+      signatureDataUrl: employees.signatureDataUrl,
+      directManagerId: employees.directManagerId,
     }
 
-    const [targetEmp] = targetConds.length > 0
-      ? await db
-          .select({
-            id: employees.id,
-            name: employees.name,
-            email: employees.email,
-            employeeSn: employees.employeeSn,
-            jobTitle: employees.jobTitle,
-            role: employees.role,
-            siteId: employees.siteId,
-            departmentId: employees.departmentId,
-            sectionId: employees.sectionId,
-            positionId: employees.positionId,
-            signatureDataUrl: employees.signatureDataUrl,
-            directManagerId: employees.directManagerId,
-          })
-          .from(employees)
-          .where(targetConds.length > 1 ? or(...targetConds) : targetConds[0])
-          .limit(1)
-      : []
+    if (input.employeeDbId && Number.isFinite(input.employeeDbId) && input.employeeDbId > 0) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(eq(employees.id, input.employeeDbId))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp && input.employeeSn && input.employeeSn.trim()) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(eq(employees.employeeSn, input.employeeSn.trim()))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp && input.employeeName && input.employeeName.trim()) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(ilike(employees.name, `%${input.employeeName.trim()}%`))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp && currentEmp) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(eq(employees.id, currentEmp.id))
+        .limit(1)
+      if (found) targetEmp = found
+    }
 
     if (!targetEmp) {
       return { success: false, error: 'Data karyawan lembur tidak ditemukan.' }
@@ -277,11 +308,15 @@ export async function createSplFromDailyActivityAction(
     const cleanStart = startTimeStr.length === 5 ? `${startTimeStr}:00` : startTimeStr
     const cleanEnd = endTimeStr.length === 5 ? `${endTimeStr}:00` : endTimeStr
 
+    if (cleanStart === cleanEnd) {
+      return { success: false, error: 'Jam mulai dan jam selesai lembur tidak boleh sama.' }
+    }
+
     const plannedStartAt = new Date(`${workDateStr}T${cleanStart}+07:00`)
     let plannedEndAt = new Date(`${workDateStr}T${cleanEnd}+07:00`)
 
-    // Cross-midnight handling: if end time is earlier or equal to start time, advance by 24h
-    if (plannedEndAt <= plannedStartAt) {
+    // Cross-midnight handling: if end time is strictly earlier than start time, advance by 24h
+    if (plannedEndAt < plannedStartAt) {
       plannedEndAt = new Date(plannedEndAt.getTime() + 24 * 60 * 60 * 1000)
     }
 
@@ -295,54 +330,69 @@ export async function createSplFromDailyActivityAction(
     const requestNotes = input.requestNotes?.trim() || `Pengajuan lembur otomatis terintegrasi dari Daily Activity Report tanggal ${workDateStr}.`
     const executionNotes = input.executionNotes?.trim() || 'Semua prosedur keselamatan kerja (JSA & SOP) telah dipatuhi.'
 
-    // 6. Generate Guaranteed Unique SPL Number
+    // 6. Generate Guaranteed Unique SPL Number & Insert with collision retry
     const year = parsedWorkDate.getFullYear() || new Date().getFullYear()
     const prefix = `SPL-${year}-`
-    const [last] = await db
-      .select({ id: overtimeCommandLetters.id })
-      .from(overtimeCommandLetters)
-      .orderBy(desc(overtimeCommandLetters.id))
-      .limit(1)
-
-    let seq = (last?.id || 0) + 1
-    let nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
-
-    while (true) {
-      const [existing] = await db
-        .select({ id: overtimeCommandLetters.id })
-        .from(overtimeCommandLetters)
-        .where(eq(overtimeCommandLetters.splNumber, nextNumber))
-        .limit(1)
-      if (!existing) break
-      seq++
-      nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
-    }
-
-    // The target employee is the official applicant (Pemohon / Serviceman) for overtime tracking
     const requesterEmployeeId = targetEmp.id
 
-    // 7. Insert Overtime Command Letter
-    const [insertedSpl] = await db
-      .insert(overtimeCommandLetters)
-      .values({
-        splNumber: nextNumber,
-        siteId: effectiveSiteId,
-        departmentId: targetEmp.departmentId,
-        sectionId: targetEmp.sectionId,
-        positionId: targetEmp.positionId,
-        title,
-        workDate: parsedWorkDate,
-        plannedStartAt,
-        plannedEndAt,
-        status: 'Submitted',
-        requestNotes,
-        executionNotes,
-        requestedByEmployeeId: requesterEmployeeId,
-        origin: 'daily_activity',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .returning()
+    let insertedSpl: typeof overtimeCommandLetters.$inferSelect | null = null
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const [last] = await db
+        .select({ id: overtimeCommandLetters.id })
+        .from(overtimeCommandLetters)
+        .orderBy(desc(overtimeCommandLetters.id))
+        .limit(1)
+
+      let seq = (last?.id || 0) + 1 + attempt
+      let nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
+
+      while (true) {
+        const [existing] = await db
+          .select({ id: overtimeCommandLetters.id })
+          .from(overtimeCommandLetters)
+          .where(eq(overtimeCommandLetters.splNumber, nextNumber))
+          .limit(1)
+        if (!existing) break
+        seq++
+        nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
+      }
+
+      try {
+        const [spl] = await db
+          .insert(overtimeCommandLetters)
+          .values({
+            splNumber: nextNumber,
+            siteId: effectiveSiteId,
+            departmentId: targetEmp.departmentId,
+            sectionId: targetEmp.sectionId,
+            positionId: targetEmp.positionId,
+            title,
+            workDate: parsedWorkDate,
+            plannedStartAt,
+            plannedEndAt,
+            status: 'Submitted',
+            requestNotes,
+            executionNotes,
+            requestedByEmployeeId: requesterEmployeeId,
+            origin: 'daily_activity',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning()
+        insertedSpl = spl
+        break
+      } catch (insertErr: any) {
+        if (insertErr?.code === '23505' && attempt < 4) {
+          continue
+        }
+        throw insertErr
+      }
+    }
+
+    if (!insertedSpl) {
+      return { success: false, error: 'Gagal membuat nomor SPL unik.' }
+    }
 
     // 8. Insert Participant with exact credited overtime minutes
     const participantCategory = input.isOffDay ? 'off_day' : 'after_mandatory_ot'
@@ -377,8 +427,8 @@ export async function createSplFromDailyActivityAction(
         const [eh, em] = t.endedAt.split(':').map((v) => parseInt(v, 10))
         if (!isNaN(sh) && !isNaN(eh)) {
           let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0))
-          if (mins <= 0) mins += 24 * 60
-          diffMinutes = mins
+          if (mins < 0) mins += 24 * 60
+          diffMinutes = mins > 0 ? mins : 30
         }
       }
 
@@ -398,6 +448,7 @@ export async function createSplFromDailyActivityAction(
 
       await db.insert(overtimeCommandLetterItems).values({
         overtimeCommandLetterId: insertedSpl.id,
+        assignedEmployeeId: targetEmp.id,
         lineLabel: t.label || 'Pekerjaan Lembur Operasional',
         lineDescription: JSON.stringify(metaPayload),
         targetUnit: t.unitNumber || '-',

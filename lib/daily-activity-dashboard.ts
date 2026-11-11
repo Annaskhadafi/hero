@@ -1320,7 +1320,7 @@ export async function getDailyActivityDashboardData(
   const splMetaByEmployeeAndDate = new Map<string, { id: number; splNumber: string; status: string }>()
   for (const spl of splQuery) {
     if (!spl.employeeId || !spl.workDate) continue
-    const splDateStr = new Date(spl.workDate).toISOString().split('T')[0]
+    const splDateStr = normalizeDateToYmdString(spl.workDate)
     const key = `${spl.employeeId}-${splDateStr}`
     if (spl.splId && spl.splNumber) {
       splMetaByEmployeeAndDate.set(key, {
@@ -1817,7 +1817,7 @@ export async function getDailyActivityDashboardData(
     employeesList.push({
       sessionId: firstSession.id,
       employeeDbId: firstSession.employeeId,
-      rawWorkDate: firstSession.workDate ? new Date(firstSession.workDate).toISOString() : undefined,
+      rawWorkDate: sDateStr !== 'nodate' ? sDateStr : undefined,
       employeeId: firstSession.employeeSn || `EMP-${firstSession.employeeId}`,
       name: firstSession.employeeName,
       jobTitle: firstSession.jobTitle || 'Technician',

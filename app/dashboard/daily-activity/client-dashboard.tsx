@@ -309,6 +309,7 @@ export function DailyActivityClientDashboard({
 
   // SPL Creation Modal state
   const [createSplTarget, setCreateSplTarget] = useState<EmployeeActivityRow | null>(null)
+  const [splOverrides, setSplOverrides] = useState<Record<string, { splNumber: string; splId: number; splStatus: string }>>({})
 
   const handleOpenCreateSpl = (emp: EmployeeActivityRow) => {
     setCreateSplTarget(emp)
@@ -2216,15 +2217,20 @@ export function DailyActivityClientDashboard({
                                 Tim {emp.representedByName ? `(${emp.representedByName})` : ''}
                               </span>
                             ) : null}
-                            {emp.splNumber && (
-                              <span
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300"
-                                title={`Surat Perintah Lembur: ${emp.splNumber} (${emp.splStatus || 'Submitted'})`}
-                              >
-                                <Clock className="w-3 h-3 text-amber-600" />
-                                {emp.splNumber}
-                              </span>
-                            )}
+                            {(() => {
+                              const activeSplNumber = splOverrides[emp.employeeId]?.splNumber || emp.splNumber
+                              const activeSplStatus = splOverrides[emp.employeeId]?.splStatus || emp.splStatus || 'Submitted'
+                              if (!activeSplNumber) return null
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300"
+                                  title={`Surat Perintah Lembur: ${activeSplNumber} (${activeSplStatus})`}
+                                >
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  {activeSplNumber}
+                                </span>
+                              )
+                            })()}
                           </div>
                         </TableCell>
                         <TableCell className="py-3 px-4">
@@ -3662,6 +3668,16 @@ export function DailyActivityClientDashboard({
         onClose={() => setCreateSplTarget(null)}
         employee={createSplTarget}
         onSuccess={(splNumber, splId) => {
+          if (createSplTarget?.employeeId) {
+            setSplOverrides((prev) => ({
+              ...prev,
+              [createSplTarget.employeeId]: {
+                splNumber,
+                splId,
+                splStatus: 'Submitted',
+              },
+            }))
+          }
           if (activeDetailItem?.type === 'employee' && activeDetailItem.employee) {
             setActiveDetailItem({
               type: 'employee',

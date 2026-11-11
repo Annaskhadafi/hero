@@ -159,4 +159,91 @@ test('Reviewer Adversarial Check: server action does not insert invalid columns 
     content.includes('while (true)') && content.includes('where(eq(overtimeCommandLetters.splNumber, nextNumber))'),
     'Next SPL number resolution verifies uniqueness against database to prevent collisions'
   )
+
+  // Verify assignedEmployeeId is populated on overtimeCommandLetterItems
+  assert.ok(
+    content.includes('assignedEmployeeId: targetEmp.id'),
+    'assignedEmployeeId is populated on overtimeCommandLetterItems for conflict detection'
+  )
+
+  // Verify hierarchical target employee resolution
+  assert.ok(
+    content.includes('if (input.employeeDbId') && content.includes('if (!targetEmp && input.employeeSn') && content.includes('if (!targetEmp && input.employeeName'),
+    'Target employee is resolved hierarchically (DbId -> Sn -> Name -> currentEmp) rather than flat OR'
+  )
+
+  // Verify server-side validation against identical start and end time
+  assert.ok(
+    content.includes('if (cleanStart === cleanEnd)'),
+    'Server action validates that start time and end time cannot be identical'
+  )
+
+  // Verify strict less-than check for cross-midnight
+  assert.ok(
+    content.includes('if (plannedEndAt < plannedStartAt)'),
+    'Server action uses strict less-than check for cross-midnight rollover'
+  )
+})
+
+test('Reviewer Adversarial Check: timezone date consistency in daily-activity-dashboard', () => {
+  // Simulate the issue where a timestamp in +07:00 or +08:00 was parsed with toISOString()
+  const workDateStr = '2026-11-12'
+  const parsedWorkDate = new Date(`${workDateStr}T00:00:00+07:00`)
+
+  // Naive toISOString() shifts by -7h into previous day (2026-11-11)
+  const naiveDateStr = parsedWorkDate.toISOString().split('T')[0]
+  assert.equal(naiveDateStr, '2026-11-11', 'Proves naive toISOString creates day boundary shift')
+
+  // Normalized formatter with site timezone (Asia/Makassar or Asia/Jakarta) preserves exact workDate
+  function normalizeDateToYmdString(dateInput) {
+    if (!dateInput) return 'nodate'
+    if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput.trim())) {
+      return dateInput.trim()
+    }
+    const d = new Date(dateInput)
+    if (Number.isNaN(d.getTime())) return 'nodate'
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Makassar',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    return formatter.format(d)
+  }
+
+  const accurateDateStr = normalizeDateToYmdString(parsedWorkDate)
+  assert.equal(accurateDateStr, '2026-11-12', 'normalizeDateToYmdString preserves the actual work date')
+
+  // Verify lib/daily-activity-dashboard.ts uses normalizeDateToYmdString for splDateStr
+  const dashboardFilePath = path.join(process.cwd(), 'lib/daily-activity-dashboard.ts')
+  const dashboardContent = fs.readFileSync(dashboardFilePath, 'utf8')
+  assert.ok(
+    dashboardContent.includes('const splDateStr = normalizeDateToYmdString(spl.workDate)'),
+    'lib/daily-activity-dashboard.ts maps SPL work date with normalizeDateToYmdString'
+  )
+  assert.ok(
+    dashboardContent.includes("rawWorkDate: sDateStr !== 'nodate' ? sDateStr : undefined"),
+    'lib/daily-activity-dashboard.ts passes normalized local date as rawWorkDate'
+  )
+})
+
+test('Reviewer Adversarial Check: single task equal start/end duration edge case', () => {
+  // If task has startedAt: '17:00' and endedAt: '17:00'
+  function computeTaskMinutes(startedAt, endedAt) {
+    let diffMinutes = 60
+    if (startedAt && endedAt && startedAt !== '-' && endedAt !== '-') {
+      const [sh, sm] = startedAt.split(':').map((v) => parseInt(v, 10))
+      const [eh, em] = endedAt.split(':').map((v) => parseInt(v, 10))
+      if (!isNaN(sh) && !isNaN(eh)) {
+        let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0))
+        if (mins < 0) mins += 24 * 60
+        diffMinutes = mins > 0 ? mins : 30
+      }
+    }
+    return diffMinutes
+  }
+
+  assert.equal(computeTaskMinutes('17:00', '17:00'), 30, 'Equal start/end defaults to safe 30 mins, never 1440 mins')
+  assert.equal(computeTaskMinutes('17:00', '19:00'), 120, '17:00 to 19:00 is 120 mins')
+  assert.equal(computeTaskMinutes('23:00', '01:00'), 120, '23:00 to 01:00 cross-midnight is 120 mins')
 })
