@@ -6800,6 +6800,7 @@ export function SchedulingTimesheetWorkspace({
           isOffDay
             ? []
             : (configuredIntervals as OvertimeInterval[]),
+      }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
@@ -13698,19 +13699,19 @@ export function SchedulingTimesheetWorkspace({
                                                  cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
                                                }
 
-                                               cellTitle = staff
-                                                 ? 'Staff (Tidak ada lembur)'
-                                                 : [
-                                                     varianceItem ? ⚠️  : '',
-                                                     ${scheduleCode} · ,
-                                                     otInfo.lemburSpl > 0
-                                                       ? Wajib: j + SPL: j (Total: j)
-                                                       : otInfo.lemburWajib > 0
-                                                         ? Overtime wajib: j
-                                                         : '',
-                                                   ]
-                                                     .filter(Boolean)
-                                                     .join(' · ')
+                                                cellTitle = staff
+                                                  ? 'Staff (Tidak ada lembur)'
+                                                  : [
+                                                      varianceItem ? `⚠️ ${varianceItem.reason}` : '',
+                                                      `${scheduleCode} · ${cell.status}`,
+                                                      otInfo.lemburSpl > 0
+                                                        ? `Wajib: ${otInfo.lemburWajib}j + SPL: ${otInfo.lemburSpl}j (Total: ${otInfo.totalOvertime}j)`
+                                                        : otInfo.lemburWajib > 0
+                                                          ? `Overtime wajib: ${otInfo.lemburWajib}j`
+                                                          : '',
+                                                    ]
+                                                      .filter(Boolean)
+                                                      .join(' · ')
                                               }
 
                                             return (
