@@ -52,6 +52,8 @@ export default async function PrintSummaryPage({
         ? item.requestType
         : (item.remarks && item.remarks !== grouped[item.employeeName].remarks ? item.remarks : item.requestType || '');
       grouped[item.employeeName].items[item.itemName] = sizeVal;
+    } else if (item.itemName === 'Safety Shoes Masa Pakai') {
+      grouped[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
     } else {
       grouped[item.employeeName].items[item.itemName] = (Number(grouped[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
@@ -72,7 +74,7 @@ export default async function PrintSummaryPage({
           ...buildDynamicApdColumns(masterList).qtyOnlyCols,
           ...data.items
             .map((i) => i.itemName)
-            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size' && name !== 'Safety Shoes Masa Pakai'),
         ])
       )
     : Array.from(
@@ -80,7 +82,7 @@ export default async function PrintSummaryPage({
           ...QTY_ONLY_COLUMNS,
           ...data.items
             .map((i) => i.itemName)
-            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size' && name !== 'Safety Shoes Masa Pakai'),
         ])
       );
 
@@ -205,7 +207,7 @@ export default async function PrintSummaryPage({
                 {c}
               </th>
             ))}
-            <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
+            <th style={th} colSpan={3}>{SAFETY_SHOES_COL}</th>
             <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
             <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
@@ -213,6 +215,7 @@ export default async function PrintSummaryPage({
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
             <th style={{ ...th, width: '26px' }}>Size</th>
+            <th style={{ ...th, width: '42px' }}>Masa Pakai</th>
           </tr>
         </thead>
         <tbody>
@@ -226,6 +229,9 @@ export default async function PrintSummaryPage({
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: '6.5pt', padding: '1px' }}>
+                {e.items['Safety Shoes'] ? (e.items['Safety Shoes Masa Pakai'] || '—') : '—'}
+              </td>
               <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
                 <div style={{
@@ -277,7 +283,7 @@ export default async function PrintSummaryPage({
           {Array.from({ length: emptyRowCount }).map((_, i) => (
             <tr key={`e${i}`} style={{ height: '18px' }}>
               <td style={td}>{emps.length + i + 1}</td>
-              {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
+              {Array.from({ length: dynamicQtyCols.length + 7 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
               <td style={td} className="print:hidden"></td>
@@ -289,6 +295,7 @@ export default async function PrintSummaryPage({
               <td key={c} style={td}>{totals[c] || ''}</td>
             ))}
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
+            <td style={td}>—</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
             <td style={td}>—</td>

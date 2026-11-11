@@ -34,6 +34,7 @@ import {
   SAFETY_SHOES_COL,
   QTY_ONLY_COLUMNS,
   APD_ITEM_COLUMNS,
+  SAFETY_SHOES_MASA_PAKAI_PRESETS,
   getDefaultApdSummaryDateRange,
   getPreviousApdSummaryDateRange,
   getCalendarMonthApdSummaryDateRange,
@@ -104,6 +105,7 @@ export function SummaryGeneratorModal({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [remarksMap, setRemarksMap] = useState<Record<number, string>>({});
   const [shoeSizeMap, setShoeSizeMap] = useState<Record<number, string>>({});
+  const [shoeMasaPakaiMap, setShoeMasaPakaiMap] = useState<Record<number, string>>({});
   const [globalRemarks, setGlobalRemarks] = useState('');
 
   // Date Range state for APD summary cut-off
@@ -122,6 +124,7 @@ export function SummaryGeneratorModal({
     { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
   ]);
   const [manualShoeSize, setManualShoeSize] = useState('');
+  const [manualShoeMasaPakai, setManualShoeMasaPakai] = useState('');
   const [manualRemarks, setManualRemarks] = useState('');
   const [masterApdItems, setMasterApdItems] = useState<string[]>(COMMON_APD_ITEMS);
 
@@ -139,14 +142,17 @@ export function SummaryGeneratorModal({
 
           const initRemarks: Record<number, string> = {};
           const initSize: Record<number, string> = {};
+          const initMasaPakai: Record<number, string> = {};
 
           for (const req of res.requests) {
             initRemarks[req.requestId] = req.suggestedRemarks || '';
             initSize[req.requestId] = req.safetyShoesSize || '';
+            initMasaPakai[req.requestId] = req.safetyShoesMasaPakai || '';
           }
 
           setRemarksMap(initRemarks);
           setShoeSizeMap(initSize);
+          setShoeMasaPakaiMap(initMasaPakai);
         } else {
           toast.error(res.error || 'Gagal memuat daftar pengajuan');
         }
@@ -310,6 +316,7 @@ export function SummaryGeneratorModal({
         notes: item.notes || '',
       })),
       safetyShoesSize: hasShoes ? manualShoeSize : '',
+      safetyShoesMasaPakai: hasShoes ? manualShoeMasaPakai : '',
       suggestedRemarks: manualRemarks,
     };
 
@@ -317,6 +324,7 @@ export function SummaryGeneratorModal({
     setSelectedIds((prev) => new Set([...prev, syntheticId]));
     setRemarksMap((prev) => ({ ...prev, [syntheticId]: manualRemarks }));
     setShoeSizeMap((prev) => ({ ...prev, [syntheticId]: manualShoeSize }));
+    setShoeMasaPakaiMap((prev) => ({ ...prev, [syntheticId]: manualShoeMasaPakai }));
 
     toast.success(`Karyawan ${selectedManualEmp.name} berhasil ditambahkan secara manual`);
 
@@ -327,6 +335,7 @@ export function SummaryGeneratorModal({
       { itemType: 'Safety Shoes', canonicalName: 'Safety Shoes', quantity: 1, requestType: 'baru' },
     ]);
     setManualShoeSize('');
+    setManualShoeMasaPakai('');
     setManualRemarks('');
     setEmpSearch('');
   };
@@ -438,6 +447,7 @@ export function SummaryGeneratorModal({
         requestId: number;
         remarks?: string;
         safetyShoesSize?: string;
+        safetyShoesMasaPakai?: string;
       }> = [];
 
       const manualEntriesPayload: ManualSummaryEntry[] = [];
@@ -447,6 +457,7 @@ export function SummaryGeneratorModal({
 
         const remarks = remarksMap[req.requestId]?.trim() || '';
         const safetyShoesSize = shoeSizeMap[req.requestId]?.trim() || '';
+        const safetyShoesMasaPakai = shoeMasaPakaiMap[req.requestId]?.trim() || '';
 
         if (req.isManual) {
           manualEntriesPayload.push({
@@ -465,6 +476,7 @@ export function SummaryGeneratorModal({
               notes: it.notes,
             })),
             safetyShoesSize,
+            safetyShoesMasaPakai,
             remarks,
           });
         } else {
@@ -472,6 +484,7 @@ export function SummaryGeneratorModal({
             requestId: req.requestId,
             remarks,
             safetyShoesSize,
+            safetyShoesMasaPakai,
           });
         }
       }
@@ -871,8 +884,8 @@ export function SummaryGeneratorModal({
                     </div>
                   )}
 
-                  {/* Shoe Size & Remarks */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
+                  {/* Shoe Size, Masa Pakai & Remarks */}
+                  <div className="grid grid-cols-3 gap-2 pt-1">
                     <div>
                       <label className="font-bold text-slate-700 dark:text-slate-200 block text-[11px] mb-0.5">
                         Ukuran Sepatu (Size)
@@ -881,6 +894,18 @@ export function SummaryGeneratorModal({
                         value={manualShoeSize}
                         onChange={(e) => setManualShoeSize(e.target.value)}
                         placeholder="e.g. 41 / 42"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 dark:text-slate-200 block text-[11px] mb-0.5">
+                        Masa Pakai
+                      </label>
+                      <Input
+                        list="masa-pakai-presets"
+                        value={manualShoeMasaPakai}
+                        onChange={(e) => setManualShoeMasaPakai(e.target.value)}
+                        placeholder="Pilih / ketik"
                         className="h-8 text-xs"
                       />
                     </div>
@@ -958,6 +983,7 @@ export function SummaryGeneratorModal({
                     <th className="py-2.5 px-3 min-w-[90px]">Site</th>
                     <th className="py-2.5 px-3 min-w-[200px]">Item Barang APD</th>
                     <th className="py-2.5 px-3 min-w-[100px]">Ukuran Sepatu (Size)</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">Masa Pakai</th>
                     <th className="py-2.5 px-3 min-w-[220px]">
                       <span className="text-blue-700 dark:text-blue-400 font-bold flex items-center gap-1">
                         Remarks (Keterangan)
@@ -1033,6 +1059,21 @@ export function SummaryGeneratorModal({
                                 setShoeSizeMap((prev) => ({ ...prev, [req.requestId]: e.target.value }))
                               }
                               placeholder="Size (e.g. 41)"
+                              className="h-7 text-xs px-2"
+                            />
+                          ) : (
+                            <span className="text-slate-400 italic text-[11px]">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          {hasShoes ? (
+                            <Input
+                              list="masa-pakai-presets"
+                              value={shoeMasaPakaiMap[req.requestId] ?? ''}
+                              onChange={(e) =>
+                                setShoeMasaPakaiMap((prev) => ({ ...prev, [req.requestId]: e.target.value }))
+                              }
+                              placeholder="Pilih / ketik masa pakai"
                               className="h-7 text-xs px-2"
                             />
                           ) : (
@@ -1140,6 +1181,12 @@ export function SummaryGeneratorModal({
             </Button>
           </div>
         </div>
+
+        <datalist id="masa-pakai-presets">
+          {SAFETY_SHOES_MASA_PAKAI_PRESETS.map((p) => (
+            <option key={p} value={p} />
+          ))}
+        </datalist>
 
       </div>
     </div>

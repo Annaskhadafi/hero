@@ -468,6 +468,7 @@ export type GenerateSummaryOptions = {
     requestId: number;
     remarks?: string;
     safetyShoesSize?: string;
+    safetyShoesMasaPakai?: string;
   }>;
   manualEntries?: ManualSummaryEntry[];
   defaultRemarks?: string;
@@ -610,6 +611,21 @@ export async function generateSummary(
           remarks: shoeSize,
         });
       }
+
+      const shoeMasaPakai = customOpt?.safetyShoesMasaPakai?.trim() || '';
+      if (shoeMasaPakai) {
+        summaryItems.push({
+          apdRequestId: req.requestId,
+          employeeId: req.employeeId,
+          employeeName: req.employeeName,
+          employeeSn: req.employeeSn,
+          siteName: req.siteName,
+          itemName: 'Safety Shoes Masa Pakai',
+          quantity: 0,
+          requestType: shoeMasaPakai,
+          remarks: shoeMasaPakai,
+        });
+      }
     }
   }
 
@@ -698,6 +714,21 @@ export async function generateSummary(
           quantity: 0,
           requestType: shoeSize,
           remarks: shoeSize,
+        });
+      }
+
+      const shoeMasaPakai = manual.safetyShoesMasaPakai?.trim() || '';
+      if (shoeMasaPakai) {
+        summaryItems.push({
+          apdRequestId: createdRequest.id,
+          employeeId: manual.employeeId,
+          employeeName: empName,
+          employeeSn: empSn,
+          siteName: empSiteName,
+          itemName: 'Safety Shoes Masa Pakai',
+          quantity: 0,
+          requestType: shoeMasaPakai,
+          remarks: shoeMasaPakai,
         });
       }
     }
@@ -1912,6 +1943,101 @@ export async function removeItemFromSummary(
           eq(apdSummaryItems.employeeId, employeeId)
         )
       );
+  }
+
+  await db
+    .update(apdSummaries)
+    .set({ updatedAt: new Date() })
+    .where(eq(apdSummaries.id, summaryId));
+
+  return { success: true };
+}
+
+export async function updateSummaryShoeUsagePeriod(
+  summaryId: number,
+  employeeId: number,
+  apdRequestId: number | null | undefined,
+  masaPakai: string
+) {
+  await ensureSummarySchema();
+  const [summary] = await db
+    .select({ status: apdSummaries.status })
+    .from(apdSummaries)
+    .where(eq(apdSummaries.id, summaryId))
+    .limit(1);
+
+  if (!summary) return { success: false, error: 'Summary tidak ditemukan' };
+  if (summary.status !== 'draft' && summary.status !== 'revisi') {
+    return { success: false, error: 'Hanya summary berstatus Draft atau Revisi yang masa pakainya dapat diubah' };
+  }
+
+  const trimmed = (masaPakai || '').trim();
+
+  // Check if item already exists
+  const existing = await db
+    .select()
+    .from(apdSummaryItems)
+    .where(
+      and(
+        eq(apdSummaryItems.summaryId, summaryId),
+        eq(apdSummaryItems.employeeId, employeeId),
+        eq(apdSummaryItems.itemName, 'Safety Shoes Masa Pakai')
+      )
+    );
+
+  if (existing.length > 0) {
+    if (trimmed) {
+      await db
+        .update(apdSummaryItems)
+        .set({
+          requestType: trimmed,
+          remarks: trimmed,
+        })
+        .where(
+          and(
+            eq(apdSummaryItems.summaryId, summaryId),
+            eq(apdSummaryItems.employeeId, employeeId),
+            eq(apdSummaryItems.itemName, 'Safety Shoes Masa Pakai')
+          )
+        );
+    } else {
+      await db
+        .delete(apdSummaryItems)
+        .where(
+          and(
+            eq(apdSummaryItems.summaryId, summaryId),
+            eq(apdSummaryItems.employeeId, employeeId),
+            eq(apdSummaryItems.itemName, 'Safety Shoes Masa Pakai')
+          )
+        );
+    }
+  } else if (trimmed) {
+    // Find reference item of this employee in the summary to copy employee metadata
+    const [refItem] = await db
+      .select()
+      .from(apdSummaryItems)
+      .where(
+        and(
+          eq(apdSummaryItems.summaryId, summaryId),
+          eq(apdSummaryItems.employeeId, employeeId)
+        )
+      )
+      .limit(1);
+
+    if (refItem) {
+      await db.insert(apdSummaryItems).values({
+        summaryId,
+        apdRequestId: apdRequestId || refItem.apdRequestId,
+        employeeId,
+        employeeName: refItem.employeeName,
+        employeeSn: refItem.employeeSn,
+        siteName: refItem.siteName,
+        itemName: 'Safety Shoes Masa Pakai',
+        quantity: 0,
+        requestType: trimmed,
+        remarks: trimmed,
+      });
+    }
   }
 
   await db

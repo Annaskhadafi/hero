@@ -1,4 +1,19 @@
 export const SAFETY_SHOES_COL = 'Safety Shoes';
+export const SAFETY_SHOES_SIZE_COL = 'Safety Shoes Size';
+export const SAFETY_SHOES_MASA_PAKAI_COL = 'Safety Shoes Masa Pakai';
+
+export const SAFETY_SHOES_MASA_PAKAI_PRESETS = [
+  '6 Bulan',
+  '8 Bulan',
+  '10 Bulan',
+  '1 Tahun',
+  '1 Tahun 2 Bulan',
+  '1 Tahun 4 Bulan',
+  '1 Tahun 6 Bulan',
+  '1 Tahun 8 Bulan',
+  '2 Tahun',
+  '2 Tahun Lebih',
+] as const;
 
 export const QTY_ONLY_COLUMNS = [
   'Safety Glasses',
@@ -77,6 +92,7 @@ export type ManualSummaryEntry = {
   departmentName?: string | null;
   items: ManualSummaryItem[];
   safetyShoesSize?: string;
+  safetyShoesMasaPakai?: string;
   remarks?: string;
 };
 
@@ -94,6 +110,7 @@ export type PendingSummaryRequest = {
   departmentName: string | null;
   items: PendingSummaryRequestItem[];
   safetyShoesSize: string;
+  safetyShoesMasaPakai?: string;
   suggestedRemarks: string;
 };
 

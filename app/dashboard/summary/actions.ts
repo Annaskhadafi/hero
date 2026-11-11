@@ -10,6 +10,7 @@ import {
   returnSummaryForRevision,
   rejectSummary,
   removeItemFromSummary,
+  updateSummaryShoeUsagePeriod,
   type GenerateSummaryOptions,
 } from '@/lib/summary-engine';
 import { sendSummaryApprovedEmail, sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
@@ -227,5 +228,27 @@ export async function rejectSummaryAction(
   } catch (error: any) {
     console.error('Reject summary error:', error);
     return { success: false, error: error.message || 'Gagal menolak summary' };
+  }
+}
+
+export async function updateSummaryShoeUsagePeriodAction(
+  summaryId: number,
+  employeeId: number,
+  apdRequestId: number | null | undefined,
+  masaPakai: string
+) {
+  try {
+    const result = await updateSummaryShoeUsagePeriod(summaryId, employeeId, apdRequestId, masaPakai);
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+    revalidatePath('/dashboard/summary');
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`);
+    revalidatePath(`/print/summary/${summaryId}`);
+    revalidatePath('/mobile/summary');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Update shoe usage period error:', error);
+    return { success: false, error: error.message || 'Gagal memperbarui masa pakai safety shoes' };
   }
 }

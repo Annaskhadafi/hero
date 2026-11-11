@@ -22,10 +22,20 @@ import {
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import { submitSummaryAction, deleteSummaryDraftAction, removeItemFromSummaryAction } from '@/app/dashboard/summary/actions';
+import {
+  submitSummaryAction,
+  deleteSummaryDraftAction,
+  removeItemFromSummaryAction,
+  updateSummaryShoeUsagePeriodAction,
+} from '@/app/dashboard/summary/actions';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
 import { ApdRequestDetailModal } from './apd-request-detail-modal';
-import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL, buildDynamicApdColumns } from '@/lib/summary-constants';
+import {
+  QTY_ONLY_COLUMNS,
+  SAFETY_SHOES_COL,
+  SAFETY_SHOES_MASA_PAKAI_PRESETS,
+  buildDynamicApdColumns,
+} from '@/lib/summary-constants';
 
 type SummaryData = {
   id: number;
@@ -158,6 +168,27 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
+  const handleMasaPakaiChange = async (
+    employeeId: number,
+    apdRequestId: number | null | undefined,
+    newValue: string,
+    oldValue?: string
+  ) => {
+    const val = (newValue || '').trim();
+    if (val === (oldValue || '').trim()) return;
+    try {
+      const res = await updateSummaryShoeUsagePeriodAction(data.id, employeeId, apdRequestId, val);
+      if (res.success) {
+        toast.success(`Masa pakai safety shoes diperbarui: ${val || '(dikosongkan)'}`);
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal menyimpan masa pakai');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem');
+    }
+  };
+
   const formatSiteName = (site?: string | null) => {
     if (!site) return '';
     const trimmed = site.trim();
@@ -190,6 +221,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         ? item.requestType
         : (item.remarks && item.remarks !== acc[item.employeeName].remarks ? item.remarks : item.requestType || '');
       acc[item.employeeName].items[item.itemName] = sizeVal;
+    } else if (item.itemName === 'Safety Shoes Masa Pakai') {
+      acc[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
     } else {
       acc[item.employeeName].items[item.itemName] = (Number(acc[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
@@ -213,7 +246,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           ...buildDynamicApdColumns(masterList).qtyOnlyCols,
           ...data.items
             .map((i) => i.itemName)
-            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size' && name !== 'Safety Shoes Masa Pakai'),
         ])
       )
     : Array.from(
@@ -221,7 +254,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           ...QTY_ONLY_COLUMNS,
           ...data.items
             .map((i) => i.itemName)
-            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size' && name !== 'Safety Shoes Masa Pakai'),
         ])
       );
 
@@ -378,7 +411,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 {c}
               </th>
             ))}
-            <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
+            <th style={th} colSpan={3}>{SAFETY_SHOES_COL}</th>
             <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
             <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
             <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
@@ -386,6 +419,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           <tr>
             <th style={{ ...th, width: '22px' }}>QTY</th>
             <th style={{ ...th, width: '26px' }}>Size</th>
+            <th style={{ ...th, width: '42px' }}>Masa Pakai</th>
           </tr>
         </thead>
         <tbody>
@@ -399,6 +433,36 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               ))}
               <td style={td}>{e.items['Safety Shoes'] || ''}</td>
               <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: '6.5pt', padding: '1px' }}>
+                {e.items['Safety Shoes'] ? (
+                  (data.status === 'draft' || data.status === 'revisi') ? (
+                    <>
+                      <input
+                        list="masa-pakai-presets-preview"
+                        defaultValue={e.items['Safety Shoes Masa Pakai'] || ''}
+                        onBlur={(ev) =>
+                          handleMasaPakaiChange(
+                            e.employeeId || 0,
+                            e.apdRequestId,
+                            ev.target.value,
+                            e.items['Safety Shoes Masa Pakai']
+                          )
+                        }
+                        className="print:hidden w-full text-center text-[7px] border border-blue-200 focus:border-blue-500 rounded px-0.5 py-0.5 bg-blue-50/40 text-slate-900 font-medium"
+                        placeholder="Masa pakai"
+                        title="Klik untuk memilih / mengubah masa pakai safety shoes"
+                      />
+                      <span className="hidden print:inline">
+                        {e.items['Safety Shoes Masa Pakai'] || '—'}
+                      </span>
+                    </>
+                  ) : (
+                    <span>{e.items['Safety Shoes Masa Pakai'] || '—'}</span>
+                  )
+                ) : (
+                  <span className="text-slate-400">—</span>
+                )}
+              </td>
               <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
                 <div style={{
@@ -450,7 +514,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           {Array.from({ length: emptyRowCount }).map((_, i) => (
             <tr key={`e${i}`} style={{ height: '18px' }}>
               <td style={td}>{employees.length + i + 1}</td>
-              {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
+              {Array.from({ length: dynamicQtyCols.length + 7 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
               <td style={td} className="print:hidden"></td>
@@ -462,6 +526,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               <td key={c} style={td}>{totals[c] || ''}</td>
             ))}
             <td style={td}>{totals['Safety Shoes'] || ''}</td>
+            <td style={td}>—</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
             <td style={td}>—</td>
@@ -817,6 +882,12 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         onClose={() => setSelectedRequestId(null)}
         requestId={selectedRequestId}
       />
+
+      <datalist id="masa-pakai-presets-preview">
+        {SAFETY_SHOES_MASA_PAKAI_PRESETS.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
     </div>
   );
 }
