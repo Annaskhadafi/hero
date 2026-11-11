@@ -6151,160 +6151,6 @@ export function SchedulingTimesheetWorkspace({
         )
       : new Set<string>()
 
-  const overtimeVariances = useMemo(() => {
-    if (mode !== 'attendance') return []
-    const results: Array<{
-      employeeId: number
-      employeeName: string
-      day: number
-      scheduleCode: string
-      actualHours: number
-      expectedHours: number
-      reason: string
-    }> = []
-
-    for (const row of rows) {
-      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
-      if (staff) continue
-
-      const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
-      if (empSiteConfig.overtimeType === 'none') continue
-
-      for (let dayIndex = 0; dayIndex < row.schedule.length; dayIndex++) {
-        const day = dayIndex + 1
-        const scheduleCode = (row.schedule[dayIndex] as string) || 'IN'
-        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
-        const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
-
-        if (otInfo.totalOvertime <= 0) continue
-
-        const isOffDay = scheduleCode === 'OFF' || scheduleCode === 'FB' || scheduleCode === 'Libur' || cell.status === 'off'
-        const isHol = isHoliday(period, day, holidays)
-        const dayKey = classifyOvertimePolicyDay({
-          schedule: row.schedule,
-          dayIndex,
-          isHoliday: isHol,
-          rosterType: empSiteConfig.rosterType,
-        })
-        const shiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
-        const configuredIntervals = empSiteConfig.overtimeConfig?.[dayKey]?.[shiftKey] ?? []
-        const baseExpectedMinutes = configuredIntervals.reduce((sum, item) => {
-          const s = minutesFromTime(item.start)
-          const e = minutesFromTime(item.end)
-          if (s != null && e != null) {
-            return sum + (e >= s ? e - s : e + 1440 - s)
-          }
-          return sum
-        }, 0)
-        const standardHours = baseExpectedMinutes > 0
-          ? baseExpectedMinutes / 60
-          : (dayKey === 'hariLibur' || dayKey === 'hariKe6' || dayKey === 'hariKe7' ? 8 : 4)
-
-        const isHoursDeviated = Math.abs(otInfo.totalOvertime - standardHours) > 0.1
-        if (isHoursDeviated || isOffDay) {
-          let reason = ''
-          if (isOffDay) {
-            reason = `Lembur ${otInfo.totalOvertime}j di jadwal ${scheduleCode} (template standar: ${standardHours}j)`
-          } else if (otInfo.totalOvertime > standardHours) {
-            reason = `Lembur ${otInfo.totalOvertime}j melebihi template standar ${standardHours}j`
-          } else {
-            reason = `Lembur ${otInfo.totalOvertime}j berbeda dari template standar ${standardHours}j`
-          }
-
-          results.push({
-            employeeId: row.employee.id,
-            employeeName: row.employee.name,
-            day,
-            scheduleCode,
-            actualHours: otInfo.totalOvertime,
-            expectedHours: standardHours,
-            reason,
-          })
-        }
-      }
-    }
-    return results
-  }, [mode, rows, period, holidays, manualAttendance, attendanceOverrideByCell, getEmployeeSiteConfig])
-
-  const overtimeVarianceKeySet = useMemo(() => {
-    return new Set(overtimeVariances.map((v) => attendanceKey(v.employeeId, v.day)))
-  }, [overtimeVariances])
-
-  const displayedAttendanceRows = useMemo(() => {
-    let list = rows
-    if (mode === 'attendance') {
-      if (attendanceView === 'ovt' && showVariancesOnly) {
-        list = list.filter((row) =>
-          days.some((day) => overtimeVarianceKeySet.has(attendanceKey(row.employee.id, day)))
-        )
-      } else if (showConflictsOnly) {
-        list = list.filter((row) =>
-          days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
-        )
-      }
-    }
-
-    if (attendanceSearch.trim()) {
-      const q = attendanceSearch.trim().toLowerCase()
-      list = list.filter(
-        (r) =>
-          r.employee.name.toLowerCase().includes(q) ||
-          (r.employee.section || '').toLowerCase().includes(q) ||
-          (r.employee.department || '').toLowerCase().includes(q)
-      )
-    }
-
-    if (attendanceStatusFilter !== 'all') {
-      list = list.filter((r) => {
-        const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
-        if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
-        if (attendanceStatusFilter === 'present_pagi') {
-          return cells.some((c, idx) => {
-            if (c.status !== 'present') return false
-            const sched = r.schedule[idx] as string
-            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
-            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
-            return !isNight
-          })
-        }
-        if (attendanceStatusFilter === 'present_malam') {
-          return cells.some((c, idx) => {
-            if (c.status !== 'present') return false
-            const sched = r.schedule[idx] as string
-            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
-            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
-            return isNight
-          })
-        }
-        if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
-        if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
-        if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
-        if (attendanceStatusFilter === 'off') return cells.some((c) => c.status === 'off')
-        if (attendanceStatusFilter === 'gb')
-          return (
-            cells.some((c) => c.status === 'field_break') ||
-            r.schedule.some((code) => String(code) === 'GB' || String(code) === 'FB')
-          )
-        return true
-      })
-    }
-
-    return list
-  }, [
-    mode,
-    showConflictsOnly,
-    showVariancesOnly,
-    attendanceView,
-    rows,
-    conflictKeySet,
-    overtimeVarianceKeySet,
-    days,
-    attendanceSearch,
-    attendanceStatusFilter,
-    getAttendanceCell,
-    effectiveSiteClockConfig,
-  ])
-
   useEffect(() => {
     setSelectedOvertimeEmployeeIds([])
   }, [period, siteId])
@@ -8160,6 +8006,162 @@ export function SchedulingTimesheetWorkspace({
     const displayValue = totalOvertime > 0 ? String(roundOvertimeHours(totalOvertime)) : ''
     return { lemburWajib, lemburSpl: splHours, totalOvertime, displayValue }
   }
+
+  const overtimeVariances = useMemo(() => {
+    if (mode !== 'attendance') return []
+    const results: Array<{
+      employeeId: number
+      employeeName: string
+      day: number
+      scheduleCode: string
+      actualHours: number
+      expectedHours: number
+      reason: string
+    }> = []
+
+    for (const row of rows) {
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
+      if (staff) continue
+
+      const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+      if (empSiteConfig.overtimeType === 'none') continue
+
+      for (let dayIndex = 0; dayIndex < row.schedule.length; dayIndex++) {
+        const day = dayIndex + 1
+        const scheduleCode = (row.schedule[dayIndex] as string) || 'IN'
+        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+
+        if (otInfo.totalOvertime <= 0) continue
+
+        const isOffDay = scheduleCode === 'OFF' || scheduleCode === 'FB' || scheduleCode === 'Libur' || cell.status === 'off'
+        const isHol = isHoliday(period, day, holidays)
+        const dayKey = classifyOvertimePolicyDay({
+          schedule: row.schedule,
+          dayIndex,
+          isHoliday: isHol,
+          rosterType: empSiteConfig.rosterType,
+        })
+        const shiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+        const configuredIntervals = empSiteConfig.overtimeConfig?.[dayKey]?.[shiftKey] ?? []
+        const baseExpectedMinutes = configuredIntervals.reduce((sum, item) => {
+          const s = minutesFromTime(item.start)
+          const e = minutesFromTime(item.end)
+          if (s != null && e != null) {
+            return sum + (e >= s ? e - s : e + 1440 - s)
+          }
+          return sum
+        }, 0)
+        const standardHours = baseExpectedMinutes > 0
+          ? baseExpectedMinutes / 60
+          : (dayKey === 'hariLibur' || dayKey === 'hariKe6' || dayKey === 'hariKe7' ? 8 : 4)
+
+        const isHoursDeviated = Math.abs(otInfo.totalOvertime - standardHours) > 0.1
+        if (isHoursDeviated || isOffDay) {
+          let reason = ''
+          if (isOffDay) {
+            reason = `Lembur ${otInfo.totalOvertime}j di jadwal ${scheduleCode} (template standar: ${standardHours}j)`
+          } else if (otInfo.totalOvertime > standardHours) {
+            reason = `Lembur ${otInfo.totalOvertime}j melebihi template standar ${standardHours}j`
+          } else {
+            reason = `Lembur ${otInfo.totalOvertime}j berbeda dari template standar ${standardHours}j`
+          }
+
+          results.push({
+            employeeId: row.employee.id,
+            employeeName: row.employee.name,
+            day,
+            scheduleCode,
+            actualHours: otInfo.totalOvertime,
+            expectedHours: standardHours,
+            reason,
+          })
+        }
+      }
+    }
+    return results
+  }, [mode, rows, period, holidays, manualAttendance, attendanceOverrideByCell, getEmployeeSiteConfig])
+
+  const overtimeVarianceKeySet = useMemo(() => {
+    return new Set(overtimeVariances.map((v) => attendanceKey(v.employeeId, v.day)))
+  }, [overtimeVariances])
+
+  const displayedAttendanceRows = useMemo(() => {
+    let list = rows
+    if (mode === 'attendance') {
+      if (attendanceView === 'ovt' && showVariancesOnly) {
+        list = list.filter((row) =>
+          days.some((day) => overtimeVarianceKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      } else if (showConflictsOnly) {
+        list = list.filter((row) =>
+          days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      }
+    }
+
+    if (attendanceSearch.trim()) {
+      const q = attendanceSearch.trim().toLowerCase()
+      list = list.filter(
+        (r) =>
+          r.employee.name.toLowerCase().includes(q) ||
+          (r.employee.section || '').toLowerCase().includes(q) ||
+          (r.employee.department || '').toLowerCase().includes(q)
+      )
+    }
+
+    if (attendanceStatusFilter !== 'all') {
+      list = list.filter((r) => {
+        const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
+        if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
+        if (attendanceStatusFilter === 'present_pagi') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return !isNight
+          })
+        }
+        if (attendanceStatusFilter === 'present_malam') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return isNight
+          })
+        }
+        if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
+        if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
+        if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
+        if (attendanceStatusFilter === 'off') return cells.some((c) => c.status === 'off')
+        if (attendanceStatusFilter === 'gb')
+          return (
+            cells.some((c) => c.status === 'field_break') ||
+            r.schedule.some((code) => String(code) === 'GB' || String(code) === 'FB')
+          )
+        return true
+      })
+    }
+
+    return list
+  }, [
+    mode,
+    showConflictsOnly,
+    showVariancesOnly,
+    attendanceView,
+    rows,
+    conflictKeySet,
+    overtimeVarianceKeySet,
+    days,
+    attendanceSearch,
+    attendanceStatusFilter,
+    getAttendanceCell,
+    effectiveSiteClockConfig,
+  ])
+
+
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
     const scheduleCode = row.schedule[day - 1] as string
