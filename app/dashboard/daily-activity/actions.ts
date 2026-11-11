@@ -4,6 +4,7 @@ import { db } from '@/db'
 import {
   activities,
   dailyActivitySessions,
+  dailyActivitySessionItems,
   employees,
   overtimeCommandLetters,
   overtimeCommandLetterParticipants,
@@ -171,10 +172,21 @@ export async function getEmployeeEwhAnalyticsAction(
   }
 }
 
+function formatTimeToHms(t?: string | null, fallback = '00:00:00'): string {
+  if (!t || !t.trim()) return fallback
+  const parts = t.trim().split(':')
+  const hh = String(parseInt(parts[0], 10) || 0).padStart(2, '0')
+  const mm = String(parseInt(parts[1], 10) || 0).padStart(2, '0')
+  const ss = String(parseInt(parts[2], 10) || 0).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
 export interface CreateSplFromDailyActivityInput {
   employeeDbId?: number | null
   employeeSn?: string | null
   employeeName?: string | null
+  sessionId?: number | null
+  sessionIds?: number[]
   workDate: string // YYYY-MM-DD
   plannedStartTime?: string // HH:mm
   plannedEndTime?: string // HH:mm
@@ -185,6 +197,7 @@ export interface CreateSplFromDailyActivityInput {
   shiftCode?: string | null
   isOffDay?: boolean
   tasks?: Array<{
+    sessionItemId?: number | null
     label: string
     unitNumber?: string
     startedAt?: string
@@ -305,8 +318,8 @@ export async function createSplFromDailyActivityAction(
     const startTimeStr = (input.plannedStartTime || '17:00').trim()
     const endTimeStr = (input.plannedEndTime || '21:00').trim()
 
-    const cleanStart = startTimeStr.length === 5 ? `${startTimeStr}:00` : startTimeStr
-    const cleanEnd = endTimeStr.length === 5 ? `${endTimeStr}:00` : endTimeStr
+    const cleanStart = formatTimeToHms(startTimeStr, '17:00:00')
+    const cleanEnd = formatTimeToHms(endTimeStr, '21:00:00')
 
     if (cleanStart === cleanEnd) {
       return { success: false, error: 'Jam mulai dan jam selesai lembur tidak boleh sama.' }
@@ -314,6 +327,10 @@ export async function createSplFromDailyActivityAction(
 
     const plannedStartAt = new Date(`${workDateStr}T${cleanStart}+07:00`)
     let plannedEndAt = new Date(`${workDateStr}T${cleanEnd}+07:00`)
+
+    if (isNaN(parsedWorkDate.getTime()) || isNaN(plannedStartAt.getTime()) || isNaN(plannedEndAt.getTime())) {
+      return { success: false, error: 'Format tanggal atau jam lembur tidak valid.' }
+    }
 
     // Cross-midnight handling: if end time is strictly earlier than start time, advance by 24h
     if (plannedEndAt < plannedStartAt) {
@@ -446,20 +463,67 @@ export async function createSplFromDailyActivityAction(
         photoUrl: t.photoUrl || (t.photos && t.photos[0]) || null,
       }
 
-      await db.insert(overtimeCommandLetterItems).values({
-        overtimeCommandLetterId: insertedSpl.id,
-        assignedEmployeeId: targetEmp.id,
-        lineLabel: t.label || 'Pekerjaan Lembur Operasional',
-        lineDescription: JSON.stringify(metaPayload),
-        targetUnit: t.unitNumber || '-',
-        estimatedMinutes: diffMinutes,
-        plannedPoints: t.points || 10,
-        sortOrder: i + 1,
-        createdAt: new Date(),
-      })
+      const [insertedLine] = await db
+        .insert(overtimeCommandLetterItems)
+        .values({
+          overtimeCommandLetterId: insertedSpl.id,
+          assignedEmployeeId: targetEmp.id,
+          lineLabel: t.label || 'Pekerjaan Lembur Operasional',
+          lineDescription: JSON.stringify(metaPayload),
+          targetUnit: t.unitNumber || '-',
+          estimatedMinutes: diffMinutes,
+          plannedPoints: t.points || 10,
+          sortOrder: i + 1,
+          createdAt: new Date(),
+        })
+        .returning({ id: overtimeCommandLetterItems.id })
+
+      if (t.sessionItemId && Number.isFinite(t.sessionItemId) && t.sessionItemId > 0 && insertedLine?.id) {
+        await db
+          .update(dailyActivitySessionItems)
+          .set({
+            overtimeCommandLetterItemId: insertedLine.id,
+          })
+          .where(eq(dailyActivitySessionItems.id, t.sessionItemId))
+      }
     }
 
-    // 10. Multi-tier Approval Setup (Leader / PJO workflow)
+    // 10. Link Daily Activity Sessions to the generated SPL
+    const targetSessionIds = new Set<number>()
+    if (input.sessionId && Number.isFinite(input.sessionId) && input.sessionId > 0) {
+      targetSessionIds.add(input.sessionId)
+    }
+    if (Array.isArray(input.sessionIds)) {
+      for (const sId of input.sessionIds) {
+        if (Number.isFinite(sId) && sId > 0) targetSessionIds.add(sId)
+      }
+    }
+    if (targetSessionIds.size === 0 && targetEmp.id) {
+      const matchingSessions = await db
+        .select({ id: dailyActivitySessions.id })
+        .from(dailyActivitySessions)
+        .where(
+          and(
+            eq(dailyActivitySessions.employeeId, targetEmp.id),
+            sql`(${dailyActivitySessions.workDate} >= ${workDateStr + ' 00:00:00'}::timestamp and ${dailyActivitySessions.workDate} <= ${workDateStr + ' 23:59:59'}::timestamp)`,
+            isNull(dailyActivitySessions.deletedAt)
+          )
+        )
+      for (const s of matchingSessions) {
+        targetSessionIds.add(s.id)
+      }
+    }
+    if (targetSessionIds.size > 0) {
+      await db
+        .update(dailyActivitySessions)
+        .set({
+          overtimeCommandLetterId: insertedSpl.id,
+          updatedAt: new Date(),
+        })
+        .where(inArray(dailyActivitySessions.id, Array.from(targetSessionIds)))
+    }
+
+    // 11. Multi-tier Approval Setup (Leader / PJO workflow)
     await ensureOvertimeApprovalsExist(insertedSpl.id)
 
     // 11. Revalidation

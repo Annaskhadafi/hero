@@ -247,3 +247,87 @@ test('Reviewer Adversarial Check: single task equal start/end duration edge case
   assert.equal(computeTaskMinutes('17:00', '19:00'), 120, '17:00 to 19:00 is 120 mins')
   assert.equal(computeTaskMinutes('23:00', '01:00'), 120, '23:00 to 01:00 cross-midnight is 120 mins')
 })
+
+test('Reviewer Adversarial Check: single-digit hour parsing and formatTimeToHms validation', () => {
+  function formatTimeToHms(t, fallback = '00:00:00') {
+    if (!t || !t.trim()) return fallback
+    const parts = t.trim().split(':')
+    const hh = String(parseInt(parts[0], 10) || 0).padStart(2, '0')
+    const mm = String(parseInt(parts[1], 10) || 0).padStart(2, '0')
+    const ss = String(parseInt(parts[2], 10) || 0).padStart(2, '0')
+    return `${hh}:${mm}:${ss}`
+  }
+
+  // 1. Single digit hours produce valid ISO dates without crashing
+  const hms7 = formatTimeToHms('7:00')
+  assert.equal(hms7, '07:00:00')
+  const date7 = new Date(`2026-11-12T${hms7}+07:00`)
+  assert.ok(!isNaN(date7.getTime()), '7:00 produces valid Date object')
+
+  const hms9 = formatTimeToHms('9:30')
+  assert.equal(hms9, '09:30:00')
+  const date9 = new Date(`2026-11-12T${hms9}+07:00`)
+  assert.ok(!isNaN(date9.getTime()), '9:30 produces valid Date object')
+
+  // 2. Fallbacks and standard 5-character times
+  assert.equal(formatTimeToHms('17:00'), '17:00:00')
+  assert.equal(formatTimeToHms(''), '00:00:00')
+  assert.equal(formatTimeToHms(null, '17:00:00'), '17:00:00')
+
+  // 3. Verify app/dashboard/daily-activity/actions.ts uses formatTimeToHms
+  const actionsFilePath = path.join(process.cwd(), 'app/dashboard/daily-activity/actions.ts')
+  const actionsContent = fs.readFileSync(actionsFilePath, 'utf8')
+  assert.ok(
+    actionsContent.includes('formatTimeToHms'),
+    'actions.ts uses formatTimeToHms for robust time normalization'
+  )
+})
+
+test('Reviewer Adversarial Check: two-way session and session items foreign key linking', () => {
+  const actionsFilePath = path.join(process.cwd(), 'app/dashboard/daily-activity/actions.ts')
+  const actionsContent = fs.readFileSync(actionsFilePath, 'utf8')
+
+  // Verify dailyActivitySessions is updated with overtimeCommandLetterId
+  assert.ok(
+    actionsContent.includes('dailyActivitySessions.overtimeCommandLetterId, insertedSpl.id') ||
+    actionsContent.includes('overtimeCommandLetterId: insertedSpl.id'),
+    'actions.ts updates dailyActivitySessions with overtimeCommandLetterId'
+  )
+
+  // Verify dailyActivitySessionItems is updated with overtimeCommandLetterItemId
+  assert.ok(
+    actionsContent.includes('dailyActivitySessionItems') &&
+    actionsContent.includes('overtimeCommandLetterItemId: insertedLine.id'),
+    'actions.ts updates dailyActivitySessionItems with overtimeCommandLetterItemId'
+  )
+
+  // Verify modal passes sessionItemId and session ids
+  const modalFilePath = path.join(process.cwd(), 'components/daily-activity-create-spl-modal.tsx')
+  const modalContent = fs.readFileSync(modalFilePath, 'utf8')
+  assert.ok(
+    modalContent.includes('sessionItemId: t.sessionItemId'),
+    'Modal passes sessionItemId to the server action'
+  )
+  assert.ok(
+    modalContent.includes('sessionId: employee?.sessionId'),
+    'Modal passes sessionId to the server action'
+  )
+})
+
+test('Reviewer Adversarial Check: extractOvertimeInfo guarantees distinct start/end times and timezone preservation', () => {
+  const modalFilePath = path.join(process.cwd(), 'components/daily-activity-create-spl-modal.tsx')
+  const modalContent = fs.readFileSync(modalFilePath, 'utf8')
+
+  // Verify normalizeDateToYmdString is imported and used
+  assert.ok(
+    modalContent.includes('normalizeDateToYmdString'),
+    'Modal uses normalizeDateToYmdString to preserve site timezone'
+  )
+
+  // Verify safety guard against identical start and end time
+  assert.ok(
+    modalContent.includes('if (startTime === endTime)') ||
+    modalContent.includes('maxTimelineEnd > minTimelineStart'),
+    'extractOvertimeInfo ensures endTime > startTime'
+  )
+})

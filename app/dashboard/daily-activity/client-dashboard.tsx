@@ -323,6 +323,7 @@ export function DailyActivityClientDashboard({
     } else {
       setCreateSplTarget({
         name: job.employeeName,
+        rawWorkDate: startDate || initialData.startDate || todayIso,
         employeeId: '',
         jobTitle: job.jobTitle,
         department: '',
@@ -2994,7 +2995,7 @@ export function DailyActivityClientDashboard({
                   type="button"
                   size="sm"
                   onClick={() => handleOpenCreateSplForDelayedJob(activeDetailItem.delayedJob)}
-                  className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 font-bold cursor-pointer"
+                  className="h-9 bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 font-bold cursor-pointer"
                 >
                   <Clock className="w-3.5 h-3.5" />
                   Buat SPL Lembur Terkait
@@ -3456,7 +3457,7 @@ export function DailyActivityClientDashboard({
                     size="sm"
                     data-testid="btn-buat-spl-lembur"
                     onClick={() => handleOpenCreateSpl(activeDetailItem.employee!)}
-                    className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs font-bold cursor-pointer"
+                    className="h-9 bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs font-bold cursor-pointer"
                   >
                     <Clock className="w-3.5 h-3.5" />
                     {activeDetailItem.employee.splNumber ? 'BUAT SPL TAMBAHAN' : 'BUAT SPL LEMBUR'}

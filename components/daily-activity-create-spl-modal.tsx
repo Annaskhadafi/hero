@@ -33,7 +33,11 @@ import {
 import { toast } from 'sonner'
 import { HeroInput, HeroTextarea } from '@/components/templates'
 import { createSplFromDailyActivityAction } from '@/app/dashboard/daily-activity/actions'
-import type { EmployeeActivityRow, ActivityTaskItem } from '@/lib/daily-activity-dashboard'
+import {
+  type EmployeeActivityRow,
+  type ActivityTaskItem,
+  normalizeDateToYmdString,
+} from '@/lib/daily-activity-dashboard'
 import { cn } from '@/lib/utils'
 
 export interface DailyActivityCreateSplModalProps {
@@ -45,6 +49,7 @@ export interface DailyActivityCreateSplModalProps {
 
 interface EditableSplTaskItem {
   id: string
+  sessionItemId?: number
   label: string
   unitNumber: string
   startedAt: string
@@ -91,15 +96,10 @@ function extractOvertimeInfo(employee: EmployeeActivityRow | null | undefined) {
   const tasks = employee.tasks || []
   const isOff = Boolean(employee.isRosterOff)
 
-  // Parse YYYY-MM-DD from rawWorkDate or workDate
-  let workDateYmd = new Date().toISOString().split('T')[0]
-  if (employee.rawWorkDate) {
-    workDateYmd = employee.rawWorkDate.split('T')[0]
-  } else if (employee.workDate) {
-    const d = new Date(employee.workDate)
-    if (!isNaN(d.getTime())) {
-      workDateYmd = d.toISOString().split('T')[0]
-    }
+  // Parse YYYY-MM-DD from rawWorkDate or workDate with site timezone preservation
+  let workDateYmd = normalizeDateToYmdString(employee.rawWorkDate || employee.workDate)
+  if (!workDateYmd || workDateYmd === 'nodate') {
+    workDateYmd = normalizeDateToYmdString(new Date())
   }
 
   // Filter overtime tasks (after 16:30 for day shift, after 04:30 for night shift, or all on off day)
@@ -146,8 +146,11 @@ function extractOvertimeInfo(employee: EmployeeActivityRow | null | undefined) {
       startTime = minutesToTimeString(minTimelineStart)
     }
 
-    if (maxTimelineEnd !== -Infinity) {
+    if (maxTimelineEnd !== -Infinity && maxTimelineEnd > minTimelineStart) {
       endTime = minutesToTimeString(maxTimelineEnd)
+    } else if (minTimelineStart !== Infinity) {
+      // If equal start and end time or missing end time, guarantee minimum 1-hour overtime window
+      endTime = minutesToTimeString(minTimelineStart + 60)
     } else {
       const starts = candidateTasks
         .map((t) => t.startedAt)
@@ -169,9 +172,16 @@ function extractOvertimeInfo(employee: EmployeeActivityRow | null | undefined) {
     }
   }
 
+  // Safety guard against identical start and end time
+  if (startTime === endTime) {
+    const sMin = parseTimeToMinutes(startTime) ?? (employee.shift === 'Malam' ? 300 : 1020)
+    endTime = minutesToTimeString(sMin + 60)
+  }
+
   // Build Editable Task Items
   let initialTasks: EditableSplTaskItem[] = candidateTasks.map((t, idx) => ({
     id: `task-${t.id || idx}-${Date.now()}`,
+    sessionItemId: typeof t.id === 'number' ? t.id : undefined,
     label: t.label || employee.primaryActivity || 'Pekerjaan Lembur Operasional',
     unitNumber: t.unitNumber || (employee.allUnits && employee.allUnits[0]) || employee.unitTireId || '-',
     startedAt: t.startedAt && t.startedAt !== '-' ? t.startedAt : startTime,
@@ -335,6 +345,8 @@ export function DailyActivityCreateSplModal({
         employeeDbId: employee?.employeeDbId,
         employeeSn: employee?.employeeId,
         employeeName: employee?.name,
+        sessionId: employee?.sessionId,
+        sessionIds: employee?.sessions?.map((s) => s.id),
         isOffDay: Boolean(employee?.isRosterOff),
         workDate,
         plannedStartTime: startTime,
@@ -344,6 +356,7 @@ export function DailyActivityCreateSplModal({
         siteId: employee?.siteId,
         shiftCode: employee?.shift === 'Malam' ? 'NS' : 'DS',
         tasks: activeTasks.map((t) => ({
+          sessionItemId: t.sessionItemId,
           label: t.label || 'Pekerjaan Lembur Operasional',
           unitNumber: t.unitNumber || '-',
           startedAt: t.startedAt,
@@ -672,7 +685,7 @@ export function DailyActivityCreateSplModal({
                               type="text"
                               value={task.label}
                               onChange={(e) => handleTaskChange(task.id, 'label', e.target.value)}
-                              className="w-full text-xs font-semibold text-slate-900 border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-blue-500"
+                              className="w-full h-8 text-xs font-semibold text-slate-900 border border-slate-300 rounded-lg px-2.5 bg-white shadow-2xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="Nama kegiatan..."
                             />
                           </div>
@@ -685,7 +698,7 @@ export function DailyActivityCreateSplModal({
                               type="text"
                               value={task.unitNumber}
                               onChange={(e) => handleTaskChange(task.id, 'unitNumber', e.target.value)}
-                              className="w-full text-xs font-mono font-bold text-slate-800 border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-blue-500"
+                              className="w-full h-8 text-xs font-mono font-bold text-slate-800 border border-slate-300 rounded-lg px-2.5 bg-white shadow-2xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="DT-xxx / -"
                             />
                           </div>
@@ -698,7 +711,7 @@ export function DailyActivityCreateSplModal({
                               type="number"
                               value={task.points}
                               onChange={(e) => handleTaskChange(task.id, 'points', parseInt(e.target.value, 10) || 0)}
-                              className="w-full text-xs font-mono font-bold text-emerald-700 border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-blue-500"
+                              className="w-full h-8 text-xs font-mono font-bold text-emerald-700 border border-slate-300 rounded-lg px-2.5 bg-white shadow-2xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                               placeholder="10"
                             />
                           </div>
