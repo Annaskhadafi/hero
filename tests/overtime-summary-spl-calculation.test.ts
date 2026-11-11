@@ -499,4 +499,94 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(summaryTotal).toBe(81);
     expect(summaryTotal).toEqual(recordTotal);
   });
+
+  it('calculates Site Vale overtime correctly: 4h on weekdays (15:00-19:00) and 8h on Sat/Sun/OFF (07:00-15:00 or 15:00-23:00)', async () => {
+    const { calculateOvertime } = await import('@/lib/timesheet/overtime-policy');
+
+    const valeOtConfig = {
+      mode: 'template' as const,
+      enabled: true,
+      hariBiasa: {
+        dayShift: [{ start: '15:00', end: '19:00' }],
+        nightShift: [{ start: '23:00', end: '03:00' }],
+      },
+      hariKe6: {
+        dayShift: [{ start: '07:00', end: '15:00' }],
+        nightShift: [{ start: '15:00', end: '23:00' }],
+      },
+      hariKe7: {
+        dayShift: [{ start: '07:00', end: '15:00' }],
+        nightShift: [{ start: '15:00', end: '23:00' }],
+      },
+      hariLibur: {
+        dayShift: [{ start: '07:00', end: '15:00' }],
+        nightShift: [{ start: '15:00', end: '23:00' }],
+      },
+      splPolicy: {
+        enabled: true,
+        allowBreak: false,
+        allowOffDay: false,
+        minimumMinutes: 60,
+        submissionGraceDays: 2,
+        allowAfterMandatoryOt: true,
+        replacementOffMaxDays: 30,
+      },
+    };
+
+    // 1. Weekday DS: 07:00 to 19:00
+    const weekdayRes = calculateOvertime({
+      config: valeOtConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-10-01',
+      clockIn: '07:00',
+      clockOut: '19:00',
+      splWindows: [],
+      legacyHours: 4,
+    });
+    expect(weekdayRes.totalHours).toBe(4);
+    expect(weekdayRes.autoMinutes).toBe(240); // 4 jam
+
+    // 2. Sabtu (Day 6) DS: 07:00 to 15:00
+    const satDsRes = calculateOvertime({
+      config: valeOtConfig,
+      dayKey: 'hariKe6',
+      shiftCode: 'DS',
+      workDate: '2026-10-03',
+      clockIn: '07:00',
+      clockOut: '15:00',
+      splWindows: [],
+      legacyHours: 8,
+    });
+    expect(satDsRes.totalHours).toBe(8);
+    expect(satDsRes.autoMinutes).toBe(480); // 8 jam
+
+    // 3. Sabtu (Day 6) NS / Shift 2: 15:00 to 23:00
+    const satNsRes = calculateOvertime({
+      config: valeOtConfig,
+      dayKey: 'hariKe6',
+      shiftCode: 'NS',
+      workDate: '2026-10-03',
+      clockIn: '15:00',
+      clockOut: '23:00',
+      splWindows: [],
+      legacyHours: 8,
+    });
+    expect(satNsRes.totalHours).toBe(8);
+    expect(satNsRes.autoMinutes).toBe(480); // 8 jam
+
+    // 4. Minggu (Day 7 / Hari Libur) DS: 07:00 to 15:00
+    const sunDsRes = calculateOvertime({
+      config: valeOtConfig,
+      dayKey: 'hariLibur',
+      shiftCode: 'DS',
+      workDate: '2026-10-04',
+      clockIn: '07:00',
+      clockOut: '15:00',
+      splWindows: [],
+      legacyHours: 8,
+    });
+    expect(sunDsRes.totalHours).toBe(8);
+    expect(sunDsRes.autoMinutes).toBe(480); // 8 jam
+  });
 });
