@@ -2216,6 +2216,15 @@ export function DailyActivityClientDashboard({
                                 Tim {emp.representedByName ? `(${emp.representedByName})` : ''}
                               </span>
                             ) : null}
+                            {emp.splNumber && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300"
+                                title={`Surat Perintah Lembur: ${emp.splNumber} (${emp.splStatus || 'Submitted'})`}
+                              >
+                                <Clock className="w-3 h-3 text-amber-600" />
+                                {emp.splNumber}
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="py-3 px-4">
@@ -3439,11 +3448,12 @@ export function DailyActivityClientDashboard({
                   <Button
                     type="button"
                     size="sm"
+                    data-testid="btn-buat-spl-lembur"
                     onClick={() => handleOpenCreateSpl(activeDetailItem.employee!)}
                     className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs font-bold cursor-pointer"
                   >
                     <Clock className="w-3.5 h-3.5" />
-                    {activeDetailItem.employee.splNumber ? 'Buat SPL Tambahan' : 'Buat SPL Lembur'}
+                    {activeDetailItem.employee.splNumber ? 'BUAT SPL TAMBAHAN' : 'BUAT SPL LEMBUR'}
                   </Button>
                 </div>
               </div>

@@ -56,6 +56,22 @@ interface EditableSplTaskItem {
   selected: boolean
 }
 
+function parseTimeToMinutes(t?: string | null): number | null {
+  if (!t || t === '-') return null
+  const [hhStr, mmStr = '0'] = t.split(':')
+  const hh = parseInt(hhStr, 10)
+  const mm = parseInt(mmStr, 10)
+  if (isNaN(hh) || isNaN(mm)) return null
+  return hh * 60 + mm
+}
+
+function minutesToTimeString(totalMinutes: number): string {
+  const norm = ((totalMinutes % 1440) + 1440) % 1440
+  const hh = Math.floor(norm / 60)
+  const mm = norm % 60
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+}
+
 /**
  * Intelligent overtime extraction from an EmployeeActivityRow
  */
@@ -90,11 +106,8 @@ function extractOvertimeInfo(employee: EmployeeActivityRow | null | undefined) {
   const overtimeTasks = tasks.filter((t) => {
     if (isOff) return true
     if (!t.startedAt || t.startedAt === '-') return false
-    const [hhStr = '0', mmStr = '0'] = t.startedAt.split(':')
-    const hh = parseInt(hhStr, 10)
-    const mm = parseInt(mmStr, 10)
-    if (isNaN(hh)) return false
-    const totalMinutes = hh * 60 + mm
+    const totalMinutes = parseTimeToMinutes(t.startedAt)
+    if (totalMinutes === null) return false
     if (employee.shift === 'Malam') {
       return totalMinutes >= 270 && totalMinutes <= 720
     }
@@ -108,21 +121,50 @@ function extractOvertimeInfo(employee: EmployeeActivityRow | null | undefined) {
   let endTime = employee.shift === 'Malam' ? '09:00' : '21:00'
 
   if (candidateTasks.length > 0) {
-    const starts = candidateTasks
-      .map((t) => t.startedAt)
-      .filter((s): s is string => Boolean(s && s !== '-'))
-      .sort()
-    const ends = candidateTasks
-      .map((t) => t.endedAt)
-      .filter((e): e is string => Boolean(e && e !== '-'))
-      .sort()
-      .reverse()
+    // Robust cross-midnight timeline determination
+    let minTimelineStart = Infinity
+    let maxTimelineEnd = -Infinity
+    let hasCrossMidnight = false
 
-    if (starts.length > 0) startTime = starts[0]
-    if (ends.length > 0) endTime = ends[0]
+    for (const t of candidateTasks) {
+      const sMin = parseTimeToMinutes(t.startedAt)
+      const eMin = parseTimeToMinutes(t.endedAt)
+      if (sMin !== null) {
+        let effectiveEnd = eMin
+        if (effectiveEnd !== null && effectiveEnd < sMin) {
+          effectiveEnd += 1440
+          hasCrossMidnight = true
+        }
+        if (sMin < minTimelineStart) minTimelineStart = sMin
+        if (effectiveEnd !== null && effectiveEnd > maxTimelineEnd) {
+          maxTimelineEnd = effectiveEnd
+        }
+      }
+    }
+
+    if (minTimelineStart !== Infinity) {
+      startTime = minutesToTimeString(minTimelineStart)
+    }
+
+    if (maxTimelineEnd !== -Infinity) {
+      endTime = minutesToTimeString(maxTimelineEnd)
+    } else {
+      const starts = candidateTasks
+        .map((t) => t.startedAt)
+        .filter((s): s is string => Boolean(s && s !== '-'))
+        .sort()
+      const ends = candidateTasks
+        .map((t) => t.endedAt)
+        .filter((e): e is string => Boolean(e && e !== '-'))
+        .sort()
+        .reverse()
+
+      if (starts.length > 0) startTime = starts[0]
+      if (ends.length > 0) endTime = ends[0]
+    }
   } else if (employee.checkOutTime && employee.checkOutTime !== '-') {
-    const [coH = 0] = employee.checkOutTime.split(':').map((v) => parseInt(v, 10))
-    if (!isNaN(coH) && coH > 17) {
+    const coM = parseTimeToMinutes(employee.checkOutTime)
+    if (coM !== null && coM > 1020) {
       endTime = employee.checkOutTime
     }
   }
@@ -217,12 +259,12 @@ export function DailyActivityCreateSplModal({
 
   // Calculate duration in hours
   const computedDurationHours = useMemo(() => {
-    if (!startTime || !endTime) return 0
-    const [sh = 0, sm = 0] = startTime.split(':').map((v) => parseInt(v, 10))
-    const [eh = 0, em = 0] = endTime.split(':').map((v) => parseInt(v, 10))
-    if (isNaN(sh) || isNaN(eh)) return 0
-    let diffMinutes = (eh * 60 + em) - (sh * 60 + sm)
-    if (diffMinutes <= 0) diffMinutes += 24 * 60
+    if (!startTime || !endTime || startTime === endTime) return 0
+    const sh = parseTimeToMinutes(startTime)
+    const eh = parseTimeToMinutes(endTime)
+    if (sh === null || eh === null) return 0
+    let diffMinutes = eh - sh
+    if (diffMinutes < 0) diffMinutes += 24 * 60
     return Math.round((diffMinutes / 60) * 10) / 10
   }, [startTime, endTime])
 
@@ -288,6 +330,8 @@ export function DailyActivityCreateSplModal({
       const res = await createSplFromDailyActivityAction({
         employeeDbId: employee?.employeeDbId,
         employeeSn: employee?.employeeId,
+        employeeName: employee?.name,
+        isOffDay: Boolean(employee?.isRosterOff),
         workDate,
         plannedStartTime: startTime,
         plannedEndTime: endTime,

@@ -9,7 +9,7 @@ import {
   overtimeCommandLetterParticipants,
   overtimeCommandLetterItems,
 } from '@/db/schema/hero'
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { getServerSession } from '@/lib/auth-session'
 import { canAccessDailyActivityMonitoring, isSuperAdminRole } from '@/lib/hero-access'
 import { revalidatePath } from 'next/cache'
@@ -174,6 +174,7 @@ export async function getEmployeeEwhAnalyticsAction(
 export interface CreateSplFromDailyActivityInput {
   employeeDbId?: number | null
   employeeSn?: string | null
+  employeeName?: string | null
   workDate: string // YYYY-MM-DD
   plannedStartTime?: string // HH:mm
   plannedEndTime?: string // HH:mm
@@ -182,6 +183,7 @@ export interface CreateSplFromDailyActivityInput {
   executionNotes?: string
   siteId?: number | null
   shiftCode?: string | null
+  isOffDay?: boolean
   tasks?: Array<{
     label: string
     unitNumber?: string
@@ -230,6 +232,9 @@ export async function createSplFromDailyActivityAction(
     if (input.employeeSn && input.employeeSn.trim()) {
       targetConds.push(eq(employees.employeeSn, input.employeeSn.trim()))
     }
+    if (input.employeeName && input.employeeName.trim()) {
+      targetConds.push(ilike(employees.name, `%${input.employeeName.trim()}%`))
+    }
     if (targetConds.length === 0 && currentEmp) {
       targetConds.push(eq(employees.id, currentEmp.id))
     }
@@ -262,34 +267,36 @@ export async function createSplFromDailyActivityAction(
     // 3. Operational Site ID
     const effectiveSiteId = input.siteId || targetEmp.siteId || currentEmp?.siteId || 1
 
-    // 4. Parse Dates & Start/End Times
+    // 4. Parse Dates & Start/End Times with consistent Indonesian timezone (+07:00 / site local)
     const workDateStr = (input.workDate || '').trim().split('T')[0] || new Date().toISOString().split('T')[0]
-    const parsedWorkDate = new Date(`${workDateStr}T00:00:00.000Z`)
+    const parsedWorkDate = new Date(`${workDateStr}T00:00:00+07:00`)
 
-    const startTimeStr = input.plannedStartTime || '17:00'
-    const endTimeStr = input.plannedEndTime || '21:00'
+    const startTimeStr = (input.plannedStartTime || '17:00').trim()
+    const endTimeStr = (input.plannedEndTime || '21:00').trim()
 
-    const [sH = 17, sM = 0] = startTimeStr.split(':').map((v) => parseInt(v, 10))
-    const [eH = 21, eM = 0] = endTimeStr.split(':').map((v) => parseInt(v, 10))
+    const cleanStart = startTimeStr.length === 5 ? `${startTimeStr}:00` : startTimeStr
+    const cleanEnd = endTimeStr.length === 5 ? `${endTimeStr}:00` : endTimeStr
 
-    const plannedStartAt = new Date(`${workDateStr}T00:00:00.000Z`)
-    plannedStartAt.setUTCHours(sH, sM, 0, 0)
+    const plannedStartAt = new Date(`${workDateStr}T${cleanStart}+07:00`)
+    let plannedEndAt = new Date(`${workDateStr}T${cleanEnd}+07:00`)
 
-    const plannedEndAt = new Date(`${workDateStr}T00:00:00.000Z`)
-    plannedEndAt.setUTCHours(eH, eM, 0, 0)
-
-    // Cross-midnight handling: if end time is earlier or equal to start time, add 1 day
+    // Cross-midnight handling: if end time is earlier or equal to start time, advance by 24h
     if (plannedEndAt <= plannedStartAt) {
-      plannedEndAt.setUTCDate(plannedEndAt.getUTCDate() + 1)
+      plannedEndAt = new Date(plannedEndAt.getTime() + 24 * 60 * 60 * 1000)
     }
+
+    const durationMinutes = Math.max(
+      30,
+      Math.round((plannedEndAt.getTime() - plannedStartAt.getTime()) / (1000 * 60))
+    )
 
     // 5. Title & Notes
     const title = input.title?.trim() || `Penugasan Lembur - ${targetEmp.name} (${workDateStr})`
     const requestNotes = input.requestNotes?.trim() || `Pengajuan lembur otomatis terintegrasi dari Daily Activity Report tanggal ${workDateStr}.`
     const executionNotes = input.executionNotes?.trim() || 'Semua prosedur keselamatan kerja (JSA & SOP) telah dipatuhi.'
 
-    // 6. Generate SPL Number
-    const year = parsedWorkDate.getUTCFullYear()
+    // 6. Generate Guaranteed Unique SPL Number
+    const year = parsedWorkDate.getFullYear() || new Date().getFullYear()
     const prefix = `SPL-${year}-`
     const [last] = await db
       .select({ id: overtimeCommandLetters.id })
@@ -297,9 +304,22 @@ export async function createSplFromDailyActivityAction(
       .orderBy(desc(overtimeCommandLetters.id))
       .limit(1)
 
-    const nextNumber = `${prefix}${String((last?.id || 0) + 1).padStart(4, '0')}`
+    let seq = (last?.id || 0) + 1
+    let nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
 
-    const requesterEmployeeId = currentEmp?.id || targetEmp.id
+    while (true) {
+      const [existing] = await db
+        .select({ id: overtimeCommandLetters.id })
+        .from(overtimeCommandLetters)
+        .where(eq(overtimeCommandLetters.splNumber, nextNumber))
+        .limit(1)
+      if (!existing) break
+      seq++
+      nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
+    }
+
+    // The target employee is the official applicant (Pemohon / Serviceman) for overtime tracking
+    const requesterEmployeeId = targetEmp.id
 
     // 7. Insert Overtime Command Letter
     const [insertedSpl] = await db
@@ -324,17 +344,19 @@ export async function createSplFromDailyActivityAction(
       })
       .returning()
 
-    // 8. Insert Participant
+    // 8. Insert Participant with exact credited overtime minutes
+    const participantCategory = input.isOffDay ? 'off_day' : 'after_mandatory_ot'
     await db.insert(overtimeCommandLetterParticipants).values({
       overtimeCommandLetterId: insertedSpl.id,
       employeeId: targetEmp.id,
       shiftCode: (input.shiftCode || 'DS').toUpperCase(),
       rosterType: '5:2',
-      category: 'after_mandatory_ot',
+      category: participantCategory,
+      overtimeCreditMinutes: durationMinutes,
       createdAt: new Date(),
     })
 
-    // 9. Insert Line Items from Daily Activity
+    // 9. Insert Line Items from Daily Activity with full metadata payload for overtime module
     const rawTasks = input.tasks && input.tasks.length > 0 ? input.tasks : []
     const tasksToInsert = rawTasks.length > 0
       ? rawTasks
@@ -360,14 +382,27 @@ export async function createSplFromDailyActivityAction(
         }
       }
 
+      const metaPayload = {
+        code: '',
+        name: t.label || 'Pekerjaan Lembur Operasional',
+        unitNumber: t.unitNumber || '-',
+        tireCount: 1,
+        materialUsed: '',
+        startTime: t.startedAt && t.startedAt !== '-' ? t.startedAt : startTimeStr,
+        endTime: t.endedAt && t.endedAt !== '-' ? t.endedAt : endTimeStr,
+        duration: String(diffMinutes),
+        remark: t.remarks || `Pekerjaan lembur lapangan: ${t.label}`,
+        photos: t.photos || (t.photoUrl ? [t.photoUrl] : []),
+        photoUrl: t.photoUrl || (t.photos && t.photos[0]) || null,
+      }
+
       await db.insert(overtimeCommandLetterItems).values({
         overtimeCommandLetterId: insertedSpl.id,
         lineLabel: t.label || 'Pekerjaan Lembur Operasional',
-        lineDescription: t.remarks || `Pekerjaan lembur lapangan: ${t.label}`,
+        lineDescription: JSON.stringify(metaPayload),
         targetUnit: t.unitNumber || '-',
         estimatedMinutes: diffMinutes,
         plannedPoints: t.points || 10,
-        photoUrl: t.photoUrl || (t.photos && t.photos[0]) || null,
         sortOrder: i + 1,
         createdAt: new Date(),
       })

@@ -7,39 +7,37 @@ test('verifies Daily Activity to SPL auto-generation, prefilled form, and full i
   screen,
   browser,
 }) => {
-  // 1. Authenticate with standard credentials
-  await loginToHero(app, screen, browser);
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // 2. Open /dashboard/daily-activity
-  await app.open('/dashboard/daily-activity');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  // 1. Authenticate with standard credentials and open /dashboard/daily-activity
+  await loginToHero(app, screen, browser, '/dashboard/daily-activity');
+  await new Promise((resolve) => setTimeout(resolve, 4000));
 
   // Screenshot Daily Activity Monitoring Page
   await app.screenshot('01-daily-activity-dashboard');
 
-  // 3. Open Detail Modal of an Employee with daily activity
-  // Look for "Lihat Formulir Detail" or row action or click on an employee row
-  const detailButtons = browser.locator('button:has-text("Lihat detail"), button:has-text("Lihat Formulir Detail"), td button:has-text("Lihat")');
-  const count = await detailButtons.count();
-
-  if (count > 0) {
-    await detailButtons.first().click();
+  // 2. Open Detail Modal of an Employee with daily activity
+  // Look for employee name button or "Lihat Formulir Detail"
+  const empNameBtn = browser.locator('td button:has(span)').first();
+  if (await empNameBtn.isVisible().catch(() => false)) {
+    await empNameBtn.click();
   } else {
-    // Alternatively click on the first table row
-    const firstRow = browser.locator('table tbody tr').first();
-    if (await firstRow.isVisible().catch(() => false)) {
-      await firstRow.click();
+    const detailButtons = browser.locator('button:has-text("Lihat detail"), button:has-text("Lihat Formulir Detail"), td button:has-text("Lihat")');
+    if ((await detailButtons.count()) > 0) {
+      await detailButtons.first().click();
+    } else {
+      const firstRow = browser.locator('table tbody tr').first();
+      if (await firstRow.isVisible().catch(() => false)) {
+        await firstRow.click();
+      }
     }
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  await new Promise((resolve) => setTimeout(resolve, 3000));
 
   // Screenshot Daily Activity Form Modal
   await app.screenshot('02-daily-activity-detail-modal');
 
-  // 4. Click "Buat SPL Lembur" button in the modal
-  const buatSplBtn = browser.locator('button:has-text("Buat SPL Lembur"), button:has-text("Buat SPL Tambahan")').first();
+  // 4. Click "BUAT SPL LEMBUR" button in the modal
+  const buatSplBtn = browser.locator('button[data-testid="btn-buat-spl-lembur"], button:has-text("BUAT SPL LEMBUR"), button:has-text("Buat SPL Lembur"), button:has-text("Buat SPL Tambahan")').first();
   await expect(buatSplBtn).toBeVisible({ timeout: 15000 });
   await buatSplBtn.click();
 
