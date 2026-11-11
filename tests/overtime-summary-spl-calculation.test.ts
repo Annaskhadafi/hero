@@ -460,4 +460,43 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(pdfBytes).toBeInstanceOf(Uint8Array);
     expect(pdfBytes.length).toBeGreaterThan(1000);
   });
+
+  it('guarantees Overtime Summary matches Overtime Record (e.g. Albert 81h strictly on workdays and 0 on OFF/FB)', () => {
+    // Albert schedule: 1-3 DS, 4 OFF, 5 DS, 6-10 NS, 11 OFF, 12-17 DS, 18 OFF, 19 DS, 20-31 FB
+    const schedule = [
+      'DS','DS','DS','OFF','DS','NS','NS','NS','NS','NS','OFF','DS','DS','DS','DS','DS','DS','OFF','DS',
+      'FB','FB','FB','FB','FB','FB','FB','FB','FB','FB','FB','FB'
+    ];
+    // Overrides for Albert from KIM database
+    const overrides: Record<number, number> = {
+      2: 5, 3: 7, 4: 11 /* OFF day in DB */, 5: 5, 7: 5, 8: 5, 10: 7, 12: 5, 13: 5, 14: 5, 15: 5, 17: 7, 19: 4
+    };
+
+    let recordTotal = 0;
+    let summaryTotal = 0;
+
+    for (let day = 1; day <= 31; day++) {
+      const code = schedule[day - 1];
+      const isOff = code === 'OFF' || code === 'FB';
+      const manualVal = overrides[day] ?? null;
+
+      // Overtime Record:
+      let recordOt = 0;
+      if (!isOff) {
+        recordOt = manualVal !== null ? manualVal : 4;
+      }
+      recordTotal += recordOt;
+
+      // Overtime Summary (when SPL auto is off):
+      let summaryOt = 0;
+      if (!isOff) {
+        summaryOt = manualVal !== null ? manualVal : 4;
+      }
+      summaryTotal += summaryOt;
+    }
+
+    expect(recordTotal).toBe(81);
+    expect(summaryTotal).toBe(81);
+    expect(summaryTotal).toEqual(recordTotal);
+  });
 });

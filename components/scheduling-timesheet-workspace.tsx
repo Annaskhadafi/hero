@@ -7862,7 +7862,7 @@ export function SchedulingTimesheetWorkspace({
       return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: '-' }
     }
 
-    const scheduleCode = schedule[day - 1] as string
+    const scheduleCode = (schedule[day - 1] as string) || 'IN'
     const isFieldBreakDay =
       scheduleCode === 'FB' ||
       cell.status === 'field_break' ||
@@ -7881,134 +7881,117 @@ export function SchedulingTimesheetWorkspace({
     const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
     const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
 
+    // Non-working & Off days strictly follow Overtime Record:
+    // On OFF, Field Break, Sakit, Izin, Alpha: Overtime is 0 (displaying their respective status code), matching Overtime Record.
+    if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+      const fbOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: fbOt,
+        displayValue: fbOt > 0 ? String(roundOvertimeHours(fbOt)) : 'FB',
+      }
+    }
+    if (cell.status === 'standby' || scheduleCode === 'ST') {
+      const stOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: stOt,
+        displayValue: stOt > 0 ? String(roundOvertimeHours(stOt)) : 'ST',
+      }
+    }
+    if (scheduleCode === 'GD') {
+      const gdOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: gdOt,
+        displayValue: gdOt > 0 ? String(roundOvertimeHours(gdOt)) : 'GD',
+      }
+    }
+    if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+      const sickOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: sickOt,
+        displayValue: sickOt > 0 ? String(roundOvertimeHours(sickOt)) : 'Sakit',
+      }
+    }
+    if (cell.status === 'leave' || scheduleCode === 'Izin') {
+      const leaveOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: leaveOt,
+        displayValue: leaveOt > 0 ? String(roundOvertimeHours(leaveOt)) : 'Izin',
+      }
+    }
+    if (cell.status === 'absent') {
+      const absOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: absOt,
+        displayValue: absOt > 0 ? String(roundOvertimeHours(absOt)) : 'Alpha',
+      }
+    }
+    if (isRosterOff || cell.status === 'off') {
+      // Pada hari libur roster (OFF):
+      // Mengikuti Overtime Record: Total lembur adalah 0 dan ditampilkan 'OFF'.
+      // Jika mode auto-SPL diaktifkan kembali oleh atasan, SPL / manual override akan dihitung.
+      const offOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
+      return {
+        lemburWajib: 0,
+        lemburSpl: effectiveSplHours,
+        totalOvertime: Math.min(11, offOt),
+        displayValue: offOt > 0 ? String(roundOvertimeHours(Math.min(11, offOt))) : 'OFF',
+      }
+    }
+
     if (cell.status !== 'present') {
-      if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
-        const fbOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: fbOt,
-          displayValue: fbOt > 0 ? String(roundOvertimeHours(fbOt)) : 'FB',
-        }
-      }
-      if (cell.status === 'standby' || scheduleCode === 'ST') {
-        const stOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: stOt,
-          displayValue: stOt > 0 ? String(roundOvertimeHours(stOt)) : 'ST',
-        }
-      }
-      if (scheduleCode === 'GD') {
-        const gdOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: gdOt,
-          displayValue: gdOt > 0 ? String(roundOvertimeHours(gdOt)) : 'GD',
-        }
-      }
-      if (cell.status === 'sick' || scheduleCode === 'Sakit') {
-        const sickOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: sickOt,
-          displayValue: sickOt > 0 ? String(roundOvertimeHours(sickOt)) : 'Sakit',
-        }
-      }
-      if (cell.status === 'leave' || scheduleCode === 'Izin') {
-        const leaveOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: leaveOt,
-          displayValue: leaveOt > 0 ? String(roundOvertimeHours(leaveOt)) : 'Izin',
-        }
-      }
-      if (cell.status === 'absent') {
-        const absOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: absOt,
-          displayValue: absOt > 0 ? String(roundOvertimeHours(absOt)) : 'Alpha',
-        }
-      }
-      if (isRosterOff || cell.status === 'off' || isHolidayDay) {
-        const offOt = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: Math.min(11, offOt),
-          displayValue: offOt > 0 ? String(roundOvertimeHours(Math.min(11, offOt))) : 'OFF',
-        }
-      }
-      if (manualVal !== null || effectiveSplHours > 0) {
-        const otVal = manualVal !== null ? manualVal : effectiveSplHours
-        return {
-          lemburWajib: 0,
-          lemburSpl: effectiveSplHours,
-          totalOvertime: Math.min(11, otVal),
-          displayValue: String(roundOvertimeHours(Math.min(11, otVal))),
-        }
-      }
       if (scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS') {
         return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: scheduleCode }
       }
       return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: '' }
     }
 
-    // Cell is present
-    let lemburWajib = 0
-    if (isRosterOff) {
-      // Pada hari libur / roster OFF: TIDAK ADA lembur wajib (selalu 0 jam)
-      lemburWajib = 0
-    } else {
-      // Lembur wajib default HANYA 4 jam atau 6 jam untuk shift kerja hadir
-      const overtime = calculateDayOvertime(
-        schedule,
-        day,
-        cell.clockIn,
-        cell.clockOut,
-        staff,
-        employeeId,
-        true
-      )
-      const autoWajib = mandatoryOvertimeHours(overtime)
-      lemburWajib = autoWajib === 6 ? 6 : 4
-    }
+    // Work day (present / DS / NS):
+    // Lembur wajib default mengikuti konfigurasi overtime policy masing-masing site (misal: MHU/KIM 5j/7j, MIFA 4j/6j)
+    const overtime = calculateDayOvertime(
+      schedule,
+      day,
+      cell.clockIn,
+      cell.clockOut,
+      staff,
+      employeeId,
+      true
+    )
+    const autoWajib = mandatoryOvertimeHours(overtime)
+    const lemburWajib =
+      autoWajib > 0
+        ? autoWajib
+        : overtime.totalHours > 0
+          ? overtime.totalHours
+          : 4
 
     let totalOvertime = 0
-
-    if (isRosterOff) {
-      // Di hari libur (OFF): Total lembur murni override atau SPL otomatis (jika aktif), maksimal 11 jam
-      if (manualVal !== null) {
-        totalOvertime = Math.min(11, roundOvertimeHours(manualVal))
+    if (manualVal !== null) {
+      if (manualVal === 0) {
+        totalOvertime = 0
+      } else if (ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY) {
+        const expectedTotal = splHours > 0 ? lemburWajib + splHours : manualVal
+        totalOvertime = Math.min(14, roundOvertimeHours(Math.max(manualVal, expectedTotal)))
       } else {
-        totalOvertime = Math.min(11, roundOvertimeHours(effectiveSplHours))
+        // Mode SPL otomatis off: Mengikuti Overtime Record / input manual
+        totalOvertime = Math.min(14, roundOvertimeHours(manualVal))
       }
     } else {
-      // Di hari kerja (DS / NS):
-      if (manualVal !== null) {
-        if (manualVal === 0) {
-          totalOvertime = 0
-        } else if (ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY) {
-          // Mode SPL otomatis aktif: Lembur Wajib + SPL
-          const expectedTotal = splHours > 0 ? lemburWajib + splHours : manualVal
-          totalOvertime = Math.min(14, roundOvertimeHours(Math.max(manualVal, expectedTotal)))
-        } else {
-          // Mode SPL otomatis off: Mengikuti Overtime Record / input manual
-          totalOvertime = Math.min(14, roundOvertimeHours(manualVal))
-        }
-      } else {
-        // Tanpa manual override: Total lembur = Lembur Wajib (4j atau 6j) + SPL otomatis (jika aktif)
-        totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + effectiveSplHours))
-      }
+      totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + effectiveSplHours))
     }
 
-    const displayValue = totalOvertime > 0 ? String(totalOvertime) : (isRosterOff ? 'OFF' : '')
+    const displayValue = totalOvertime > 0 ? String(roundOvertimeHours(totalOvertime)) : ''
     return { lemburWajib, lemburSpl: splHours, totalOvertime, displayValue }
   }
 
