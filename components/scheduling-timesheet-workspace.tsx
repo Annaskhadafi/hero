@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Activity,
   AlertTriangle,
@@ -20,6 +20,7 @@ import {
   FileSpreadsheet,
   FileText,
   History,
+  Layers,
   Pencil,
   RefreshCw,
   RotateCcw,
@@ -580,6 +581,7 @@ type ApprovalApproverDraft = {
 }
 
 const sectionOptions = ['Service Operation', 'Repair Retread', 'Crew Office']
+const defaultSectionOptions = ['Service Operation', 'Repair Retread', 'Crew Office']
 const employmentPositionLabels = [
   'permanent',
   'contract',
@@ -613,6 +615,61 @@ const rosterSectionStyles: Record<
     day: 'bg-orange-50/60 text-orange-900',
     total: 'bg-surface-container-low text-foreground',
   },
+}
+
+function getRosterSectionStyle(section: string) {
+  if (rosterSectionStyles[section]) return rosterSectionStyles[section]
+  const lower = section.toLowerCase()
+  if (lower.includes('repair') || lower.includes('retread')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-emerald-50 text-emerald-900',
+      day: 'bg-emerald-50/60 text-emerald-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  if (lower.includes('service') || lower.includes('servis')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-sky-50 text-sky-900',
+      day: 'bg-sky-50/60 text-sky-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  if (lower.includes('tech') || lower.includes('teknis')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-indigo-50 text-indigo-900',
+      day: 'bg-indigo-50/60 text-indigo-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  if (lower.includes('hse') || lower.includes('safety') || lower.includes('k3')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-teal-50 text-teal-900',
+      day: 'bg-teal-50/60 text-teal-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  return {
+    title: `Roster ${section}`,
+    head: 'bg-slate-50 text-slate-900',
+    day: 'bg-slate-50/60 text-slate-900',
+    total: 'bg-surface-container-low text-foreground',
+  }
+}
+
+function getEmployeeExactSection(employee?: {
+  section?: string | null
+  department?: string | null
+  role?: string | null
+}): string {
+  const sec = (employee?.section || '').trim()
+  if (sec) return sec
+  const dept = (employee?.department || '').trim()
+  if (dept) return dept
+  return 'Office / Lainnya'
 }
 
 const codeCycle: ScheduleCode[] = [
@@ -1171,21 +1228,13 @@ function approvalEmployeeOptions(
 }
 
 function normalizeRosterSection(value?: string | null) {
-  const normalized = normalizeLocation(value ?? '')
-  if (normalized.includes('repair') || normalized.includes('retread')) return 'Repair Retread'
-  if (normalized.includes('technical')) return 'Crew Office'
-  if (normalized.includes('tyreman') || normalized.includes('tyre')) return 'Service Operation'
-  if (
-    normalized.includes('serviceoperation') ||
-    normalized.includes('serviceman') ||
-    normalized.includes('servicemvc') ||
-    normalized.includes('serviceoperationmvc') ||
-    normalized.includes('serviceoperationother') ||
-    normalized.includes('serviceoperationothers')
-  )
-    return 'Service Operation'
-
-  return 'Crew Office'
+  if (!value) return 'Office / Lainnya'
+  const trimmed = value.trim()
+  if (!trimmed) return 'Office / Lainnya'
+  const lower = trimmed.toLowerCase()
+  if (lower === 'repairman') return 'Repair Retread'
+  if (lower === 'tyreman' || lower === 'serviceman') return 'Service Operation'
+  return trimmed
 }
 
 function isEmploymentPositionLabel(value?: string | null) {
@@ -1321,13 +1370,15 @@ function weekdayLabel(period: string, day: number) {
 function rosterSectionLabel(section: string) {
   if (section === 'Service Operation') return 'Roster Serviceman'
   if (section === 'Repair Retread') return 'Crew Repair'
-  return 'Crew Office'
+  if (section === 'Crew Office') return 'Crew Office'
+  return section
 }
 
 function payrollSectionLabel(section: string) {
   if (section === 'Service Operation') return 'Serviceman Crew'
   if (section === 'Repair Retread') return 'Repairman Crew'
-  return 'Office Crew'
+  if (section === 'Crew Office') return 'Office Crew'
+  return section
 }
 
 function calculateOvertimeFromVariables(
@@ -1945,11 +1996,9 @@ export function SchedulingTimesheetWorkspace({
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
   const [includeTotalOvertime, setIncludeTotalOvertime] = useState<boolean>(true)
-  const [pdfIncludeRepair, setPdfIncludeRepair] = useState<boolean>(true)
-  const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
-  const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
-  const [pdfIncludeHse, setPdfIncludeHse] = useState<boolean>(true)
-  const [pdfIncludeOther, setPdfIncludeOther] = useState<boolean>(true)
+  const [selectedSectionNames, setSelectedSectionNames] = useState<string[] | null>(null)
+  const [sectionPickerOpen, setSectionPickerOpen] = useState<boolean>(false)
+  const [sectionSearchQuery, setSectionSearchQuery] = useState<string>('')
   const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
   const [pdfExternalSignatureCount, setPdfExternalSignatureCount] = useState<2 | 3 | 4>(2)
 
@@ -2097,6 +2146,21 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
   const [conflictsDismissed, setConflictsDismissedState] = useState(false)
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const qSite = searchParams?.get('siteId')
+    const qPeriod = searchParams?.get('period')
+    if (qSite) {
+      setSiteId(qSite)
+      if (qPeriod) setPeriod(qPeriod)
+      if (mode === 'attendance') {
+        setAttendanceWorkspaceOpen(true)
+      } else if (mode === 'payroll') {
+        setPayrollWorkspaceOpen(true)
+      }
+    }
+  }, [searchParams, mode])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -3055,6 +3119,28 @@ export function SchedulingTimesheetWorkspace({
     ]
   )
 
+  const siteSectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const row of rows) {
+      const sec = getEmployeeExactSection(row.employee)
+      counts[sec] = (counts[sec] ?? 0) + 1
+    }
+    return counts
+  }, [rows])
+
+  const availableSiteSections = useMemo(() => {
+    return Object.entries(siteSectionCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  }, [siteSectionCounts])
+
+  const siteRosterSectionOptions = useMemo(() => {
+    if (availableSiteSections.length > 0) {
+      return availableSiteSections.map((s) => s.name)
+    }
+    return defaultSectionOptions
+  }, [availableSiteSections])
+
   const attendanceByCell = useMemo(() => {
     const map = new Map<
       string,
@@ -3240,8 +3326,12 @@ export function SchedulingTimesheetWorkspace({
     const sectionRows = tableRows.filter((row) => row.rosterSection === section)
     if (sectionRows.length === 0) return null
 
-    const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
-    const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+    const styles = getRosterSectionStyle(section)
+    const showOperatorTotals =
+      section.toLowerCase().includes('service') ||
+      section.toLowerCase().includes('repair') ||
+      section === 'Service Operation' ||
+      section === 'Repair Retread'
     const sectionTotals = days.map((day, index) => ({
       day,
       ds: sectionRows.filter((row) => row.schedule[index] === 'DS').length,
@@ -4590,7 +4680,7 @@ export function SchedulingTimesheetWorkspace({
     reader.readAsDataURL(file)
   }
 
-  function applySignaturePreset(presetKey: 'repair' | 'services' | 'technical' | 'hse') {
+  function applySignaturePreset(presetKey: string) {
     if (siteId === 'all') return
 
     const siteName = (site?.name || '').trim().toUpperCase()
@@ -4633,40 +4723,58 @@ export function SchedulingTimesheetWorkspace({
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
 
+    const keyLower = presetKey.toLowerCase()
+    const sectionApproval = siteApprovalSections.find((s) => {
+      const sName = (s.sectionName || '').toLowerCase()
+      return keyLower && (sName.includes(keyLower) || keyLower.includes(sName))
+    })
+
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
       let newPdfConfig = { ...currentConfig.pdfConfig }
 
-      if (presetKey === 'repair') {
+      if (keyLower === 'repair' || keyLower.includes('repair') || keyLower.includes('retread')) {
         newPdfConfig = {
           ...newPdfConfig,
           preparedBy: arjun,
-          pjoLeader: ary,
-          approvedBy: romy,
+          pjoLeader: sectionApproval?.pjoLeaderName || ary,
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
-      } else if (presetKey === 'services') {
+      } else if (keyLower === 'services' || keyLower.includes('service') || keyLower.includes('servis')) {
         newPdfConfig = {
           ...newPdfConfig,
           preparedBy: fauzan,
-          pjoLeader: isCkSite ? apriyanto : junaidi,
-          approvedBy: romy,
+          pjoLeader: sectionApproval?.pjoLeaderName || (isCkSite ? apriyanto : junaidi),
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
-      } else if (presetKey === 'technical') {
+      } else if (keyLower === 'technical' || keyLower.includes('tech') || keyLower.includes('teknis')) {
         newPdfConfig = {
           ...newPdfConfig,
-          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || '',
-          pjoLeader: abian,
-          approvedBy: romy,
+          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || abian,
+          pjoLeader: sectionApproval?.pjoLeaderName || abian,
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
-      } else if (presetKey === 'hse') {
+      } else if (keyLower === 'hse' || keyLower.includes('hse') || keyLower.includes('safety')) {
         newPdfConfig = {
           ...newPdfConfig,
           preparedBy: fathurrahman,
-          pjoLeader: andiSafari,
-          approvedBy: rendra,
+          pjoLeader: sectionApproval?.pjoLeaderName || andiSafari,
+          approvedBy: sectionApproval?.departmentHeadName || rendra,
+          hrName: kesuma,
+        }
+      } else {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || '',
+          pjoLeader:
+            sectionApproval?.pjoLeaderName ||
+            sectionApproval?.sectionHeadName ||
+            siteHeadName ||
+            (isCkSite ? apriyanto : junaidi),
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
       }
@@ -4680,13 +4788,7 @@ export function SchedulingTimesheetWorkspace({
       }
     })
 
-    const presetLabels: Record<string, string> = {
-      repair: 'Repair TTD',
-      services: 'Services TTD',
-      technical: 'Technical TTD',
-      hse: 'HSE TTD',
-    }
-    toast.success(`Preset ${presetLabels[presetKey]} berhasil diterapkan!`)
+    toast.success(`Preset TTD ${presetKey === 'default' ? 'Default Site' : presetKey} berhasil diterapkan!`)
   }
 
   function saveAllowanceVariables() {
@@ -4888,13 +4990,17 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function rosterExportRows(tableRows = rows) {
-    return sectionOptions.flatMap((section) => {
+    return siteRosterSectionOptions.flatMap((section) => {
       const sectionRows = tableRows.filter((row) => row.rosterSection === section)
       if (sectionRows.length === 0) return []
 
-      const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
+      const styles = getRosterSectionStyle(section)
       const totals = rosterSectionTotals(sectionRows)
-      const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+      const showOperatorTotals =
+        section.toLowerCase().includes('service') ||
+        section.toLowerCase().includes('repair') ||
+        section === 'Service Operation' ||
+        section === 'Repair Retread'
       const rowsBySection: Array<Array<string | number>> = [
         [styles.title, '', '', '', '', period, ...days.map(() => ''), ''],
         ...sectionRows.map((row) => [
@@ -4986,14 +5092,18 @@ export function SchedulingTimesheetWorkspace({
     const dayHeaders = days
       .map((day) => `<th><div>${weekdayLabel(period, day)}</div><div>${day}</div></th>`)
       .join('')
-    const rosterTables = sectionOptions
+    const rosterTables = siteRosterSectionOptions
       .map((section) => {
         const sectionRows = tableRows.filter((row) => row.rosterSection === section)
         if (sectionRows.length === 0) return ''
 
-        const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
+        const styles = getRosterSectionStyle(section)
         const totals = rosterSectionTotals(sectionRows)
-        const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+        const showOperatorTotals =
+          section.toLowerCase().includes('service') ||
+          section.toLowerCase().includes('repair') ||
+          section === 'Service Operation' ||
+          section === 'Repair Retread'
         const bodyRows = sectionRows
           .map(
             (row) => `
@@ -6161,11 +6271,7 @@ export function SchedulingTimesheetWorkspace({
 
   useEffect(() => {
     setSelectedOvertimeEmployeeIds([])
-    setPdfIncludeRepair(true)
-    setPdfIncludeServices(true)
-    setPdfIncludeTechnical(true)
-    setPdfIncludeHse(true)
-    setPdfIncludeOther(true)
+    setSelectedSectionNames(null)
   }, [period, siteId])
 
   function toggleOvertimeEmployee(employeeId: number) {
@@ -6300,44 +6406,53 @@ export function SchedulingTimesheetWorkspace({
     return 'Lainnya'
   }
 
-  const sectionCategoryCounts = useMemo(() => {
-    const counts: Record<'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya', number> = {
-      Repair: 0,
-      Services: 0,
-      Technical: 0,
-      HSE: 0,
-      Lainnya: 0,
+  const activeSelectedSections = useMemo(() => {
+    if (selectedSectionNames !== null) {
+      return selectedSectionNames
     }
-    for (const row of rows) {
-      const cat = getEmployeeSectionCategory(row.employee)
-      counts[cat]++
-    }
-    return counts
-  }, [rows])
+    return availableSiteSections.map((s) => s.name)
+  }, [selectedSectionNames, availableSiteSections])
 
-  const availableSiteSectionCategories = useMemo(() => {
-    const cats = new Set<'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya'>()
-    for (const [cat, count] of Object.entries(sectionCategoryCounts)) {
-      if (count > 0) {
-        cats.add(cat as 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya')
+  function toggleSection(sectionName: string, active: boolean) {
+    setSelectedSectionNames((current) => {
+      const list = current ?? availableSiteSections.map((s) => s.name)
+      if (active) {
+        return list.includes(sectionName) ? list : [...list, sectionName]
+      } else {
+        return list.filter((s) => s !== sectionName)
       }
+    })
+  }
+
+  const filteredSiteSections = useMemo(() => {
+    if (!sectionSearchQuery.trim()) return availableSiteSections
+    const q = sectionSearchQuery.toLowerCase()
+    return availableSiteSections.filter((s) => s.name.toLowerCase().includes(q))
+  }, [availableSiteSections, sectionSearchQuery])
+
+  const hasAnySectionActive = activeSelectedSections.length > 0
+
+  const activeSectionsLabel = useMemo(() => {
+    if (activeSelectedSections.length === availableSiteSections.length) {
+      return 'Semua Section'
     }
-    return cats
-  }, [sectionCategoryCounts])
+    if (activeSelectedSections.length === 0) {
+      return 'Tanpa Section'
+    }
+    if (activeSelectedSections.length <= 3) {
+      return activeSelectedSections.join(', ')
+    }
+    return `${activeSelectedSections.slice(0, 2).join(', ')} +${activeSelectedSections.length - 2}`
+  }, [activeSelectedSections, availableSiteSections])
 
   function isEmployeeSectionIncluded(emp?: {
     section?: string | null
     role?: string | null
     department?: string | null
   }) {
-    if (availableSiteSectionCategories.size <= 1) return true
-    const cat = getEmployeeSectionCategory(emp)
-    if (cat === 'Repair') return pdfIncludeRepair
-    if (cat === 'Services') return pdfIncludeServices
-    if (cat === 'Technical') return pdfIncludeTechnical
-    if (cat === 'HSE') return pdfIncludeHse
-    if (cat === 'Lainnya') return pdfIncludeOther
-    return false
+    if (availableSiteSections.length <= 1) return true
+    const sec = getEmployeeExactSection(emp)
+    return activeSelectedSections.includes(sec)
   }
 
   function getSectionSignatures(
@@ -6439,10 +6554,28 @@ export function SchedulingTimesheetWorkspace({
 
     const isSingleEmployeeRecord = Boolean(employee && !sectionName)
     const effectivePreparedBy =
-      cfgPreparedBy || (isSingleEmployeeRecord ? employee?.name : defaultSectionPreparedBy) || baseSignatures.preparedBy
-    const effectivePjo = cfgPjo || sectionPjo || baseSignatures.pjoLeader || defaultSectionPjo
+      (normSection.includes('repair')
+        ? arjun
+        : normSection.includes('hse')
+          ? fathurrahman
+          : cfgPreparedBy) ||
+      (isSingleEmployeeRecord ? employee?.name : defaultSectionPreparedBy) ||
+      baseSignatures.preparedBy
+
+    const effectivePjo =
+      (normSection && (sectionPjo || defaultSectionPjo)) ||
+      cfgPjo ||
+      sectionPjo ||
+      siteHeadName ||
+      baseSignatures.pjoLeader ||
+      defaultSectionPjo
+
     const effectiveApprovedBy =
-      cfgApprovedBy || sectionApprovedBy || baseSignatures.approvedBy || defaultSectionApprovedBy
+      (normSection.includes('hse') ? rendra : cfgApprovedBy) ||
+      sectionApprovedBy ||
+      baseSignatures.approvedBy ||
+      defaultSectionApprovedBy
+
     const effectiveHr = cfgHr || baseSignatures.hrName || kesuma
 
     return {
@@ -6842,7 +6975,7 @@ export function SchedulingTimesheetWorkspace({
     if (employeeIds) {
       const idSet = new Set(employeeIds)
       sourceRows = rows.filter((row) => idSet.has(row.employee.id))
-    } else if (availableSiteSectionCategories.size > 1) {
+    } else if (availableSiteSections.length > 1) {
       sourceRows = rows.filter((row) => isEmployeeSectionIncluded(row.employee))
     }
     const grouped = new Map<string, Map<string, typeof rows>>()
@@ -7003,15 +7136,7 @@ export function SchedulingTimesheetWorkspace({
 
   async function downloadSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
     try {
-      const hasAnySectionActive =
-        availableSiteSectionCategories.size <= 1 ||
-        (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
-        (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
-        (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
-        (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
-        (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
-
-      if (!hasAnySectionActive) {
+      if (availableSiteSections.length > 1 && !hasAnySectionActive) {
         toast.error('Pilih minimal satu section yang tersedia.')
         return
       }
@@ -7021,7 +7146,7 @@ export function SchedulingTimesheetWorkspace({
       if (customEmpIds && customEmpIds.length > 0) {
         const idSet = new Set(customEmpIds)
         selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
-      } else if (availableSiteSectionCategories.size > 1) {
+      } else if (availableSiteSections.length > 1) {
         selectedEmps = allEmps.filter((emp) => isEmployeeSectionIncluded(emp))
       }
 
@@ -7049,15 +7174,7 @@ export function SchedulingTimesheetWorkspace({
               : view === 'meals'
                 ? 'MLS'
                 : 'TU'
-      const activeSections = [
-        availableSiteSectionCategories.has('Repair') && pdfIncludeRepair ? 'Repair' : '',
-        availableSiteSectionCategories.has('Services') && pdfIncludeServices ? 'Services' : '',
-        availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical ? 'Technical' : '',
-        availableSiteSectionCategories.has('HSE') && pdfIncludeHse ? 'HSE' : '',
-        availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther ? 'Office' : '',
-      ]
-        .filter(Boolean)
-        .join('_')
+      const activeSections = activeSectionsLabel.replace(/[\s\/]+/g, '_')
       const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
       a.download = `${label}_Summary_${sitePart}_${period}${extSuffix}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
@@ -7075,15 +7192,7 @@ export function SchedulingTimesheetWorkspace({
 
   async function previewSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
     try {
-      const hasAnySectionActive =
-        availableSiteSectionCategories.size <= 1 ||
-        (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
-        (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
-        (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
-        (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
-        (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
-
-      if (!hasAnySectionActive) {
+      if (availableSiteSections.length > 1 && !hasAnySectionActive) {
         toast.error('Pilih minimal satu section yang tersedia.')
         return
       }
@@ -7093,7 +7202,7 @@ export function SchedulingTimesheetWorkspace({
       if (customEmpIds && customEmpIds.length > 0) {
         const idSet = new Set(customEmpIds)
         selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
-      } else if (availableSiteSectionCategories.size > 1) {
+      } else if (availableSiteSections.length > 1) {
         selectedEmps = allEmps.filter((emp) => isEmployeeSectionIncluded(emp))
       }
 
@@ -7149,15 +7258,7 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
-    const hasAnySectionActive =
-      availableSiteSectionCategories.size <= 1 ||
-      (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
-      (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
-      (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
-      (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
-      (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
-
-    if (!hasAnySectionActive) {
+    if (availableSiteSections.length > 1 && !hasAnySectionActive) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
@@ -7460,15 +7561,7 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
-    const hasAnySectionActive =
-      availableSiteSectionCategories.size <= 1 ||
-      (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
-      (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
-      (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
-      (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
-      (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
-
-    if (!hasAnySectionActive) {
+    if (availableSiteSections.length > 1 && !hasAnySectionActive) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
@@ -7547,15 +7640,7 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
-      const activeSections = [
-        availableSiteSectionCategories.has('Repair') && pdfIncludeRepair ? 'Repair' : '',
-        availableSiteSectionCategories.has('Services') && pdfIncludeServices ? 'Services' : '',
-        availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical ? 'Technical' : '',
-        availableSiteSectionCategories.has('HSE') && pdfIncludeHse ? 'HSE' : '',
-        availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther ? 'Office / Lainnya' : '',
-      ]
-        .filter(Boolean)
-        .join(', ')
+      const activeSections = activeSectionsLabel
 
       openPdfPreview(
         await merged.save(),
@@ -8406,12 +8491,14 @@ export function SchedulingTimesheetWorkspace({
       : []
   const groupedPayrollRows = [...payrollRows].sort(
     (left, right) =>
-      sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
+      siteRosterSectionOptions.indexOf(left.rosterSection) -
+        siteRosterSectionOptions.indexOf(right.rosterSection) ||
       left.employee.name.localeCompare(right.employee.name)
   )
   const groupedAttendanceOvertimeRows = [...attendanceOvertimeRows].sort(
     (left, right) =>
-      sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
+      siteRosterSectionOptions.indexOf(left.rosterSection) -
+        siteRosterSectionOptions.indexOf(right.rosterSection) ||
       left.employee.name.localeCompare(right.employee.name)
   )
 
@@ -10902,37 +10989,44 @@ export function SchedulingTimesheetWorkspace({
                         </Label>
                         <Select
                           onValueChange={(val) => {
-                            if (
-                              val === 'repair' ||
-                              val === 'services' ||
-                              val === 'technical' ||
-                              val === 'hse'
-                            ) {
+                            if (val) {
                               applySignaturePreset(val)
                             }
                           }}
                         >
-                          <SelectTrigger className="border-border/70 h-8.5 min-w-[190px] border bg-white px-3 text-xs font-medium shadow-none">
-                            <SelectValue placeholder="Pilih Preset TTD..." />
+                          <SelectTrigger className="border-border/70 h-8.5 min-w-[210px] border bg-white px-3 text-xs font-medium shadow-none">
+                            <SelectValue placeholder="Pilih Preset TTD Site / Section..." />
                           </SelectTrigger>
-                          <SelectContent className="z-50 bg-white shadow-md">
+                          <SelectContent className="z-50 bg-white shadow-md max-h-64 overflow-y-auto">
+                            <SelectItem value="default" className="cursor-pointer text-xs font-semibold text-blue-700">
+                              Preset Default Site ({site?.name || 'Site'})
+                            </SelectItem>
+                            {availableSiteSections.map((sec) => (
+                              <SelectItem
+                                key={sec.name}
+                                value={sec.name}
+                                className="cursor-pointer text-xs font-medium"
+                              >
+                                TTD Section: {sec.name} ({sec.count})
+                              </SelectItem>
+                            ))}
                             <SelectItem value="repair" className="cursor-pointer text-xs font-medium">
-                              Repair TTD
+                              Preset Umum: Repair TTD
                             </SelectItem>
                             <SelectItem
                               value="services"
                               className="cursor-pointer text-xs font-medium"
                             >
-                              Services TTD
+                              Preset Umum: Services TTD
                             </SelectItem>
                             <SelectItem
                               value="technical"
                               className="cursor-pointer text-xs font-medium"
                             >
-                              Technical TTD
+                              Preset Umum: Technical TTD
                             </SelectItem>
                             <SelectItem value="hse" className="cursor-pointer text-xs font-medium">
-                              HSE TTD
+                              Preset Umum: HSE TTD
                             </SelectItem>
                           </SelectContent>
                         </Select>
@@ -11971,7 +12065,7 @@ export function SchedulingTimesheetWorkspace({
                 </Card>
               ) : null}
               <div className="space-y-5">
-                {sectionOptions.map((section) =>
+                {siteRosterSectionOptions.map((section) =>
                   renderRosterTable(rows, section, 'draft', cycleCell)
                 )}
               </div>
@@ -12024,7 +12118,7 @@ export function SchedulingTimesheetWorkspace({
                 </Card>
               ) : null}
               <div className="space-y-5">
-                {sectionOptions.map((section) =>
+                {siteRosterSectionOptions.map((section) =>
                   renderRosterTable(permanentRows, section, 'fixed', cyclePermanentCell)
                 )}
               </div>
@@ -12198,6 +12292,7 @@ export function SchedulingTimesheetWorkspace({
                           : ''}
                       </Button>
                       <Button
+                        id="btn-preview-export-pdf"
                         size="sm"
                         variant="outline"
                         onClick={() => setOvertimePdfOpen((v) => !v)}
@@ -12493,89 +12588,231 @@ export function SchedulingTimesheetWorkspace({
                             Sertakan Kolom Total Overtime
                           </label>
                         </div>
-                        {availableSiteSectionCategories.size > 1 && (
-                          <>
-                            {availableSiteSectionCategories.has('Repair') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-repair-pdf"
-                                  checked={pdfIncludeRepair}
-                                  onCheckedChange={setPdfIncludeRepair}
-                                />
-                                <label
-                                  htmlFor="toggle-repair-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Repair / Retread"
+                        {availableSiteSections.length > 1 && (
+                          <div className="flex flex-col gap-2 w-full pt-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Filter Section ({activeSelectedSections.length}/{availableSiteSections.length} aktif):
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 px-2 text-[11px] font-medium text-blue-700 border-blue-200 hover:bg-blue-50"
+                                  onClick={() => setSelectedSectionNames(availableSiteSections.map((s) => s.name))}
                                 >
-                                  Repair ({sectionCategoryCounts.Repair})
-                                </label>
-                              </div>
-                            )}
-                            {availableSiteSectionCategories.has('Services') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-services-pdf"
-                                  checked={pdfIncludeServices}
-                                  onCheckedChange={setPdfIncludeServices}
-                                />
-                                <label
-                                  htmlFor="toggle-services-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Services"
+                                  Pilih Semua
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-[11px] font-medium text-slate-500 hover:text-slate-800"
+                                  onClick={() => setSelectedSectionNames([])}
                                 >
-                                  Services ({sectionCategoryCounts.Services})
-                                </label>
+                                  Nonaktifkan Semua
+                                </Button>
                               </div>
-                            )}
-                            {availableSiteSectionCategories.has('Technical') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-technical-pdf"
-                                  checked={pdfIncludeTechnical}
-                                  onCheckedChange={setPdfIncludeTechnical}
-                                />
-                                <label
-                                  htmlFor="toggle-technical-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Technical"
-                                >
-                                  Technical ({sectionCategoryCounts.Technical})
-                                </label>
+                              <div className="flex items-center gap-2">
+                                {availableSiteSections.length > 6 && (
+                                  <div className="w-48">
+                                    <Input
+                                      placeholder="Cari section..."
+                                      value={sectionSearchQuery}
+                                      onChange={(e) => setSectionSearchQuery(e.target.value)}
+                                      className="h-7 text-xs bg-white"
+                                    />
+                                  </div>
+                                )}
+                                <Popover open={sectionPickerOpen} onOpenChange={setSectionPickerOpen}>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      id="btn-section-filter-popover"
+                                      size="sm"
+                                      variant="outline"
+                                      className={cn(
+                                        'border-border/70 h-7 rounded-lg bg-white px-2 text-xs font-semibold text-slate-800 shadow-2xs hover:bg-slate-50',
+                                        activeSelectedSections.length < availableSiteSections.length &&
+                                          'border-blue-500 bg-blue-50/60 text-blue-700'
+                                      )}
+                                      title="Pilih dan filter semua section karyawan untuk PDF"
+                                    >
+                                      <Layers className="mr-1.5 size-3 text-blue-600" />
+                                      {activeSelectedSections.length === availableSiteSections.length
+                                        ? `Menu Section (${availableSiteSections.length})`
+                                        : `Section (${activeSelectedSections.length}/${availableSiteSections.length})`}
+                                      <ChevronDown className="ml-1 size-3 text-slate-400" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    className="w-88 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+                                    align="end"
+                                  >
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                      <div>
+                                        <p className="text-xs font-bold text-slate-800">
+                                          Filter Section Karyawan
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">
+                                          {activeSelectedSections.length} dari {availableSiteSections.length} section aktif
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setSelectedSectionNames(availableSiteSections.map((s) => s.name))
+                                          }
+                                          className="text-[10px] font-semibold text-blue-600 hover:underline cursor-pointer"
+                                        >
+                                          Semua
+                                        </button>
+                                        <span className="text-[10px] text-slate-300">|</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const ops = availableSiteSections
+                                              .filter((s) => {
+                                                const low = s.name.toLowerCase()
+                                                return (
+                                                  low.includes('service') ||
+                                                  low.includes('repair') ||
+                                                  low.includes('retread') ||
+                                                  low.includes('technical') ||
+                                                  low.includes('hse') ||
+                                                  low.includes('safety')
+                                                )
+                                              })
+                                              .map((s) => s.name)
+                                            setSelectedSectionNames(ops)
+                                          }}
+                                          className="text-[10px] font-semibold text-indigo-600 hover:underline cursor-pointer"
+                                          title="Pilih section operasional"
+                                        >
+                                          Operasional
+                                        </button>
+                                        <span className="text-[10px] text-slate-300">|</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedSectionNames([])}
+                                          className="text-[10px] font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer"
+                                        >
+                                          Reset
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div className="my-2">
+                                      <Input
+                                        placeholder="Cari nama section..."
+                                        value={sectionSearchQuery}
+                                        onChange={(e) => setSectionSearchQuery(e.target.value)}
+                                        className="h-8 text-xs bg-slate-50/50"
+                                      />
+                                    </div>
+
+                                    <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
+                                      {filteredSiteSections.map((sec) => {
+                                        const isChecked = activeSelectedSections.includes(sec.name)
+                                        return (
+                                          <label
+                                            key={sec.name}
+                                            className={cn(
+                                              'flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors select-none',
+                                              isChecked
+                                                ? 'bg-blue-50/60 text-slate-900 font-medium'
+                                                : 'text-slate-600 hover:bg-slate-50'
+                                            )}
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <Switch
+                                                checked={isChecked}
+                                                onCheckedChange={(checked) =>
+                                                  toggleSection(sec.name, checked)
+                                                }
+                                              />
+                                              <span className="truncate text-xs" title={sec.name}>
+                                                {sec.name}
+                                              </span>
+                                            </div>
+                                            <Badge
+                                              variant="secondary"
+                                              className="text-[10px] font-mono shrink-0 ml-2"
+                                            >
+                                              {sec.count}
+                                            </Badge>
+                                          </label>
+                                        )
+                                      })}
+                                      {filteredSiteSections.length === 0 && (
+                                        <p className="py-3 text-center text-xs text-slate-400">
+                                          Tidak ada section yang cocok.
+                                        </p>
+                                      )}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               </div>
-                            )}
-                            {availableSiteSectionCategories.has('HSE') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-hse-pdf"
-                                  checked={pdfIncludeHse}
-                                  onCheckedChange={setPdfIncludeHse}
-                                />
-                                <label
-                                  htmlFor="toggle-hse-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan HSE / Safety"
-                                >
-                                  HSE ({sectionCategoryCounts.HSE})
-                                </label>
-                              </div>
-                            )}
-                            {availableSiteSectionCategories.has('Lainnya') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-other-pdf"
-                                  checked={pdfIncludeOther}
-                                  onCheckedChange={setPdfIncludeOther}
-                                />
-                                <label
-                                  htmlFor="toggle-other-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Office / Non-Operasional / Lainnya"
-                                >
-                                  Office / Lainnya ({sectionCategoryCounts.Lainnya})
-                                </label>
-                              </div>
-                            )}
-                          </>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 max-h-48 overflow-y-auto p-2 rounded-lg border border-slate-200/80 bg-slate-50/60">
+                              {(() => {
+                                const usedAliasMap = new Set<string>()
+                                const listToRender = sectionSearchQuery.trim()
+                                  ? availableSiteSections.filter((s) => s.name.toLowerCase().includes(sectionSearchQuery.toLowerCase()))
+                                  : availableSiteSections
+
+                                return listToRender.map((sec) => {
+                                  const isChecked = activeSelectedSections.includes(sec.name)
+                                  const secLower = sec.name.toLowerCase()
+                                  const secSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                                  let aliasId = `toggle-sec-${secSlug}`
+                                  if (secLower.includes('repair') && !usedAliasMap.has('toggle-repair-pdf')) {
+                                    aliasId = 'toggle-repair-pdf'
+                                    usedAliasMap.add('toggle-repair-pdf')
+                                  } else if (secLower.includes('service') && !usedAliasMap.has('toggle-services-pdf')) {
+                                    aliasId = 'toggle-services-pdf'
+                                    usedAliasMap.add('toggle-services-pdf')
+                                  } else if (secLower.includes('tech') && !usedAliasMap.has('toggle-technical-pdf')) {
+                                    aliasId = 'toggle-technical-pdf'
+                                    usedAliasMap.add('toggle-technical-pdf')
+                                  } else if (secLower.includes('hse') && !usedAliasMap.has('toggle-hse-pdf')) {
+                                    aliasId = 'toggle-hse-pdf'
+                                    usedAliasMap.add('toggle-hse-pdf')
+                                  }
+
+                                  return (
+                                    <div
+                                      key={sec.name}
+                                      className={cn(
+                                        'border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs transition-colors',
+                                        isChecked
+                                          ? 'border-blue-300 ring-1 ring-blue-100 bg-blue-50/20'
+                                          : 'border-slate-200 bg-slate-50/70 opacity-60'
+                                      )}
+                                    >
+                                      <Switch
+                                        id={aliasId}
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => toggleSection(sec.name, checked)}
+                                      />
+                                      <label
+                                        htmlFor={aliasId}
+                                        className="cursor-pointer text-xs font-medium text-slate-700 select-none whitespace-nowrap"
+                                        title={`Sertakan karyawan section ${sec.name}`}
+                                      >
+                                        {sec.name}{' '}
+                                        <span className="text-[10px] text-muted-foreground font-normal">
+                                          ({sec.count})
+                                        </span>
+                                      </label>
+                                    </div>
+                                  )
+                                })
+                              })()}
+                            </div>
+                          </div>
                         )}
 
                         <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
@@ -12736,14 +12973,17 @@ export function SchedulingTimesheetWorkspace({
                           disabled={
                             rows.length === 0 ||
                             siteId === 'all' ||
-                            selectedPdfDocTypes.length === 0
+                            selectedPdfDocTypes.length === 0 ||
+                            (availableSiteSections.length > 1 && !hasAnySectionActive)
                           }
                           onClick={() => void previewAllSiteOvertimePdf()}
                           className="h-8 rounded-lg text-xs"
                           title={
                             selectedPdfDocTypes.length === 0
                               ? 'Pilih minimal satu jenis dokumen PDF'
-                              : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
+                              : availableSiteSections.length > 1 && !hasAnySectionActive
+                                ? 'Pilih minimal satu section karyawan'
+                                : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
                           }
                         >
                           <Eye className="mr-1.5 size-3.5" /> Preview PDF (
@@ -12753,8 +12993,9 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           variant="default"
                           disabled={
-                            selectedOvertimeEmployeeIds.length === 0 ||
-                            selectedPdfDocTypes.length === 0
+                            (selectedOvertimeEmployeeIds.length === 0 && rows.length === 0) ||
+                            selectedPdfDocTypes.length === 0 ||
+                            (availableSiteSections.length > 1 && !hasAnySectionActive)
                           }
                           onClick={() => void bulkDownloadOvertimePdf(includeTotalOvertime)}
                           className="h-8 rounded-lg bg-indigo-600 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
@@ -14263,6 +14504,7 @@ export function SchedulingTimesheetWorkspace({
                       <TableCell className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <Button
+                            id={`btn-open-attendance-${plan.siteId}-${plan.period}`}
                             size="icon"
                             variant="outline"
                             onClick={(e) => {
@@ -15437,7 +15679,7 @@ export function SchedulingTimesheetWorkspace({
                 <NativeSelect
                   value={profileSection}
                   onValueChange={handleProfileSectionChange}
-                  options={sectionOptions.map((section) => ({
+                  options={siteRosterSectionOptions.map((section) => ({
                     value: section,
                     label: rosterSectionLabel(section),
                   }))}

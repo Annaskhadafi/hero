@@ -286,7 +286,7 @@ function codeClass(code: ScheduleV2Code) {
   return 'bg-white text-slate-300 hover:bg-slate-50'
 }
 
-const sectionOptions = ['Service Operation', 'Repair Retread', 'Crew Office']
+const DEFAULT_FALLBACK_SECTIONS = ['Service Operation', 'Repair Retread', 'Crew Office']
 const employmentPositionLabels = [
   'permanent',
   'contract',
@@ -298,28 +298,29 @@ const employmentPositionLabels = [
   'outsource',
 ]
 const defaultPositionLabels = ['REPAIRMAN', 'TYREMAN', 'Operation']
-const rosterSectionStyles: Record<
-  string,
-  { title: string; head: string; day: string; total: string }
-> = {
-  'Service Operation': {
-    title: 'Roster Crew Serviceman',
-    head: 'bg-sky-50 text-sky-900',
-    day: 'bg-sky-50/60 text-sky-900',
-    total: 'bg-surface-container-low text-foreground',
-  },
-  'Repair Retread': {
-    title: 'Roster Crew Repairman',
-    head: 'bg-emerald-50 text-emerald-900',
-    day: 'bg-emerald-50/60 text-emerald-900',
-    total: 'bg-surface-container-low text-foreground',
-  },
-  'Crew Office': {
-    title: 'Roster Crew Office',
-    head: 'bg-orange-50 text-orange-900',
-    day: 'bg-orange-50/60 text-orange-900',
-    total: 'bg-surface-container-low text-foreground',
-  },
+
+const SECTION_COLOR_PALETTES = [
+  { head: 'bg-sky-50 text-sky-900 border-sky-200', day: 'bg-sky-50/60 text-sky-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-emerald-50 text-emerald-900 border-emerald-200', day: 'bg-emerald-50/60 text-emerald-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-orange-50 text-orange-900 border-orange-200', day: 'bg-orange-50/60 text-orange-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-purple-50 text-purple-900 border-purple-200', day: 'bg-purple-50/60 text-purple-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-amber-50 text-amber-900 border-amber-200', day: 'bg-amber-50/60 text-amber-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-rose-50 text-rose-900 border-rose-200', day: 'bg-rose-50/60 text-rose-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-teal-50 text-teal-900 border-teal-200', day: 'bg-teal-50/60 text-teal-900', total: 'bg-surface-container-low text-foreground' },
+  { head: 'bg-indigo-50 text-indigo-900 border-indigo-200', day: 'bg-indigo-50/60 text-indigo-900', total: 'bg-surface-container-low text-foreground' },
+]
+
+function getRosterSectionStyle(section: string) {
+  let hash = 0
+  for (let i = 0; i < section.length; i++) {
+    hash = (hash << 5) - hash + section.charCodeAt(i)
+    hash |= 0
+  }
+  const palette = SECTION_COLOR_PALETTES[Math.abs(hash) % SECTION_COLOR_PALETTES.length]
+  return {
+    title: `Roster ${section}`,
+    ...palette,
+  }
 }
 
 function normalizeLocation(value: string) {
@@ -330,21 +331,9 @@ function normalizeLocation(value: string) {
 }
 
 function normalizeRosterSection(value?: string | null) {
-  const normalized = normalizeLocation(value ?? '')
-  if (normalized.includes('repair') || normalized.includes('retread')) return 'Repair Retread'
-  if (normalized.includes('technical')) return 'Crew Office'
-  if (normalized.includes('tyreman') || normalized.includes('tyre')) return 'Service Operation'
-  if (
-    normalized.includes('serviceoperation') ||
-    normalized.includes('serviceman') ||
-    normalized.includes('servicemvc') ||
-    normalized.includes('serviceoperationmvc') ||
-    normalized.includes('serviceoperationother') ||
-    normalized.includes('serviceoperationothers')
-  )
-    return 'Service Operation'
-
-  return 'Crew Office'
+  const trimmed = (value ?? '').trim()
+  if (!trimmed) return 'Operational'
+  return trimmed
 }
 
 function isEmploymentPositionLabel(value?: string | null) {
@@ -386,9 +375,7 @@ function isLeadershipPosition(value?: string | null) {
 }
 
 function rosterSectionLabel(section: string) {
-  if (section === 'Service Operation') return 'Roster Serviceman'
-  if (section === 'Repair Retread') return 'Crew Repair'
-  return 'Crew Office'
+  return section
 }
 
 function weekday(period: string, day: number) {
@@ -506,6 +493,7 @@ export function ScheduleV2Workspace({
   const [profileKimperTh, setProfileKimperTh] = useState(false)
   const [profileSiteId, setProfileSiteId] = useState('')
   const [addEmployeeId, setAddEmployeeId] = useState('')
+  const [rosterActiveSections, setRosterActiveSections] = useState<string[] | null>(null)
 
   const selectedEmployee = useMemo(
     () => (selectedEmployeeId ? employees.find((e) => e.id === selectedEmployeeId) : null),
@@ -563,6 +551,20 @@ export function ScheduleV2Workspace({
     })
   }, [rows, employeeById])
 
+  const siteRosterSectionOptions = useMemo(() => {
+    const sections = new Set<string>()
+    for (const row of tableRows) {
+      if (row.rosterSection) sections.add(row.rosterSection)
+    }
+    for (const emp of selectedSiteEmployees) {
+      if (emp.section) sections.add(emp.section.trim())
+    }
+    if (sections.size === 0) {
+      return DEFAULT_FALLBACK_SECTIONS
+    }
+    return Array.from(sections).sort((a, b) => a.localeCompare(b))
+  }, [tableRows, selectedSiteEmployees])
+
   function rosterSectionTotals(sectionRows: typeof tableRows, dayCount: number) {
     return Array.from({ length: dayCount }, (_, i) => {
       let ds = 0
@@ -613,14 +615,20 @@ export function ScheduleV2Workspace({
       .map((day) => `<th><div>${weekday(editorPlan.period, day)}</div><div>${day}</div></th>`)
       .join('')
 
-    const rosterTables = sectionOptions
+    const siteConfig = configs.find((c) => c.siteId === editorPlan.siteId)
+    const activeSections = siteRosterSectionOptions.filter(
+      (sec) => !rosterActiveSections || rosterActiveSections.includes(sec)
+    )
+
+    const rosterTables = activeSections
       .map((section) => {
         const sectionRows = tableRows.filter((row) => row.rosterSection === section)
         if (sectionRows.length === 0) return ''
 
-        const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
+        const styles = getRosterSectionStyle(section)
         const totals = rosterSectionTotals(sectionRows, dayCount)
-        const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+        const showOperatorTotals =
+          section.toLowerCase().includes('service') || section.toLowerCase().includes('repair')
 
         const bodyRows = sectionRows
           .map(
@@ -686,6 +694,26 @@ export function ScheduleV2Workspace({
           <h1>${title}</h1>
           <p>Karyawan: ${tableRows.length}</p>
           ${rosterTables}
+          <div style="display:flex; justify-content:space-between; margin-top:20px; font-size:7px; page-break-inside:avoid; padding:0 20px;">
+            <div style="text-align:center; min-width:60mm;">
+              <div>Dibuat Oleh,</div>
+              <div style="height:15mm;"></div>
+              <div style="font-weight:bold; text-decoration:underline;">${siteConfig?.pdfConfig?.preparedBy || 'Leader Section / Admin'}</div>
+              <div style="color:#64748b;">Leader / Admin</div>
+            </div>
+            <div style="text-align:center; min-width:60mm;">
+              <div>Diperiksa Oleh,</div>
+              <div style="height:15mm;"></div>
+              <div style="font-weight:bold; text-decoration:underline;">${siteConfig?.pdfConfig?.pjoLeader || 'PJO / Supervisor'}</div>
+              <div style="color:#64748b;">PJO / Supervisor</div>
+            </div>
+            <div style="text-align:center; min-width:60mm;">
+              <div>Disetujui Oleh,</div>
+              <div style="height:15mm;"></div>
+              <div style="font-weight:bold; text-decoration:underline;">${siteConfig?.pdfConfig?.approvedBy || 'Project Manager / Site Head'}</div>
+              <div style="color:#64748b;">Project Manager / Site Head</div>
+            </div>
+          </div>
           <script>window.onload = () => { window.print(); };</script>
         </body>
       </html>
@@ -1490,6 +1518,68 @@ export function ScheduleV2Workspace({
                   ))}
                 </div>
               ) : null}
+              {siteRosterSectionOptions.length > 1 && (
+                <div className="border-border/60 flex flex-wrap items-center gap-2 border-b bg-slate-50/70 px-4 py-2">
+                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.12em] uppercase">
+                    Section ({siteRosterSectionOptions.filter((s) => !rosterActiveSections || rosterActiveSections.includes(s)).length}/{siteRosterSectionOptions.length}):
+                  </span>
+                  {siteRosterSectionOptions.map((sec) => {
+                    const isChecked = !rosterActiveSections || rosterActiveSections.includes(sec)
+                    const count = tableRows.filter((r) => r.rosterSection === sec).length
+                    return (
+                      <div
+                        key={sec}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded-lg border bg-white px-2 py-0.5 text-xs shadow-2xs transition-colors',
+                          isChecked ? 'border-blue-300 ring-1 ring-blue-100 bg-blue-50/20' : 'border-slate-200 opacity-60'
+                        )}
+                      >
+                        <Switch
+                          id={`roster-toggle-sec-${sec.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => {
+                            setRosterActiveSections((current) => {
+                              const active = current ?? siteRosterSectionOptions
+                              if (checked) {
+                                return [...active, sec]
+                              } else {
+                                return active.filter((s) => s !== sec)
+                              }
+                            })
+                          }}
+                        />
+                        <label
+                          htmlFor={`roster-toggle-sec-${sec.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+                          className="cursor-pointer text-xs font-medium text-slate-700 select-none whitespace-nowrap"
+                        >
+                          {sec}{' '}
+                          <span className="text-[10px] text-muted-foreground font-normal">
+                            ({count})
+                          </span>
+                        </label>
+                      </div>
+                    )
+                  })}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1.5 text-[11px] text-blue-600 hover:text-blue-800"
+                    onClick={() => setRosterActiveSections(siteRosterSectionOptions)}
+                  >
+                    Semua
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-1.5 text-[11px] text-slate-500 hover:text-slate-800"
+                    onClick={() => setRosterActiveSections([])}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              )}
               <div className="bg-surface min-h-0 flex-1 overflow-auto p-3 select-none">
                 <table className="min-w-max border-separate border-spacing-0 overflow-hidden rounded-xl bg-white text-xs shadow-sm">
                   <thead className="sticky top-0 z-30">
@@ -1535,14 +1625,17 @@ export function ScheduleV2Workspace({
                     </tr>
                   </thead>
                   <tbody>
-                    {sectionOptions.map((section) => {
-                      const sectionRows = tableRows.filter((row) => row.rosterSection === section)
-                      if (sectionRows.length === 0) return null
+                    {siteRosterSectionOptions
+                      .filter((sec) => !rosterActiveSections || rosterActiveSections.includes(sec))
+                      .map((section) => {
+                        const sectionRows = tableRows.filter((row) => row.rosterSection === section)
+                        if (sectionRows.length === 0) return null
 
-                      const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
-                      const dayCount = getScheduleV2DayCount(editorPlan.period)
-                      const totals = rosterSectionTotals(sectionRows, dayCount)
-                      const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+                        const styles = getRosterSectionStyle(section)
+                        const dayCount = getScheduleV2DayCount(editorPlan.period)
+                        const totals = rosterSectionTotals(sectionRows, dayCount)
+                        const showOperatorTotals =
+                          section.toLowerCase().includes('service') || section.toLowerCase().includes('repair')
 
                       return (
                         <Fragment key={section}>
@@ -1905,7 +1998,7 @@ export function ScheduleV2Workspace({
               <Label>Grouping Section</Label>
               <HeroSearchableSelect
                 placeholder="Pilih Section"
-                options={sectionOptions.map((opt) => ({
+                options={siteRosterSectionOptions.map((opt) => ({
                   value: opt,
                   label: rosterSectionLabel(opt),
                 }))}

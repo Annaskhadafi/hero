@@ -7,51 +7,63 @@ test('Verifikasi Filter Switch Section PDF Attendance Site Balikpapan', { timeou
   screen,
   browser,
 }) => {
-  // 1. Login ke HERO
+  // 1. Login ke HERO dan buka langsung attendance Balikpapan
   await loginToHero(app, screen, browser, {
-    username: '71261',
-    password: 'Chitra#71261',
-    targetUrl: '/dashboard/scheduling-timesheet/attendance',
+    targetUrl: '/dashboard/scheduling-timesheet/attendance?siteId=126&period=2026-11',
   })
   await new Promise((resolve) => setTimeout(resolve, 3000))
 
-  // 2. Cari dan buka attendance untuk site Balikpapan
-  const balikpapanRow = browser.locator('tr:has-text("Balikpapan"):not(:has-text("External"))').first()
-  await expect(balikpapanRow).toBeVisible({ timeout: 30000 })
-  await balikpapanRow.click()
-  await new Promise((resolve) => setTimeout(resolve, 4000))
+  // 2. Buka attendance Balikpapan jika masih di overview list
+  const openBtn = browser
+    .locator(
+      'tr:has-text("Balikpapan") button[aria-label="Lihat attendance"], #btn-open-attendance-126-2026-11, tr:has-text("Balikpapan") button'
+    )
+    .first()
+  if (await openBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await openBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+  }
 
   await app.screenshot('attendance-balikpapan-workspace')
 
   // 3. Buka panel "Preview & Export PDF"
-  const previewExportBtn = browser.locator('button:has-text("Preview & Export PDF")').first()
-  await expect(previewExportBtn).toBeVisible({ timeout: 15000 })
+  const previewExportBtn = browser
+    .locator('#btn-preview-export-pdf, button:has-text("Preview & Export PDF")')
+    .first()
+  await expect(previewExportBtn).toBeVisible({ timeout: 30000 })
   await previewExportBtn.click()
-  await new Promise((resolve) => setTimeout(resolve, 1500))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
 
-  // 4. Verifikasi seluruh switch section dengan hitungan jumlah karyawan tampil
+  // 4. Verifikasi seluruh switch section dengan hitungan jumlah karyawan dan tombol popover semua section
   const repairSwitch = browser.locator('#toggle-repair-pdf')
   const servicesSwitch = browser.locator('#toggle-services-pdf')
   const technicalSwitch = browser.locator('#toggle-technical-pdf')
   const hseSwitch = browser.locator('#toggle-hse-pdf')
-  const otherSwitch = browser.locator('#toggle-other-pdf')
+  const allSectionsBtn = browser.locator('#btn-section-filter-popover')
 
   await expect(repairSwitch).toBeVisible({ timeout: 10000 })
   await expect(servicesSwitch).toBeVisible({ timeout: 10000 })
   await expect(technicalSwitch).toBeVisible({ timeout: 10000 })
   await expect(hseSwitch).toBeVisible({ timeout: 10000 })
-  await expect(otherSwitch).toBeVisible({ timeout: 10000 })
+  await expect(allSectionsBtn).toBeVisible({ timeout: 10000 })
 
   await app.screenshot('attendance-balikpapan-section-switches-all')
 
-  // 5. Test filter: Hanya aktifkan Technical (matikan Repair, Services, HSE, Other)
+  // Buka Popover semua section untuk verifikasi 29 section asli
+  await allSectionsBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await app.screenshot('attendance-balikpapan-popover-all-sections')
+
+  // Tutup Popover dengan klik tombol popover kembali
+  await allSectionsBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 500))
+
+  // 5. Test filter: Hanya aktifkan Technical (matikan Repair, Services, HSE)
   await repairSwitch.click()
   await new Promise((resolve) => setTimeout(resolve, 300))
   await servicesSwitch.click()
   await new Promise((resolve) => setTimeout(resolve, 300))
   await hseSwitch.click()
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  await otherSwitch.click()
   await new Promise((resolve) => setTimeout(resolve, 500))
 
   await app.screenshot('attendance-balikpapan-only-technical-switches')
