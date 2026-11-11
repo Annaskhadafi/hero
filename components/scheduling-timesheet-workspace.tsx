@@ -1999,6 +1999,29 @@ export function SchedulingTimesheetWorkspace({
   }, [activities])
 
   const [showConflictsOnly, setShowConflictsOnly] = useState(false)
+  const [showVariancesOnly, setShowVariancesOnly] = useState(false)
+  const overtimeVariancesDismissKey = `ot-variances-dismissed:${siteId}:${period}`
+  const [overtimeVariancesDismissed, setOvertimeVariancesDismissedState] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isDismissed =
+        sessionStorage.getItem(`ot-variances-dismissed:${siteId}:${period}`) === 'true'
+      setOvertimeVariancesDismissedState(isDismissed)
+    }
+  }, [siteId, period])
+
+  function setOvertimeVariancesDismissed(value: boolean) {
+    setOvertimeVariancesDismissedState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        sessionStorage.setItem(overtimeVariancesDismissKey, 'true')
+      } else {
+        sessionStorage.removeItem(overtimeVariancesDismissKey)
+      }
+    }
+  }
+
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null)
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
@@ -2660,11 +2683,15 @@ export function SchedulingTimesheetWorkspace({
     )
     setIsAttendanceDirty(false)
     setSelectedAttendanceKeys([])
-    // Reset conflict dismissed state for new site/period
+    // Reset conflict and variance dismissed state for new site/period
     const dismissKey = `conflicts-dismissed:${siteId}:${period}`
     const isDismissed =
       typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
+    const otDismissKey = `ot-variances-dismissed:${siteId}:${period}`
+    const isOtDismissed =
+      typeof window !== 'undefined' && sessionStorage.getItem(otDismissKey) === 'true'
+    setOvertimeVariancesDismissedState(isOtDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, employees, period, siteId])
 
@@ -6123,13 +6150,99 @@ export function SchedulingTimesheetWorkspace({
           attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day))
         )
       : new Set<string>()
+
+  const overtimeVariances = useMemo(() => {
+    if (mode !== 'attendance') return []
+    const results: Array<{
+      employeeId: number
+      employeeName: string
+      day: number
+      scheduleCode: string
+      actualHours: number
+      expectedHours: number
+      reason: string
+    }> = []
+
+    for (const row of rows) {
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
+      if (staff) continue
+
+      const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+      if (empSiteConfig.overtimeType === 'none') continue
+
+      for (let dayIndex = 0; dayIndex < row.schedule.length; dayIndex++) {
+        const day = dayIndex + 1
+        const scheduleCode = (row.schedule[dayIndex] as string) || 'IN'
+        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+
+        if (otInfo.totalOvertime <= 0) continue
+
+        const isOffDay = scheduleCode === 'OFF' || scheduleCode === 'FB' || scheduleCode === 'Libur' || cell.status === 'off'
+        const isHol = isHoliday(period, day, holidays)
+        const dayKey = classifyOvertimePolicyDay({
+          schedule: row.schedule,
+          dayIndex,
+          isHoliday: isHol,
+          rosterType: empSiteConfig.rosterType,
+        })
+        const shiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+        const configuredIntervals = empSiteConfig.overtimeConfig?.[dayKey]?.[shiftKey] ?? []
+        const baseExpectedMinutes = configuredIntervals.reduce((sum, item) => {
+          const s = minutesFromTime(item.start)
+          const e = minutesFromTime(item.end)
+          if (s != null && e != null) {
+            return sum + (e >= s ? e - s : e + 1440 - s)
+          }
+          return sum
+        }, 0)
+        const standardHours = baseExpectedMinutes > 0
+          ? baseExpectedMinutes / 60
+          : (dayKey === 'hariLibur' || dayKey === 'hariKe6' || dayKey === 'hariKe7' ? 8 : 4)
+
+        const isHoursDeviated = Math.abs(otInfo.totalOvertime - standardHours) > 0.1
+        if (isHoursDeviated || isOffDay) {
+          let reason = ''
+          if (isOffDay) {
+            reason = `Lembur ${otInfo.totalOvertime}j di jadwal ${scheduleCode} (template standar: ${standardHours}j)`
+          } else if (otInfo.totalOvertime > standardHours) {
+            reason = `Lembur ${otInfo.totalOvertime}j melebihi template standar ${standardHours}j`
+          } else {
+            reason = `Lembur ${otInfo.totalOvertime}j berbeda dari template standar ${standardHours}j`
+          }
+
+          results.push({
+            employeeId: row.employee.id,
+            employeeName: row.employee.name,
+            day,
+            scheduleCode,
+            actualHours: otInfo.totalOvertime,
+            expectedHours: standardHours,
+            reason,
+          })
+        }
+      }
+    }
+    return results
+  }, [mode, rows, period, holidays, manualAttendance, attendanceOverrideByCell, getEmployeeSiteConfig])
+
+  const overtimeVarianceKeySet = useMemo(() => {
+    return new Set(overtimeVariances.map((v) => attendanceKey(v.employeeId, v.day)))
+  }, [overtimeVariances])
+
   const displayedAttendanceRows = useMemo(() => {
-    let list =
-      mode === 'attendance' && showConflictsOnly
-        ? rows.filter((row) =>
-            days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
-          )
-        : rows
+    let list = rows
+    if (mode === 'attendance') {
+      if (attendanceView === 'ovt' && showVariancesOnly) {
+        list = list.filter((row) =>
+          days.some((day) => overtimeVarianceKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      } else if (showConflictsOnly) {
+        list = list.filter((row) =>
+          days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      }
+    }
 
     if (attendanceSearch.trim()) {
       const q = attendanceSearch.trim().toLowerCase()
@@ -6180,12 +6293,16 @@ export function SchedulingTimesheetWorkspace({
   }, [
     mode,
     showConflictsOnly,
+    showVariancesOnly,
+    attendanceView,
     rows,
     conflictKeySet,
+    overtimeVarianceKeySet,
     days,
     attendanceSearch,
     attendanceStatusFilter,
     getAttendanceCell,
+    effectiveSiteClockConfig,
   ])
 
   useEffect(() => {
@@ -12722,6 +12839,45 @@ export function SchedulingTimesheetWorkspace({
                   </Card>
                 ) : null}
 
+                {/* Overtime & Roster Config Variances Alert Banner */}
+                {attendanceView === 'ovt' && overtimeVariances.length > 0 && !overtimeVariancesDismissed ? (
+                  <Card className="surface-module-card overflow-hidden rounded-xl border border-amber-300 bg-white p-0 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-200 text-amber-900">
+                          <AlertTriangle className="size-4" />
+                        </span>
+                        <div>
+                          <p className="font-semibold text-amber-900">
+                            {overtimeVariances.length} Peringatan Variansi Overtime & Roster Config
+                          </p>
+                          <p className="text-xs text-amber-700">
+                            Terdapat jam lembur yang berbeda dari template config standar (misal: lembur riil &gt; 8 jam atau pecahan di hari libur/biasa). Data riil site tetap dipertahankan — silakan tim Services meninjau dan melakukan penyesuaian jika diperlukan.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowVariancesOnly((val) => !val)}
+                          className="h-8 rounded-lg border-amber-300 bg-white text-xs font-medium text-amber-900 hover:bg-amber-100"
+                        >
+                          {showVariancesOnly ? 'Tampilkan semua karyawan' : `Hanya yang variansi (${overtimeVariances.length})`}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOvertimeVariancesDismissed(true)}
+                          className="h-8 text-xs text-amber-800 hover:bg-amber-100/60"
+                        >
+                          Tutup
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ) : null}
+
                 {/* 4. KPI Stat Summary Cards Row */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   {[
@@ -13470,8 +13626,21 @@ export function SchedulingTimesheetWorkspace({
                                                  staff
                                                )
                                                cellValue = otInfo.displayValue
+                                               const isVariance = overtimeVarianceKeySet.has(
+                                                 attendanceKey(row.employee.id, day)
+                                               )
+                                               const varianceItem = isVariance
+                                                 ? overtimeVariances.find(
+                                                     (v) =>
+                                                       v.employeeId === row.employee.id &&
+                                                       v.day === day
+                                                   )
+                                                 : null
+
                                                if (staff) {
                                                  cellBg = 'bg-slate-50 text-muted-foreground'
+                                               } else if (isVariance) {
+                                                 cellBg = 'bg-amber-100 text-amber-950 font-bold ring-1 ring-inset ring-amber-400'
                                                } else if (otInfo.totalOvertime > 0) {
                                                  cellBg = 'bg-white text-foreground font-semibold'
                                                } else if (cellValue === 'OFF') {
@@ -13493,11 +13662,12 @@ export function SchedulingTimesheetWorkspace({
                                                cellTitle = staff
                                                  ? 'Staff (Tidak ada lembur)'
                                                  : [
-                                                     `${scheduleCode} · ${cell.status}`,
+                                                     varianceItem ? ⚠️  : '',
+                                                     ${scheduleCode} · ,
                                                      otInfo.lemburSpl > 0
-                                                       ? `Wajib: ${otInfo.lemburWajib}j + SPL: ${otInfo.lemburSpl}j (Total: ${otInfo.totalOvertime}j)`
+                                                       ? Wajib: j + SPL: j (Total: j)
                                                        : otInfo.lemburWajib > 0
-                                                         ? `Overtime wajib: ${otInfo.lemburWajib}j`
+                                                         ? Overtime wajib: j
                                                          : '',
                                                    ]
                                                      .filter(Boolean)

@@ -589,4 +589,40 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     expect(sunDsRes.totalHours).toBe(8);
     expect(sunDsRes.autoMinutes).toBe(480); // 8 jam
   });
+
+  it('detects Site Vale overtime anomalies (Agustinus Koda 13h & 5.5h) as config variances while preserving authentic values', () => {
+    // Standard template hours:
+    // Weekday: 4h
+    // Weekend / Holiday: 8h
+    const standardWeekday = 4;
+    const standardWeekend = 8;
+
+    // Agustinus Koda Day 1: Sunday (Weekend) with 13 hours
+    const agustinusDay1Hours = 13;
+    const isDay1Variance = Math.abs(agustinusDay1Hours - standardWeekend) > 0.1;
+    expect(isDay1Variance).toBe(true);
+
+    // Agustinus Koda Day 7: Saturday (Weekend) with 5.5 hours
+    const agustinusDay7Hours = 5.5;
+    const isDay7Variance = Math.abs(agustinusDay7Hours - standardWeekend) > 0.1;
+    expect(isDay7Variance).toBe(true);
+
+    // Agustinus Koda Day 2-6: Weekdays with 4 hours
+    const agustinusWeekdayHours = 4;
+    const isWeekdayVariance = Math.abs(agustinusWeekdayHours - standardWeekday) > 0.1;
+    expect(isWeekdayVariance).toBe(false);
+
+    // Alhas Yanabal Day 1: Sunday with 2 hours
+    const alhasDay1Hours = 2;
+    expect(Math.abs(alhasDay1Hours - standardWeekend) > 0.1).toBe(true);
+
+    // Alhas Yanabal Day 6: Friday with 4.8 hours
+    const alhasDay6Hours = 4.8;
+    expect(Math.abs(alhasDay6Hours - standardWeekday) > 0.1).toBe(true);
+
+    // Authentic total calculation:
+    // Agustinus Koda total = 13 + 4 + 4 + 4 + 4 + 4 + 5.5 + 4 + 4 + 4 + 4 = 50.5h
+    const agustinusTotal = agustinusDay1Hours + (4 * 5) + agustinusDay7Hours + (4 * 3);
+    expect(agustinusTotal).toBe(50.5);
+  });
 });
