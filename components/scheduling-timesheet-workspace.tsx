@@ -663,11 +663,11 @@ const defaultSiteConfig: SiteSchedulingConfig = {
     customSigners: [],
     logoUrl: '',
     summarySignatures: {
-      ot: {},
-      spl: {},
+      ot: { preparedBy: "Muhammad As'ar Fauzan" },
+      spl: { preparedBy: "Muhammad As'ar Fauzan" },
       msa: { preparedBy: "Muhammad As'ar Fauzan" },
       meals: { preparedBy: "Muhammad As'ar Fauzan" },
-      lokasi: {},
+      lokasi: { preparedBy: "Muhammad As'ar Fauzan" },
     },
   },
 }
@@ -788,8 +788,14 @@ function normalizePdfConfig(
   }
 
   const summarySignatures: Partial<Record<SummaryDocTypeKey, SummarySignaturesConfig>> = {
-    ot: parseSummaryCfg(rawSummaries.ot),
-    spl: parseSummaryCfg(rawSummaries.spl),
+    ot: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.ot),
+    },
+    spl: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.spl),
+    },
     msa: {
       preparedBy: "Muhammad As'ar Fauzan",
       ...parseSummaryCfg(rawSummaries.msa),
@@ -798,7 +804,10 @@ function normalizePdfConfig(
       preparedBy: "Muhammad As'ar Fauzan",
       ...parseSummaryCfg(rawSummaries.meals),
     },
-    lokasi: parseSummaryCfg(rawSummaries.lokasi),
+    lokasi: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.lokasi),
+    },
   }
 
   return {
@@ -6433,10 +6442,9 @@ export function SchedulingTimesheetWorkspace({
     const docKey = normalizeSummaryDocKey(view)
     const summaryOverride = docKey ? cfg.summarySignatures?.[docKey] : undefined
 
-    const defaultPrep =
-      docKey === 'msa' || docKey === 'meals'
-        ? "Muhammad As'ar Fauzan"
-        : baseSignatures.preparedBy || cfg.preparedBy || ''
+    const defaultPrep = docKey
+      ? "Muhammad As'ar Fauzan"
+      : baseSignatures.preparedBy || cfg.preparedBy || ''
     const resolvedPreparedBy = summaryOverride?.preparedBy?.trim() || defaultPrep
     const resolvedPjo =
       summaryOverride?.pjoLeader?.trim() || baseSignatures.pjoLeader || cfg.pjoLeader || ''
@@ -7863,69 +7871,87 @@ export function SchedulingTimesheetWorkspace({
     const isHolidayDay = Boolean(holidaysByDay.get(day))
     const splHours = getApprovedSplHoursForDay(employeeId, day)
 
+    // Catatan instruksi atasan:
+    // Penambahan jam lembur otomatis dari data input SPL sementara di-OFF-kan karena input jam SPL karyawan masih banyak yang salah/tehambur.
+    // Overtime Summary mengikuti jam di Overtime Record (Lembur Wajib standar, dan jika user menginput manual lembur di tabel/modal, angka manual tersebut langsung dipakai).
+    // Sistem lembur wajib + SPL otomatis tetap dipertahankan dan dapat dinyalakan kembali kapan saja dengan mengubah flag ini ke true.
+    const ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY = false
+    const effectiveSplHours = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? splHours : 0
+
+    const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+    const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
     if (cell.status !== 'present') {
       if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+        const fbOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'FB',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: fbOt,
+          displayValue: fbOt > 0 ? String(roundOvertimeHours(fbOt)) : 'FB',
         }
       }
       if (cell.status === 'standby' || scheduleCode === 'ST') {
+        const stOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'ST',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: stOt,
+          displayValue: stOt > 0 ? String(roundOvertimeHours(stOt)) : 'ST',
         }
       }
       if (scheduleCode === 'GD') {
+        const gdOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'GD',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: gdOt,
+          displayValue: gdOt > 0 ? String(roundOvertimeHours(gdOt)) : 'GD',
         }
       }
       if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+        const sickOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'Sakit',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: sickOt,
+          displayValue: sickOt > 0 ? String(roundOvertimeHours(sickOt)) : 'Sakit',
         }
       }
       if (cell.status === 'leave' || scheduleCode === 'Izin') {
+        const leaveOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'Izin',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: leaveOt,
+          displayValue: leaveOt > 0 ? String(roundOvertimeHours(leaveOt)) : 'Izin',
         }
       }
       if (cell.status === 'absent') {
+        const absOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: splHours,
-          displayValue: splHours > 0 ? String(roundOvertimeHours(splHours)) : 'Alpha',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: absOt,
+          displayValue: absOt > 0 ? String(roundOvertimeHours(absOt)) : 'Alpha',
         }
       }
       if (isRosterOff || cell.status === 'off' || isHolidayDay) {
+        const offOt = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: Math.min(11, splHours),
-          displayValue: splHours > 0 ? String(roundOvertimeHours(Math.min(11, splHours))) : 'OFF',
+          lemburSpl: effectiveSplHours,
+          totalOvertime: Math.min(11, offOt),
+          displayValue: offOt > 0 ? String(roundOvertimeHours(Math.min(11, offOt))) : 'OFF',
         }
       }
-      if (splHours > 0) {
+      if (manualVal !== null || effectiveSplHours > 0) {
+        const otVal = manualVal !== null ? manualVal : effectiveSplHours
         return {
           lemburWajib: 0,
-          lemburSpl: splHours,
-          totalOvertime: Math.min(11, splHours),
-          displayValue: String(roundOvertimeHours(Math.min(11, splHours))),
+          lemburSpl: effectiveSplHours,
+          totalOvertime: Math.min(11, otVal),
+          displayValue: String(roundOvertimeHours(Math.min(11, otVal))),
         }
       }
       if (scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS') {
@@ -7955,28 +7981,30 @@ export function SchedulingTimesheetWorkspace({
     }
 
     let totalOvertime = 0
-    const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
-    const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
 
     if (isRosterOff) {
-      // Di hari libur (OFF): Total lembur murni SPL (misal 11 jam) atau override jam libur (tidak ada lembur wajib), maksimal 11 jam
-      const offTotal = Math.max(splHours, manualVal !== null ? manualVal : 0)
-      totalOvertime = Math.min(11, roundOvertimeHours(offTotal))
+      // Di hari libur (OFF): Total lembur murni override atau SPL otomatis (jika aktif), maksimal 11 jam
+      if (manualVal !== null) {
+        totalOvertime = Math.min(11, roundOvertimeHours(manualVal))
+      } else {
+        totalOvertime = Math.min(11, roundOvertimeHours(effectiveSplHours))
+      }
     } else {
       // Di hari kerja (DS / NS):
       if (manualVal !== null) {
         if (manualVal === 0) {
           totalOvertime = 0
-        } else {
-          // Jika ada manual override di modal attendance (Total Overtime):
-          // Hormati nilai override (misal 11 jam untuk lembur SPL/panjang).
-          // Gunakan Math.max untuk mencegah double counting jika manualVal dan splHours sama-sama 11
+        } else if (ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY) {
+          // Mode SPL otomatis aktif: Lembur Wajib + SPL
           const expectedTotal = splHours > 0 ? lemburWajib + splHours : manualVal
           totalOvertime = Math.min(14, roundOvertimeHours(Math.max(manualVal, expectedTotal)))
+        } else {
+          // Mode SPL otomatis off: Mengikuti Overtime Record / input manual
+          totalOvertime = Math.min(14, roundOvertimeHours(manualVal))
         }
       } else {
-        // Tanpa manual override: Total lembur = Lembur Wajib (4j atau 6j) + Lembur SPL, maksimal 14 jam
-        totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + splHours))
+        // Tanpa manual override: Total lembur = Lembur Wajib (4j atau 6j) + SPL otomatis (jika aktif)
+        totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + effectiveSplHours))
       }
     }
 
@@ -10798,9 +10826,7 @@ export function SchedulingTimesheetWorkspace({
                               label="Dibuat oleh"
                               value={
                                 siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.preparedBy ??
-                                (activePdfSummaryTab === 'msa' || activePdfSummaryTab === 'meals'
-                                  ? "Muhammad As'ar Fauzan"
-                                  : '')
+                                "Muhammad As'ar Fauzan"
                               }
                               onValueChange={(v) =>
                                 updateSummaryPdfConfig(activePdfSummaryTab, 'preparedBy', v)
@@ -10810,11 +10836,8 @@ export function SchedulingTimesheetWorkspace({
                                 label: e.role ? `${e.name} (${e.role})` : e.name,
                               }))}
                               placeholder={
-                                siteConfig.pdfConfig.preparedBy
-                                  ? `Default: ${siteConfig.pdfConfig.preparedBy}`
-                                  : activePdfSummaryTab === 'msa' || activePdfSummaryTab === 'meals'
-                                    ? "Muhammad As'ar Fauzan"
-                                    : 'Pilih atau ketik pembuat...'
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.preparedBy ||
+                                "Muhammad As'ar Fauzan"
                               }
                               allowCustom={true}
                               widthClassName="w-full"
