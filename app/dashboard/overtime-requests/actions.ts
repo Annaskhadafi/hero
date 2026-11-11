@@ -120,7 +120,7 @@ type OvertimeApprovalData = {
 
 // ── Ensure Approval Steps Exist ────────────────────────────────────────────
 
-async function ensureOvertimeApprovalsExist(documentId: number) {
+export async function ensureOvertimeApprovalsExist(documentId: number) {
   const existingSteps = await db
     .select()
     .from(overtimeApprovals)
@@ -295,7 +295,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
   const steps = [
     {
       stepOrder: 1,
-      stepLabel: 'Pemohon / Serviceman',
+      stepLabel: 'Pemohon / Serviceman', // stepLabel: 'Karyawan Sign'
       approverRole: 'employee',
       employeeId: requester?.id ?? null,
       name: requester?.name ?? 'Pemohon',
@@ -308,7 +308,7 @@ async function ensureOvertimeApprovalsExist(documentId: number) {
     },
     {
       stepOrder: 2,
-      stepLabel: 'Leader / PJO',
+      stepLabel: 'Leader / PJO', // stepLabel: 'Leader / Pengawas' / stepLabel: 'Leader / Supervisor'
       approverRole: 'leader_or_pjo',
       employeeId: approverEmployeeId,
       name: approverName,

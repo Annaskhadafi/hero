@@ -52,6 +52,7 @@ import {
   getCurrentWeekRange,
 } from '@/lib/daily-activity-types'
 import { DailyActivityEmployeeAnalyticsModal } from '@/components/daily-activity-employee-analytics-modal'
+import { DailyActivityCreateSplModal } from '@/components/daily-activity-create-spl-modal'
 import { cn } from '@/lib/utils'
 import { formatPhotoDisplayUrl } from '@/lib/photo-url'
 import { DailyActivityPhotoThumbnail } from '@/components/daily-activity-photo-thumbnail'
@@ -305,6 +306,59 @@ export function DailyActivityClientDashboard({
     delayedJob?: DelayedJobItem
     employee?: EmployeeActivityRow
   } | null>(null)
+
+  // SPL Creation Modal state
+  const [createSplTarget, setCreateSplTarget] = useState<EmployeeActivityRow | null>(null)
+
+  const handleOpenCreateSpl = (emp: EmployeeActivityRow) => {
+    setCreateSplTarget(emp)
+  }
+
+  const handleOpenCreateSplForDelayedJob = (job?: DelayedJobItem) => {
+    if (!job) return
+    const matchingEmp = initialData.employees.find((e) => e.name === job.employeeName)
+    if (matchingEmp) {
+      setCreateSplTarget(matchingEmp)
+    } else {
+      setCreateSplTarget({
+        name: job.employeeName,
+        employeeId: '',
+        jobTitle: job.jobTitle,
+        department: '',
+        siteId: initialData.currentSite.id,
+        siteName: initialData.currentSite.name,
+        customerName: initialData.currentSite.customerName,
+        shift: 'Pagi',
+        checkInTime: '-',
+        primaryActivity: job.activity,
+        unitTireId: job.unitNumber,
+        allUnits: job.unitNumber ? [job.unitNumber] : [],
+        status: 'Berjalan',
+        progress: 50,
+        lastUpdate: '',
+        sessionsCount: 1,
+        tasksCount: 1,
+        totalPoints: 10,
+        tasks: [
+          {
+            id: 1,
+            label: job.activity,
+            unitNumber: job.unitNumber,
+            status: 'Berjalan',
+            progress: 50,
+            startedAt: '17:00',
+            endedAt: '21:00',
+            remarks: job.reason ? `Pekerjaan tertunda: ${job.reason}` : undefined,
+          },
+        ],
+        sessions: [],
+        ewhActualHours: 0,
+        ewhTargetHours: 8,
+        ewhLabel: '0/8 Jam',
+        ewhPercentage: 0,
+      })
+    }
+  }
 
   // Employee EWH & Activity History Analytics Modal state
   const [analyticsEmployee, setAnalyticsEmployee] = useState<{
@@ -2339,11 +2393,12 @@ export function DailyActivityClientDashboard({
                                 <BarChart3 className="w-3.5 h-3.5 mr-2 text-indigo-600" />
                                 Riwayat &amp; Analitik EWH
                               </DropdownMenuItem>
-                              <DropdownMenuItem asChild>
-                                <Link href="/dashboard/overtime-requests">
-                                  <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" />
-                                  Buat SPL Lembur
-                                </Link>
+                              <DropdownMenuItem
+                                onClick={() => handleOpenCreateSpl(emp)}
+                                className="cursor-pointer"
+                              >
+                                <Clock className="w-3.5 h-3.5 mr-2 text-amber-600" />
+                                Buat SPL Lembur
                               </DropdownMenuItem>
                               {currentUser?.isSuperAdmin && (
                                 <>
@@ -2920,11 +2975,14 @@ export function DailyActivityClientDashboard({
                   Tutup
                 </Button>
 
-                <Button asChild size="sm" className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5">
-                  <Link href="/dashboard/overtime-requests">
-                    <Clock className="w-3.5 h-3.5" />
-                    Buat SPL Lembur Terkait
-                  </Link>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleOpenCreateSplForDelayedJob(activeDetailItem.delayedJob)}
+                  className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 font-bold cursor-pointer"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  Buat SPL Lembur Terkait
                 </Button>
               </div>
             </div>
@@ -3032,6 +3090,41 @@ export function DailyActivityClientDashboard({
 
               {/* Scrollable Document Body */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-100/70">
+                {/* Linked SPL Status Notification Banner */}
+                {activeDetailItem.employee.splNumber && (
+                  <div className="bg-amber-50 border border-amber-300/80 rounded-xl p-3 sm:p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-3">
+                      <div className="size-9 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 border border-amber-300">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span>Surat Perintah Lembur Terbit:</span>
+                          <span className="font-mono text-blue-700 bg-white border border-blue-200 px-2 py-0.5 rounded text-xs font-bold">
+                            {activeDetailItem.employee.splNumber}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-200">
+                            {activeDetailItem.employee.splStatus || 'Submitted'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-0.5">
+                          Telah terintegrasi ke sistem SPL dan alur approval atasan. Pengguna dapat langsung meninjau atau mencetak dokumen resmi lembur.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      asChild
+                      size="sm"
+                      className="h-8 text-xs font-bold bg-[#0753e7] hover:bg-blue-600 text-white gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Link href={`/dashboard/overtime-requests?splNumber=${encodeURIComponent(activeDetailItem.employee.splNumber)}`}>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Buka Dokumen SPL
+                      </Link>
+                    </Button>
+                  </div>
+                )}
+
                 {/* 1. Official Document Metadata Table */}
                 <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                   <div className="bg-slate-50/80 px-4 py-2.5 border-b border-slate-200 font-bold text-xs text-slate-800 flex items-center justify-between">
@@ -3343,11 +3436,14 @@ export function DailyActivityClientDashboard({
                     <Download className="w-3.5 h-3.5 text-slate-500" />
                     Ekspor CSV
                   </Button>
-                  <Button asChild size="sm" className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs">
-                    <Link href="/dashboard/overtime-requests">
-                      <Clock className="w-3.5 h-3.5" />
-                      Buat SPL Lembur
-                    </Link>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => handleOpenCreateSpl(activeDetailItem.employee!)}
+                    className="bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs font-bold cursor-pointer"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    {activeDetailItem.employee.splNumber ? 'Buat SPL Tambahan' : 'Buat SPL Lembur'}
                   </Button>
                 </div>
               </div>
@@ -3549,6 +3645,27 @@ export function DailyActivityClientDashboard({
           siteName={analyticsEmployee.siteName}
         />
       )}
+
+      {/* ── Daily Activity to SPL Auto-generation Modal ── */}
+      <DailyActivityCreateSplModal
+        isOpen={Boolean(createSplTarget)}
+        onClose={() => setCreateSplTarget(null)}
+        employee={createSplTarget}
+        onSuccess={(splNumber, splId) => {
+          if (activeDetailItem?.type === 'employee' && activeDetailItem.employee) {
+            setActiveDetailItem({
+              type: 'employee',
+              employee: {
+                ...activeDetailItem.employee,
+                splNumber,
+                splId,
+                splStatus: 'Submitted',
+              },
+            })
+          }
+          router.refresh()
+        }}
+      />
     </div>
   )
 }

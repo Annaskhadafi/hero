@@ -1064,6 +1064,7 @@ export function OvertimeListingClient({
   currentEmployeeEmail = null,
   currentEmployeeName = '',
   isAdmin = false,
+  initialSearchQuery = '',
   attendanceOverrides = [],
 }: {
   rows: OvertimeListingRow[]
@@ -1077,6 +1078,7 @@ export function OvertimeListingClient({
   currentEmployeeEmail?: string | null
   currentEmployeeName?: string | null
   isAdmin?: boolean
+  initialSearchQuery?: string
   attendanceOverrides?: AttendanceOverrideItem[]
 }) {
   const attendanceLookupMap = useMemo(() => {
@@ -1721,7 +1723,13 @@ export function OvertimeListingClient({
 
   // Filters & Tabs State
   const [activeTab, setActiveTab] = useState<'all' | 'submitted' | 'approved' | 'draft' | 'rejected'>('all')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery)
+
+  useEffect(() => {
+    if (initialSearchQuery) {
+      setSearchQuery(initialSearchQuery)
+    }
+  }, [initialSearchQuery])
   const [selectedDepartments, setSelectedDepartments] = useState<string[]>([])
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([])
   const [selectedWorkerCounts, setSelectedWorkerCounts] = useState<string[]>([])

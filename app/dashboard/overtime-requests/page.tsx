@@ -26,12 +26,25 @@ export const metadata = {
   title: 'Overtime Requests Approval - HERO',
 }
 
+interface OvertimeRequestsPageProps {
+  searchParams?: Promise<{
+    splNumber?: string
+    q?: string
+    [key: string]: string | string[] | undefined
+  }>
+}
+
 // Overtime Requests Server Page
-export default async function OvertimeRequestsPage() {
+export default async function OvertimeRequestsPage({ searchParams }: OvertimeRequestsPageProps) {
   const session = await getServerSession()
   if (!session?.user?.email) {
     redirect('/sign-in')
   }
+
+  const resolvedParams = searchParams ? await searchParams : {}
+  const initialSearchQuery =
+    (typeof resolvedParams.splNumber === 'string' ? resolvedParams.splNumber : '') ||
+    (typeof resolvedParams.q === 'string' ? resolvedParams.q : '')
 
   const activeEmployee = await getCurrentEmployee()
   const userRole = ((session?.user as any)?.role || '').toLowerCase()
@@ -515,6 +528,7 @@ export default async function OvertimeRequestsPage() {
       currentEmployeeEmail={normalizedEmail}
       currentEmployeeName={activeEmployee?.name || ''}
       isAdmin={isAdmin}
+      initialSearchQuery={initialSearchQuery}
       attendanceOverrides={(attendanceOverrides || []).map((a) => ({
         employeeId: Number(a.employeeId),
         period: a.period,

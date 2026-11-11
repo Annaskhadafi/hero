@@ -127,6 +127,9 @@ export interface EmployeeActivityRow {
   representedByName?: string | null
   isMultiSession?: boolean
   multiSessionLabel?: string | null
+  splId?: number
+  splNumber?: string
+  splStatus?: string
 }
 
 
@@ -1287,6 +1290,7 @@ export async function getDailyActivityDashboardData(
     ? await db
         .select({
           splId: overtimeCommandLetters.id,
+          splNumber: overtimeCommandLetters.splNumber,
           workDate: overtimeCommandLetters.workDate,
           plannedStartAt: overtimeCommandLetters.plannedStartAt,
           plannedEndAt: overtimeCommandLetters.plannedEndAt,
@@ -1313,10 +1317,18 @@ export async function getDailyActivityDashboardData(
     : []
 
   const splByEmployeeAndDate = new Map<string, number>()
+  const splMetaByEmployeeAndDate = new Map<string, { id: number; splNumber: string; status: string }>()
   for (const spl of splQuery) {
     if (!spl.employeeId || !spl.workDate) continue
     const splDateStr = new Date(spl.workDate).toISOString().split('T')[0]
     const key = `${spl.employeeId}-${splDateStr}`
+    if (spl.splId && spl.splNumber) {
+      splMetaByEmployeeAndDate.set(key, {
+        id: spl.splId,
+        splNumber: spl.splNumber,
+        status: spl.status || 'Submitted',
+      })
+    }
     let minutes = 0
     if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
       minutes = spl.overtimeCreditMinutes
@@ -1800,6 +1812,7 @@ export async function getDailyActivityDashboardData(
     const ewhTargetHours = Number(targetHours.toFixed(1))
     const ewhPercentage = ewhTargetHours > 0 ? Math.min(100, Math.round((ewhActualHours / ewhTargetHours) * 100)) : 0
     const ewhLabel = `${ewhActualHours}/${ewhTargetHours} Jam`
+    const splMeta = sDateStr ? splMetaByEmployeeAndDate.get(`${firstSession.employeeId}-${sDateStr}`) : undefined
 
     employeesList.push({
       sessionId: firstSession.id,
@@ -1853,6 +1866,9 @@ export async function getDailyActivityDashboardData(
         : null,
       isMultiSession,
       multiSessionLabel,
+      splId: splMeta?.id,
+      splNumber: splMeta?.splNumber,
+      splStatus: splMeta?.status,
     })
   }
 
