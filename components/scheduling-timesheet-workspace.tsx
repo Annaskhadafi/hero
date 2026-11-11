@@ -573,6 +573,12 @@ type FieldBreakDraft = {
   notes?: string
 }
 
+type ApprovalApproverDraft = {
+  pjoLeaderId: number | null
+  sectionHeadId: number | null
+  departmentHeadId: number | null
+}
+
 const sectionOptions = ['Service Operation', 'Repair Retread', 'Crew Office']
 const employmentPositionLabels = [
   'permanent',
@@ -2314,6 +2320,7 @@ export function SchedulingTimesheetWorkspace({
       hrName: cfg.hrName || defaultHr,
       externalPreparedBy: cfg.externalPreparedBy,
       externalApprovedBy: cfg.externalApprovedBy,
+      externalSignatureCount: cfg.externalSignatureCount,
       customSigners: cfg.customSigners,
       logoUrl: cfg.logoUrl,
     }
@@ -13714,7 +13721,7 @@ export function SchedulingTimesheetWorkspace({
                                                     ]
                                                       .filter(Boolean)
                                                       .join(' · ')
-                                              }
+                                               }
 
                                             return (
                                               <td
