@@ -7,6 +7,8 @@ import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
+  Clock,
+  ExternalLink,
   FileText,
   Layers,
   MapPin,
@@ -23,6 +25,9 @@ import { toast } from 'sonner'
 import {
   resubmitDailyActivityApprovalFormAction,
 } from '@/app/dashboard/activity-hub/actions'
+import { DailyActivityCreateSplModal } from '@/components/daily-activity-create-spl-modal'
+import { mapMobileDarToEmployeeActivityRow } from '@/lib/daily-activity-spl-mapper'
+import type { EmployeeActivityRow } from '@/lib/daily-activity-dashboard'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -83,6 +88,10 @@ export type ApprovalData = {
   summaryRemark?: string | null
   submittedAt: Date | string | null
   approvedAt: Date | string | null
+  overtimeCommandLetterId?: number | null
+  splId?: number | null
+  splNumber?: string | null
+  splStatus?: string | null
   employee: {
     id: number
     name: string
@@ -180,6 +189,9 @@ export function MobileDailyActivityApprovalClient({
   const [isLibraryDialogOpen, setIsLibraryDialogOpen] = useState(false)
   const [librarySearch, setLibrarySearch] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isCreateSplOpen, setIsCreateSplOpen] = useState(false)
+  const [createSplSourceRow, setCreateSplSourceRow] = useState<EmployeeActivityRow | null>(null)
+  const [optimisticSpl, setOptimisticSpl] = useState<{ splNumber: string; splId: number } | null>(null)
 
   const revertedStep = data.approvals.find(
     (a) => (a.status || '').toLowerCase() === 'reverted' || (a.status || '').toLowerCase() === 'needs_revision'
@@ -418,6 +430,42 @@ export function MobileDailyActivityApprovalClient({
             {isReverted ? 'REVISI DOKUMEN' : (data.status || 'SUBMITTED').toUpperCase()}
           </Badge>
         </div>
+
+        {(optimisticSpl?.splNumber || data.splNumber) ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                SPL Terbit ({optimisticSpl ? 'Submitted' : data.splStatus || 'Submitted'})
+              </p>
+              <p className="font-mono font-bold text-blue-700 truncate">
+                {optimisticSpl?.splNumber || data.splNumber}
+              </p>
+            </div>
+            <Button
+              asChild
+              size="sm"
+              className="h-8 rounded-lg bg-[#0753e7] hover:bg-blue-700 text-white font-bold text-[11px] px-2.5 shrink-0"
+            >
+              <Link href={`/mobile/overtime?tab=history&splNumber=${encodeURIComponent(optimisticSpl?.splNumber || data.splNumber || '')}`}>
+                <ExternalLink className="size-3.5 mr-1" />
+                Buka SPL
+              </Link>
+            </Button>
+          </div>
+        ) : null}
+
+        <Button
+          type="button"
+          data-testid="mobile-approval-btn-buat-spl"
+          onClick={() => {
+            setCreateSplSourceRow(mapMobileDarToEmployeeActivityRow(data))
+            setIsCreateSplOpen(true)
+          }}
+          className="w-full h-10 rounded-xl bg-[#0753e7] hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+        >
+          <Clock className="size-4" />
+          <span>{(optimisticSpl?.splNumber || data.splNumber) ? 'BUAT SPL TAMBAHAN' : 'BUAT SPL LEMBUR'}</span>
+        </Button>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex items-center gap-2">
@@ -791,6 +839,20 @@ export function MobileDailyActivityApprovalClient({
           </div>
         </DialogContent>
       </Dialog>
+
+      <DailyActivityCreateSplModal
+        isOpen={isCreateSplOpen}
+        onClose={() => {
+          setIsCreateSplOpen(false)
+          setCreateSplSourceRow(null)
+        }}
+        employee={createSplSourceRow}
+        splModuleBasePath="/mobile/overtime"
+        onSuccess={(splNumber, splId) => {
+          setOptimisticSpl({ splNumber, splId })
+          router.refresh()
+        }}
+      />
     </div>
   )
 }

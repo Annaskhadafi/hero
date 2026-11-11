@@ -2434,10 +2434,21 @@ export async function getDailyActivityEmployeeData(
           approvedAt: dailyActivitySessions.approvedAt,
           createdAt: dailyActivitySessions.createdAt,
           employeeId: dailyActivitySessions.employeeId,
+          siteId: dailyActivitySessions.siteId,
+          overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+          splNumber: overtimeCommandLetters.splNumber,
+          splStatus: overtimeCommandLetters.status,
           employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+          employeeJobTitle: employees.jobTitle,
+          employeeDepartment: employees.department,
         })
         .from(dailyActivitySessions)
         .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+        .leftJoin(
+          overtimeCommandLetters,
+          eq(dailyActivitySessions.overtimeCommandLetterId, overtimeCommandLetters.id)
+        )
         .where(and(sessionScopePredicate, isNull(dailyActivitySessions.deletedAt)))
         .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
         .limit(maxRowsLimit),
@@ -2543,6 +2554,7 @@ export async function getDailyActivityEmployeeData(
             sessionId: dailyActivitySessionItems.sessionId,
             snapshotLabel: dailyActivitySessionItems.snapshotLabel,
             snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
             unitNumber: dailyActivitySessionItems.unitNumber,
             remark: dailyActivitySessionItems.remark,
             actualPoints: dailyActivitySessionItems.actualPoints,
@@ -2699,6 +2711,15 @@ export async function getDailyActivityEmployeeData(
       approvals,
       pendingApproverName: pendingApp?.approverName ?? (s.status === 'submitted' ? 'Approver L1' : null),
       authorEmployeeId: s.employeeId,
+      employeeId: s.employeeId,
+      employeeSn: s.employeeSn || employee.employeeSn || '',
+      jobTitle: s.employeeJobTitle || employee.jobTitle || '',
+      department: s.employeeDepartment || employee.department || '',
+      siteId: s.siteId ?? employee.siteId ?? null,
+      siteName: site?.name ?? null,
+      splId: s.overtimeCommandLetterId ?? null,
+      splNumber: s.splNumber ?? null,
+      splStatus: s.splStatus ?? null,
       employeeName: s.employeeName || 'Karyawan',
       representedByName: isMember ? (s.employeeName || 'Rekan Tim') : null,
       isAuthor: s.employeeId === employee.id,

@@ -531,6 +531,9 @@ export async function createSplFromDailyActivityAction(
     revalidatePath('/dashboard/overtime-requests')
     revalidatePath('/dashboard/activity-hub')
     revalidatePath('/dashboard/approval')
+    revalidatePath('/mobile/activity')
+    revalidatePath('/mobile/overtime')
+    revalidatePath('/mobile/approval')
 
     return {
       success: true,

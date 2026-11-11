@@ -62,7 +62,7 @@ async function safeQuery<T>(fn: () => Promise<T>, fallback: T, label: string): P
 export default async function MobileOvertimePage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; extend?: string; edit?: string }>
+  searchParams: Promise<{ tab?: string; extend?: string; edit?: string; splNumber?: string }>
 }) {
   const session = await getServerSession()
   if (!session?.user?.email) redirect('/sign-in')
@@ -534,7 +534,7 @@ export default async function MobileOvertimePage({
                 {historyRows.length} Total
               </Badge>
             </div>
-            <MobileSplHistory rows={historyRows} />
+            <MobileSplHistory rows={historyRows} initialQuery={query.splNumber || ''} />
           </div>
         </TabsContent>
 

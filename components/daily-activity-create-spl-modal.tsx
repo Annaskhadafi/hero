@@ -45,6 +45,7 @@ export interface DailyActivityCreateSplModalProps {
   onClose: () => void
   employee?: EmployeeActivityRow | null
   onSuccess?: (splNumber: string, splId: number) => void
+  splModuleBasePath?: string
 }
 
 interface EditableSplTaskItem {
@@ -243,6 +244,7 @@ export function DailyActivityCreateSplModal({
   onClose,
   employee,
   onSuccess,
+  splModuleBasePath = '/dashboard/overtime-requests',
 }: DailyActivityCreateSplModalProps) {
   const [workDate, setWorkDate] = useState('')
   const [startTime, setStartTime] = useState('17:00')
@@ -393,7 +395,7 @@ export function DailyActivityCreateSplModal({
       <DialogContent
         showCloseButton={false}
         overlayClassName="z-[90]"
-        className="z-[95] max-w-3xl max-h-[92vh] flex flex-col p-0 overflow-hidden bg-white shadow-2xl rounded-2xl border border-slate-200"
+        className="z-[95] w-[95vw] sm:w-full max-w-3xl max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-white shadow-2xl rounded-2xl border border-slate-200"
       >
         {/* Top Corporate Gradient Header */}
         <div className="bg-[linear-gradient(135deg,#003461,#004b87)] p-4 sm:p-5 text-white shrink-0 flex items-center justify-between border-b border-blue-900">
@@ -473,7 +475,13 @@ export function DailyActivityCreateSplModal({
                 asChild
                 className="h-9 flex-1 bg-[#0753e7] hover:bg-blue-600 text-white font-bold gap-2 text-xs"
               >
-                <Link href={`/dashboard/overtime-requests?splNumber=${encodeURIComponent(createdSpl.splNumber)}`}>
+                <Link
+                  href={
+                    splModuleBasePath === '/mobile/overtime'
+                      ? `/mobile/overtime?tab=history&splNumber=${encodeURIComponent(createdSpl.splNumber)}`
+                      : `${splModuleBasePath}?splNumber=${encodeURIComponent(createdSpl.splNumber)}`
+                  }
+                >
                   <ExternalLink className="w-3.5 h-3.5" />
                   Buka di Modul SPL
                 </Link>

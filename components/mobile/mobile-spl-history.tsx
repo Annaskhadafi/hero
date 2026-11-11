@@ -92,13 +92,21 @@ function statusLabel(row: MobileSplHistoryRow) {
 export function MobileSplHistory({
   rows,
   activeOnly = false,
+  initialQuery = '',
 }: {
   rows: MobileSplHistoryRow[]
   activeOnly?: boolean
+  initialQuery?: string
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [status, setStatus] = useState('all')
   const [visible, setVisible] = useState(8)
+
+  useEffect(() => {
+    if (initialQuery) {
+      setQuery(initialQuery)
+    }
+  }, [initialQuery])
 
   // ── Floating PDF Preview State ──
   const [selectedSplId, setSelectedSplId] = useState<number | null>(null)

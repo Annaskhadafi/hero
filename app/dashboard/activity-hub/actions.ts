@@ -4794,6 +4794,8 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
         submissionSource: dailyActivitySessions.submissionSource,
         routeTemplateId: dailyActivitySessions.routeTemplateId,
         overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+        splNumber: overtimeCommandLetters.splNumber,
+        splStatus: overtimeCommandLetters.status,
         summaryRemark: dailyActivitySessions.summaryRemark,
         submittedAt: dailyActivitySessions.submittedAt,
         approvedAt: dailyActivitySessions.approvedAt,
@@ -4810,6 +4812,10 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
       .from(dailyActivitySessions)
       .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
       .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
+      .leftJoin(
+        overtimeCommandLetters,
+        eq(dailyActivitySessions.overtimeCommandLetterId, overtimeCommandLetters.id)
+      )
       .where(
         or(
           ...(isNumeric ? [eq(dailyActivitySessions.id, numId)] : []),
@@ -5061,6 +5067,9 @@ export async function getDailyActivityApprovalData(sessionIdInput: number | stri
     submissionSource: header.submissionSource,
     routeTemplateId: header.routeTemplateId,
     overtimeCommandLetterId: header.overtimeCommandLetterId,
+    splId: header.overtimeCommandLetterId ?? null,
+    splNumber: header.splNumber ?? null,
+    splStatus: header.splStatus ?? null,
     summaryRemark: header.summaryRemark,
     notes: cleanNotes,
     teamMembersSummary,
@@ -6510,7 +6519,7 @@ export async function saveDailyActivityApprovalForm(payload: {
             .map((id) => sessionTeamEmployeeMap.get(id))
             .filter((e) => Boolean(e))
           if (rawItemMembers.length < rawItemMemberIds.length && Array.isArray((item as any).itemTeamMembers)) {
-            const existingMap = new Map((item as any).itemTeamMembers.map((m) => [Number(m.id || m.employeeId), m]))
+            const existingMap = new Map((item as any).itemTeamMembers.map((m: any) => [Number(m.id || m.employeeId), m]))
             rawItemMembers = rawItemMemberIds.map((id) => sessionTeamEmployeeMap.get(id) || existingMap.get(id)).filter(Boolean)
           }
         }
