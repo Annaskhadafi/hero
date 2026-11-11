@@ -6639,6 +6639,24 @@ export function SchedulingTimesheetWorkspace({
       getOvertime: (day) => {
         const scheduleCode = employeeSchedule[day - 1] ?? 'IN'
         const cell = getAttendanceCell(employee.id, day, scheduleCode)
+        const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+        const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
+        if (manualVal !== null) {
+          const finalVal = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal))
+          return {
+            totalHours: finalVal,
+            intervals: [],
+            totalMinutes: Math.round(finalVal * 60),
+            autoMinutes: Math.round(finalVal * 60),
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Manual',
+            splNumbers: [],
+            workingIntervals: [],
+          }
+        }
+
         const isOffDay =
           cell.status === 'off' ||
           scheduleCode === 'OFF' ||
@@ -6665,13 +6683,9 @@ export function SchedulingTimesheetWorkspace({
           staff,
           employee.id
         )
-        // Jika ada input manual/override di dialog absensi, gunakan nilai manual tersebut
-        const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
-        const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
-        const finalHours = manualVal !== null ? manualVal : mandatoryOvertimeHours(res)
         return {
           ...res,
-          totalHours: finalHours,
+          totalHours: mandatoryOvertimeHours(res),
         }
       },
     }).map((day) => {
@@ -6736,11 +6750,12 @@ export function SchedulingTimesheetWorkspace({
       const hasManualClockIn = Boolean(day.clockIn && day.clockIn.trim() !== '')
       const hasManualClockOut = Boolean(day.clockOut && day.clockOut.trim() !== '')
       const hasRealAttendance = hasManualClockIn || hasManualClockOut || day.status === 'present'
+      const hasOvertimeHours = Boolean(day.overtime?.totalHours && day.overtime.totalHours > 0)
       const isOffDay =
-        day.status === 'off' ||
+        (day.status === 'off' ||
         day.scheduleCode === 'OFF' ||
         day.scheduleCode === 'FB' ||
-        day.scheduleCode === 'Libur'
+        day.scheduleCode === 'Libur') && !hasOvertimeHours
 
       const dateStr = `${period}-${String(day.day).padStart(2, '0')}`
       const empSpls = (approvedSplByEmployee.get(employee.id) ?? []).filter((w) => {
@@ -6772,20 +6787,19 @@ export function SchedulingTimesheetWorkspace({
         workingTimeFrom:
           isOffDay
             ? 'OFF'
-            : (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
+            : (day.isHoliday && !hasRealAttendance && !hasOvertimeHours) || (isOffsiteOrAbsent && !hasRealAttendance && !hasOvertimeHours)
               ? ''
-              : (day.clockIn || defaultWorkFrom),
+              : (day.clockIn || defaultWorkFrom || (hasOvertimeHours ? '07.00' : '')),
         workingTimeTo:
           isOffDay
             ? ''
-            : (day.isHoliday && !hasRealAttendance) || (isOffsiteOrAbsent && !hasRealAttendance)
+            : (day.isHoliday && !hasRealAttendance && !hasOvertimeHours) || (isOffsiteOrAbsent && !hasRealAttendance && !hasOvertimeHours)
               ? ''
-              : (day.clockOut || defaultWorkTo),
+              : (day.clockOut || defaultWorkTo || (hasOvertimeHours ? '18.00' : '')),
         configuredOvertimeIntervals:
-          isOffDay || isOffsiteOrAbsent
+          isOffDay
             ? []
             : (configuredIntervals as OvertimeInterval[]),
-      }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
     return generateOvertimeRecordPdf({
@@ -8006,6 +8020,31 @@ export function SchedulingTimesheetWorkspace({
 
     const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
     const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
+    // Input lembur manual dari tabel / modal cell adalah prioritas mutlak yang wajib masuk ke PDF dan tampilan:
+    if (manualVal !== null) {
+      const finalManualOt = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal))
+      const manualDisplay =
+        finalManualOt > 0
+          ? String(roundOvertimeHours(finalManualOt))
+          : isFieldBreakDay
+            ? 'FB'
+            : isRosterOff || cell.status === 'off'
+              ? 'OFF'
+              : cell.status === 'sick' || scheduleCode === 'Sakit'
+                ? 'Sakit'
+                : cell.status === 'leave' || scheduleCode === 'Izin'
+                  ? 'Izin'
+                  : cell.status === 'absent'
+                    ? 'Alpha'
+                    : ''
+      return {
+        lemburWajib: finalManualOt,
+        lemburSpl: 0,
+        totalOvertime: finalManualOt,
+        displayValue: manualDisplay,
+      }
+    }
 
     // Non-working & Off days strictly follow Overtime Record:
     // On OFF, Field Break, Sakit, Izin, Alpha: Overtime is 0 (displaying their respective status code), matching Overtime Record.

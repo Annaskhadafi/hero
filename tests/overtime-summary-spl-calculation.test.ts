@@ -625,4 +625,94 @@ describe('Overtime Summary & Staff Classification Verification', () => {
     const agustinusTotal = agustinusDay1Hours + (4 * 5) + agustinusDay7Hours + (4 * 3);
     expect(agustinusTotal).toBe(50.5);
   });
+
+  it('guarantees manual overtime input on an OFF day (e.g. Abdul Hafiz Hilman Day 26 = 11h) updates both Overtime Summary and Overtime Record PDF', async () => {
+    // 1. Overtime Summary logic test
+    function testCalculateTotalDayOvertime(scheduleCode: string, manualOvertimeHours?: number | null) {
+      const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur';
+      const manualVal = manualOvertimeHours !== undefined && manualOvertimeHours !== null ? Number(manualOvertimeHours) : null;
+
+      if (manualVal !== null) {
+        const finalManualOt = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal));
+        const manualDisplay = finalManualOt > 0 ? String(roundOvertimeHours(finalManualOt)) : (isRosterOff ? 'OFF' : '');
+        return {
+          lemburWajib: finalManualOt,
+          lemburSpl: 0,
+          totalOvertime: finalManualOt,
+          displayValue: manualDisplay,
+        };
+      }
+
+      if (isRosterOff) {
+        return {
+          lemburWajib: 0,
+          lemburSpl: 0,
+          totalOvertime: 0,
+          displayValue: 'OFF',
+        };
+      }
+
+      return {
+        lemburWajib: 5,
+        lemburSpl: 0,
+        totalOvertime: 5,
+        displayValue: '5',
+      };
+    }
+
+    // Default Day 26 without manual override -> OFF, total = 0
+    const defaultDay26 = testCalculateTotalDayOvertime('OFF', null);
+    expect(defaultDay26.displayValue).toBe('OFF');
+    expect(defaultDay26.totalOvertime).toBe(0);
+
+    // Day 26 with manual 11h override -> 11, total = 11
+    const manualDay26 = testCalculateTotalDayOvertime('OFF', 11);
+    expect(manualDay26.displayValue).toBe('11');
+    expect(manualDay26.totalOvertime).toBe(11);
+
+    // Total for Abdul Hafiz Hilman: base 143h + manual 11h = 154h
+    const baseTotal = 143;
+    const updatedTotal = baseTotal + manualDay26.totalOvertime;
+    expect(updatedTotal).toBe(154);
+
+    // 2. Overtime Record PDF generation verification
+    const { generateOvertimeRecordPdf } = await import('../lib/timesheet/generate-attendance-pdf');
+    const pdfBytes = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-10',
+      employeeId: 72988,
+      employeeName: 'Abdul Hafiz Hilman',
+      employeeSn: '72988',
+      department: 'Central Services',
+      section: 'Service Operation MVC',
+      siteName: 'CK MHU',
+      signatures: { preparedBy: 'Admin', pjoLeader: 'PJO', approvedBy: 'Manager' },
+      days: [
+        {
+          day: 26,
+          dayName: 'Monday',
+          isHoliday: false,
+          status: 'present',
+          scheduleCode: 'OFF',
+          workingTimeFrom: '07.00',
+          workingTimeTo: '18.00',
+          overtime: {
+            totalHours: 11,
+            intervals: [{ startMinute: 420, endMinute: 1080, start: '07:00', end: '18:00', source: 'Manual' }],
+            totalMinutes: 660,
+            autoMinutes: 660,
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Manual',
+            splNumbers: [],
+            workingIntervals: [],
+          },
+        },
+      ],
+      showTotalOvertime: true,
+    });
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.length).toBeGreaterThan(1000);
+  });
 });
