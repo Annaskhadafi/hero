@@ -1861,7 +1861,7 @@ export async function getApprovalWorkbenchData() {
       dueSoon: queue.filter((item) => item.dueState === 'due_soon').length,
       overdue: queue.filter((item) => item.dueState === 'overdue').length,
       needsRevision: Array.from(distinctRequestStatuses.values()).filter(
-        (status) => status === 'needs_revision'
+        (status) => status === 'needs_revision' || status === 'needs_correction' || status === 'revisi'
       ).length,
       approvedToday: queue.filter(
         (item) =>
@@ -3773,9 +3773,22 @@ export async function getSopWinRequestInboxItems(
     const steps = allReqStepsMap.get(row.requestId) || []
     steps.sort((a, b) => a.stepOrder - b.stepOrder)
 
-    if (reqStatusLower === 'reverted' || reqStatusLower === 'rejected') {
+    if (
+      reqStatusLower === 'reverted' ||
+      reqStatusLower === 'rejected' ||
+      reqStatusLower === 'needs_correction' ||
+      reqStatusLower === 'needs_revision' ||
+      reqStatusLower === 'revisi'
+    ) {
       processedReqIds.add(row.requestId)
-      const targetStep = steps.find((s) => s.status === 'reverted' || s.status === 'rejected')
+      const targetStep = steps.find(
+        (s) =>
+          s.status === 'reverted' ||
+          s.status === 'rejected' ||
+          s.status === 'needs_correction' ||
+          s.status === 'needs_revision' ||
+          s.status === 'revisi'
+      )
       if (targetStep) {
         const stepRow = rawRows.find((r) => r.approvalId === targetStep.id) || row
         canonicalRows.push(stepRow)
@@ -3802,7 +3815,12 @@ export async function getSopWinRequestInboxItems(
 
   const filtered = canonicalRows.filter((row) => {
     const reqStatusLower = (row.status || '').toLowerCase()
-    const isRevertedOrRejected = reqStatusLower === 'reverted' || reqStatusLower === 'rejected'
+    const isRevertedOrRejected =
+      reqStatusLower === 'reverted' ||
+      reqStatusLower === 'rejected' ||
+      reqStatusLower === 'needs_correction' ||
+      reqStatusLower === 'needs_revision' ||
+      reqStatusLower === 'revisi'
 
     // SCENARIO B: Requester seeing Reverted / Rejected document needing revision
     if (isRevertedOrRejected) {
@@ -5493,7 +5511,12 @@ export async function getApprovalCenterData(
         total: historyItems.length,
         approved: historyItems.filter((item) => item.status === 'approved').length,
         rejected: historyItems.filter((item) => item.status === 'rejected').length,
-        needsRevision: historyItems.filter((item) => item.status === 'needs_revision').length,
+        needsRevision: historyItems.filter(
+          (item) =>
+            item.status === 'needs_revision' ||
+            item.status === 'needs_correction' ||
+            item.status === 'revisi'
+        ).length,
         inReview: historyItems.filter(
           (item) => item.status === 'in_review' || item.status === 'submitted'
         ).length,
@@ -5731,7 +5754,12 @@ export async function getRequestCenterData(email?: string) {
       draft: requests.filter((request) => request.status === 'draft').length,
       submitted: requests.filter((request) => request.status === 'submitted').length,
       inReview: requests.filter((request) => request.status === 'in_review').length,
-      needsRevision: requests.filter((request) => request.status === 'needs_revision').length,
+      needsRevision: requests.filter(
+        (request) =>
+          request.status === 'needs_revision' ||
+          request.status === 'needs_correction' ||
+          request.status === 'revisi'
+      ).length,
       approved: requests.filter((request) => request.status === 'approved').length,
       rejected: requests.filter((request) => request.status === 'rejected').length,
       cancelled: requests.filter((request) => request.status === 'cancelled').length,

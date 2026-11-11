@@ -183,18 +183,32 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
             Draft
           </span>
         );
+      case 'pending':
       case 'pending_approval':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-            <Clock className="size-3" />
-            Review Dept Head
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+            <Clock className="size-3 text-blue-600" />
+            Menunggu Review
+          </span>
+        );
+      case 'revisi':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+            <Clock className="size-3 text-amber-600" />
+            Perlu Revisi
           </span>
         );
       case 'approved':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <CheckCircle2 className="size-3" />
+            <CheckCircle2 className="size-3 text-emerald-600" />
             Disetujui
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+            Ditolak
           </span>
         );
       default:

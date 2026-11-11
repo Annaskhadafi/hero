@@ -4,10 +4,12 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   FilePenLine,
   FileText,
+  Info,
   Loader2,
   Maximize2,
   Printer,
@@ -15,11 +17,12 @@ import {
   ZoomIn,
   ZoomOut,
   X,
+  XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import { submitSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import { submitSummaryAction, deleteSummaryDraftAction, removeItemFromSummaryAction } from '@/app/dashboard/summary/actions';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
 import { ApdRequestDetailModal } from './apd-request-detail-modal';
 import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL, buildDynamicApdColumns } from '@/lib/summary-constants';
@@ -45,6 +48,7 @@ type SummaryData = {
     isShoe?: boolean;
   }>;
   items: Array<{
+    employeeId?: number;
     employeeName: string;
     employeeSn: string;
     siteName: string;
@@ -131,6 +135,29 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
+  const [removingEmpId, setRemovingEmpId] = useState<number | null>(null);
+
+  const handleRemoveItem = async (employeeId: number, apdRequestId?: number | null, empName?: string) => {
+    if (!confirm(`Keluarkan ${empName || 'karyawan ini'} dari dokumen Summary APD ini?`)) {
+      return;
+    }
+    setRemovingEmpId(employeeId);
+    const toastId = toast.loading(`Mengeluarkan ${empName || 'karyawan'}...`);
+    try {
+      const res = await removeItemFromSummaryAction(data.id, employeeId, apdRequestId || undefined);
+      if (res.success) {
+        toast.success(`Data ${empName || 'karyawan'} berhasil dikeluarkan`, { id: toastId });
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal mengeluarkan item', { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
+    } finally {
+      setRemovingEmpId(null);
+    }
+  };
+
   const formatSiteName = (site?: string | null) => {
     if (!site) return '';
     const trimmed = site.trim();
@@ -142,6 +169,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const groupedByEmployee = data.items.reduce((acc, item) => {
     if (!acc[item.employeeName]) {
       acc[item.employeeName] = {
+        employeeId: item.employeeId,
         name: item.employeeName,
         sn: item.employeeSn,
         site: formatSiteName(item.siteName),
@@ -166,7 +194,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       acc[item.employeeName].items[item.itemName] = (Number(acc[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
     return acc;
-  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }>);
+  }, {} as Record<string, { employeeId?: number; name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }>);
 
   const employees = Object.values(groupedByEmployee).sort((a, b) => {
     const siteCmp = (a.site || '').localeCompare(b.site || '', 'id-ID', { sensitivity: 'base' });
@@ -223,8 +251,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     switch (data.status) {
       case 'draft':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-            <Clock className="size-3.5 text-amber-600" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300">
+            <Clock className="size-3.5 text-slate-600" />
             Draft (Belum Disubmit)
           </span>
         );
@@ -236,11 +264,25 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             Menunggu Persetujuan
           </span>
         );
+      case 'revisi':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+            <AlertTriangle className="size-3.5 text-amber-600" />
+            Perlu Revisi
+          </span>
+        );
       case 'approved':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
             <CheckCircle2 className="size-3.5 text-emerald-600" />
             Disetujui (Approved)
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            <XCircle className="size-3.5 text-rose-600" />
+            Ditolak
           </span>
         );
       default:
@@ -372,19 +414,36 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 </div>
               </td>
               <td style={{ ...td, padding: '1px' }} className="print:hidden">
-                {e.apdRequestId ? (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRequestId(e.apdRequestId || null)}
-                    className="inline-flex items-center justify-center gap-1 text-[8px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded shadow-2xs cursor-pointer w-full"
-                    title="Lihat Dokumen Request Karyawan"
-                  >
-                    <FileText className="size-2.5 text-blue-600" />
-                    <span>Dokumen</span>
-                  </button>
-                ) : (
-                  <span className="text-slate-400 text-[8px]">—</span>
-                )}
+                <div className="flex items-center justify-center gap-1 px-0.5">
+                  {e.apdRequestId ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequestId(e.apdRequestId || null)}
+                      className="inline-flex items-center justify-center gap-1 text-[8px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1 py-0.5 rounded shadow-2xs cursor-pointer flex-1"
+                      title="Lihat Dokumen Request Karyawan"
+                    >
+                      <FileText className="size-2.5 text-blue-600" />
+                      <span>Dokumen</span>
+                    </button>
+                  ) : (
+                    <span className="text-slate-400 text-[8px] flex-1 text-center">—</span>
+                  )}
+                  {(data.status === 'draft' || data.status === 'revisi') && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(e.employeeId || 0, e.apdRequestId, e.name)}
+                      disabled={removingEmpId === (e.employeeId || 0)}
+                      className="inline-flex items-center justify-center text-rose-600 hover:text-rose-800 hover:bg-rose-50 p-0.5 rounded border border-rose-200 cursor-pointer shrink-0"
+                      title={`Keluarkan ${e.name} dari Summary`}
+                    >
+                      {removingEmpId === (e.employeeId || 0) ? (
+                        <Loader2 className="size-2.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-2.5" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
@@ -562,8 +621,12 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <span>Cetak PDF</span>
           </Button>
 
-          {/* Hapus Draft / Pending */}
-          {(data.status === 'draft' || data.status === 'pending' || data.status === 'pending_approval') && (
+          {/* Hapus Draft / Pending / Revisi / Rejected */}
+          {(data.status === 'draft' ||
+            data.status === 'pending' ||
+            data.status === 'pending_approval' ||
+            data.status === 'revisi' ||
+            data.status === 'rejected') && (
             <Button
               variant="outline"
               size="sm"
@@ -580,15 +643,17 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             </Button>
           )}
 
-          {/* Submit Approval */}
-          {data.status === 'draft' && (
+          {/* Submit Approval / Re-submit */}
+          {(data.status === 'draft' || data.status === 'revisi') && (
             <Button
               size="sm"
               onClick={() => setShowApprovalDialog(true)}
               className="h-9 gap-1.5 text-xs font-bold bg-[#003461] text-white hover:bg-[#00274a] rounded-xl shadow-xs cursor-pointer"
             >
               <FilePenLine className="size-3.5" />
-              <span>Tanda Tangan &amp; Submit</span>
+              <span>
+                {data.status === 'revisi' ? 'Tanda Tangan & Submit Ulang' : 'Tanda Tangan & Submit'}
+              </span>
             </Button>
           )}
 
@@ -607,6 +672,61 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           </Button>
         </div>
       </div>
+
+      {/* Revision Notice Banner */}
+      {data.status === 'revisi' && (() => {
+        const revApprover = data.approvals.find(
+          (a) => a.status === 'needs_correction' || (Boolean(a.decisionNote) && a.status !== 'approved')
+        );
+        return (
+          <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-5 shadow-sm space-y-2">
+            <div className="flex items-center gap-2.5 text-amber-900 font-bold text-sm">
+              <AlertTriangle className="size-5 text-amber-600" />
+              <span>Dokumen Summary Memerlukan Revisi</span>
+            </div>
+            <p className="text-xs text-amber-800">
+              Dokumen ini telah dikembalikan oleh{' '}
+              <strong>{revApprover?.approverName || 'Approver'}</strong>
+              {revApprover?.approverJobTitle ? ` (${revApprover.approverJobTitle})` : ''} untuk diperbaiki sebelum dapat disetujui.
+            </p>
+            {revApprover?.decisionNote && (
+              <div className="rounded-xl bg-white p-3 border border-amber-200 text-xs text-slate-800 shadow-2xs font-medium">
+                <span className="font-bold text-amber-900">Catatan Revisi dari Approver:</span>
+                <p className="mt-1 text-slate-700 whitespace-pre-wrap">{revApprover.decisionNote}</p>
+              </div>
+            )}
+            <div className="text-[11px] text-amber-700 flex items-center gap-1.5 pt-1">
+              <Info className="size-3.5 text-amber-600 shrink-0" />
+              <span>
+                Anda dapat mengeluarkan item/karyawan yang tidak sesuai (klik ikon hapus pada baris tabel) atau mengajukan kembali dengan menekan tombol <strong>Tanda Tangan &amp; Submit Ulang</strong>.
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Rejected Notice Banner */}
+      {data.status === 'rejected' && (() => {
+        const rejApprover = data.approvals.find((a) => a.status === 'rejected');
+        return (
+          <div className="rounded-2xl border-2 border-rose-400 bg-rose-50/90 p-5 shadow-sm space-y-2">
+            <div className="flex items-center gap-2.5 text-rose-900 font-bold text-sm">
+              <XCircle className="size-5 text-rose-600" />
+              <span>Dokumen Summary Ditolak</span>
+            </div>
+            <p className="text-xs text-rose-800">
+              Dokumen ini telah ditolak oleh{' '}
+              <strong>{rejApprover?.approverName || 'Approver'}</strong>.
+            </p>
+            {rejApprover?.decisionNote && (
+              <div className="rounded-xl bg-white p-3 border border-rose-200 text-xs text-slate-800 shadow-2xs font-medium">
+                <span className="font-bold text-rose-900">Alasan Penolakan:</span>
+                <p className="mt-1 text-slate-700 whitespace-pre-wrap">{rejApprover.decisionNote}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Main Document Paper Sheet */}
       <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-x-auto">

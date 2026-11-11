@@ -2,7 +2,7 @@ import { db } from '@/db';
 import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments, approvalMatrices, approvalMatrixSteps, orgChartNodes, employeeAssets } from '@/db/schema/hero';
 import { masterApd } from '@/db/schema/apd';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '@/db/schema/apd-summary';
-import { eq, and, asc, desc, sql, inArray, ilike } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, ilike, ne } from 'drizzle-orm';
 import { sendWorkflowEmail, getAppUrl } from '@/lib/workflow-email';
 import { createNotificationEventForEmployee } from '@/lib/push-notifications';
 import { sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
@@ -176,7 +176,7 @@ export async function getSectionsWithApprovedRequests() {
     apdRequestId: apdSummaryItems.apdRequestId,
   }).from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
-    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved']));
+    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi']));
 
   const assignedRequestIds = new Set(assignedReqRows.map(r => r.apdRequestId).filter(Boolean));
 
@@ -348,7 +348,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     apdRequestId: apdSummaryItems.apdRequestId,
   }).from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
-    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved']));
+    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi']));
 
   const assignedRequestIds = new Set(activeSummaryRows.map(r => r.apdRequestId).filter(Boolean));
 
@@ -770,13 +770,13 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     return { skipped: true, reason: 'Not an APD request' };
   }
 
-  // 2. Check if already in an active summary (draft, pending, approved)
+  // 2. Check if already in an active summary (draft, pending, approved, revisi)
   const [existingItem] = await db.select({ id: apdSummaryItems.id })
     .from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
     .where(and(
       eq(apdSummaryItems.apdRequestId, apdRequestId),
-      inArray(apdSummaries.status, ['draft', 'pending', 'approved'])
+      inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi'])
     ))
     .limit(1);
 
@@ -957,8 +957,14 @@ export async function deleteSummaryDraft(summaryId: number) {
   }).from(apdSummaries).where(eq(apdSummaries.id, summaryId)).limit(1);
 
   if (!summary) return { error: 'Summary tidak ditemukan' };
-  if (summary.status !== 'draft' && summary.status !== 'pending' && summary.status !== 'pending_approval') {
-    return { error: 'Hanya summary berstatus Draft atau Pending yang dapat dihapus' };
+  if (
+    summary.status !== 'draft' &&
+    summary.status !== 'pending' &&
+    summary.status !== 'pending_approval' &&
+    summary.status !== 'revisi' &&
+    summary.status !== 'rejected'
+  ) {
+    return { error: 'Hanya summary berstatus Draft, Pending, Revisi, atau Ditolak yang dapat dihapus' };
   }
 
   await db.delete(apdSummaryItems).where(eq(apdSummaryItems.summaryId, summaryId));
@@ -1697,4 +1703,221 @@ export async function getSummaryDetails(summaryId: number) {
     masterCatalog: masterCatalog.map((m) => ({ name: m.name, hasSize: m.hasSize, isQtyOnly: m.isQtyOnly })),
     approvals: enrichedApprovals.length > 0 ? enrichedApprovals : actualApprovals,
   };
+}
+
+export async function returnSummaryForRevision(
+  summaryId: number,
+  level: number,
+  approverEmployeeId: number,
+  note: string,
+  actorName?: string
+) {
+  await ensureSummarySchema();
+  const now = new Date();
+  const trimmedNote = (note || '').trim();
+
+  // 1. Update summary status to 'revisi'
+  await db
+    .update(apdSummaries)
+    .set({
+      status: 'revisi',
+      updatedAt: now,
+    })
+    .where(eq(apdSummaries.id, summaryId));
+
+  // 2. Update specific approver row in apdSummaryApprovals
+  await db
+    .update(apdSummaryApprovals)
+    .set({
+      status: 'needs_correction',
+      decisionNote: trimmedNote || 'Summary dikembalikan untuk revisi.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(apdSummaryApprovals.summaryId, summaryId),
+        eq(apdSummaryApprovals.level, level)
+      )
+    );
+
+  // 3. Update heroApprovals for Unified Approval Inbox
+  await db
+    .update(heroApprovals)
+    .set({
+      status: 'needs_correction',
+      decisionNote: trimmedNote || 'Summary dikembalikan untuk revisi.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(heroApprovals.apdSummaryId, summaryId),
+        eq(heroApprovals.level, level)
+      )
+    );
+
+  // 4. Send Bell notification & Email to summary generator
+  const summaryDetails = await getSummaryDetails(summaryId);
+  if (summaryDetails) {
+    const generatorEmail = await db
+      .select({ email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
+      .limit(1);
+
+    const displayName = actorName || 'Approver';
+    const roleLabel = level === 1 ? 'Section Head' : 'Department Head';
+
+    if (generatorEmail[0]?.email) {
+      await createNotificationEventForEmployee({
+        employeeId: summaryDetails.generatedByEmployeeId,
+        category: 'approval_requests',
+        eventType: 'summary_returned',
+        title: `Summary APD Perlu Revisi`,
+        body: `Summary ${summaryDetails.summaryNumber} dikembalikan untuk revisi oleh ${displayName} (${roleLabel}). Catatan: ${trimmedNote || '-'}`,
+        url: `/dashboard/summary?preview=${summaryId}`,
+      }).catch(console.error);
+
+      // Email notification
+      const { sendSummaryReturnedEmail } = await import('@/lib/summary-email');
+      await sendSummaryReturnedEmail(
+        summaryDetails,
+        displayName,
+        roleLabel,
+        trimmedNote
+      ).catch(console.error);
+    }
+  }
+
+  return { success: true };
+}
+
+export async function rejectSummary(
+  summaryId: number,
+  level: number,
+  approverEmployeeId: number,
+  note: string,
+  actorName?: string
+) {
+  await ensureSummarySchema();
+  const now = new Date();
+  const trimmedNote = (note || '').trim();
+
+  // 1. Update summary status to 'rejected'
+  await db
+    .update(apdSummaries)
+    .set({
+      status: 'rejected',
+      updatedAt: now,
+    })
+    .where(eq(apdSummaries.id, summaryId));
+
+  // 2. Update specific approver row in apdSummaryApprovals
+  await db
+    .update(apdSummaryApprovals)
+    .set({
+      status: 'rejected',
+      decisionNote: trimmedNote || 'Summary ditolak.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(apdSummaryApprovals.summaryId, summaryId),
+        eq(apdSummaryApprovals.level, level)
+      )
+    );
+
+  // 3. Update heroApprovals for Unified Approval Inbox
+  await db
+    .update(heroApprovals)
+    .set({
+      status: 'rejected',
+      decisionNote: trimmedNote || 'Summary ditolak.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(heroApprovals.apdSummaryId, summaryId),
+        eq(heroApprovals.level, level)
+      )
+    );
+
+  // Skip other pending approvals for this summary
+  await db
+    .update(heroApprovals)
+    .set({ status: 'skipped', reviewedAt: now })
+    .where(
+      and(
+        eq(heroApprovals.apdSummaryId, summaryId),
+        ne(heroApprovals.level, level)
+      )
+    );
+
+  // 4. Send Bell notification to generator
+  const summaryDetails = await getSummaryDetails(summaryId);
+  if (summaryDetails) {
+    const generatorEmail = await db
+      .select({ email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
+      .limit(1);
+
+    const displayName = actorName || 'Approver';
+    if (generatorEmail[0]?.email) {
+      await createNotificationEventForEmployee({
+        employeeId: summaryDetails.generatedByEmployeeId,
+        category: 'approval_requests',
+        eventType: 'summary_rejected',
+        title: `Summary Ditolak`,
+        body: `Summary ${summaryDetails.summaryNumber} telah ditolak oleh ${displayName}. Catatan: ${trimmedNote || '-'}`,
+        url: `/dashboard/summary?preview=${summaryId}`,
+      }).catch(console.error);
+    }
+  }
+
+  return { success: true };
+}
+
+export async function removeItemFromSummary(
+  summaryId: number,
+  employeeId: number,
+  apdRequestId?: number
+) {
+  await ensureSummarySchema();
+  const [summary] = await db
+    .select({ status: apdSummaries.status })
+    .from(apdSummaries)
+    .where(eq(apdSummaries.id, summaryId))
+    .limit(1);
+
+  if (!summary) return { error: 'Summary tidak ditemukan' };
+  if (summary.status !== 'draft' && summary.status !== 'revisi') {
+    return { error: 'Hanya summary berstatus Draft atau Revisi yang itemnya dapat diubah' };
+  }
+
+  if (apdRequestId) {
+    await db
+      .delete(apdSummaryItems)
+      .where(
+        and(
+          eq(apdSummaryItems.summaryId, summaryId),
+          eq(apdSummaryItems.apdRequestId, apdRequestId)
+        )
+      );
+  } else {
+    await db
+      .delete(apdSummaryItems)
+      .where(
+        and(
+          eq(apdSummaryItems.summaryId, summaryId),
+          eq(apdSummaryItems.employeeId, employeeId)
+        )
+      );
+  }
+
+  await db
+    .update(apdSummaries)
+    .set({ updatedAt: new Date() })
+    .where(eq(apdSummaries.id, summaryId));
+
+  return { success: true };
 }
