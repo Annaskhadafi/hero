@@ -1949,6 +1949,7 @@ export function SchedulingTimesheetWorkspace({
   const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
   const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
   const [pdfIncludeHse, setPdfIncludeHse] = useState<boolean>(true)
+  const [pdfIncludeOther, setPdfIncludeOther] = useState<boolean>(true)
   const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
   const [pdfExternalSignatureCount, setPdfExternalSignatureCount] = useState<2 | 3 | 4>(2)
 
@@ -6160,6 +6161,11 @@ export function SchedulingTimesheetWorkspace({
 
   useEffect(() => {
     setSelectedOvertimeEmployeeIds([])
+    setPdfIncludeRepair(true)
+    setPdfIncludeServices(true)
+    setPdfIncludeTechnical(true)
+    setPdfIncludeHse(true)
+    setPdfIncludeOther(true)
   }, [period, siteId])
 
   function toggleOvertimeEmployee(employeeId: number) {
@@ -6223,25 +6229,116 @@ export function SchedulingTimesheetWorkspace({
     role?: string | null
     department?: string | null
   }): 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya' {
-    const s = (employee?.section || employee?.role || employee?.department || '').toLowerCase()
-    if (s.includes('hse') || s.includes('safety') || s.includes('k3') || s.includes('lingkungan'))
+    const role = (employee?.role || '').toLowerCase()
+    const section = (employee?.section || '').toLowerCase()
+    const department = (employee?.department || '').toLowerCase()
+
+    // 1. HSE / Safety
+    if (
+      section.includes('hse') ||
+      section.includes('safety') ||
+      section.includes('k3') ||
+      section.includes('lingkungan') ||
+      role.includes('hse') ||
+      role.includes('safety') ||
+      role.includes('k3')
+    ) {
       return 'HSE'
-    if (s.includes('repair') || s.includes('retread')) return 'Repair'
-    if (s.includes('service') || s.includes('servis')) return 'Services'
-    if (s.includes('tech') || s.includes('teknis')) return 'Technical'
+    }
+
+    // 2. Technical: Technical Engineer, Technical Leader, Technical Operation, Tyre Specialist
+    // (Exclude Information Technology / IT / Database)
+    const isIT =
+      section.includes('information technology') ||
+      role.includes('information technology') ||
+      role === 'it support' ||
+      role === 'it coordinator' ||
+      role === 'it supervisor' ||
+      section.includes('database') ||
+      role.includes('database')
+
+    if (!isIT) {
+      if (
+        role.includes('technical') ||
+        role.includes('teknis') ||
+        role.includes('tyre specialist') ||
+        section.includes('technical operation') ||
+        section === 'technical' ||
+        section.startsWith('technical ')
+      ) {
+        return 'Technical'
+      }
+    }
+
+    // 3. Repair / Retread: Repairman, SPV Repair & Retread, Repair / Retread Operation
+    if (
+      role.includes('repair') ||
+      role.includes('retread') ||
+      section.includes('repair') ||
+      section.includes('retread')
+    ) {
+      return 'Repair'
+    }
+
+    // 4. Services: Serviceman, Service Operation, Head of Service, PJO, etc.
+    if (
+      role.includes('serviceman') ||
+      role.includes('head of service') ||
+      role.includes('service supervisor') ||
+      role.includes('service coordinator') ||
+      role.includes('pjo') ||
+      section.includes('service operation') ||
+      section.includes('service ops') ||
+      (section.includes('service') && section !== 'central services') ||
+      (role.includes('service') &&
+        !role.includes('central services manager') &&
+        !role.includes('customer service'))
+    ) {
+      return 'Services'
+    }
+
     return 'Lainnya'
   }
 
-  const availableSiteSectionCategories = useMemo(() => {
-    const cats = new Set<'Repair' | 'Services' | 'Technical' | 'HSE'>()
+  const sectionCategoryCounts = useMemo(() => {
+    const counts: Record<'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya', number> = {
+      Repair: 0,
+      Services: 0,
+      Technical: 0,
+      HSE: 0,
+      Lainnya: 0,
+    }
     for (const row of rows) {
       const cat = getEmployeeSectionCategory(row.employee)
-      if (cat === 'Repair' || cat === 'Services' || cat === 'Technical' || cat === 'HSE') {
-        cats.add(cat)
+      counts[cat]++
+    }
+    return counts
+  }, [rows])
+
+  const availableSiteSectionCategories = useMemo(() => {
+    const cats = new Set<'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya'>()
+    for (const [cat, count] of Object.entries(sectionCategoryCounts)) {
+      if (count > 0) {
+        cats.add(cat as 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya')
       }
     }
     return cats
-  }, [rows])
+  }, [sectionCategoryCounts])
+
+  function isEmployeeSectionIncluded(emp?: {
+    section?: string | null
+    role?: string | null
+    department?: string | null
+  }) {
+    if (availableSiteSectionCategories.size <= 1) return true
+    const cat = getEmployeeSectionCategory(emp)
+    if (cat === 'Repair') return pdfIncludeRepair
+    if (cat === 'Services') return pdfIncludeServices
+    if (cat === 'Technical') return pdfIncludeTechnical
+    if (cat === 'HSE') return pdfIncludeHse
+    if (cat === 'Lainnya') return pdfIncludeOther
+    return false
+  }
 
   function getSectionSignatures(
     sectionName?: string | null,
@@ -6372,19 +6469,22 @@ export function SchedulingTimesheetWorkspace({
     }>,
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
-    const counts = { Repair: 0, Services: 0, Technical: 0, HSE: 0 }
+    const counts: Record<'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya', number> = {
+      Repair: 0,
+      Services: 0,
+      Technical: 0,
+      HSE: 0,
+      Lainnya: 0,
+    }
     for (const emp of employeesList) {
       const cat = getEmployeeSectionCategory(emp)
-      if (cat === 'Repair') counts.Repair++
-      else if (cat === 'Services') counts.Services++
-      else if (cat === 'Technical') counts.Technical++
-      else if (cat === 'HSE') counts.HSE++
+      counts[cat]++
     }
 
-    let majorityCategory: 'Repair' | 'Services' | 'Technical' | 'HSE' = 'Services'
+    let majorityCategory: 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya' = 'Services'
     let maxCount = -1
     for (const [cat, count] of Object.entries(counts) as Array<
-      ['Repair' | 'Services' | 'Technical' | 'HSE', number]
+      ['Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya', number]
     >) {
       if (count > maxCount) {
         maxCount = count
@@ -6743,14 +6843,7 @@ export function SchedulingTimesheetWorkspace({
       const idSet = new Set(employeeIds)
       sourceRows = rows.filter((row) => idSet.has(row.employee.id))
     } else if (availableSiteSectionCategories.size > 1) {
-      sourceRows = rows.filter((row) => {
-        const cat = getEmployeeSectionCategory(row.employee)
-        if (cat === 'Repair' && !pdfIncludeRepair) return false
-        if (cat === 'Services' && !pdfIncludeServices) return false
-        if (cat === 'Technical' && !pdfIncludeTechnical) return false
-        if (cat === 'HSE' && !pdfIncludeHse) return false
-        return true
-      })
+      sourceRows = rows.filter((row) => isEmployeeSectionIncluded(row.employee))
     }
     const grouped = new Map<string, Map<string, typeof rows>>()
     for (const row of sourceRows) {
@@ -6910,13 +7003,15 @@ export function SchedulingTimesheetWorkspace({
 
   async function downloadSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
     try {
-      if (
-        availableSiteSectionCategories.size > 1 &&
-        !pdfIncludeRepair &&
-        !pdfIncludeServices &&
-        !pdfIncludeTechnical &&
-        !pdfIncludeHse
-      ) {
+      const hasAnySectionActive =
+        availableSiteSectionCategories.size <= 1 ||
+        (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
+        (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
+        (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
+        (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
+        (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
+
+      if (!hasAnySectionActive) {
         toast.error('Pilih minimal satu section yang tersedia.')
         return
       }
@@ -6927,14 +7022,7 @@ export function SchedulingTimesheetWorkspace({
         const idSet = new Set(customEmpIds)
         selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
       } else if (availableSiteSectionCategories.size > 1) {
-        selectedEmps = allEmps.filter((emp) => {
-          const cat = getEmployeeSectionCategory(emp)
-          if (cat === 'Repair' && !pdfIncludeRepair) return false
-          if (cat === 'Services' && !pdfIncludeServices) return false
-          if (cat === 'Technical' && !pdfIncludeTechnical) return false
-          if (cat === 'HSE' && !pdfIncludeHse) return false
-          return true
-        })
+        selectedEmps = allEmps.filter((emp) => isEmployeeSectionIncluded(emp))
       }
 
       if (selectedEmps.length === 0) {
@@ -6962,10 +7050,11 @@ export function SchedulingTimesheetWorkspace({
                 ? 'MLS'
                 : 'TU'
       const activeSections = [
-        pdfIncludeRepair ? 'Repair' : '',
-        pdfIncludeServices ? 'Services' : '',
-        pdfIncludeTechnical ? 'Technical' : '',
-        pdfIncludeHse ? 'HSE' : '',
+        availableSiteSectionCategories.has('Repair') && pdfIncludeRepair ? 'Repair' : '',
+        availableSiteSectionCategories.has('Services') && pdfIncludeServices ? 'Services' : '',
+        availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical ? 'Technical' : '',
+        availableSiteSectionCategories.has('HSE') && pdfIncludeHse ? 'HSE' : '',
+        availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther ? 'Office' : '',
       ]
         .filter(Boolean)
         .join('_')
@@ -6986,20 +7075,26 @@ export function SchedulingTimesheetWorkspace({
 
   async function previewSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
     try {
+      const hasAnySectionActive =
+        availableSiteSectionCategories.size <= 1 ||
+        (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
+        (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
+        (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
+        (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
+        (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
+
+      if (!hasAnySectionActive) {
+        toast.error('Pilih minimal satu section yang tersedia.')
+        return
+      }
+
       const allEmps = rows.map((r) => r.employee)
       let selectedEmps = allEmps
       if (customEmpIds && customEmpIds.length > 0) {
         const idSet = new Set(customEmpIds)
         selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
       } else if (availableSiteSectionCategories.size > 1) {
-        selectedEmps = allEmps.filter((emp) => {
-          const cat = getEmployeeSectionCategory(emp)
-          if (cat === 'Repair' && !pdfIncludeRepair) return false
-          if (cat === 'Services' && !pdfIncludeServices) return false
-          if (cat === 'Technical' && !pdfIncludeTechnical) return false
-          if (cat === 'HSE' && !pdfIncludeHse) return false
-          return true
-        })
+        selectedEmps = allEmps.filter((emp) => isEmployeeSectionIncluded(emp))
       }
 
       if (selectedEmps.length === 0) {
@@ -7054,27 +7149,20 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
-    if (
-      availableSiteSectionCategories.size > 1 &&
-      !pdfIncludeRepair &&
-      !pdfIncludeServices &&
-      !pdfIncludeTechnical &&
-      !pdfIncludeHse
-    ) {
+    const hasAnySectionActive =
+      availableSiteSectionCategories.size <= 1 ||
+      (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
+      (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
+      (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
+      (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
+      (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
+
+    if (!hasAnySectionActive) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
 
-    const filteredSelected = selected.filter((emp) => {
-      const cat = getEmployeeSectionCategory(emp)
-      if (availableSiteSectionCategories.size > 1) {
-        if (cat === 'Repair' && !pdfIncludeRepair) return false
-        if (cat === 'Services' && !pdfIncludeServices) return false
-        if (cat === 'Technical' && !pdfIncludeTechnical) return false
-        if (cat === 'HSE' && !pdfIncludeHse) return false
-      }
-      return true
-    })
+    const filteredSelected = selected.filter((emp) => isEmployeeSectionIncluded(emp))
 
     if (filteredSelected.length === 0) {
       toast.error('Tidak ada karyawan yang cocok dengan section yang dipilih.')
@@ -7372,27 +7460,20 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
-    if (
-      availableSiteSectionCategories.size > 1 &&
-      !pdfIncludeRepair &&
-      !pdfIncludeServices &&
-      !pdfIncludeTechnical &&
-      !pdfIncludeHse
-    ) {
+    const hasAnySectionActive =
+      availableSiteSectionCategories.size <= 1 ||
+      (availableSiteSectionCategories.has('Repair') && pdfIncludeRepair) ||
+      (availableSiteSectionCategories.has('Services') && pdfIncludeServices) ||
+      (availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical) ||
+      (availableSiteSectionCategories.has('HSE') && pdfIncludeHse) ||
+      (availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther)
+
+    if (!hasAnySectionActive) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
 
-    const filteredEmployees = allEmployees.filter((emp) => {
-      const cat = getEmployeeSectionCategory(emp)
-      if (availableSiteSectionCategories.size > 1) {
-        if (cat === 'Repair' && !pdfIncludeRepair) return false
-        if (cat === 'Services' && !pdfIncludeServices) return false
-        if (cat === 'Technical' && !pdfIncludeTechnical) return false
-        if (cat === 'HSE' && !pdfIncludeHse) return false
-      }
-      return true
-    })
+    const filteredEmployees = allEmployees.filter((emp) => isEmployeeSectionIncluded(emp))
 
     if (filteredEmployees.length === 0) {
       toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
@@ -7467,10 +7548,11 @@ export function SchedulingTimesheetWorkspace({
       }
 
       const activeSections = [
-        pdfIncludeRepair ? 'Repair' : '',
-        pdfIncludeServices ? 'Services' : '',
-        pdfIncludeTechnical ? 'Technical' : '',
-        pdfIncludeHse ? 'HSE' : '',
+        availableSiteSectionCategories.has('Repair') && pdfIncludeRepair ? 'Repair' : '',
+        availableSiteSectionCategories.has('Services') && pdfIncludeServices ? 'Services' : '',
+        availableSiteSectionCategories.has('Technical') && pdfIncludeTechnical ? 'Technical' : '',
+        availableSiteSectionCategories.has('HSE') && pdfIncludeHse ? 'HSE' : '',
+        availableSiteSectionCategories.has('Lainnya') && pdfIncludeOther ? 'Office / Lainnya' : '',
       ]
         .filter(Boolean)
         .join(', ')
@@ -12425,7 +12507,7 @@ export function SchedulingTimesheetWorkspace({
                                   className="cursor-pointer text-xs font-medium text-slate-700 select-none"
                                   title="Sertakan karyawan Repair / Retread"
                                 >
-                                  Repair
+                                  Repair ({sectionCategoryCounts.Repair})
                                 </label>
                               </div>
                             )}
@@ -12441,7 +12523,7 @@ export function SchedulingTimesheetWorkspace({
                                   className="cursor-pointer text-xs font-medium text-slate-700 select-none"
                                   title="Sertakan karyawan Services"
                                 >
-                                  Services
+                                  Services ({sectionCategoryCounts.Services})
                                 </label>
                               </div>
                             )}
@@ -12457,7 +12539,7 @@ export function SchedulingTimesheetWorkspace({
                                   className="cursor-pointer text-xs font-medium text-slate-700 select-none"
                                   title="Sertakan karyawan Technical"
                                 >
-                                  Technical
+                                  Technical ({sectionCategoryCounts.Technical})
                                 </label>
                               </div>
                             )}
@@ -12473,7 +12555,23 @@ export function SchedulingTimesheetWorkspace({
                                   className="cursor-pointer text-xs font-medium text-slate-700 select-none"
                                   title="Sertakan karyawan HSE / Safety"
                                 >
-                                  HSE
+                                  HSE ({sectionCategoryCounts.HSE})
+                                </label>
+                              </div>
+                            )}
+                            {availableSiteSectionCategories.has('Lainnya') && (
+                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
+                                <Switch
+                                  id="toggle-other-pdf"
+                                  checked={pdfIncludeOther}
+                                  onCheckedChange={setPdfIncludeOther}
+                                />
+                                <label
+                                  htmlFor="toggle-other-pdf"
+                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
+                                  title="Sertakan karyawan Office / Non-Operasional / Lainnya"
+                                >
+                                  Office / Lainnya ({sectionCategoryCounts.Lainnya})
                                 </label>
                               </div>
                             )}
