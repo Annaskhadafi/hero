@@ -2,6 +2,7 @@
 
 import {
   generateSummary,
+  regenerateSummaryItems,
   submitSummary,
   approveSummaryStep,
   getSummaryDetails,
@@ -23,10 +24,11 @@ import { eq, and, asc, ilike, desc } from 'drizzle-orm';
 export async function getPendingRequestsAction(
   sectionId: number,
   targetSite: string,
-  dateRange?: { startDate?: string; endDate?: string }
+  dateRange?: { startDate?: string; endDate?: string },
+  excludeSummaryId?: number
 ) {
   try {
-    const requests = await getPendingRequestsForSection(sectionId, targetSite, dateRange);
+    const requests = await getPendingRequestsForSection(sectionId, targetSite, dateRange, excludeSummaryId);
     return { success: true, requests };
   } catch (error: any) {
     console.error('Get pending requests error:', error);
@@ -250,5 +252,26 @@ export async function updateSummaryShoeUsagePeriodAction(
   } catch (error: any) {
     console.error('Update shoe usage period error:', error);
     return { success: false, error: error.message || 'Gagal memperbarui masa pakai safety shoes' };
+  }
+}
+
+export async function regenerateSummaryItemsAction(
+  summaryId: number,
+  sectionId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions
+) {
+  try {
+    const result = await regenerateSummaryItems(summaryId, sectionId, targetSite, options);
+    if ('error' in result) {
+      return { success: false, error: result.error };
+    }
+    revalidatePath('/dashboard/summary');
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`);
+    revalidatePath('/mobile/summary');
+    return { success: true, summaryId: result.summaryId, itemCount: result.itemCount };
+  } catch (error: any) {
+    console.error('Regenerate summary items error:', error);
+    return { success: false, error: error.message || 'Gagal mengedit summary' };
   }
 }

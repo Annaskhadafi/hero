@@ -2,7 +2,7 @@ import { db } from '@/db';
 import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments, approvalMatrices, approvalMatrixSteps, orgChartNodes, employeeAssets } from '@/db/schema/hero';
 import { masterApd } from '@/db/schema/apd';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '@/db/schema/apd-summary';
-import { eq, and, asc, desc, sql, inArray, ilike, ne } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, ilike, ne, or } from 'drizzle-orm';
 import { sendWorkflowEmail, getAppUrl } from '@/lib/workflow-email';
 import { createNotificationEventForEmployee } from '@/lib/push-notifications';
 import { sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
@@ -14,10 +14,12 @@ import {
   QTY_ONLY_COLUMNS,
   APD_ITEM_COLUMNS,
   APD_COLUMNS,
+  filterSelectedRequestItems,
   type PendingSummaryRequestItem,
   type PendingSummaryRequest,
   type ManualSummaryEntry,
   type ManualSummaryItem,
+  type SelectedSummaryRequestOption,
 } from '@/lib/summary-constants';
 
 export {
@@ -29,6 +31,7 @@ export {
   type PendingSummaryRequest,
   type ManualSummaryEntry,
   type ManualSummaryItem,
+  type SelectedSummaryRequestOption,
 };
 
 let summarySchemaChecked = false;
@@ -329,7 +332,12 @@ export async function getSectionsWithApprovedRequests() {
   });
 }
 
-export async function getPendingRequestsForSection(sectionId: number, targetSite: string, dateRange?: { startDate?: string; endDate?: string }): Promise<PendingSummaryRequest[]> {
+export async function getPendingRequestsForSection(
+  sectionId: number,
+  targetSite: string,
+  dateRange?: { startDate?: string; endDate?: string },
+  excludeSummaryId?: number
+): Promise<PendingSummaryRequest[]> {
   await ensureSummarySchema();
 
   const isValeQuery = targetSite === 'VALE' 
@@ -343,14 +351,55 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     ? inArray(effectiveSec, [33, 34])
     : eq(effectiveSec, sectionId);
 
-  // Get active summary items to avoid duplicates
+  // Get active summary items to avoid duplicates (excluding the summary currently being edited)
   const activeSummaryRows = await db.select({
     apdRequestId: apdSummaryItems.apdRequestId,
   }).from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
-    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi']));
+    .where(
+      excludeSummaryId
+        ? and(inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi']), ne(apdSummaries.id, excludeSummaryId))
+        : inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi'])
+    );
 
   const assignedRequestIds = new Set(activeSummaryRows.map(r => r.apdRequestId).filter(Boolean));
+
+  // In edit mode, load existing items of the summary being edited so checked APD items & metadata are restored
+  const editedSummaryItemsByReq = new Map<number, {
+    itemNameCounts: Map<string, number>;
+    remarks: string;
+    shoeSize: string;
+    shoeMasaPakai: string;
+  }>();
+
+  if (excludeSummaryId) {
+    const existingRows = await db.select({
+      apdRequestId: apdSummaryItems.apdRequestId,
+      itemName: apdSummaryItems.itemName,
+      remarks: apdSummaryItems.remarks,
+      requestType: apdSummaryItems.requestType,
+    }).from(apdSummaryItems)
+      .where(eq(apdSummaryItems.summaryId, excludeSummaryId));
+
+    for (const row of existingRows) {
+      let entry = editedSummaryItemsByReq.get(row.apdRequestId);
+      if (!entry) {
+        entry = { itemNameCounts: new Map(), remarks: '', shoeSize: '', shoeMasaPakai: '' };
+        editedSummaryItemsByReq.set(row.apdRequestId, entry);
+      }
+      if (row.itemName === 'Safety Shoes Size') {
+        entry.shoeSize = row.requestType || row.remarks || '';
+      } else if (row.itemName === 'Safety Shoes Masa Pakai') {
+        entry.shoeMasaPakai = row.requestType || row.remarks || '';
+      } else {
+        const key = (mapItemToColumn(row.itemName) || row.itemName).toLowerCase();
+        entry.itemNameCounts.set(key, (entry.itemNameCounts.get(key) || 0) + 1);
+        if (!entry.remarks && row.remarks) {
+          entry.remarks = row.remarks;
+        }
+      }
+    }
+  }
 
   const pendingConditions = [
     sectionFilter,
@@ -360,14 +409,24 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     isValeQuery,
   ];
 
+  const dateConds: any[] = [];
   if (dateRange?.startDate) {
     const start = new Date(`${dateRange.startDate}T00:00:00.000Z`);
-    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) >= ${start}`);
+    dateConds.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) >= ${start}`);
   }
 
   if (dateRange?.endDate) {
     const end = new Date(`${dateRange.endDate}T23:59:59.999Z`);
-    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
+    dateConds.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
+  }
+
+  if (dateConds.length > 0) {
+    const existingIds = Array.from(editedSummaryItemsByReq.keys());
+    if (existingIds.length > 0) {
+      pendingConditions.push(or(and(...dateConds), inArray(apdRequests.id, existingIds))!);
+    } else {
+      pendingConditions.push(...dateConds);
+    }
   }
 
   const approvedRequests = await db.select({
@@ -393,7 +452,7 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 
   for (const req of approvedRequests) {
     if (assignedRequestIds.has(req.requestId)) {
-      continue; // Skip requests already in an active summary
+      continue; // Skip requests already in another active summary
     }
 
     const items = await db.select().from(apdRequestItems)
@@ -401,7 +460,6 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 
     const mappedItems: PendingSummaryRequestItem[] = [];
     let hasSafetyShoes = false;
-    let shoesRequestType = 'baru';
 
     for (const item of items) {
       const canonical = mapItemToColumn(item.itemType) || item.itemType;
@@ -415,7 +473,6 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       });
       if (canonical === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu') || item.itemType.toLowerCase().includes('shoes')) {
         hasSafetyShoes = true;
-        shoesRequestType = item.requestType;
       }
     }
 
@@ -438,6 +495,21 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       }
     }
 
+    const editedEntry = editedSummaryItemsByReq.get(req.requestId);
+    let preselectedItemIds: number[] | undefined;
+    if (editedEntry) {
+      const remaining = new Map(editedEntry.itemNameCounts);
+      preselectedItemIds = [];
+      for (const mi of mappedItems) {
+        const key = mi.canonicalName.toLowerCase();
+        const count = remaining.get(key) || 0;
+        if (count > 0) {
+          preselectedItemIds.push(mi.id);
+          remaining.set(key, count - 1);
+        }
+      }
+    }
+
     results.push({
       requestId: req.requestId,
       requestNumber: req.requestNumber,
@@ -449,8 +521,11 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       siteName: req.siteName,
       departmentName: req.departmentName,
       items: mappedItems,
-      safetyShoesSize: shoeSize,
-      suggestedRemarks: req.notes || '',
+      safetyShoesSize: editedEntry?.shoeSize || shoeSize,
+      safetyShoesMasaPakai: editedEntry?.shoeMasaPakai || '',
+      suggestedRemarks: editedEntry ? editedEntry.remarks : (req.notes || ''),
+      preselectedItemIds,
+      isIncludedInEditedSummary: Boolean(editedEntry),
     });
   }
 
@@ -464,27 +539,55 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 }
 
 export type GenerateSummaryOptions = {
-  selectedRequests?: Array<{
-    requestId: number;
-    remarks?: string;
-    safetyShoesSize?: string;
-    safetyShoesMasaPakai?: string;
-  }>;
+  selectedRequests?: SelectedSummaryRequestOption[];
   manualEntries?: ManualSummaryEntry[];
   defaultRemarks?: string;
   periodStart?: string | Date | null;
   periodEnd?: string | Date | null;
 };
 
-export async function generateSummary(
-  sectionId: number,
-  generatedByEmployeeId: number,
-  targetSite: string,
-  options?: GenerateSummaryOptions
-) {
-  await ensureSummarySchema();
+type SummaryItemInsert = {
+  apdRequestId: number;
+  employeeId: number;
+  employeeName: string;
+  employeeSn: string;
+  siteName: string;
+  itemName: string;
+  quantity: number;
+  requestType: string;
+  remarks: string;
+};
 
-  const isValeQuery = targetSite === 'VALE' 
+async function resolveSafetyShoeSizeFallback(
+  employeeId: number,
+  customSize?: string,
+  items?: Array<{ itemType: string; notes: string }>
+): Promise<string> {
+  let shoeSize = customSize?.trim() || '';
+  if (!shoeSize && items) {
+    const shoeItem = items.find(
+      (i) => i.itemType.toLowerCase().includes('sepatu') || i.itemType.toLowerCase().includes('shoes')
+    );
+    if (shoeItem?.notes) shoeSize = shoeItem.notes;
+  }
+  if (!shoeSize) {
+    const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
+      .where(and(
+        eq(employeeAssets.employeeId, employeeId),
+        ilike(employeeAssets.itemName, '%sepatu%')
+      )).limit(1);
+    if (asset?.size) shoeSize = asset.size;
+  }
+  return shoeSize;
+}
+
+async function collectSummaryItems(
+  sectionId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions,
+  manualNotePrefix = 'Manual Entry Summary APD'
+): Promise<{ summaryItems: SummaryItemInsert[]; isServiceCombined: boolean } | { error: string }> {
+  const isValeQuery = targetSite === 'VALE'
     ? sql`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`
     : sql`NOT (${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`;
 
@@ -507,7 +610,7 @@ export async function generateSummary(
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
     .where(and(
-      sectionFilter, 
+      sectionFilter,
       inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
       sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
       sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
@@ -529,43 +632,30 @@ export async function generateSummary(
   });
 
   const manualEntries = options?.manualEntries || [];
-
-  if (approvedRequests.length === 0 && manualEntries.length === 0) {
-    return { error: 'Tidak ada pengajuan yang dipilih atau ditambahkan untuk section ini' };
-  }
-
   const requestOptionsMap = new Map(
     (options?.selectedRequests || []).map(r => [r.requestId, r])
   );
 
-  const summaryItems: Array<{
-    apdRequestId: number;
-    employeeId: number;
-    employeeName: string;
-    employeeSn: string;
-    siteName: string;
-    itemName: string;
-    quantity: number;
-    requestType: string;
-    remarks: string;
-  }> = [];
+  const summaryItems: SummaryItemInsert[] = [];
 
-  // 1. Process regular approved requests
+  // 1. Process regular approved requests (respecting per-item Admin approval selection)
   for (const req of approvedRequests) {
     const customOpt = requestOptionsMap.get(req.requestId);
     const employeeRemarks = customOpt?.remarks?.trim() || options?.defaultRemarks?.trim() || '';
 
-    const items = await db.select().from(apdRequestItems)
+    const rawItems = await db.select().from(apdRequestItems)
       .where(eq(apdRequestItems.requestId, req.requestId));
+    const items = filterSelectedRequestItems(rawItems, customOpt?.selectedItemIds);
+
+    if (items.length === 0) {
+      continue;
+    }
 
     let employeeHasSafetyShoes = false;
-    let shoesReqType = 'baru';
-
     for (const item of items) {
       const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
       if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu')) {
         employeeHasSafetyShoes = true;
-        shoesReqType = item.requestType;
       }
       summaryItems.push({
         apdRequestId: req.requestId,
@@ -580,24 +670,8 @@ export async function generateSummary(
       });
     }
 
-    // If safety shoes requested, record Safety Shoes Size
     if (employeeHasSafetyShoes) {
-      let shoeSize = customOpt?.safetyShoesSize?.trim() || '';
-
-      if (!shoeSize) {
-        const shoeItem = items.find(i => i.itemType.toLowerCase().includes('sepatu') || i.itemType.toLowerCase().includes('shoes'));
-        if (shoeItem?.notes) shoeSize = shoeItem.notes;
-      }
-
-      if (!shoeSize) {
-        const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
-          .where(and(
-            eq(employeeAssets.employeeId, req.employeeId),
-            ilike(employeeAssets.itemName, '%sepatu%')
-          )).limit(1);
-        if (asset?.size) shoeSize = asset.size;
-      }
-
+      const shoeSize = await resolveSafetyShoeSizeFallback(req.employeeId, customOpt?.safetyShoesSize, items);
       if (shoeSize) {
         summaryItems.push({
           apdRequestId: req.requestId,
@@ -631,6 +705,8 @@ export async function generateSummary(
 
   // 2. Process manual employee entries
   for (const manual of manualEntries) {
+    if (!manual.items || manual.items.length === 0) continue;
+
     const [empData] = await db.select({
       id: employees.id,
       name: employees.name,
@@ -648,7 +724,6 @@ export async function generateSummary(
     const empSiteName = manual.siteName || empData?.siteName || 'Site';
     const employeeRemarks = manual.remarks?.trim() || options?.defaultRemarks?.trim() || '';
 
-    // Generate request number for manual entry
     const timestampSuffix = Date.now().toString().slice(-4);
     const randomSuffix = Math.floor(Math.random() * 900 + 100);
     const manualRequestNumber = `APD-${new Date().getFullYear()}-M${timestampSuffix}${randomSuffix}`;
@@ -659,11 +734,10 @@ export async function generateSummary(
       siteId: empSiteId,
       requestCategory: 'APD',
       status: 'proses_order',
-      notes: employeeRemarks || 'Manual Entry Summary APD',
+      notes: employeeRemarks || manualNotePrefix,
     }).returning();
 
     let manualHasSafetyShoes = false;
-
     for (const item of manual.items) {
       const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
       if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu')) {
@@ -692,17 +766,7 @@ export async function generateSummary(
     }
 
     if (manualHasSafetyShoes) {
-      let shoeSize = manual.safetyShoesSize?.trim() || '';
-
-      if (!shoeSize) {
-        const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
-          .where(and(
-            eq(employeeAssets.employeeId, manual.employeeId),
-            ilike(employeeAssets.itemName, '%sepatu%')
-          )).limit(1);
-        if (asset?.size) shoeSize = asset.size;
-      }
-
+      const shoeSize = await resolveSafetyShoeSizeFallback(manual.employeeId, manual.safetyShoesSize);
       if (shoeSize) {
         summaryItems.push({
           apdRequestId: createdRequest.id,
@@ -733,6 +797,27 @@ export async function generateSummary(
       }
     }
   }
+
+  if (summaryItems.length === 0) {
+    return { error: 'Tidak ada item APD yang dipilih atau ditambahkan untuk section ini' };
+  }
+
+  return { summaryItems, isServiceCombined };
+}
+
+export async function generateSummary(
+  sectionId: number,
+  generatedByEmployeeId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions
+) {
+  await ensureSummarySchema();
+
+  const collected = await collectSummaryItems(sectionId, targetSite, options, 'Manual Entry Summary APD');
+  if ('error' in collected) {
+    return collected;
+  }
+  const { summaryItems, isServiceCombined } = collected;
 
   const [lastSummary] = await db.select({ summaryNumber: apdSummaries.summaryNumber })
     .from(apdSummaries).orderBy(desc(apdSummaries.id)).limit(1);
@@ -1004,6 +1089,56 @@ export async function deleteSummaryDraft(summaryId: number) {
   await db.delete(apdSummaries).where(eq(apdSummaries.id, summaryId));
 
   return { success: true };
+}
+
+/**
+ * Regenerate items for an existing summary (revisi/draft) without changing summary number.
+ * Clears all existing items and re-inserts from the provided options.
+ * Status is set back to 'draft' so the submitter can review and resubmit.
+ */
+export async function regenerateSummaryItems(
+  summaryId: number,
+  sectionId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions
+) {
+  await ensureSummarySchema();
+
+  const [summary] = await db
+    .select({ id: apdSummaries.id, status: apdSummaries.status, sectionId: apdSummaries.sectionId, targetSite: apdSummaries.targetSite })
+    .from(apdSummaries)
+    .where(eq(apdSummaries.id, summaryId))
+    .limit(1);
+
+  if (!summary) return { error: 'Summary tidak ditemukan' };
+  if (summary.status !== 'revisi' && summary.status !== 'draft') {
+    return { error: 'Hanya summary berstatus Revisi atau Draft yang dapat diedit' };
+  }
+
+  const collected = await collectSummaryItems(sectionId, targetSite, options, 'Manual Entry Summary APD (Edit)');
+  if ('error' in collected) {
+    return collected;
+  }
+  const { summaryItems } = collected;
+
+  // Replace all items atomically: delete old, insert new, reset to draft
+  await db.delete(apdSummaryItems).where(eq(apdSummaryItems.summaryId, summaryId));
+
+  for (const item of summaryItems) {
+    await db.insert(apdSummaryItems).values({ summaryId, ...item });
+  }
+
+  await db
+    .update(apdSummaries)
+    .set({
+      status: 'draft',
+      updatedAt: new Date(),
+      periodStart: options?.periodStart ? new Date(options.periodStart) : undefined,
+      periodEnd: options?.periodEnd ? new Date(options.periodEnd) : undefined,
+    })
+    .where(eq(apdSummaries.id, summaryId));
+
+  return { summaryId, itemCount: summaryItems.length };
 }
 
 export function isValeSummaryTarget(targetSite?: string | null, itemSiteNames?: string[]): boolean {

@@ -113,6 +113,23 @@ export type ManualSummaryEntry = {
   remarks?: string;
 };
 
+export type SelectedSummaryRequestOption = {
+  requestId: number;
+  remarks?: string;
+  safetyShoesSize?: string;
+  safetyShoesMasaPakai?: string;
+  selectedItemIds?: number[];
+};
+
+export function filterSelectedRequestItems<T extends { id: number }>(
+  items: T[],
+  selectedItemIds?: number[]
+): T[] {
+  if (selectedItemIds === undefined) return items;
+  const allowed = new Set(selectedItemIds);
+  return items.filter((item) => allowed.has(item.id));
+}
+
 export type PendingSummaryRequest = {
   requestId: number;
   tempId?: string;
@@ -129,6 +146,8 @@ export type PendingSummaryRequest = {
   safetyShoesSize: string;
   safetyShoesMasaPakai?: string;
   suggestedRemarks: string;
+  preselectedItemIds?: number[];
+  isIncludedInEditedSummary?: boolean;
 };
 
 /**

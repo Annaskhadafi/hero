@@ -8,6 +8,7 @@ import {
   Clock,
   Download,
   Eye,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -51,6 +52,7 @@ interface SummaryListProps {
 export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProps) {
   const router = useRouter();
   const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
+  const [editModalSection, setEditModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'revisi' | 'approved' | 'rejected'>('all');
@@ -453,6 +455,20 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                             </Button>
                           )}
 
+                          {/* Edit button for draft or revisi status */}
+                          {section.summaryId && (section.summaryStatus === 'revisi' || section.summaryStatus === 'draft') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditModalSection(section)}
+                              className="h-7.5 px-2.5 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 rounded-xl shadow-2xs cursor-pointer gap-1.5 font-semibold"
+                              title="Edit Item APD & Ajukan Ulang"
+                            >
+                              <FilePenLine className="size-3.5" />
+                              Edit
+                            </Button>
+                          )}
+
                           {/* Delete Draft / Pending button */}
                           {section.summaryId && (section.summaryStatus === 'draft' || section.summaryStatus === 'pending') && (
                             <Button
@@ -500,7 +516,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
         </div>
       </div>
 
-      {/* Summary Generator Modal */}
+      {/* Summary Generator Modal (Create) */}
       {generatorModalSection && (
         <SummaryGeneratorModal
           isOpen={Boolean(generatorModalSection)}
@@ -508,6 +524,22 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
           section={generatorModalSection}
           currentEmployeeId={currentEmployeeId}
           onSuccess={(summaryId) => {
+            router.push(`/dashboard/summary?preview=${summaryId}`);
+          }}
+        />
+      )}
+
+      {/* Summary Generator Modal (Edit/Revisi) */}
+      {editModalSection && (
+        <SummaryGeneratorModal
+          isOpen={Boolean(editModalSection)}
+          onClose={() => setEditModalSection(null)}
+          section={editModalSection}
+          currentEmployeeId={currentEmployeeId}
+          editSummaryId={editModalSection.summaryId!}
+          editSectionId={editModalSection.id}
+          onSuccess={(summaryId) => {
+            setEditModalSection(null);
             router.push(`/dashboard/summary?preview=${summaryId}`);
           }}
         />

@@ -6,6 +6,7 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  FilePenLine,
   Filter,
   Layers,
   Loader2,
@@ -28,6 +29,7 @@ import {
   getPendingRequestsAction,
   getAvailableEmployeesForSummaryAction,
   generateSummaryAction,
+  regenerateSummaryItemsAction,
 } from '@/app/dashboard/summary/actions';
 import { getMasterApdListAction } from '@/app/actions/master-apd-actions';
 import {
@@ -38,10 +40,12 @@ import {
   getDefaultApdSummaryDateRange,
   getPreviousApdSummaryDateRange,
   getCalendarMonthApdSummaryDateRange,
+  filterSelectedRequestItems,
   type PendingSummaryRequest,
   type PendingSummaryRequestItem,
   type ManualSummaryEntry,
   type ManualSummaryItem,
+  type SelectedSummaryRequestOption,
 } from '@/lib/summary-constants';
 import type { SectionWithSummary } from './summary-list';
 
@@ -51,6 +55,10 @@ interface SummaryGeneratorModalProps {
   section: SectionWithSummary;
   currentEmployeeId?: number;
   onSuccess: (summaryId: number) => void;
+  /** If provided, modal runs in "edit" mode: re-generates items for this existing summary instead of creating new one */
+  editSummaryId?: number;
+  /** Section id override for edit mode (uses section.id by default) */
+  editSectionId?: number;
 }
 
 type AvailableEmployee = {
@@ -97,12 +105,15 @@ export function SummaryGeneratorModal({
   section,
   currentEmployeeId = 0,
   onSuccess,
+  editSummaryId,
+  editSectionId,
 }: SummaryGeneratorModalProps) {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [requests, setRequests] = useState<PendingSummaryRequest[]>([]);
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedItemIdsMap, setSelectedItemIdsMap] = useState<Record<number, Set<number>>>({});
   const [remarksMap, setRemarksMap] = useState<Record<number, string>>({});
   const [shoeSizeMap, setShoeSizeMap] = useState<Record<number, string>>({});
   const [shoeMasaPakaiMap, setShoeMasaPakaiMap] = useState<Record<number, string>>({});
@@ -130,26 +141,49 @@ export function SummaryGeneratorModal({
 
   const loadRequests = (start?: string, end?: string) => {
     setLoading(true);
-    getPendingRequestsAction(section.id, section.targetSite, {
-      startDate: start || undefined,
-      endDate: end || undefined,
-    })
+    const targetSecId = editSectionId || section.id;
+    getPendingRequestsAction(
+      targetSecId,
+      section.targetSite,
+      {
+        startDate: start || undefined,
+        endDate: end || undefined,
+      },
+      editSummaryId
+    )
       .then((res) => {
         if (res.success && res.requests) {
           setRequests(res.requests);
-          const allIds = new Set(res.requests.map((r) => r.requestId));
-          setSelectedIds(allIds);
 
+          const hasExistingEditedRows = Boolean(editSummaryId) && res.requests.some((r) => r.isIncludedInEditedSummary);
+          const nextSelectedIds = new Set<number>();
+          const initSelectedItems: Record<number, Set<number>> = {};
           const initRemarks: Record<number, string> = {};
           const initSize: Record<number, string> = {};
           const initMasaPakai: Record<number, string> = {};
 
           for (const req of res.requests) {
+            const allItemIds = req.items.map((it) => it.id);
+            if (hasExistingEditedRows) {
+              if (req.isIncludedInEditedSummary) {
+                nextSelectedIds.add(req.requestId);
+                const pre = req.preselectedItemIds && req.preselectedItemIds.length > 0 ? req.preselectedItemIds : allItemIds;
+                initSelectedItems[req.requestId] = new Set(pre);
+              } else {
+                initSelectedItems[req.requestId] = new Set(allItemIds);
+              }
+            } else {
+              nextSelectedIds.add(req.requestId);
+              initSelectedItems[req.requestId] = new Set(allItemIds);
+            }
+
             initRemarks[req.requestId] = req.suggestedRemarks || '';
             initSize[req.requestId] = req.safetyShoesSize || '';
             initMasaPakai[req.requestId] = req.safetyShoesMasaPakai || '';
           }
 
+          setSelectedIds(nextSelectedIds);
+          setSelectedItemIdsMap(initSelectedItems);
           setRemarksMap(initRemarks);
           setShoeSizeMap(initSize);
           setShoeMasaPakaiMap(initMasaPakai);
@@ -183,7 +217,7 @@ export function SummaryGeneratorModal({
     setSelectedManualEmp(null);
 
     loadRequests(defaultRange.startDate, defaultRange.endDate);
-  }, [isOpen, section.id, section.targetSite]);
+  }, [isOpen, section.id, section.targetSite, editSummaryId, editSectionId]);
 
   const handleStartDateChange = (val: string) => {
     setStartDate(val);
@@ -322,6 +356,10 @@ export function SummaryGeneratorModal({
 
     setRequests((prev) => [syntheticRequest, ...prev]);
     setSelectedIds((prev) => new Set([...prev, syntheticId]));
+    setSelectedItemIdsMap((prev) => ({
+      ...prev,
+      [syntheticId]: new Set(syntheticRequest.items.map((it) => it.id)),
+    }));
     setRemarksMap((prev) => ({ ...prev, [syntheticId]: manualRemarks }));
     setShoeSizeMap((prev) => ({ ...prev, [syntheticId]: manualShoeSize }));
     setShoeMasaPakaiMap((prev) => ({ ...prev, [syntheticId]: manualShoeMasaPakai }));
@@ -345,6 +383,11 @@ export function SummaryGeneratorModal({
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.delete(requestId);
+      return next;
+    });
+    setSelectedItemIdsMap((prev) => {
+      const next = { ...prev };
+      delete next[requestId];
       return next;
     });
     setRemarksMap((prev) => {
@@ -403,35 +446,100 @@ export function SummaryGeneratorModal({
   }, [apdSearch, masterApdItems]);
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredRequests.length) {
-      setSelectedIds(new Set());
+    const allFilteredSelected = filteredRequests.length > 0 && filteredRequests.every((r) => selectedIds.has(r.requestId));
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const r of filteredRequests) next.delete(r.requestId);
+        return next;
+      });
     } else {
-      setSelectedIds(new Set(filteredRequests.map((r) => r.requestId)));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const r of filteredRequests) next.add(r.requestId);
+        return next;
+      });
+      setSelectedItemIdsMap((prev) => {
+        const next = { ...prev };
+        for (const r of filteredRequests) {
+          if (!next[r.requestId] || next[r.requestId].size === 0) {
+            next[r.requestId] = new Set(r.items.map((it) => it.id));
+          }
+        }
+        return next;
+      });
     }
   };
 
   const toggleSelectOne = (id: number) => {
     const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+      const req = requests.find((r) => r.requestId === id);
+      if (req && (!selectedItemIdsMap[id] || selectedItemIdsMap[id].size === 0)) {
+        setSelectedItemIdsMap((prev) => ({
+          ...prev,
+          [id]: new Set(req.items.map((it) => it.id)),
+        }));
+      }
+    }
     setSelectedIds(next);
   };
 
-  // Calculate live item counts for selected requests
+  const toggleRequestItem = (requestId: number, itemId: number) => {
+    const isRowSelected = selectedIds.has(requestId);
+
+    if (!isRowSelected) {
+      setSelectedIds((prev) => new Set([...prev, requestId]));
+      setSelectedItemIdsMap((prev) => ({
+        ...prev,
+        [requestId]: new Set([itemId]),
+      }));
+      return;
+    }
+
+    const req = requests.find((r) => r.requestId === requestId);
+    const currentSet = selectedItemIdsMap[requestId] ?? new Set((req?.items || []).map((it) => it.id));
+    const nextSet = new Set(currentSet);
+    if (nextSet.has(itemId)) {
+      nextSet.delete(itemId);
+    } else {
+      nextSet.add(itemId);
+    }
+
+    setSelectedItemIdsMap((prev) => ({
+      ...prev,
+      [requestId]: nextSet,
+    }));
+
+    if (nextSet.size === 0) {
+      setSelectedIds((prev) => {
+        const nextIds = new Set(prev);
+        nextIds.delete(requestId);
+        return nextIds;
+      });
+    }
+  };
+
+  // Calculate live item counts for selected requests and selected APD items
   const liveTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     let totalQty = 0;
 
     for (const req of requests) {
       if (!selectedIds.has(req.requestId)) continue;
-      for (const item of req.items) {
+      const checkedSet = selectedItemIdsMap[req.requestId];
+      const activeItems = checkedSet ? req.items.filter((it) => checkedSet.has(it.id)) : req.items;
+      for (const item of activeItems) {
         totals[item.canonicalName] = (totals[item.canonicalName] || 0) + item.quantity;
         totalQty += item.quantity;
       }
     }
 
     return { totals, totalQty };
-  }, [requests, selectedIds]);
+  }, [requests, selectedIds, selectedItemIdsMap]);
 
   const handleGenerate = async () => {
     if (selectedIds.size === 0) {
@@ -443,23 +551,25 @@ export function SummaryGeneratorModal({
     const toastId = toast.loading('Sedang membuat dokumen summary APD...');
 
     try {
-      const regularSelectedPayload: Array<{
-        requestId: number;
-        remarks?: string;
-        safetyShoesSize?: string;
-        safetyShoesMasaPakai?: string;
-      }> = [];
-
+      const regularSelectedPayload: SelectedSummaryRequestOption[] = [];
       const manualEntriesPayload: ManualSummaryEntry[] = [];
 
       for (const req of requests) {
         if (!selectedIds.has(req.requestId)) continue;
+
+        const checkedSet = selectedItemIdsMap[req.requestId];
+        const selectedItemIdsArray = checkedSet
+          ? req.items.filter((it) => checkedSet.has(it.id)).map((it) => it.id)
+          : req.items.map((it) => it.id);
+
+        if (selectedItemIdsArray.length === 0) continue;
 
         const remarks = remarksMap[req.requestId]?.trim() || '';
         const safetyShoesSize = shoeSizeMap[req.requestId]?.trim() || '';
         const safetyShoesMasaPakai = shoeMasaPakaiMap[req.requestId]?.trim() || '';
 
         if (req.isManual) {
+          const activeManualItems = filterSelectedRequestItems(req.items, selectedItemIdsArray);
           manualEntriesPayload.push({
             tempId: req.tempId || `m-${req.requestId}`,
             employeeId: req.employeeId,
@@ -468,7 +578,7 @@ export function SummaryGeneratorModal({
             siteId: req.siteId,
             siteName: req.siteName,
             departmentName: req.departmentName,
-            items: req.items.map((it) => ({
+            items: activeManualItems.map((it) => ({
               itemType: it.itemType,
               canonicalName: it.canonicalName,
               quantity: it.quantity,
@@ -485,25 +595,53 @@ export function SummaryGeneratorModal({
             remarks,
             safetyShoesSize,
             safetyShoesMasaPakai,
+            selectedItemIds: selectedItemIdsArray,
           });
         }
       }
 
-      const empId = currentEmployeeId || 5;
-      const res = await generateSummaryAction(section.id, empId, section.targetSite, {
-        selectedRequests: regularSelectedPayload,
-        manualEntries: manualEntriesPayload,
-        defaultRemarks: globalRemarks,
-        periodStart: startDate || null,
-        periodEnd: endDate || null,
-      });
+      if (regularSelectedPayload.length === 0 && manualEntriesPayload.length === 0) {
+        toast.error('Pilih minimal 1 item APD yang di-ACC untuk dibuat summary', { id: toastId });
+        return;
+      }
 
-      if (res.success && 'summaryId' in res && res.summaryId) {
-        toast.success(`Summary APD ${res.summaryNumber} berhasil dibuat!`, { id: toastId });
-        onSuccess(res.summaryId);
-        onClose();
+      const empId = currentEmployeeId || 5;
+
+      if (editSummaryId) {
+        // Edit mode: regenerate items for existing summary (revisi/draft)
+        const resolvedSectionId = editSectionId || section.id;
+        const res = await regenerateSummaryItemsAction(editSummaryId, resolvedSectionId, section.targetSite, {
+          selectedRequests: regularSelectedPayload,
+          manualEntries: manualEntriesPayload,
+          defaultRemarks: globalRemarks,
+          periodStart: startDate || null,
+          periodEnd: endDate || null,
+        });
+
+        if (res.success && res.summaryId) {
+          toast.success(`Summary APD berhasil diperbarui! (${res.itemCount} item)`, { id: toastId });
+          onSuccess(res.summaryId);
+          onClose();
+        } else {
+          toast.error(res.error || 'Gagal memperbarui summary', { id: toastId });
+        }
       } else {
-        toast.error(res.error || 'Gagal generate summary', { id: toastId });
+        // Create mode: generate new summary
+        const res = await generateSummaryAction(section.id, empId, section.targetSite, {
+          selectedRequests: regularSelectedPayload,
+          manualEntries: manualEntriesPayload,
+          defaultRemarks: globalRemarks,
+          periodStart: startDate || null,
+          periodEnd: endDate || null,
+        });
+
+        if (res.success && 'summaryId' in res && res.summaryId) {
+          toast.success(`Summary APD ${res.summaryNumber} berhasil dibuat!`, { id: toastId });
+          onSuccess(res.summaryId);
+          onClose();
+        } else {
+          toast.error(res.error || 'Gagal generate summary', { id: toastId });
+        }
       }
     } catch (err: any) {
       toast.error(err.message || 'Terjadi kesalahan sistem saat generate summary', { id: toastId });
@@ -521,12 +659,16 @@ export function SummaryGeneratorModal({
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-800/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
-              <Sparkles className="w-5 h-5" />
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${
+              editSummaryId
+                ? 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                : 'bg-blue-600/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400'
+            }`}>
+              {editSummaryId ? <FilePenLine className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                Generate Summary APD
+                {editSummaryId ? 'Edit Summary APD' : 'Generate Summary APD'}
                 {section.targetSite === 'VALE' && (
                   <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-300">
                     Vale
@@ -665,7 +807,9 @@ export function SummaryGeneratorModal({
               disabled={loading || filteredRequests.length === 0}
               className="h-9 text-xs"
             >
-              {selectedIds.size === filteredRequests.length ? 'Batalkan Semua' : 'Pilih Semua'}
+              {filteredRequests.length > 0 && filteredRequests.every((r) => selectedIds.has(r.requestId))
+                ? 'Batalkan Semua'
+                : 'Pilih Semua'}
             </Button>
             <Badge variant="secondary" className="h-9 px-3 text-xs font-semibold flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-blue-600" />
@@ -973,7 +1117,7 @@ export function SummaryGeneratorModal({
                     <th className="py-2.5 px-3 w-10 text-center">
                       <input
                         type="checkbox"
-                        checked={selectedIds.size === filteredRequests.length && filteredRequests.length > 0}
+                        checked={filteredRequests.length > 0 && filteredRequests.every((r) => selectedIds.has(r.requestId))}
                         onChange={toggleSelectAll}
                         className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                       />
@@ -981,7 +1125,10 @@ export function SummaryGeneratorModal({
                     <th className="py-2.5 px-3 w-12 text-center">No</th>
                     <th className="py-2.5 px-3 min-w-[170px]">Nama Karyawan & SN</th>
                     <th className="py-2.5 px-3 min-w-[90px]">Site</th>
-                    <th className="py-2.5 px-3 min-w-[200px]">Item Barang APD</th>
+                    <th className="py-2.5 px-3 min-w-[230px]">
+                      <span>Item Barang APD</span>
+                      <span className="block text-[10px] font-normal text-slate-400">Centang item yang di-ACC masuk summary</span>
+                    </th>
                     <th className="py-2.5 px-3 min-w-[100px]">Ukuran Sepatu (Size)</th>
                     <th className="py-2.5 px-3 min-w-[140px]">Masa Pakai</th>
                     <th className="py-2.5 px-3 min-w-[220px]">
@@ -995,7 +1142,11 @@ export function SummaryGeneratorModal({
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                   {filteredRequests.map((req, idx) => {
                     const isSelected = selectedIds.has(req.requestId);
-                    const hasShoes = req.items.some(
+                    const checkedSet = isSelected
+                      ? (selectedItemIdsMap[req.requestId] ?? new Set(req.items.map((it) => it.id)))
+                      : new Set<number>();
+                    const activeItems = req.items.filter((it) => checkedSet.has(it.id));
+                    const hasShoes = activeItems.some(
                       (i) => i.canonicalName === 'Safety Shoes' || i.itemType.toLowerCase().includes('sepatu')
                     );
 
@@ -1039,17 +1190,39 @@ export function SummaryGeneratorModal({
                           </Badge>
                         </td>
                         <td className="py-3 px-3">
-                          <div className="flex flex-wrap gap-1">
-                            {req.items.map((item, iIdx) => (
-                              <span
-                                key={iIdx}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium"
-                              >
-                                {item.canonicalName}
-                                <span className="font-bold text-blue-600">x{item.quantity}</span>
-                              </span>
-                            ))}
+                          <div className="flex flex-wrap gap-1.5">
+                            {req.items.map((item) => {
+                              const isItemChecked = checkedSet.has(item.id);
+                              return (
+                                <label
+                                  key={item.id}
+                                  data-testid={`apd-item-chip-${req.requestId}-${item.id}`}
+                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] font-medium cursor-pointer select-none transition-all ${
+                                    isItemChecked
+                                      ? 'bg-blue-50/90 dark:bg-blue-950/50 border-blue-300 dark:border-blue-700 text-slate-800 dark:text-slate-100 shadow-2xs'
+                                      : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 line-through opacity-75'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isItemChecked}
+                                    onChange={() => toggleRequestItem(req.requestId, item.id)}
+                                    aria-label={`ACC ${item.canonicalName}`}
+                                    className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  />
+                                  <span>{item.canonicalName}</span>
+                                  <span className={`font-bold ${isItemChecked ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`}>
+                                    x{item.quantity}
+                                  </span>
+                                </label>
+                              );
+                            })}
                           </div>
+                          {isSelected && checkedSet.size < req.items.length && (
+                            <div className="mt-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                              {checkedSet.size}/{req.items.length} item di-ACC
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-3">
                           {hasShoes ? (
@@ -1165,17 +1338,21 @@ export function SummaryGeneratorModal({
               type="button"
               onClick={handleGenerate}
               disabled={generating || selectedIds.size === 0 || loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs gap-1.5 shadow-sm"
+              className={`font-semibold text-xs gap-1.5 shadow-sm text-white ${
+                editSummaryId
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
             >
               {generating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Membuat Summary...
+                  {editSummaryId ? 'Menyimpan...' : 'Membuat Summary...'}
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
-                  Generate Summary ({selectedIds.size})
+                  {editSummaryId ? <FilePenLine className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                  {editSummaryId ? `Simpan Perubahan (${selectedIds.size})` : `Generate Summary (${selectedIds.size})`}
                 </>
               )}
             </Button>

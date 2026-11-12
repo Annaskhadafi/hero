@@ -50,6 +50,18 @@ async function main() {
     process.exit(0);
   }
 
+  if (cmd === 'latest-draft') {
+    const { desc } = await import('drizzle-orm');
+    const [latest] = await db
+      .select({ id: apdSummaries.id, summaryNumber: apdSummaries.summaryNumber })
+      .from(apdSummaries)
+      .where(eq(apdSummaries.status, 'draft'))
+      .orderBy(desc(apdSummaries.id))
+      .limit(1);
+    console.log(JSON.stringify(latest || null));
+    process.exit(0);
+  }
+
   const summaryId = Number(arg);
   if (!summaryId) {
     throw new Error(`Invalid summaryId for ${cmd}: ${arg}`);
@@ -71,6 +83,19 @@ async function main() {
   if (cmd === 'approve-l2') {
     const res = await approveSummaryStep(summaryId, 2, 972, TINY_PNG_SIG, 'OK Romy');
     console.log(JSON.stringify(res));
+    process.exit(0);
+  }
+
+  if (cmd === 'inspect-items') {
+    const rows = await db
+      .select({
+        apdRequestId: apdSummaryItems.apdRequestId,
+        itemName: apdSummaryItems.itemName,
+        quantity: apdSummaryItems.quantity,
+      })
+      .from(apdSummaryItems)
+      .where(eq(apdSummaryItems.summaryId, summaryId));
+    console.log(JSON.stringify({ rows }));
     process.exit(0);
   }
 
