@@ -9,12 +9,13 @@ export default async function PrintSummaryPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ embed?: string; autoPrint?: string }>;
+  searchParams?: Promise<{ embed?: string; autoPrint?: string; printOnly?: string }>;
 }) {
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const isEmbed = resolvedSearchParams?.embed === '1' || resolvedSearchParams?.embed === 'true';
   const autoPrint = resolvedSearchParams?.autoPrint === '1' || resolvedSearchParams?.autoPrint === 'true';
+  const hideDocsCol = resolvedSearchParams?.printOnly === '1' || resolvedSearchParams?.printOnly === 'true';
   const summaryId = Number(id);
   const data = await getSummaryDetails(summaryId);
 
@@ -211,7 +212,7 @@ export default async function PrintSummaryPage({
           }
           .print-page-wrapper {
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 0 2px !important;
             width: 100% !important;
             min-width: 0 !important;
             max-width: 100% !important;
@@ -235,6 +236,7 @@ export default async function PrintSummaryPage({
           }
           table {
             width: 100% !important;
+            max-width: 100% !important;
             page-break-after: auto;
           }
           tr {
@@ -288,7 +290,9 @@ export default async function PrintSummaryPage({
           <col style={{ width: '34px' }} />
           <col style={{ width: colWidthSite }} />
           <col style={{ width: colWidthRemarks }} />
-          <col style={{ width: isExtremeDense ? '44px' : '50px' }} className="print-hidden print:hidden" />
+          {!hideDocsCol && (
+            <col style={{ width: isExtremeDense ? '44px' : '50px' }} className="print-hidden print:hidden" />
+          )}
         </colgroup>
         <thead>
           <tr>
@@ -303,7 +307,9 @@ export default async function PrintSummaryPage({
             <th style={th} colSpan={3}>{SAFETY_SHOES_COL}</th>
             <th style={th} rowSpan={2}>Site</th>
             <th style={th} rowSpan={2}>Remarks</th>
-            <th style={th} className="print-hidden print:hidden" rowSpan={2}>Dokumen</th>
+            {!hideDocsCol && (
+              <th style={th} className="print-hidden print:hidden" rowSpan={2}>Dokumen</th>
+            )}
           </tr>
           <tr>
             <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>QTY</th>
@@ -339,38 +345,40 @@ export default async function PrintSummaryPage({
                   {e.remarks || '—'}
                 </div>
               </td>
-              <td style={{ ...td, padding: '1px' }} className="print-hidden print:hidden">
-                {e.apdRequestId ? (
-                  <a
-                    href={`/print/apd/${e.apdRequestId}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-apd-request-id={e.apdRequestId}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '2px',
-                      fontSize: '8px',
-                      fontWeight: 'bold',
-                      color: '#1d4ed8',
-                      backgroundColor: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      padding: '2px 4px',
-                      borderRadius: '4px',
-                      textDecoration: 'none',
-                      cursor: 'pointer',
-                      width: '100%',
-                      boxSizing: 'border-box',
-                    }}
-                    title="Lihat Dokumen Request Karyawan"
-                  >
-                    Dokumen
-                  </a>
-                ) : (
-                  <span style={{ color: '#94a3b8', fontSize: '8px' }}>—</span>
-                )}
-              </td>
+              {!hideDocsCol && (
+                <td style={{ ...td, padding: '1px' }} className="print-hidden print:hidden">
+                  {e.apdRequestId ? (
+                    <a
+                      href={`/print/apd/${e.apdRequestId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-apd-request-id={e.apdRequestId}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '2px',
+                        fontSize: '8px',
+                        fontWeight: 'bold',
+                        color: '#1d4ed8',
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        padding: '2px 4px',
+                        borderRadius: '4px',
+                        textDecoration: 'none',
+                        cursor: 'pointer',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                      }}
+                      title="Lihat Dokumen Request Karyawan"
+                    >
+                      Dokumen
+                    </a>
+                  ) : (
+                    <span style={{ color: '#94a3b8', fontSize: '8px' }}>—</span>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
           {Array.from({ length: emptyRowCount }).map((_, i) => (
@@ -379,7 +387,7 @@ export default async function PrintSummaryPage({
               {Array.from({ length: dynamicQtyCols.length + 7 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
-              <td style={td} className="print-hidden print:hidden"></td>
+              {!hideDocsCol && <td style={td} className="print-hidden print:hidden"></td>}
             </tr>
           ))}
           <tr style={{ background: '#e2e8f0', fontWeight: 'bold', height: rowHeight }}>
@@ -392,7 +400,7 @@ export default async function PrintSummaryPage({
             <td style={{ ...td, fontSize: textFontSize }}>—</td>
             <td style={{ ...td, fontSize: textFontSize }}>—</td>
             <td style={{ ...td, fontSize: textFontSize }}>—</td>
-            <td style={{ ...td, fontSize: textFontSize }} className="print-hidden print:hidden">—</td>
+            {!hideDocsCol && <td style={{ ...td, fontSize: textFontSize }} className="print-hidden print:hidden">—</td>}
           </tr>
         </tbody>
       </table>
@@ -424,7 +432,7 @@ export default async function PrintSummaryPage({
         };
 
         return (
-          <div suppressHydrationWarning style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isExtremeDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
+          <div suppressHydrationWarning style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isExtremeDense ? '2px' : isDense ? '3px' : '5px', flexShrink: 0, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             {/* Diajukan Oleh */}
             <div suppressHydrationWarning>
               <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>

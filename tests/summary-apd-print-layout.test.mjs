@@ -40,6 +40,7 @@ test('lib/summary-print.ts configures calibrated iframe dimensions, single-print
   assert.ok(printHelper.includes("iframe.style.height = '210mm'"), 'Iframe height must be 210mm');
   assert.ok(printHelper.includes('hasPrinted'), 'Must guard against duplicate print() calls');
   assert.ok(printHelper.includes('afterprint'), 'Must clean up iframe after printing');
+  assert.ok(printHelper.includes('?printOnly=1'), 'Must pass ?printOnly=1 so Dokumen column is omitted cleanly from print DOM');
 });
 
 test('components/summary/summary-preview.tsx provides non-fixed print styling, unique printable ID, and shared iframe print', () => {

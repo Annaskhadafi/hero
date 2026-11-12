@@ -120,7 +120,7 @@ export function printSummaryInPlace(summaryId: number, onFinish?: () => void): v
     }
   }, 10_000);
 
-  iframe.src = `/print/summary/${summaryId}`;
+  iframe.src = `/print/summary/${summaryId}?printOnly=1`;
   document.body.appendChild(iframe);
 }
 

@@ -65,8 +65,8 @@ test('verifies Summary APD print layout, single-copy PDF print, and no right/bot
   // Screenshot 1: Summary Preview 71 with Print action & crisp table layout
   await app.screenshot('01-summary-apd-preview-print-actions');
 
-  // 2. Open dedicated print page for dense multi-page Summary 71
-  await app.open('/print/summary/71');
+  // 2. Open dedicated printOnly=1 print page for dense multi-page Summary 71 (simulating Cetak PDF iframe)
+  await app.open('/print/summary/71?printOnly=1');
 
   const printTitle = browser.locator('text=Summary Permintaan Barang Safety').first();
   await expect(printTitle).toBeVisible({ timeout: 35000 });
@@ -77,18 +77,21 @@ test('verifies Summary APD print layout, single-copy PDF print, and no right/bot
   const shoesHeader = browser.locator('th:has-text("Safety Shoes")').first();
   await expect(shoesHeader).toBeVisible({ timeout: 10000 });
 
-  // Verify A4 Landscape viewport width (283mm ~ 1070px) has zero horizontal table clipping
+  // Verify Dokumen column is completely omitted on printOnly=1 and zero horizontal clipping
   await browser.setViewport({ width: 1070, height: 794 });
   const metrics71 = await browser.evaluate(() => {
     const wrap = document.querySelector('.print-page-wrapper') as HTMLElement | null;
     const table = document.querySelector('table') as HTMLElement | null;
+    const docHeader = Array.from(document.querySelectorAll('th')).find((th) => th.textContent?.trim() === 'Dokumen');
     return {
       wrapW: wrap ? wrap.getBoundingClientRect().width : 0,
       tableScrollW: table ? table.scrollWidth : 0,
+      hasDocHeader: Boolean(docHeader),
     };
   });
+  expect(metrics71.hasDocHeader).toBe(false);
   expect(metrics71.tableScrollW).toBeLessThanOrEqual(metrics71.wrapW + 1);
 
-  // Screenshot 2: Full A4 Landscape print page for dense Summary 71 (zero horizontal clipping)
+  // Screenshot 2: Full A4 Landscape printOnly=1 page for dense Summary 71 (zero horizontal clipping)
   await app.screenshot('02-summary-apd-print-page-71-landscape');
 });
