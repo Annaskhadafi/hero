@@ -8684,7 +8684,7 @@ export async function manageSecurityUserAction(
           pointOfHire,
           contractDurationStart,
           contractDurationEnd,
-          permanentDate: payload.permanentDate || null,
+          permanentDate: (payload.permanentDate && !payload.permanentDate.startsWith('0001') && !payload.permanentDate.startsWith('1970') && !payload.permanentDate.startsWith('0000')) ? payload.permanentDate : null,
           workLocation: selectedSite?.location || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,

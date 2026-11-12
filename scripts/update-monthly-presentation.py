@@ -312,7 +312,11 @@ def update_monthly_presentation(title, description, screenshots, system="HERO", 
     # Add detail evidence slide
     slide_num = add_detail_slide(prs, title, description, screenshots, system=system)
 
-    prs.save(target_path)
+    import tempfile, shutil
+    temp_fd, temp_path = tempfile.mkstemp(suffix=".pptx")
+    os.close(temp_fd)
+    prs.save(temp_path)
+    shutil.move(temp_path, target_path)
     print(f"[SUCCESS] Monthly presentation successfully updated: {target_path}")
     return target_path, slide_num
 
