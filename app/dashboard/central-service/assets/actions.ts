@@ -6,7 +6,7 @@ import {
   centralServiceAssetHistories,
   centralServiceAssets,
 } from "@/db/schema/central-service";
-import { masterSections } from "@/db/schema/hero";
+import { masterSections, employees } from "@/db/schema/hero";
 import { getS3ObjectReadUrl } from "@/lib/s3-storage";
 import { eq, asc, desc, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -30,6 +30,7 @@ const TRACKED_FIELDS = [
   ["condition", "Kondisi"],
   ["qty", "Qty"],
   ["remarks", "Remarks"],
+  ["holderEmployeeId", "Pemegang Aset (Holder)"],
 ] as const;
 
 type AssetChangeRow = {
@@ -45,8 +46,35 @@ type AssetChangeRow = {
 export async function getAssets() {
   try {
     const assets = await db
-      .select()
+      .select({
+        id: centralServiceAssets.id,
+        workSection: centralServiceAssets.workSection,
+        section: centralServiceAssets.section,
+        location: centralServiceAssets.location,
+        description: centralServiceAssets.description,
+        assetNumber: centralServiceAssets.assetNumber,
+        serialNumber: centralServiceAssets.serialNumber,
+        purchaseDate: centralServiceAssets.purchaseDate,
+        deliveryToSiteDate: centralServiceAssets.deliveryToSiteDate,
+        lastCalibrationDate: centralServiceAssets.lastCalibrationDate,
+        calibrationCycleMonths: centralServiceAssets.calibrationCycleMonths,
+        calibrationDueDate: centralServiceAssets.calibrationDueDate,
+        certificateDate: centralServiceAssets.certificateDate,
+        certificateCycleMonths: centralServiceAssets.certificateCycleMonths,
+        certificateDueDate: centralServiceAssets.certificateDueDate,
+        condition: centralServiceAssets.condition,
+        qty: centralServiceAssets.qty,
+        remarks: centralServiceAssets.remarks,
+        holderEmployeeId: centralServiceAssets.holderEmployeeId,
+        holderName: employees.name,
+        holderEmployeeSn: employees.employeeSn,
+        holderDepartment: employees.department,
+        holderJobTitle: employees.jobTitle,
+        createdAt: centralServiceAssets.createdAt,
+        updatedAt: centralServiceAssets.updatedAt,
+      })
       .from(centralServiceAssets)
+      .leftJoin(employees, eq(centralServiceAssets.holderEmployeeId, employees.id))
       .orderBy(asc(centralServiceAssets.workSection), asc(centralServiceAssets.section), asc(centralServiceAssets.description));
 
     const assetIds = assets.map((asset) => asset.id);
@@ -97,8 +125,35 @@ export async function getAssets() {
 export async function getAssetById(id: number) {
   try {
     const [asset] = await db
-      .select()
+      .select({
+        id: centralServiceAssets.id,
+        workSection: centralServiceAssets.workSection,
+        section: centralServiceAssets.section,
+        location: centralServiceAssets.location,
+        description: centralServiceAssets.description,
+        assetNumber: centralServiceAssets.assetNumber,
+        serialNumber: centralServiceAssets.serialNumber,
+        purchaseDate: centralServiceAssets.purchaseDate,
+        deliveryToSiteDate: centralServiceAssets.deliveryToSiteDate,
+        lastCalibrationDate: centralServiceAssets.lastCalibrationDate,
+        calibrationCycleMonths: centralServiceAssets.calibrationCycleMonths,
+        calibrationDueDate: centralServiceAssets.calibrationDueDate,
+        certificateDate: centralServiceAssets.certificateDate,
+        certificateCycleMonths: centralServiceAssets.certificateCycleMonths,
+        certificateDueDate: centralServiceAssets.certificateDueDate,
+        condition: centralServiceAssets.condition,
+        qty: centralServiceAssets.qty,
+        remarks: centralServiceAssets.remarks,
+        holderEmployeeId: centralServiceAssets.holderEmployeeId,
+        holderName: employees.name,
+        holderEmployeeSn: employees.employeeSn,
+        holderDepartment: employees.department,
+        holderJobTitle: employees.jobTitle,
+        createdAt: centralServiceAssets.createdAt,
+        updatedAt: centralServiceAssets.updatedAt,
+      })
       .from(centralServiceAssets)
+      .leftJoin(employees, eq(centralServiceAssets.holderEmployeeId, employees.id))
       .where(eq(centralServiceAssets.id, id))
       .limit(1);
 
@@ -188,6 +243,7 @@ function buildAssetValues(parsed: AssetData) {
     condition: parsed.condition,
     qty: parsed.qty,
     remarks: parsed.remarks ?? undefined,
+    holderEmployeeId: parsed.holderEmployeeId ? Number(parsed.holderEmployeeId) : null,
   };
 }
 
@@ -389,5 +445,30 @@ export async function deleteAsset(id: number) {
   } catch (error) {
     console.error("Failed to delete asset:", error);
     return { success: false, error: "Failed to delete asset" };
+  }
+}
+
+
+export async function getEmployeesForAssetHolder() {
+  try {
+    const rows = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        department: employees.department,
+        section: employees.section,
+        jobTitle: employees.jobTitle,
+        siteId: employees.siteId,
+        siteName: employees.workLocation,
+        directManagerId: employees.directManagerId,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name));
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error("Failed to fetch employees for holder:", error);
+    return { success: false, data: [] };
   }
 }

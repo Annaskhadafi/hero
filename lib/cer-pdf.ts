@@ -1,13 +1,16 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import { embedChitraParatamaLogo, embedSignatureImage } from './pdf-signature-helper'
 
 export interface CerPdfItem {
   description: string
   qty: number
   pricePerUnit: number | string
   totalPrice: number | string
-  allocation: string
-  holderName: string
-  estimatedLifespan: string
+  allocation?: string
+  holderName?: string
+  estimatedLifespan?: string
+  assetNumber?: string | null
+  kelompokAset?: string | null
 }
 
 export interface CerPdfApprovalStep {
@@ -17,6 +20,7 @@ export interface CerPdfApprovalStep {
   jobTitle?: string | null
   status: string
   reviewedAt?: Date | string | null
+  signatureUrl?: string | null
   decisionNote?: string | null
 }
 
@@ -39,10 +43,14 @@ export interface CerPdfData {
   budgetCode?: string | null
   totalEstimatedPrice: number | string
   dateRequired?: string | null
+  kelompokAset?: string | null
+  financeCheckedAt?: Date | string | null
+  financeCheckedByName?: string | null
   createdAt: Date | string
   approvedAt?: Date | string | null
   items: CerPdfItem[]
   approvals: CerPdfApprovalStep[]
+  applicantSignatureUrl?: string | null
 }
 
 function formatIndoDate(val?: string | Date | null): string {
@@ -57,370 +65,479 @@ function formatIndoDate(val?: string | Date | null): string {
   })
 }
 
+function formatIndoDateTime(val?: string | Date | null): string {
+  if (!val) return '-'
+  const d = typeof val === 'string' ? new Date(val) : val
+  if (isNaN(d.getTime())) return String(val)
+  const dateStr = d.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Makassar',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+  const timeStr = d
+    .toLocaleTimeString('id-ID', {
+      timeZone: 'Asia/Makassar',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    .replace(':', '.')
+  return `${dateStr} • ${timeStr} WITA`
+}
+
 function formatRupiah(amount: number | string | null | undefined): string {
-  if (amount == null) return '0'
+  if (amount == null) return 'Rp 0'
   const num = typeof amount === 'number' ? amount : parseFloat(String(amount))
-  if (isNaN(num)) return '0'
-  return new Intl.NumberFormat('id-ID').format(num)
+  if (isNaN(num)) return 'Rp 0'
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(num)
 }
 
 export async function generateCerPdf(data: CerPdfData): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create()
-  const page = pdfDoc.addPage([595.28, 841.89]) // A4 Portrait
+  // Work Order Reference: A4 Landscape (841.89 x 595.28 pt)
+  const page = pdfDoc.addPage([841.89, 595.28])
   const { width, height } = page.getSize()
 
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica)
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
 
   // Colors
-  const primaryNavy = rgb(0.08, 0.2, 0.38)
-  const textDark = rgb(0.12, 0.14, 0.17)
-  const textGray = rgb(0.4, 0.45, 0.5)
-  const bgHeader = rgb(0.94, 0.96, 0.98)
-  const borderGray = rgb(0.82, 0.85, 0.89)
-  const successGreen = rgb(0.06, 0.53, 0.26)
+  const darkNavy = rgb(0.08, 0.15, 0.28)
+  const textDark = rgb(0.1, 0.12, 0.15)
+  const textGray = rgb(0.35, 0.4, 0.45)
+  const borderGray = rgb(0.72, 0.77, 0.82)
+  const bgLight = rgb(0.95, 0.96, 0.98)
+  const goldYellow = rgb(1, 0.84, 0)
+  const successGreen = rgb(0.05, 0.48, 0.24)
 
-  let cursorY = height - 40
+  const marginX = 35
+  const contentW = width - marginX * 2
+  let curY = height - 32
 
-  // 1. Header Box
-  page.drawRectangle({
-    x: 40,
-    y: cursorY - 60,
-    width: width - 80,
-    height: 70,
-    color: bgHeader,
-    borderColor: borderGray,
-    borderWidth: 1,
+  // 1. Header (Logo on Left, Document Title on Right)
+  const logo = await embedChitraParatamaLogo(pdfDoc)
+  if (logo) {
+    page.drawImage(logo, {
+      x: marginX,
+      y: curY - 38,
+      width: 100,
+      height: 40,
+    })
+  }
+
+  const titleX = marginX + 110
+  page.drawText('PT. CHITRA PARATAMA', {
+    x: titleX,
+    y: curY - 14,
+    size: 13,
+    font: fontBold,
+    color: darkNavy,
   })
-
-  page.drawText('PT CHITRA PARATAMA', {
-    x: 55,
-    y: cursorY - 12,
-    size: 14,
-    font: helveticaBold,
-    color: primaryNavy,
-  })
-
-  page.drawText('CAPITAL EXPENDITURE REQUEST (CER)', {
-    x: 55,
-    y: cursorY - 30,
-    size: 12,
-    font: helveticaBold,
-    color: textDark,
-  })
-
-  page.drawText(`No. Registrasi: ${data.cerNumber}`, {
-    x: 55,
-    y: cursorY - 48,
-    size: 9,
-    font: helvetica,
+  page.drawText('TOTAL TIRE SOLUTION • CAPITAL EXPENDITURE REQUEST', {
+    x: titleX,
+    y: curY - 26,
+    size: 8,
+    font: fontRegular,
     color: textGray,
   })
 
-  // Status Badge on Top Right
-  page.drawRectangle({
-    x: width - 165,
-    y: cursorY - 38,
-    width: 110,
-    height: 24,
-    color: rgb(0.9, 0.97, 0.92),
-    borderColor: successGreen,
-    borderWidth: 1,
-  })
-  page.drawText('FULL APPROVED', {
-    x: width - 153,
-    y: cursorY - 28,
-    size: 9,
-    font: helveticaBold,
-    color: successGreen,
+  const docTitle = 'FORM CAPITAL EXPENDITURE REQUEST (CER)'
+  const titleW = fontBold.widthOfTextAtSize(docTitle, 12)
+  page.drawText(docTitle, {
+    x: width - marginX - titleW,
+    y: curY - 14,
+    size: 12,
+    font: fontBold,
+    color: darkNavy,
   })
 
-  cursorY -= 75
-
-  // 2. Section: Informasi Pengajuan & Pemohon
-  page.drawRectangle({
-    x: 40,
-    y: cursorY - 110,
-    width: width - 80,
-    height: 115,
-    color: rgb(1, 1, 1),
-    borderColor: borderGray,
-    borderWidth: 1,
-  })
-
-  // Title Bar
-  page.drawRectangle({
-    x: 40,
-    y: cursorY - 20,
-    width: width - 80,
-    height: 25,
-    color: rgb(0.96, 0.97, 0.98),
-  })
-  page.drawText('I. DETAIL PEMOHON & KLASIFIKASI PENGADAAN', {
-    x: 50,
-    y: cursorY - 14,
-    size: 9,
-    font: helveticaBold,
-    color: primaryNavy,
-  })
-
-  // Row 1
-  page.drawText('Perihal / Subject:', { x: 50, y: cursorY - 36, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(data.subject.substring(0, 75), { x: 140, y: cursorY - 36, size: 8, font: helvetica, color: textDark })
-
-  // Row 2 (2 columns)
-  page.drawText('Pemohon:', { x: 50, y: cursorY - 52, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(`${data.applicantName} (${data.applicantSn || '-'})`, { x: 140, y: cursorY - 52, size: 8, font: helvetica, color: textDark })
-  page.drawText('Tgl Dibutuhkan:', { x: 330, y: cursorY - 52, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(formatIndoDate(data.dateRequired), { x: 420, y: cursorY - 52, size: 8, font: helvetica, color: textDark })
-
-  // Row 3
-  page.drawText('Departemen / Site:', { x: 50, y: cursorY - 68, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(`${data.departmentName} / ${data.siteName}`, { x: 140, y: cursorY - 68, size: 8, font: helvetica, color: textDark })
-  page.drawText('Kategori Aset:', { x: 330, y: cursorY - 68, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(data.assetCategory || '-', { x: 420, y: cursorY - 68, size: 8, font: helvetica, color: textDark })
-
-  // Row 4
-  page.drawText('Jenis Pembelian:', { x: 50, y: cursorY - 84, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(data.purchaseType, { x: 140, y: cursorY - 84, size: 8, font: helvetica, color: textDark })
-  page.drawText('Sumber Anggaran:', { x: 330, y: cursorY - 84, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(data.budgetSource || '-', { x: 420, y: cursorY - 84, size: 8, font: helvetica, color: textDark })
-
-  // Row 5
-  page.drawText('Pemasok / Vendor:', { x: 50, y: cursorY - 100, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(data.vendorName || '-', { x: 140, y: cursorY - 100, size: 8, font: helvetica, color: textDark })
-  page.drawText('Alokasi CapEx:', { x: 330, y: cursorY - 100, size: 8, font: helveticaBold, color: textDark })
-  page.drawText(data.budgetName || 'Anggaran Operasional CapEx', { x: 420, y: cursorY - 100, size: 8, font: helvetica, color: textDark })
-
-  cursorY -= 125
-
-  // 3. Section: Tujuan Pembelian
-  page.drawRectangle({
-    x: 40,
-    y: cursorY - 50,
-    width: width - 80,
-    height: 55,
-    color: rgb(1, 1, 1),
-    borderColor: borderGray,
-    borderWidth: 1,
-  })
-  page.drawRectangle({
-    x: 40,
-    y: cursorY - 16,
-    width: width - 80,
-    height: 21,
-    color: rgb(0.96, 0.97, 0.98),
-  })
-  page.drawText('II. TUJUAN PEMBELIAN & JUSTIFIKASI KEBUTUHAN', {
-    x: 50,
-    y: cursorY - 11,
-    size: 9,
-    font: helveticaBold,
-    color: primaryNavy,
-  })
-  page.drawText(data.purchasePurpose || 'Kebutuhan operasional aset modal PT Chitra Paratama.', {
-    x: 50,
-    y: cursorY - 34,
-    size: 8,
-    font: helvetica,
+  const cerNoText = `No. CER: ${data.cerNumber}`
+  const cerW = fontBold.widthOfTextAtSize(cerNoText, 8.5)
+  page.drawText(cerNoText, {
+    x: width - marginX - cerW,
+    y: curY - 26,
+    size: 8.5,
+    font: fontBold,
     color: textDark,
   })
 
-  cursorY -= 65
-
-  // 4. Section: Tabel Detail Unit Aset
-  const tableStartY = cursorY
-  page.drawRectangle({
-    x: 40,
-    y: tableStartY - 18,
-    width: width - 80,
-    height: 23,
-    color: rgb(0.96, 0.97, 0.98),
-  })
-  page.drawText('III. RINCIAN BARANG / UNIT ASET', {
-    x: 50,
-    y: tableStartY - 13,
-    size: 9,
-    font: helveticaBold,
-    color: primaryNavy,
+  const statusText = `Kategori: ${data.assetCategory || 'IT Device'}`
+  const statusW = fontRegular.widthOfTextAtSize(statusText, 8)
+  page.drawText(statusText, {
+    x: width - marginX - statusW,
+    y: curY - 37,
+    size: 8,
+    font: fontRegular,
+    color: textGray,
   })
 
-  cursorY -= 25
+  curY -= 48
 
-  // Table Column Headers
-  const colX = {
-    no: 45,
-    desc: 65,
-    qty: 235,
-    price: 275,
-    total: 355,
-    alloc: 435,
-    holder: 495,
-  }
+  page.drawLine({
+    start: { x: marginX, y: curY },
+    end: { x: width - marginX, y: curY },
+    thickness: 1.5,
+    color: darkNavy,
+  })
 
+  curY -= 8
+
+  // 2. Metadata Grid (Work Order Box Style)
+  const metaH = 46
   page.drawRectangle({
-    x: 40,
-    y: cursorY - 16,
-    width: width - 80,
-    height: 20,
-    color: rgb(0.92, 0.94, 0.96),
+    x: marginX,
+    y: curY - metaH,
+    width: contentW,
+    height: metaH,
+    color: bgLight,
     borderColor: borderGray,
     borderWidth: 1,
   })
-  page.drawText('No', { x: colX.no, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
-  page.drawText('Deskripsi Unit', { x: colX.desc, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
-  page.drawText('Qty', { x: colX.qty, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
-  page.drawText('Harga Satuan (Rp)', { x: colX.price, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
-  page.drawText('Total (Rp)', { x: colX.total, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
-  page.drawText('Alokasi', { x: colX.alloc, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
-  page.drawText('Holder', { x: colX.holder, y: cursorY - 12, size: 8, font: helveticaBold, color: textDark })
 
-  cursorY -= 20
+  const colW = contentW / 4
+  const metaRow1Y = curY - 14
+  const metaRow2Y = curY - 24
+  const metaRow3Y = curY - 38
 
-  // Draw Table Rows
-  const items = data.items && data.items.length > 0 ? data.items : []
-  items.slice(0, 10).forEach((item, idx) => {
+  // Col 1
+  page.drawText('TANGGAL PENGAJUAN', { x: marginX + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
+  page.drawText(formatIndoDate(data.createdAt || data.dateRequired), { x: marginX + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
+  page.drawText(`Diperlukan: ${formatIndoDate(data.dateRequired)}`, { x: marginX + 10, y: metaRow3Y, size: 7, font: fontRegular, color: textGray })
+
+  // Col 2
+  page.drawText('PEMOHON CAPEX', { x: marginX + colW + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
+  page.drawText(data.applicantName, { x: marginX + colW + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
+  page.drawText(data.applicantJobTitle || 'Pemohon', { x: marginX + colW + 10, y: metaRow3Y, size: 7, font: fontRegular, color: textGray })
+
+  // Col 3
+  page.drawText('DEPARTEMEN & CABANG/SITE', { x: marginX + colW * 2 + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
+  page.drawText(data.departmentName, { x: marginX + colW * 2 + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
+  page.drawText(`${data.siteName} • ${data.sectionName || '-'}`, { x: marginX + colW * 2 + 10, y: metaRow3Y, size: 7, font: fontRegular, color: textGray })
+
+  // Col 4
+  page.drawText('SUMBER ANGGARAN & VENDOR', { x: marginX + colW * 3 + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
+  const budgetLine = data.budgetCode ? `${data.budgetCode} • ${data.budgetSource || 'Anggaran'}` : `${data.budgetSource || 'Anggaran'} (${data.purchaseType || 'Baru'})`
+  page.drawText(budgetLine.substring(0, 32), { x: marginX + colW * 3 + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
+  const vendorLine = `Vendor: ${data.vendorName || '-'}${data.budgetName ? ` • ${data.budgetName}` : ''}`
+  page.drawText(vendorLine.substring(0, 36), { x: marginX + colW * 3 + 10, y: metaRow3Y, size: 7, font: fontRegular, color: textGray })
+
+  curY -= metaH + 8
+
+  // 2b. Purchase Purpose / Justification Callout
+  if (data.purchasePurpose && data.purchasePurpose.trim().length > 0) {
+    const purposeText = `Tujuan / Justifikasi: ${data.purchasePurpose.trim().replace(/[\r\n]+/g, ' ')}`
+    page.drawText(purposeText.substring(0, 140), {
+      x: marginX,
+      y: curY - 2,
+      size: 7,
+      font: fontRegular,
+      color: textDark,
+    })
+    curY -= 12
+  }
+
+  // 3. Capex Items Table
+  page.drawText('RINCIAN UNIT PERMINTAAN PENGADAAN (CAPEX ITEMS)', {
+    x: marginX,
+    y: curY,
+    size: 7.5,
+    font: fontBold,
+    color: darkNavy,
+  })
+
+  curY -= 6
+
+  const thH = 18
+  page.drawRectangle({
+    x: marginX,
+    y: curY - thH,
+    width: contentW,
+    height: thH,
+    color: bgLight,
+    borderColor: borderGray,
+    borderWidth: 1,
+  })
+
+  const cols = [
+    { label: 'NO', w: 32, align: 'center' },
+    { label: 'DESKRIPSI BARANG', w: 230, align: 'left' },
+    { label: 'KELOMPOK ASET', w: 120, align: 'left' },
+    { label: 'NOMOR ASET', w: 110, align: 'left' },
+    { label: 'QTY', w: 45, align: 'center' },
+    { label: 'ESTIMASI HARGA', w: 110, align: 'right' },
+    { label: 'TOTAL HARGA', w: 125, align: 'right' },
+  ]
+
+  let curColX = marginX
+  for (const c of cols) {
+    const textW = fontBold.widthOfTextAtSize(c.label, 6.5)
+    const textX = c.align === 'center' ? curColX + (c.w - textW) / 2 : c.align === 'right' ? curColX + c.w - textW - 6 : curColX + 6
+    page.drawText(c.label, {
+      x: textX,
+      y: curY - 12,
+      size: 6.5,
+      font: fontBold,
+      color: textDark,
+    })
+    curColX += c.w
+  }
+
+  curY -= thH
+
+  const renderItems = data.items && data.items.length > 0 ? data.items : [
+    {
+      description: data.subject,
+      kelompokAset: data.kelompokAset || '-',
+      assetNumber: '-',
+      qty: 1,
+      pricePerUnit: data.totalEstimatedPrice,
+      totalPrice: data.totalEstimatedPrice,
+    }
+  ]
+
+  const rowH = 18
+  for (let idx = 0; idx < Math.min(renderItems.length, 5); idx++) {
+    const it = renderItems[idx]
     page.drawRectangle({
-      x: 40,
-      y: cursorY - 16,
-      width: width - 80,
-      height: 20,
+      x: marginX,
+      y: curY - rowH,
+      width: contentW,
+      height: rowH,
       color: idx % 2 === 0 ? rgb(1, 1, 1) : rgb(0.98, 0.99, 1),
       borderColor: borderGray,
       borderWidth: 0.5,
     })
 
-    page.drawText(String(idx + 1), { x: colX.no, y: cursorY - 12, size: 7.5, font: helvetica, color: textDark })
-    page.drawText(item.description.substring(0, 32), { x: colX.desc, y: cursorY - 12, size: 7.5, font: helvetica, color: textDark })
-    page.drawText(String(item.qty), { x: colX.qty + 4, y: cursorY - 12, size: 7.5, font: helvetica, color: textDark })
-    page.drawText(formatRupiah(item.pricePerUnit), { x: colX.price, y: cursorY - 12, size: 7.5, font: helvetica, color: textDark })
-    page.drawText(formatRupiah(item.totalPrice), { x: colX.total, y: cursorY - 12, size: 7.5, font: helveticaBold, color: textDark })
-    page.drawText((item.allocation || '-').substring(0, 10), { x: colX.alloc, y: cursorY - 12, size: 7.5, font: helvetica, color: textDark })
-    page.drawText((item.holderName || '-').substring(0, 12), { x: colX.holder, y: cursorY - 12, size: 7.5, font: helvetica, color: textDark })
+    let cellX = marginX
+    // 0: No
+    page.drawText(String(idx + 1), { x: cellX + 12, y: curY - 12, size: 7, font: fontRegular, color: textGray })
+    cellX += cols[0].w
+    // 1: Deskripsi
+    const descText = (it.description || '').substring(0, 36)
+    const allocHolder = [
+      it.allocation ? `Site: ${it.allocation}` : null,
+      it.holderName ? `Holder: ${it.holderName}` : null,
+    ].filter(Boolean).join(' | ')
+    if (allocHolder) {
+      page.drawText(descText, { x: cellX + 6, y: curY - 9, size: 7, font: fontBold, color: textDark })
+      page.drawText(allocHolder.substring(0, 48), { x: cellX + 6, y: curY - 16, size: 5.5, font: fontRegular, color: textGray })
+    } else {
+      page.drawText(descText, { x: cellX + 6, y: curY - 12, size: 7.5, font: fontBold, color: textDark })
+    }
+    cellX += cols[1].w
+    // 2: Kelompok Aset
+    page.drawText((it.kelompokAset || data.kelompokAset || '-').substring(0, 20), { x: cellX + 6, y: curY - 12, size: 7, font: fontRegular, color: textDark })
+    cellX += cols[2].w
+    // 3: Nomor Aset
+    page.drawText((it.assetNumber || '-').substring(0, 18), { x: cellX + 6, y: curY - 12, size: 7.5, font: fontBold, color: darkNavy })
+    cellX += cols[3].w
+    // 4: Qty
+    page.drawText(`${it.qty || 1} Unit`, { x: cellX + 8, y: curY - 12, size: 7, font: fontRegular, color: textDark })
+    cellX += cols[4].w
+    // 5: Estimasi Harga
+    const pText = formatRupiah(it.pricePerUnit)
+    const pW = fontRegular.widthOfTextAtSize(pText, 7)
+    page.drawText(pText, { x: cellX + cols[5].w - pW - 6, y: curY - 12, size: 7, font: fontRegular, color: textDark })
+    cellX += cols[5].w
+    // 6: Total Harga
+    const tText = formatRupiah(it.totalPrice)
+    const tW = fontBold.widthOfTextAtSize(tText, 7.5)
+    page.drawText(tText, { x: cellX + cols[6].w - tW - 6, y: curY - 12, size: 7.5, font: fontBold, color: darkNavy })
 
-    cursorY -= 20
-  })
+    curY -= rowH
+  }
 
-  // Total Summary Row
+  // 4. Yellow Bar Total Amount (Work Order Style)
+  curY -= 6
+  const bannerH = 20
   page.drawRectangle({
-    x: 40,
-    y: cursorY - 18,
-    width: width - 80,
-    height: 22,
-    color: rgb(0.93, 0.95, 0.98),
-    borderColor: borderGray,
+    x: marginX,
+    y: curY - bannerH,
+    width: contentW,
+    height: bannerH,
+    color: goldYellow,
+    borderColor: rgb(0.85, 0.7, 0),
     borderWidth: 1,
   })
-  page.drawText('TOTAL ESTIMASI BIAYA CAPEX:', {
-    x: colX.desc,
-    y: cursorY - 13,
-    size: 8,
-    font: helveticaBold,
-    color: primaryNavy,
+
+  page.drawText('TOTAL ESTIMASI NILAI INVESTASI (CAPEX)', {
+    x: marginX + 12,
+    y: curY - 13,
+    size: 7.5,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
   })
-  page.drawText(`Rp ${formatRupiah(data.totalEstimatedPrice)}`, {
-    x: colX.total,
-    y: cursorY - 13,
+
+  const totalText = formatRupiah(data.totalEstimatedPrice)
+  const totalW = fontBold.widthOfTextAtSize(totalText, 9)
+  page.drawText(totalText, {
+    x: width - marginX - totalW - 12,
+    y: curY - 14,
     size: 9,
-    font: helveticaBold,
-    color: primaryNavy,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
   })
 
-  cursorY -= 35
+  curY -= bannerH + 12
 
-  // 5. Section: Rantai Persetujuan / Approval Matrix
-  page.drawRectangle({
-    x: 40,
-    y: cursorY - 18,
-    width: width - 80,
-    height: 23,
-    color: rgb(0.96, 0.97, 0.98),
-  })
-  page.drawText('IV. LEMBAR PERSETUJUAN BERJENJANG (APPROVAL MATRIX)', {
-    x: 50,
-    y: cursorY - 13,
-    size: 9,
-    font: helveticaBold,
-    color: primaryNavy,
-  })
+  // 5. Signature Grid (Work Order Style Horizontal Multi-Column)
+  const sigColumns = [
+    {
+      header: 'DIAJUKAN OLEH',
+      name: data.applicantName,
+      jobTitle: data.applicantJobTitle || 'Pemohon Capex',
+      sigUrl: data.applicantSignatureUrl || null,
+      isApproved: true,
+      date: formatIndoDate(data.createdAt),
+      note: null,
+    },
+    ...data.approvals.map((app) => {
+      let header = 'DISETUJUI OLEH'
+      if ((app.label || '').toLowerCase().includes('bima') || (app.label || '').toLowerCase().includes('acknowledge')) {
+        header = 'DIKETAHUI OLEH'
+      } else if ((app.label || '').toLowerCase().includes('finance') || (app.label || '').toLowerCase().includes('checked')) {
+        header = 'DIPERIKSA OLEH'
+      }
 
-  cursorY -= 28
+      return {
+        header,
+        name: app.approverName || 'Approver',
+        jobTitle: app.jobTitle || app.label,
+        sigUrl: app.signatureUrl || null,
+        isApproved: app.status === 'Approved' || app.status === 'approved',
+        date: app.reviewedAt ? formatIndoDateTime(app.reviewedAt) : 'Pending',
+        note: app.decisionNote || null,
+      }
+    }),
+  ]
 
-  // Draw Approver Signature Grid
-  const approvals = data.approvals && data.approvals.length > 0 ? data.approvals : []
-  const maxBoxesPerRow = 3
-  const boxWidth = (width - 80 - (maxBoxesPerRow - 1) * 8) / maxBoxesPerRow
-  const boxHeight = 75
+  const numCols = sigColumns.length
+  const sigBoxW = contentW / numCols
+  const sigHeaderH = 16
+  const sigCanvasH = 50
+  const sigInfoH = 34
+  const totalSigH = sigHeaderH + sigCanvasH + sigInfoH
 
-  let currentX = 40
-  let currentY = cursorY - boxHeight
+  for (let i = 0; i < numCols; i++) {
+    const col = sigColumns[i]
+    const boxX = marginX + i * sigBoxW
 
-  approvals.slice(0, 6).forEach((app, idx) => {
-    if (idx > 0 && idx % maxBoxesPerRow === 0) {
-      currentX = 40
-      currentY -= boxHeight + 8
-    }
-
+    // Header Box
     page.drawRectangle({
-      x: currentX,
-      y: currentY,
-      width: boxWidth,
-      height: boxHeight,
+      x: boxX,
+      y: curY - sigHeaderH,
+      width: sigBoxW,
+      height: sigHeaderH,
+      color: bgLight,
+      borderColor: borderGray,
+      borderWidth: 1,
+    })
+    const hTextW = fontBold.widthOfTextAtSize(col.header, 6)
+    page.drawText(col.header, {
+      x: boxX + (sigBoxW - hTextW) / 2,
+      y: curY - 11,
+      size: 6,
+      font: fontBold,
+      color: darkNavy,
+    })
+
+    // Canvas Box
+    page.drawRectangle({
+      x: boxX,
+      y: curY - sigHeaderH - sigCanvasH,
+      width: sigBoxW,
+      height: sigCanvasH,
       color: rgb(1, 1, 1),
       borderColor: borderGray,
       borderWidth: 1,
     })
 
-    // Header label
+    let embeddedSig = null
+    if (col.sigUrl) {
+      embeddedSig = await embedSignatureImage(pdfDoc, col.sigUrl)
+    }
+
+    if (embeddedSig) {
+      const sigAspect = embeddedSig.width / embeddedSig.height
+      let drawW = sigBoxW - 14
+      let drawH = drawW / sigAspect
+      if (drawH > sigCanvasH - 6) {
+        drawH = sigCanvasH - 6
+        drawW = drawH * sigAspect
+      }
+      page.drawImage(embeddedSig, {
+        x: boxX + (sigBoxW - drawW) / 2,
+        y: curY - sigHeaderH - sigCanvasH + (sigCanvasH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+      })
+    } else {
+      const waitText = col.isApproved ? 'Disetujui' : '(Menunggu)'
+      const waitColor = col.isApproved ? successGreen : textGray
+      const waitW = fontRegular.widthOfTextAtSize(waitText, 6.5)
+      page.drawText(waitText, {
+        x: boxX + (sigBoxW - waitW) / 2,
+        y: curY - sigHeaderH - sigCanvasH / 2 - 3,
+        size: 6.5,
+        font: col.isApproved ? fontBold : fontRegular,
+        color: waitColor,
+      })
+    }
+
+    // Name & Title Box
     page.drawRectangle({
-      x: currentX,
-      y: currentY + boxHeight - 16,
-      width: boxWidth,
-      height: 16,
-      color: rgb(0.95, 0.96, 0.98),
+      x: boxX,
+      y: curY - totalSigH,
+      width: sigBoxW,
+      height: sigInfoH,
+      color: rgb(0.98, 0.99, 1),
+      borderColor: borderGray,
+      borderWidth: 1,
     })
-    page.drawText(`${app.stepOrder}. ${app.label}`.substring(0, 26), {
-      x: currentX + 6,
-      y: currentY + boxHeight - 12,
-      size: 7.5,
-      font: helveticaBold,
+
+    const nameText = `( ${col.name} )`
+    const nameSize = col.name.length > 22 ? 5.5 : 6.5
+    const nameW = fontBold.widthOfTextAtSize(nameText, nameSize)
+    page.drawText(nameText, {
+      x: boxX + (sigBoxW - nameW) / 2,
+      y: curY - sigHeaderH - sigCanvasH - 11,
+      size: nameSize,
+      font: fontBold,
       color: textDark,
     })
 
-    // Status stamp
-    page.drawText('APPROVED', {
-      x: currentX + 45,
-      y: currentY + 36,
-      size: 10,
-      font: helveticaBold,
-      color: successGreen,
-    })
-
-    // Approver Name & Date
-    page.drawText(app.approverName.substring(0, 24), {
-      x: currentX + 6,
-      y: currentY + 16,
-      size: 7.5,
-      font: helveticaBold,
-      color: textDark,
-    })
-    page.drawText(formatIndoDate(app.reviewedAt || data.approvedAt), {
-      x: currentX + 6,
-      y: currentY + 6,
-      size: 7,
-      font: helvetica,
+    const titleText = col.jobTitle || 'Approver'
+    const titleSize = titleText.length > 25 ? 4.8 : 5.5
+    const titleW = fontRegular.widthOfTextAtSize(titleText, titleSize)
+    page.drawText(titleText, {
+      x: boxX + (sigBoxW - titleW) / 2,
+      y: curY - sigHeaderH - sigCanvasH - 20,
+      size: titleSize,
+      font: fontRegular,
       color: textGray,
     })
 
-    currentX += boxWidth + 8
-  })
+    const dateW = fontRegular.widthOfTextAtSize(col.date, 5.2)
+    page.drawText(col.date, {
+      x: boxX + (sigBoxW - dateW) / 2,
+      y: curY - sigHeaderH - sigCanvasH - 28,
+      size: 5.2,
+      font: fontRegular,
+      color: textGray,
+    })
+  }
 
   // Footer Note
-  page.drawText('Dokumen ini digenerate secara otomatis oleh HERO Asset Management System - PT Chitra Paratama.', {
-    x: 40,
-    y: 20,
-    size: 7,
-    font: helvetica,
+  page.drawText('Dokumen ini sah dan diterbitkan secara elektronik melalui HERO Asset Management System.', {
+    x: marginX,
+    y: 12,
+    size: 6.5,
+    font: fontRegular,
     color: textGray,
   })
 

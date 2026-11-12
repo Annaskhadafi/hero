@@ -15,9 +15,29 @@
     "resource": "hse_tire_inspection"
   },
   {
-"title": "Pengadaan Aset (CER)",
+    "title": "Pengadaan Aset (CER)",
     "url": "/dashboard/assets/cer",
     "resource": "cer_request"
+  },
+  {
+    "title": "Transfer Aset",
+    "url": "/dashboard/assets/transfer",
+    "resource": "asset_transfer"
+  },
+  {
+    "title": "Form Asset Borrow",
+    "url": "/dashboard/assets/borrow",
+    "resource": "asset_borrow"
+  },
+  {
+    "title": "Form Asset Disposal",
+    "url": "/dashboard/assets/disposal",
+    "resource": "asset_disposal"
+  },
+  {
+    "title": "Budget Controller",
+    "url": "/dashboard/assets/budget-controller",
+    "resource": "cer_budget_controller"
   },
   {
     "title": "Analisis Kerusakan Ban (AI)",

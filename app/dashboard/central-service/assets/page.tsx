@@ -1,4 +1,4 @@
-import { getAssets, getMasterSectionOptions } from './actions'
+import { getAssets, getMasterSectionOptions, getEmployeesForAssetHolder } from './actions'
 import { AssetsTable } from './components/assets-table'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { redirect } from 'next/navigation'
@@ -15,9 +15,14 @@ export default async function CentralServiceAssetsPage() {
     redirect('/dashboard')
   }
 
-  const [assetsResult, masterSections] = await Promise.all([getAssets(), getMasterSectionOptions()])
+  const [assetsResult, masterSections, employeesResult] = await Promise.all([
+    getAssets(),
+    getMasterSectionOptions(),
+    getEmployeesForAssetHolder(),
+  ])
 
   const assets = assetsResult.success && assetsResult.data ? assetsResult.data : []
+  const employees = employeesResult.success && employeesResult.data ? employeesResult.data : []
 
   return (
     <div className="flex h-full flex-col">
@@ -28,7 +33,7 @@ export default async function CentralServiceAssetsPage() {
             Manajemen inventaris tools dan peralatan Central Service
           </p>
         </div>
-        <AssetsTable data={assets} masterSections={masterSections} />
+        <AssetsTable data={assets} masterSections={masterSections} employees={employees} />
       </div>
     </div>
   )

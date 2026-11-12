@@ -25,6 +25,9 @@ import {
 } from '@/db/schema/hero'
 import { centralServiceAssets } from '@/db/schema/central-service'
 import { getServerSession } from '@/lib/auth-session'
+import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { isSuperAdminRole } from '@/lib/role-utils'
+import { isSuperAdminUser } from './utils'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
 import {
   sendCerSubmittedEmail,
@@ -33,11 +36,13 @@ import {
   sendCerFullApprovedEmail,
   sendCerAssetReceivedEmail,
   sendCerBastCompletedEmail,
+  sendCerRejectedEmail,
   getCerNotificationConfig,
   type CerNotificationConfigData,
 } from '@/lib/cer-email'
 import { generateCerPdf } from '@/lib/cer-pdf'
 import { generateCerBastPdf } from '@/lib/cer-bast-pdf'
+import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { revalidatePath } from 'next/cache'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -79,6 +84,8 @@ function formatIndoDate(val?: string | Date | null): string {
   })
 }
 
+
+
 export type CerOverviewData = {
   requests: Array<
     CerRequest & {
@@ -108,11 +115,18 @@ export type CerOverviewData = {
     id: number
     name: string
     email: string
+    employeeSn?: string | null
     jobTitle: string | null
     departmentId: number | null
+    sectionId: number | null
     siteId: number | null
+    accessRole?: string | null
   } | null
   isFinanceOrAdmin: boolean
+  isSuperAdmin: boolean
+  canAccessBudgetController: boolean
+  canEditBudgetController: boolean
+  canDeleteBudgetController: boolean
 }
 
 export async function getCerDashboardData(): Promise<CerOverviewData> {
@@ -126,9 +140,11 @@ export async function getCerDashboardData(): Promise<CerOverviewData> {
     .select({
       id: employees.id,
       name: employees.name,
+      employeeSn: employees.employeeSn,
       email: employees.email,
       jobTitle: employees.jobTitle,
       departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
       siteId: employees.siteId,
       accessRole: employees.accessRole,
     })
@@ -136,16 +152,17 @@ export async function getCerDashboardData(): Promise<CerOverviewData> {
     .where(and(eq(employees.email, session.user.email), eq(employees.isActive, true)))
     .limit(1)
 
-  const isFinanceOrAdmin = Boolean(
-    currentEmployee?.accessRole?.toLowerCase() === 'super admin' ||
-      currentEmployee?.accessRole?.toLowerCase() === 'admin' ||
-      currentEmployee?.jobTitle?.toLowerCase().includes('finance') ||
-      currentEmployee?.jobTitle?.toLowerCase().includes('accounting') ||
-      currentEmployee?.departmentId === 4
-  )
+  // Check permission for Budget Controller via dynamic Role Management
+  const budgetPermission = await getCurrentMenuPermission('cer_budget_controller')
+  const canAccessBudgetController = Boolean(budgetPermission.canView)
+  const canEditBudgetController = Boolean(budgetPermission.canEdit)
+  const canDeleteBudgetController = Boolean(budgetPermission.canDelete)
+
+  const isSuperAdmin = isSuperAdminUser(currentEmployee, session.user)
+  const isFinanceOrAdmin = canAccessBudgetController || isSuperAdmin
 
   // Fetch all related master data
-  const [siteRows, deptRows, secRows, budgetRows, requestRows] = await Promise.all([
+  const [siteRows, deptRows, secRows, requestRows] = await Promise.all([
     db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)),
     db
       .select({ id: masterDepartments.id, name: masterDepartments.name })
@@ -159,7 +176,6 @@ export async function getCerDashboardData(): Promise<CerOverviewData> {
       })
       .from(masterSections)
       .where(eq(masterSections.isActive, true)),
-    db.select().from(cerCapexBudgets).orderBy(desc(cerCapexBudgets.fiscalYear), asc(cerCapexBudgets.budgetName)),
     db
       .select({
         request: cerRequests,
@@ -236,12 +252,16 @@ export async function getCerDashboardData(): Promise<CerOverviewData> {
 
   return {
     requests: mappedRequests,
-    budgets: budgetRows,
+    budgets: [],
     sites: siteRows,
     departments: deptRows,
     sections: secRows,
     currentEmployee,
     isFinanceOrAdmin,
+    isSuperAdmin,
+    canAccessBudgetController,
+    canEditBudgetController,
+    canDeleteBudgetController,
   }
 }
 
@@ -288,6 +308,7 @@ export async function previewCerApprovalChain(params: {
   assetCategory: string
   siteId?: number | null
   departmentId?: number | null
+  sectionId?: number | null
 }) {
   const resolution = await resolveApprovalRouteForActivity({
     employeeId: params.employeeId,
@@ -297,10 +318,30 @@ export async function previewCerApprovalChain(params: {
     transactionType: 'cer_request',
     siteId: params.siteId,
     departmentId: params.departmentId,
+    sectionId: params.sectionId,
     assetCategory: params.assetCategory,
   })
 
   return resolution.steps
+}
+
+/**
+ * Fetch all active employees for approver selection in CER Form Step 2
+ */
+export async function getActiveEmployeesForCerSelection() {
+  return await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      department: employees.department,
+      workLocation: employees.workLocation,
+      siteId: employees.siteId,
+    })
+    .from(employees)
+    .where(eq(employees.isActive, true))
+    .orderBy(asc(employees.name))
 }
 
 /**
@@ -327,6 +368,7 @@ export async function createCerRequestAction(input: {
     totalPrice: number
     allocation: string
     holderName: string
+    holderEmployeeId?: number | null
     estimatedLifespan: string
   }>
   attachments?: Array<{
@@ -335,6 +377,12 @@ export async function createCerRequestAction(input: {
     fileType: string
     fileSize?: number
     mimeType?: string
+  }>
+  customApprovers?: Array<{
+    stepOrder: number
+    label: string
+    approverName: string
+    approverEmployeeId: number | null
   }>
 }) {
   const session = await getServerSession()
@@ -391,22 +439,55 @@ export async function createCerRequestAction(input: {
     .select({ count: sql<number>`count(*)::int` })
     .from(cerRequests)
     .where(sql`EXTRACT(YEAR FROM ${cerRequests.createdAt}) = ${year}`)
-  const seq = String((countResult?.count || 0) + 1).padStart(3, '0')
-  const cerNumber = `CER/CP/${siteCode}/${monthRoman}/${year}/${seq}`
+  let seqNum = (countResult?.count || 0) + 1
+  let cerNumber = `CER/CP/${siteCode}/${monthRoman}/${year}/${String(seqNum).padStart(3, '0')}`
+  let isNumberUnique = false
+  while (!isNumberUnique) {
+    const [existing] = await db
+      .select({ id: cerRequests.id })
+      .from(cerRequests)
+      .where(eq(cerRequests.cerNumber, cerNumber))
+      .limit(1)
+    if (!existing) {
+      isNumberUnique = true
+    } else {
+      seqNum++
+      cerNumber = `CER/CP/${siteCode}/${monthRoman}/${year}/${String(seqNum).padStart(3, '0')}`
+    }
+  }
 
-  // Resolve approval chain
-  const approvalResolution = await resolveApprovalRouteForActivity({
-    employeeId: applicant.id,
-    activityType: input.assetCategory,
-    priority: 'Normal',
-    overtimeMinutes: 0,
-    transactionType: 'cer_request',
-    siteId: input.siteId,
-    departmentId: input.departmentId,
-    assetCategory: input.assetCategory,
-  })
+  // Resolve approval chain (use custom approvers if provided by user in Step 2)
+  let steps: Array<{
+    stepOrder: number
+    label: string
+    approverName: string
+    approverEmployeeId: number | null
+    resolutionSource?: string
+  }> = []
 
-  const steps = approvalResolution.steps
+  if (input.customApprovers && input.customApprovers.length > 0) {
+    steps = input.customApprovers.map((ca, idx) => ({
+      stepOrder: idx + 1,
+      label: ca.label,
+      approverName: ca.approverName,
+      approverEmployeeId: ca.approverEmployeeId,
+      resolutionSource: 'custom',
+    }))
+  } else {
+    const approvalResolution = await resolveApprovalRouteForActivity({
+      employeeId: applicant.id,
+      activityType: input.assetCategory,
+      priority: 'Normal',
+      overtimeMinutes: 0,
+      transactionType: 'cer_request',
+      siteId: input.siteId,
+      departmentId: input.departmentId,
+      sectionId: input.sectionId,
+      assetCategory: input.assetCategory,
+    })
+    steps = approvalResolution.steps
+  }
+
   if (steps.length === 0) {
     return { success: false, message: 'Alur persetujuan (approval chain) tidak dapat ditentukan.' }
   }
@@ -455,6 +536,7 @@ export async function createCerRequestAction(input: {
         totalPrice: String(item.totalPrice || 0),
         allocation: item.allocation || '',
         holderName: item.holderName || '',
+        holderEmployeeId: item.holderEmployeeId || null,
         estimatedLifespan: item.estimatedLifespan || '',
       }))
     )
@@ -533,22 +615,51 @@ export async function createCerRequestAction(input: {
         .select({ name: masterDepartments.name })
         .from(masterDepartments)
         .where(eq(masterDepartments.id, input.departmentId))
+
+      let budgetCode = ''
+      let budgetName = ''
+      if (input.capexBudgetId) {
+        const [b] = await db.select().from(cerCapexBudgets).where(eq(cerCapexBudgets.id, input.capexBudgetId))
+        if (b) {
+          budgetCode = b.budgetCode
+          budgetName = b.budgetName
+        }
+      }
+
+      const isStep1Director =
+        Boolean(step1.label && step1.label.toLowerCase().includes('director')) ||
+        Boolean(step1.approverName && step1.approverName.toLowerCase().includes('director')) ||
+        step1.approverEmployeeId === 10
+
       await sendCerSubmittedEmail({
         approverEmail: appEmp.email,
         approverName: appEmp.name,
         cerNumber,
         subject: input.subject,
         applicantName: applicant.name,
+        applicantSn: applicant.employeeSn,
+        applicantJobTitle: applicant.jobTitle,
         siteName: site?.name || 'Site',
         departmentName: dept?.name || 'Department',
+        assetCategory: input.assetCategory,
+        purchaseType: input.purchaseType,
+        dateRequired: input.dateRequired,
+        vendorName: input.vendorName,
+        budgetSource: input.budgetSource,
+        budgetCode,
+        budgetName,
+        purchasePurpose: input.purchasePurpose,
+        items: input.items,
         totalEstimatedPrice,
         approvalStep: step1.label,
+        cc: isStep1Director ? ['freshya.ochtovita@chitraparatama.co.id'] : undefined,
       }).catch((err) => console.error('[cer] Send email error:', err))
     }
   }
 
   revalidatePath('/dashboard/assets/cer')
   revalidatePath('/dashboard/approval')
+  revalidatePath('/dashboard/assets/budget-controller')
 
   return {
     success: true,
@@ -561,7 +672,7 @@ export async function createCerRequestAction(input: {
 /**
  * APPROVE CER STEP
  */
-export async function approveCerStepAction(approvalId: number, decisionNote?: string) {
+export async function approveCerStepAction(approvalId: number, decisionNote?: string, signatureUrl?: string) {
   const session = await getServerSession()
   if (!session?.user?.email) {
     return { success: false, message: 'Unauthorized' }
@@ -575,13 +686,55 @@ export async function approveCerStepAction(approvalId: number, decisionNote?: st
   const cerId = currentApproval.cerRequestId
   const now = new Date()
 
-  // Mark current approval step Approved
+  // Check if session user is authorized (Super Admin, assigned Approver, or Freshya acting on behalf of Director)
+  const [sessionEmp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
+    .limit(1)
+
+  const isSuperAdmin = isSuperAdminUser(sessionEmp, session.user)
+  const isApprover =
+    sessionEmp &&
+    (currentApproval.approverEmployeeId === sessionEmp.id ||
+      (currentApproval.approverName && sessionEmp.name && currentApproval.approverName.toLowerCase().includes(sessionEmp.name.toLowerCase())))
+
+  const isFreshya =
+    sessionEmp?.id === 974 || session.user.email.toLowerCase().includes('freshya')
+
+  const isCurrentDirectorStep =
+    Boolean(currentApproval.decisionNote && currentApproval.decisionNote.toLowerCase().includes('director')) ||
+    Boolean(currentApproval.approverName && currentApproval.approverName.toLowerCase().includes('director')) ||
+    currentApproval.approverEmployeeId === 10
+
+  if (!isSuperAdmin && !isApprover && !(isFreshya && isCurrentDirectorStep)) {
+    return {
+      success: false,
+      message: 'Akses ditolak: Anda tidak memiliki wewenang untuk menyetujui tahapan pengajuan CER ini.',
+    }
+  }
+
+  let finalDecisionNote = decisionNote || 'Disetujui'
+  if (isFreshya && isCurrentDirectorStep) {
+    finalDecisionNote = decisionNote
+      ? `${decisionNote} (Disetujui oleh Freshya Ochtovita - Board Secretary a.n. Director)`
+      : 'Disetujui oleh Freshya Ochtovita (Board Secretary a.n. Director)'
+  }
+
+  // Mark current approval step Approved & save signature
   await db
     .update(approvals)
     .set({
       status: 'Approved',
       reviewedAt: now,
-      decisionNote: decisionNote || 'Disetujui',
+      decisionNote: finalDecisionNote,
+      signatureUrl: signatureUrl || undefined,
     })
     .where(eq(approvals.id, approvalId))
 
@@ -592,7 +745,32 @@ export async function approveCerStepAction(approvalId: number, decisionNote?: st
     .where(eq(approvals.cerRequestId, cerId))
     .orderBy(asc(approvals.level))
 
-  const nextStep = allSteps.find((s) => s.level === currentApproval.level + 1)
+  // 1. Check if other sibling parallel steps at the same level are still pending
+  const siblingPending = allSteps.filter(
+    (s) => s.level === currentApproval.level && s.id !== approvalId && s.status !== 'Approved'
+  )
+
+  if (siblingPending.length > 0) {
+    const pendingNames = siblingPending.map((s) => s.approverName).join(', ')
+    await db
+      .update(cerRequests)
+      .set({
+        currentApproverTitle: `Validasi Paralel (Menunggu ${pendingNames})`,
+        updatedAt: now,
+      })
+      .where(eq(cerRequests.id, cerId))
+
+    revalidatePath('/dashboard/assets/cer')
+    revalidatePath('/dashboard/approval')
+
+    return {
+      success: true,
+      message: `Persetujuan dicatat. Menunggu persetujuan paralel dari ${pendingNames}.`,
+    }
+  }
+
+  // 2. All approvals at current level are Approved. Check for next level
+  const nextSteps = allSteps.filter((s) => s.level === currentApproval.level + 1)
 
   const [request] = await db
     .select({
@@ -610,120 +788,169 @@ export async function approveCerStepAction(approvalId: number, decisionNote?: st
     return { success: false, message: 'CER data tidak ditemukan.' }
   }
 
-  if (nextStep) {
-    // Advance to next step
-    await db
-      .update(approvals)
-      .set({ status: 'Pending', submittedAt: now })
-      .where(eq(approvals.id, nextStep.id))
+  // Fetch items, budget, and applicant details for rich email notification
+  const items = await db
+    .select()
+    .from(cerItems)
+    .where(eq(cerItems.cerRequestId, cerId))
+    .orderBy(asc(cerItems.id))
+
+  let budgetCode = ''
+  let budgetName = ''
+  if (request.req.capexBudgetId) {
+    const [b] = await db
+      .select()
+      .from(cerCapexBudgets)
+      .where(eq(cerCapexBudgets.id, request.req.capexBudgetId))
+    if (b) {
+      budgetCode = b.budgetCode
+      budgetName = b.budgetName
+    }
+  }
+
+  const [applicantEmp] = await db
+    .select({
+      employeeSn: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      department: employees.department,
+    })
+    .from(employees)
+    .where(eq(employees.id, request.req.applicantEmployeeId))
+    .limit(1)
+
+  if (nextSteps.length > 0) {
+    // Advance to next level
+    for (const ns of nextSteps) {
+      await db
+        .update(approvals)
+        .set({ status: 'Pending', submittedAt: now })
+        .where(eq(approvals.id, ns.id))
+
+      if (ns.approverEmployeeId) {
+        const [nextEmp] = await db
+          .select({ email: employees.email, name: employees.name })
+          .from(employees)
+          .where(eq(employees.id, ns.approverEmployeeId))
+        if (nextEmp?.email) {
+          const isNextDirectorStep =
+            Boolean(ns.decisionNote && ns.decisionNote.toLowerCase().includes('director')) ||
+            Boolean(ns.approverName && ns.approverName.toLowerCase().includes('director')) ||
+            ns.approverEmployeeId === 10
+
+          await sendCerSubmittedEmail({
+            approverEmail: nextEmp.email,
+            approverName: nextEmp.name,
+            cerNumber: request.req.cerNumber,
+            subject: request.req.subject,
+            applicantName: request.applicantName || 'Pemohon',
+            applicantSn: applicantEmp?.employeeSn,
+            applicantJobTitle: applicantEmp?.jobTitle,
+            siteName: request.siteName || 'Site',
+            departmentName: applicantEmp?.department || 'Central Services',
+            assetCategory: request.req.assetCategory,
+            purchaseType: request.req.purchaseType,
+            dateRequired: request.req.dateRequired,
+            vendorName: request.req.vendorName,
+            budgetSource: request.req.budgetSource,
+            budgetCode,
+            budgetName,
+            purchasePurpose: request.req.purchasePurpose,
+            items: items.map((it) => ({
+              description: it.description,
+              qty: it.qty,
+              pricePerUnit: it.pricePerUnit,
+              totalPrice: it.totalPrice,
+              allocation: it.allocation,
+              holderName: it.holderName,
+            })),
+            totalEstimatedPrice: request.req.totalEstimatedPrice,
+            approvalStep: ns.decisionNote || `Tahap ${ns.level}`,
+            cc: isNextDirectorStep ? ['freshya.ochtovita@chitraparatama.co.id'] : undefined,
+          }).catch((err) => console.error('[cer] Next approver email error:', err))
+        }
+      }
+    }
+
+    const nextTitles = nextSteps.map((s) => s.decisionNote || s.approverName).join(' & ')
+    const nextNames = nextSteps.map((s) => s.approverName).join(' & ')
 
     await db
       .update(cerRequests)
       .set({
-        currentStepOrder: nextStep.level,
-        currentApproverName: nextStep.approverName,
-        currentApproverEmployeeId: nextStep.approverEmployeeId,
+        currentStepOrder: nextSteps[0].level,
+        currentApproverTitle: nextTitles,
+        currentApproverName: nextNames,
+        currentApproverEmployeeId: nextSteps[0].approverEmployeeId,
         updatedAt: now,
       })
       .where(eq(cerRequests.id, cerId))
-
-    // Send email to next approver
-    if (nextStep.approverEmployeeId) {
-      const [nextEmp] = await db
-        .select({ email: employees.email, name: employees.name })
-        .from(employees)
-        .where(eq(employees.id, nextStep.approverEmployeeId))
-      if (nextEmp?.email) {
-        await sendCerSubmittedEmail({
-          approverEmail: nextEmp.email,
-          approverName: nextEmp.name,
-          cerNumber: request.req.cerNumber,
-          subject: request.req.subject,
-          applicantName: request.applicantName || 'Pemohon',
-          siteName: request.siteName || 'Site',
-          departmentName: 'Central Services',
-          totalEstimatedPrice: request.req.totalEstimatedPrice,
-          approvalStep: `Tahap ${nextStep.level}`,
-        }).catch((err) => console.error('[cer] Next approver email error:', err))
-      }
-    }
 
     revalidatePath('/dashboard/assets/cer')
     revalidatePath('/dashboard/approval')
 
-    return { success: true, message: `Disetujui. Berkas diteruskan ke ${nextStep.approverName}.` }
+    return { success: true, message: `Disetujui. Berkas diteruskan ke ${nextNames}.` }
   } else {
-    // FINAL APPROVAL: FULL APPROVED!
-    // 1. Fetch items
-    const items = await db.select().from(cerItems).where(eq(cerItems.cerRequestId, cerId))
+    // 3. All approvals up to Director complete!
+    // Transition to Checked by Finance (Syamsul Bahri & Evo Dwi) to input Kelompok Aset & Nomor Aset
+    const [syamsul] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, 990))
 
-    // 2. Map approvals for PDF
-    const pdfApprovals = allSteps.map((s) => ({
-      stepOrder: s.level,
-      label: s.decisionNote || `Tahap ${s.level}`,
-      approverName: s.approverName,
-      status: 'Approved',
-      reviewedAt: s.reviewedAt || now,
-    }))
+    const [evo] = await db
+      .select({ id: employees.id, name: employees.name, email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, 1006))
 
-    // 3. Generate Official CER Document PDF
-    const pdfBuffer = await generateCerPdf({
-      cerNumber: request.req.cerNumber,
-      subject: request.req.subject,
-      applicantName: request.applicantName || 'Pemohon',
-      siteName: request.siteName || 'Site',
-      departmentName: 'Central Services',
-      level: request.req.level,
-      purchaseType: request.req.purchaseType,
-      budgetSource: request.req.budgetSource,
-      assetCategory: request.req.assetCategory,
-      purchasePurpose: request.req.purchasePurpose,
-      vendorName: request.req.vendorName,
-      totalEstimatedPrice: request.req.totalEstimatedPrice,
-      dateRequired: request.req.dateRequired,
-      createdAt: request.req.createdAt,
-      approvedAt: now,
-      items: items.map((it) => ({
-        description: it.description,
-        qty: it.qty,
-        pricePerUnit: it.pricePerUnit,
-        totalPrice: it.totalPrice,
-        allocation: it.allocation,
-        holderName: it.holderName,
-        estimatedLifespan: it.estimatedLifespan,
-      })),
-      approvals: pdfApprovals,
-    })
-
-    // 4. Save PDF
-    const pdfUrl = await saveGeneratedPdf(pdfBuffer, request.req.cerNumber.replace(/\//g, '_'))
-
-    // 5. Update CER status to full_approved
     await db
       .update(cerRequests)
       .set({
-        status: 'full_approved',
-        approvedAt: now,
-        pdfUrl,
+        status: 'pending_finance_check',
+        currentStepOrder: currentApproval.level + 1,
+        currentApproverTitle: 'Checked by Finance (Input Kelompok & Nomor Aset)',
+        currentApproverName: 'Syamsul Bahri / Evo Dwi',
+        currentApproverEmployeeId: 990,
         updatedAt: now,
       })
       .where(eq(cerRequests.id, cerId))
 
-    // 6. Send Email to Procurement & Pemohon, CC Evo Dwi with PDF attached
-    if (request.applicantEmail) {
-      await sendCerFullApprovedEmail({
-        applicantEmail: request.applicantEmail,
-        applicantName: request.applicantName || 'Pemohon',
-        cerNumber: request.req.cerNumber,
-        subject: request.req.subject,
-        siteId: request.req.siteId,
-        siteName: request.siteName || 'Site',
-        totalEstimatedPrice: request.req.totalEstimatedPrice,
-        vendorName: request.req.vendorName,
-        pdfBuffer,
-        pdfUrl,
-        cerId,
-      }).catch((err) => console.error('[cer] Full approved email error:', err))
+    const financeRecipients = [
+      { email: syamsul?.email, name: syamsul?.name || 'Syamsul Bahri' },
+      { email: evo?.email, name: evo?.name || 'Evo Dwi' },
+    ].filter((f) => f.email)
+
+    for (const fin of financeRecipients) {
+      if (fin.email) {
+        await sendCerSubmittedEmail({
+          approverEmail: fin.email,
+          approverName: fin.name,
+          cerNumber: request.req.cerNumber,
+          subject: request.req.subject,
+          applicantName: request.applicantName || 'Pemohon',
+          applicantSn: applicantEmp?.employeeSn,
+          applicantJobTitle: applicantEmp?.jobTitle,
+          siteName: request.siteName || 'Site',
+          departmentName: applicantEmp?.department || 'Central Services',
+          assetCategory: request.req.assetCategory,
+          purchaseType: request.req.purchaseType,
+          dateRequired: request.req.dateRequired,
+          vendorName: request.req.vendorName,
+          budgetSource: request.req.budgetSource,
+          budgetCode,
+          budgetName,
+          purchasePurpose: request.req.purchasePurpose,
+          items: items.map((it) => ({
+            description: it.description,
+            qty: it.qty,
+            pricePerUnit: it.pricePerUnit,
+            totalPrice: it.totalPrice,
+            allocation: it.allocation,
+            holderName: it.holderName,
+          })),
+          totalEstimatedPrice: request.req.totalEstimatedPrice,
+          approvalStep: 'Checked by Finance (Input Kelompok & Nomor Aset)',
+        }).catch((err) => console.error('[cer] Finance check email error:', err))
+      }
     }
 
     revalidatePath('/dashboard/assets/cer')
@@ -731,15 +958,461 @@ export async function approveCerStepAction(approvalId: number, decisionNote?: st
 
     return {
       success: true,
-      message: `Persetujuan final berhasil. CER ${request.req.cerNumber} telah berstatus Full Approved dan dokumen resmi telah dikirim ke Procurement & Pemohon.`,
-      pdfUrl,
+      message: 'Persetujuan Direksi selesai. Berkas dialihkan ke Finance (Syamsul Bahri & Evo Dwi) untuk penginputan Kelompok Aset & Nomor Aset.',
     }
   }
 }
 
 /**
- * REVERT CER STEP (Request Revision)
+ * REJECT CER STEP (Tolak Pengajuan)
+ * CapEx budget komitmen otomatis di-release kembali ke saldo.
  */
+export async function rejectCerStepAction(approvalId: number, rejectReason: string) {
+  const session = await getServerSession()
+  if (!session?.user?.email) {
+    return { success: false, message: 'Unauthorized' }
+  }
+
+  if (!rejectReason || rejectReason.trim().length === 0) {
+    return { success: false, message: 'Alasan penolakan wajib diisi.' }
+  }
+
+  const [currentApproval] = await db.select().from(approvals).where(eq(approvals.id, approvalId))
+  if (!currentApproval || !currentApproval.cerRequestId) {
+    return { success: false, message: 'Approval step tidak ditemukan.' }
+  }
+
+  // Authorization check (Super Admin or assigned Approver)
+  const [sessionEmp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
+    .limit(1)
+
+  const isSuperAdmin = isSuperAdminUser(sessionEmp, session.user)
+  const isApprover =
+    sessionEmp &&
+    (currentApproval.approverEmployeeId === sessionEmp.id ||
+      (currentApproval.approverName && sessionEmp.name && currentApproval.approverName.toLowerCase().includes(sessionEmp.name.toLowerCase())))
+
+  if (!isSuperAdmin && !isApprover) {
+    return {
+      success: false,
+      message: 'Akses ditolak: Anda tidak memiliki wewenang untuk menolak pengajuan CER ini.',
+    }
+  }
+
+  const cerId = currentApproval.cerRequestId
+  const now = new Date()
+
+  // Mark current approval step Rejected
+  await db
+    .update(approvals)
+    .set({
+      status: 'Rejected',
+      reviewedAt: now,
+      rejectionReason: rejectReason,
+      decisionNote: `Ditolak: ${rejectReason}`,
+    })
+    .where(eq(approvals.id, approvalId))
+
+  // Find CER Request
+  const [request] = await db
+    .select({
+      req: cerRequests,
+      applicantName: employees.name,
+      applicantEmail: employees.email,
+    })
+    .from(cerRequests)
+    .leftJoin(employees, eq(cerRequests.applicantEmployeeId, employees.id))
+    .where(eq(cerRequests.id, cerId))
+
+  if (!request) {
+    return { success: false, message: 'Data CER tidak ditemukan.' }
+  }
+
+  // Update CER status to rejected
+  await db
+    .update(cerRequests)
+    .set({
+      status: 'rejected',
+      updatedAt: now,
+    })
+    .where(eq(cerRequests.id, cerId))
+
+  // Release CapEx budget if committed
+  if (request.req.capexBudgetId) {
+    const totalAmount = Number(request.req.totalEstimatedPrice || 0)
+    const [budget] = await db
+      .select()
+      .from(cerCapexBudgets)
+      .where(eq(cerCapexBudgets.id, request.req.capexBudgetId))
+
+    if (budget && totalAmount > 0) {
+      const prevRem = Number(budget.remainingAmount)
+      const newUsed = Math.max(0, Number(budget.usedAmount) - totalAmount)
+      const newRem = Number(budget.allocatedAmount) - newUsed
+
+      await db
+        .update(cerCapexBudgets)
+        .set({
+          usedAmount: String(newUsed),
+          remainingAmount: String(newRem),
+          updatedAt: now,
+        })
+        .where(eq(cerCapexBudgets.id, budget.id))
+
+      await db.insert(cerCapexBudgetTransactions).values({
+        budgetId: budget.id,
+        cerRequestId: cerId,
+        transactionType: 'release',
+        amount: String(totalAmount),
+        previousRemaining: String(prevRem),
+        newRemaining: String(newRem),
+        description: `Pengembalian anggaran CER ${request.req.cerNumber} karena ditolak: ${rejectReason}`,
+        createdById: session.user.id,
+      })
+    }
+  }
+
+  // Send Rejection Notification to applicant
+  if (request.applicantEmail) {
+    await sendCerRejectedEmail({
+      applicantEmail: request.applicantEmail,
+      applicantName: request.applicantName || 'Pemohon',
+      cerNumber: request.req.cerNumber,
+      subject: request.req.subject,
+      rejectedByName: currentApproval.approverName,
+      rejectReason,
+      cerId,
+    }).catch((err) => console.error('[cer] Reject email error:', err))
+  }
+
+  revalidatePath('/dashboard/assets/cer')
+  revalidatePath('/dashboard/approval')
+  revalidatePath('/dashboard/assets/budget-controller')
+
+  return {
+    success: true,
+    message: `Permohonan CER ${request.req.cerNumber} telah ditolak. Saldo anggaran telah dikembalikan.`,
+  }
+}
+
+/**
+ * DELETE CER REQUEST ACTION
+ * Menghapus formulir pengajuan CER yang salah / dibatalkan.
+ * Dapat dilakukan oleh:
+ * 1. Super Admin / Tim Finance (kapan saja)
+ * 2. Staf Pemohon (jika pengajuan belum serah terima / completed)
+ * Otomatis membebaskan alokasi pagu belanja di Budget Controller jika ada.
+ */
+export async function deleteCerRequestAction(cerId: number) {
+  const session = await getServerSession()
+  if (!session?.user?.email) {
+    return { success: false, message: 'Unauthorized' }
+  }
+
+  const [currentEmp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
+    .limit(1)
+
+  const [request] = await db
+    .select()
+    .from(cerRequests)
+    .where(eq(cerRequests.id, cerId))
+    .limit(1)
+
+  if (!request) {
+    return { success: false, message: 'Pengajuan CER tidak ditemukan.' }
+  }
+
+  const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
+  const isApplicant = currentEmp && request.applicantEmployeeId === currentEmp.id
+
+  if (!isSuperAdmin && !isApplicant) {
+    return {
+      success: false,
+      message: 'Akses ditolak: Hanya pemohon (pengaju) atau Super Admin (Gilang & Annas) yang berwenang menghapus pengajuan CER ini.',
+    }
+  }
+
+  if (!isSuperAdmin && (request.status === 'completed' || request.status === 'received')) {
+    return {
+      success: false,
+      message: 'Pengajuan CER yang sudah dalam tahap serah terima atau selesai tidak dapat dihapus oleh pemohon.',
+    }
+  }
+
+  const now = new Date()
+
+  // 1. If budget was committed and request is not rejected yet, release the budget in budget controller
+  if (request.capexBudgetId && request.status !== 'rejected') {
+    const totalAmount = Number(request.totalEstimatedPrice || 0)
+    const [budget] = await db
+      .select()
+      .from(cerCapexBudgets)
+      .where(eq(cerCapexBudgets.id, request.capexBudgetId))
+
+    if (budget && totalAmount > 0) {
+      const prevRem = Number(budget.remainingAmount)
+      const newUsed = Math.max(0, Number(budget.usedAmount) - totalAmount)
+      const newRem = Number(budget.allocatedAmount) - newUsed
+
+      await db
+        .update(cerCapexBudgets)
+        .set({
+          usedAmount: String(newUsed),
+          remainingAmount: String(newRem),
+          updatedAt: now,
+        })
+        .where(eq(cerCapexBudgets.id, budget.id))
+    }
+  }
+
+  // 2. Delete child records
+  await db.delete(approvals).where(eq(approvals.cerRequestId, cerId))
+  await db.delete(cerCapexBudgetTransactions).where(eq(cerCapexBudgetTransactions.cerRequestId, cerId))
+  await db.delete(cerItems).where(eq(cerItems.cerRequestId, cerId))
+  await db.delete(cerAttachments).where(eq(cerAttachments.cerRequestId, cerId))
+  await db.delete(cerBasts).where(eq(cerBasts.cerRequestId, cerId))
+
+  // 3. Delete request itself
+  await db.delete(cerRequests).where(eq(cerRequests.id, cerId))
+
+  revalidatePath('/dashboard/assets/cer')
+  revalidatePath('/dashboard/assets/budget-controller')
+  revalidatePath('/dashboard/approval')
+
+  return {
+    success: true,
+    message: `Permohonan CER ${request.cerNumber} berhasil dihapus dan pagu anggaran telah dibebaskan kembali.`,
+  }
+}
+
+/**
+ * SUBMIT FINANCE CHECK (Checked by Finance - Syamsul Bahri / Finance Team)
+ * Penginputan Kelompok Aset & Nomor Aset per unit setelah selesai approval Direksi.
+ * Menghasilkan PDF resmi final dan mengubah status ke full_approved.
+ */
+export async function submitFinanceCheckCerAction(input: {
+  cerId: number
+  kelompokAset: string
+  items: Array<{ id: number; assetNumber: string }>
+  notes?: string
+}) {
+  const session = await getServerSession()
+  if (!session?.user?.email) {
+    return { success: false, message: 'Unauthorized' }
+  }
+
+  if (!input.kelompokAset || input.kelompokAset.trim().length === 0) {
+    return { success: false, message: 'Kelompok Aset wajib diisi.' }
+  }
+
+  const missingAssetNum = input.items.some((it) => !it.assetNumber || it.assetNumber.trim().length === 0)
+  if (missingAssetNum) {
+    return { success: false, message: 'Nomor Aset untuk seluruh unit wajib diisi lengkap.' }
+  }
+
+  const [request] = await db
+    .select({
+      req: cerRequests,
+      applicantName: employees.name,
+      applicantEmail: employees.email,
+      siteName: sites.name,
+    })
+    .from(cerRequests)
+    .leftJoin(employees, eq(cerRequests.applicantEmployeeId, employees.id))
+    .leftJoin(sites, eq(cerRequests.siteId, sites.id))
+    .where(eq(cerRequests.id, input.cerId))
+
+  if (!request) {
+    return { success: false, message: 'Pengajuan CER tidak ditemukan.' }
+  }
+
+  const now = new Date()
+
+  // Get current user employee id
+  const [currentEmp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
+    .limit(1)
+
+  // Authorization check (Syamsul Bahri ID 990, Evo Dwi ID 1006, or Admin)
+  const isSyamsul = currentEmp?.id === 990 || session.user.email.toLowerCase().includes('syamsul.bahri')
+  const isEvoDwi = currentEmp?.id === 1006 || session.user.email.toLowerCase().includes('evo.yulianti')
+  const isAdmin =
+    currentEmp?.accessRole?.toLowerCase().includes('admin') ||
+    (session.user as any)?.role?.toLowerCase().includes('admin') ||
+    currentEmp?.id === 5 ||
+    session.user.email.toLowerCase().includes('khadafi') ||
+    session.user.email.toLowerCase().includes('gilang')
+
+  if (!isSyamsul && !isEvoDwi && !isAdmin) {
+    return {
+      success: false,
+      message: 'Hanya Finance (Syamsul Bahri / Evo Dwi) atau Administrator yang berwenang menginputkan Nomor Aset.',
+    }
+  }
+
+  const financeCheckerId = isEvoDwi ? 1006 : (isSyamsul ? 990 : (currentEmp?.id ?? 990))
+  const financeCheckerName = isEvoDwi
+    ? (currentEmp?.name || 'Evo Dwi Yulianti')
+    : (currentEmp?.name || 'Syamsul Bahri')
+
+  // 1. Update items with asset numbers & group
+  for (const it of input.items) {
+    await db
+      .update(cerItems)
+      .set({
+        assetNumber: it.assetNumber.trim(),
+        assetGroup: input.kelompokAset.trim(),
+        updatedAt: now,
+      })
+      .where(eq(cerItems.id, it.id))
+  }
+
+  // 2. Fetch updated items
+  const updatedItems = await db.select().from(cerItems).where(eq(cerItems.cerRequestId, input.cerId))
+
+  // 3. Fetch all approval history with approver job title
+  const allApprovals = await db
+    .select({
+      id: approvals.id,
+      level: approvals.level,
+      status: approvals.status,
+      approverName: approvals.approverName,
+      jobTitle: employees.jobTitle,
+      approverRole: approvals.approverRole,
+      decisionNote: approvals.decisionNote,
+      signatureUrl: approvals.signatureUrl,
+      reviewedAt: approvals.reviewedAt,
+    })
+    .from(approvals)
+    .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))
+    .where(eq(approvals.cerRequestId, input.cerId))
+    .orderBy(asc(approvals.level))
+
+  const pdfApprovals = allApprovals.map((s) => ({
+    stepOrder: s.level,
+    label: s.decisionNote || `Tahap ${s.level}`,
+    approverName: s.approverName,
+    jobTitle: s.jobTitle || s.approverRole || 'Approver',
+    status: s.status,
+    signatureUrl: s.signatureUrl,
+    reviewedAt: s.reviewedAt || now,
+    decisionNote: s.decisionNote,
+  }))
+
+  pdfApprovals.push({
+    stepOrder: pdfApprovals.length + 1,
+    label: 'Checked by Finance (Input Kelompok & Nomor Aset)',
+    approverName: financeCheckerName,
+    jobTitle: isEvoDwi ? 'Finance Specialist' : 'Finance Specialist',
+    status: 'Approved',
+    reviewedAt: now,
+  })
+
+  // 4. Generate Official CER Document PDF
+  const pdfBuffer = await generateCerPdf({
+    cerNumber: request.req.cerNumber,
+    subject: request.req.subject,
+    applicantName: request.applicantName || 'Pemohon',
+    siteName: request.siteName || 'Site',
+    departmentName: 'Central Services',
+    level: request.req.level,
+    purchaseType: request.req.purchaseType,
+    budgetSource: request.req.budgetSource,
+    assetCategory: request.req.assetCategory,
+    purchasePurpose: request.req.purchasePurpose,
+    vendorName: request.req.vendorName,
+    totalEstimatedPrice: request.req.totalEstimatedPrice,
+    dateRequired: request.req.dateRequired,
+    createdAt: request.req.createdAt,
+    approvedAt: now,
+    kelompokAset: input.kelompokAset.trim(),
+    financeCheckedAt: now,
+    financeCheckedByName: financeCheckerName,
+    items: updatedItems.map((it) => ({
+      description: it.description,
+      qty: it.qty,
+      pricePerUnit: it.pricePerUnit,
+      totalPrice: it.totalPrice,
+      allocation: it.allocation,
+      holderName: it.holderName,
+      estimatedLifespan: it.estimatedLifespan,
+      assetNumber: it.assetNumber,
+    })),
+    approvals: pdfApprovals,
+  })
+
+  // 5. Save PDF
+  const pdfUrl = await saveGeneratedPdf(pdfBuffer, request.req.cerNumber.replace(/\//g, '_'))
+
+  // 6. Update CER Request to full_approved
+  await db
+    .update(cerRequests)
+    .set({
+      kelompokAset: input.kelompokAset.trim(),
+      financeCheckedAt: now,
+      financeCheckedByEmployeeId: financeCheckerId,
+      financeCheckNotes: input.notes || null,
+      status: 'full_approved',
+      currentApproverTitle: 'Disetujui Penuh & Diregistrasi',
+      currentApproverName: financeCheckerName,
+      approvedAt: now,
+      pdfUrl,
+      updatedAt: now,
+    })
+    .where(eq(cerRequests.id, input.cerId))
+
+  // 7. Send Full Approved Email (to Gilang during testing, with PDF)
+  if (request.applicantEmail) {
+    await sendCerFullApprovedEmail({
+      applicantEmail: request.applicantEmail,
+      applicantName: request.applicantName || 'Pemohon',
+      cerNumber: request.req.cerNumber,
+      subject: request.req.subject,
+      siteId: request.req.siteId,
+      siteName: request.siteName || 'Site',
+      totalEstimatedPrice: request.req.totalEstimatedPrice,
+      vendorName: request.req.vendorName,
+      pdfBuffer,
+      pdfUrl,
+      cerId: input.cerId,
+    }).catch((err) => console.error('[cer] Full approved email error:', err))
+  }
+
+  revalidatePath('/dashboard/assets/cer')
+  revalidatePath('/dashboard/approval')
+
+  return {
+    success: true,
+    message: `Penginputan Kelompok Aset & Nomor Aset berhasil. Dokumen resmi CER ${request.req.cerNumber} telah terbit.`,
+    pdfUrl,
+  }
+}
+
 export async function revertCerStepAction(approvalId: number, revertNote: string) {
   const session = await getServerSession()
   if (!session?.user?.email) {
@@ -749,6 +1422,32 @@ export async function revertCerStepAction(approvalId: number, revertNote: string
   const [currentApproval] = await db.select().from(approvals).where(eq(approvals.id, approvalId))
   if (!currentApproval || !currentApproval.cerRequestId) {
     return { success: false, message: 'Approval step tidak ditemukan.' }
+  }
+
+  // Authorization check (Super Admin or assigned Approver)
+  const [sessionEmp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      accessRole: employees.accessRole,
+    })
+    .from(employees)
+    .where(eq(employees.email, session.user.email))
+    .limit(1)
+
+  const isSuperAdmin = isSuperAdminUser(sessionEmp, session.user)
+  const isApprover =
+    sessionEmp &&
+    (currentApproval.approverEmployeeId === sessionEmp.id ||
+      (currentApproval.approverName && sessionEmp.name && currentApproval.approverName.toLowerCase().includes(sessionEmp.name.toLowerCase())))
+
+  if (!isSuperAdmin && !isApprover) {
+    return {
+      success: false,
+      message: 'Akses ditolak: Anda tidak memiliki wewenang untuk menolak pengajuan CER ini.',
+    }
   }
 
   const cerId = currentApproval.cerRequestId
@@ -807,6 +1506,7 @@ export async function revertCerStepAction(approvalId: number, revertNote: string
 
   revalidatePath('/dashboard/assets/cer')
   revalidatePath('/dashboard/approval')
+  revalidatePath('/dashboard/assets/budget-controller')
 
   return {
     success: true,
@@ -832,6 +1532,7 @@ export async function resubmitCerRequestAction(input: {
     totalPrice: number
     allocation: string
     holderName: string
+    holderEmployeeId?: number | null
     estimatedLifespan: string
   }>
 }) {
@@ -874,9 +1575,46 @@ export async function resubmitCerRequestAction(input: {
         totalPrice: String(it.totalPrice),
         allocation: it.allocation || '',
         holderName: it.holderName || '',
+        holderEmployeeId: it.holderEmployeeId || null,
         estimatedLifespan: it.estimatedLifespan || '',
       }))
     )
+
+    // Synchronize CapEx budget commitment adjustment if items/pricing changed
+    if (existing.capexBudgetId) {
+      const diff = totalEstimatedPrice - Number(existing.totalEstimatedPrice || 0)
+      if (diff !== 0) {
+        const [budget] = await db
+          .select()
+          .from(cerCapexBudgets)
+          .where(eq(cerCapexBudgets.id, existing.capexBudgetId))
+        if (budget) {
+          const prevRem = Number(budget.remainingAmount)
+          const newUsed = Number(budget.usedAmount) + diff
+          const newRem = Number(budget.allocatedAmount) - newUsed
+
+          await db
+            .update(cerCapexBudgets)
+            .set({
+              usedAmount: String(newUsed),
+              remainingAmount: String(newRem),
+              updatedAt: now,
+            })
+            .where(eq(cerCapexBudgets.id, budget.id))
+
+          await db.insert(cerCapexBudgetTransactions).values({
+            budgetId: budget.id,
+            cerRequestId: input.cerId,
+            transactionType: 'adjustment',
+            amount: String(Math.abs(diff)),
+            previousRemaining: String(prevRem),
+            newRemaining: String(newRem),
+            description: `Penyesuaian nilai CER ${existing.cerNumber} saat revisi (${diff > 0 ? '+' : ''}${diff})`,
+            createdById: session.user.id,
+          })
+        }
+      }
+    }
   }
 
   // Return directly to the approver step that requested revision!
@@ -917,6 +1655,7 @@ export async function resubmitCerRequestAction(input: {
 
   revalidatePath('/dashboard/assets/cer')
   revalidatePath('/dashboard/approval')
+  revalidatePath('/dashboard/assets/budget-controller')
 
   return {
     success: true,
@@ -934,6 +1673,8 @@ export async function confirmAssetReceivedAction(input: {
   receiverNotes: string
   goodsPhotoUrl?: string
   deliveryNoteUrl?: string
+  receiverSignatureUrl?: string
+  gaName?: string
   unitSerialNumbers?: Record<number, string> // cerItemId -> serialNumber
 }) {
   const session = await getServerSession()
@@ -946,10 +1687,13 @@ export async function confirmAssetReceivedAction(input: {
       req: cerRequests,
       siteName: sites.name,
       applicantName: employees.name,
+      applicantJobTitle: employees.jobTitle,
+      deptName: masterDepartments.name,
     })
     .from(cerRequests)
     .leftJoin(sites, eq(cerRequests.siteId, sites.id))
     .leftJoin(employees, eq(cerRequests.applicantEmployeeId, employees.id))
+    .leftJoin(masterDepartments, eq(cerRequests.departmentId, masterDepartments.id))
     .where(eq(cerRequests.id, input.cerId))
 
   if (!request) {
@@ -958,23 +1702,19 @@ export async function confirmAssetReceivedAction(input: {
 
   const now = new Date()
 
-  // Update CER request status to received
-  await db
-    .update(cerRequests)
-    .set({
-      status: 'received',
-      receivedAt: now,
-      receiverNotes: input.receiverNotes,
-      goodsPhotoUrl: input.goodsPhotoUrl || null,
-      deliveryNoteUrl: input.deliveryNoteUrl || null,
-      updatedAt: now,
-    })
-    .where(eq(cerRequests.id, input.cerId))
-
   // Fetch unit items
   const items = await db.select().from(cerItems).where(eq(cerItems.cerRequestId, input.cerId))
 
   // Insert each item into centralServiceAssets so that it immediately gets asset number & sticker!
+  const registeredItems: Array<{
+    assetNumber: string
+    serialNumber: string
+    description: string
+    category: string
+    location: string
+    condition: string
+  }> = []
+
   for (const it of items) {
     const sn = (input.unitSerialNumbers && input.unitSerialNumbers[it.id]) || it.serialNumber || ''
     const [assetCount] = await db.select({ count: sql<number>`count(*)::int` }).from(centralServiceAssets)
@@ -987,8 +1727,9 @@ export async function confirmAssetReceivedAction(input: {
       .values({
         workSection: request.req.assetCategory,
         section: it.allocation || 'Central Service',
-        location: request.siteName || 'Balikpapan',
+        location: it.allocation || request.siteName || 'Balikpapan',
         description: it.description,
+        holderEmployeeId: it.holderEmployeeId || null,
         assetNumber: assetNum,
         serialNumber: sn,
         purchaseDate: now,
@@ -1008,7 +1749,81 @@ export async function confirmAssetReceivedAction(input: {
         updatedAt: now,
       })
       .where(eq(cerItems.id, it.id))
+
+    registeredItems.push({
+      assetNumber: assetNum,
+      serialNumber: sn || '-',
+      description: it.description,
+      category: request.req.assetCategory,
+      location: request.siteName || 'Balikpapan',
+      condition: 'Baik / Lengkap',
+    })
   }
+
+  // Generate BAST Number
+  const siteCode = (request.siteName || 'CP').split(' ')[0].toUpperCase()
+  const monthRoman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'][now.getMonth()]
+  const year = now.getFullYear()
+  const [bastCount] = await db.select({ count: sql<number>`count(*)::int` }).from(cerBasts)
+  const seq = String((bastCount?.count || 0) + 1).padStart(3, '0')
+  const bastNumber = `BAST/CP/${siteCode}/${monthRoman}/${year}/${seq}`
+
+  const gaName = input.gaName || 'Adila Tri Arizona (General Affairs)'
+
+  // Generate Official BAST PDF with Logo & Digital Signatures!
+  let bastPdfUrl: string | null = null
+  try {
+    const bastBuffer = await generateCerBastPdf({
+      bastNumber,
+      cerNumber: request.req.cerNumber,
+      subject: request.req.subject,
+      handoverDate: input.receivedDate || now,
+      gaName,
+      gaSignedAt: now,
+      gaSignatureUrl: null,
+      userName: request.applicantName || 'Pemohon',
+      userJobTitle: request.applicantJobTitle,
+      userDepartment: request.deptName,
+      userSite: request.siteName,
+      userSignedAt: now,
+      userSignatureUrl: input.receiverSignatureUrl || null,
+      notes: input.receiverNotes,
+      items: registeredItems,
+    })
+
+    bastPdfUrl = await saveGeneratedPdfUpload(bastBuffer, 'cer-bast', bastNumber)
+  } catch (pdfErr) {
+    console.error('[confirmAssetReceivedAction] BAST PDF error:', pdfErr)
+  }
+
+  // Update CER request status to completed / received
+  await db
+    .update(cerRequests)
+    .set({
+      status: 'completed',
+      receivedAt: now,
+      receiverNotes: input.receiverNotes,
+      receiverSignatureUrl: input.receiverSignatureUrl || null,
+      goodsPhotoUrl: input.goodsPhotoUrl || null,
+      deliveryNoteUrl: input.deliveryNoteUrl || null,
+      bastPdfUrl: bastPdfUrl || undefined,
+      updatedAt: now,
+    })
+    .where(eq(cerRequests.id, input.cerId))
+
+  // Insert into cerBasts record
+  await db.insert(cerBasts).values({
+    cerRequestId: input.cerId,
+    bastNumber,
+    handoverDate: input.receivedDate || now.toISOString().slice(0, 10),
+    gaEmployeeName: gaName,
+    userEmployeeName: request.applicantName || 'Pemohon',
+    userSignatureUrl: input.receiverSignatureUrl || null,
+    userSignedAt: now,
+    pdfUrl: bastPdfUrl || undefined,
+    status: 'completed',
+    notes: input.receiverNotes || '',
+  })
 
   // Send Notification to Procurement & CC Evo Dwi
   await sendCerAssetReceivedEmail({
@@ -1027,7 +1842,9 @@ export async function confirmAssetReceivedAction(input: {
 
   return {
     success: true,
-    message: 'Konfirmasi penerimaan aset berhasil. Aset telah terdaftar di database Asset Management dan siap dicetak stikernya.',
+    message: `Konfirmasi penerimaan aset & BAST (${bastNumber}) berhasil diterbitkan. Dokumen PDF siap diunduh.`,
+    bastPdfUrl,
+    bastNumber,
   }
 }
 
@@ -1107,7 +1924,8 @@ export async function signCerBastAction(input: {
       serialNumber: row.assetSerial || row.it.serialNumber || '-',
       description: row.it.description,
       category: request.req.assetCategory,
-      location: request.siteName || 'Site',
+      location: row.it.allocation || request.siteName || 'Site',
+      holderName: row.it.holderName || '',
       condition: row.cond || 'Baik & Lengkap',
     })),
   })
@@ -1183,6 +2001,14 @@ export async function saveCapexBudgetAction(input: {
     return { success: false, message: 'Unauthorized' }
   }
 
+  const budgetPermission = await getCurrentMenuPermission('cer_budget_controller')
+  if (!budgetPermission.canEdit && !budgetPermission.canView) {
+    return {
+      success: false,
+      message: 'Akses ditolak: Anda tidak memiliki izin untuk mengelola Budget Controller. Silakan hubungi Administrator untuk pengaturan Role Management.',
+    }
+  }
+
   const now = new Date()
 
   if (input.id) {
@@ -1208,6 +2034,7 @@ export async function saveCapexBudgetAction(input: {
       })
       .where(eq(cerCapexBudgets.id, input.id))
 
+    revalidatePath('/dashboard/assets/budget-controller')
     revalidatePath('/dashboard/assets/cer')
     return { success: true, message: `Pagu CapEx ${input.budgetCode} berhasil diperbarui.` }
   } else {
@@ -1225,9 +2052,42 @@ export async function saveCapexBudgetAction(input: {
       createdById: session.user.id,
     })
 
+    revalidatePath('/dashboard/assets/budget-controller')
     revalidatePath('/dashboard/assets/cer')
     return { success: true, message: `Pagu CapEx ${input.budgetCode} berhasil ditambahkan.` }
   }
+}
+
+export async function deleteCapexBudgetAction(id: number) {
+  const session = await getServerSession()
+  if (!session?.user?.id) {
+    return { success: false, message: 'Unauthorized' }
+  }
+
+  const budgetPermission = await getCurrentMenuPermission('cer_budget_controller')
+  if (!budgetPermission.canDelete && !budgetPermission.canEdit) {
+    return {
+      success: false,
+      message: 'Akses ditolak: Anda tidak memiliki izin untuk menghapus data Budget Controller.',
+    }
+  }
+
+  const [existing] = await db.select().from(cerCapexBudgets).where(eq(cerCapexBudgets.id, id))
+  if (!existing) {
+    return { success: false, message: 'Pagu anggaran tidak ditemukan.' }
+  }
+
+  if (Number(existing.usedAmount) > 0) {
+    return {
+      success: false,
+      message: 'Pagu anggaran ini sudah memiliki transaksi pemakaian dan tidak dapat dihapus.',
+    }
+  }
+
+  await db.delete(cerCapexBudgets).where(eq(cerCapexBudgets.id, id))
+  revalidatePath('/dashboard/assets/budget-controller')
+  revalidatePath('/dashboard/assets/cer')
+  return { success: true, message: `Pagu anggaran ${existing.budgetCode} berhasil dihapus.` }
 }
 
 /**
@@ -1274,4 +2134,13 @@ export async function updateCerNotificationConfigAction(data: CerNotificationCon
   revalidatePath('/dashboard/assets/cer')
 
   return { success: true, message: 'Pengaturan email notifikasi CER berhasil disimpan.' }
+}
+
+
+export async function getCerItemsAction(cerId: number) {
+  return await db
+    .select()
+    .from(cerItems)
+    .where(eq(cerItems.cerRequestId, cerId))
+    .orderBy(asc(cerItems.id))
 }

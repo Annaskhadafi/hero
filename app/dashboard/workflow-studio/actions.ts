@@ -14,6 +14,7 @@ import {
   formSubmissions,
   formTemplates,
   inboxItems,
+  masterDepartments,
   masterSections,
   notificationDeliveries,
   notificationEvents,
@@ -53,12 +54,11 @@ const approvalStepSchema = z.object({
 const siteApprovalEntrySchema = z.object({
   siteId: z.preprocess((val) => val === 'all' || val === '0' || val === 0 ? 0 : Number(val), z.number().int().nonnegative()),
   departmentId: z.preprocess((val) => (!val || val === '' || val === '0' || val === 0) ? 0 : Number(val), z.number().int().nonnegative()),
-  // Nilai kolom yang belum diisi dikirim sebagai string kosong ("") dari form —
-  // ubah jadi undefined supaya baris site dengan kolom kosong tetap valid,
-  // dan kolom yang terisi tetap ter-coerce ke number.
+  sectionId: z.preprocess((val) => (!val || val === '' || val === '0' || val === 0) ? undefined : Number(val), z.number().int().positive().optional()),
+  // Nilai kolom approver: bisa single number, array, atau comma-separated string untuk multi-approver (contoh: dual Budget Validator)
   values: z.record(
     z.string(),
-    z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().positive().optional())
+    z.preprocess((v) => (v === '' ? undefined : v), z.union([z.coerce.number().int().positive(), z.string(), z.array(z.coerce.number().int().positive())]).optional())
   ),
 })
 
@@ -178,8 +178,16 @@ export async function saveWorkflowStudioApprovalAction(
 
     const allEmployeeIds = parsedSiteEntries.flatMap((entry) =>
       Object.entries(entry.values || {})
-        .filter(([stepId, id]) => !sectionStepIds.has(stepId) && id != null && id > 0)
-        .map(([, id]) => id as number)
+        .filter(([stepId]) => !sectionStepIds.has(stepId))
+        .flatMap(([, val]) => {
+          if (!val) return []
+          if (Array.isArray(val)) return val.map(Number).filter((n) => !isNaN(n) && n > 0)
+          if (typeof val === 'string' && val.includes(',')) {
+            return val.split(',').map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0)
+          }
+          const n = Number(val)
+          return !isNaN(n) && n > 0 ? [n] : []
+        })
     )
     if (allEmployeeIds.length === 0) {
       return { status: 'error', message: 'Minimal satu approver wajib dipilih.' }
@@ -200,7 +208,7 @@ export async function saveWorkflowStudioApprovalAction(
       // When creating new, check for duplicates per site
       if (!payload.matrixId) {
         for (const entry of parsedSiteEntries) {
-          // Department-based check for RFR
+          // Department-based check for RFR & CER
           const isDeptBased = entry.departmentId > 0
           const duplicates = await db
             .select({ id: approvalMatrices.id, name: approvalMatrices.name })
@@ -210,18 +218,20 @@ export async function saveWorkflowStudioApprovalAction(
                 eq(approvalMatrices.isActive, true),
                 eq(approvalMatrices.transactionType, payload.transactionType),
                 isDeptBased
-                  ? eq(approvalMatrices.departmentId, entry.departmentId)
+                  ? (entry.sectionId
+                      ? and(eq(approvalMatrices.departmentId, entry.departmentId), eq(approvalMatrices.sectionId, entry.sectionId))
+                      : and(eq(approvalMatrices.departmentId, entry.departmentId), isNull(approvalMatrices.sectionId)))
                   : (entry.siteId === 0 ? isNull(approvalMatrices.siteId) : eq(approvalMatrices.siteId, entry.siteId)),
                 eq(approvalMatrices.activityType, '')
               )
             )
           if (duplicates.length > 0) {
             const siteName = isDeptBased
-              ? `Dept ${entry.departmentId}`
+              ? `Dept ${entry.departmentId}${entry.sectionId ? ` (Section ${entry.sectionId})` : ''}`
               : (siteMap.get(entry.siteId) ?? `Site ${entry.siteId}`)
             return {
               status: 'error',
-              message: `Workflow aktif sudah ada untuk site ${siteName}: ${duplicates[0].name}. Edit existing, jangan buat duplikat.`,
+              message: `Workflow aktif sudah ada untuk ${siteName}: ${duplicates[0].name}. Edit existing, jangan buat duplikat.`,
               existingMatrixId: duplicates[0].id,
             }
           }
@@ -369,20 +379,53 @@ export async function saveWorkflowStudioApprovalAction(
         }
       }
 
+      const [allDepts, allSecs] = await Promise.all([
+        tx.select({ id: masterDepartments.id, name: masterDepartments.name }).from(masterDepartments),
+        tx.select({ id: masterSections.id, name: masterSections.name }).from(masterSections),
+      ])
+      const departmentMap = new Map(allDepts.map((d) => [d.id, d.name]))
+      const sectionMap = new Map(allSecs.map((s) => [s.id, s.name]))
+
       for (const entry of parsedSiteEntries) {
-        const allApprovers = parsedSteps
-          .filter((step) => !sectionStepIds.has(step.id))
-          .map((step) => {
-            const meta = stepMetaMap.get(step.id) ?? { stepOrder: 1, approvalMode: payload.mode }
-            return {
-              id: step.id,
-              role: step.label,
-              employeeId: entry.values[step.id],
-              stepOrder: meta.stepOrder,
-              approvalMode: meta.approvalMode,
+        const allApprovers: Array<{
+          id: string
+          role: string
+          employeeId: number
+          stepOrder: number
+          approvalMode: string
+        }> = []
+
+        for (const step of parsedSteps.filter((s) => !sectionStepIds.has(s.id))) {
+          const meta = stepMetaMap.get(step.id) ?? { stepOrder: 1, approvalMode: payload.mode }
+          const rawVal = entry.values[step.id]
+          if (!rawVal) continue
+
+          let empIds: number[] = []
+          if (Array.isArray(rawVal)) {
+            empIds = rawVal.map(Number).filter((n) => !isNaN(n) && n > 0)
+          } else if (typeof rawVal === 'string' && rawVal.includes(',')) {
+            empIds = rawVal.split(',').map((s) => Number(s.trim())).filter((n) => !isNaN(n) && n > 0)
+          } else {
+            const num = Number(rawVal)
+            if (!isNaN(num) && num > 0) empIds = [num]
+          }
+
+          const isParallelMulti = empIds.length > 1
+          const effectiveMode = isParallelMulti
+            ? (meta.approvalMode === 'parallel_any' ? 'parallel_any' : 'parallel_all')
+            : meta.approvalMode
+          for (const empId of empIds) {
+            if (validEmployeeIds.has(empId)) {
+              allApprovers.push({
+                id: step.id,
+                role: step.label,
+                employeeId: empId,
+                stepOrder: meta.stepOrder,
+                approvalMode: effectiveMode,
+              })
             }
-          })
-          .filter((a): a is { id: string; role: string; employeeId: number; stepOrder: number; approvalMode: string } => a.employeeId != null && validEmployeeIds.has(a.employeeId))
+          }
+        }
 
         if (allApprovers.length === 0) continue
 
@@ -393,16 +436,41 @@ export async function saveWorkflowStudioApprovalAction(
           return (s as any).type === 'section' || l === 'section' || l === 'masterarea' || l === 'area'
         })
         const areaOrSectionId = sectionStep ? entry.values[sectionStep.id] ?? null : null
-        const sectionId = isFiveR ? null : areaOrSectionId
+        const effectiveSectionId = entry.sectionId ? Number(entry.sectionId) : (isFiveR ? null : (areaOrSectionId ? Number(areaOrSectionId) : null))
 
         let matrixName = payload.activityName
         let matrixDesc = payload.notes ?? ''
 
-        if (isFiveR && areaOrSectionId) {
+        if (payload.transactionType === 'cer_request') {
+          if (entry.departmentId > 0) {
+            const deptName = departmentMap.get(entry.departmentId) ?? `Dept ${entry.departmentId}`
+            const secName = effectiveSectionId ? sectionMap.get(effectiveSectionId) : null
+            matrixName = `Pengadaan Aset (CER) - ${deptName}${secName ? ` - ${secName}` : ''}`
+          } else {
+            matrixName = `Pengadaan Aset (CER) - Global Master`
+          }
+        } else if (payload.transactionType === 'asset_transfer') {
+          if (entry.departmentId > 0) {
+            const deptName = departmentMap.get(entry.departmentId) ?? `Dept ${entry.departmentId}`
+            const secName = effectiveSectionId ? sectionMap.get(effectiveSectionId) : null
+            matrixName = `Transfer Aset - ${deptName}${secName ? ` - ${secName}` : ''}`
+          } else {
+            matrixName = `Transfer Aset - Global Master`
+          }
+        } else if (payload.transactionType === 'asset_disposal') {
+          if (entry.departmentId > 0) {
+            const deptName = departmentMap.get(entry.departmentId) ?? `Dept ${entry.departmentId}`
+            const secName = effectiveSectionId ? sectionMap.get(effectiveSectionId) : null
+            matrixName = `Disposal Aset - ${deptName}${secName ? ` - ${secName}` : ''}`
+          } else {
+            matrixName = `Disposal Aset - Global Master`
+          }
+        } else if (isFiveR && areaOrSectionId) {
+          const areaNum = Number(areaOrSectionId)
           const [area] = await tx
             .select({ name: fiveRMasterAreas.name, siteId: fiveRMasterAreas.siteId })
             .from(fiveRMasterAreas)
-            .where(eq(fiveRMasterAreas.id, areaOrSectionId))
+            .where(eq(fiveRMasterAreas.id, areaNum))
             .limit(1)
 
           if (area) {
@@ -415,10 +483,11 @@ export async function saveWorkflowStudioApprovalAction(
             }
           }
         } else if (payload.transactionType === 'apd-summary' && areaOrSectionId) {
+          const secNum = Number(areaOrSectionId)
           const [sec] = await tx
             .select({ name: masterSections.name })
             .from(masterSections)
-            .where(eq(masterSections.id, areaOrSectionId))
+            .where(eq(masterSections.id, secNum))
             .limit(1)
 
           if (sec) {
@@ -434,7 +503,7 @@ export async function saveWorkflowStudioApprovalAction(
             transactionType: payload.transactionType,
             siteId: entry.siteId === 0 ? null : entry.siteId,
             departmentId: entry.departmentId > 0 ? entry.departmentId : null,
-            sectionId: sectionId,
+            sectionId: effectiveSectionId,
             activityType: '',
             priority: 'any',
             description: matrixDesc,

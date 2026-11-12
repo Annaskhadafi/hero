@@ -1618,7 +1618,7 @@ export async function resolveCerApprovalRoute(
   ) {
     steps.push({
       stepOrder: stepOrder++,
-      label: `Atasan Langsung (${directManager.name})`,
+      label: 'Atasan Langsung',
       approverName: directManager.name,
       approverEmployeeId: directManager.id,
       approverNodeId: null,
@@ -1630,37 +1630,36 @@ export async function resolveCerApprovalRoute(
     })
   }
 
-  // 2. Technical Validation IT (Bima - IT Supervisor) if IT Device
-  const cat = (assetCategory || context.activityType || '').toLowerCase()
+  // 2. Technical Validation IT (Bima / Aditya - IT Supervisor) if IT Device
+  const cat = (assetCategory || context.activityType || '').toLowerCase().trim()
   const isItDevice =
-    cat.includes('it') ||
+    /\bit\b/i.test(cat) ||
     cat.includes('device') ||
     cat.includes('laptop') ||
     cat.includes('printer') ||
     cat.includes('komputer') ||
-    cat.includes('pc')
+    cat.includes('pc') ||
+    cat.includes('server')
   if (isItDevice) {
     let itApprover: { id: number | null; name: string } = {
-      id: null,
-      name: 'Bima (Supervisor IT)',
+      id: 1016, // Arif Maulana Ghafar (BIMA Supervisor)
+      name: 'Arif Maulana Ghafar (BIMA Supervisor)',
     }
     try {
-      const [cfg] = await db.select().from(cerNotificationConfigs).limit(1)
-      if (cfg?.itBimaEmail) {
-        const [emp] = await db
-          .select({ id: employees.id, name: employees.name })
-          .from(employees)
-          .where(eq(employees.email, cfg.itBimaEmail))
-        if (emp) {
-          itApprover = { id: emp.id, name: emp.name }
-        }
+      const [bima] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+        .from(employees)
+        .where(or(ilike(employees.name, '%Arif Maulana%'), eq(employees.employeeSn, '50330')))
+        .limit(1)
+      if (bima) {
+        itApprover = { id: bima.id, name: `${bima.name} (BIMA Supervisor)` }
       }
     } catch {
       // fallback to default
     }
     steps.push({
       stepOrder: stepOrder++,
-      label: `Technical Validation IT (${itApprover.name})`,
+      label: 'Acknowledge by BIMA Supervisor',
       approverName: itApprover.name,
       approverEmployeeId: itApprover.id,
       approverNodeId: null,
@@ -1689,7 +1688,7 @@ export async function resolveCerApprovalRoute(
     if (mgr && mgr.id !== applicant.id && mgr.id !== directManager?.id) {
       steps.push({
         stepOrder: stepOrder++,
-        label: `Department Manager (${mgr.name})`,
+        label: 'Department Manager',
         approverName: mgr.name,
         approverEmployeeId: mgr.id,
         approverNodeId: null,
@@ -1702,33 +1701,28 @@ export async function resolveCerApprovalRoute(
     }
   }
 
-  // 4. Budget Validator (Finance)
-  let budgetValidator: { id: number | null; name: string } = {
-    id: 1341, // Amama Ira Amalia Priyono
-    name: 'Amama Ira Amalia Priyono (Budget Validator)',
-  }
-  try {
-    const [cfg] = await db.select().from(cerNotificationConfigs).limit(1)
-    if (cfg?.budgetValidatorEmail) {
-      const [emp] = await db
-        .select({ id: employees.id, name: employees.name })
-        .from(employees)
-        .where(eq(employees.email, cfg.budgetValidatorEmail))
-      if (emp) {
-        budgetValidator = { id: emp.id, name: `${emp.name} (Budget Validator)` }
-      }
-    }
-  } catch {
-    // fallback
-  }
+  // 4. Budget Validator (Finance) - Dual Approval (Parallel All: Amama Ira & Febrian Dani)
+  const budgetStepOrder = stepOrder++
   steps.push({
-    stepOrder: stepOrder++,
-    label: `Budget Validator (${budgetValidator.name})`,
-    approverName: budgetValidator.name,
-    approverEmployeeId: budgetValidator.id,
+    stepOrder: budgetStepOrder,
+    label: 'Budget Validator',
+    approverName: 'Amama Ira Amalia Priyono',
+    approverEmployeeId: 1341,
     approverNodeId: null,
     approvalMatrixStepId: null,
-    approvalMode: 'single',
+    approvalMode: 'parallel_all',
+    resolutionSource: 'matrix',
+    canDelegate: false,
+    slaHours: 24,
+  })
+  steps.push({
+    stepOrder: budgetStepOrder,
+    label: 'Budget Validator',
+    approverName: 'Febrian Dani',
+    approverEmployeeId: 960,
+    approverNodeId: null,
+    approvalMatrixStepId: null,
+    approvalMode: 'parallel_all',
     resolutionSource: 'matrix',
     canDelegate: false,
     slaHours: 24,
@@ -1745,7 +1739,7 @@ export async function resolveCerApprovalRoute(
   const gmId = gm?.id ?? 940
   steps.push({
     stepOrder: stepOrder++,
-    label: `General Manager (${gmName})`,
+    label: 'General Manager',
     approverName: gmName,
     approverEmployeeId: gmId,
     approverNodeId: null,
@@ -1767,7 +1761,7 @@ export async function resolveCerApprovalRoute(
   const dirId = dir?.id ?? 10
   steps.push({
     stepOrder: stepOrder++,
-    label: `Director (${dirName})`,
+    label: 'Director',
     approverName: dirName,
     approverEmployeeId: dirId,
     approverNodeId: null,
@@ -1778,12 +1772,71 @@ export async function resolveCerApprovalRoute(
     slaHours: 48,
   })
 
+  // 7. Asset Tagging (Syamsul Bahri, id: 990) - Final step penginputan Kelompok & Nomor Aset
+  steps.push({
+    stepOrder: stepOrder++,
+    label: 'Asset Tagging',
+    approverName: 'Syamsul Bahri',
+    approverEmployeeId: 990,
+    approverNodeId: null,
+    approvalMatrixStepId: null,
+    approvalMode: 'single',
+    resolutionSource: 'matrix',
+    canDelegate: false,
+    slaHours: 24,
+  })
+
   return {
     matrixId: null,
     matrixName: 'Standard CER Approval Matrix (CapEx Engine)',
     structureId: null,
     structureName: null,
     transactionType: 'cer_request',
+    warnings: [],
+    steps,
+  }
+}
+
+async function resolveAssetTransferApprovalRoute(context: ApprovalContext): Promise<ApprovalRouteResolution> {
+  const steps: ResolvedApprovalStep[] = [
+    {
+      stepOrder: 1,
+      label: 'Step 1: Section Head / Leader',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: context.directManagerId || null,
+      approverName: 'Section Head / Leader',
+      approvalMode: 'single',
+      resolutionSource: 'matrix',
+      canDelegate: false,
+      slaHours: 24,
+      nodeLabel: 'Section Head / Leader',
+      fallbackLabel: 'Section Head / Leader',
+      escalationLabel: null,
+    },
+    {
+      stepOrder: 2,
+      label: 'Step 2: Asset Management / Central Service',
+      approvalMatrixStepId: null,
+      approverNodeId: null,
+      approverEmployeeId: null,
+      approverName: 'Asset Management / Central Service',
+      approvalMode: 'single',
+      resolutionSource: 'matrix',
+      canDelegate: false,
+      slaHours: 48,
+      nodeLabel: 'Asset Management / Central Service',
+      fallbackLabel: 'Asset Management',
+      escalationLabel: null,
+    },
+  ]
+
+  return {
+    matrixId: null,
+    matrixName: 'Standard Asset Transfer Approval Flow',
+    structureId: null,
+    structureName: null,
+    transactionType: 'asset_transfer',
     warnings: [],
     steps,
   }
@@ -2019,6 +2072,9 @@ export async function resolveApprovalRouteForActivity(
     if (context.transactionType === 'cer_request') {
       return resolveCerApprovalRoute(context, input.assetCategory)
     }
+    if (context.transactionType === 'asset_transfer') {
+      return resolveAssetTransferApprovalRoute(context)
+    }
 
     const centralServiceSitePjoRoute = await resolveCentralServiceSitePjoRoute(context, [
       'Central Service di site luar Jakarta/Balikpapan memakai routing khusus PJO Site.',
@@ -2121,7 +2177,7 @@ export async function resolveApprovalRouteForActivity(
     assignmentsByNodeId.set(assignment.nodeId, list)
   }
 
-  const steps: ResolvedApprovalStep[] = matrixSteps.map((step) => {
+  let steps: ResolvedApprovalStep[] = matrixSteps.map((step) => {
     const resolved = resolveNodeStep(
       step.nodeId,
       step.stepOrder,
@@ -2241,6 +2297,78 @@ export async function resolveApprovalRouteForActivity(
         step.approverName = mgr.name;
       }
     }
+  }
+
+  // CER Special Conditions Post-Processing (Grill-Me Implementation)
+  if (context.transactionType === 'cer_request') {
+    // 1. Auto-skip vacant / empty steps
+    let filteredSteps = steps.filter((step) => step.approverEmployeeId != null && step.resolutionSource !== 'vacant')
+
+    // 2. Condition IT Device: Auto-skip IT / BIMA Supervisor if not IT Device
+    const cat = (input.assetCategory || context.activityType || '').toLowerCase().trim()
+    const isItDevice =
+      /\bit\b/i.test(cat) ||
+      cat.includes('device') ||
+      cat.includes('laptop') ||
+      cat.includes('printer') ||
+      cat.includes('komputer') ||
+      cat.includes('pc') ||
+      cat.includes('server')
+
+    if (!isItDevice) {
+      filteredSteps = filteredSteps.filter((step) => {
+        const lbl = (step.label || '').toLowerCase()
+        return !(lbl.includes('it') || lbl.includes('bima') || lbl.includes('technical validation'))
+      })
+    }
+
+    // 3. Multi Approver Mode: preserve step.approvalMode ('parallel_any' or 'parallel_all')
+    for (const step of filteredSteps) {
+      if (step.approvalMode !== 'parallel_any' && step.approvalMode !== 'parallel_all') {
+        const lbl = (step.label || '').toLowerCase()
+        if (lbl.includes('budget') || lbl.includes('validator')) {
+          step.approvalMode = 'parallel_all'
+        }
+      }
+    }
+
+    // 4. Ensure Asset Tagging by Syamsul Bahri (ID 990) exists as the final step
+    const hasAssetTagging = filteredSteps.some((step) => {
+      const lbl = (step.label || '').toLowerCase()
+      return lbl.includes('tagging') || lbl.includes('nomor aset') || step.approverEmployeeId === 990
+    })
+
+    if (!hasAssetTagging) {
+      filteredSteps.push({
+        stepOrder: 999,
+        label: 'Asset Tagging',
+        approverName: 'Syamsul Bahri',
+        approverEmployeeId: 990,
+        approverNodeId: null,
+        approvalMatrixStepId: null,
+        approvalMode: 'single',
+        resolutionSource: 'matrix',
+        canDelegate: false,
+        slaHours: 24,
+      })
+    }
+
+    // 5. Renumber stepOrder sequentially (keeping steps with parallel mode at the same order)
+    let curOrder = 1
+    let lastOriginalOrder: number | null = null
+    for (let i = 0; i < filteredSteps.length; i++) {
+      const s = filteredSteps[i]
+      const isParallel = s.approvalMode === 'parallel_all' || s.approvalMode === 'parallel_any'
+      if (lastOriginalOrder !== null && s.stepOrder === lastOriginalOrder && isParallel) {
+        s.stepOrder = curOrder
+      } else {
+        if (i > 0) curOrder++
+        lastOriginalOrder = s.stepOrder
+        s.stepOrder = curOrder
+      }
+    }
+
+    steps = filteredSteps
   }
 
   const warnings = steps

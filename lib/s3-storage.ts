@@ -72,13 +72,18 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith("contract-review-attachment/") ||
 cleanPath.startsWith("public-career-cv/") ||
       cleanPath.startsWith("cer/") ||
+      cleanPath.startsWith("cer-bast/") ||
       cleanPath.startsWith("cer-attachments/") ||
       cleanPath.startsWith("hrga-kerjasama/") ||
       cleanPath.startsWith("ga-house-rental/") ||
       cleanPath.startsWith("hse-osm/") ||
       cleanPath.startsWith("reward-store/") ||
       cleanPath.startsWith("training-requests/") ||
-      cleanPath.startsWith("marital-status/")
+      cleanPath.startsWith("marital-status/") ||
+      cleanPath.startsWith("asset-transfer/") ||
+      cleanPath.startsWith("asset-borrow/") ||
+      cleanPath.startsWith("asset-disposal/") ||
+      cleanPath.startsWith("asset-disposals/")
     ) {
       return cleanPath;
     }

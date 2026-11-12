@@ -27,12 +27,8 @@ export type HeroEmployeeAccessContext = {
   roleName: string | null
 }
 
-export function isSuperAdminRole(roleName: string | null | undefined): boolean {
-  if (!roleName) return false
-  const trimmed = roleName.trim()
-  const lower = trimmed.toLowerCase()
-  return trimmed === 'Super Admin' || lower === 'super admin' || lower === 'superadmin'
-}
+import { isSuperAdminRole } from './role-utils'
+export { isSuperAdminRole }
 
 export async function getEmployeeAccessRoleByEmail(email: string) {
   const [employee] = await db
@@ -264,6 +260,28 @@ export async function getMenuPermissionForRole(
       canEdit: true,
       canDelete: isSuperAdminRole(roleName),
       canSelectAll: isLeadershipOrManagerialRole(roleName),
+      dataScope: 'own',
+    }
+  }
+
+  if (resource === 'asset_transfer') {
+    return {
+      roleName: roleName || 'User',
+      canView: true,
+      canEdit: true,
+      canDelete: isSuperAdminRole(roleName),
+      canSelectAll: isLeadershipOrManagerialRole(roleName),
+      dataScope: 'own',
+    }
+  }
+
+  if (resource === 'approval_inbox') {
+    return {
+      roleName: roleName || 'User',
+      canView: true,
+      canEdit: true,
+      canDelete: isSuperAdminRole(roleName),
+      canSelectAll: true,
       dataScope: 'own',
     }
   }

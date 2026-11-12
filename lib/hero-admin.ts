@@ -107,7 +107,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'maestro-menu-v2'
+const HERO_GOVERNANCE_SEED_VERSION = 'maestro-menu-v2-cer-budget'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -538,11 +538,35 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'Central Service',
     groupLabel: 'Assets',
+    title: 'Transfer Aset',
+    url: '/dashboard/assets/transfer',
+    iconName: 'arrow-right-left',
+    resource: 'asset_transfer',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Assets',
+    title: 'Budget Controller',
+    url: '/dashboard/assets/budget-controller',
+    iconName: 'pie-chart',
+    resource: 'cer_budget_controller',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Assets',
     title: 'Asset Management',
     url: '/dashboard/central-service/assets',
     iconName: 'database',
     resource: 'central-service-assets',
-    sortOrder: 2,
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -554,7 +578,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     url: '/dashboard/central-service/sap-assets',
     iconName: 'database',
     resource: 'sap_asset_inventory',
-    sortOrder: 3,
+    sortOrder: 4,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4703,6 +4727,19 @@ const QUALITY_CPI_RESOURCES = new Set([
 ])
 
 function getDefaultMenuPermission(roleName: string, resource: string) {
+  if (resource === 'cer_budget_controller') {
+    const isAllowed =
+      isSuperAdminRole(roleName) ||
+      roleName.toLowerCase().includes('finance')
+    return {
+      canView: isAllowed,
+      canEdit: isAllowed,
+      canDelete: isSuperAdminRole(roleName),
+      canSelectAll: isAllowed,
+      dataScope: 'global' as const,
+    }
+  }
+
   if (resource === 'settings_maestro' || resource === 'settings_maestro_users') {
     const allowed = roleName === 'Super Admin'
     return {
@@ -4769,6 +4806,7 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       'overtime_requests',
 'approval_inbox',
       'cer_request',
+      'asset_transfer',
     ].includes(resource)
   ) {
     return {
@@ -5528,6 +5566,7 @@ export async function ensureHeroSeedData() {
     await ensureApprovalBlueprintSeedData()
     await ensureDepartmentSectionSeedData()
     await cleanupVirtualRelativeEmployees()
+    globalThis.heroGovernanceSeeded = true
   })().catch((error) => {
     console.warn('[ensureHeroSeedData] Seed check failed or timed out:', error)
     globalThis.heroSeedDataPromise = undefined

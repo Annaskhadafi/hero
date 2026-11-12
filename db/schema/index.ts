@@ -323,3 +323,8 @@ export * from './hrga-kerjasama'
 // General Affairs - House Rental
 export * from './house-rental'
 
+
+// Asset Management - Transfer, Borrow & Disposal
+export * from './asset-transfer'
+export * from './asset-borrow'
+export * from './asset-disposal'

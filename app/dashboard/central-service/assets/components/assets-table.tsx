@@ -107,6 +107,11 @@ interface Asset {
   condition: string;
   qty: number;
   remarks: string | null;
+  holderEmployeeId?: number | null;
+  holderName?: string | null;
+  holderEmployeeSn?: string | null;
+  holderDepartment?: string | null;
+  holderJobTitle?: string | null;
   attachments: AssetAttachment[];
   histories?: AssetHistory[];
 }
@@ -125,6 +130,16 @@ interface AssetHistory {
 interface AssetsTableProps {
   data: Asset[];
   masterSections: Array<{ name: string }>;
+  employees?: Array<{
+    id: number;
+    name: string;
+    employeeSn: string;
+    department?: string | null;
+    section?: string | null;
+    jobTitle?: string | null;
+    siteName?: string | null;
+    directManagerId?: number | null;
+  }>;
 }
 
 function conditionBadge(condition: string) {
@@ -478,7 +493,7 @@ function assetSearchText(asset: Asset) {
     .toLowerCase();
 }
 
-export function AssetsTable({ data: initialData, masterSections }: AssetsTableProps) {
+export function AssetsTable({ data: initialData, masterSections, employees = [] }: AssetsTableProps) {
   const [data, setData] = useState(initialData);
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "duePriority", desc: false }]);
@@ -668,6 +683,44 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         cell: ({ getValue }) => (
           <span className="text-xs">{String(getValue() ?? "-")}</span>
         ),
+      },
+      {
+        accessorKey: "holderName",
+        header: ({ column }) => (
+          <button
+            className="flex items-center gap-1 hover:text-foreground"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          >
+            Pemegang (Holder) <ArrowUpDown className="h-3 w-3" />
+          </button>
+        ),
+        size: 160,
+        filterFn: (row, columnId, filterValue) => {
+          if (!filterValue || filterValue === "__all__") return true;
+          const a = row.original;
+          if (filterValue === "__assigned__") return Boolean(a.holderEmployeeId);
+          if (filterValue === "__pool__") return !a.holderEmployeeId;
+          return true;
+        },
+        cell: ({ row }) => {
+          const a = row.original;
+          if (!a.holderEmployeeId || !a.holderName) {
+            return (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                Pool / Gudang
+              </span>
+            );
+          }
+          return (
+            <div className="flex flex-col">
+              <span className="font-semibold text-xs text-foreground">{a.holderName}</span>
+              <span className="text-[11px] text-muted-foreground">
+                {a.holderEmployeeSn ? `NIK: ${a.holderEmployeeSn}` : ""}
+                {a.holderDepartment ? ` • ${a.holderDepartment}` : ""}
+              </span>
+            </div>
+          );
+        },
       },
       {
         accessorKey: "description",
@@ -1013,6 +1066,21 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
               ))}
             </SelectContent>
           </Select>
+          <Select
+            value={(table.getColumn("holderName")?.getFilterValue() as string) ?? ""}
+            onValueChange={(val) =>
+              table.getColumn("holderName")?.setFilterValue(val === "__all__" ? "" : val)
+            }
+          >
+            <SelectTrigger className="h-9 w-40">
+              <SelectValue placeholder="Semua Pemegang" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Semua Pemegang</SelectItem>
+              <SelectItem value="__assigned__">Memiliki Pemegang</SelectItem>
+              <SelectItem value="__pool__">Pool / Gudang</SelectItem>
+            </SelectContent>
+          </Select>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 min-w-40 justify-between">
@@ -1317,6 +1385,7 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
         categories={categoryOptions}
         locations={locationOptions}
         workSections={workSectionOptions}
+        employees={employees}
         onSuccess={(updatedAsset) => {
           if (selectedAsset) {
             setData((prev) =>

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import {
   FileText,
   PlusCircle,
-  PieChart,
   PackageCheck,
   CheckCircle2,
   Clock,
@@ -18,17 +17,21 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CerTable } from './cer-table'
-import { CerFormWizard } from './cer-form-wizard'
-import { CerBudgetControllerPanel } from './cer-budget-controller-panel'
+import { CerFormDialog } from './cer-form-dialog'
 import type { CerOverviewData } from '../actions'
 
 export interface CerDashboardProps {
   data: CerOverviewData
+  defaultTab?: 'requests' | 'receiving'
 }
 
-export function CerDashboard({ data }: CerDashboardProps) {
+export function CerDashboard({ data, defaultTab = 'requests' }: CerDashboardProps) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'requests' | 'create' | 'budget' | 'receiving'>('requests')
+  const initialTab = ['requests', 'receiving'].includes(defaultTab)
+    ? defaultTab
+    : 'requests'
+  const [activeTab, setActiveTab] = useState<'requests' | 'receiving'>(initialTab)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const refreshData = () => {
     router.refresh()
@@ -57,6 +60,11 @@ export function CerDashboard({ data }: CerDashboardProps) {
     }).format(val)
   }
 
+  // Filter for In-Progress Requests Tab (Daftar Pengajuan)
+  const inProgressRequests = data.requests.filter(
+    (r) => !['full_approved', 'received', 'completed'].includes(r.status)
+  )
+
   // Filter for Receiving & BAST Tab
   const receivingRequests = data.requests.filter((r) =>
     ['full_approved', 'received', 'completed'].includes(r.status)
@@ -71,7 +79,7 @@ export function CerDashboard({ data }: CerDashboardProps) {
             Pengadaan Aset (CER)
           </h1>
           <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-            Capital Expenditure Request, Budget Controller, Tracking Approval, dan Berita Acara Serah Terima (BAST).
+            Capital Expenditure Request, Tracking Approval, dan Berita Acara Serah Terima (BAST).
           </p>
         </div>
 
@@ -88,7 +96,7 @@ export function CerDashboard({ data }: CerDashboardProps) {
 
           <Button
             size="sm"
-            onClick={() => setActiveTab('create')}
+            onClick={() => setIsCreateOpen(true)}
             className="h-9 gap-1.5 bg-slate-900 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
           >
             <PlusCircle className="h-4 w-4" />
@@ -101,7 +109,7 @@ export function CerDashboard({ data }: CerDashboardProps) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <Card className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total CER</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Pengajuan</span>
             <span className="grid size-7 place-items-center rounded-lg bg-slate-100 text-slate-600">
               <FileText className="size-3.5" />
             </span>
@@ -112,24 +120,24 @@ export function CerDashboard({ data }: CerDashboardProps) {
 
         <Card className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-600">Perlu Review</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-600">Pending Review</span>
             <span className="grid size-7 place-items-center rounded-lg bg-amber-50 text-amber-600">
               <Clock className="size-3.5" />
             </span>
           </div>
           <p className="mt-2 font-display text-xl font-bold tracking-tight text-amber-600">{pendingRequests}</p>
-          <span className="mt-0.5 text-[10px] text-amber-600/70">In Review / Revisi</span>
+          <span className="mt-0.5 text-[10px] text-amber-600/70">Menunggu persetujuan</span>
         </Card>
 
         <Card className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">Disetujui</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600">Full Approved</span>
             <span className="grid size-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
               <CheckCircle2 className="size-3.5" />
             </span>
           </div>
           <p className="mt-2 font-display text-xl font-bold tracking-tight text-emerald-600">{approvedRequests}</p>
-          <span className="mt-0.5 text-[10px] text-emerald-600/70">Full approved / Diterima</span>
+          <span className="mt-0.5 text-[10px] text-emerald-600/70">Disetujui direksi</span>
         </Card>
 
         <Card className="rounded-xl border border-slate-100 bg-white p-3.5 shadow-sm">
@@ -167,26 +175,7 @@ export function CerDashboard({ data }: CerDashboardProps) {
             <FileText className="h-3.5 w-3.5" />
             Daftar Pengajuan
             <Badge className="ml-1 rounded-full border-0 bg-slate-200 text-[10px] text-slate-700">
-              {data.requests.length}
-            </Badge>
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="create"
-            className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-          >
-            <PlusCircle className="h-3.5 w-3.5 text-blue-600" />
-            Buat Form CER
-          </TabsTrigger>
-
-          <TabsTrigger
-            value="budget"
-            className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-          >
-            <PieChart className="h-3.5 w-3.5 text-emerald-600" />
-            Budget Controller
-            <Badge className="ml-1 rounded-full border-0 bg-emerald-100 text-[10px] text-emerald-800">
-              {data.budgets.length} Pos
+              {inProgressRequests.length}
             </Badge>
           </TabsTrigger>
 
@@ -195,7 +184,7 @@ export function CerDashboard({ data }: CerDashboardProps) {
             className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
           >
             <PackageCheck className="h-3.5 w-3.5 text-purple-600" />
-            Penerimaan & BAST
+            Penerimaan &amp; BAST
             <Badge className="ml-1 rounded-full border-0 bg-purple-100 text-[10px] text-purple-800">
               {receivingRequests.length}
             </Badge>
@@ -205,37 +194,15 @@ export function CerDashboard({ data }: CerDashboardProps) {
         {/* TAB 1: ALL REQUESTS */}
         <TabsContent value="requests" className="space-y-4">
           <CerTable
-            requests={data.requests}
+            requests={inProgressRequests}
+            mode="requests"
             currentEmployee={data.currentEmployee}
+            isFinanceOrAdmin={data.isFinanceOrAdmin}
             onRefresh={refreshData}
           />
         </TabsContent>
 
-        {/* TAB 2: WIZARD FORM */}
-        <TabsContent value="create" className="space-y-4">
-          <CerFormWizard
-            sites={data.sites}
-            departments={data.departments}
-            sections={data.sections}
-            currentEmployee={data.currentEmployee}
-            onSuccess={() => {
-              setActiveTab('requests')
-              refreshData()
-            }}
-          />
-        </TabsContent>
-
-        {/* TAB 3: BUDGET CONTROLLER */}
-        <TabsContent value="budget" className="space-y-4">
-          <CerBudgetControllerPanel
-            budgets={data.budgets}
-            sites={data.sites}
-            departments={data.departments}
-            onRefresh={refreshData}
-          />
-        </TabsContent>
-
-        {/* TAB 4: RECEIVING & BAST FOCUSED */}
+        {/* TAB 2: RECEIVING & BAST FOCUSED */}
         <TabsContent value="receiving" className="space-y-4">
           <div className="rounded-xl border border-purple-200/80 bg-purple-50/60 p-4">
             <div className="flex items-start gap-3">
@@ -243,7 +210,7 @@ export function CerDashboard({ data }: CerDashboardProps) {
                 <PackageCheck className="size-4" />
               </span>
               <div>
-                <h3 className="text-sm font-bold text-purple-950">Workspace Penerimaan Fisik & BAST Aset</h3>
+                <h3 className="text-sm font-bold text-purple-950">Workspace Penerimaan Fisik &amp; BAST Aset</h3>
                 <p className="mt-0.5 text-xs text-purple-800/80">
                   Daftar pengajuan CER yang telah Full Approved dan siap/sedang dalam tahap penerimaan fisik barang oleh
                   PIC lokasi, pendaftaran inventaris aset, pencetakan stiker QR code, dan penerbitan Berita Acara Serah Terima (BAST).
@@ -254,11 +221,27 @@ export function CerDashboard({ data }: CerDashboardProps) {
 
           <CerTable
             requests={receivingRequests}
+            mode="receiving"
             currentEmployee={data.currentEmployee}
+            isFinanceOrAdmin={data.isFinanceOrAdmin}
             onRefresh={refreshData}
           />
         </TabsContent>
       </Tabs>
+
+      {/* POP-UP MODAL FORM CER */}
+      <CerFormDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        sites={data.sites}
+        departments={data.departments}
+        sections={data.sections}
+        currentEmployee={data.currentEmployee}
+        onSuccess={() => {
+          setIsCreateOpen(false)
+          refreshData()
+        }}
+      />
     </div>
   )
 }

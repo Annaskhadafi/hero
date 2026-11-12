@@ -34,6 +34,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "contract-review-attachment",
   "public-career-cv",
   "cer",
+  "cer-bast",
   "cer-attachments",
   "hse-osm",
   "reward-store",
@@ -41,6 +42,10 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   "marital-status",
   "hrga-kerjasama",
   "ga-house-rental",
+  "asset-transfer",
+  "asset-borrow",
+  "asset-disposal",
+  "asset-disposals",
 ])
 
 function getContentType(fileName: string) {
@@ -188,6 +193,7 @@ function createStreamingResponse(
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  try { // top-level-get-try
   const { path } = await params
 
   if (!path || path.length === 0) {
@@ -218,7 +224,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === "training-requests" ||
     path[0] === "hse-osm" ||
     path[0] === "hrga-kerjasama" ||
-    path[0] === "ga-house-rental"
+    path[0] === "ga-house-rental" ||
+    path[0] === "asset-transfer" ||
+    path[0] === "asset-borrow" ||
+    path[0] === "asset-disposal" ||
+    path[0] === "asset-disposals" ||
+    path[0] === "cer" ||
+    path[0] === "cer-bast" ||
+    path[0] === "cer-attachments"
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {
@@ -230,6 +243,101 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
 
   const relativePath = path.join("/")
   const fileName = path[path.length - 1]
+
+  // Strict RBAC: Dokumen PDF resmi grup Asset Management hanya boleh diunduh oleh Pengaju & Admin
+  const ASSET_MANAGEMENT_PREFIXES = new Set([
+    "cer",
+    "cer-bast",
+    "asset-borrow",
+    "asset-transfer",
+    "asset-disposal",
+    "asset-disposals",
+  ])
+  const isAssetPdf = ASSET_MANAGEMENT_PREFIXES.has(path[0]) && fileName.toLowerCase().endsWith(".pdf")
+  if (isAssetPdf) {
+    const session = await getServerSession()
+    if (!session?.user?.email) {
+      return NextResponse.json({ message: "Unauthorized. Silakan login terlebih dahulu." }, { status: 401 })
+    }
+
+    const { getCurrentEmployeeAccessContext } = await import("@/lib/hero-access")
+    const { isSuperAdminRole } = await import("@/lib/role-utils")
+    const empContext = await getCurrentEmployeeAccessContext()
+    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const userRole = ((session.user as any)?.role || "").toLowerCase()
+    const isAdmin = isSuperAdmin || userRole.includes("admin") || userRole.includes("director")
+
+    if (!isAdmin) {
+      const employeeId = empContext?.employeeId
+      const userId = session.user.id
+      const { db } = await import("@/db")
+      const { eq, or } = await import("drizzle-orm")
+      let isOwner = false
+
+      if (path[0] === "cer" || path[0] === "cer-bast") {
+        const { cerRequests } = await import("@/db/schema/cer")
+        const conds = []
+        if (employeeId) conds.push(eq(cerRequests.applicantEmployeeId, employeeId))
+        if (userId) conds.push(eq(cerRequests.createdById, userId))
+        if (conds.length > 0) {
+          const [row] = await db
+            .select({ id: cerRequests.id })
+            .from(cerRequests)
+            .where(or(...conds))
+            .limit(1)
+          if (row) isOwner = true
+        } else {
+          isOwner = true
+        }
+      } else if (path[0] === "asset-borrow") {
+        const { assetBorrows } = await import("@/db/schema/asset-borrow")
+        const [row] = await db
+          .select({ id: assetBorrows.id })
+          .from(assetBorrows)
+          .where(
+            or(
+              employeeId ? eq(assetBorrows.borrowerEmployeeId, employeeId) : undefined,
+              userId ? eq(assetBorrows.createdById, userId) : undefined
+            )
+          )
+          .limit(1)
+        if (row) isOwner = true
+      } else if (path[0] === "asset-transfer") {
+        const { assetTransfers } = await import("@/db/schema/asset-transfer")
+        const [row] = await db
+          .select({ id: assetTransfers.id })
+          .from(assetTransfers)
+          .where(
+            or(
+              employeeId ? eq(assetTransfers.applicantEmployeeId, employeeId) : undefined,
+              userId ? eq(assetTransfers.createdById, userId) : undefined
+            )
+          )
+          .limit(1)
+        if (row) isOwner = true
+      } else if (path[0] === "asset-disposal" || path[0] === "asset-disposals") {
+        const { assetDisposals } = await import("@/db/schema/asset-disposal")
+        const [row] = await db
+          .select({ id: assetDisposals.id })
+          .from(assetDisposals)
+          .where(
+            or(
+              employeeId ? eq(assetDisposals.applicantEmployeeId, employeeId) : undefined,
+              userId ? eq(assetDisposals.createdById, userId) : undefined
+            )
+          )
+          .limit(1)
+        if (row) isOwner = true
+      }
+
+      if (!isOwner) {
+        return NextResponse.json(
+          { message: "Akses ditolak. Dokumen PDF ini hanya dapat diunduh oleh pengaju dan administrator." },
+          { status: 403 }
+        )
+      }
+    }
+  }
 
   // Parse thumbnail width query param (?w=800 or ?width=800)
   const reqUrl = new URL(request.url)
@@ -297,6 +405,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `mcu-results/${fileName}`,
       `offering-letters/${fileName}`,
       `cer/${fileName}`,
+      `cer-bast/${fileName}`,
       `cer-attachments/${fileName}`,
       `public-career-cv/${fileName}`,
       `lms-materials/${fileName}`,
@@ -308,6 +417,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       `hse-osm/${fileName}`,
       `hrga-kerjasama/${fileName}`,
       `ga-house-rental/${fileName}`,
+      `asset-transfer/${fileName}`,
+      `asset-borrow/${fileName}`,
+      `asset-disposal/${fileName}`,
+      `asset-disposals/${fileName}`,
     ]
 
     for (const key of candidateS3Keys) {
@@ -427,4 +540,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       "Cache-Control": "no-cache",
     },
   })
+  } catch (err: any) {
+    console.error("[api/uploads] Unhandled proxy error:", err)
+    return NextResponse.json(
+      { message: "Terjadi kesalahan saat memuat berkas", error: err?.message },
+      { status: 500 }
+    )
+  }
 }

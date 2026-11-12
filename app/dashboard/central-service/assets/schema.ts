@@ -5,6 +5,7 @@ export const assetSchema = z.object({
   section: z.string().min(1, "Section is required"),
   location: z.string().min(1, "Location is required"),
   description: z.string().min(1, "Description is required"),
+  holderEmployeeId: z.coerce.number().optional().nullable(),
   assetNumber: z.string().optional().nullable(), // Optional - not required
   serialNumber: z.string().optional().nullable(),
   purchaseDate: z.string().optional().nullable(),

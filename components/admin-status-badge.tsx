@@ -26,7 +26,7 @@ const toneMap: Record<string, string> = {
   belum_mengisi: "bg-rose-100 text-rose-900",
   ready_for_payroll: "bg-emerald-100 text-emerald-900",
   needs_correction: "bg-rose-100 text-rose-900",
-  needs_revision: "bg-rose-100 text-rose-900",
+  needs_revision: "bg-amber-100 text-amber-900 border border-amber-300",
   revised: "bg-rose-100 text-rose-900",
   rejected: "bg-slate-200 text-slate-900",
   skipped: "bg-slate-100 text-slate-800",

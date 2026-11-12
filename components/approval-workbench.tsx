@@ -50,6 +50,12 @@ import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
 import { getDepartmentSignatories, getDepartmentWorkflowSteps } from '@/components/sop-win/sop-win-approval-workspace'
 import { approveApprovalGroupAction, reviewApprovalAction } from '@/app/dashboard/admin-actions'
+import { AssetApprovalDialog } from '@/components/asset-approval-dialog'
+import {
+  approveAssetManagementItemAction,
+  rejectAssetManagementItemAction,
+  revertAssetManagementItemAction,
+} from '@/app/dashboard/assets/approval-actions'
 // User signature action for approval workspace signoffs
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import {
@@ -446,6 +452,7 @@ export function InboxTab({
   contractReviewItems = [],
   sopWinRequestItems = [],
   trainingRequestItems = [],
+  assetManagementItems = [],
   filterCategory,
   viewMode = 'desktop',
 }: {
@@ -457,11 +464,15 @@ export function InboxTab({
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
   trainingRequestItems?: any[]
+  assetManagementItems?: any[]
   filterCategory?: string
   viewMode?: 'desktop' | 'mobile'
 }) {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isAssetApprovalOpen, setIsAssetApprovalOpen] = useState(false)
+  const [selectedAssetItem, setSelectedAssetItem] = useState<any | null>(null)
+  const [isAssetSubmitting, setIsAssetSubmitting] = useState(false)
   const [mobileSearch, setMobileSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>(filterCategory || 'ALL')
 
@@ -892,6 +903,14 @@ export function InboxTab({
       })
     }
 
+    const assetItems = assetManagementItems || []
+    for (const am of assetItems) {
+      list.push({
+        ...am,
+        rawAssetItem: am.rawAssetItem,
+      })
+    }
+
     const sopWinItems = sopWinRequestItems || []
     for (const sr of sopWinItems) {
       list.push({
@@ -1156,7 +1175,7 @@ export function InboxTab({
     }
 
     return sorted
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, groups, filterCategory, processedBatchIds])
+  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, assetManagementItems, groups, filterCategory, processedBatchIds])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -2321,7 +2340,18 @@ export function InboxTab({
                 </div>
 
                 {/* Action Button */}
-                {item.category === 'RFR' && item.rawRfr ? (
+                {item.category === 'ASSET_MANAGEMENT' ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedAssetItem(item)
+                      setIsAssetApprovalOpen(true)
+                    }}
+                    className="w-full h-11 text-sm font-black bg-blue-700 hover:bg-blue-800 text-white rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition active:scale-[0.99]"
+                  >
+                    BUKA TTD ASSET ↗
+                  </Button>
+                ) : item.category === 'RFR' && item.rawRfr ? (
                   <RfrApprovalDialog item={item.rawRfr as any} />
                 ) : isReverted ? (
                   <Button
@@ -2591,6 +2621,7 @@ export function InboxTab({
                             item.category === 'TOOLS' && 'bg-cyan-50 text-cyan-800 border-cyan-200',
                             item.category === 'SUMMARY' && 'bg-purple-50 text-purple-800 border-purple-200',
                             item.category === 'MARITAL_STATUS' && 'bg-pink-50 text-pink-700 border-pink-200',
+                            item.category === 'ASSET_MANAGEMENT' && 'bg-blue-50 text-blue-700 border-blue-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -2613,7 +2644,14 @@ export function InboxTab({
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="space-y-1">
-                        <p className="text-foreground font-medium">{item.title}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-foreground font-medium">{item.title}</p>
+                          {item.subTypeLabel && (
+                            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                              {item.subTypeLabel}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-muted-foreground text-xs">{item.department ? `Dept: ${item.department}` : 'Pengajuan operasional'}</p>
                       </div>
                     </TableCell>
@@ -2632,7 +2670,19 @@ export function InboxTab({
                       </div>
                     </TableCell>
                     <TableCell className="align-top text-right">
-                      {item.category === 'RFR' && item.rawRfr ? (
+                      {item.category === 'ASSET_MANAGEMENT' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedAssetItem(item)
+                            setIsAssetApprovalOpen(true)
+                          }}
+                          className="h-8 text-xs font-bold text-blue-700 hover:bg-blue-50 border-blue-200 cursor-pointer shadow-xs"
+                        >
+                          Buka TTD ↗
+                        </Button>
+                      ) : item.category === 'RFR' && item.rawRfr ? (
                         <RfrApprovalDialog item={item.rawRfr as any} />
                       ) : item.category === 'FORM_WO' || (item.category === 'GENERAL' && ((item as any).repairFormWo || (item as any).activityType === 'Work Order' || (item as any).activityType === 'Form WO')) ? (
                         <FormWoApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
@@ -5166,6 +5216,83 @@ export function InboxTab({
             )}
           </DialogContent>
         </Dialog>
+
+        <AssetApprovalDialog
+          open={isAssetApprovalOpen}
+          onOpenChange={setIsAssetApprovalOpen}
+          item={selectedAssetItem}
+          isSubmitting={isAssetSubmitting}
+          onApprove={async ({ decisionNote, signatureUrl }) => {
+            if (!selectedAssetItem) return
+            setIsAssetSubmitting(true)
+            try {
+              const res = await approveAssetManagementItemAction({
+                subType: selectedAssetItem.subType,
+                targetId: selectedAssetItem.targetId,
+                approvalId: selectedAssetItem.approvalId,
+                decisionNote,
+                signatureUrl,
+              })
+              if (res.success) {
+                toast.success(res.message || 'Persetujuan aset berhasil dicatat.')
+                setIsAssetApprovalOpen(false)
+                router.refresh()
+              } else {
+                toast.error(res.message || 'Gagal menyetujui pengajuan aset.')
+              }
+            } catch (err: any) {
+              toast.error(err?.message || 'Terjadi kesalahan sistem.')
+            } finally {
+              setIsAssetSubmitting(false)
+            }
+          }}
+          onRevert={async ({ revertReason }) => {
+            if (!selectedAssetItem) return
+            setIsAssetSubmitting(true)
+            try {
+              const res = await revertAssetManagementItemAction({
+                subType: selectedAssetItem.subType,
+                targetId: selectedAssetItem.targetId,
+                approvalId: selectedAssetItem.approvalId,
+                revertReason,
+              })
+              if (res.success) {
+                toast.success(res.message || 'Permintaan revisi berhasil dikirim ke pemohon.')
+                setIsAssetApprovalOpen(false)
+                router.refresh()
+              } else {
+                toast.error(res.message || 'Gagal merevert pengajuan aset.')
+              }
+            } catch (err: any) {
+              toast.error(err?.message || 'Terjadi kesalahan sistem.')
+            } finally {
+              setIsAssetSubmitting(false)
+            }
+          }}
+          onReject={async ({ rejectionReason }) => {
+            if (!selectedAssetItem) return
+            setIsAssetSubmitting(true)
+            try {
+              const res = await rejectAssetManagementItemAction({
+                subType: selectedAssetItem.subType,
+                targetId: selectedAssetItem.targetId,
+                approvalId: selectedAssetItem.approvalId,
+                rejectionReason,
+              })
+              if (res.success) {
+                toast.success(res.message || 'Penolakan aset berhasil dicatat.')
+                setIsAssetApprovalOpen(false)
+                router.refresh()
+              } else {
+                toast.error(res.message || 'Gagal menolak pengajuan aset.')
+              }
+            } catch (err: any) {
+              toast.error(err?.message || 'Terjadi kesalahan sistem.')
+            } finally {
+              setIsAssetSubmitting(false)
+            }
+          }}
+        />
     </>
   )
 }
@@ -7237,6 +7364,7 @@ export function ApprovalWorkbench({
             contractReviewItems={isDailyOnly ? [] : safeData.contractReviewInboxItems || []}
             sopWinRequestItems={isDailyOnly ? [] : safeData.sopWinRequestInboxItems || []}
             trainingRequestItems={isDailyOnly ? [] : safeData.trainingRequestInboxItems || []}
+            assetManagementItems={isDailyOnly ? [] : (safeData as any).assetManagementInboxItems || []}
             filterCategory={filterCategory}
           />
         </TabsContent>

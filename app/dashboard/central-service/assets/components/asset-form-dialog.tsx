@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ChangeEvent } from "react";
+import { useState, useEffect, useMemo, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { assetSchema } from "../schema";
@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { HeroSearchableSelect, type HeroSearchableSelectOption } from "@/components/templates";
 import { createAsset, updateAsset } from "../actions";
 import { uploadFile } from "@/app/actions/upload";
 import { toast } from "sonner";
@@ -37,6 +38,16 @@ import { FileText, Image as ImageIcon, Loader2, Paperclip, Upload, X } from "luc
 
 type AssetFormValues = z.infer<typeof assetSchema>;
 
+export interface AssetEmployeeOption {
+  id: number;
+  name: string;
+  employeeSn: string;
+  department?: string | null;
+  section?: string | null;
+  jobTitle?: string | null;
+  siteName?: string | null;
+}
+
 interface AssetFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,6 +55,7 @@ interface AssetFormDialogProps {
   categories: string[];
   locations: string[];
   workSections: string[];
+  employees?: AssetEmployeeOption[];
   onSuccess: (asset: any) => void;
 }
 
@@ -67,6 +79,7 @@ export function AssetFormDialog({
   categories,
   locations,
   workSections,
+  employees = [],
   onSuccess,
 }: AssetFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,6 +88,7 @@ export function AssetFormDialog({
   const form = useForm<any>({
     resolver: zodResolver(assetSchema),
     defaultValues: {
+      holderEmployeeId: null,
       section: "",
       location: "",
       workSection: "",
@@ -101,6 +115,7 @@ export function AssetFormDialog({
   useEffect(() => {
     if (asset) {
       form.reset({
+        holderEmployeeId: asset.holderEmployeeId ? Number(asset.holderEmployeeId) : null,
         section: asset.section || "",
         workSection: asset.workSection || "",
         location: asset.location || "",
@@ -122,6 +137,7 @@ export function AssetFormDialog({
       });
     } else {
       form.reset({
+        holderEmployeeId: null,
         section: "",
         workSection: "",
         location: "",
@@ -183,6 +199,30 @@ export function AssetFormDialog({
     }
   };
 
+  const employeeHolderOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    const opts: HeroSearchableSelectOption[] = [
+      {
+        value: "",
+        label: "Tidak Ada / Pool Gudang",
+        description: "Aset berada di pool atau gudang bersama",
+        badge: "Pool",
+        badgeColor: "bg-slate-100 text-slate-700",
+      },
+    ];
+    if (employees && employees.length > 0) {
+      employees.forEach((emp) => {
+        opts.push({
+          value: String(emp.id),
+          label: `${emp.name} (${emp.employeeSn})`,
+          description: [emp.jobTitle, emp.department, emp.siteName].filter(Boolean).join(" • "),
+          badge: emp.department || undefined,
+          badgeColor: "bg-blue-50 text-blue-700",
+        });
+      });
+    }
+    return opts;
+  }, [employees]);
+
   const onSubmit = async (values: AssetFormValues) => {
     setIsSubmitting(true);
     try {
@@ -216,6 +256,45 @@ export function AssetFormDialog({
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                        {/* Pemegang Aset (Holder) */}
+            <div className="rounded-lg border border-border/70 bg-card p-3.5 space-y-2">
+              <FormField
+                control={form.control}
+                name="holderEmployeeId"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between pb-1">
+                      <FormLabel className="text-xs font-semibold text-foreground">
+                        Pemegang Aset (Holder)
+                      </FormLabel>
+                      <span className="text-[11px] text-muted-foreground">
+                        Pilih karyawan pemegang atau pilih Pool / Gudang
+                      </span>
+                    </div>
+                    <FormControl>
+                      <HeroSearchableSelect
+                        options={employeeHolderOptions}
+                        value={field.value ? String(field.value) : ""}
+                        onChange={(val) => {
+                          const numVal = val ? Number(val) : null;
+                          field.onChange(numVal);
+                          if (numVal && !form.getValues("location") && employees) {
+                            const matched = employees.find((e) => e.id === numVal);
+                            if (matched?.siteName) {
+                              form.setValue("location", matched.siteName, { shouldDirty: true });
+                            }
+                          }
+                        }}
+                        placeholder="Pilih karyawan pemegang aset (atau pilih Pool Gudang)..."
+                        width="w-full"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             {/* Row 1: Section, Kategori, Lokasi, Kondisi */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
               <FormField

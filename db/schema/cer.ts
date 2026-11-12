@@ -121,7 +121,15 @@ export const cerRequests = pgTable(
     lastRevertNote: text('last_revert_note'),
     isUnbudgeted: boolean('is_unbudgeted').notNull().default(false),
     isOverBudget: boolean('is_over_budget').notNull().default(false),
+    kelompokAset: text('kelompok_aset'),
+    financeCheckedAt: timestamp('finance_checked_at'),
+    financeCheckedByEmployeeId: integer('finance_checked_by_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    financeCheckNotes: text('finance_check_notes'),
     pdfUrl: text('pdf_url'),
+    bastPdfUrl: text('bast_pdf_url'),
+    receiverSignatureUrl: text('receiver_signature_url'),
     approvedAt: timestamp('approved_at'),
     receivedAt: timestamp('received_at'),
     receiverNotes: text('receiver_notes'),
@@ -152,7 +160,12 @@ export const cerItems = pgTable(
     totalPrice: numeric('total_price', { precision: 15, scale: 2 }).notNull().default('0'),
     allocation: text('allocation').notNull().default(''),
     holderName: text('holder_name').notNull().default(''),
+    holderEmployeeId: integer('holder_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
     estimatedLifespan: text('estimated_lifespan').notNull().default(''),
+    assetNumber: text('asset_number'),
+    assetGroup: text('asset_group'),
     assetId: integer('asset_id').references(() => centralServiceAssets.id, {
       onDelete: 'set null',
     }),
@@ -208,6 +221,8 @@ export const cerBasts = pgTable(
     userSignatureUrl: text('user_signature_url'),
     userSignedAt: timestamp('user_signed_at'),
     pdfUrl: text('pdf_url'),
+    bastPdfUrl: text('bast_pdf_url'),
+    receiverSignatureUrl: text('receiver_signature_url'),
     status: text('status').notNull().default('draft'), // 'draft', 'signed', 'completed'
     notes: text('notes').notNull().default(''),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -348,3 +363,23 @@ export type CerBast = typeof cerBasts.$inferSelect
 export type NewCerBast = typeof cerBasts.$inferInsert
 export type CerNotificationConfig = typeof cerNotificationConfigs.$inferSelect
 export type NewCerNotificationConfig = typeof cerNotificationConfigs.$inferInsert
+
+// ==========================================
+// CER WORKFLOW DEDICATED CONFIGURATION
+// ==========================================
+
+export const cerWorkflowConfigs = pgTable('hero_cer_workflow_configs', {
+  id: serial('id').primaryKey(),
+  itSpvEmployeeId: integer('it_spv_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  budgetValidatorEmployeeIds: jsonb('budget_validator_employee_ids').$type<number[]>().notNull().default([]),
+  financeCheckEmployeeId: integer('finance_check_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  directorEmployeeId: integer('director_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  autoSkipEmptyHierarchy: boolean('auto_skip_empty_hierarchy').notNull().default(true),
+  isTestingMode: boolean('is_testing_mode').notNull().default(true),
+  testingRecipientEmail: text('testing_recipient_email').notNull().default('gilang.suryo@chitraparatama.co.id'),
+  updatedByEmployeeId: integer('updated_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export type CerWorkflowConfig = typeof cerWorkflowConfigs.$inferSelect
+export type NewCerWorkflowConfig = typeof cerWorkflowConfigs.$inferInsert

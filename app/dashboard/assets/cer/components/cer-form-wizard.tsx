@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useTransition } from 'react'
+import React, { useState, useEffect, useTransition, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { uploadFile } from '@/app/actions/upload'
+import { HeroSearchableSelect, type HeroSearchableSelectOption } from '@/components/templates'
 import {
   createCerRequestAction,
   getCapExBudgetsForSelection,
@@ -56,6 +57,7 @@ export interface CerFormWizardProps {
     email: string
     jobTitle: string | null
     departmentId: number | null
+    sectionId?: number | null
     siteId: number | null
   } | null
   onSuccess?: () => void
@@ -69,6 +71,7 @@ export interface UnitItem {
   totalPrice: number
   allocation: string
   holderName: string
+  holderEmployeeId?: number | null
   estimatedLifespan: string
 }
 
@@ -123,7 +126,7 @@ export function CerFormWizard({
   const [purchaseType, setPurchaseType] = useState<'Pergantian' | 'Tambahan / Baru'>('Tambahan / Baru')
   const [budgetSource, setBudgetSource] = useState<'Anggaran' | 'Bukan Anggaran'>('Anggaran')
   const [departmentId, setDepartmentId] = useState<number>(currentEmployee?.departmentId || (departments[0]?.id ?? 1))
-  const [sectionId, setSectionId] = useState<number | undefined>(undefined)
+  const [sectionId, setSectionId] = useState<number | undefined>(currentEmployee?.sectionId ?? undefined)
   const [siteId, setSiteId] = useState<number>(currentEmployee?.siteId || (sites[0]?.id ?? 1))
   const [assetCategory, setAssetCategory] = useState<string>('IT Device')
   const [purchasePurpose, setPurchasePurpose] = useState<string>('')
@@ -206,6 +209,24 @@ export function CerFormWizard({
   const isOverBudget = budgetSource === 'Anggaran' && selectedBudget ? totalEstimatedPrice > remainingBudget : false
   const projectedRemaining = selectedBudget ? remainingBudget - totalEstimatedPrice : 0
 
+  // Memoized budget options for HeroSearchableSelect
+  const budgetOptions: HeroSearchableSelectOption[] = useMemo(() => {
+    return availableBudgets.map((b) => {
+      const remaining = Number(b.remainingAmount) || 0
+      const allocated = Number(b.allocatedAmount) || 0
+      const used = Number(b.usedAmount) || 0
+      return {
+        value: String(b.id),
+        label: `${b.budgetCode} - ${b.budgetName}`,
+        description: `Alokasi: ${formatRupiah(allocated)} | Terpakai: ${formatRupiah(used)} | Sisa: ${formatRupiah(remaining)}`,
+        badge: remaining > 0 ? `Sisa: ${formatRupiah(remaining)}` : 'Habis',
+        badgeColor: remaining > 0
+          ? 'bg-emerald-100 text-emerald-800'
+          : 'bg-rose-100 text-rose-800',
+      }
+    })
+  }, [availableBudgets])
+
   // Handle Add Unit Item
   const handleAddItem = () => {
     setItems((prev) => [
@@ -239,8 +260,10 @@ export function CerFormWizard({
         if (item.id === id) {
           const updated = { ...item, [field]: value }
           if (field === 'qty' || field === 'pricePerUnit') {
-            const qty = field === 'qty' ? Number(value) : item.qty
-            const price = field === 'pricePerUnit' ? Number(value) : item.pricePerUnit
+            const qty = field === 'qty' ? (value === '' ? 0 : Math.max(0, Number(value))) : Number(item.qty || 0)
+            const price = field === 'pricePerUnit' ? (value === '' ? 0 : Math.max(0, Number(value))) : Number(item.pricePerUnit || 0)
+            updated.qty = field === 'qty' ? (value === '' ? 0 : Math.max(0, Number(value))) : item.qty
+            updated.pricePerUnit = field === 'pricePerUnit' ? (value === '' ? 0 : Math.max(0, Number(value))) : item.pricePerUnit
             updated.totalPrice = Math.max(0, qty * price)
           }
           return updated
@@ -316,6 +339,7 @@ export function CerFormWizard({
           assetCategory,
           siteId,
           departmentId,
+          sectionId: sectionId || null,
         })
         setPreviewSteps(steps)
       }
@@ -353,6 +377,7 @@ export function CerFormWizard({
           totalPrice: Number(it.totalPrice),
           allocation: it.allocation,
           holderName: it.holderName,
+          holderEmployeeId: it.holderEmployeeId || null,
           estimatedLifespan: it.estimatedLifespan,
         })),
         attachments: uploadedLampiran,
@@ -369,6 +394,7 @@ export function CerFormWizard({
 
   const selectedSite = sites.find((s) => s.id === siteId)?.name || 'Balikpapan'
   const selectedDept = departments.find((d) => d.id === departmentId)?.name || 'Central Services'
+  const selectedSection = sections.find((s) => s.id === sectionId)?.name
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -376,7 +402,7 @@ export function CerFormWizard({
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">1c. Form CER</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">Form CER (Capital Expenditure Request)</h2>
             <p className="text-xs text-slate-500">
               Formulir Pengajuan Pengadaan Aset Modal (Capital Expenditure Request)
             </p>
@@ -456,7 +482,7 @@ export function CerFormWizard({
                 </div>
               </div>
 
-              {/* Row: Departemen, Site, Kategori Aset */}
+              {/* Row: Departemen, Section, Kategori Aset */}
               <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">
@@ -467,7 +493,11 @@ export function CerFormWizard({
                     onChange={(e) => {
                       const dId = Number(e.target.value)
                       setDepartmentId(dId)
-                      setSectionId(undefined)
+                      const matchingSecs = sections.filter((s) => s.departmentId === dId)
+                      const defaultSec = matchingSecs.some((s) => s.id === currentEmployee?.sectionId)
+                        ? (currentEmployee?.sectionId ?? undefined)
+                        : (matchingSecs[0]?.id ?? undefined)
+                      setSectionId(defaultSec)
                     }}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
@@ -481,16 +511,20 @@ export function CerFormWizard({
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">
-                    Cabang / Site <span className="text-red-500">*</span>
+                    Section / Bagian
                   </Label>
                   <select
-                    value={siteId}
-                    onChange={(e) => setSiteId(Number(e.target.value))}
+                    value={sectionId ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setSectionId(val ? Number(val) : undefined)
+                    }}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    {sites.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
+                    <option value="">-- Seluruh Departemen (Umum) --</option>
+                    {filteredSections.map((sec) => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.name}
                       </option>
                     ))}
                   </select>
@@ -605,17 +639,13 @@ export function CerFormWizard({
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label className="text-xs font-medium text-blue-900">Pilih Pagu Anggaran CapEx Tersedia:</Label>
-                        <select
-                          value={selectedBudgetId ?? ''}
-                          onChange={(e) => setSelectedBudgetId(Number(e.target.value))}
-                          className="flex h-10 w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-xs shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {availableBudgets.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.budgetCode} - {b.budgetName} (Sisa: {formatRupiah(Number(b.remainingAmount))})
-                            </option>
-                          ))}
-                        </select>
+                        <HeroSearchableSelect
+                          placeholder="Pilih Pagu Anggaran CapEx..."
+                          options={budgetOptions}
+                          value={selectedBudgetId ? String(selectedBudgetId) : ''}
+                          onChange={(val: string) => setSelectedBudgetId(val ? Number(val) : null)}
+                          width="w-full"
+                        />
                       </div>
 
                       {selectedBudget && (
@@ -697,35 +727,6 @@ export function CerFormWizard({
                   className="text-sm leading-relaxed"
                 />
               </div>
-
-              <div className="space-y-2 rounded-lg border border-slate-100 bg-slate-50/50 p-4">
-                <Label className="text-xs font-semibold text-slate-700">
-                  Jenis Lampiran Tersedia <span className="text-red-500">*</span>
-                </Label>
-                <div className="flex flex-wrap gap-4 pt-1">
-                  {ATTACHMENT_CHECKBOX_OPTIONS.map((opt) => {
-                    const isChecked = selectedAttachments.includes(opt)
-                    return (
-                      <div key={opt} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`chk-${opt}`}
-                          checked={isChecked}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedAttachments((prev) => [...prev, opt])
-                            } else {
-                              setSelectedAttachments((prev) => prev.filter((item) => item !== opt))
-                            }
-                          }}
-                        />
-                        <Label htmlFor={`chk-${opt}`} className="cursor-pointer text-xs font-normal text-slate-700">
-                          {opt}
-                        </Label>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
             </CardContent>
           </Card>
 
@@ -742,7 +743,7 @@ export function CerFormWizard({
                       4. Rincian Unit / Item CapEx
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500">
-                      Daftar spesifikasi barang modal yang diajukan beserta rincian biaya per unit.
+                      Daftar barang modal yang diajukan beserta rincian biaya per unit.
                     </CardDescription>
                   </div>
                 </div>
@@ -763,8 +764,8 @@ export function CerFormWizard({
                   <TableHeader className="bg-slate-50">
                     <TableRow>
                       <TableHead className="w-10 text-center text-xs">No</TableHead>
-                      <TableHead className="min-w-[200px] text-xs">Deskripsi & Spesifikasi</TableHead>
-                      <TableHead className="w-20 text-xs">Qty</TableHead>
+                      <TableHead className="min-w-[200px] text-xs">Deskripsi</TableHead>
+                      <TableHead className="w-28 text-center text-xs">Qty</TableHead>
                       <TableHead className="w-40 text-xs">Harga Satuan (Rp)</TableHead>
                       <TableHead className="w-36 text-xs">Total Harga (Rp)</TableHead>
                       <TableHead className="w-28 text-xs">Alokasi</TableHead>
@@ -786,20 +787,44 @@ export function CerFormWizard({
                           <TableCell className="text-center text-xs text-slate-500">{idx + 1}</TableCell>
                           <TableCell>
                             <Input
-                              placeholder="Nama & Spesifikasi Barang..."
+                              placeholder="Deskripsi barang modal..."
                               value={item.description}
                               onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                              className="h-8 text-xs"
+                              className="h-8 px-2.5 text-xs bg-white border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                             />
                           </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={item.qty}
-                              onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
-                              className="h-8 text-xs text-center"
-                            />
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center">
+                              <div className="flex h-8 w-24 items-center rounded-md border border-slate-300 bg-white shadow-xs transition-colors focus-within:border-blue-600 focus-within:ring-2 focus-within:ring-blue-100">
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => handleItemChange(item.id, 'qty', Math.max(1, Number(item.qty || 1) - 1))}
+                                  className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                                  disabled={Number(item.qty) <= 1}
+                                  title="Kurangi"
+                                >
+                                  <span className="text-sm font-bold leading-none select-none">−</span>
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.qty === 0 ? '' : item.qty}
+                                  onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
+                                  className="h-full w-10 min-w-0 border-0 bg-transparent p-0 text-center text-sm font-bold text-slate-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                  placeholder="1"
+                                />
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  onClick={() => handleItemChange(item.id, 'qty', Number(item.qty || 0) + 1)}
+                                  className="flex h-full w-7 items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200 transition-colors"
+                                  title="Tambah"
+                                >
+                                  <span className="text-sm font-bold leading-none select-none">+</span>
+                                </button>
+                              </div>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
@@ -808,7 +833,7 @@ export function CerFormWizard({
                                 min={0}
                                 value={item.pricePerUnit}
                                 onChange={(e) => handleItemChange(item.id, 'pricePerUnit', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-8 px-2.5 text-xs bg-white border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                               />
                               {item.pricePerUnit > 0 && (
                                 <div className="text-[11px] font-medium text-blue-600">
@@ -825,7 +850,7 @@ export function CerFormWizard({
                               placeholder="Site/Dept"
                               value={item.allocation}
                               onChange={(e) => handleItemChange(item.id, 'allocation', e.target.value)}
-                              className="h-8 text-xs"
+                              className="h-8 px-2.5 text-xs bg-white border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                             />
                           </TableCell>
                           <TableCell>
@@ -833,7 +858,7 @@ export function CerFormWizard({
                               placeholder="Nama Pemakai"
                               value={item.holderName}
                               onChange={(e) => handleItemChange(item.id, 'holderName', e.target.value)}
-                              className="h-8 text-xs"
+                              className="h-8 px-2.5 text-xs bg-white border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                             />
                           </TableCell>
                           <TableCell>
@@ -841,7 +866,7 @@ export function CerFormWizard({
                               placeholder="3 Tahun"
                               value={item.estimatedLifespan}
                               onChange={(e) => handleItemChange(item.id, 'estimatedLifespan', e.target.value)}
-                              className="h-8 text-xs"
+                              className="h-8 px-2.5 text-xs bg-white border border-slate-300 focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
                             />
                           </TableCell>
                           <TableCell className="text-center">
@@ -1017,16 +1042,14 @@ export function CerFormWizard({
                     <span className="text-slate-500">Pemohon:</span>
                     <span className="font-semibold text-slate-800">{currentEmployee?.name || '-'}</span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-100 py-1">
-                    <span className="text-slate-500">Site / Cabang:</span>
-                    <span className="font-semibold text-slate-800">{selectedSite}</span>
-                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex justify-between border-b border-slate-100 py-1">
-                    <span className="text-slate-500">Departemen:</span>
-                    <span className="font-semibold text-slate-800">{selectedDept}</span>
+                    <span className="text-slate-500">Departemen / Bagian:</span>
+                    <span className="font-semibold text-slate-800">
+                      {selectedDept}{selectedSection ? ` - ${selectedSection}` : ''}
+                    </span>
                   </div>
                   <div className="flex justify-between border-b border-slate-100 py-1">
                     <span className="text-slate-500">Kategori Aset:</span>
@@ -1055,7 +1078,7 @@ export function CerFormWizard({
                 <Table>
                   <TableHeader className="bg-slate-50">
                     <TableRow>
-                      <TableHead className="text-xs">Deskripsi Unit</TableHead>
+                      <TableHead className="text-xs">Deskripsi</TableHead>
                       <TableHead className="w-16 text-center text-xs">Qty</TableHead>
                       <TableHead className="w-28 text-right text-xs">Harga Satuan</TableHead>
                       <TableHead className="w-32 text-right text-xs">Total Harga</TableHead>
@@ -1093,6 +1116,17 @@ export function CerFormWizard({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-6 text-xs">
+              {/* Budget Code & Name Banner */}
+              {selectedBudget && (
+                <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2">
+                  <Wallet className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                  <span className="text-[11px] text-blue-900">
+                    <strong>Pagu Terpilih:</strong>{' '}
+                    {selectedBudget.budgetCode} - {selectedBudget.budgetName}{' '}
+                    <span className="text-blue-600">(Tahun {selectedBudget.fiscalYear})</span>
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <span className="text-[11px] text-slate-500">Pagu Alokasi CapEx</span>
@@ -1173,7 +1207,19 @@ export function CerFormWizard({
                         className="flex flex-col rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-xs"
                       >
                         <div className="flex items-center justify-between pb-1">
-                          <span className="font-bold text-blue-700">Tahap {s.stepOrder}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-blue-700">Tahap {s.stepOrder}</span>
+                            {s.approvalMode === 'parallel_all' && (
+                              <Badge className="border-0 bg-purple-100 text-[9px] font-bold text-purple-800">
+                                Semua Wajib (AND)
+                              </Badge>
+                            )}
+                            {s.approvalMode === 'parallel_any' && (
+                              <Badge className="border-0 bg-blue-100 text-[9px] font-bold text-blue-800">
+                                Cukup 1 Orang (OR)
+                              </Badge>
+                            )}
+                          </div>
                           <Badge variant="secondary" className="text-[10px]">
                             {s.slaHours || 24} Jam SLA
                           </Badge>

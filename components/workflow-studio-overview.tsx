@@ -69,6 +69,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 import type { getWorkflowStudioConsoleData } from '@/lib/approval-blueprint'
 
 type WorkflowStudioData = Awaited<ReturnType<typeof getWorkflowStudioConsoleData>>
@@ -326,6 +327,193 @@ function SearchableSelect({
               </button>
             ))
           )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function MultiSearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  searchPlaceholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: SearchableOption[]
+  placeholder?: string
+  searchPlaceholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [open])
+
+  const selectedIds = useMemo(() => {
+    if (!value) return []
+    return value.split(',').map((s) => s.trim()).filter(Boolean)
+  }, [value])
+
+  const selectedEmployees = useMemo(() => {
+    return selectedIds.map((id) => options.find((o) => o.id.toString() === id)).filter(Boolean) as SearchableOption[]
+  }, [selectedIds, options])
+
+  const filtered = query.trim()
+    ? options.filter((o) => {
+        const q = query.toLowerCase().trim()
+        const name = (o.name ?? '').toLowerCase()
+        const jobTitle = (o.jobTitle ?? '').toLowerCase()
+        const sn = ((o as any).employeeSn ?? (o as any).sn ?? '').toString().toLowerCase()
+        const dept = ((o as any).department ?? (o as any).departmentName ?? '').toLowerCase()
+        return name.includes(q) || jobTitle.includes(q) || sn.includes(q) || dept.includes(q)
+      })
+    : options
+
+  const toggleEmployee = (empId: string) => {
+    let next: string[]
+    if (selectedIds.includes(empId)) {
+      next = selectedIds.filter((id) => id !== empId)
+    } else {
+      next = [...selectedIds, empId]
+    }
+    onChange(next.join(','))
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (next) setQuery('')
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="border-border/70 bg-white hover:bg-slate-50 min-h-[32px] w-full rounded-md border p-1 text-left text-xs transition-colors cursor-pointer flex items-center justify-between gap-1 flex-wrap"
+        >
+          <div className="flex flex-wrap items-center gap-1 flex-1 min-w-0">
+            {selectedEmployees.length === 0 ? (
+              <span className="text-slate-400 px-1">{placeholder ?? 'Pilih approver...'}</span>
+            ) : (
+              selectedEmployees.map((emp) => (
+                <span
+                  key={emp.id}
+                  className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[11px] font-medium text-blue-800"
+                >
+                  <span className="truncate max-w-[120px]">{emp.name}</span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleEmployee(emp.id.toString())
+                    }}
+                    className="hover:text-blue-950 font-bold ml-0.5 cursor-pointer"
+                  >
+                    ×
+                  </span>
+                </span>
+              ))
+            )}
+          </div>
+          <ChevronDown className="size-3 text-slate-400 shrink-0 mr-1" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={4}
+        className="w-[300px] p-0 z-[9999] bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden"
+      >
+        <div className="relative border-b border-slate-200 bg-slate-50/70 p-1.5 flex items-center">
+          <Search className="absolute left-2.5 size-3.5 text-slate-400 pointer-events-none" />
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={searchPlaceholder ?? 'Cari karyawan...'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="h-7 w-full rounded border border-slate-200 bg-white pl-7 pr-7 text-xs text-slate-800 outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('')
+                inputRef.current?.focus()
+              }}
+              className="absolute right-2.5 text-slate-400 hover:text-slate-700"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="p-1 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500 bg-slate-50/50 px-2">
+          <span>{selectedIds.length} approver terpilih (Paralel Wajib)</span>
+          {selectedIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="text-destructive hover:underline font-medium cursor-pointer"
+            >
+              Reset Semua
+            </button>
+          )}
+        </div>
+        <div className="max-h-[220px] overflow-y-auto p-1 divide-y divide-slate-100">
+          {filtered.length === 0 ? (
+            <div className="py-3 px-2 text-center text-xs text-slate-400">
+              Tidak ada data yang sesuai &quot;{query}&quot;
+            </div>
+          ) : (
+            filtered.map((emp) => {
+              const isSelected = selectedIds.includes(emp.id.toString())
+              return (
+                <button
+                  key={emp.id}
+                  type="button"
+                  onClick={() => toggleEmployee(emp.id.toString())}
+                  className={`hover:bg-slate-100 rounded h-8 w-full px-2 text-left text-xs truncate transition-colors cursor-pointer flex items-center justify-between gap-1.5 ${
+                    isSelected ? 'bg-blue-50/70 font-semibold text-blue-900' : 'text-slate-700'
+                  }`}
+                >
+                  <div className="truncate flex-1">
+                    <span className="block truncate">{emp.name}</span>
+                    {emp.jobTitle && (
+                      <span className="block truncate text-[10px] text-slate-400 font-normal">{emp.jobTitle}</span>
+                    )}
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    readOnly
+                    className="size-3.5 rounded border-slate-300 text-blue-600 pointer-events-none"
+                  />
+                </button>
+              )
+            })
+          )}
+        </div>
+        <div className="p-1.5 border-t border-slate-200 bg-slate-50 flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            className="h-7 text-xs px-3"
+            onClick={() => setOpen(false)}
+          >
+            Selesai
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -666,13 +854,18 @@ function WorkflowBuilderDialog({
     approvalMode?: 'sequential' | 'parallel_all' | 'parallel_any'
     virtualEmployeeId?: string
   }
-  type SiteData = { key: string; siteId: string; departmentId: string; values: Record<string, string> }
+  type SiteData = { key: string; siteId: string; departmentId: string; sectionId?: string; values: Record<string, string> }
+  const [pendingSectionId, setPendingSectionId] = useState<string>('')
 
   // RFR uses department-based assignment instead of site-based
   const isRfrMenu =
     (selectedMenu?.transactionType ?? '') === 'rfr_approval' ||
     (initial?.transactionType ?? '') === 'rfr_approval' ||
     (selectedMenuKey || initial?.id || '').toLowerCase().includes('rfr')
+  const isCerMenu =
+    (selectedMenu?.transactionType ?? '') === 'cer_request' ||
+    (initial?.transactionType ?? '') === 'cer_request' ||
+    (selectedMenuKey || initial?.id || '').toLowerCase().includes('cer')
   const isFiveRMenu =
     (selectedMenu?.transactionType ?? '') === 'five_r_report' ||
     (initial?.transactionType ?? '') === 'five_r_report' ||
@@ -685,6 +878,19 @@ function WorkflowBuilderDialog({
   }
 
   const WORKFLOW_PRESETS = [
+    {
+      key: "cer-default-chain",
+      name: "Pengadaan Aset (CER) - 7 Tahap Standar CapEx",
+      steps: [
+        { id: "step-1", label: "Section Head / Atasan Langsung", type: "employee" as const },
+        { id: "step-2", label: "IT / BIMA Supervisor", type: "employee" as const },
+        { id: "step-3", label: "Department Manager", type: "employee" as const },
+        { id: "step-4", label: "Budget Validator", type: "employee" as const, isParallel: true, parallelGroup: "budget_validator", approvalMode: "parallel_all" as const },
+        { id: "step-5", label: "General Manager", type: "employee" as const },
+        { id: "step-6", label: "Director", type: "employee" as const },
+        { id: "step-7", label: "Asset Tagging (Syamsul Bahri)", type: "employee" as const },
+      ]
+    },
     {
       key: "apd-request-1-step",
       name: "Request APD (31 Site x 4 Section)",
@@ -765,6 +971,26 @@ function WorkflowBuilderDialog({
       virtualEmployeeId: (s as any).virtualEmployeeId,
     }))
     setApprovalSteps(newSteps)
+
+    if (presetKey === 'cer-default-chain') {
+      setSiteData([
+        {
+          key: 'cer-default-global',
+          siteId: '0',
+          departmentId: '0',
+          values: {
+            'step-1': '', // Atasan Langsung / Section Head (Opsional)
+            'step-2': '962', // Aditya Jarangmula Ngindra (IT / BIMA Spv - auto-skip jika non-IT)
+            'step-3': '', // Dept Head (Opsional)
+            'step-4': '1341,960', // Dual Budget Validator (Amama Ira & Febrian Dani)
+            'step-5': '940', // General Manager (Person Sihaloho)
+            'step-6': '10', // Director (Hidayat Rahman)
+            'step-7': '990', // Syamsul Bahri (Asset Tagging)
+          },
+        },
+      ])
+      return
+    }
 
     if (presetKey === 'summary-apd-2-step') {
       const autoRows: any[] = []
@@ -930,6 +1156,16 @@ function WorkflowBuilderDialog({
     { id: 'step-1', label: 'Sign QC / Leader', type: 'employee' },
   ]
 
+  const cerDefaults: ApprovalStep[] = [
+    { id: 'step-1', label: 'Section Head / Atasan Langsung', type: 'employee' },
+    { id: 'step-2', label: 'IT / BIMA Supervisor', type: 'employee' },
+    { id: 'step-3', label: 'Department Manager', type: 'employee' },
+    { id: 'step-4', label: 'Budget Validator', type: 'employee', isParallel: true, parallelGroup: 'budget_validator', approvalMode: 'parallel_all' },
+    { id: 'step-5', label: 'General Manager', type: 'employee' },
+    { id: 'step-6', label: 'Director', type: 'employee' },
+    { id: 'step-7', label: 'Asset Tagging (Syamsul Bahri)', type: 'employee' },
+  ]
+
   const generalDefaults: ApprovalStep[] = [
     { id: 'step-0', label: 'Section', type: 'section' },
     { id: 'step-1', label: 'Leader', type: 'employee' },
@@ -950,6 +1186,7 @@ function WorkflowBuilderDialog({
 
   function buildInitialSteps(): ApprovalStep[] {
     const menuKeyLower = (selectedMenuKey || initial?.id || '').toLowerCase()
+    const isCer = menuKeyLower.includes('cer')
     const isJobcard = menuKeyLower.includes('jobcard')
     const isFormWo = menuKeyLower.includes('wo') && !isJobcard
     const isRfr = menuKeyLower.includes('rfr')
@@ -964,21 +1201,43 @@ function WorkflowBuilderDialog({
       ? formWoServiceDefaults
       : formWoRepairDefaults
 
-    const defaults = isJobcard
-      ? jobcardQcDefaults
-      : isRfr
-        ? rfrDefaults
-        : isFormWo
-          ? formWoDefaults
-          : isFiveR
-            ? fiveRDefaults
-            : isMaterialTools
-              ? materialToolsDefaults
-              : isSummary
-                ? summaryApdDefaults
-                : isApd
-                  ? apdDefaults
-                  : generalDefaults
+    const defaults = isCer
+      ? cerDefaults
+      : isJobcard
+        ? jobcardQcDefaults
+        : isRfr
+          ? rfrDefaults
+          : isFormWo
+            ? formWoDefaults
+            : isFiveR
+              ? fiveRDefaults
+              : isMaterialTools
+                ? materialToolsDefaults
+                : isSummary
+                  ? summaryApdDefaults
+                  : isApd
+                    ? apdDefaults
+                    : generalDefaults
+
+    if (isCer) {
+      if (!initial?.globalSteps || initial.globalSteps.length === 0) {
+        return cerDefaults
+      }
+      const existing = initial.globalSteps
+        .filter((gs) => {
+          const l = (gs.label ?? '').toLowerCase().trim()
+          return !isSectionStep(l) && l !== 'pemohon' && l !== 'requestor'
+        })
+        .map((gs, i) => ({
+          id: `step-${i + 1}`,
+          label: gs.label ?? '',
+          type: 'employee' as const,
+          isParallel: (gs.label || '').toLowerCase().includes('budget') || (gs.label || '').toLowerCase().includes('validator'),
+          parallelGroup: 'budget_validator',
+          approvalMode: ((gs.label || '').toLowerCase().includes('budget') || (gs.label || '').toLowerCase().includes('validator')) ? ('parallel_all' as const) : undefined,
+        }))
+      return existing.length > 0 ? existing : cerDefaults
+    }
 
     if (isSummary) {
       const filteredExisting = (initial?.globalSteps || []).filter((gs) => {
@@ -1067,7 +1326,7 @@ function WorkflowBuilderDialog({
         return l.includes('mvc') || l.includes('other') || l.includes('te')
       })
 
-    if (isRfr || is3ColWorkflow) return existing
+    if (isRfr || is3ColWorkflow || isCer) return existing
     return [{ id: 'step-0', label: isFiveR ? 'Master Area' : 'Section', type: 'section' as const }, ...existing]
   }
 
@@ -1437,12 +1696,20 @@ function WorkflowBuilderDialog({
           }
         }
 
-        // Direct matching from saved steps array
+        // Direct matching from saved steps array (supports multi-approver like dual Budget Validator)
         if (Array.isArray((sa as any).steps)) {
           const employeeSteps = steps.filter((s) => s.type !== 'section')
           ;(sa as any).steps.forEach((st: any, idx: number) => {
-            if (employeeSteps[idx] && st.employeeId && !values[employeeSteps[idx].id]) {
-              values[employeeSteps[idx].id] = String(st.employeeId)
+            const matchedStep = employeeSteps.find((s) => s.label.toLowerCase() === (st.role || st.label || '').toLowerCase()) || employeeSteps[idx]
+            if (matchedStep && st.employeeId) {
+              if (values[matchedStep.id]) {
+                const existing = values[matchedStep.id].split(',').map((x: string) => x.trim())
+                if (!existing.includes(String(st.employeeId))) {
+                  values[matchedStep.id] = `${values[matchedStep.id]},${st.employeeId}`
+                }
+              } else {
+                values[matchedStep.id] = String(st.employeeId)
+              }
             }
           })
         }
@@ -1471,11 +1738,29 @@ function WorkflowBuilderDialog({
           if (siteVal) values[employeeSteps[0].id] = String(siteVal)
         }
 
-        return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '0', departmentId: (sa as any).departmentId?.toString() ?? '', values }
+        return { key: `site-${i}`, siteId: sa.siteId?.toString() ?? '0', departmentId: (sa as any).departmentId?.toString() ?? '', sectionId: (sa as any).sectionId?.toString() ?? '', values }
       })
     }
 
     // Default auto-population if initial siteApprovals is empty
+    if (menuKeyLower.includes('cer') || isCerMenu) {
+      return [
+        {
+          key: 'cer-default-global',
+          siteId: '0',
+          departmentId: '0',
+          values: {
+            'step-1': '',
+            'step-2': '962',
+            'step-3': '',
+            'step-4': '1341,960',
+            'step-5': '940',
+            'step-6': '10',
+            'step-7': '990',
+          },
+        },
+      ]
+    }
     if (menuKeyLower.includes('material') || menuKeyLower.includes('tools')) {
       const autoRows: SiteData[] = []
       let rIndex = 0
@@ -1636,6 +1921,58 @@ function WorkflowBuilderDialog({
     if (!pendingSiteId) return
     const firstSite = siteData[0]
     
+    // CER: department & section based assignment
+    if (isCerMenu) {
+      if (pendingSiteId === '0' || !pendingSiteId) {
+        setSiteData((prev) => [
+          ...prev,
+          {
+            key: `dept-${Date.now()}-0`,
+            siteId: '0',
+            departmentId: '0',
+            sectionId: undefined,
+            values: firstSite ? { ...firstSite.values } : {
+              'step-1': '',
+              'step-2': '962',
+              'step-3': '',
+              'step-4': '1341,960',
+              'step-5': '940',
+              'step-6': '10',
+              'step-7': '990',
+            },
+          },
+        ])
+        setPendingSiteId('')
+        setPendingSectionId('')
+        return
+      }
+      const dept = allDepartments.find((d) => d.id.toString() === pendingSiteId)
+      if (dept) {
+        const sec = pendingSectionId ? allSectionsList.find((s) => s.id.toString() === pendingSectionId) : null
+        setSiteData((prev) => [
+          ...prev,
+          {
+            key: `dept-${Date.now()}-${dept.id}${sec ? `-${sec.id}` : ''}`,
+            siteId: '0',
+            departmentId: dept.id.toString(),
+            sectionId: sec ? sec.id.toString() : undefined,
+            values: {
+              'step-1': sec?.headEmployeeId ? sec.headEmployeeId.toString() : '',
+              'step-2': '962',
+              'step-3': dept.headEmployeeId ? dept.headEmployeeId.toString() : '',
+              'step-4': '1341,960',
+              'step-5': '940',
+              'step-6': '10',
+              'step-7': '990',
+            },
+          },
+        ])
+      }
+      setPendingSiteId('')
+      setPendingSectionId('')
+      return
+    }
+
     // RFR: department-based assignment
     if (isRfrMenu) {
       const dept = allDepartments.find((d) => d.id.toString() === pendingSiteId)
@@ -2036,6 +2373,8 @@ function WorkflowBuilderDialog({
                       },
                     }))
                     setSiteData(autoRows)
+                  } else if (newKey.toLowerCase().includes('cer')) {
+                    handleLoadPreset('cer-default-chain')
                   } else {
                     setApprovalSteps(generalDefaults)
                   }
@@ -2337,7 +2676,7 @@ function WorkflowBuilderDialog({
             <div className="border-t pt-3">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="font-display text-base font-semibold">
-                  {isRfrMenu ? 'Pengaturan per Departemen' : isFiveRMenu ? 'Pengaturan per Master Area 5R' : isSummaryMenu() ? 'Pengaturan per Section' : 'Pengaturan per Site'}
+                  {isRfrMenu || isCerMenu ? 'Pengaturan per Departemen' : isFiveRMenu ? 'Pengaturan per Master Area 5R' : isSummaryMenu() ? 'Pengaturan per Section' : 'Pengaturan per Site'}
                 </h3>
                 <div className="flex items-center gap-2">
                   <select
@@ -2346,9 +2685,16 @@ function WorkflowBuilderDialog({
                     className="border-border/70 bg-muted/30 h-8 rounded-lg border px-2 text-sm"
                   >
                     <option value="">
-                      {isRfrMenu ? 'Pilih departemen...' : isFiveRMenu ? 'Pilih master area 5R...' : isSummaryMenu() ? 'Pilih section...' : 'Pilih site...'}
+                      {isCerMenu ? 'Pilih departemen...' : isRfrMenu ? 'Pilih departemen...' : isFiveRMenu ? 'Pilih master area 5R...' : isSummaryMenu() ? 'Pilih section...' : 'Pilih site...'}
                     </option>
-                    {isRfrMenu ? (
+                    {isCerMenu ? (
+                      <>
+                        <option value="0">-- Semua Departemen (Global Fallback) --</option>
+                        {allDepartments.map((dept) => (
+                          <option key={dept.id} value={dept.id.toString()}>{dept.name}</option>
+                        ))}
+                      </>
+                    ) : isRfrMenu ? (
                       allDepartments.filter((d) => !usedDeptIds.has(d.id.toString())).map((dept) => (
                         <option key={dept.id} value={dept.id.toString()}>{dept.name}</option>
                       ))
@@ -2404,8 +2750,24 @@ function WorkflowBuilderDialog({
                       </>
                     )}
                   </select>
+                  {isCerMenu && pendingSiteId && pendingSiteId !== '0' && (
+                    <select
+                      value={pendingSectionId}
+                      onChange={(e) => setPendingSectionId(e.target.value)}
+                      className="border-border/70 bg-muted/30 h-8 rounded-lg border px-2 text-sm max-w-[200px]"
+                    >
+                      <option value="">-- Seluruh Section (Dept) --</option>
+                      {allSectionsList
+                        .filter((s) => s.departmentId?.toString() === pendingSiteId)
+                        .map((sec) => (
+                          <option key={sec.id} value={sec.id.toString()}>
+                            {sec.rawName || sec.name}
+                          </option>
+                        ))}
+                    </select>
+                  )}
                   <Button type="button" size="sm" variant="outline" onClick={addSite} disabled={!pendingSiteId} className="h-8 px-2">
-                    <Plus className="size-3" /> Tambah
+                    <Plus className="size-3" /> Tambah Baris
                   </Button>
                 </div>
               </div>
@@ -2415,31 +2777,65 @@ function WorkflowBuilderDialog({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-xs font-medium text-muted-foreground">
-                        <th className="pb-2 pr-3">{isRfrMenu ? 'Departemen' : isFiveRMenu ? 'Master Area 5R' : isSummaryMenu() ? 'Section' : 'Site'}</th>
+                        <th className="pb-2 pr-3">{isRfrMenu || isCerMenu ? 'Departemen' : isFiveRMenu ? 'Master Area 5R' : isSummaryMenu() ? 'Section' : 'Site'}</th>
                         {approvalSteps
                           .filter((step) => (isFiveRMenu || isSummaryMenu()) ? step.type !== 'section' : true)
-                          .map((step) => (
-                            <th key={step.id} className="pb-2 pr-3">
-                              <div className="flex items-center gap-1.5">
-                                <span>{step.label || '(Kosong)'}</span>
-                                {step.isParallel && (
-                                  <span className="rounded bg-indigo-50 border border-indigo-200 px-1 py-0.2 text-[9px] font-semibold text-indigo-700">
-                                    Paralel
-                                  </span>
-                                )}
-                                {siteData.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => fillDownColumn(step.id)}
-                                    title="Isi semua dari baris pertama"
-                                    className="text-muted-foreground hover:text-foreground ml-1 inline-flex items-center rounded border px-1 py-0.5 text-[10px] leading-none"
-                                  >
-                                    ↓ Isi
-                                  </button>
-                                )}
-                              </div>
-                            </th>
-                          ))}
+                          .map((step) => {
+                            const isParallel = step.isParallel || step.approvalMode === 'parallel_all' || step.approvalMode === 'parallel_any'
+                            return (
+                              <th key={step.id} className="pb-2 pr-3">
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-semibold text-slate-800">{step.label || '(Kosong)'}</span>
+                                    {siteData.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => fillDownColumn(step.id)}
+                                        title="Isi semua dari baris pertama"
+                                        className="text-muted-foreground hover:text-foreground inline-flex items-center rounded border px-1 py-0.5 text-[10px] leading-none"
+                                      >
+                                        ↓ Isi
+                                      </button>
+                                    )}
+                                  </div>
+                                  {isCerMenu && (
+                                    <div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setApprovalSteps((prev) =>
+                                            prev.map((s) => {
+                                              if (s.id !== step.id) return s
+                                              const nextMode = s.approvalMode === 'parallel_any' ? 'parallel_all' : 'parallel_any'
+                                              return {
+                                                ...s,
+                                                isParallel: true,
+                                                approvalMode: nextMode,
+                                              }
+                                            })
+                                          )
+                                        }}
+                                        title="Klik untuk beralih mode: AND (Semua Wajib) vs OR (Cukup 1 Orang)"
+                                        className={cn(
+                                          "cursor-pointer rounded border px-1.5 py-0.5 text-[9px] font-bold transition-all shadow-2xs inline-flex items-center gap-1",
+                                          step.approvalMode === 'parallel_any'
+                                            ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                            : "border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100"
+                                        )}
+                                      >
+                                        {step.approvalMode === 'parallel_any' ? '⚡ OR (Cukup 1)' : '🤝 AND (Semua Wajib)'}
+                                      </button>
+                                    </div>
+                                  )}
+                                  {!isCerMenu && step.isParallel && (
+                                    <span className="rounded bg-indigo-50 border border-indigo-200 px-1 py-0.2 text-[9px] font-semibold text-indigo-700 w-fit">
+                                      Paralel
+                                    </span>
+                                  )}
+                                </div>
+                              </th>
+                            )
+                          })}
                         <th className="pb-2 w-8"></th>
                       </tr>
                     </thead>
@@ -2454,15 +2850,25 @@ function WorkflowBuilderDialog({
                         const catSite = MASTER_CATEGORIZED_SITES.find((s) => s.id === siteRow.siteId)
                         const siteObj = allSites.find((s) => s.id.toString() === (areaObj?.siteId?.toString() ?? siteRow.siteId))
 
-                        const siteDisplayName = isRfrMenu
-                          ? (allDepartments.find((d) => d.id.toString() === siteRow.departmentId)?.name ?? siteRow.departmentId)
-                          : isFiveRMenu
-                            ? (areaObj?.name ?? 'Master Area')
-                            : isSummaryMenu()
-                              ? (secObj?.name ?? 'Section')
-                              : (siteRow.siteId === '0' || !siteRow.siteId
-                                  ? 'Semua Site (Global)'
-                                  : (catSite?.name ?? siteObj?.name ?? siteRow.siteId))
+                        const cerSecObj = isCerMenu && siteRow.sectionId
+                          ? allSectionsList.find((s) => s.id.toString() === siteRow.sectionId)
+                          : null
+
+                        const siteDisplayName = isCerMenu
+                          ? (siteRow.departmentId && siteRow.departmentId !== '0'
+                              ? `${allDepartments.find((d) => d.id.toString() === siteRow.departmentId)?.name ?? `Dept ${siteRow.departmentId}`}${cerSecObj ? ` - Section: ${cerSecObj.rawName || cerSecObj.name}` : ' (Seluruh Section)'}`
+                              : 'Semua Departemen (Global Fallback)')
+                          : isRfrMenu
+                            ? (siteRow.departmentId
+                                ? (allDepartments.find((d) => d.id.toString() === siteRow.departmentId)?.name ?? siteRow.departmentId)
+                                : 'Semua Departemen (Global Master)')
+                            : isFiveRMenu
+                              ? (areaObj?.name ?? 'Master Area')
+                              : isSummaryMenu()
+                                ? (secObj?.name ?? 'Section')
+                                : (siteRow.siteId === '0' || !siteRow.siteId
+                                    ? 'Semua Site (Global)'
+                                    : (catSite?.name ?? siteObj?.name ?? siteRow.siteId))
 
                         const renderedSteps = (isFiveRMenu || isSummaryMenu())
                           ? approvalSteps.filter((s) => s.type !== 'section')
@@ -2490,12 +2896,46 @@ function WorkflowBuilderDialog({
                                 )}
                               </div>
                             </td>
-                            {renderedSteps.map((step) => (
-                              <td key={step.id} className="py-2 pr-3 min-w-[180px]">
-                                <SearchableSelect
-                                  value={siteRow.values[step.id] ?? ''}
-                                  placeholder={step.type === 'section' ? (isFiveRMenu ? 'Pilih master area 5R...' : 'Pilih section...') : 'Kosong'}
-                                  searchPlaceholder={step.type === 'section' ? (isFiveRMenu ? 'Cari master area 5R...' : 'Cari section...') : 'Cari karyawan...'}
+                            {renderedSteps.map((step) => {
+                              const isMultiApprover =
+                                isCerMenu &&
+                                ((step.label || '').toLowerCase().includes('budget') ||
+                                  (step.label || '').toLowerCase().includes('validator') ||
+                                  step.approvalMode === 'parallel_all')
+
+                              if (isMultiApprover) {
+                                return (
+                                  <td key={step.id} className="py-2 pr-3 min-w-[200px]">
+                                    <MultiSearchableSelect
+                                      value={siteRow.values[step.id] ?? ''}
+                                      placeholder="Pilih 2 validator..."
+                                      searchPlaceholder="Cari validator..."
+                                      options={employeeOptions}
+                                      onChange={(v) => {
+                                        setSiteData((prev) =>
+                                          prev.map((site) => {
+                                            if (site.key !== siteRow.key) return site
+                                            return {
+                                              ...site,
+                                              values: {
+                                                ...site.values,
+                                                [step.id]: v,
+                                              },
+                                            }
+                                          })
+                                        )
+                                      }}
+                                    />
+                                  </td>
+                                )
+                              }
+
+                              return (
+                                <td key={step.id} className="py-2 pr-3 min-w-[180px]">
+                                  <SearchableSelect
+                                    value={siteRow.values[step.id] ?? ''}
+                                    placeholder={step.type === 'section' ? (isFiveRMenu ? 'Pilih master area 5R...' : 'Pilih section...') : 'Kosong'}
+                                    searchPlaceholder={step.type === 'section' ? (isFiveRMenu ? 'Cari master area 5R...' : 'Cari section...') : 'Cari karyawan...'}
                                   onChange={(v) => {
                                     if (step.type === 'section' && v) {
                                       if (isFiveRMenu) {
@@ -2565,7 +3005,8 @@ function WorkflowBuilderDialog({
                                   }
                                 />
                               </td>
-                            ))}
+                            )
+                          })}
                             <td className="py-2">
                               <button type="button" onClick={() => removeSiteRow(siteRow.key)} className="text-muted-foreground hover:text-destructive">
                                 <X className="size-3.5" />

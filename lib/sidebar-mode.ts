@@ -260,7 +260,7 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   }
 
   // 9. ASET & DATA INDUK
-  if (url.startsWith("/dashboard/central-service/assets") || url.startsWith("/dashboard/central-service/sap-assets") || url === "/dashboard/master-data" || url === "/dashboard/customers" || url === "/dashboard/form-studio") {
+  if (url.startsWith("/dashboard/assets") || url.startsWith("/dashboard/central-service/assets") || url.startsWith("/dashboard/central-service/sap-assets") || url === "/dashboard/master-data" || url === "/dashboard/customers" || url === "/dashboard/form-studio") {
     return { section: "Aset", category: "UMUM & SISTEM", groupLabel: "Manajemen Aset" }
   }
 

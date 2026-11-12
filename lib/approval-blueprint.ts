@@ -1394,6 +1394,10 @@ function inferDefaultShift(startTime: Date) {
 }
 
 export async function ensureApprovalBlueprintSeedData() {
+  if ((globalThis as any).__approvalBlueprintSeeded) {
+    return
+  }
+  (globalThis as any).__approvalBlueprintSeeded = true
   await ensureApprovalBlueprintTables()
 
   const [site] = await db.select().from(sites).limit(1)
@@ -3397,15 +3401,6 @@ const APPROVAL_WORKFLOW_REGISTRY = [
     transactionType: 'five_r_report',
     sourceType: 'Matrix',
   },
-  {
-    key: 'cer-request',
-    name: 'Pengadaan Aset (CER)',
-    pageTitle: 'Pengadaan Aset (CER)',
-    pageUrl: '/dashboard/assets/cer',
-    templateKey: 'cer-request',
-    transactionType: 'cer_request',
-    sourceType: 'Matrix',
-  },
 ] as const
 
 function dateIso(value: Date | null | undefined) {
@@ -3452,16 +3447,33 @@ export async function getWorkflowStudioConsoleData() {
     employeeRows,
     presetsRows,
     rfrPendingCounts,
+    csSiteRows,
+    csDeptRow,
+    csSectionsForDept,
+    departmentRows,
+    sectionRows,
+    fiveRAreaRows,
+    siteSectionRows,
   ] = await Promise.all([
     db.select().from(workflowTemplates).orderBy(asc(workflowTemplates.name)),
     db.select().from(workflowTemplateVersions).orderBy(desc(workflowTemplateVersions.versionNumber)),
-    db.select().from(workflowStepRules).orderBy(asc(workflowStepRules.stepOrder)),
+    db.select({ workflowVersionId: workflowStepRules.workflowVersionId }).from(workflowStepRules),
     db.select().from(workflowNotificationRules).orderBy(asc(workflowNotificationRules.eventType)),
     db.select().from(workflowReminderRules).orderBy(asc(workflowReminderRules.reminderType)),
     db.select().from(approvalMatrices).orderBy(desc(approvalMatrices.updatedAt)),
     db.select().from(approvalMatrixSteps).orderBy(asc(approvalMatrixSteps.stepOrder)),
-    db.select().from(orgChartNodes),
-    db.select().from(emailTemplates).orderBy(asc(emailTemplates.templateCode)),
+    db.select({ id: orgChartNodes.id, employeeId: orgChartNodes.employeeId }).from(orgChartNodes),
+    db
+      .select({
+        id: emailTemplates.id,
+        name: emailTemplates.name,
+        templateCode: emailTemplates.templateCode,
+        subject: emailTemplates.subject,
+        isActive: emailTemplates.isActive,
+        updatedAt: emailTemplates.updatedAt,
+      })
+      .from(emailTemplates)
+      .orderBy(asc(emailTemplates.templateCode)),
     db
       .select({
         id: formSubmissions.id,
@@ -3482,16 +3494,34 @@ export async function getWorkflowStudioConsoleData() {
       .leftJoin(sites, eq(formSubmissions.siteId, sites.id))
       .orderBy(desc(formSubmissions.updatedAt))
       .limit(250),
-    db.select().from(approvals).orderBy(desc(approvals.submittedAt)).limit(500),
-    db.select().from(inboxItems).orderBy(desc(inboxItems.createdAt)).limit(500),
-    db.select().from(reminderJobs).orderBy(desc(reminderJobs.reminderAt)).limit(250),
-    db.select().from(notificationEvents).orderBy(desc(notificationEvents.createdAt)).limit(250),
-    db.select().from(notificationDeliveries).orderBy(desc(notificationDeliveries.createdAt)).limit(250),
     db
-      .select()
-      .from(auditLogs)
-      .orderBy(desc(auditLogs.createdAt))
-      .limit(120),
+      .select({
+        id: approvals.id,
+        submissionId: approvals.submissionId,
+        level: approvals.level,
+        status: approvals.status,
+        approverName: approvals.approverName,
+        submittedAt: approvals.submittedAt,
+        reviewedAt: approvals.reviewedAt,
+        decisionNote: approvals.decisionNote,
+      })
+      .from(approvals)
+      .orderBy(desc(approvals.submittedAt))
+      .limit(250),
+    db
+      .select({
+        id: inboxItems.id,
+        approvalId: inboxItems.approvalId,
+        status: inboxItems.status,
+        dueAt: inboxItems.dueAt,
+      })
+      .from(inboxItems)
+      .orderBy(desc(inboxItems.createdAt))
+      .limit(250),
+    db.select().from(reminderJobs).orderBy(desc(reminderJobs.reminderAt)).limit(150),
+    db.select().from(notificationEvents).orderBy(desc(notificationEvents.createdAt)).limit(150),
+    db.select().from(notificationDeliveries).orderBy(desc(notificationDeliveries.createdAt)).limit(150),
+    db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100),
     db.select({ id: sites.id, name: sites.name, headEmployeeId: sites.headEmployeeId }).from(sites).orderBy(asc(sites.name)),
     db
       .select({
@@ -3507,14 +3537,118 @@ export async function getWorkflowStudioConsoleData() {
       .where(eq(employees.isActive, true))
       .orderBy(asc(employees.name)),
     db.select().from(approvalWorkflowPresets).orderBy(asc(approvalWorkflowPresets.name)),
-    // RFR pending counts by templateKey
     db
       .select({
         pendingCount: sql<number>`count(*)::int`,
       })
       .from(hcRfrRequests)
       .where(eq(hcRfrRequests.status, 'in_progress')),
+    // Central Services sites
+    db
+      .selectDistinct({ siteId: employees.siteId })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.isActive, true),
+          isNotNull(employees.siteId),
+          or(
+            eq(employees.department, 'Central Services'),
+            eq(employees.department, 'Central Service'),
+            eq(employees.department, 'CENTRAL SERVICES')
+          )
+        )
+      ),
+    // Central Services department
+    db
+      .select({ id: masterDepartments.id, headEmployeeId: masterDepartments.headEmployeeId })
+      .from(masterDepartments)
+      .where(or(eq(masterDepartments.name, 'Central Services'), eq(masterDepartments.name, 'Central Service')))
+      .limit(1),
+    // Central Services sections
+    db
+      .select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId, departmentId: masterSections.departmentId })
+      .from(masterSections)
+      .where(eq(masterSections.isActive, true))
+      .orderBy(asc(masterSections.departmentId), asc(masterSections.id)),
+    // Departments
+    db
+      .select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId })
+      .from(masterDepartments)
+      .where(eq(masterDepartments.isActive, true))
+      .orderBy(asc(masterDepartments.name)),
+    // Sections
+    db
+      .select({
+        id: masterSections.id,
+        name: masterSections.name,
+        headEmployeeId: masterSections.headEmployeeId,
+        departmentId: masterSections.departmentId,
+        departmentName: masterDepartments.name,
+      })
+      .from(masterSections)
+      .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
+      .where(eq(masterSections.isActive, true))
+      .orderBy(asc(masterDepartments.name), asc(masterSections.name)),
+    // 5R Areas
+    db
+      .select({
+        id: fiveRMasterAreas.id,
+        name: fiveRMasterAreas.name,
+        siteId: fiveRMasterAreas.siteId,
+        picEmployeeId: fiveRMasterAreas.picEmployeeId,
+        picName: employees.name,
+      })
+      .from(fiveRMasterAreas)
+      .leftJoin(employees, eq(fiveRMasterAreas.picEmployeeId, employees.id))
+      .where(eq(fiveRMasterAreas.isActive, true))
+      .orderBy(asc(fiveRMasterAreas.siteId), asc(fiveRMasterAreas.name)),
+    // Site-section links
+    db
+      .select({
+        siteId: employees.siteId,
+        sectionId: employees.sectionId,
+      })
+      .from(employees)
+      .where(
+        and(
+          eq(employees.isActive, true),
+          isNotNull(employees.siteId),
+          isNotNull(employees.sectionId),
+          or(
+            eq(employees.department, 'Central Services'),
+            eq(employees.department, 'Central Service'),
+            eq(employees.department, 'CENTRAL SERVICES')
+          )
+        )
+      ),
   ])
+
+  // --- FAST IN-MEMORY LOOKUPS ---
+  const nodeEmployeeMap = new Map<number, number | null>()
+  for (const n of nodeRows) {
+    nodeEmployeeMap.set(n.id, n.employeeId)
+  }
+
+  const stepCountByVersionId = new Map<number, number>()
+  for (const r of stepRules) {
+    if (r.workflowVersionId) {
+      stepCountByVersionId.set(r.workflowVersionId, (stepCountByVersionId.get(r.workflowVersionId) ?? 0) + 1)
+    }
+  }
+
+  const stepsByMatrixId = new Map<number, (typeof matrixSteps)[number][]>()
+  for (const s of matrixSteps) {
+    const list = stepsByMatrixId.get(s.matrixId)
+    if (list) list.push(s)
+    else stepsByMatrixId.set(s.matrixId, [s])
+  }
+
+  const submissionsByTemplateKey = new Map<string, (typeof submissions)[number][]>()
+  for (const sub of submissions) {
+    const list = submissionsByTemplateKey.get(sub.templateKey)
+    if (list) list.push(sub)
+    else submissionsByTemplateKey.set(sub.templateKey, [sub])
+  }
 
   const latestVersionByWorkflowId = new Map<number, (typeof versions)[number]>()
   for (const version of versions) {
@@ -3546,15 +3680,13 @@ export async function getWorkflowStudioConsoleData() {
       return []
     })()
     const primaryMatrix = relatedMatrices[0] ?? null
-    const primaryMatrixSteps = primaryMatrix
-      ? matrixSteps.filter((step) => step.matrixId === primaryMatrix.id)
-      : []
+    const primaryMatrixSteps = primaryMatrix ? (stepsByMatrixId.get(primaryMatrix.id) ?? []) : []
     const approverByRole = primaryMatrixSteps.reduce<Record<string, number | null>>((map, step) => {
-      const node = nodeRows.find((row) => row.id === step.nodeId)
-      map[normalizeStatus(step.label)] = node?.employeeId ?? null
+      const empId = step.nodeId ? (nodeEmployeeMap.get(step.nodeId) ?? null) : null
+      map[normalizeStatus(step.label)] = empId
       return map
     }, {})
-    const relatedSubmissions = submissions.filter((submission) => submission.templateKey === item.templateKey)
+    const relatedSubmissions = submissionsByTemplateKey.get(item.templateKey) ?? []
     const counts = relatedSubmissions.reduce(
       (accumulator, submission) => {
         accumulator[statusBucket(submission.requestStatus)] += 1
@@ -3568,7 +3700,7 @@ export async function getWorkflowStudioConsoleData() {
       counts.pending = rfrPendingCounts[0]?.pendingCount ?? 0
     }
     const matrixStepCount = relatedMatrices.reduce(
-      (total, matrix) => total + matrixSteps.filter((step) => step.matrixId === matrix.id).length,
+      (total, matrix) => total + (stepsByMatrixId.get(matrix.id)?.length ?? 0),
       0
     )
     const isActive = Boolean(workflow?.isActive || relatedMatrices.length > 0)
@@ -3605,7 +3737,7 @@ export async function getWorkflowStudioConsoleData() {
       updatedAt: dateIso(latestVersion?.updatedAt ?? relatedMatrices[0]?.updatedAt ?? null),
       stepCount:
         matrixStepCount ||
-        stepRules.filter((step) => step.workflowVersionId === latestVersion?.id).length,
+        (latestVersion ? (stepCountByVersionId.get(latestVersion.id) ?? 0) : 0),
       duplicateActiveCount: actualDuplicateCount,
       matrixId: primaryMatrix?.id ?? null,
       siteId: primaryMatrix?.siteId ?? null,
@@ -3634,8 +3766,8 @@ export async function getWorkflowStudioConsoleData() {
           return (a.id ?? 0) - (b.id ?? 0)
         })
         .map((matrix) => {
-        const steps = matrixSteps
-          .filter((s) => s.matrixId === matrix.id)
+        const steps = (stepsByMatrixId.get(matrix.id) ?? [])
+          .slice()
           .sort((a, b) => a.stepOrder - b.stepOrder)
         const approversByRole: Record<string, number | null> = {}
         const values: Record<string, string> = {}
@@ -3643,8 +3775,7 @@ export async function getWorkflowStudioConsoleData() {
           values['step-0'] = String(matrix.sectionId)
         }
         steps.forEach((step, idx) => {
-          const node = nodeRows.find((n) => n.id === step.nodeId)
-          const empId = node?.employeeId ?? null
+          const empId = step.nodeId ? (nodeEmployeeMap.get(step.nodeId) ?? null) : null
           const norm = normalizeStatus(step.label)
           approversByRole[norm] = empId
 
@@ -3679,25 +3810,22 @@ export async function getWorkflowStudioConsoleData() {
           departmentHeadId: approversByRole.department_head ?? null,
           customRoles: approversByRole,
           values,
-          steps: steps.map((s) => {
-            const node = nodeRows.find((n) => n.id === s.nodeId)
-            return {
-              stepOrder: s.stepOrder,
-              label: s.label,
-              employeeId: node?.employeeId ?? null,
-            }
-          }),
+          steps: steps.map((s) => ({
+            stepOrder: s.stepOrder,
+            label: s.label,
+            employeeId: s.nodeId ? (nodeEmployeeMap.get(s.nodeId) ?? null) : null,
+          })),
         }
       }),
       globalSteps: (() => {
         if (relatedMatrices.length === 0) return []
-        const firstMatrixSteps = matrixSteps
-          .filter((s) => s.matrixId === relatedMatrices[0].id)
+        const firstMatrixSteps = (stepsByMatrixId.get(relatedMatrices[0].id) ?? [])
+          .slice()
           .sort((a, b) => a.stepOrder - b.stepOrder)
-        return firstMatrixSteps.map((step) => {
-          const node = nodeRows.find((n) => n.id === step.nodeId)
-          return { label: step.label, employeeId: node?.employeeId ?? null }
-        })
+        return firstMatrixSteps.map((step) => ({
+          label: step.label,
+          employeeId: step.nodeId ? (nodeEmployeeMap.get(step.nodeId) ?? null) : null,
+        }))
       })(),
     }
   })
@@ -3723,12 +3851,26 @@ export async function getWorkflowStudioConsoleData() {
       .map(([key]) => key)
   )
 
+  const approvalsBySubmissionId = new Map<number, (typeof approvalRows)[number][]>()
+  for (const a of approvalRows) {
+    if (a.submissionId) {
+      const list = approvalsBySubmissionId.get(a.submissionId)
+      if (list) list.push(a)
+      else approvalsBySubmissionId.set(a.submissionId, [a])
+    }
+  }
+
+  const inboxByApprovalId = new Map<number, (typeof inboxRows)[number]>()
+  for (const item of inboxRows) {
+    if (item.approvalId && item.status === 'pending') {
+      inboxByApprovalId.set(item.approvalId, item)
+    }
+  }
+
   const monitoring = submissions.map((submission) => {
-    const relatedApprovals = approvalRows.filter((approval) => approval.submissionId === submission.id)
+    const relatedApprovals = approvalsBySubmissionId.get(submission.id) ?? []
     const pendingApproval = relatedApprovals.find((approval) => normalizeStatus(approval.status) === 'pending')
-    const inbox = pendingApproval
-      ? inboxRows.find((item) => item.approvalId === pendingApproval.id && item.status === 'pending')
-      : null
+    const inbox = pendingApproval ? (inboxByApprovalId.get(pendingApproval.id) ?? null) : null
     const lastApproval = relatedApprovals[0]
     const pendingSince = pendingApproval?.submittedAt ?? submission.submittedAt ?? submission.updatedAt
     const dueAt = inbox?.dueAt ?? null
@@ -3760,55 +3902,25 @@ export async function getWorkflowStudioConsoleData() {
     }
   })
 
-  const csSiteRows = await db
-    .selectDistinct({ siteId: employees.siteId })
-    .from(employees)
-    .where(
-      and(
-        eq(employees.isActive, true),
-        isNotNull(employees.siteId),
-        or(
-          eq(employees.department, 'Central Services'),
-          eq(employees.department, 'Central Service'),
-          eq(employees.department, 'CENTRAL SERVICES')
-        )
-      )
-    )
-
-  const csDeptRow = await db
-    .select({ id: masterDepartments.id, headEmployeeId: masterDepartments.headEmployeeId })
-    .from(masterDepartments)
-    .where(or(eq(masterDepartments.name, 'Central Services'), eq(masterDepartments.name, 'Central Service')))
-    .limit(1)
-
   const csDeptId = csDeptRow[0]?.id ?? null
   const csDeptHeadId = csDeptRow[0]?.headEmployeeId ?? null
 
-  const csSectionsForDept = await db
-    .select({ id: masterSections.id, name: masterSections.name, headEmployeeId: masterSections.headEmployeeId, departmentId: masterSections.departmentId })
-    .from(masterSections)
-    .where(eq(masterSections.isActive, true))
-    .orderBy(asc(masterSections.departmentId), asc(masterSections.id))
-
-  // Approver per matrix, dikelompokkan berdasarkan role label
   const matrixApproverByRole = new Map<number, Record<string, number | null>>()
   for (const matrix of matrixRows) {
     const approvers: Record<string, number | null> = {}
-    for (const step of matrixSteps) {
-      if (step.matrixId !== matrix.id) continue
-      const node = nodeRows.find((row) => row.id === step.nodeId)
-      approvers[normalizeStatus(step.label)] = node?.employeeId ?? null
+    const steps = stepsByMatrixId.get(matrix.id) ?? []
+    for (const step of steps) {
+      const empId = step.nodeId ? (nodeEmployeeMap.get(step.nodeId) ?? null) : null
+      approvers[normalizeStatus(step.label)] = empId
     }
     matrixApproverByRole.set(matrix.id, approvers)
   }
 
-  // Approver per (site, section) dari matrix section yang aktif -> untuk auto-fill paling akurat
   const APPROVER_ROLES = ['leader', 'pjo', 'section_head', 'department_head'] as const
   const siteSectionApprovers: Record<
     string,
     { leaderId: number | null; pjoId: number | null; sectionHeadId: number | null; departmentHeadId: number | null }
   > = {}
-  // Default approver per section (nilai paling umum di semua site) untuk section yang belum punya matrix
   const sectionRoleCounts = new Map<number, Partial<Record<(typeof APPROVER_ROLES)[number], Map<number, number>>>>()
   for (const matrix of matrixRows) {
     if (!matrix.isActive || matrix.sectionId == null || matrix.siteId == null) continue
@@ -3832,9 +3944,7 @@ export async function getWorkflowStudioConsoleData() {
     }
   }
 
-  const mostCommonApprover = (
-    counts: Map<number, number> | undefined
-  ): number | null => {
+  const mostCommonApprover = (counts: Map<number, number> | undefined): number | null => {
     if (!counts || counts.size === 0) return null
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
     return sorted[0]?.[0] ?? null
@@ -3850,27 +3960,6 @@ export async function getWorkflowStudioConsoleData() {
       departmentHeadEmployeeId: csDeptHeadId ?? mostCommonApprover(roleCounts.department_head),
     }
   })
-
-  const siteSectionRows = csDeptId
-    ? await db
-        .select({
-          siteId: employees.siteId,
-          sectionId: employees.sectionId,
-        })
-        .from(employees)
-        .where(
-          and(
-            eq(employees.isActive, true),
-            isNotNull(employees.siteId),
-            isNotNull(employees.sectionId),
-            or(
-              eq(employees.department, 'Central Services'),
-              eq(employees.department, 'Central Service'),
-              eq(employees.department, 'CENTRAL SERVICES')
-            )
-          )
-        )
-    : []
 
   const siteSectionMap: Record<number, number[]> = {}
   for (const row of siteSectionRows) {
@@ -3956,39 +4045,13 @@ export async function getWorkflowStudioConsoleData() {
       })),
       sites: siteRows,
       employees: employeeRows,
-      departments: await db
-        .select({ id: masterDepartments.id, name: masterDepartments.name, headEmployeeId: masterDepartments.headEmployeeId })
-        .from(masterDepartments)
-        .where(eq(masterDepartments.isActive, true))
-        .orderBy(asc(masterDepartments.name)),
-      sections: await db
-        .select({
-          id: masterSections.id,
-          name: masterSections.name,
-          headEmployeeId: masterSections.headEmployeeId,
-          departmentId: masterSections.departmentId,
-          departmentName: masterDepartments.name,
-        })
-        .from(masterSections)
-        .leftJoin(masterDepartments, eq(masterSections.departmentId, masterDepartments.id))
-        .where(eq(masterSections.isActive, true))
-        .orderBy(asc(masterDepartments.name), asc(masterSections.name)),
+      departments: departmentRows,
+      sections: sectionRows,
       centralServiceSiteIds: csSiteRows.map((r) => r.siteId).filter((id): id is number => id !== null),
       csSections: csSectionsWithDefaults,
       siteSectionMap,
       siteSectionApprovers,
-      fiveRAreas: await db
-        .select({
-          id: fiveRMasterAreas.id,
-          name: fiveRMasterAreas.name,
-          siteId: fiveRMasterAreas.siteId,
-          picEmployeeId: fiveRMasterAreas.picEmployeeId,
-          picName: employees.name,
-        })
-        .from(fiveRMasterAreas)
-        .leftJoin(employees, eq(fiveRMasterAreas.picEmployeeId, employees.id))
-        .where(eq(fiveRMasterAreas.isActive, true))
-        .orderBy(asc(fiveRMasterAreas.siteId), asc(fiveRMasterAreas.name)),
+      fiveRAreas: fiveRAreaRows,
     },
     presets: presetsRows.map((p) => ({
       id: p.id,

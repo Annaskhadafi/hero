@@ -1,5 +1,5 @@
 import { db } from '@/db'
-import { cerNotificationConfigs } from '@/db/schema/cer'
+import { cerNotificationConfigs, cerWorkflowConfigs } from '@/db/schema/cer'
 import { employees } from '@/db/schema/hero'
 import { eq } from 'drizzle-orm'
 import { sendWorkflowEmail } from '@/lib/workflow-email'
@@ -56,52 +56,322 @@ export function formatRupiah(amount: number | string | null | undefined): string
   return new Intl.NumberFormat('id-ID').format(num)
 }
 
-/**
- * 1. Notifikasi Permohonan CER Baru Membutuhkan Approval
- */
-export async function sendCerSubmittedEmail(params: {
+// =========================================================================
+// TESTING GUARDRAIL (Sesuai instruksi user):
+// Selama proses pengetesan, semua notifikasi hingga PDF dialihkan ke:
+// Gilang Suryo Wirawan (gilang.suryo@chitraparatama.co.id)
+// =========================================================================
+export const CER_TESTING_RECIPIENT_OVERRIDE = 'gilang.suryo@chitraparatama.co.id'
+
+async function resolveTargetRecipients(originalRecipients: string | string[] | undefined): Promise<{
+  to: string[]
+  note: string
+}> {
+  const origList = (Array.isArray(originalRecipients) ? originalRecipients : [originalRecipients ?? '']).filter(Boolean)
+  try {
+    const [cfg] = await db
+      .select({
+        isTestingMode: cerWorkflowConfigs.isTestingMode,
+        testingRecipientEmail: cerWorkflowConfigs.testingRecipientEmail,
+      })
+      .from(cerWorkflowConfigs)
+      .limit(1)
+
+    if (cfg?.isTestingMode && cfg.testingRecipientEmail) {
+      return {
+        to: [cfg.testingRecipientEmail],
+        note: `[TESTING: Asli -> ${origList.join(', ')}] `,
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load cerWorkflowConfigs for email override:', err)
+  }
+
+  if (CER_TESTING_RECIPIENT_OVERRIDE) {
+    return {
+      to: [CER_TESTING_RECIPIENT_OVERRIDE],
+      note: `[TESTING: Asli -> ${origList.join(', ')}] `,
+    }
+  }
+
+  return {
+    to: origList,
+    note: '',
+  }
+}
+
+export interface SendCerSubmittedEmailParams {
   approverEmail: string
   approverName: string
   cerNumber: string
   subject: string
   applicantName: string
+  applicantSn?: string | null
+  applicantJobTitle?: string | null
   siteName: string
   departmentName: string
+  assetCategory?: string | null
+  purchaseType?: string | null
+  dateRequired?: string | null
+  vendorName?: string | null
+  budgetSource?: string | null
+  budgetCode?: string | null
+  budgetName?: string | null
+  purchasePurpose?: string | null
+  items?: Array<{
+    description: string
+    qty: number
+    pricePerUnit: number | string
+    totalPrice: number | string
+    allocation?: string | null
+    holderName?: string | null
+  }>
   totalEstimatedPrice: number | string
   approvalStep: string
   approvalUrl?: string
-}) {
+  cc?: string | string[]
+}
+
+export function buildCerSubmittedEmailHtml(params: SendCerSubmittedEmailParams, approvalLink: string): string {
+  const isDirectorStep =
+    Boolean(params.approvalStep && params.approvalStep.toLowerCase().includes('director')) ||
+    Boolean(params.approverName && params.approverName.toLowerCase().includes('director'))
+  const hasBoardSecretaryCc =
+    isDirectorStep ||
+    (Array.isArray(params.cc) ? params.cc.some((c) => c.includes('freshya')) : Boolean(params.cc?.includes('freshya')))
+
+  const renderedItemRows =
+    params.items && params.items.length > 0
+      ? params.items
+          .map(
+            (it, idx) => `
+        <tr style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fcfcfc;' : ''}">
+          <td style="padding:8px 10px;text-align:center;color:#64748b">${idx + 1}</td>
+          <td style="padding:8px 10px;font-weight:600;color:#0f172a">${it.description}</td>
+          <td style="padding:8px 10px;text-align:center;color:#334155">${it.qty}</td>
+          <td style="padding:8px 10px;text-align:right;color:#334155">Rp ${formatRupiah(it.pricePerUnit)}</td>
+          <td style="padding:8px 10px;text-align:right;font-weight:700;color:#0f172a">Rp ${formatRupiah(it.totalPrice)}</td>
+          <td style="padding:8px 10px;font-size:10px;color:#475569">
+            ${it.allocation ? `<span style="display:inline-block;padding:2px 5px;background:#ecfdf5;color:#065f46;border-radius:3px;font-weight:600">${it.allocation}</span>` : '-'}
+            ${it.holderName ? `<div style="margin-top:2px;color:#1e40af">&bull; ${it.holderName}</div>` : ''}
+          </td>
+        </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="6" style="padding:14px;text-align:center;color:#94a3b8">Tidak ada rincian item.</td></tr>`
+
+  return `
+<div style="margin:0;padding:0;background:#e5e7eb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e5e7eb;padding:24px 12px">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;border-collapse:separate;border-spacing:0;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.1);border:1px solid #cbd5e1">
+          <!-- Header Banner -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#020617 0%,#0f172a 60%,#1e3a8a 100%);padding:22px 28px">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td>
+                    <p style="margin:0;color:#93c5fd;font-size:11px;letter-spacing:.25em;text-transform:uppercase;font-weight:700">PT CHITRA PARATAMA</p>
+                    <h1 style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-.02em">Formulir Pengadaan Aset (CER)</h1>
+                  </td>
+                  <td align="right" style="vertical-align:middle">
+                    <span style="display:inline-block;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:6px 12px;color:#dbeafe;background:rgba(255,255,255,.1);font-size:11px;font-weight:700">CapEx Approval</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding:24px 28px">
+              <!-- Judul Form & Dokumen Info (Clean & Focused) -->
+              <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #e2e8f0">
+                <span style="display:inline-block;padding:3px 8px;border-radius:4px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:700;margin-bottom:6px">
+                  ${params.cerNumber}
+                </span>
+                <h2 style="margin:0 0 6px;color:#0f172a;font-size:18px;line-height:1.35;font-weight:800">
+                  ${params.subject}
+                </h2>
+                <div style="font-size:12px;color:#64748b">
+                  Tahap Persetujuan: <strong style="color:#2563eb">${params.approvalStep}</strong>
+                  ${hasBoardSecretaryCc ? ` &bull; <strong style="color:#4338ca">CC &amp; Co-Approval: Freshya Ochtovita (Board Secretary)</strong>` : ''}
+                </div>
+              </div>
+
+              <!-- Metadata Grid -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="font-size:12px;color:#334155;margin-bottom:20px;background:#f8fafc;border-radius:8px;padding:12px 16px;border:1px solid #e2e8f0">
+                <tr>
+                  <td style="padding:6px 0;width:140px;color:#64748b;font-weight:600">Pemohon</td>
+                  <td style="padding:6px 0;font-weight:700;color:#0f172a">: ${params.applicantName} ${params.applicantSn ? `(${params.applicantSn})` : ''} ${params.applicantJobTitle ? `&bull; ${params.applicantJobTitle}` : ''}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Departemen / Site</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.departmentName} &bull; ${params.siteName}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Kategori / Jenis</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.assetCategory || 'IT Device'} &bull; ${params.purchaseType || 'Baru'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Tgl. Dibutuhkan</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.dateRequired || '-'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Pemasok / Vendor</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.vendorName || '-'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Sumber Anggaran</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.budgetSource || 'Anggaran'} ${params.budgetCode ? `(${params.budgetCode} - ${params.budgetName})` : ''}</td>
+                </tr>
+              </table>
+
+              <!-- Tujuan / Justifikasi Pembelian -->
+              ${
+                params.purchasePurpose
+                  ? `
+              <div style="margin-bottom:20px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:6px">Tujuan &amp; Justifikasi Pembelian:</div>
+                <div style="padding:10px 14px;background:#f1f5f9;border-left:3px solid #2563eb;border-radius:4px;font-size:12px;line-height:1.6;color:#1e293b">
+                  ${params.purchasePurpose}
+                </div>
+              </div>`
+                  : ''
+              }
+
+              <!-- Rincian Unit Barang / CapEx Items Table -->
+              <div style="margin-bottom:20px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:8px">Rincian Unit Barang (CapEx Items):</div>
+                <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;font-size:11px;width:100%;border:1px solid #e2e8f0">
+                  <thead>
+                    <tr style="background:#0f172a;color:#ffffff;text-align:left">
+                      <th style="padding:8px 10px;width:30px;text-align:center">No</th>
+                      <th style="padding:8px 10px">Deskripsi Barang</th>
+                      <th style="padding:8px 10px;text-align:center;width:40px">Qty</th>
+                      <th style="padding:8px 10px;text-align:right;width:100px">Harga Satuan</th>
+                      <th style="padding:8px 10px;text-align:right;width:110px">Total Harga</th>
+                      <th style="padding:8px 10px">Alokasi &amp; Holder</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${renderedItemRows}
+                  </tbody>
+                  <tfoot>
+                    <tr style="background:#f8fafc;font-weight:700;border-top:2px solid #cbd5e1">
+                      <td colspan="4" style="padding:10px;text-align:right;font-size:12px;color:#0f172a">TOTAL ESTIMASI BIAYA:</td>
+                      <td style="padding:10px;text-align:right;font-size:13px;color:#059669;font-weight:800">Rp ${formatRupiah(params.totalEstimatedPrice)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <!-- Action Button & CTA -->
+              <div style="text-align:center;margin:28px 0 16px">
+                <a href="${approvalLink}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:13px;font-weight:700;box-shadow:0 4px 10px rgba(37,99,235,0.25)">
+                  Buka Inbox Approval &amp; Review Dokumen &rarr;
+                </a>
+              </div>
+              <p style="text-align:center;margin:0 0 16px;font-size:11px;color:#64748b">
+                Tautan langsung: <a href="${approvalLink}" style="color:#2563eb;word-break:break-all">${approvalLink}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8fafc;padding:16px 28px;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;text-align:center">
+              Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>`
+}
+
+/**
+ * 1. Notifikasi Permohonan CER Baru Membutuhkan Approval
+ */
+export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = params.approvalUrl || `${baseUrl}/dashboard/approval`
+  const target = await resolveTargetRecipients(params.approverEmail)
 
-  // Send Workflow Email
+  const isDirectorStep =
+    Boolean(params.approvalStep && params.approvalStep.toLowerCase().includes('director')) ||
+    Boolean(params.approverName && params.approverName.toLowerCase().includes('director'))
+
+  // If Director step, ensure Freshya Ochtovita (Board Secretary) is CC'ed
+  let resolvedCc = params.cc
+  if (isDirectorStep) {
+    const freshyaEmail = 'freshya.ochtovita@chitraparatama.co.id'
+    if (Array.isArray(resolvedCc)) {
+      if (!resolvedCc.includes(freshyaEmail)) resolvedCc = [...resolvedCc, freshyaEmail]
+    } else if (typeof resolvedCc === 'string') {
+      if (!resolvedCc.includes(freshyaEmail)) resolvedCc = [resolvedCc, freshyaEmail]
+    } else {
+      resolvedCc = [freshyaEmail]
+    }
+  }
+
+  const cleanSubject = `${target.note}[CER Approval] ${params.cerNumber} - ${params.subject} (${params.approvalStep})`
+  const emailHtml = buildCerSubmittedEmailHtml({ ...params, cc: resolvedCc }, approvalLink)
+
+  // Send Workflow Email with Full HTML Content
   await sendWorkflowEmail({
-    to: params.approverEmail,
+    to: target.to,
+    cc: CER_TESTING_RECIPIENT_OVERRIDE ? undefined : resolvedCc,
     templateCode: 'cer_request_submitted',
     templateName: 'Pengajuan CER Baru Membutuhkan Approval',
     variables: {
       cerNumber: params.cerNumber,
       subject: params.subject,
       applicantName: params.applicantName,
+      applicantSn: params.applicantSn || '',
+      applicantJobTitle: params.applicantJobTitle || '',
       siteName: params.siteName,
       departmentName: params.departmentName,
+      assetCategory: params.assetCategory || 'IT Device',
+      purchaseType: params.purchaseType || 'Baru',
+      dateRequired: params.dateRequired || '-',
+      vendorName: params.vendorName || '-',
+      budgetSource: params.budgetSource || 'Anggaran',
+      budgetCode: params.budgetCode || '',
+      budgetName: params.budgetName || '',
       totalEstimatedPrice: formatRupiah(params.totalEstimatedPrice),
       approvalStep: params.approvalStep,
       approvalLink,
     },
-    fallbackSubject: `[CER Approval] Permohonan Baru ${params.cerNumber} - ${params.subject} (${params.applicantName})`,
-    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) oleh ${params.applicantName} membutuhkan approval Anda pada tahap ${params.approvalStep}. Buka link: ${approvalLink}`,
+    fallbackSubject: cleanSubject,
+    fallbackHtml: emailHtml,
+    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) oleh ${params.applicantName} membutuhkan persetujuan Anda pada tahap ${params.approvalStep}. Total: Rp ${formatRupiah(params.totalEstimatedPrice)}. Buka link: ${approvalLink}`,
   })
 
-  // Bell Notification
+  // Bell Notification to primary approver
   await notifyWorkflowBellRecipients({
-    recipientEmails: [params.approverEmail],
+    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.approverEmail],
     eventType: 'cer.approval_needed',
     category: 'approval_requests',
     title: `Persetujuan CER: ${params.cerNumber}`,
     body: `Permohonan CER "${params.subject}" dari ${params.applicantName} memerlukan persetujuan Anda (${params.approvalStep}).`,
     url: approvalLink,
   })
+
+  // Bell Notification to Freshya if Director step
+  if (isDirectorStep) {
+    await notifyWorkflowBellRecipients({
+      recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || 'freshya.ochtovita@chitraparatama.co.id'],
+      eventType: 'cer.approval_needed',
+      category: 'approval_requests',
+      title: `Persetujuan CER (Director): ${params.cerNumber}`,
+      body: `Permohonan CER "${params.subject}" dari ${params.applicantName} memerlukan persetujuan Director. Sebagai Board Secretary, Anda di-CC dan memiliki akses untuk menyetujui dokumen ini.`,
+      url: approvalLink,
+    }).catch((err) => console.error('[cer] Bell notify Board Secretary error:', err))
+  }
 }
 
 /**
@@ -118,9 +388,10 @@ export async function sendCerRevisionRequestedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const editLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}&action=edit`
+  const target = await resolveTargetRecipients(params.applicantEmail)
 
   await sendWorkflowEmail({
-    to: params.applicantEmail,
+    to: target.to,
     templateCode: 'cer_revision_requested',
     templateName: 'Pengajuan CER Perlu Revisi',
     variables: {
@@ -131,12 +402,12 @@ export async function sendCerRevisionRequestedEmail(params: {
       revertNote: params.revertNote,
       editLink,
     },
-    fallbackSubject: `[CER Revisi] Permohonan ${params.cerNumber} Memerlukan Perbaikan - ${params.subject}`,
+    fallbackSubject: `${target.note}[CER Revisi] ${params.cerNumber} - ${params.subject}`,
     fallbackText: `Permohonan CER ${params.cerNumber} dikembalikan untuk revisi oleh ${params.revertedByName} dengan catatan: "${params.revertNote}". Silakan perbarui: ${editLink}`,
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [params.applicantEmail],
+    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
     eventType: 'cer.revision_needed',
     category: 'approval_requests',
     title: `Revisi CER: ${params.cerNumber}`,
@@ -158,9 +429,10 @@ export async function sendCerResubmittedEmail(params: {
 }) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = params.approvalUrl || `${baseUrl}/dashboard/approval`
+  const target = await resolveTargetRecipients(params.approverEmail)
 
   await sendWorkflowEmail({
-    to: params.approverEmail,
+    to: target.to,
     templateCode: 'cer_resubmitted',
     templateName: 'Pengajuan CER Telah Diperbaiki (Resubmitted)',
     variables: {
@@ -169,12 +441,12 @@ export async function sendCerResubmittedEmail(params: {
       applicantName: params.applicantName,
       approvalLink,
     },
-    fallbackSubject: `[CER Resubmitted] Permohonan ${params.cerNumber} Telah Diperbaiki - ${params.subject}`,
+    fallbackSubject: `${target.note}[CER Resubmitted] ${params.cerNumber} - ${params.subject}`,
     fallbackText: `Pemohon ${params.applicantName} telah memperbaiki dan mengirimkan kembali permohonan CER ${params.cerNumber}. Silakan periksa di: ${approvalLink}`,
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [params.approverEmail],
+    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.approverEmail],
     eventType: 'cer.resubmitted',
     category: 'approval_requests',
     title: `CER Diperbaiki: ${params.cerNumber}`,
@@ -204,14 +476,20 @@ export async function sendCerFullApprovedEmail(params: {
   const config = await getCerNotificationConfig()
   const viewLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}`
 
-  // Determine Procurement email (site override or default)
-  let procurementTarget = config.procurementEmail
-  if (params.siteId && config.procurementSiteOverrides[String(params.siteId)]) {
-    procurementTarget = config.procurementSiteOverrides[String(params.siteId)]
-  }
+  // Sesuai requirement resmi:
+  // To: Abdul Rajab & Sofyan Darmawan (Procurement)
+  // CC: Aulia Riski Walidina, Evo Dwi (Finance), dan Pemohon CER
+  const primaryRecipients = [
+    'abdul.rajab@chitraparatama.co.id',
+    'sofyan.darmawan@chitraparatama.co.id',
+  ]
+  const ccEmails = [
+    'aulia.walidina@chitraparatama.co.id',
+    'evo.yulianti@chitraparatama.co.id',
+    params.applicantEmail,
+  ].filter(Boolean)
 
-  const recipients = Array.from(new Set([procurementTarget, params.applicantEmail].filter(Boolean)))
-  const ccEmails = [config.evoDwiEmail].filter(Boolean)
+  const target = await resolveTargetRecipients(primaryRecipients)
 
   const attachments: EmailAttachment[] = []
   if (params.pdfBuffer) {
@@ -223,8 +501,8 @@ export async function sendCerFullApprovedEmail(params: {
   }
 
   await sendWorkflowEmail({
-    to: recipients,
-    cc: ccEmails,
+    to: target.to,
+    cc: CER_TESTING_RECIPIENT_OVERRIDE ? undefined : ccEmails,
     templateCode: 'cer_full_approved',
     templateName: 'Pengajuan CER Full Approved (Dokumen Resmi Terbit)',
     variables: {
@@ -237,17 +515,59 @@ export async function sendCerFullApprovedEmail(params: {
       pdfDownloadUrl: params.pdfUrl || viewLink,
       viewLink,
     },
-    fallbackSubject: `[CER Full Approved] ${params.cerNumber} - ${params.subject} (Dokumen Terbit)`,
+    fallbackSubject: `${target.note}[CER Full Approved] ${params.cerNumber} - ${params.subject} (Dokumen Terbit)`,
     fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) telah disetujui penuh (Full Approved). Dokumen terlampir. Tautan: ${viewLink}`,
     attachments: attachments.length > 0 ? attachments : undefined,
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: recipients.concat(ccEmails),
+    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
     eventType: 'cer.full_approved',
     category: 'approval_requests',
     title: `CER Full Approved: ${params.cerNumber}`,
     body: `Permohonan CER "${params.subject}" telah disetujui penuh oleh Direksi. Dokumen resmi telah terbit.`,
+    url: viewLink,
+  })
+}
+
+/**
+ * 4b. Notifikasi Pengajuan CER Ditolak (Rejected)
+ */
+export async function sendCerRejectedEmail(params: {
+  applicantEmail: string
+  applicantName: string
+  cerNumber: string
+  subject: string
+  rejectedByName: string
+  rejectReason: string
+  cerId: number
+}) {
+  const baseUrl = getPublicAppUrl()
+  const viewLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}`
+  const target = await resolveTargetRecipients(params.applicantEmail)
+
+  await sendWorkflowEmail({
+    to: target.to,
+    templateCode: 'cer_rejected',
+    templateName: 'Pengajuan CER Ditolak',
+    variables: {
+      cerNumber: params.cerNumber,
+      subject: params.subject,
+      applicantName: params.applicantName,
+      rejectedByName: params.rejectedByName,
+      rejectReason: params.rejectReason,
+      viewLink,
+    },
+    fallbackSubject: `${target.note}[CER Ditolak] Permohonan ${params.cerNumber} - ${params.subject}`,
+    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) telah ditolak oleh ${params.rejectedByName} dengan alasan: "${params.rejectReason}". Anggaran terkait telah dibebaskan kembali. Buka tautan: ${viewLink}`,
+  })
+
+  await notifyWorkflowBellRecipients({
+    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
+    eventType: 'cer.rejected',
+    category: 'approval_requests',
+    title: `CER Ditolak: ${params.cerNumber}`,
+    body: `Permohonan CER "${params.subject}" ditolak oleh ${params.rejectedByName}: "${params.rejectReason}".`,
     url: viewLink,
   })
 }

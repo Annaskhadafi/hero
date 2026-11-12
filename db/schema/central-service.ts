@@ -16,7 +16,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import { user } from '@/db/schema/auth'
-import { sites } from '@/db/schema/hero'
+import { sites, employees } from '@/db/schema/hero'
 
 export const centralServiceEmployees = pgTable(
   'hero_central_service_employees',
@@ -117,6 +117,7 @@ export const centralServiceAssets = pgTable(
     section: text('section').notNull().default(''),
     location: text('location').notNull().default(''),
     description: text('description').notNull().default(''),
+    holderEmployeeId: integer('holder_employee_id').references(() => employees.id, { onDelete: 'set null' }),
     assetNumber: text('asset_number'),
     serialNumber: text('serial_number'),
     purchaseDate: timestamp('purchase_date'),
@@ -128,6 +129,7 @@ export const centralServiceAssets = pgTable(
     certificateCycleMonths: integer('certificate_cycle_months'),
     certificateDueDate: timestamp('certificate_due_date'),
     condition: text('condition').notNull().default(''),
+    status: text('status').notNull().default('ACTIVE'),
     qty: integer('qty').notNull().default(1),
     remarks: text('remarks'),
     createdAt: timestamp('created_at').notNull().defaultNow(),

@@ -36,7 +36,7 @@ export interface HeroFormDialogProps {
   submitLabel?: string
   cancelLabel?: string
   isSubmitting?: boolean
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '5xl'
 }
 
 export function HeroFormDialog({
@@ -58,6 +58,8 @@ export function HeroFormDialog({
     lg: 'max-w-lg',
     xl: 'max-w-xl',
     '2xl': 'max-w-2xl',
+    '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
   }[maxWidth]
 
   const handleCancel = () => {
@@ -118,13 +120,15 @@ export interface HeroConfirmDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description: React.ReactNode
+  description?: React.ReactNode
   confirmLabel?: string
   cancelLabel?: string
   tone?: HeroConfirmTone
   isProcessing?: boolean
+  confirmDisabled?: boolean
   onConfirm: () => void
   onCancel?: () => void
+  children?: React.ReactNode
 }
 
 export function HeroConfirmDialog({
@@ -136,8 +140,10 @@ export function HeroConfirmDialog({
   cancelLabel = 'Batal',
   tone = 'destructive',
   isProcessing = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
+  children,
 }: HeroConfirmDialogProps) {
   const icon = {
     destructive: <AlertCircle className="size-5 text-rose-600" />,
@@ -155,16 +161,20 @@ export function HeroConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm p-6">
+      <DialogContent className="max-w-md p-6">
         <DialogHeader>
           <div className="flex items-center gap-2.5">
             {icon}
             <DialogTitle className="text-base font-bold text-slate-900">{title}</DialogTitle>
           </div>
-          <DialogDescription className="pt-1.5 text-xs text-slate-600">
-            {description}
-          </DialogDescription>
+          {description && (
+            <DialogDescription className="pt-1.5 text-xs text-slate-600">
+              {description}
+            </DialogDescription>
+          )}
         </DialogHeader>
+
+        {children && <div className="py-2">{children}</div>}
 
         <DialogFooter className="mt-4 gap-2">
           <Button
@@ -181,9 +191,12 @@ export function HeroConfirmDialog({
             type="button"
             variant={buttonVariant}
             size="dense"
-            disabled={isProcessing}
+            disabled={isProcessing || confirmDisabled}
             onClick={onConfirm}
-            className="h-9 px-4 font-semibold"
+            className={cn(
+              'h-9 px-4 font-semibold',
+              tone === 'success' && 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            )}
           >
             {isProcessing ? 'Memproses...' : confirmLabel}
           </Button>
