@@ -65,6 +65,23 @@ export function buildDynamicApdColumns(masterItems?: Array<{ name: string; isQty
   return { qtyOnlyCols, allCols };
 }
 
+/**
+ * Formats APD item names for compact, high-contrast, non-overflowing table headers in print/PDF.
+ * Replaces excessively long multi-word names with clean, standard abbreviations while maintaining 100% clarity.
+ */
+export function formatApdItemColHeader(name: string): string {
+  if (!name) return '';
+  return name
+    .replace(/^Sarung Tangan Kleenguard.*$/i, 'S. Tangan Kleenguard')
+    .replace(/^Sarung Tangan Kulit.*$/i, 'S. Tangan Kulit')
+    .replace(/^Sarung Tangan Ansel.*$/i, 'S. Tangan Ansell')
+    .replace(/^Sarung Tangan Dotting.*$/i, 'S. Tangan Dotting')
+    .replace(/^Cotton Filter Respirator.*$/i, 'Cotton Filter Resp.')
+    .replace(/^Tudung Kepala \/ Kupluk.*$/i, 'Tudung Kupluk')
+    .replace(/^Helmet \+ Face Shield.*$/i, 'Helmet Face Shield')
+    .replace(/^Jaket & Kacamata Welder.*$/i, 'Jaket Welder');
+}
+
 export type PendingSummaryRequestItem = {
   id: number;
   itemType: string;

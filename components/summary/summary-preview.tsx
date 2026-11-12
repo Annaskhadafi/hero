@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  ExternalLink,
   FilePenLine,
   FileText,
   Info,
@@ -35,6 +36,7 @@ import {
   SAFETY_SHOES_COL,
   SAFETY_SHOES_MASA_PAKAI_PRESETS,
   buildDynamicApdColumns,
+  formatApdItemColHeader,
 } from '@/lib/summary-constants';
 
 type SummaryData = {
@@ -99,12 +101,12 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     const iframe = document.createElement('iframe');
     iframe.id = 'summary-print-iframe';
     iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
+    iframe.style.left = '-9999px';
+    iframe.style.top = '0';
+    iframe.style.width = '297mm';
+    iframe.style.height = '210mm';
     iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
+    iframe.style.opacity = '0';
     iframe.src = `/print/summary/${data.id}`;
 
     iframe.onload = () => {
@@ -330,36 +332,86 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const empCount = employees.length;
   const colCount = dynamicQtyCols.length;
   const isDense = empCount > 9;
-  const isUltraDense = empCount > 15;
-  const isWideTable = colCount > 20;
+  const isUltraDense = empCount > 17;
+  const isExtremeDense = empCount > 23;
 
-  const thFontSize = isWideTable ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
-  const tdFontSize = isWideTable ? '5pt' : isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
-  const itemHeaderFontSize = isWideTable ? '4.2pt' : isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
-  const padV = isUltraDense ? '1px' : isDense ? '1.5px' : '3px';
-  const padH = isWideTable ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
-  const remarksFontSize = isWideTable ? '4.8pt' : isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
+  // Calibrated font sizing — prevents microscopic text while fitting within A4 Landscape
+  const thFontSize = isExtremeDense ? '6.8pt' : isUltraDense ? '7pt' : '7.5pt';
+  const itemHeaderFontSize = isExtremeDense ? '5.4pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '6.8pt';
+  const qtyFontSize = isExtremeDense ? '7.5pt' : isUltraDense ? '8pt' : '8.5pt';
+  const textFontSize = isExtremeDense ? '7pt' : isUltraDense ? '7.2pt' : '7.5pt';
+  const remarksFontSize = isExtremeDense ? '6.2pt' : isUltraDense ? '6.5pt' : '7pt';
 
-  const sigContainerHeight = isUltraDense ? '32px' : isDense ? '38px' : '44px';
-  const sigImgHeight = isUltraDense ? '28px' : isDense ? '34px' : '40px';
+  const padV = isExtremeDense ? '1px' : isUltraDense ? '1.5px' : isDense ? '2px' : '3px';
+  const padH = '1px';
+  const rowHeight = isExtremeDense ? '15px' : isUltraDense ? '17px' : isDense ? '19px' : '22px';
 
-  const th: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: thFontSize, background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.1' };
-  const td: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: tdFontSize, textAlign: 'center', lineHeight: '1.1' };
-  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '3px' };
-  const thItem: React.CSSProperties = { ...th, fontSize: itemHeaderFontSize, paddingTop: '1px', paddingBottom: '1px', paddingLeft: '1px', paddingRight: '1px', lineHeight: '1.05', wordBreak: 'break-word', whiteSpace: 'normal', verticalAlign: 'middle' };
+  const sigContainerHeight = isExtremeDense ? '28px' : isUltraDense ? '32px' : '38px';
+  const sigImgHeight = isExtremeDense ? '24px' : isUltraDense ? '28px' : '34px';
+
+  const th: React.CSSProperties = { 
+    border: '1px solid #000', 
+    paddingTop: padV, 
+    paddingBottom: padV, 
+    paddingLeft: padH, 
+    paddingRight: padH, 
+    fontSize: thFontSize, 
+    background: '#f1f5f9', 
+    textAlign: 'center', 
+    fontWeight: 'bold', 
+    lineHeight: '1.15',
+    boxSizing: 'border-box'
+  };
+  const td: React.CSSProperties = { 
+    border: '1px solid #000', 
+    paddingTop: padV, 
+    paddingBottom: padV, 
+    paddingLeft: padH, 
+    paddingRight: padH, 
+    fontSize: qtyFontSize, 
+    textAlign: 'center', 
+    lineHeight: '1.15',
+    boxSizing: 'border-box'
+  };
+  const tdL: React.CSSProperties = { 
+    ...td, 
+    textAlign: 'left', 
+    paddingLeft: '3px',
+    fontSize: textFontSize 
+  };
+  const thItem: React.CSSProperties = { 
+    ...th, 
+    fontSize: itemHeaderFontSize, 
+    paddingTop: '2px', 
+    paddingBottom: '2px', 
+    paddingLeft: '1px', 
+    paddingRight: '1px', 
+    lineHeight: '1.05', 
+    wordBreak: 'break-word', 
+    overflowWrap: 'break-word',
+    hyphens: 'auto',
+    whiteSpace: 'normal', 
+    verticalAlign: 'middle' 
+  };
 
   const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items to fit single page
+  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items
   const targetTotalRows = isDense ? empCount : 10;
   const displayLimit = Math.max(employees.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - employees.length);
 
+  // Column width allocations (calibrated for A4 Landscape ~281mm printable width)
+  const colWidthName = isExtremeDense ? '90px' : isUltraDense ? '95px' : '105px';
+  const colWidthSite = isExtremeDense ? '44px' : isUltraDense ? '48px' : '55px';
+  const colWidthRemarks = isExtremeDense ? '65px' : isUltraDense ? '70px' : '80px';
+
   // Renders the document sheet (identical to print document)
   const renderDocumentContent = (isForExport = false) => (
     <div
+      id="summary-document-printable"
       className={`bg-white text-black select-none ${
-        isForExport ? 'w-[1050px] p-5' : 'w-full p-6 sm:p-8 min-w-[950px]'
+        isForExport ? 'w-[1050px] p-5' : 'w-full p-4 sm:p-6 min-w-[950px]'
       }`}
       style={{
         fontFamily: 'Arial, sans-serif',
@@ -373,21 +425,21 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       }}
     >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: isExtremeDense ? '4px' : '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: '38px', width: 'auto' }} />
+          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: isExtremeDense ? '30px' : '34px', width: 'auto' }} />
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2' }}>
+        <div style={{ textAlign: 'right', paddingRight: '2px' }}>
+          <div style={{ fontSize: isExtremeDense ? '10.5pt' : '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2' }}>
             Summary Permintaan Barang Safety
             {data.targetSite === 'VALE' && <span style={{ color: '#ea580c' }}> (Vale)</span>}
             {data.targetSite === 'GABUNGAN' && <span style={{ color: '#2563eb' }}> (Gabungan Site)</span>}
           </div>
-          <div style={{ fontSize: '9pt', fontWeight: 'bold', marginTop: '2px', color: '#333' }}>{data.sectionName}</div>
+          <div style={{ fontSize: isExtremeDense ? '8.5pt' : '9pt', fontWeight: 'bold', marginTop: '1px', color: '#333' }}>{data.sectionName}</div>
         </div>
       </div>
 
-      <div style={{ fontSize: '7.5pt', marginBottom: '8px', lineHeight: '1.3', color: '#111' }}>
+      <div style={{ fontSize: isExtremeDense ? '6.8pt' : '7.2pt', marginBottom: isExtremeDense ? '4px' : '6px', lineHeight: '1.25', color: '#111' }}>
         <div><strong>Tanggal Pengajuan:</strong> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</div>
         {data.periodStart && data.periodEnd && (
           <div>
@@ -400,59 +452,75 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       </div>
 
       {/* Table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '4px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
+        <colgroup>
+          <col style={{ width: '22px' }} />
+          <col style={{ width: colWidthName }} />
+          <col style={{ width: '36px' }} />
+          {dynamicQtyCols.map((c) => (
+            <col key={c} />
+          ))}
+          <col style={{ width: '22px' }} />
+          <col style={{ width: '26px' }} />
+          <col style={{ width: '38px' }} />
+          <col style={{ width: colWidthSite }} />
+          <col style={{ width: colWidthRemarks }} />
+          <col style={{ width: '50px' }} className="print-hidden print:hidden" />
+        </colgroup>
         <thead>
           <tr>
-            <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
-            <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
-            <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
+            <th style={th} rowSpan={2}>No</th>
+            <th style={th} rowSpan={2}>Nama Karyawan</th>
+            <th style={th} rowSpan={2}>SN</th>
             {dynamicQtyCols.map(c => (
-              <th key={c} style={thItem} rowSpan={2}>
-                {c}
+              <th key={c} style={thItem} rowSpan={2} title={c}>
+                {formatApdItemColHeader(c)}
               </th>
             ))}
             <th style={th} colSpan={3}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
-            <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
-            <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
+            <th style={th} rowSpan={2}>Site</th>
+            <th style={th} rowSpan={2}>Remarks</th>
+            <th style={th} className="print-hidden print:hidden" rowSpan={2}>Dokumen</th>
           </tr>
           <tr>
-            <th style={{ ...th, width: '22px' }}>QTY</th>
-            <th style={{ ...th, width: '26px' }}>Size</th>
-            <th style={{ ...th, width: '42px' }}>Masa Pakai</th>
+            <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>QTY</th>
+            <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>Size</th>
+            <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>Masa Pakai</th>
           </tr>
         </thead>
         <tbody>
           {employees.slice(0, displayLimit).map((e, i) => (
-            <tr key={i} style={{ height: '18px' }}>
-              <td style={td}>{i + 1}</td>
+            <tr key={i} style={{ height: rowHeight }}>
+              <td style={{ ...td, fontSize: textFontSize }}>{i + 1}</td>
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
-              <td style={td}>{e.sn}</td>
+              <td style={{ ...td, fontSize: textFontSize }}>{e.sn}</td>
               {dynamicQtyCols.map(c => (
-                <td key={c} style={td}>{e.items[c] || ''}</td>
+                <td key={c} style={{ ...td, fontWeight: 'bold' }}>{e.items[c] || ''}</td>
               ))}
-              <td style={td}>{e.items['Safety Shoes'] || ''}</td>
-              <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
-              <td style={{ ...td, fontSize: '6.5pt', padding: '1px' }}>
+              <td style={{ ...td, fontWeight: 'bold' }}>{e.items['Safety Shoes'] || ''}</td>
+              <td style={{ ...td, fontSize: textFontSize }}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : '6.8pt', padding: '1px' }}>
                 {e.items['Safety Shoes'] ? (
                   (data.status === 'draft' || data.status === 'revisi') ? (
                     <>
-                      <input
-                        list="masa-pakai-presets-preview"
-                        defaultValue={e.items['Safety Shoes Masa Pakai'] || ''}
-                        onBlur={(ev) =>
-                          handleMasaPakaiChange(
-                            e.employeeId || 0,
-                            e.apdRequestId,
-                            ev.target.value,
-                            e.items['Safety Shoes Masa Pakai']
-                          )
-                        }
-                        className="print:hidden w-full text-center text-[7px] border border-blue-200 focus:border-blue-500 rounded px-0.5 py-0.5 bg-blue-50/40 text-slate-900 font-medium"
-                        placeholder="Masa pakai"
-                        title="Klik untuk memilih / mengubah masa pakai safety shoes"
-                      />
-                      <span className="hidden print:inline">
+                      <div className="print-hidden print:hidden w-full">
+                        <input
+                          list="masa-pakai-presets-preview"
+                          defaultValue={e.items['Safety Shoes Masa Pakai'] || ''}
+                          onBlur={(ev) =>
+                            handleMasaPakaiChange(
+                              e.employeeId || 0,
+                              e.apdRequestId,
+                              ev.target.value,
+                              e.items['Safety Shoes Masa Pakai']
+                            )
+                          }
+                          className="w-full text-center text-[7px] border border-blue-200 focus:border-blue-500 rounded px-0.5 py-0.5 bg-blue-50/40 text-slate-900 font-medium"
+                          placeholder="Masa pakai"
+                          title="Klik untuk memilih / mengubah masa pakai safety shoes"
+                        />
+                      </div>
+                      <span className="hidden print:inline font-medium">
                         {e.items['Safety Shoes Masa Pakai'] || '—'}
                       </span>
                     </>
@@ -463,21 +531,21 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                   <span className="text-slate-400">—</span>
                 )}
               </td>
-              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : '6.8pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
               <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
                 <div style={{
-                  maxHeight: isUltraDense ? '22px' : isDense ? '28px' : '36px',
+                  maxHeight: isExtremeDense ? '20px' : isUltraDense ? '24px' : isDense ? '28px' : '36px',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   display: '-webkit-box',
-                  WebkitLineClamp: isUltraDense ? 2 : isDense ? 3 : 4,
+                  WebkitLineClamp: isExtremeDense ? 1 : isUltraDense ? 2 : isDense ? 3 : 4,
                   WebkitBoxOrient: 'vertical',
                   wordBreak: 'break-word',
                 }}>
                   {e.remarks || '—'}
                 </div>
               </td>
-              <td style={{ ...td, padding: '1px' }} className="print:hidden">
+              <td style={{ ...td, padding: '1px' }} className="print-hidden print:hidden">
                 <div className="flex items-center justify-center gap-1 px-0.5">
                   {e.apdRequestId ? (
                     <button
@@ -512,25 +580,25 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             </tr>
           ))}
           {Array.from({ length: emptyRowCount }).map((_, i) => (
-            <tr key={`e${i}`} style={{ height: '18px' }}>
-              <td style={td}>{employees.length + i + 1}</td>
+            <tr key={`e${i}`} style={{ height: rowHeight }}>
+              <td style={{ ...td, fontSize: textFontSize }}>{employees.length + i + 1}</td>
               {Array.from({ length: dynamicQtyCols.length + 7 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
-              <td style={td} className="print:hidden"></td>
+              <td style={td} className="print-hidden print:hidden"></td>
             </tr>
           ))}
-          <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
-            <td style={td} colSpan={3}>Total Qty</td>
+          <tr style={{ background: '#e2e8f0', fontWeight: 'bold', height: rowHeight }}>
+            <td style={{ ...td, fontSize: textFontSize, fontWeight: 'bold' }} colSpan={3}>Total Qty</td>
             {dynamicQtyCols.map(c => (
-              <td key={c} style={td}>{totals[c] || ''}</td>
+              <td key={c} style={{ ...td, fontWeight: 'bold' }}>{totals[c] || ''}</td>
             ))}
-            <td style={td}>{totals['Safety Shoes'] || ''}</td>
-            <td style={td}>—</td>
-            <td style={td}>—</td>
-            <td style={td}>—</td>
-            <td style={td}>—</td>
-            <td style={td} className="print:hidden">—</td>
+            <td style={{ ...td, fontWeight: 'bold' }}>{totals['Safety Shoes'] || ''}</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }} className="print-hidden print:hidden">—</td>
           </tr>
         </tbody>
       </table>
@@ -562,17 +630,17 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         };
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isUltraDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isExtremeDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
             {/* Diajukan Oleh */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
                   {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
-              <div style={{ fontSize: '6.5pt', color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
+              <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
               {data.generatedAt && (
                 <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(data.generatedAt)}</div>
               )}
@@ -597,14 +665,14 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 })();
                 return (
                   <div key={appr.id || idx}>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                    <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                       <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
                         {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                       </div>
                     </div>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
-                    <div style={{ fontSize: '6.5pt', color: '#444' }}>{roleDisplay}</div>
+                    <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
+                    <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>{roleDisplay}</div>
                     {appr.reviewedAt && (
                       <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(appr.reviewedAt)}</div>
                     )}
@@ -616,25 +684,25 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               })
             ) : (
               <div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                   <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
                 </div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>.............</div>
-                <div style={{ fontSize: '6.5pt', color: '#444' }}>(Section Head — {data.sectionName})</div>
+                <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>.............</div>
+                <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>(Section Head — {data.sectionName})</div>
               </div>
             )}
 
             {/* Disetujui Oleh (Department Head) */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
                   {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
-              <div style={{ fontSize: '6.5pt', color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
+              <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
               {deptHead?.reviewedAt && (
                 <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(deptHead.reviewedAt)}</div>
               )}
@@ -650,6 +718,51 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
   return (
     <div className="space-y-5 max-w-7xl mx-auto">
+      <style>{`
+        @page {
+          size: A4 landscape;
+          margin: 5mm 7mm;
+        }
+        @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          /* Hide non-printable dashboard elements */
+          body > *:not(#summary-print-iframe) {
+            visibility: hidden !important;
+          }
+          #summary-document-printable,
+          #summary-document-printable * {
+            visibility: visible !important;
+          }
+          #summary-document-printable {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            overflow: visible !important;
+          }
+          .print-hidden,
+          .print\\:hidden {
+            display: none !important;
+            width: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+          }
+        }
+      `}</style>
+
       {/* Top Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex items-center gap-3">
@@ -677,6 +790,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             onClick={handlePrintInPlace}
             disabled={printing}
             className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer shadow-2xs"
+            title="Cetak langsung dokumen resmi A4 Landscape"
           >
             {printing ? (
               <Loader2 className="size-3.5 animate-spin text-emerald-600" />
@@ -685,6 +799,17 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             )}
             <span>Cetak PDF</span>
           </Button>
+
+          {/* Buka Tab Cetak Baru */}
+          <a
+            href={`/print/summary/${data.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center size-9 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+            title="Buka halaman cetak resmi di tab baru"
+          >
+            <ExternalLink className="size-4" />
+          </a>
 
           {/* Hapus Draft / Pending / Revisi / Rejected */}
           {(data.status === 'draft' ||

@@ -67,12 +67,12 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
     const iframe = document.createElement('iframe');
     iframe.id = 'summary-print-iframe';
     iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
+    iframe.style.left = '-9999px';
+    iframe.style.top = '0';
+    iframe.style.width = '297mm';
+    iframe.style.height = '210mm';
     iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
+    iframe.style.opacity = '0';
     iframe.src = `/print/summary/${summaryId}`;
 
     iframe.onload = () => {
