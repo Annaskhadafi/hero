@@ -230,7 +230,7 @@ export function classifyItem(item: { section?: string; title: string; url: strin
   if (url.startsWith("/dashboard/repair-retread/wip-repair") || url === "/dashboard/repair-retread/form-wo" || url === "/dashboard/repair-retread/pattern-designer") {
     return { section: "Central Service", category: "DEPARTEMEN", groupLabel: "Repair & Retread" }
   }
-  if (url.startsWith("/dashboard/warehouse-repair") || url.startsWith("/dashboard/repair-retread/master-barang") || url.startsWith("/dashboard/repair-retread/stock-material") || url.startsWith("/dashboard/central-service/master-apd")) {
+  if (url.startsWith("/dashboard/warehouse-repair") || url.startsWith("/dashboard/repair-retread/master-barang") || url.startsWith("/dashboard/repair-retread/stock-material") || url.startsWith("/dashboard/central-service/master-apd") || url === "/dashboard/apd" || url.startsWith("/dashboard/apd/")) {
     return { section: "Central Service", category: "DEPARTEMEN", groupLabel: "Gudang & Material" }
   }
   if (url === "/dashboard/cargo-manifest" || url.startsWith("/dashboard/central-service/forecast") || url.startsWith("/dashboard/central-service/site-condition") || url === "/dashboard/central-service" || url === "/dashboard/central-service/refueling") {

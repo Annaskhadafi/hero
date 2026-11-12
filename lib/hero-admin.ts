@@ -121,7 +121,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'twibbon-marketing-v1'
+const HERO_GOVERNANCE_SEED_VERSION = 'central-service-apd-request-v1'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -1665,6 +1665,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'trending-up',
     resource: 'cs-forecast',
     sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Management',
+    title: 'Request Barang',
+    url: '/dashboard/apd',
+    iconName: 'shield',
+    resource: 'apd-request',
+    sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
@@ -6396,6 +6408,27 @@ export async function ensureHeroGovernanceSeedData() {
         )
       )
 
+    // Ensure Request Barang (/dashboard/apd) lives in Central Service -> Management
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Central Service',
+        groupLabel: 'Management',
+        title: 'Request Barang',
+        url: '/dashboard/apd',
+        iconName: 'shield',
+        resource: 'apd-request',
+        sortOrder: 2,
+        menuArea: 'main',
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'apd-request'),
+          eq(navbarMenuItems.url, '/dashboard/apd')
+        )
+      )
+
     // Purge obsolete HRGA legacy navbar items that are not in the 8 official groups
     const obsoleteHrgaResources = [
       'hc_org_chart_v2',
@@ -6403,7 +6436,6 @@ export async function ensureHeroGovernanceSeedData() {
       'hr_counseling_admin',
       'hc_flight_route_change',
       'hc_disciplinary',
-      'apd-request',
     ]
     await db
       .delete(navbarMenuItems)
