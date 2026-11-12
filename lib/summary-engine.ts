@@ -401,14 +401,6 @@ export async function getPendingRequestsForSection(
     }
   }
 
-  const pendingConditions = [
-    sectionFilter,
-    inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-    sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-    sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
-    isValeQuery,
-  ];
-
   const dateConds: any[] = [];
   if (dateRange?.startDate) {
     const start = new Date(`${dateRange.startDate}T00:00:00.000Z`);
@@ -420,14 +412,19 @@ export async function getPendingRequestsForSection(
     dateConds.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
   }
 
-  if (dateConds.length > 0) {
-    const existingIds = Array.from(editedSummaryItemsByReq.keys());
-    if (existingIds.length > 0) {
-      pendingConditions.push(or(and(...dateConds), inArray(apdRequests.id, existingIds))!);
-    } else {
-      pendingConditions.push(...dateConds);
-    }
-  }
+  const baseFilter = and(
+    sectionFilter,
+    inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
+    sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
+    sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
+    isValeQuery,
+    ...dateConds
+  );
+
+  const existingIds = Array.from(editedSummaryItemsByReq.keys());
+  const whereClause = existingIds.length > 0
+    ? or(baseFilter, inArray(apdRequests.id, existingIds))!
+    : baseFilter!;
 
   const approvedRequests = await db.select({
     requestId: apdRequests.id,
@@ -445,13 +442,13 @@ export async function getPendingRequestsForSection(
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(...pendingConditions))
+    .where(whereClause)
     .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   const results: PendingSummaryRequest[] = [];
 
   for (const req of approvedRequests) {
-    if (assignedRequestIds.has(req.requestId)) {
+    if (assignedRequestIds.has(req.requestId) && !editedSummaryItemsByReq.has(req.requestId)) {
       continue; // Skip requests already in another active summary
     }
 
@@ -597,6 +594,15 @@ async function collectSummaryItems(
     ? inArray(effectiveSecGen, [33, 34])
     : eq(effectiveSecGen, sectionId);
 
+  const explicitSelectedIds = (options?.selectedRequests || []).map(r => r.requestId).filter(id => id > 0);
+  const baseCollectWhere = and(
+    sectionFilter,
+    inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
+    sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
+    sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
+    isValeQuery
+  );
+
   let approvedRequests = await db.select({
     requestId: apdRequests.id,
     requestNumber: apdRequests.requestNumber,
@@ -609,13 +615,11 @@ async function collectSummaryItems(
   }).from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(
-      sectionFilter,
-      inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-      sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-      sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
-      isValeQuery
-    ))
+    .where(
+      explicitSelectedIds.length > 0
+        ? or(baseCollectWhere, inArray(apdRequests.id, explicitSelectedIds))!
+        : baseCollectWhere!
+    )
     .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   if (options?.selectedRequests && options.selectedRequests.length > 0) {
@@ -1121,17 +1125,19 @@ export async function regenerateSummaryItems(
   }
   const { summaryItems } = collected;
 
-  // Replace all items atomically: delete old, insert new, reset to draft
+  // Replace all items atomically: delete old, insert new, preserve 'revisi' status so Admin can review notes & re-submit
   await db.delete(apdSummaryItems).where(eq(apdSummaryItems.summaryId, summaryId));
 
   for (const item of summaryItems) {
     await db.insert(apdSummaryItems).values({ summaryId, ...item });
   }
 
+  const preservedStatus = summary.status === 'revisi' ? 'revisi' : 'draft';
+
   await db
     .update(apdSummaries)
     .set({
-      status: 'draft',
+      status: preservedStatus,
       updatedAt: new Date(),
       periodStart: options?.periodStart ? new Date(options.periodStart) : undefined,
       periodEnd: options?.periodEnd ? new Date(options.periodEnd) : undefined,

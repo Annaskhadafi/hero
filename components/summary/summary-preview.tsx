@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   AlertTriangle,
@@ -30,6 +30,7 @@ import {
   updateSummaryShoeUsagePeriodAction,
 } from '@/app/dashboard/summary/actions';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
+import { SummaryGeneratorModal } from './summary-generator-modal';
 import { ApdRequestDetailModal } from './apd-request-detail-modal';
 import {
   QTY_ONLY_COLUMNS,
@@ -42,6 +43,8 @@ import {
 type SummaryData = {
   id: number;
   summaryNumber: string;
+  sectionId?: number;
+  generatedByEmployeeId?: number;
   status: string;
   generatedAt: Date | null;
   approvedAt: Date | null;
@@ -86,7 +89,9 @@ type SummaryData = {
 
 export function SummaryPreview({ data }: { data: SummaryData }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
@@ -273,7 +278,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       const result = await submitSummaryAction(data.id, signatureUrl);
       if (result.success) {
         toast.success('Summary berhasil disubmit ke approval flow!');
-        router.push('/dashboard/summary');
+        router.push(pathname?.startsWith('/mobile') ? '/mobile/summary' : '/dashboard/summary');
+        router.refresh();
       } else {
         toast.error(result.error || 'Gagal submit summary');
       }
@@ -833,6 +839,20 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             </Button>
           )}
 
+          {/* Edit Draft / Revisi */}
+          {(data.status === 'draft' || data.status === 'revisi') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditModal(true)}
+              className="h-9 gap-1.5 text-xs font-bold border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900 rounded-xl shadow-2xs cursor-pointer"
+              title="Edit item APD, keterangan, ukuran sepatu, atau karyawan tanpa perlu menghapus summary"
+            >
+              <FilePenLine className="size-3.5" />
+              <span>Edit</span>
+            </Button>
+          )}
+
           {/* Submit Approval / Re-submit */}
           {(data.status === 'draft' || data.status === 'revisi') && (
             <Button
@@ -888,7 +908,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <div className="text-[11px] text-amber-700 flex items-center gap-1.5 pt-1">
               <Info className="size-3.5 text-amber-600 shrink-0" />
               <span>
-                Anda dapat mengeluarkan item/karyawan yang tidak sesuai (klik ikon hapus pada baris tabel) atau mengajukan kembali dengan menekan tombol <strong>Tanda Tangan &amp; Submit Ulang</strong>.
+                Klik tombol <strong>Edit</strong> untuk mengubah item APD/keterangan/karyawan tanpa perlu menghapus summary, lalu ajukan kembali dengan menekan tombol <strong>Tanda Tangan &amp; Submit Ulang</strong>.
               </span>
             </div>
           </div>
@@ -998,6 +1018,33 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           summaryNumber={data.summaryNumber}
           onSubmit={handleSubmit}
           onClose={() => setShowApprovalDialog(false)}
+        />
+      )}
+
+      {/* Edit Summary Modal (Draft / Revisi) */}
+      {showEditModal && (
+        <SummaryGeneratorModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          section={{
+            id: data.sectionId || 33,
+            name: data.sectionName,
+            code: '',
+            departmentId: null,
+            headEmployeeId: null,
+            targetSite: data.targetSite || 'GABUNGAN',
+            approvedCount: 0,
+            summaryStatus: data.status,
+            summaryId: data.id,
+            summaryNumber: data.summaryNumber,
+          }}
+          currentEmployeeId={data.generatedByEmployeeId || 0}
+          editSummaryId={data.id}
+          editSectionId={data.sectionId || 33}
+          onSuccess={() => {
+            setShowEditModal(false);
+            router.refresh();
+          }}
         />
       )}
 

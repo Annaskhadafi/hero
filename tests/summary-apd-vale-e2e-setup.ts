@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '../db/schema/apd-summary';
 import { approvals as heroApprovals } from '../db/schema/hero';
-import { submitSummary, approveSummaryStep } from '../lib/summary-engine';
+import { submitSummary, approveSummaryStep, generateSummary, returnSummaryForRevision } from '../lib/summary-engine';
 
 const TINY_PNG_SIG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -47,6 +47,19 @@ async function main() {
       .where(eq(apdSummaryApprovals.summaryId, inserted.id));
 
     console.log(JSON.stringify({ summaryId: inserted.id, summaryNumber: uniqueNum, submitRes, approvals }));
+    process.exit(0);
+  }
+
+  if (cmd === 'seed-revisi') {
+    const gen = await generateSummary(33, 5, 'VALE', {
+      selectedRequests: [{ requestId: 277, remarks: 'Initial remark' }],
+    });
+    if ('error' in gen) {
+      throw new Error(gen.error);
+    }
+    await submitSummary(gen.summaryId, TINY_PNG_SIG);
+    await returnSummaryForRevision(gen.summaryId, 1, 15, 'Mohon hapus Apron dan perbaiki Remarks', 'Junaidi');
+    console.log(JSON.stringify({ summaryId: gen.summaryId, summaryNumber: gen.summaryNumber }));
     process.exit(0);
   }
 

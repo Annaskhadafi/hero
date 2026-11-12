@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Calendar,
@@ -138,8 +138,10 @@ export function SummaryGeneratorModal({
   const [manualShoeMasaPakai, setManualShoeMasaPakai] = useState('');
   const [manualRemarks, setManualRemarks] = useState('');
   const [masterApdItems, setMasterApdItems] = useState<string[]>(COMMON_APD_ITEMS);
+  const loadSeqRef = useRef(0);
 
   const loadRequests = (start?: string, end?: string) => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     const targetSecId = editSectionId || section.id;
     getPendingRequestsAction(
@@ -152,6 +154,7 @@ export function SummaryGeneratorModal({
       editSummaryId
     )
       .then((res) => {
+        if (seq !== loadSeqRef.current) return;
         if (res.success && res.requests) {
           setRequests(res.requests);
 
@@ -192,9 +195,11 @@ export function SummaryGeneratorModal({
         }
       })
       .catch((err) => {
+        if (seq !== loadSeqRef.current) return;
         toast.error(err.message || 'Terjadi kesalahan sistem');
       })
       .finally(() => {
+        if (seq !== loadSeqRef.current) return;
         setLoading(false);
       });
   };
@@ -202,9 +207,10 @@ export function SummaryGeneratorModal({
   // Fetch pending requests and master APD items when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
 
     getMasterApdListAction('APD', true).then((res) => {
-      if (res.success && res.data && res.data.length > 0) {
+      if (!cancelled && res.success && res.data && res.data.length > 0) {
         setMasterApdItems(res.data.map((i) => i.name));
       }
     });
@@ -217,6 +223,11 @@ export function SummaryGeneratorModal({
     setSelectedManualEmp(null);
 
     loadRequests(defaultRange.startDate, defaultRange.endDate);
+
+    return () => {
+      cancelled = true;
+      loadSeqRef.current += 1;
+    };
   }, [isOpen, section.id, section.targetSite, editSummaryId, editSectionId]);
 
   const handleStartDateChange = (val: string) => {

@@ -10,6 +10,7 @@ import {
   Clock,
   Download,
   Eye,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -36,9 +37,10 @@ interface MobileSummaryClientProps {
 export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileSummaryClientProps) {
   const router = useRouter();
   const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
+  const [editModalSection, setEditModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
-  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'approved'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'revisi' | 'pending' | 'approved'>('all');
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -316,6 +318,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
             { key: 'all', label: 'Semua Status' },
             { key: 'uncreated', label: 'Siap Generate' },
             { key: 'draft', label: 'Draft' },
+            { key: 'revisi', label: 'Perlu Revisi' },
             { key: 'pending', label: 'Review' },
             { key: 'approved', label: 'Approved' },
           ].map((st) => (
@@ -427,6 +430,19 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
                         </Button>
                       )}
 
+                      {/* Edit button for draft or revisi status */}
+                      {section.summaryId && (section.summaryStatus === 'revisi' || section.summaryStatus === 'draft') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditModalSection(section)}
+                          className="h-8 px-2.5 text-xs border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 active:scale-95 font-semibold"
+                        >
+                          <FilePenLine className="mr-1 size-3" />
+                          Edit
+                        </Button>
+                      )}
+
                       {/* Delete Draft button */}
                       {section.summaryId && section.summaryStatus === 'draft' && (
                         <Button
@@ -471,7 +487,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
         )}
       </section>
 
-      {/* Summary Generator Modal */}
+      {/* Summary Generator Modal (Create) */}
       {generatorModalSection && (
         <SummaryGeneratorModal
           isOpen={Boolean(generatorModalSection)}
@@ -479,6 +495,22 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
           section={generatorModalSection}
           currentEmployeeId={currentEmployeeId}
           onSuccess={(summaryId) => {
+            router.push(`/mobile/summary?preview=${summaryId}`);
+          }}
+        />
+      )}
+
+      {/* Summary Generator Modal (Edit Draft / Revisi) */}
+      {editModalSection && (
+        <SummaryGeneratorModal
+          isOpen={Boolean(editModalSection)}
+          onClose={() => setEditModalSection(null)}
+          section={editModalSection}
+          currentEmployeeId={currentEmployeeId}
+          editSummaryId={editModalSection.summaryId!}
+          editSectionId={editModalSection.id}
+          onSuccess={(summaryId) => {
+            setEditModalSection(null);
             router.push(`/mobile/summary?preview=${summaryId}`);
           }}
         />
