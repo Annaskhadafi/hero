@@ -4731,6 +4731,7 @@ export function SchedulingTimesheetWorkspace({
 
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
       let newPdfConfig = { ...currentConfig.pdfConfig }
 
       if (keyLower === 'repair' || keyLower.includes('repair') || keyLower.includes('retread')) {
@@ -6551,6 +6552,7 @@ export function SchedulingTimesheetWorkspace({
         ? arjun
         : fauzan
     const defaultSectionApprovedBy = normSection.includes('hse') ? rendra : romy
+    const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
 
     const isSingleEmployeeRecord = Boolean(employee && !sectionName)
     const effectivePreparedBy =
@@ -6737,7 +6739,7 @@ export function SchedulingTimesheetWorkspace({
             autoMinutes: Math.round(finalVal * 60),
             splMinutes: 0,
             unauthorizedMinutes: 0,
-            source: 'Manual',
+            source: 'Legacy' as const,
             splNumbers: [],
             workingIntervals: [],
           }
@@ -6767,7 +6769,10 @@ export function SchedulingTimesheetWorkspace({
           cell.clockIn,
           cell.clockOut,
           staff,
-          employee.id
+          employee.id,
+          true,
+          false,
+          true
         )
         return {
           ...res,
@@ -7343,14 +7348,7 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
-      const activeSections = [
-        pdfIncludeRepair ? 'Repair' : '',
-        pdfIncludeServices ? 'Services' : '',
-        pdfIncludeTechnical ? 'Technical' : '',
-        pdfIncludeHse ? 'HSE' : '',
-      ]
-        .filter(Boolean)
-        .join('_')
+      const activeSections = activeSelectedSections.slice(0, 3).join('_')
 
       const selectedDocLabels = selectedPdfDocTypes
         .map((t) => {
@@ -7840,7 +7838,8 @@ export function SchedulingTimesheetWorkspace({
     staff: boolean,
     employeeId: number,
     ignoreOverride = false,
-    approvedSplOnly = false
+    approvedSplOnly = false,
+    excludeSpl = false
   ): OvertimeCalculationResult {
     if (!ignoreOverride) {
       const key = attendanceKey(employeeId, day)
@@ -7909,6 +7908,11 @@ export function SchedulingTimesheetWorkspace({
       ...empSiteConfig.overtimeConfig,
       enabled: true,
     }
+    const splList = excludeSpl
+      ? []
+      : (approvedSplByEmployee.get(employeeId) ?? []).filter(
+          (window) => !approvedSplOnly || window.status.toLowerCase() === 'approved'
+        )
     const calculated = calculateOvertime({
       config: activeConfig,
       dayKey,
@@ -7916,9 +7920,7 @@ export function SchedulingTimesheetWorkspace({
       workDate: `${period}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
-      splWindows: (approvedSplByEmployee.get(employeeId) ?? []).filter(
-        (window) => !approvedSplOnly || window.status.toLowerCase() === 'approved'
-      ),
+      splWindows: splList,
       legacyHours: calculateLegacyOvertime(
         schedule,
         day,
@@ -8030,14 +8032,10 @@ export function SchedulingTimesheetWorkspace({
       (fieldBreakDaysByEmployee.get(employeeId)?.has(day) ?? false)
     const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur' || cell.status === 'off'
     const isHolidayDay = Boolean(holidaysByDay.get(day))
-    const splHours = getApprovedSplHoursForDay(employeeId, day)
-
-    // Catatan instruksi atasan:
-    // Penambahan jam lembur otomatis dari data input SPL sementara di-OFF-kan karena input jam SPL karyawan masih banyak yang salah/tehambur.
-    // Overtime Summary mengikuti jam di Overtime Record (Lembur Wajib standar, dan jika user menginput manual lembur di tabel/modal, angka manual tersebut langsung dipakai).
-    // Sistem lembur wajib + SPL otomatis tetap dipertahankan dan dapat dinyalakan kembali kapan saja dengan mengubah flag ini ke true.
-    const ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY = false
-    const effectiveSplHours = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? splHours : 0
+    // Catatan instruksi atasan & Mas Ojan:
+    // Overtime Summary TIDAK terinput / di-OFF-kan dari akumulasi lembur SPL otomatis.
+    // Overtime Summary hanya menampilkan Lembur Wajib standar.
+    // Jika user menginput manual lembur di tabel/modal, angka manual tersebut langsung dipakai.
 
     const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
     const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
@@ -8070,69 +8068,61 @@ export function SchedulingTimesheetWorkspace({
     // Non-working & Off days strictly follow Overtime Record:
     // On OFF, Field Break, Sakit, Izin, Alpha: Overtime is 0 (displaying their respective status code), matching Overtime Record.
     if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
-      const fbOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: fbOt,
-        displayValue: fbOt > 0 ? String(roundOvertimeHours(fbOt)) : 'FB',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'FB',
       }
     }
     if (cell.status === 'standby' || scheduleCode === 'ST') {
-      const stOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: stOt,
-        displayValue: stOt > 0 ? String(roundOvertimeHours(stOt)) : 'ST',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'ST',
       }
     }
     if (scheduleCode === 'GD') {
-      const gdOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: gdOt,
-        displayValue: gdOt > 0 ? String(roundOvertimeHours(gdOt)) : 'GD',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'GD',
       }
     }
     if (cell.status === 'sick' || scheduleCode === 'Sakit') {
-      const sickOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: sickOt,
-        displayValue: sickOt > 0 ? String(roundOvertimeHours(sickOt)) : 'Sakit',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'Sakit',
       }
     }
     if (cell.status === 'leave' || scheduleCode === 'Izin') {
-      const leaveOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: leaveOt,
-        displayValue: leaveOt > 0 ? String(roundOvertimeHours(leaveOt)) : 'Izin',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'Izin',
       }
     }
     if (cell.status === 'absent') {
-      const absOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: absOt,
-        displayValue: absOt > 0 ? String(roundOvertimeHours(absOt)) : 'Alpha',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'Alpha',
       }
     }
     if (isRosterOff || cell.status === 'off') {
       // Pada hari libur roster (OFF):
       // Mengikuti Overtime Record: Total lembur adalah 0 dan ditampilkan 'OFF'.
-      // Jika mode auto-SPL diaktifkan kembali oleh atasan, SPL / manual override akan dihitung.
-      const offOt = ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY ? (manualVal !== null ? manualVal : splHours) : 0
       return {
         lemburWajib: 0,
-        lemburSpl: effectiveSplHours,
-        totalOvertime: Math.min(11, offOt),
-        displayValue: offOt > 0 ? String(roundOvertimeHours(Math.min(11, offOt))) : 'OFF',
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'OFF',
       }
     }
 
@@ -8144,7 +8134,9 @@ export function SchedulingTimesheetWorkspace({
     }
 
     // Work day (present / DS / NS):
-    // Lembur wajib default mengikuti konfigurasi overtime policy masing-masing site (misal: MHU/KIM 5j/7j, MIFA 4j/6j)
+    // Lembur wajib default mengikuti konfigurasi overtime policy masing-masing site (misal: MHU/KIM 5j/7j, MIFA 4j/6j).
+    // EXCLUDE SPL: Overtime Summary di-OFF-kan dari akumulasi SPL otomatis sesuai instruksi Mas Ojan & atasan,
+    // hanya menampilkan Lembur Wajib standar atau input manual jika ada.
     const overtime = calculateDayOvertime(
       schedule,
       day,
@@ -8152,33 +8144,43 @@ export function SchedulingTimesheetWorkspace({
       cell.clockOut,
       staff,
       employeeId,
-      true
+      true, // ignoreOverride = true
+      false, // approvedSplOnly = false
+      true // excludeSpl = true
     )
     const autoWajib = mandatoryOvertimeHours(overtime)
-    const lemburWajib =
-      autoWajib > 0
-        ? autoWajib
-        : overtime.totalHours > 0
-          ? overtime.totalHours
-          : 4
 
-    let totalOvertime = 0
-    if (manualVal !== null) {
-      if (manualVal === 0) {
-        totalOvertime = 0
-      } else if (ENABLE_AUTO_SPL_IN_OVERTIME_SUMMARY) {
-        const expectedTotal = splHours > 0 ? lemburWajib + splHours : manualVal
-        totalOvertime = Math.min(14, roundOvertimeHours(Math.max(manualVal, expectedTotal)))
-      } else {
-        // Mode SPL otomatis off: Mengikuti Overtime Record / input manual
-        totalOvertime = Math.min(14, roundOvertimeHours(manualVal))
+    // Standard lembur wajib jika autoWajib belum terdefinisi dari clock-in/out:
+    // Cek durasi interval template policy site jika ada, atau fallback sesuai dayKey (hariKe6 = 6h, hari biasa = 4h)
+    const empSiteId =
+      employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const dayKey = classifyOvertimePolicyDay({
+      schedule,
+      dayIndex: day - 1,
+      isHoliday: isHoliday(period, day, holidays),
+      rosterType: empSiteConfig.rosterType,
+    })
+    const shiftKey: OvertimeShiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+    const configuredIntervals = empSiteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
+    let templateWajib = 0
+    for (const item of configuredIntervals) {
+      const sM = minutesFromTime(item.start)
+      const eM = minutesFromTime(item.end)
+      if (sM != null && eM != null) {
+        let diff = eM - sM
+        if (diff < 0) diff += 1440
+        templateWajib += diff / 60
       }
-    } else {
-      totalOvertime = Math.min(14, roundOvertimeHours(lemburWajib + effectiveSplHours))
     }
 
+    const fallbackWajib = dayKey === 'hariKe6' ? 6 : 4
+    const standardWajib = templateWajib > 0 ? roundOvertimeHours(templateWajib) : fallbackWajib
+    const lemburWajib = autoWajib > 0 ? autoWajib : standardWajib
+
+    const totalOvertime = lemburWajib
     const displayValue = totalOvertime > 0 ? String(roundOvertimeHours(totalOvertime)) : ''
-    return { lemburWajib, lemburSpl: splHours, totalOvertime, displayValue }
+    return { lemburWajib, lemburSpl: 0, totalOvertime, displayValue }
   }
 
   const overtimeVariances = useMemo(() => {
