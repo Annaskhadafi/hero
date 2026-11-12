@@ -121,7 +121,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'road-hazard-rbac-v1'
+const HERO_GOVERNANCE_SEED_VERSION = 'twibbon-marketing-v1'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -530,6 +530,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'trending-down',
     resource: 'marketing_slow_moving',
     sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Marketing',
+    title: 'Twibbon Studio',
+    url: '/dashboard/twibbon',
+    iconName: 'sparkles',
+    resource: 'marketing_twibbon',
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -4795,6 +4806,18 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
       canDelete: false,
       canSelectAll: false,
       dataScope: 'own' as const,
+    }
+  }
+
+  // Twibbon Studio: viewable by all employees; admin roles can manage all templates
+  if (resource === 'marketing_twibbon') {
+    const isAdminRole = isSuperAdminRole(roleName)
+    return {
+      canView: true,
+      canEdit: isAdminRole,
+      canDelete: isAdminRole,
+      canSelectAll: isAdminRole,
+      dataScope: 'global' as const,
     }
   }
 

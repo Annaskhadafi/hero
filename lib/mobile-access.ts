@@ -34,6 +34,7 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/atk/new',
   '/mobile/ga/vehicles',
   '/mobile/training/pengajuan',
+  '/mobile/twibbon',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
@@ -104,6 +105,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/quality/5r', mobile: '/mobile/quality/5r' },
   { desktop: '/dashboard/quality/5r/create', mobile: '/mobile/quality/5r/create' },
   { desktop: '/dashboard/quality/5r/master-area', mobile: '/dashboard/quality/5r/master-area' },
+  { desktop: '/dashboard/twibbon', mobile: '/mobile/twibbon' },
 ]
 
 const fallbackMobileSegments = new Set([
@@ -151,6 +153,7 @@ const fallbackMobileSegments = new Set([
   'sia-sio-tools',
   'tire-inspection',
   'sop-win',
+  'twibbon',
 ])
 
 export function getMobileUrlForDesktopUrl(desktopUrl: string): string | null {

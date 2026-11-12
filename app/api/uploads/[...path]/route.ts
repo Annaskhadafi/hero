@@ -42,6 +42,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   'ga-house-rental',
   'rfr',
   'road-hazard',
+  'twibbon-templates',
 ])
 
 function getContentType(fileName: string) {
@@ -254,7 +255,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
     path[0] === 'hrga-kerjasama' ||
     path[0] === 'ga-house-rental' ||
     path[0] === 'rfr' ||
-    path[0] === 'road-hazard'
+    path[0] === 'road-hazard' ||
+    path[0] === 'twibbon-templates'
 
   const isSensitive = !isRootUpload && !isPublicPrefix
   if (isSensitive) {

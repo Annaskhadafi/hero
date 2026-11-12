@@ -320,3 +320,6 @@ export * from './hrga-kerjasama'
 
 // General Affairs - House Rental
 export * from './house-rental'
+
+// Marketing - Twibbon Studio
+export * from './twibbon'

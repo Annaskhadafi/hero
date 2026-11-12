@@ -39,6 +39,7 @@ import {
   Pin,
   PinOff,
   RotateCcw,
+  ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -580,6 +581,14 @@ export function MobileDashboardServices({
       bg: 'bg-amber-500/10 text-amber-600',
       section: 'Umum',
       description: 'Broadcast pengumuman kantor pusat',
+    },
+    {
+      title: 'Twibbon',
+      href: '/mobile/twibbon',
+      icon: ImagePlus,
+      bg: 'bg-violet-500/10 text-violet-600',
+      section: 'Umum',
+      description: 'Buat foto & video frame twibbon IG',
     },
     {
       title: 'Wellness',

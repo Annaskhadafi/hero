@@ -28,6 +28,7 @@ import {
   UserRound,
   Heart,
   Store,
+  ImagePlus,
   X,
 } from 'lucide-react'
 
@@ -92,6 +93,7 @@ export function MobileAppShell({
     { type: 'section', label: 'HOME' },
     { type: 'link', label: 'Dashboard', href: '/mobile/dashboard', icon: Home },
     { type: 'link', label: 'Hero Genius AI', href: '/mobile/hero-genius', icon: Sparkles, resource: 'hero-genius' },
+    { type: 'link', label: 'Twibbon Studio', href: '/mobile/twibbon', icon: ImagePlus },
     { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
     { type: 'section', label: 'Produktivitas' },
     { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },

@@ -39,7 +39,7 @@ RUN --mount=type=cache,id=hero-next,target=/app/.next/cache \
 
 # Stage 4: Production runner
 FROM node:20.19-alpine AS runner
-RUN apk add --no-cache libc6-compat gcompat bash curl fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
+RUN apk add --no-cache libc6-compat gcompat bash curl ffmpeg fontconfig ttf-dejavu ttf-liberation ttf-freefont font-noto postgresql-client
 WORKDIR /app
 
 ENV NODE_ENV=production
