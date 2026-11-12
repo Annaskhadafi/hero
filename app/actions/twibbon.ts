@@ -2,17 +2,14 @@
 
 import { revalidatePath } from 'next/cache'
 import { desc, eq, or, sql } from 'drizzle-orm'
-import sharp from 'sharp'
 
 import { db } from '@/db'
 import { employees, twibbonTemplates } from '@/db/schema'
 import { getServerSession } from '@/lib/auth-session'
 import { getMenuPermissionForRole, isSuperAdminRole } from '@/lib/hero-access'
 import { extractS3ObjectKeyFromUrl } from '@/lib/resolve-upload-url'
-import { isS3UploadConfigured, uploadAnyFileToS3 } from '@/lib/s3-storage'
+import { normalizeAndUploadTwibbonPng } from '@/lib/twibbon-server'
 import {
-  TWIBBON_ASPECT_RATIOS,
-  TWIBBON_MAX_PNG_BYTES,
   type TwibbonAspectRatio,
   type TwibbonTemplateDTO,
 } from '@/lib/twibbon'
@@ -154,67 +151,17 @@ export async function uploadTwibbonPngAction(formData: FormData) {
       return { success: false, error: 'Unauthorized: Silakan login terlebih dahulu.' }
     }
 
-    if (!isS3UploadConfigured()) {
-      return {
-        success: false,
-        error: 'S3 Cloud Storage belum dikonfigurasi. Upload template dibatalkan.',
-      }
-    }
-
     const file = formData.get('file') as File | null
     const ratio = (formData.get('ratio') as TwibbonAspectRatio | null) || '1:1'
-    const spec = TWIBBON_ASPECT_RATIOS[ratio]
 
     if (!file) {
       return { success: false, error: 'Berkas PNG tidak ditemukan.' }
     }
-    if (!spec) {
-      return { success: false, error: 'Rasio ukuran Twibbon tidak valid.' }
-    }
-    if (file.size > TWIBBON_MAX_PNG_BYTES) {
-      return { success: false, error: 'Ukuran file PNG maksimal 15 MB.' }
-    }
 
-    const rawBuffer = Buffer.from(await file.arrayBuffer())
-    let metadataFormat: string | undefined
-    try {
-      const metadata = await sharp(rawBuffer).metadata()
-      metadataFormat = metadata.format
-    } catch {
-      return { success: false, error: 'File tidak terbaca sebagai gambar PNG yang valid.' }
-    }
-
-    if (metadataFormat !== 'png') {
-      return {
-        success: false,
-        error: 'Template Twibbon wajib berformat PNG (.png) dengan area transparan.',
-      }
-    }
-
-    const normalizedBuffer = await sharp(rawBuffer)
-      .rotate()
-      .resize(spec.width, spec.height, {
-        fit: 'contain',
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      })
-      .ensureAlpha()
-      .png({ compressionLevel: 9 })
-      .toBuffer()
-
-    const safeFileName = `twibbon-${ratio.replace(':', 'x')}-${Date.now()}.png`
-    const normalizedFile = new File([new Uint8Array(normalizedBuffer)], safeFileName, {
-      type: 'image/png',
-    })
-
-    const uploaded = await uploadAnyFileToS3(normalizedFile, 'twibbon-templates')
-    const proxyUrl = `/api/uploads/${uploaded.key}`
-
+    const uploaded = await normalizeAndUploadTwibbonPng(file, ratio)
     return {
       success: true,
-      url: proxyUrl,
-      readableUrl: proxyUrl,
-      width: spec.width,
-      height: spec.height,
+      ...uploaded,
     }
   } catch (error: any) {
     console.error('[uploadTwibbonPngAction] Error:', error)

@@ -147,7 +147,7 @@ test('Twibbon Studio desktop & mobile: upload PNG templates (1:1, 4:5, 9:16), me
     await expect(mergeVideoBtn).toBeVisible({ timeout: 15000 })
 
     const [mergeResponse] = await Promise.all([
-      browser.waitForResponse(/\/api\/twibbon\/merge-video/, { timeout: 60000 }),
+      browser.waitForResponse(/\/api\/twibbon\/merge-video\?.*download=1/, { timeout: 60000 }),
       mergeVideoBtn.click(),
     ])
     const mergeStatus =

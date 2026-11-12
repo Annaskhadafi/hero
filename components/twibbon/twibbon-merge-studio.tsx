@@ -73,6 +73,8 @@ export function TwibbonMergeStudio({
   const [mergedVideoUrl, setMergedVideoUrl] = React.useState<string | null>(null)
   const [mergedVideoBlob, setMergedVideoBlob] = React.useState<Blob | null>(null)
   const [isMergingVideo, setIsMergingVideo] = React.useState(false)
+  const [videoUploadProgress, setVideoUploadProgress] = React.useState<number>(0)
+  const [videoPhaseLabel, setVideoPhaseLabel] = React.useState<string>('')
 
   const [copiedCaption, setCopiedCaption] = React.useState(false)
   const [copiedLink, setCopiedLink] = React.useState(false)
@@ -379,6 +381,9 @@ export function TwibbonMergeStudio({
   const handleMergeVideo = async () => {
     if (!template || !mediaFile || mediaKind !== 'video') return
     setIsMergingVideo(true)
+    setVideoUploadProgress(0)
+    setVideoPhaseLabel('Mengunggah video ke server...')
+
     try {
       const formData = new FormData()
       formData.append('video', mediaFile)
@@ -388,17 +393,90 @@ export function TwibbonMergeStudio({
       formData.append('panX', String(panX))
       formData.append('panY', String(panY))
 
-      const response = await fetch('/api/twibbon/merge-video', {
-        method: 'POST',
-        body: formData,
-      })
+      const jobInfo = await new Promise<{ jobId?: string; status?: string }>(
+        (resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.timeout = 120_000
+          xhr.withCredentials = true
 
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => null)
-        throw new Error(errBody?.message || 'Gagal memproses merge video.')
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) {
+              const pct = Math.min(100, Math.round((event.loaded / event.total) * 100))
+              setVideoUploadProgress(pct)
+              if (pct < 100) {
+                setVideoPhaseLabel(`Mengunggah video (${pct}%)...`)
+              } else {
+                setVideoPhaseLabel('Memvalidasi & menyiapkan render FFmpeg...')
+              }
+            }
+          }
+
+          xhr.onload = () => {
+            let parsed: any = null
+            try {
+              parsed = JSON.parse(xhr.responseText || '{}')
+            } catch {
+              parsed = null
+            }
+            if (xhr.status >= 200 && xhr.status < 300 && parsed?.jobId) {
+              resolve(parsed)
+              return
+            }
+            reject(
+              new Error(
+                parsed?.message || `Gagal memulai proses video (HTTP ${xhr.status || 0}).`
+              )
+            )
+          }
+
+          xhr.onerror = () =>
+            reject(new Error('Koneksi terputus saat mengunggah video. Periksa jaringan Anda.'))
+          xhr.ontimeout = () =>
+            reject(new Error('Waktu unggah video habis. Coba gunakan file video yang lebih kecil.'))
+
+          xhr.open('POST', '/api/twibbon/merge-video')
+          xhr.send(formData)
+        }
+      )
+
+      const jobId = jobInfo.jobId
+      if (!jobId) throw new Error('Job ID merge video tidak diterima dari server.')
+
+      setVideoPhaseLabel('Menggabungkan video & frame Twibbon...')
+      const deadline = Date.now() + 180_000
+      while (true) {
+        if (Date.now() > deadline) {
+          throw new Error('Waktu proses video di server melebihi batas. Coba durasi lebih singkat.')
+        }
+
+        await new Promise((r) => setTimeout(r, 900))
+        const statusResp = await fetch(
+          `/api/twibbon/merge-video?jobId=${encodeURIComponent(jobId)}`,
+          { credentials: 'same-origin', cache: 'no-store' }
+        )
+        const statusJson = await statusResp.json().catch(() => null)
+        if (!statusResp.ok) {
+          throw new Error(statusJson?.message || 'Gagal memeriksa status proses video.')
+        }
+        if (statusJson?.status === 'error') {
+          throw new Error(statusJson?.error || 'Gagal menggabungkan video dengan Twibbon.')
+        }
+        if (statusJson?.status === 'ready') {
+          break
+        }
       }
 
-      const outBlob = await response.blob()
+      setVideoPhaseLabel('Mengunduh video MP4 hasil merge...')
+      const downloadResp = await fetch(
+        `/api/twibbon/merge-video?jobId=${encodeURIComponent(jobId)}&download=1`,
+        { credentials: 'same-origin', cache: 'no-store' }
+      )
+      if (!downloadResp.ok) {
+        const errBody = await downloadResp.json().catch(() => null)
+        throw new Error(errBody?.message || 'Gagal mengunduh hasil video MP4.')
+      }
+
+      const outBlob = await downloadResp.blob()
       const outUrl = URL.createObjectURL(outBlob)
       setMergedVideoBlob(outBlob)
       setMergedVideoUrl((prev) => {
@@ -411,9 +489,15 @@ export function TwibbonMergeStudio({
       toast.success('Video Twibbon MP4 berhasil digabung dan diunduh!')
       onUsageIncremented?.(template.id)
     } catch (err: any) {
-      toast.error(err?.message || 'Gagal menggabungkan video dengan Twibbon.')
+      const rawMsg = String(err?.message || '')
+      const friendly = /failed to fetch|networkerror|load failed/i.test(rawMsg)
+        ? 'Koneksi ke server terputus saat memproses video. Periksa jaringan dan coba lagi.'
+        : rawMsg || 'Gagal menggabungkan video dengan Twibbon.'
+      toast.error(friendly)
     } finally {
       setIsMergingVideo(false)
+      setVideoUploadProgress(0)
+      setVideoPhaseLabel('')
     }
   }
 
@@ -807,7 +891,11 @@ export function TwibbonMergeStudio({
                       {isMergingVideo ? (
                         <>
                           <Loader2 className="size-4 animate-spin" />
-                          <span>Memproses Video MP4...</span>
+                          <span>
+                            {videoUploadProgress > 0 && videoUploadProgress < 100
+                              ? `Mengunggah ${videoUploadProgress}%...`
+                              : 'Memproses Video MP4...'}
+                          </span>
                         </>
                       ) : (
                         <>
@@ -836,9 +924,20 @@ export function TwibbonMergeStudio({
                   </div>
 
                   {isMergingVideo && (
-                    <p className="text-[11px] font-medium text-blue-700">
-                      Server sedang menggabungkan video dengan frame PNG &amp; audio asli...
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium text-blue-700">
+                        {videoPhaseLabel ||
+                          'Server sedang menggabungkan video dengan frame PNG & audio asli...'}
+                      </p>
+                      {videoUploadProgress > 0 && videoUploadProgress < 100 && (
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
+                          <div
+                            className="h-full rounded-full bg-[#0753e7] transition-all duration-150"
+                            style={{ width: `${videoUploadProgress}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
