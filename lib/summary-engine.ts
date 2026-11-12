@@ -1006,6 +1006,14 @@ export async function deleteSummaryDraft(summaryId: number) {
   return { success: true };
 }
 
+export function isValeSummaryTarget(targetSite?: string | null, itemSiteNames?: string[]): boolean {
+  const siteLower = (targetSite || '').toLowerCase().trim();
+  if (siteLower) {
+    return siteLower.includes('vale');
+  }
+  return (itemSiteNames || []).some((s) => (s || '').toLowerCase().includes('vale'));
+}
+
 export async function resolveSummaryApprovers(sectionId: number, targetSite?: string | null, itemSiteNames?: string[]) {
   const [targetSection] = await db.select({
     id: masterSections.id,
@@ -1032,7 +1040,10 @@ export async function resolveSummaryApprovers(sectionId: number, targetSite?: st
 
   if (isServiceCombined) {
     // Single source of truth for Service Operation:
-    // Level 1: ALWAYS TWO PARALLEL APPROVERS (Head Section MVC & Head Section Others)
+    // - GABUNGAN: Level 1 has TWO PARALLEL APPROVERS (Head Section MVC [Apriyanto] & Head Section Others [Junaidi])
+    // - VALE: Level 1 ONLY has Head Section Others (Junaidi), without Apriyanto (Admin -> Junaidi -> Romy Hidayat)
+    const isValeService = isValeSummaryTarget(targetSite, itemSiteNames);
+
     const [sec33] = await db.select({
       headEmployeeId: masterSections.headEmployeeId,
       name: masterSections.name,
@@ -1048,22 +1059,24 @@ export async function resolveSummaryApprovers(sectionId: number, targetSite?: st
       name: masterDepartments.name,
     }).from(masterDepartments).where(eq(masterDepartments.id, 2)).limit(1);
 
-    // 1. Head Section MVC (Apriyanto)
-    const head33Id = sec33?.headEmployeeId || 955;
-    const [emp33] = await db.select({
-      id: employees.id,
-      name: employees.name,
-      email: employees.email,
-      jobTitle: employees.jobTitle,
-    }).from(employees).where(eq(employees.id, head33Id)).limit(1);
+    // 1. Head Section MVC (Apriyanto) — excluded for Vale Service Operation
+    if (!isValeService) {
+      const head33Id = sec33?.headEmployeeId || 955;
+      const [emp33] = await db.select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+      }).from(employees).where(eq(employees.id, head33Id)).limit(1);
 
-    if (emp33) {
-      level1Approvers.push({
-        ...emp33,
-        email: emp33.email || '',
-        jobTitle: 'Section Head Service MVC',
-        sectionName: 'Service Operation MVC',
-      });
+      if (emp33) {
+        level1Approvers.push({
+          ...emp33,
+          email: emp33.email || '',
+          jobTitle: 'Section Head Service MVC',
+          sectionName: 'Service Operation MVC',
+        });
+      }
     }
 
     // 2. Head Section Others (Junaidi)
@@ -1375,7 +1388,7 @@ export async function approveSummaryStep(
 
   // 3. Level 1 AND logic check
   if (level === 1) {
-    const pendingLevel1 = await db.select({
+    let pendingLevel1 = await db.select({
       id: apdSummaryApprovals.id,
       approverEmployeeId: apdSummaryApprovals.approverEmployeeId,
     }).from(apdSummaryApprovals)
@@ -1384,6 +1397,47 @@ export async function approveSummaryStep(
         eq(apdSummaryApprovals.level, 1),
         eq(apdSummaryApprovals.status, 'pending')
       ));
+
+    // Clean up obsolete pending Level 1 approvers that are no longer required by current rules
+    // (e.g., Service MVC on an existing pending Vale Service Operation summary)
+    if (pendingLevel1.length > 0) {
+      const [summaryRow] = await db.select({
+        sectionId: apdSummaries.sectionId,
+        targetSite: apdSummaries.targetSite,
+      }).from(apdSummaries).where(eq(apdSummaries.id, summaryId)).limit(1);
+
+      if (summaryRow) {
+        const items = await db.select({ siteName: apdSummaryItems.siteName })
+          .from(apdSummaryItems)
+          .where(eq(apdSummaryItems.summaryId, summaryId));
+        const itemSiteNames = Array.from(new Set(items.map(i => i.siteName).filter(Boolean)));
+        const { level1Approvers: activeL1 } = await resolveSummaryApprovers(
+          summaryRow.sectionId,
+          summaryRow.targetSite,
+          itemSiteNames
+        );
+        const activeL1Ids = new Set(activeL1.map(a => a.id));
+        const obsoleteIds = pendingLevel1
+          .filter(p => !activeL1Ids.has(p.approverEmployeeId))
+          .map(p => p.approverEmployeeId);
+
+        if (obsoleteIds.length > 0) {
+          await db.delete(apdSummaryApprovals).where(and(
+            eq(apdSummaryApprovals.summaryId, summaryId),
+            eq(apdSummaryApprovals.level, 1),
+            eq(apdSummaryApprovals.status, 'pending'),
+            inArray(apdSummaryApprovals.approverEmployeeId, obsoleteIds)
+          ));
+          await db.delete(heroApprovals).where(and(
+            eq(heroApprovals.apdSummaryId, summaryId),
+            eq(heroApprovals.level, 1),
+            eq(heroApprovals.status, 'pending'),
+            inArray(heroApprovals.approverEmployeeId, obsoleteIds)
+          ));
+          pendingLevel1 = pendingLevel1.filter(p => !obsoleteIds.includes(p.approverEmployeeId));
+        }
+      }
+    }
 
     if (pendingLevel1.length > 0) {
       // Still waiting for the other Level 1 approver(s)
@@ -1430,12 +1484,14 @@ export async function approveSummaryStep(
       // Notify Dept Head (Bell & Email)
       const summaryDetails = await getSummaryDetails(summaryId);
       if (summaryDetails) {
+        const l1Count = summaryDetails.approvals.filter(a => a.level === 1).length;
+        const checkedByLabel = l1Count > 1 ? 'kedua Section Head' : 'Section Head';
         await createNotificationEventForEmployee({
           employeeId: deptHeadId,
           category: 'approval_requests',
           eventType: 'summary_progress',
           title: `Persetujuan Department Head: Summary APD ${summaryDetails.summaryNumber}`,
-          body: `Summary APD ${summaryDetails.summaryNumber} telah selesai diperiksa oleh kedua Section Head dan siap disetujui.`,
+          body: `Summary APD ${summaryDetails.summaryNumber} telah selesai diperiksa oleh ${checkedByLabel} dan siap disetujui.`,
           url: '/dashboard/approval',
         }).catch(console.error);
 
@@ -1674,9 +1730,12 @@ export async function getSummaryDetails(summaryId: number) {
     }
   }
 
-  // If actualApprovals has level 1 approvers that were not in level1Approvers
+  // Preserve signed/historical Level 1 approvers that were not in level1Approvers,
+  // while hiding obsolete unsigned pending rows (e.g. Service MVC on Vale Service Operation summaries)
   for (const act of actualApprovals.filter(a => a.level === 1)) {
-    if (!enrichedApprovals.some(e => e.level === 1 && e.approverEmployeeId === act.approverEmployeeId)) {
+    const isAlreadyIncluded = enrichedApprovals.some(e => e.level === 1 && e.approverEmployeeId === act.approverEmployeeId);
+    const isSignedOrHistorical = summary.status === 'approved' || act.status === 'approved' || Boolean(act.signatureUrl);
+    if (!isAlreadyIncluded && isSignedOrHistorical) {
       enrichedApprovals.push({
         ...act,
         approverSectionName: act.approverSectionName || '',
