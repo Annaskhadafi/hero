@@ -21,6 +21,7 @@ export async function POST(request: Request) {
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const ratio = ((formData.get('ratio') as string | null) || '1:1') as TwibbonAspectRatio
+    const originalFormat = String(formData.get('originalFormat') || '').toLowerCase()
 
     if (!file) {
       return NextResponse.json(
@@ -29,7 +30,9 @@ export async function POST(request: Request) {
       )
     }
 
-    const uploaded = await normalizeAndUploadTwibbonPng(file, ratio)
+    const uploaded = await normalizeAndUploadTwibbonPng(file, ratio, {
+      allowClientNormalizedWebp: originalFormat === 'png',
+    })
     return NextResponse.json(
       {
         success: true,

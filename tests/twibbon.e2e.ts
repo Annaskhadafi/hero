@@ -27,7 +27,7 @@ async function createSampleAssets(dir: string) {
   const videoPath = path.join(dir, 'sample-video.mp4')
 
   await Promise.all([
-    makeFramePng(1080, 1080, sqPath, '#0753e7'),
+    makeFramePng(2160, 2160, sqPath, '#0753e7'),
     makeFramePng(1080, 1350, portPath, '#0f766e'),
     makeFramePng(1080, 1920, storyPath, '#7c3aed'),
     sharp({

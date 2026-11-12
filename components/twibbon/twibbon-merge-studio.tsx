@@ -396,7 +396,7 @@ export function TwibbonMergeStudio({
       const jobInfo = await new Promise<{ jobId?: string; status?: string }>(
         (resolve, reject) => {
           const xhr = new XMLHttpRequest()
-          xhr.timeout = 120_000
+          xhr.timeout = 240_000
           xhr.withCredentials = true
 
           xhr.upload.onprogress = (event) => {
@@ -409,6 +409,11 @@ export function TwibbonMergeStudio({
                 setVideoPhaseLabel('Memvalidasi & menyiapkan render FFmpeg...')
               }
             }
+          }
+
+          xhr.upload.onload = () => {
+            setVideoUploadProgress(100)
+            setVideoPhaseLabel('Memvalidasi & menyiapkan render FFmpeg...')
           }
 
           xhr.onload = () => {

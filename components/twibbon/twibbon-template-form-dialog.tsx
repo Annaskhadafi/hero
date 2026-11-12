@@ -7,7 +7,6 @@ import { toast } from 'sonner'
 import {
   createTwibbonTemplateAction,
   updateTwibbonTemplateAction,
-  uploadTwibbonPngAction,
 } from '@/app/actions/twibbon'
 import {
   HeroFormDialog,
@@ -55,6 +54,7 @@ export function TwibbonTemplateFormDialog({
 
   const [uploadingRatio, setUploadingRatio] = React.useState<TwibbonAspectRatio | null>(null)
   const [uploadProgress, setUploadProgress] = React.useState<number>(0)
+  const [uploadStageText, setUploadStageText] = React.useState<string>('')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   React.useEffect(() => {
@@ -108,7 +108,7 @@ export function TwibbonTemplateFormDialog({
 
       const w = img.naturalWidth
       const h = img.naturalHeight
-      if (w === spec.width && h === spec.height && file.size <= 1.5 * 1024 * 1024) {
+      if (w === spec.width && h === spec.height && file.size <= 700 * 1024) {
         return file
       }
 
@@ -126,20 +126,34 @@ export function TwibbonTemplateFormDialog({
       const drawY = Math.round((canvas.height - drawHeight) / 2)
       ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight)
 
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), 'image/png')
-      )
-      if (!blob) return file
+      // Prefer RGBA WebP transport (10x-30x smaller than raw canvas PNG) so network
+      // upload finishes in <1s while preserving full alpha transparency; server saves .png.
+      const [webpBlob, pngBlob] = await Promise.all([
+        new Promise<Blob | null>((resolve) =>
+          canvas.toBlob((b) => resolve(b), 'image/webp', 0.92)
+        ),
+        new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), 'image/png')),
+      ])
 
-      // If original was exact dimensions and smaller, keep original
-      if (w === spec.width && h === spec.height && blob.size >= file.size) {
+      const candidates: Array<{ blob: Blob; ext: string; mime: string }> = []
+      if (webpBlob && webpBlob.type === 'image/webp') {
+        candidates.push({ blob: webpBlob, ext: 'webp', mime: 'image/webp' })
+      }
+      if (pngBlob) {
+        candidates.push({ blob: pngBlob, ext: 'png', mime: 'image/png' })
+      }
+      candidates.sort((a, b) => a.blob.size - b.blob.size)
+
+      const best = candidates[0]
+      if (!best) return file
+
+      // If original PNG already matches exact dimensions and is smaller than re-encoded, keep it
+      if (w === spec.width && h === spec.height && file.size <= best.blob.size) {
         return file
       }
 
-      const safeName = file.name.toLowerCase().endsWith('.png')
-        ? file.name
-        : `${file.name.replace(/\.[^.]+$/, '')}.png`
-      return new File([blob], safeName, { type: 'image/png' })
+      const baseName = file.name.replace(/\.[^.]+$/, '') || 'twibbon'
+      return new File([best.blob], `${baseName}.${best.ext}`, { type: best.mime })
     } catch {
       return file
     } finally {
@@ -150,13 +164,24 @@ export function TwibbonTemplateFormDialog({
   function uploadPngViaXhr(formData: FormData) {
     return new Promise<{ success: boolean; url?: string; error?: string }>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      xhr.timeout = 90_000
+      xhr.timeout = 75_000
       xhr.withCredentials = true
 
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && event.total > 0) {
-          setUploadProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+          const pct = Math.min(100, Math.round((event.loaded / event.total) * 100))
+          setUploadProgress(pct)
+          if (pct >= 100) {
+            setUploadStageText('Menyimpan PNG ke S3...')
+          } else {
+            setUploadStageText(`Mengunggah (${pct}%)...`)
+          }
         }
+      }
+
+      xhr.upload.onload = () => {
+        setUploadProgress(100)
+        setUploadStageText('Menyimpan PNG ke S3...')
       }
 
       xhr.onload = () => {
@@ -182,7 +207,7 @@ export function TwibbonTemplateFormDialog({
       xhr.onerror = () =>
         reject(new Error('Koneksi terputus saat mengunggah frame PNG. Periksa jaringan Anda.'))
       xhr.ontimeout = () =>
-        reject(new Error('Waktu unggah habis. Coba kompres atau unggah ulang PNG Anda.'))
+        reject(new Error('Koneksi server terlalu lambat saat menyimpan ke S3. Silakan coba lagi.'))
 
       xhr.open('POST', '/api/twibbon/upload-template')
       xhr.send(formData)
@@ -204,28 +229,18 @@ export function TwibbonTemplateFormDialog({
 
     setUploadingRatio(ratio)
     setUploadProgress(5)
+    setUploadStageText('Menyiapkan frame PNG...')
     try {
       const normalizedFile = await normalizePngForClientUpload(file, ratio)
       setUploadProgress(15)
+      setUploadStageText('Mengunggah (15%)...')
 
       const formData = new FormData()
       formData.append('file', normalizedFile)
       formData.append('ratio', ratio)
+      formData.append('originalFormat', 'png')
 
-      let res: { success: boolean; url?: string; error?: string }
-      try {
-        res = await uploadPngViaXhr(formData)
-      } catch (xhrErr: any) {
-        // Fallback to Server Action only if XHR failed before reaching API route
-        const message = String(xhrErr?.message || '')
-        if (!message.includes('HTTP 401') && !message.includes('HTTP 400')) {
-          res = await uploadTwibbonPngAction(formData).catch(() => {
-            throw xhrErr
-          })
-        } else {
-          throw xhrErr
-        }
-      }
+      const res = await uploadPngViaXhr(formData)
 
       if (!res.success || !res.url) {
         toast.error(res.error || 'Gagal mengunggah frame PNG.')
@@ -244,6 +259,7 @@ export function TwibbonTemplateFormDialog({
     } finally {
       setUploadingRatio(null)
       setUploadProgress(0)
+      setUploadStageText('')
     }
   }
 
@@ -400,8 +416,9 @@ export function TwibbonTemplateFormDialog({
                   {isUploading ? (
                     <div className="flex w-full flex-col items-center gap-1.5 px-3 text-blue-600">
                       <Loader2 className="size-6 animate-spin" />
-                      <span className="text-[11px] font-semibold">
-                        Mengunggah PNG {uploadProgress > 0 ? `${uploadProgress}%` : '...'}
+                      <span className="text-[11px] font-semibold text-center">
+                        {uploadStageText ||
+                          `Mengunggah PNG ${uploadProgress > 0 ? `${uploadProgress}%` : '...'}`}
                       </span>
                       <div className="h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-blue-100">
                         <div
