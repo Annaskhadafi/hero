@@ -58,7 +58,10 @@ import {
   trainingRequests,
   trainingRequestApprovals,
   hcFlightRouteChangeRequests,
+  hcLeaveRequests,
 } from '@/db/schema/hero'
+import { attendancePermissionRequests } from '@/db/schema/timesheet'
+import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 import { apdSummaries } from '@/db/schema/apd-summary'
 import { tireRepairJobcards } from '@/db/schema/tire-repair'
 import { maritalStatusRequests } from '@/db/schema/marital-status'
@@ -134,6 +137,22 @@ type ApprovalRecordRow = {
   fiveRReport?: typeof fiveRReports.$inferSelect | null
   maritalStatusRequestId?: number | null
   flightRouteRequestId?: number | null
+  templateKey?: string | null
+  attendancePermissionRequestId?: number | null
+  attendancePermission?: {
+    id: number | null
+    permissionType: string
+    permissionLabel: string
+    startDate: string | null
+    endDate: string | null
+    dateRangeLabel: string
+    sickCategory: string
+    lateReason: string
+    returnTime: string
+    reason: string
+    attachmentUrl: string | null
+    status: string
+  } | null
 }
 
 type RawApprovalRecordRow = {
@@ -240,7 +259,7 @@ function minutesToHours(minutes: number) {
 }
 
 function getShiftLabel(startTime: Date) {
-  const hour = startTime.getHours()
+  const hour = getTimezoneDateParts(startTime).hours
 
   if (hour >= 6 && hour < 15) {
     return 'Shift Pagi'
@@ -332,13 +351,172 @@ function parseJsonObject<T extends Record<string, unknown>>(value: string, fallb
   }
 }
 
+export function extractCalendarDateOnly(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const check = new Date(Date.UTC(year, month - 1, day))
+  if (
+    Number.isNaN(check.getTime()) ||
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return trimmed
+}
+
+export function parseCalendarDateSafe(value: unknown): Date | null {
+  const dateOnly = extractCalendarDateOnly(value)
+  if (!dateOnly) return null
+  const [year, month, day] = dateOnly.split('-').map(Number)
+  // Noon WITA (04:00 UTC) evaluates to the identical YYYY-MM-DD in UTC and all Indonesian timezones.
+  return new Date(Date.UTC(year, month - 1, day, 4, 0, 0))
+}
+
+function formatCalendarDateDisplay(dateOnly: string | null | undefined) {
+  const parsed = dateOnly ? parseCalendarDateSafe(dateOnly) : null
+  if (!parsed) return dateOnly || '-'
+  return parsed.toLocaleDateString('id-ID', { dateStyle: 'medium', timeZone: 'UTC' })
+}
+
+function formatAttendancePermissionDateRange(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined
+) {
+  if (!startDate) return '-'
+  if (!endDate || endDate === startDate) return formatCalendarDateDisplay(startDate)
+  return `${formatCalendarDateDisplay(startDate)} s/d ${formatCalendarDateDisplay(endDate)}`
+}
+
 function parseSnapshotDate(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return null
+  const calendarDate = parseCalendarDateSafe(value)
+  if (calendarDate) return calendarDate
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-function snapshotSplId(payload: Record<string, unknown>) {
+export function isOvertimeCommandLetterSubmission(
+  row: Pick<RawApprovalRecordRow, 'templateKey' | 'requestNumber'> & {
+    rawActivityType?: string | null
+  },
+  payload: Record<string, unknown>
+) {
+  const templateKey = String(row.templateKey ?? '')
+    .trim()
+    .toLowerCase()
+  if (templateKey) {
+    return templateKey === 'overtime-command-letter'
+  }
+  const rawType = String(row.rawActivityType ?? '')
+    .trim()
+    .toLowerCase()
+  if (rawType === 'overtime-command-letter' || rawType === 'overtime_command_letter') {
+    return true
+  }
+  const reqNo = String(row.requestNumber ?? '')
+    .trim()
+    .toUpperCase()
+  if (reqNo.startsWith('SPL-')) {
+    return true
+  }
+  return (
+    typeof payload.splNumber === 'string' &&
+    payload.splNumber.trim().toUpperCase().startsWith('SPL-')
+  )
+}
+
+export function snapshotSplId(
+  row: Pick<RawApprovalRecordRow, 'templateKey' | 'requestNumber'> & {
+    rawActivityType?: string | null
+  },
+  payload: Record<string, unknown>
+) {
+  if (!isOvertimeCommandLetterSubmission(row, payload)) {
+    return null
+  }
+  const value = payload.legacyRecordId
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function isAttendancePermissionSubmission(
+  row: Pick<RawApprovalRecordRow, 'templateKey' | 'requestNumber'> & {
+    rawActivityType?: string | null
+  },
+  payload: Record<string, unknown>
+) {
+  const templateKey = String(row.templateKey ?? '')
+    .trim()
+    .toLowerCase()
+  if (templateKey) {
+    return templateKey === 'attendance-permission'
+  }
+  const rawType = String(row.rawActivityType ?? '')
+    .trim()
+    .toLowerCase()
+  if (rawType === 'attendance-permission' || rawType === 'attendance_permission') {
+    return true
+  }
+  const reqNo = String(row.requestNumber ?? '')
+    .trim()
+    .toUpperCase()
+  return reqNo.startsWith('ATT-') || typeof payload.permissionType === 'string'
+}
+
+function snapshotAttendancePermissionId(
+  row: Pick<RawApprovalRecordRow, 'templateKey' | 'requestNumber'> & {
+    rawActivityType?: string | null
+  },
+  payload: Record<string, unknown>
+) {
+  if (!isAttendancePermissionSubmission(row, payload)) {
+    return null
+  }
+  const value = payload.legacyRecordId
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function isLeavePermissionSubmission(
+  row: Pick<RawApprovalRecordRow, 'templateKey' | 'requestNumber'> & {
+    rawActivityType?: string | null
+  }
+) {
+  const templateKey = String(row.templateKey ?? '')
+    .trim()
+    .toLowerCase()
+  if (templateKey) {
+    return templateKey === 'leave-permission'
+  }
+  const rawType = String(row.rawActivityType ?? '')
+    .trim()
+    .toLowerCase()
+  return (
+    rawType === 'leave-permission' ||
+    rawType === 'leave_request' ||
+    String(row.requestNumber ?? '')
+      .trim()
+      .toUpperCase()
+      .startsWith('LEV-')
+  )
+}
+
+function snapshotLeaveRequestId(
+  row: Pick<RawApprovalRecordRow, 'templateKey' | 'requestNumber'> & {
+    rawActivityType?: string | null
+  },
+  payload: Record<string, unknown>
+) {
+  if (!isLeavePermissionSubmission(row)) {
+    return null
+  }
   const value = payload.legacyRecordId
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
@@ -347,6 +525,7 @@ function snapshotSplId(payload: Record<string, unknown>) {
 async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
   const snapshots = rawRows.map((row) => ({
     approvalId: row.approvalId,
+    row,
     payload: parseJsonObject<Record<string, unknown>>(row.payloadSnapshot ?? '', {}),
     preview: parseJsonObject<Record<string, unknown>>(row.previewSnapshot ?? '', {}),
   }))
@@ -354,7 +533,29 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
   const splIds = Array.from(
     new Set(
       snapshots
-        .map((item) => snapshotSplId(item.payload))
+        .map((item) => snapshotSplId(item.row as any, item.payload))
+        .filter((value): value is number => value != null)
+    )
+  )
+  const attendancePermissionIds = Array.from(
+    new Set(
+      snapshots
+        .map((item) => snapshotAttendancePermissionId(item.row as any, item.payload))
+        .filter((value): value is number => value != null)
+    )
+  )
+  const attendanceSubmissionIds = Array.from(
+    new Set(
+      snapshots
+        .filter((item) => isAttendancePermissionSubmission(item.row as any, item.payload))
+        .map((item) => item.row.submissionId)
+        .filter((value): value is number => value != null)
+    )
+  )
+  const leaveRequestIds = Array.from(
+    new Set(
+      snapshots
+        .map((item) => snapshotLeaveRequestId(item.row as any, item.payload))
         .filter((value): value is number => value != null)
     )
   )
@@ -673,6 +874,40 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           .where(inArray(hcFlightRouteChangeRequests.id, flightRouteIds))
   const flightRouteMap = new Map(flightRouteRows.map((row) => [row.id, row]))
 
+  const [attendancePermRows, leaveReqRows] = await Promise.all([
+    attendancePermissionIds.length === 0 && attendanceSubmissionIds.length === 0
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(attendancePermissionRequests)
+          .where(
+            attendancePermissionIds.length > 0 && attendanceSubmissionIds.length > 0
+              ? or(
+                  inArray(attendancePermissionRequests.id, attendancePermissionIds),
+                  inArray(
+                    attendancePermissionRequests.approvalSubmissionId,
+                    attendanceSubmissionIds
+                  )
+                )
+              : attendancePermissionIds.length > 0
+                ? inArray(attendancePermissionRequests.id, attendancePermissionIds)
+                : inArray(
+                    attendancePermissionRequests.approvalSubmissionId,
+                    attendanceSubmissionIds
+                  )
+          ),
+    leaveRequestIds.length === 0
+      ? Promise.resolve([])
+      : db.select().from(hcLeaveRequests).where(inArray(hcLeaveRequests.id, leaveRequestIds)),
+  ])
+  const attendancePermByIdMap = new Map(attendancePermRows.map((row) => [row.id, row]))
+  const attendancePermBySubmissionMap = new Map(
+    attendancePermRows
+      .filter((row) => row.approvalSubmissionId != null)
+      .map((row) => [row.approvalSubmissionId as number, row])
+  )
+  const leaveReqMap = new Map(leaveReqRows.map((row) => [row.id, row]))
+
   const requesterIds = Array.from(
     new Set(
       rawRows
@@ -696,6 +931,21 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             (row.flightRouteRequestId == null
               ? null
               : flightRouteMap.get(row.flightRouteRequestId)?.employeeId) ??
+            (() => {
+              const snap = snapshotMap.get(row.approvalId)
+              const attId = snap
+                ? snapshotAttendancePermissionId(row as any, snap.payload)
+                : null
+              const att =
+                (attId != null ? attendancePermByIdMap.get(attId) : null) ??
+                (row.submissionId != null
+                  ? attendancePermBySubmissionMap.get(row.submissionId)
+                  : null)
+              if (att?.employeeId) return att.employeeId
+              const leaveId = snap ? snapshotLeaveRequestId(row as any, snap.payload) : null
+              const leave = leaveId != null ? leaveReqMap.get(leaveId) : null
+              return leave?.employeeId ?? null
+            })() ??
             row.approverEmployeeId
         )
         .filter(
@@ -717,7 +967,19 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
               : maritalStatusMap.get(row.maritalStatusRequestId)?.siteId) ??
             (row.flightRouteRequestId == null
               ? null
-              : flightRouteMap.get(row.flightRouteRequestId)?.siteId)
+              : flightRouteMap.get(row.flightRouteRequestId)?.siteId) ??
+            (() => {
+              const snap = snapshotMap.get(row.approvalId)
+              const attId = snap
+                ? snapshotAttendancePermissionId(row as any, snap.payload)
+                : null
+              const att =
+                (attId != null ? attendancePermByIdMap.get(attId) : null) ??
+                (row.submissionId != null
+                  ? attendancePermBySubmissionMap.get(row.submissionId)
+                  : null)
+              return att?.siteId ?? null
+            })()
         )
         .filter((value): value is number => value != null)
     )
@@ -850,8 +1112,18 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const snapshot = snapshotMap.get(row.approvalId)
     const payload: Record<string, unknown> = snapshot?.payload ?? {}
     const preview: Record<string, unknown> = snapshot?.preview ?? {}
-    const splId = snapshotSplId(payload)
+    const splId = snapshotSplId(row as any, payload)
     const spl = splId == null ? null : (splMap.get(splId) ?? null)
+    const attPermId = snapshotAttendancePermissionId(row as any, payload)
+    const attPerm =
+      (attPermId == null ? null : (attendancePermByIdMap.get(attPermId) ?? null)) ??
+      (row.submissionId == null
+        ? null
+        : (attendancePermBySubmissionMap.get(row.submissionId) ?? null))
+    const isAttPerm = isAttendancePermissionSubmission(row as any, payload) || attPerm != null
+    const leaveId = snapshotLeaveRequestId(row as any, payload)
+    const leaveReq = leaveId == null ? null : (leaveReqMap.get(leaveId) ?? null)
+    const isLeaveReq = isLeavePermissionSubmission(row as any) || leaveReq != null
     const apd = row.apdRequestId == null ? null : (apdMap.get(row.apdRequestId) ?? null)
     const summary = row.apdSummaryId == null ? null : (summaryMap.get(row.apdSummaryId) ?? null)
     const msReq =
@@ -888,6 +1160,14 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         photoCount: updates.reduce((total, update) => total + (Number(update?.photoCount) || 0), 0),
       }
     })
+    const attPermAttachmentRaw = isAttPerm
+      ? attPerm?.attachmentUrl ||
+        (typeof payload.attachmentUrl === 'string' ? payload.attachmentUrl : '')
+      : ''
+    const attPermAttachmentUrl = attPermAttachmentRaw
+      ? resolveUploadUrl(attPermAttachmentRaw)
+      : null
+
     const photoUrls = Array.from(
       new Set(
         [
@@ -899,6 +1179,7 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
             : splPhotoRows
                 .filter((photo) => photo.overtimeCommandLetterId === splId)
                 .map((photo) => resolveUploadUrl(photo.fileUrl))),
+          ...(attPermAttachmentUrl ? [attPermAttachmentUrl] : []),
         ].filter(Boolean)
       )
     )
@@ -906,6 +1187,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       requesterMap.get(
         row.activityEmployeeId ??
           row.requesterEmployeeId ??
+          attPerm?.employeeId ??
+          leaveReq?.employeeId ??
           apd?.employeeId ??
           summary?.generatedByEmployeeId ??
           msReq?.employeeId ??
@@ -913,12 +1196,42 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       ) ?? null
     const site =
       siteMap.get(
-        row.activitySiteId ?? row.submissionSiteId ?? apd?.siteId ?? msReq?.siteId ?? -1
+        row.activitySiteId ??
+          row.submissionSiteId ??
+          attPerm?.siteId ??
+          apd?.siteId ??
+          msReq?.siteId ??
+          -1
       ) ?? null
+
+    const attStartDateStr = isAttPerm
+      ? (extractCalendarDateOnly(attPerm?.startDate) ??
+          extractCalendarDateOnly(payload.requestDate) ??
+          extractCalendarDateOnly(preview.workDate))
+      : null
+    const attEndDateStr = isAttPerm
+      ? (extractCalendarDateOnly(attPerm?.endDate) ??
+          extractCalendarDateOnly(payload.endDate) ??
+          attStartDateStr)
+      : null
+    const leaveStartDateStr = isLeaveReq
+      ? (extractCalendarDateOnly(leaveReq?.startDate) ??
+          extractCalendarDateOnly(payload.startDate) ??
+          extractCalendarDateOnly(preview.workDate))
+      : null
+    const leaveEndDateStr = isLeaveReq
+      ? (extractCalendarDateOnly(leaveReq?.endDate) ??
+          extractCalendarDateOnly(payload.endDate) ??
+          leaveStartDateStr)
+      : null
+
     const rawStart =
+      (attStartDateStr ? parseCalendarDateSafe(attStartDateStr) : null) ??
+      (leaveStartDateStr ? parseCalendarDateSafe(leaveStartDateStr) : null) ??
       row.startTime ??
       spl?.plannedStartAt ??
       parseSnapshotDate(preview.plannedStartAt) ??
+      parseSnapshotDate(preview.workDate) ??
       row.submissionSubmittedAt ??
       apd?.requestDate ??
       msReq?.requestDate ??
@@ -927,9 +1240,12 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     const effectiveStartTime = rawStart ? new Date(rawStart) : new Date()
 
     const rawEnd =
+      (attEndDateStr ? parseCalendarDateSafe(attEndDateStr) : null) ??
+      (leaveEndDateStr ? parseCalendarDateSafe(leaveEndDateStr) : null) ??
       row.endTime ??
       spl?.plannedEndAt ??
       parseSnapshotDate(preview.plannedEndAt) ??
+      parseSnapshotDate(preview.workDate) ??
       row.submissionSubmittedAt ??
       apd?.requestDate ??
       msReq?.requestDate ??
@@ -975,6 +1291,23 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           ? payload.siteName
           : null
 
+    const attPermissionTypeRaw = String(
+      attPerm?.permissionType ?? payload.permissionType ?? 'sick'
+    ).trim()
+    const attPermissionLabel =
+      attPermissionTypeRaw === 'late' ? 'Izin Terlambat' : 'Izin Sakit'
+    const attDateRangeLabel = formatAttendancePermissionDateRange(
+      attStartDateStr,
+      attEndDateStr
+    )
+    const attSickCategory = String(
+      attPerm?.sickCategory ?? payload.sickCategory ?? ''
+    ).trim()
+    const attLateReason = String(attPerm?.lateReason ?? payload.lateReason ?? '').trim()
+    const attReturnTime = String(attPerm?.returnTime ?? payload.returnTime ?? '').trim()
+    const attReason = String(attPerm?.reason ?? payload.reason ?? '').trim()
+    const attStatus = attPerm?.status ?? row.submissionStatus ?? row.status ?? 'pending'
+
     const fiveR = row.fiveRReportId == null ? null : (fiveRMap.get(row.fiveRReportId) ?? null)
     const requestStatus =
       fiveR != null
@@ -983,28 +1316,36 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
           ? msReq.status
           : flightReq != null
             ? flightReq.status
-            : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
+            : isAttPerm && attPerm?.status
+              ? attPerm.status
+              : isLeaveReq && leaveReq?.status
+                ? leaveReq.status
+                : (row.activityStatus ?? row.submissionStatus ?? apd?.status ?? 'pending')
 
     const effectiveActivityType =
       fiveR != null
         ? '5R Audit Report'
-        : row.maritalStatusRequestId != null || msReq != null
-          ? 'Perubahan Status Pernikahan'
-          : row.flightRouteRequestId != null || flightReq != null
-            ? 'Permohonan Perubahan Rute Penerbangan'
-            : row.approvalActivityId != null
-              ? (row.activityType ?? 'Daily Activity')
-              : row.submissionId != null
-                ? (row.templateName ?? 'Workflow')
-                : row.repairFormWoId != null
-                  ? 'Work Order'
-                  : row.apdSummaryId != null
-                    ? 'Summary APD'
-                    : row.apdRequestId != null
-                      ? `Request ${apd?.requestCategory ?? 'APD'}`
-                      : (row as any).rawActivityType === 'jobcard_qc'
-                        ? 'Jobcard Repair (QC)'
-                        : ((row as any).rawActivityType ?? 'Workflow')
+        : isAttPerm
+          ? 'Pengajuan Izin'
+          : isLeaveReq
+            ? 'Pengajuan Cuti'
+            : row.maritalStatusRequestId != null || msReq != null
+              ? 'Perubahan Status Pernikahan'
+              : row.flightRouteRequestId != null || flightReq != null
+                ? 'Permohonan Perubahan Rute Penerbangan'
+                : row.approvalActivityId != null
+                  ? (row.activityType ?? 'Daily Activity')
+                  : row.submissionId != null
+                    ? (row.templateName ?? 'Workflow')
+                    : row.repairFormWoId != null
+                      ? 'Work Order'
+                      : row.apdSummaryId != null
+                        ? 'Summary APD'
+                        : row.apdRequestId != null
+                          ? `Request ${apd?.requestCategory ?? 'APD'}`
+                          : (row as any).rawActivityType === 'jobcard_qc'
+                            ? 'Jobcard Repair (QC)'
+                            : ((row as any).rawActivityType ?? 'Workflow')
 
     const currentRepairWo = row.repairFormWoId
       ? (repairWoMap.get(row.repairFormWoId) ?? null)
@@ -1013,6 +1354,15 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     let title = 'Workflow'
     if (fiveR != null) {
       title = `Laporan 5R: ${fiveR.reportNumber} – ${fiveR.picAreaName}`
+    } else if (isAttPerm) {
+      const empLabel =
+        requester?.name ||
+        (typeof payload.employeeName === 'string' ? payload.employeeName : '') ||
+        row.requestNumber ||
+        ''
+      title = empLabel
+        ? `Pengajuan ${attPermissionLabel} - ${empLabel}`
+        : `Pengajuan ${attPermissionLabel}`
     } else if (msReq != null) {
       title = `Permohonan Status Pernikahan - ${msReq.requestNumber}`
     } else if (flightReq != null) {
@@ -1040,6 +1390,15 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     let resolvedRemarks = ''
     if (fiveR != null) {
       resolvedRemarks = `Audit 5R (${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}/100`
+    } else if (isAttPerm) {
+      const detailParts = [
+        `${attPermissionLabel} (${attDateRangeLabel})`,
+        attPermissionTypeRaw === 'sick' && attSickCategory ? `Kategori: ${attSickCategory}` : '',
+        attPermissionTypeRaw === 'late' && attLateReason ? `Alasan: ${attLateReason}` : '',
+        attPermissionTypeRaw === 'late' && attReturnTime ? `Jam masuk: ${attReturnTime}` : '',
+        attReason ? `Keterangan: ${attReason}` : '',
+      ].filter(Boolean)
+      resolvedRemarks = detailParts.join(' • ')
     } else if (msReq != null) {
       resolvedRemarks = `Pergantian status dari ${msReq.currentMaritalStatus} ke ${msReq.targetMaritalStatus}. Alasan: ${msReq.reason}`
     } else if (flightReq != null) {
@@ -1059,6 +1418,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
     let resolvedDescription = '-'
     if (fiveR != null) {
       resolvedDescription = `Laporan 5R ${fiveR.picAreaName} (Periode ${fiveR.auditPeriod}) - Skor: ${fiveR.totalScore}`
+    } else if (isAttPerm) {
+      resolvedDescription = resolvedRemarks || summaryFromSnapshot || title
     } else if (msReq != null) {
       resolvedDescription = `Pergantian status dari ${msReq.currentMaritalStatus} ke ${msReq.targetMaritalStatus}. Alasan: ${msReq.reason}`
     } else if (flightReq != null) {
@@ -1164,15 +1525,19 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
         fiveR?.reportNumber ||
         spl?.splNumber ||
         row.requestNumber,
-      formName: flightReq
-        ? 'Permohonan Perubahan Rute Penerbangan'
-        : fiveR
-          ? '5R Audit Report'
-          : msReq
-            ? 'Perubahan Status Pernikahan'
-            : (row as any).rawFormName ||
-              row.templateName ||
-              (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)'),
+      formName: isAttPerm
+        ? 'Pengajuan Izin'
+        : isLeaveReq
+          ? 'Pengajuan Cuti'
+          : flightReq
+            ? 'Permohonan Perubahan Rute Penerbangan'
+            : fiveR
+              ? '5R Audit Report'
+              : msReq
+                ? 'Perubahan Status Pernikahan'
+                : (row as any).rawFormName ||
+                  row.templateName ||
+                  (row.approvalActivityId ? 'Daily Activity' : 'Jobcard Repair (QC)'),
       approvalStepId: row.approvalStepId,
       level: row.level,
       status: flightReq
@@ -1252,17 +1617,21 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       requesterJobTitle: resolvedJobTitle,
       siteName: resolvedSiteName,
       photoUrl: photoUrls[0] || null,
-      requestKindLabel: flightReq
-        ? 'Perubahan Rute'
-        : msReq
-          ? 'Perubahan Status Pernikahan'
-          : fiveR
-            ? '5R Audit'
-            : spl?.origin === 'employee_request'
-              ? 'Pengajuan'
-              : spl
-                ? 'Perintah'
-                : effectiveActivityType,
+      requestKindLabel: isAttPerm
+        ? attPermissionLabel
+        : isLeaveReq
+          ? 'Pengajuan Cuti'
+          : flightReq
+            ? 'Perubahan Rute'
+            : msReq
+              ? 'Perubahan Status Pernikahan'
+              : fiveR
+                ? '5R Audit'
+                : spl?.origin === 'employee_request'
+                  ? 'Pengajuan'
+                  : spl
+                    ? 'Perintah'
+                    : effectiveActivityType,
       description: resolvedDescription,
       dailyActivityStatus:
         sessions.length === 0
@@ -1285,6 +1654,24 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       fiveRReport: fiveR,
       maritalStatusRequestId: row.maritalStatusRequestId,
       flightRouteRequestId: row.flightRouteRequestId,
+      templateKey: isAttPerm ? 'attendance-permission' : (row.templateKey ?? null),
+      attendancePermissionRequestId: isAttPerm ? (attPerm?.id ?? attPermId ?? null) : null,
+      attendancePermission: isAttPerm
+        ? {
+            id: attPerm?.id ?? attPermId ?? null,
+            permissionType: attPermissionTypeRaw,
+            permissionLabel: attPermissionLabel,
+            startDate: attStartDateStr,
+            endDate: attEndDateStr,
+            dateRangeLabel: attDateRangeLabel,
+            sickCategory: attSickCategory,
+            lateReason: attLateReason,
+            returnTime: attReturnTime,
+            reason: attReason,
+            attachmentUrl: attPermAttachmentUrl,
+            status: attStatus,
+          }
+        : null,
     } satisfies ApprovalRecordRow
   })
 }
@@ -1924,19 +2311,35 @@ function normalizeMatchValue(value: string | null | undefined) {
   return (value ?? '').trim().toLowerCase()
 }
 
-function getDateKey(value?: Date | string | null) {
+export function getDateKey(value?: Date | string | null) {
+  const rawDateOnly = extractCalendarDateOnly(value)
+  if (rawDateOnly) return rawDateOnly
   const d = value ? new Date(value) : new Date()
   if (isNaN(d.getTime())) return '1970-01-01'
-  return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`
+  const parts = getTimezoneDateParts(d)
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
 }
 
-function formatDateLabel(value?: Date | string | null) {
+export function formatDateLabel(value?: Date | string | null) {
+  const rawDateOnly = extractCalendarDateOnly(value)
+  if (rawDateOnly) {
+    const safeDate = parseCalendarDateSafe(rawDateOnly)
+    if (safeDate) {
+      return safeDate.toLocaleDateString('id-ID', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
+    }
+  }
   const d = value ? new Date(value) : new Date()
   if (isNaN(d.getTime())) return '-'
   return d.toLocaleDateString('id-ID', {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+    timeZone: 'Asia/Makassar',
   })
 }
 
@@ -4152,6 +4555,9 @@ export async function getApprovalCenterData(
           fiveRReportId?: number | null
           maritalStatusRequestId?: number | null
           flightRouteRequestId?: number | null
+          templateKey?: string | null
+          attendancePermissionRequestId?: number | null
+          attendancePermission?: ApprovalRecordRow['attendancePermission']
         }>
       }
     >()
@@ -4162,11 +4568,13 @@ export async function getApprovalCenterData(
           ? `flight-route-${item.flightRouteRequestId}`
           : item.maritalStatusRequestId != null
             ? `marital-status-${item.maritalStatusRequestId}`
-            : (item as any).fiveRReportId != null
-              ? `five-r-${(item as any).fiveRReportId}`
-              : (item as any).repairFormWoId != null
-                ? `repair-wo-${(item as any).repairFormWoId}`
-                : `${normalizeMatchValue(item.requesterEmail)}:${getDateKey(item.startTime)}`
+            : item.attendancePermission != null || item.templateKey === 'attendance-permission'
+              ? `attendance-permission-${item.submissionId ?? item.attendancePermissionRequestId ?? item.approvalId}`
+              : (item as any).fiveRReportId != null
+                ? `five-r-${(item as any).fiveRReportId}`
+                : (item as any).repairFormWoId != null
+                  ? `repair-wo-${(item as any).repairFormWoId}`
+                  : `${normalizeMatchValue(item.requesterEmail)}:${getDateKey(item.startTime)}`
       const notes = buildApprovalComments([item])
       const group = inboxGroupsMap.get(groupKey) ?? {
         id: groupKey,
@@ -4207,9 +4615,13 @@ export async function getApprovalCenterData(
         submittedAt: item.submittedAt,
         dueAt: item.dueAt,
         dueState: item.dueState,
-        timeRange: formatTimeRange(item.startTime, item.endTime),
-        shiftLabel: getShiftLabel(item.startTime),
-        overtimeLabel: minutesToHours(item.overtimeMinutes),
+        timeRange: item.attendancePermission
+          ? item.attendancePermission.dateRangeLabel
+          : formatTimeRange(item.startTime, item.endTime),
+        shiftLabel: item.attendancePermission
+          ? item.attendancePermission.permissionLabel
+          : getShiftLabel(item.startTime),
+        overtimeLabel: item.attendancePermission ? '-' : minutesToHours(item.overtimeMinutes),
         requesterName: item.requesterName,
         requesterJobTitle: item.requesterJobTitle,
         siteName: item.siteName,
@@ -4243,6 +4655,9 @@ export async function getApprovalCenterData(
         fiveRReportId: (item as any).fiveRReportId ?? item.fiveRReport?.id ?? null,
         maritalStatusRequestId: (item as any).maritalStatusRequestId ?? null,
         flightRouteRequestId: (item as any).flightRouteRequestId ?? null,
+        templateKey: item.templateKey ?? null,
+        attendancePermissionRequestId: item.attendancePermissionRequestId ?? null,
+        attendancePermission: item.attendancePermission ?? null,
       })
       inboxGroupsMap.set(groupKey, group)
     }
@@ -4319,6 +4734,9 @@ export async function getApprovalCenterData(
           apdSummaryId?: number | null
           fiveRReportId?: number | null
           maritalStatusRequestId?: number | null
+          templateKey?: string | null
+          attendancePermissionRequestId?: number | null
+          attendancePermission?: ApprovalRecordRow['attendancePermission']
           signatureUrl?: string | null
           photoUrl?: string | null
           photos?: string[] | null
@@ -4387,15 +4805,20 @@ export async function getApprovalCenterData(
         status,
         statusLabel: seed.activityStatus,
         submittedAt: seed.createdAt,
-        timeRange: formatTimeRange(seed.startTime, seed.endTime),
-        shiftLabel: getShiftLabel(seed.startTime),
+        timeRange: seed.attendancePermission
+          ? seed.attendancePermission.dateRangeLabel
+          : formatTimeRange(seed.startTime, seed.endTime),
+        shiftLabel: seed.attendancePermission
+          ? seed.attendancePermission.permissionLabel
+          : getShiftLabel(seed.startTime),
         pendingWith: currentPending?.approverName ?? latestApproval?.approverName ?? '-',
         currentStepLabel:
           currentPending?.currentStepLabel ?? latestApproval?.currentStepLabel ?? '-',
-        workflowLabel:
-          currentPending?.route?.matrixName ??
-          latestApproval?.route?.matrixName ??
-          'Workflow Activity',
+        workflowLabel: seed.attendancePermission
+          ? 'Attendance Permission Workflow'
+          : (currentPending?.route?.matrixName ??
+              latestApproval?.route?.matrixName ??
+              'Workflow Activity'),
         lastDecision: formatLastDecision(notes),
         notes,
         repairFormWo: seed.repairFormWo ?? null,
@@ -4404,6 +4827,9 @@ export async function getApprovalCenterData(
         apdSummaryId: (seed as any).apdSummaryId ?? null,
         fiveRReportId: (seed as any).fiveRReportId ?? seed.fiveRReport?.id ?? null,
         maritalStatusRequestId: (seed as any).maritalStatusRequestId ?? null,
+        templateKey: seed.templateKey ?? null,
+        attendancePermissionRequestId: seed.attendancePermissionRequestId ?? null,
+        attendancePermission: seed.attendancePermission ?? null,
         signatureUrl: seed.signatureUrl ?? null,
         photoUrl: seed.photoUrl ?? null,
         steps: sortedRows.map((row) => ({

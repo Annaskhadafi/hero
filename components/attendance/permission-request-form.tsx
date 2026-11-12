@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CalendarDays, FileImage, Send, UserCheck } from 'lucide-react'
 import { toast } from 'sonner'
@@ -37,6 +37,8 @@ export function PermissionRequestForm({
   const [type, setType] = useState('sick')
   const [date, setDate] = useState(() => getTodayDateString())
   const [endDate, setEndDate] = useState(() => getTodayDateString())
+  const hasEditedStartDateRef = useRef(false)
+  const hasEditedEndDateRef = useRef(false)
   const [sickCategory, setSickCategory] = useState('Demam')
   const [customSickCategory, setCustomSickCategory] = useState('')
   const [lateReason, setLateReason] = useState('Keperluan Keluarga')
@@ -53,11 +55,15 @@ export function PermissionRequestForm({
   )
   const [isLoadingApprovers, setIsLoadingApprovers] = useState(!initialApproverData)
 
-  // Ensure client date is synced with device timezone to prevent UTC boundary shifts in the morning
+  // Ensure client date is synced with Indonesia timezone to prevent UTC/midnight boundary shifts
   useEffect(() => {
     const clientToday = getTodayDateString()
-    setDate((prev) => (!prev ? clientToday : prev))
-    setEndDate((prev) => (!prev ? clientToday : prev))
+    if (!hasEditedStartDateRef.current) {
+      setDate(clientToday)
+    }
+    if (!hasEditedEndDateRef.current) {
+      setEndDate(clientToday)
+    }
   }, [])
 
   useEffect(() => {
@@ -163,7 +169,14 @@ export function PermissionRequestForm({
               type="date"
               name="requestDate"
               value={date}
-              onChange={(event) => setDate(event.target.value)}
+              onChange={(event) => {
+                const nextDate = event.target.value
+                hasEditedStartDateRef.current = true
+                setDate(nextDate)
+                if (nextDate && (!endDate || endDate < nextDate)) {
+                  setEndDate(nextDate)
+                }
+              }}
               required
               suppressHydrationWarning
             />
@@ -179,7 +192,10 @@ export function PermissionRequestForm({
                   name="endDate"
                   value={endDate}
                   min={date}
-                  onChange={(event) => setEndDate(event.target.value)}
+                  onChange={(event) => {
+                    hasEditedEndDateRef.current = true
+                    setEndDate(event.target.value)
+                  }}
                   required
                   suppressHydrationWarning
                 />

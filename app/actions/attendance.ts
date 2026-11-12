@@ -376,14 +376,43 @@ function dayNumberFromDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) ? Number(value.slice(-2)) : null
 }
 
+function parseStrictCalendarDateParts(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim())
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const utc = new Date(Date.UTC(year, month - 1, day))
+  if (
+    Number.isNaN(utc.getTime()) ||
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== month - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return { year, month, day, utc }
+}
+
+function formatCalendarUtcDateKey(utcDate: Date) {
+  const year = utcDate.getUTCFullYear()
+  const month = String(utcDate.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(utcDate.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function dateRangeDays(startDate: string, endDate: string) {
-  const start = new Date(`${startDate}T00:00:00`)
-  const end = new Date(`${endDate}T00:00:00`)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return []
+  const startParts = parseStrictCalendarDateParts(startDate)
+  const endParts = parseStrictCalendarDateParts(endDate)
+  if (!startParts || !endParts || endParts.utc < startParts.utc) return []
 
   const days: string[] = []
-  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-    days.push(cursor.toISOString().slice(0, 10))
+  for (
+    const cursor = new Date(startParts.utc.getTime());
+    cursor <= endParts.utc;
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    days.push(formatCalendarUtcDateKey(cursor))
   }
   return days
 }
@@ -393,11 +422,18 @@ function formatAttendancePermissionType(permissionType: string) {
 }
 
 function formatAttendancePermissionRange(startDate: string, endDate: string) {
-  if (startDate === endDate) {
-    return new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })
+  const startParts = parseStrictCalendarDateParts(startDate)
+  const endParts = parseStrictCalendarDateParts(endDate)
+  const formatSingle = (parts: NonNullable<ReturnType<typeof parseStrictCalendarDateParts>> | null, fallback: string) => {
+    if (!parts) return fallback
+    return parts.utc.toLocaleDateString('id-ID', { dateStyle: 'medium', timeZone: 'UTC' })
   }
 
-  return `${new Date(`${startDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })} s/d ${new Date(`${endDate}T00:00:00`).toLocaleDateString('id-ID', { dateStyle: 'medium' })}`
+  if (startDate === endDate) {
+    return formatSingle(startParts, startDate)
+  }
+
+  return `${formatSingle(startParts, startDate)} s/d ${formatSingle(endParts, endDate)}`
 }
 
 async function notifyAttendancePermissionSubmitted(input: {
@@ -1060,6 +1096,19 @@ export async function submitAttendancePermission(formData: FormData) {
     const permissionType = getTrimmedFormValue(formData, 'permissionType')
     const requestDate = getTrimmedFormValue(formData, 'requestDate') || getTodayDateString()
     const endDate = getTrimmedFormValue(formData, 'endDate') || requestDate
+    if (!parseStrictCalendarDateParts(requestDate)) {
+      return { success: false, error: 'Format tanggal mulai izin tidak valid.' }
+    }
+    if (permissionType === 'sick') {
+      const parsedStart = parseStrictCalendarDateParts(requestDate)
+      const parsedEnd = parseStrictCalendarDateParts(endDate)
+      if (!parsedEnd) {
+        return { success: false, error: 'Format tanggal akhir sakit tidak valid.' }
+      }
+      if (parsedStart && parsedEnd.utc < parsedStart.utc) {
+        return { success: false, error: 'Tanggal akhir sakit tidak boleh sebelum tanggal mulai.' }
+      }
+    }
     let sickCategory = getTrimmedFormValue(formData, 'sickCategory')
     const customSickCategory = getTrimmedFormValue(formData, 'customSickCategory')
     if (sickCategory === 'Lainnya' && customSickCategory) {
@@ -1249,6 +1298,10 @@ export async function submitAttendancePermission(formData: FormData) {
         targetApproverName: targetApprover?.name || null,
         requestDate,
         endDate: permissionType === 'sick' ? endDate : requestDate,
+        sickCategory: permissionType === 'sick' ? sickCategory : '',
+        lateReason: permissionType === 'late' ? lateReason : '',
+        returnTime: permissionType === 'late' ? returnTime : '',
+        attachmentUrl: photoUrl || '',
         reason,
       },
       previewSnapshot: {
@@ -1269,6 +1322,7 @@ export async function submitAttendancePermission(formData: FormData) {
 
     revalidatePath('/mobile/attendance')
     revalidatePath('/mobile/attendance/permission')
+    revalidatePath('/mobile/approval')
     revalidatePath('/dashboard/scheduling-timesheet/attendance')
     revalidatePath('/dashboard/scheduling-timesheet/permission')
     revalidatePath('/dashboard/hc/permission')

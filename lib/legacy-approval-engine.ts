@@ -18,6 +18,7 @@ import { getAppUrl, buildWorkflowEmailContent, sendWorkflowEmail } from '@/lib/w
 import { sendPushNotification, getEmployeeTargetByEmail } from '@/lib/push-notifications'
 import type { ApprovalRouteResolution, ResolvedApprovalStep } from '@/lib/approval-engine'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
+import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 
 type LegacyApprovalTemplateKey =
   | 'attendance-permission'
@@ -138,10 +139,10 @@ function serializeApprovalRoute(route: ApprovalRouteResolution) {
 }
 
 function buildRequestNumber(prefix: string, referenceId: number, date: Date) {
-  const datePart = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(
-    2,
-    '0'
-  )}${String(date.getDate()).padStart(2, '0')}`
+  const parts = getTimezoneDateParts(date)
+  const datePart = `${parts.year}${String(parts.month).padStart(2, '0')}${String(
+    parts.day
+  ).padStart(2, '0')}`
   return `${prefix}-${datePart}-${String(referenceId).padStart(5, '0')}`
 }
 
