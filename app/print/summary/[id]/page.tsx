@@ -155,7 +155,7 @@ export default async function PrintSummaryPage({
     paddingRight: '1px', 
     lineHeight: '1.05', 
     wordBreak: 'break-word', 
-    overflowWrap: 'break-word',
+    overflowWrap: 'anywhere',
     hyphens: 'auto',
     whiteSpace: 'normal', 
     verticalAlign: 'middle' 
@@ -168,10 +168,10 @@ export default async function PrintSummaryPage({
   const displayLimit = Math.max(emps.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - emps.length);
 
-  // Column width allocations (calibrated for A4 Landscape ~281mm printable width)
-  const colWidthName = isExtremeDense ? '90px' : isUltraDense ? '95px' : '105px';
-  const colWidthSite = isExtremeDense ? '44px' : isUltraDense ? '48px' : '55px';
-  const colWidthRemarks = isExtremeDense ? '65px' : isUltraDense ? '70px' : '80px';
+  // Column width allocations (calibrated for A4 Landscape printable width without right-edge clipping)
+  const colWidthName = isExtremeDense ? '84px' : isUltraDense ? '90px' : '98px';
+  const colWidthSite = isExtremeDense ? '40px' : isUltraDense ? '44px' : '50px';
+  const colWidthRemarks = isExtremeDense ? '58px' : isUltraDense ? '64px' : '74px';
 
   return (
     <div className="print-page-wrapper" style={{ 
@@ -194,11 +194,17 @@ export default async function PrintSummaryPage({
           margin: 5mm 7mm; 
         }
         @media print {
+          @page {
+            size: A4 landscape;
+            margin: 5mm 7mm;
+          }
           html, body { 
             margin: 0 !important; 
             padding: 0 !important; 
             width: 100% !important; 
-            max-width: 100% !important; 
+            max-width: 100% !important;
+            height: auto !important;
+            overflow: visible !important;
             background: #fff !important;
             -webkit-print-color-adjust: exact !important; 
             print-color-adjust: exact !important; 
@@ -207,8 +213,17 @@ export default async function PrintSummaryPage({
             margin: 0 !important;
             padding: 0 !important;
             width: 100% !important;
+            min-width: 0 !important;
             max-width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            display: block !important;
             box-sizing: border-box !important;
+          }
+          col.print-hidden {
+            display: none !important;
+            visibility: collapse !important;
+            width: 0 !important;
           }
           .print-hidden,
           .print\\:hidden {
@@ -219,6 +234,7 @@ export default async function PrintSummaryPage({
             border: none !important;
           }
           table {
+            width: 100% !important;
             page-break-after: auto;
           }
           tr {
@@ -261,18 +277,18 @@ export default async function PrintSummaryPage({
       {/* Table */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '4px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
         <colgroup>
-          <col style={{ width: '22px' }} />
+          <col style={{ width: '18px' }} />
           <col style={{ width: colWidthName }} />
-          <col style={{ width: '36px' }} />
+          <col style={{ width: '34px' }} />
           {dynamicQtyCols.map((c) => (
             <col key={c} />
           ))}
-          <col style={{ width: '22px' }} />
-          <col style={{ width: '26px' }} />
-          <col style={{ width: '38px' }} />
+          <col style={{ width: '20px' }} />
+          <col style={{ width: '28px' }} />
+          <col style={{ width: '34px' }} />
           <col style={{ width: colWidthSite }} />
           <col style={{ width: colWidthRemarks }} />
-          <col style={{ width: '50px' }} className="print-hidden print:hidden" />
+          <col style={{ width: isExtremeDense ? '44px' : '50px' }} className="print-hidden print:hidden" />
         </colgroup>
         <thead>
           <tr>
@@ -305,7 +321,7 @@ export default async function PrintSummaryPage({
                 <td key={c} style={{ ...td, fontWeight: 'bold' }}>{e.items[c] || ''}</td>
               ))}
               <td style={{ ...td, fontWeight: 'bold' }}>{e.items['Safety Shoes'] || ''}</td>
-              <td style={{ ...td, fontSize: textFontSize }}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : textFontSize, wordBreak: 'break-word', lineHeight: '1.05' }}>{e.items['Safety Shoes Size'] || ''}</td>
               <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : '6.8pt', padding: '1px' }}>
                 {e.items['Safety Shoes'] ? (e.items['Safety Shoes Masa Pakai'] || '—') : '—'}
               </td>
@@ -513,8 +529,10 @@ export default async function PrintSummaryPage({
       <script async dangerouslySetInnerHTML={{__html: `
         if (new URLSearchParams(window.location.search).get('autoPrint') === '1') {
           window.addEventListener('load', function() {
+            if (window.__heroSummaryAutoPrinted) return;
+            window.__heroSummaryAutoPrinted = true;
             setTimeout(function() { window.print(); }, 350);
-          });
+          }, { once: true });
         }
 
         document.addEventListener('click', function(e) {

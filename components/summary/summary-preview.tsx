@@ -29,6 +29,7 @@ import {
   removeItemFromSummaryAction,
   updateSummaryShoeUsagePeriodAction,
 } from '@/app/dashboard/summary/actions';
+import { printSummaryInPlace } from '@/lib/summary-print';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
 import { SummaryGeneratorModal } from './summary-generator-modal';
 import { ApdRequestDetailModal } from './apd-request-detail-modal';
@@ -100,34 +101,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
   const handlePrintInPlace = () => {
     setPrinting(true);
-    const existing = document.getElementById('summary-print-iframe');
-    if (existing) existing.remove();
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'summary-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.left = '-9999px';
-    iframe.style.top = '0';
-    iframe.style.width = '297mm';
-    iframe.style.height = '210mm';
-    iframe.style.border = '0';
-    iframe.style.opacity = '0';
-    iframe.src = `/print/summary/${data.id}`;
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (err) {
-          console.error('Failed to print iframe:', err);
-        } finally {
-          setPrinting(false);
-        }
-      }, 500);
-    };
-
-    document.body.appendChild(iframe);
+    printSummaryInPlace(data.id, () => setPrinting(false));
   };
 
   const handleDeleteDraft = async () => {
@@ -394,7 +368,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     paddingRight: '1px', 
     lineHeight: '1.05', 
     wordBreak: 'break-word', 
-    overflowWrap: 'break-word',
+    overflowWrap: 'anywhere',
     hyphens: 'auto',
     whiteSpace: 'normal', 
     verticalAlign: 'middle' 
@@ -407,17 +381,17 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const displayLimit = Math.max(employees.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - employees.length);
 
-  // Column width allocations (calibrated for A4 Landscape ~281mm printable width)
-  const colWidthName = isExtremeDense ? '90px' : isUltraDense ? '95px' : '105px';
-  const colWidthSite = isExtremeDense ? '44px' : isUltraDense ? '48px' : '55px';
-  const colWidthRemarks = isExtremeDense ? '65px' : isUltraDense ? '70px' : '80px';
+  // Column width allocations (calibrated for A4 Landscape printable width without right-edge clipping)
+  const colWidthName = isExtremeDense ? '84px' : isUltraDense ? '90px' : '98px';
+  const colWidthSite = isExtremeDense ? '40px' : isUltraDense ? '44px' : '50px';
+  const colWidthRemarks = isExtremeDense ? '58px' : isUltraDense ? '64px' : '74px';
 
   // Renders the document sheet (identical to print document)
   const renderDocumentContent = (isForExport = false) => (
     <div
-      id="summary-document-printable"
+      id={isForExport ? 'summary-document-printable-zoom' : 'summary-document-printable'}
       className={`bg-white text-black select-none ${
-        isForExport ? 'w-[1050px] p-5' : 'w-full p-4 sm:p-6 min-w-[950px]'
+        isForExport ? 'w-[1050px] p-5' : 'w-full p-4 sm:p-6 min-w-[950px] print:min-w-0 print:w-full print:p-0'
       }`}
       style={{
         fontFamily: 'Arial, sans-serif',
@@ -460,18 +434,18 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       {/* Table */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '4px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
         <colgroup>
-          <col style={{ width: '22px' }} />
+          <col style={{ width: '18px' }} />
           <col style={{ width: colWidthName }} />
-          <col style={{ width: '36px' }} />
+          <col style={{ width: '34px' }} />
           {dynamicQtyCols.map((c) => (
             <col key={c} />
           ))}
-          <col style={{ width: '22px' }} />
-          <col style={{ width: '26px' }} />
-          <col style={{ width: '38px' }} />
+          <col style={{ width: '20px' }} />
+          <col style={{ width: '28px' }} />
+          <col style={{ width: '34px' }} />
           <col style={{ width: colWidthSite }} />
           <col style={{ width: colWidthRemarks }} />
-          <col style={{ width: '50px' }} className="print-hidden print:hidden" />
+          <col style={{ width: isExtremeDense ? '44px' : '50px' }} className="print-hidden print:hidden" />
         </colgroup>
         <thead>
           <tr>
@@ -504,7 +478,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 <td key={c} style={{ ...td, fontWeight: 'bold' }}>{e.items[c] || ''}</td>
               ))}
               <td style={{ ...td, fontWeight: 'bold' }}>{e.items['Safety Shoes'] || ''}</td>
-              <td style={{ ...td, fontSize: textFontSize }}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : textFontSize, wordBreak: 'break-word', lineHeight: '1.05' }}>{e.items['Safety Shoes Size'] || ''}</td>
               <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : '6.8pt', padding: '1px' }}>
                 {e.items['Safety Shoes'] ? (
                   (data.status === 'draft' || data.status === 'revisi') ? (
@@ -723,40 +697,75 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   );
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
+    <div className="space-y-5 max-w-7xl mx-auto summary-preview-root print:space-y-0 print:max-w-none print:mx-0">
       <style>{`
         @page {
           size: A4 landscape;
           margin: 5mm 7mm;
         }
         @media print {
+          @page {
+            size: A4 landscape;
+            margin: 5mm 7mm;
+          }
           html, body {
             margin: 0 !important;
             padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
             background: #fff !important;
+            overflow: visible !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          /* Hide non-printable dashboard elements */
-          body > *:not(#summary-print-iframe) {
-            visibility: hidden !important;
+          /* Sembunyikan seluruh UI chrome/dialog/iframe selain dokumen printable utama agar tidak terduplikasi antar halaman */
+          body *:not(:has(#summary-document-printable)):not(#summary-document-printable):not(#summary-document-printable *) {
+            display: none !important;
           }
-          #summary-document-printable,
-          #summary-document-printable * {
-            visibility: visible !important;
+          *:has(#summary-document-printable) {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            overflow: visible !important;
+            transform: none !important;
           }
           #summary-document-printable {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: static !important;
             width: 100% !important;
+            min-width: 0 !important;
             max-width: 100% !important;
+            height: auto !important;
             margin: 0 !important;
             padding: 0 !important;
             border: none !important;
             box-shadow: none !important;
             background: #fff !important;
             overflow: visible !important;
+          }
+          #summary-document-printable table {
+            width: 100% !important;
+            page-break-after: auto;
+          }
+          #summary-document-printable thead {
+            display: table-header-group;
+          }
+          #summary-document-printable tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          #summary-document-printable col.print-hidden {
+            display: none !important;
+            visibility: collapse !important;
+            width: 0 !important;
           }
           .print-hidden,
           .print\\:hidden {
@@ -770,7 +779,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       `}</style>
 
       {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="print-hidden print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -889,7 +898,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           (a) => a.status === 'needs_correction' || (Boolean(a.decisionNote) && a.status !== 'approved')
         );
         return (
-          <div className="rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-5 shadow-sm space-y-2">
+          <div className="print-hidden print:hidden rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-5 shadow-sm space-y-2">
             <div className="flex items-center gap-2.5 text-amber-900 font-bold text-sm">
               <AlertTriangle className="size-5 text-amber-600" />
               <span>Dokumen Summary Memerlukan Revisi</span>
@@ -919,7 +928,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       {data.status === 'rejected' && (() => {
         const rejApprover = data.approvals.find((a) => a.status === 'rejected');
         return (
-          <div className="rounded-2xl border-2 border-rose-400 bg-rose-50/90 p-5 shadow-sm space-y-2">
+          <div className="print-hidden print:hidden rounded-2xl border-2 border-rose-400 bg-rose-50/90 p-5 shadow-sm space-y-2">
             <div className="flex items-center gap-2.5 text-rose-900 font-bold text-sm">
               <XCircle className="size-5 text-rose-600" />
               <span>Dokumen Summary Ditolak</span>
@@ -939,13 +948,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       })()}
 
       {/* Main Document Paper Sheet */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-x-auto">
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-x-auto print:border-0 print:shadow-none print:rounded-none print:overflow-visible">
         {renderDocumentContent(false)}
       </div>
 
       {/* Fullscreen Zoom Lightbox Dialog */}
       {isZoomModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="print-hidden print:hidden fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200">
           {/* Top Bar */}
           <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-900/90 px-4 py-3 text-white">
             <div className="flex items-center gap-2">

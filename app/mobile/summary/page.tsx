@@ -30,8 +30,8 @@ export default async function MobileSummaryPage(props: {
 
   if (summaryData) {
     return (
-      <div className="space-y-4 pb-6">
-        <div className="flex items-center gap-2 px-1 pt-1">
+      <div className="space-y-4 pb-6 print:space-y-0 print:pb-0">
+        <div className="print:hidden flex items-center gap-2 px-1 pt-1">
           <Link
             href="/mobile/summary"
             className="flex size-9 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-700 active:scale-95 transition-transform"
@@ -46,7 +46,7 @@ export default async function MobileSummaryPage(props: {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
+        <div className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm print:border-0 print:p-0 print:shadow-none print:rounded-none">
           <SummaryPreview data={summaryData} />
         </div>
       </div>

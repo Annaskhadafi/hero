@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { generateSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import { printSummaryInPlace } from '@/lib/summary-print';
 import { SummaryGeneratorModal } from './summary-generator-modal';
 
 export type SectionWithSummary = {
@@ -61,36 +62,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
 
   const handlePrintInPlace = (summaryId: number) => {
     setPrintingId(summaryId);
-    const existing = document.getElementById('summary-print-iframe');
-    if (existing) {
-      existing.remove();
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'summary-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.left = '-9999px';
-    iframe.style.top = '0';
-    iframe.style.width = '297mm';
-    iframe.style.height = '210mm';
-    iframe.style.border = '0';
-    iframe.style.opacity = '0';
-    iframe.src = `/print/summary/${summaryId}`;
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (err) {
-          console.error('Failed to print iframe:', err);
-        } finally {
-          setPrintingId(null);
-        }
-      }, 500);
-    };
-
-    document.body.appendChild(iframe);
+    printSummaryInPlace(summaryId, () => setPrintingId(null));
   };
 
   const handleDeleteDraft = async (summaryId: number) => {

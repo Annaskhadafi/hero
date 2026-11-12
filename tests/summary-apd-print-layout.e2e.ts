@@ -2,54 +2,93 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import { loginToHero } from './e2e-auth-helper';
 
-test('verifies Summary APD print layout and preview: A4 Landscape, readable fonts, and no right/bottom clipping', async ({
+test('verifies Summary APD print layout, single-copy PDF print, and no right/bottom clipping', async ({
   app,
   screen,
   browser,
 }) => {
-  // 1. Authenticate with standard credentials and redirect to /dashboard/summary
-  await loginToHero(app, screen, browser, '/dashboard/summary');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  // 2. Open document preview for summary 67 to verify preview document table and print action buttons
-  await app.open('/dashboard/summary?preview=67');
-  await new Promise((resolve) => setTimeout(resolve, 4000));
+  // 1. Authenticate with standard credentials directly into dense multi-page Summary 71 preview
+  await loginToHero(app, screen, browser, '/dashboard/summary?preview=71');
 
   const docHeader = browser.locator('text=Summary Permintaan Barang Safety').first();
-  await expect(docHeader).toBeVisible({ timeout: 35000 });
+  await expect(docHeader).toBeVisible({ timeout: 45000 });
 
   // Verify external link button to open dedicated print page exists
   const extPrintLink = browser.locator('a[title*="halaman cetak"]').first();
   await expect(extPrintLink).toBeVisible({ timeout: 15000 });
 
-  // Screenshot 1: Summary Preview with new Print action and crisp table layout
+  // Wait briefly for Next.js client hydration before clicking interactive modal/print controls
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  // Verify unique #summary-document-printable ID even when Zoom Modal is open
+  await expect(browser.locator('#summary-document-printable')).toHaveCount(1);
+  await browser.locator('button[title="Tampilkan Ukuran Penuh"]').click();
+  await expect(browser.locator('#summary-document-printable-zoom')).toBeVisible({ timeout: 15000 });
+  await expect(browser.locator('#summary-document-printable')).toHaveCount(1);
+  await browser.locator('button[title="Tutup"]').click();
+
+  // Verify clicking Cetak PDF triggers print once and cleans up iframe afterprint
+  await browser.evaluate(() => {
+    (window as any).__summaryPrintCalls = 0;
+    const origAppend = document.body.appendChild.bind(document.body);
+    document.body.appendChild = (el: any) => {
+      const res = origAppend(el);
+      if (el && el.id === 'summary-print-iframe') {
+        el.addEventListener('load', () => {
+          try {
+            el.contentWindow.print = () => {
+              (window as any).__summaryPrintCalls += 1;
+              setTimeout(() => el.contentWindow.dispatchEvent(new Event('afterprint')), 50);
+            };
+          } catch {}
+        });
+      }
+      return res;
+    };
+  });
+  await browser.locator('button[title*="Cetak langsung"]').click();
+
+  // Poll via browser.evaluate until iframe loads, prints once, and cleans up afterprint
+  let iframeStats = { calls: 0, remainingIframes: -1 };
+  const deadline = Date.now() + 35000;
+  while (Date.now() < deadline) {
+    iframeStats = await browser.evaluate(() => ({
+      calls: (window as any).__summaryPrintCalls || 0,
+      remainingIframes: document.querySelectorAll('#summary-print-iframe').length,
+    }));
+    if (iframeStats.calls >= 1 && iframeStats.remainingIframes === 0) break;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  expect(iframeStats.calls).toBe(1);
+  expect(iframeStats.remainingIframes).toBe(0);
+
+  // Screenshot 1: Summary Preview 71 with Print action & crisp table layout
   await app.screenshot('01-summary-apd-preview-print-actions');
 
-  // 3. Open dedicated print page for summary 67 (dense summary with multiple employees)
-  await app.open('/print/summary/67');
-  await new Promise((resolve) => setTimeout(resolve, 4000));
+  // 2. Open dedicated print page for dense multi-page Summary 71
+  await app.open('/print/summary/71');
 
   const printTitle = browser.locator('text=Summary Permintaan Barang Safety').first();
-  await expect(printTitle).toBeVisible({ timeout: 25000 });
+  await expect(printTitle).toBeVisible({ timeout: 35000 });
 
-  // Verify table is visible and not clipped
   const printTable = browser.locator('table').first();
   await expect(printTable).toBeVisible({ timeout: 15000 });
 
-  // Verify headers and Safety Shoes
   const shoesHeader = browser.locator('th:has-text("Safety Shoes")').first();
   await expect(shoesHeader).toBeVisible({ timeout: 10000 });
 
-  // Screenshot 2: Full A4 Landscape print page for Summary 67
-  await app.screenshot('02-summary-apd-print-page-67-landscape');
+  // Verify A4 Landscape viewport width (283mm ~ 1070px) has zero horizontal table clipping
+  await browser.setViewport({ width: 1070, height: 794 });
+  const metrics71 = await browser.evaluate(() => {
+    const wrap = document.querySelector('.print-page-wrapper') as HTMLElement | null;
+    const table = document.querySelector('table') as HTMLElement | null;
+    return {
+      wrapW: wrap ? wrap.getBoundingClientRect().width : 0,
+      tableScrollW: table ? table.scrollWidth : 0,
+    };
+  });
+  expect(metrics71.tableScrollW).toBeLessThanOrEqual(metrics71.wrapW + 1);
 
-  // 4. Open dedicated print page for summary 69
-  await app.open('/print/summary/69');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  const printTitle69 = browser.locator('text=Summary Permintaan Barang Safety').first();
-  await expect(printTitle69).toBeVisible({ timeout: 25000 });
-
-  // Screenshot 3: Full A4 Landscape print page for Summary 69
-  await app.screenshot('03-summary-apd-print-page-69-landscape');
+  // Screenshot 2: Full A4 Landscape print page for dense Summary 71 (zero horizontal clipping)
+  await app.screenshot('02-summary-apd-print-page-71-landscape');
 });

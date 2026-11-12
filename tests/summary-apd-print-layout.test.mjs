@@ -34,24 +34,37 @@ test('app/print/summary/[id]/page.tsx enforces A4 landscape without clipping ove
   assert.ok(printFile.includes('itemHeaderFontSize'), 'Must define itemHeaderFontSize');
 });
 
-test('components/summary/summary-preview.tsx provides direct print styling and calibrated iframe dimensions', () => {
+test('lib/summary-print.ts configures calibrated iframe dimensions, single-print guard, and cleanup', () => {
+  const printHelper = fs.readFileSync(path.resolve('lib/summary-print.ts'), 'utf8');
+  assert.ok(printHelper.includes("iframe.style.width = '297mm'"), 'Iframe width must be 297mm');
+  assert.ok(printHelper.includes("iframe.style.height = '210mm'"), 'Iframe height must be 210mm');
+  assert.ok(printHelper.includes('hasPrinted'), 'Must guard against duplicate print() calls');
+  assert.ok(printHelper.includes('afterprint'), 'Must clean up iframe after printing');
+});
+
+test('components/summary/summary-preview.tsx provides non-fixed print styling, unique printable ID, and shared iframe print', () => {
   const previewFile = fs.readFileSync(path.resolve('components/summary/summary-preview.tsx'), 'utf8');
 
   // Must include A4 landscape @page rule
   assert.ok(previewFile.includes('size: A4 landscape;'), 'Must specify exact A4 landscape size');
-  assert.ok(previewFile.includes('#summary-document-printable'), 'Must assign printable document id');
+  assert.ok(previewFile.includes('summary-document-printable'), 'Must assign printable document id');
+  assert.ok(previewFile.includes('summary-document-printable-zoom'), 'Zoom modal copy must use a separate ID to avoid duplicate print DOM nodes');
 
-  // Must configure iframe with real A4 landscape dimensions
-  assert.ok(previewFile.includes("iframe.style.width = '297mm'"), 'Iframe width must be 297mm');
-  assert.ok(previewFile.includes("iframe.style.height = '210mm'"), 'Iframe height must be 210mm');
+  // Must NOT trap printable sheet in position: fixed during print (which repeats & clips across pages)
+  assert.ok(!previewFile.includes('position: fixed !important'), 'Must not apply position: fixed !important to printable document');
+  assert.ok(!previewFile.includes('body > *:not(#summary-print-iframe)'), 'Must not keep #summary-print-iframe visible during @media print');
+
+  // Must use shared printSummaryInPlace helper
+  assert.ok(previewFile.includes('printSummaryInPlace'), 'Must use shared printSummaryInPlace helper');
 
   // Must include new tab external link
   assert.ok(previewFile.includes('ExternalLink'), 'Must render ExternalLink icon for new tab');
   assert.ok(previewFile.includes('/print/summary/${data.id}'), 'Must link to print page');
 });
 
-test('components/summary/summary-list.tsx uses calibrated iframe print viewport', () => {
+test('components/summary/summary-list.tsx and mobile-summary-client.tsx share printSummaryInPlace', () => {
   const listFile = fs.readFileSync(path.resolve('components/summary/summary-list.tsx'), 'utf8');
-  assert.ok(listFile.includes("iframe.style.width = '297mm'"), 'Iframe width in list must be 297mm');
-  assert.ok(listFile.includes("iframe.style.height = '210mm'"), 'Iframe height in list must be 210mm');
+  const mobileFile = fs.readFileSync(path.resolve('components/mobile/mobile-summary-client.tsx'), 'utf8');
+  assert.ok(listFile.includes('printSummaryInPlace'), 'SummaryList must delegate printing to printSummaryInPlace');
+  assert.ok(mobileFile.includes('printSummaryInPlace'), 'MobileSummaryClient must delegate printing to printSummaryInPlace');
 });
