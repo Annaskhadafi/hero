@@ -1845,11 +1845,26 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       (normEmpName ? reviewsByName.get(normEmpName) : null) ||
       (normEmpSn ? reviewsBySn.get(normEmpSn) : null)
 
+    const rawPerm = emp.permanentDate ? String(emp.permanentDate).trim() : ''
+    const hasValidPermanentDate =
+      Boolean(rawPerm) &&
+      !rawPerm.startsWith('0001') &&
+      !rawPerm.startsWith('1970') &&
+      !rawPerm.startsWith('0000')
+
+    const isExplicitContract = Boolean(
+      emp.employeeStatusType?.toLowerCase().includes('kontrak') ||
+      emp.employmentStatus?.toLowerCase() === 'contract' ||
+      emp.employmentStatus?.toLowerCase() === 'kontrak'
+    )
+
     const isPermanent =
-      Boolean(emp.permanentDate) ||
-      emp.employmentStatus?.toLowerCase() === 'permanent' ||
-      emp.employmentStatus?.toLowerCase() === 'permanen' ||
-      (emp.employeeStatusType?.toLowerCase().includes('permanen') && !emp.employeeStatusType?.toLowerCase().includes('kontrak'))
+      !isExplicitContract &&
+      (hasValidPermanentDate ||
+        emp.employmentStatus?.toLowerCase() === 'permanent' ||
+        emp.employmentStatus?.toLowerCase() === 'permanen' ||
+        (Boolean(emp.employeeStatusType) &&
+          emp.employeeStatusType!.toLowerCase().includes('permanen')))
 
     if (isPermanent) {
       continue
