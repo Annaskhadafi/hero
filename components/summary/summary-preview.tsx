@@ -315,19 +315,19 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const isUltraDense = empCount > 17;
   const isExtremeDense = empCount > 23;
 
-  // Calibrated font sizing — prevents microscopic text while fitting within A4 Landscape
-  const thFontSize = isExtremeDense ? '6.8pt' : isUltraDense ? '7pt' : '7.5pt';
-  const itemHeaderFontSize = isExtremeDense ? '5.4pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '6.8pt';
-  const qtyFontSize = isExtremeDense ? '7.5pt' : isUltraDense ? '8pt' : '8.5pt';
-  const textFontSize = isExtremeDense ? '7pt' : isUltraDense ? '7.2pt' : '7.5pt';
-  const remarksFontSize = isExtremeDense ? '6.2pt' : isUltraDense ? '6.5pt' : '7pt';
+  // Calibrated font sizing — prevents microscopic text while fitting 30-row dense summaries on 1 A4 Landscape page
+  const thFontSize = isExtremeDense ? '6.4pt' : isUltraDense ? '7pt' : '7.5pt';
+  const itemHeaderFontSize = isExtremeDense ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '6.8pt';
+  const qtyFontSize = isExtremeDense ? '7pt' : isUltraDense ? '8pt' : '8.5pt';
+  const textFontSize = isExtremeDense ? '6.5pt' : isUltraDense ? '7.2pt' : '7.5pt';
+  const remarksFontSize = isExtremeDense ? '5.8pt' : isUltraDense ? '6.5pt' : '7pt';
 
-  const padV = isExtremeDense ? '1px' : isUltraDense ? '1.5px' : isDense ? '2px' : '3px';
+  const padV = isExtremeDense ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '3px';
   const padH = '1px';
-  const rowHeight = isExtremeDense ? '15px' : isUltraDense ? '17px' : isDense ? '19px' : '22px';
+  const rowHeight = isExtremeDense ? '13px' : isUltraDense ? '17px' : isDense ? '19px' : '22px';
 
-  const sigContainerHeight = isExtremeDense ? '28px' : isUltraDense ? '32px' : '38px';
-  const sigImgHeight = isExtremeDense ? '24px' : isUltraDense ? '28px' : '34px';
+  const sigContainerHeight = isExtremeDense ? '22px' : isUltraDense ? '32px' : '38px';
+  const sigImgHeight = isExtremeDense ? '20px' : isUltraDense ? '28px' : '34px';
 
   const th: React.CSSProperties = { 
     border: '1px solid #000', 
@@ -405,21 +405,21 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       }}
     >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: isExtremeDense ? '4px' : '6px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: isExtremeDense ? '2px' : '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: isExtremeDense ? '30px' : '34px', width: 'auto' }} />
+          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: isExtremeDense ? '26px' : '34px', width: 'auto' }} />
         </div>
         <div style={{ textAlign: 'right', paddingRight: '2px' }}>
-          <div style={{ fontSize: isExtremeDense ? '10.5pt' : '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2' }}>
+          <div style={{ fontSize: isExtremeDense ? '10pt' : '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.15' }}>
             Summary Permintaan Barang Safety
             {data.targetSite === 'VALE' && <span style={{ color: '#ea580c' }}> (Vale)</span>}
             {data.targetSite === 'GABUNGAN' && <span style={{ color: '#2563eb' }}> (Gabungan Site)</span>}
           </div>
-          <div style={{ fontSize: isExtremeDense ? '8.5pt' : '9pt', fontWeight: 'bold', marginTop: '1px', color: '#333' }}>{data.sectionName}</div>
+          <div style={{ fontSize: isExtremeDense ? '8pt' : '9pt', fontWeight: 'bold', marginTop: '1px', color: '#333' }}>{data.sectionName}</div>
         </div>
       </div>
 
-      <div style={{ fontSize: isExtremeDense ? '6.8pt' : '7.2pt', marginBottom: isExtremeDense ? '4px' : '6px', lineHeight: '1.25', color: '#111' }}>
+      <div style={{ fontSize: isExtremeDense ? '6.3pt' : '7.2pt', marginBottom: isExtremeDense ? '2px' : '6px', lineHeight: isExtremeDense ? '1.15' : '1.25', color: '#111' }}>
         <div><strong>Tanggal Pengajuan:</strong> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</div>
         {data.periodStart && data.periodEnd && (
           <div>
@@ -432,7 +432,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       </div>
 
       {/* Table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '4px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '2px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
         <colgroup>
           <col style={{ width: '18px' }} />
           <col style={{ width: colWidthName }} />
@@ -511,10 +511,20 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                   <span className="text-slate-400">—</span>
                 )}
               </td>
-              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : '6.8pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
-              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
+              <td style={{ ...td, fontSize: isExtremeDense ? '5.6pt' : '6.8pt', lineHeight: '1.05', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '0.5px 1.5px' }}>
                 <div style={{
-                  maxHeight: isExtremeDense ? '20px' : isUltraDense ? '24px' : isDense ? '28px' : '36px',
+                  maxHeight: isExtremeDense ? '16px' : undefined,
+                  overflow: isExtremeDense ? 'hidden' : undefined,
+                  display: isExtremeDense ? '-webkit-box' : undefined,
+                  WebkitLineClamp: isExtremeDense ? 2 : undefined,
+                  WebkitBoxOrient: isExtremeDense ? 'vertical' : undefined,
+                }}>
+                  {e.site}
+                </div>
+              </td>
+              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '0.5px 2px', lineHeight: '1.05' }} title={e.remarks}>
+                <div style={{
+                  maxHeight: isExtremeDense ? '15px' : isUltraDense ? '24px' : isDense ? '28px' : '36px',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   display: '-webkit-box',

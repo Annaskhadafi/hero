@@ -94,4 +94,24 @@ test('verifies Summary APD print layout, single-copy PDF print, and no right/bot
 
   // Screenshot 2: Full A4 Landscape printOnly=1 page for dense Summary 71 (zero horizontal clipping)
   await app.screenshot('02-summary-apd-print-page-71-landscape');
+
+  // 3. Verify 30-row Summary 67 fits strictly within 1 A4 Landscape page height (<= 755px)
+  await app.open('/print/summary/67?printOnly=1');
+  const printTitle67 = browser.locator('text=Summary Permintaan Barang Safety').first();
+  await expect(printTitle67).toBeVisible({ timeout: 35000 });
+  await browser.setViewport({ width: 1070, height: 794 });
+  const metrics67 = await browser.evaluate(() => {
+    const wrap = document.querySelector('.print-page-wrapper') as HTMLElement | null;
+    const table = document.querySelector('table') as HTMLElement | null;
+    return {
+      wrapW: wrap ? wrap.getBoundingClientRect().width : 0,
+      wrapH: wrap ? wrap.getBoundingClientRect().height : 0,
+      tableScrollW: table ? table.scrollWidth : 0,
+    };
+  });
+  expect(metrics67.tableScrollW).toBeLessThanOrEqual(metrics67.wrapW + 1);
+  expect(metrics67.wrapH).toBeLessThanOrEqual(755);
+
+  // Screenshot 3: Full 30-row Summary 67 fitting cleanly on 1 A4 Landscape page
+  await app.screenshot('03-summary-apd-print-page-67-single-page');
 });
