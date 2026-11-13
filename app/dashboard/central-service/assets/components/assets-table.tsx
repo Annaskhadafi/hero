@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState, useRef, useMemo, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   useReactTable,
   getCoreRowModel,
@@ -59,7 +60,8 @@ import {
 } from "lucide-react";
 import { AssetFormDialog } from "./asset-form-dialog";
 import { AssetQrStickerDialog, type AssetStickerItem } from "./asset-qr-sticker-dialog";
-import { deleteAsset, updateAssetCondition } from "../actions";
+import { deleteAsset, updateAssetCondition, bulkImportAssets, type BulkImportAssetItem } from "../actions";
+import { AdminImportDialog, type AdminImportField, type AdminImportPayload } from "@/components/admin/admin-import-dialog";
 import { toast } from "sonner";
 import { format, differenceInMonths, isAfter, isBefore, addMonths, startOfDay } from "date-fns";
 import {
@@ -487,6 +489,7 @@ function assetSearchText(asset: Asset) {
 }
 
 export function AssetsTable({ data: initialData, masterSections }: AssetsTableProps) {
+  const router = useRouter();
   const [data, setData] = useState(initialData);
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([{ id: "duePriority", desc: false }]);
@@ -544,14 +547,80 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
     setDeleteId(null);
   };
 
-  const handleImportCSV = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      toast.info("Fitur import CSV akan segera tersedia");
-      e.target.value = "";
-    },
+  const importFields: AdminImportField[] = useMemo(
+    () => [
+      { key: "workSection", label: "Work Section / Departemen" },
+      { key: "section", label: "Kategori Alat (Section)", required: true },
+      { key: "location", label: "Lokasi Site", required: true },
+      { key: "description", label: "Deskripsi / Nama Alat", required: true },
+      { key: "assetNumber", label: "Nomor Aset" },
+      { key: "serialNumber", label: "Serial Number" },
+      { key: "purchaseDate", label: "Tanggal Pembelian" },
+      { key: "deliveryToSiteDate", label: "Delivery To Site" },
+      { key: "condition", label: "Kondisi (ACTIVE, REPAIR, BAD, SCRAP, NONAKTIF)" },
+      { key: "qty", label: "Quantity" },
+      { key: "lastCalibrationDate", label: "Tgl Kalibrasi Terakhir" },
+      { key: "calibrationCycleMonths", label: "Siklus Kalibrasi (Bulan)" },
+      { key: "calibrationDueDate", label: "Due Date Kalibrasi" },
+      { key: "certificateDate", label: "Tgl Sertifikat" },
+      { key: "certificateCycleMonths", label: "Siklus Sertifikat (Bulan)" },
+      { key: "certificateDueDate", label: "Due Date Sertifikat" },
+      { key: "remarks", label: "Remarks / Catatan" },
+    ],
     []
+  );
+
+  const handleConfirmImport = useCallback(
+    async (payload: AdminImportPayload) => {
+      const toastId = toast.loading("Mengimpor data asset...");
+      setIsImporting(true);
+      try {
+        const headerIndex = new Map(payload.headers.map((header, index) => [header, index]));
+        const getCell = (row: string[], key: string) => {
+          const mappedHeader = payload.mapping[key];
+          if (!mappedHeader) return "";
+          const index = headerIndex.get(mappedHeader);
+          if (index == null) return "";
+          return (row[index] ?? "").trim();
+        };
+
+        const parsedItems: BulkImportAssetItem[] = payload.rows.map((row) => ({
+          workSection: getCell(row, "workSection"),
+          section: getCell(row, "section"),
+          location: getCell(row, "location"),
+          description: getCell(row, "description"),
+          assetNumber: getCell(row, "assetNumber"),
+          serialNumber: getCell(row, "serialNumber"),
+          purchaseDate: getCell(row, "purchaseDate"),
+          deliveryToSiteDate: getCell(row, "deliveryToSiteDate"),
+          condition: getCell(row, "condition"),
+          qty: getCell(row, "qty"),
+          lastCalibrationDate: getCell(row, "lastCalibrationDate"),
+          calibrationCycleMonths: getCell(row, "calibrationCycleMonths"),
+          calibrationDueDate: getCell(row, "calibrationDueDate"),
+          certificateDate: getCell(row, "certificateDate"),
+          certificateCycleMonths: getCell(row, "certificateCycleMonths"),
+          certificateDueDate: getCell(row, "certificateDueDate"),
+          remarks: getCell(row, "remarks"),
+        }));
+
+        const res = await bulkImportAssets(parsedItems);
+        if (res.success && res.data) {
+          toast.success(
+            `Berhasil mengimpor ${res.data.total} asset (${res.data.insertedCount} baru, ${res.data.updatedCount} diupdate)`,
+            { id: toastId }
+          );
+          router.refresh();
+        } else {
+          toast.error(res.error || "Gagal mengimpor asset", { id: toastId });
+        }
+      } catch (err: any) {
+        toast.error(err.message || "Terjadi kesalahan saat mengimpor", { id: toastId });
+      } finally {
+        setIsImporting(false);
+      }
+    },
+    [router]
   );
 
   const handleConditionChange = useCallback(async (asset: Asset, condition: string) => {
@@ -1115,23 +1184,23 @@ export function AssetsTable({ data: initialData, masterSections }: AssetsTablePr
               ? ` (${table.getFilteredRowModel().rows.length})`
               : ""}
           </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx"
-            className="hidden"
-            onChange={handleImportCSV}
+          <AdminImportDialog
+            title="Import Data Asset Management"
+            description="Upload file Excel (.xlsx) atau CSV untuk menambah dan memperbarui data asset Central Service secara massal."
+            fields={importFields}
+            onConfirm={handleConfirmImport}
+            trigger={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                disabled={isImporting}
+              >
+                <Upload className="h-4 w-4" />
+                Import
+              </Button>
+            }
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-9"
-            disabled={isImporting}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Import
-          </Button>
           <Button
             size="sm"
             className="h-9"

@@ -391,3 +391,158 @@ export async function deleteAsset(id: number) {
     return { success: false, error: "Failed to delete asset" };
   }
 }
+
+export type BulkImportAssetItem = {
+  workSection?: string | null;
+  section?: string | null;
+  location?: string | null;
+  description?: string | null;
+  assetNumber?: string | null;
+  serialNumber?: string | null;
+  purchaseDate?: string | null;
+  deliveryToSiteDate?: string | null;
+  lastCalibrationDate?: string | null;
+  calibrationCycleMonths?: string | number | null;
+  calibrationDueDate?: string | null;
+  certificateDate?: string | null;
+  certificateCycleMonths?: string | number | null;
+  certificateDueDate?: string | null;
+  condition?: string | null;
+  qty?: string | number | null;
+  remarks?: string | null;
+};
+
+export async function bulkImportAssets(items: BulkImportAssetItem[]) {
+  try {
+    if (!items || items.length === 0) {
+      return { success: false, error: "Tidak ada baris data yang diimpor" };
+    }
+
+    let insertedCount = 0;
+    let updatedCount = 0;
+
+    await db.transaction(async (tx) => {
+      for (const item of items) {
+        const description = (item.description ?? "").trim();
+        const section = (item.section ?? "").trim();
+        const location = (item.location ?? "").trim();
+
+        // Skip rows that lack required minimum identification
+        if (!description && !section && !location) continue;
+
+        const workSection = (item.workSection ?? "").trim();
+        const assetNumber = (item.assetNumber ?? "").trim() || null;
+        const serialNumber = (item.serialNumber ?? "").trim() || null;
+        const condition = (item.condition ?? "").trim().toUpperCase() || "ACTIVE";
+        const validCondition = ["ACTIVE", "NONAKTIF", "REPAIR", "BAD", "SCRAP"].includes(condition)
+          ? condition
+          : "ACTIVE";
+
+        const rawQty = item.qty !== undefined && item.qty !== null && item.qty !== "" ? Number(item.qty) : 1;
+        const qty = Number.isFinite(rawQty) && rawQty > 0 ? Math.floor(rawQty) : 1;
+
+        const calCycle =
+          item.calibrationCycleMonths !== undefined &&
+          item.calibrationCycleMonths !== null &&
+          item.calibrationCycleMonths !== ""
+            ? Number(item.calibrationCycleMonths)
+            : null;
+        const certCycle =
+          item.certificateCycleMonths !== undefined &&
+          item.certificateCycleMonths !== null &&
+          item.certificateCycleMonths !== ""
+            ? Number(item.certificateCycleMonths)
+            : null;
+
+        const assetValues = {
+          workSection: workSection || "Service Operation MVC",
+          section: section || "General Tools",
+          location: location || "Balikpapan",
+          description: description || "Asset Equipment",
+          assetNumber,
+          serialNumber,
+          purchaseDate: parseDate(item.purchaseDate),
+          deliveryToSiteDate: parseDate(item.deliveryToSiteDate),
+          lastCalibrationDate: parseDate(item.lastCalibrationDate),
+          calibrationCycleMonths: calCycle !== null && Number.isFinite(calCycle) ? calCycle : null,
+          calibrationDueDate: parseDate(item.calibrationDueDate),
+          certificateDate: parseDate(item.certificateDate),
+          certificateCycleMonths: certCycle !== null && Number.isFinite(certCycle) ? certCycle : null,
+          certificateDueDate: parseDate(item.certificateDueDate),
+          condition: validCondition,
+          qty,
+          remarks: (item.remarks ?? "").trim() || null,
+          updatedAt: new Date(),
+        };
+
+        // Matching logic: check if asset already exists by assetNumber or (serialNumber + description)
+        let existing = null;
+        if (assetNumber) {
+          const [match] = await tx
+            .select()
+            .from(centralServiceAssets)
+            .where(eq(centralServiceAssets.assetNumber, assetNumber))
+            .limit(1);
+          existing = match;
+        } else if (serialNumber) {
+          const [match] = await tx
+            .select()
+            .from(centralServiceAssets)
+            .where(eq(centralServiceAssets.serialNumber, serialNumber))
+            .limit(1);
+          existing = match;
+        }
+
+        if (existing) {
+          await tx
+            .update(centralServiceAssets)
+            .set(assetValues)
+            .where(eq(centralServiceAssets.id, existing.id));
+
+          const changeRows = buildChangeRows(existing.id, existing, assetValues, "import_update");
+          if (changeRows.length > 0) {
+            await tx.insert(centralServiceAssetHistories).values(changeRows);
+          }
+          updatedCount++;
+        } else {
+          const [newAsset] = await tx
+            .insert(centralServiceAssets)
+            .values({
+              ...assetValues,
+              createdAt: new Date(),
+            })
+            .returning();
+
+          await tx.insert(centralServiceAssetHistories).values({
+            assetId: newAsset.id,
+            action: "create",
+            fieldName: "asset",
+            fieldLabel: "Asset",
+            previousValue: null,
+            newValue: newAsset.description,
+            changeRemark: "Import Excel",
+          });
+          insertedCount++;
+        }
+      }
+    });
+
+    revalidatePath("/dashboard/central-service/assets");
+    revalidatePath("/mobile/central-service/assets");
+
+    return {
+      success: true,
+      data: {
+        insertedCount,
+        updatedCount,
+        total: insertedCount + updatedCount,
+      },
+    };
+  } catch (error) {
+    console.error("Failed to bulk import assets:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Gagal mengimpor data asset",
+    };
+  }
+}
