@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   XCircle,
   HelpCircle,
+  Ban,
   Edit,
   Trash2,
   Paperclip,
@@ -159,6 +160,14 @@ function conditionTag(condition: string) {
       </span>
     );
   }
+  if (c === "NONAKTIF") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-black bg-amber-500/10 text-amber-700 border border-amber-200">
+        <Ban className="w-3 h-3" />
+        NONAKTIF
+      </span>
+    );
+  }
   if (c === "REPAIR") {
     return (
       <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-black bg-cyan-500/10 text-cyan-700 border border-cyan-200">
@@ -265,7 +274,7 @@ export function MobileAssetsClientPage({
       totalQty += a.qty || 1;
       const c = (a.condition || "").toUpperCase();
       if (c === "ACTIVE") activeCount++;
-      if (c === "REPAIR" || c === "BAD" || c === "SCRAP") repairOrBadCount++;
+      if (c === "REPAIR" || c === "BAD" || c === "SCRAP" || c === "NONAKTIF") repairOrBadCount++;
 
       const calState = dueState(a.calibrationDueDate);
       const certState = dueState(a.certificateDueDate);
@@ -697,6 +706,7 @@ export function MobileAssetsClientPage({
             >
               <option value="ALL">Semua Kondisi</option>
               <option value="ACTIVE">ACTIVE</option>
+              <option value="NONAKTIF">NONAKTIF</option>
               <option value="REPAIR">REPAIR</option>
               <option value="BAD">BAD</option>
               <option value="SCRAP">SCRAP</option>
@@ -879,6 +889,7 @@ export function MobileAssetsClientPage({
                                 className="h-7 px-1.5 text-[10px] font-black bg-white border border-slate-200 text-[#003461] rounded-lg outline-none focus:ring-1 focus:ring-[#003461]"
                               >
                                 <option value="ACTIVE">Set ACTIVE</option>
+                                <option value="NONAKTIF">Set NONAKTIF</option>
                                 <option value="REPAIR">Set REPAIR</option>
                                 <option value="BAD">Set BAD</option>
                                 <option value="SCRAP">Set SCRAP</option>
@@ -1035,6 +1046,7 @@ export function MobileAssetsClientPage({
                 className="w-full h-9 bg-[#f8fafc] border border-slate-200 text-[#003461] text-xs font-bold mt-1 rounded-xl px-2.5 outline-none"
               >
                 <option value="ACTIVE">ACTIVE (Operasional)</option>
+                <option value="NONAKTIF">NONAKTIF (Tidak Aktif)</option>
                 <option value="REPAIR">REPAIR (Dalam Perbaikan)</option>
                 <option value="BAD">BAD (Rusak)</option>
                 <option value="SCRAP">SCRAP (Afkir / Rusak Total)</option>

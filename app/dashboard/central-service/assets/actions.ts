@@ -346,7 +346,7 @@ export async function updateAsset(id: number, data: AssetData) {
 export async function updateAssetCondition(id: number, condition: string) {
   try {
     const parsedCondition = condition.trim().toUpperCase();
-    if (!["ACTIVE", "REPAIR", "BAD", "SCRAP"].includes(parsedCondition)) {
+    if (!["ACTIVE", "NONAKTIF", "REPAIR", "BAD", "SCRAP"].includes(parsedCondition)) {
       return { success: false, error: "Kondisi tidak valid" };
     }
 

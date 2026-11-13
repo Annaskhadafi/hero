@@ -52,6 +52,7 @@ import {
   AlertTriangle,
   XCircle,
   HelpCircle,
+  Ban,
   History,
   ChevronDown,
   QrCode,
@@ -134,6 +135,13 @@ function conditionBadge(condition: string) {
       <Badge className="border-0 bg-green-600 text-white hover:bg-green-700 shadow-sm font-medium">
         <CheckCircle2 className="mr-1 h-3 w-3" />
         ACTIVE
+      </Badge>
+    );
+  if (c === "NONAKTIF")
+    return (
+      <Badge className="border-0 bg-amber-600 text-white hover:bg-amber-700 shadow-sm font-medium">
+        <Ban className="mr-1 h-3 w-3" />
+        NONAKTIF
       </Badge>
     );
   if (c === "REPAIR")
@@ -450,7 +458,7 @@ const SECTIONS = [
   "RADIO",
 ];
 
-const CONDITIONS = ["ACTIVE", "REPAIR", "BAD", "SCRAP"];
+const CONDITIONS = ["ACTIVE", "NONAKTIF", "REPAIR", "BAD", "SCRAP"];
 const DEFAULT_CONDITION_FILTERS = CONDITIONS.filter((condition) => condition !== "SCRAP");
 
 const DUE_FILTERS = [

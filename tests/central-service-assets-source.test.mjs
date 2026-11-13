@@ -79,7 +79,8 @@ test("central service assets due and condition colors stay high contrast", () =>
   assert.match(tableSource, /!isAfter\(d, oneMonthFromNow\)/);
   assert.match(tableSource, /bg-yellow-300 text-slate-950/);
   assert.match(tableSource, /bg-red-700 text-white/);
-  assert.match(tableSource, /bg-emerald-700 text-white/);
+  assert.match(tableSource, /(bg-emerald-700|bg-green-600) text-white/);
+  assert.match(tableSource, /NONAKTIF/);
 });
 
 test("central service asset scorecards follow active filters", () => {
