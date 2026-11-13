@@ -13,6 +13,20 @@ import {
 import { normalizeApiHariLiburResponse, normalizeOpenHolidayResponse } from '@/lib/openholiday'
 
 describe('scheduling timesheet workflow', () => {
+  it('grants PJO Site access to roster, attendance, and Schedule V2 within site scope', () => {
+    const accessSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-access.ts'), 'utf8')
+    const scheduleV2Source = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet/schedule-v2-workspace.tsx'),
+      'utf8'
+    )
+
+    expect(accessSource).toContain("roleName.trim().toLowerCase() === 'pjo site'")
+    expect(accessSource).toContain("'scheduling_timesheet_attendance'")
+    expect(accessSource).toContain("'scheduling_timesheet_schedule_v2'")
+    expect(accessSource).toContain("dataScope: 'site'")
+    expect(scheduleV2Source).toContain("import { Switch } from '@/components/ui/switch'")
+  })
+
   it('does not use localStorage scheduling persistence', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),
