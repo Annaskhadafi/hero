@@ -1151,7 +1151,7 @@ export function InboxTab({
             ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || 1}`
             : isAttPerm
             ? '/mobile/attendance/permission'
-            : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#'),
+            : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}?embed=1&from=approval` : `/print/apd/${apdItem?.activityId}`) : '#'),
           activityType: isMaritalStatus
             ? 'Perubahan Status Pernikahan'
             : isAttPerm
@@ -2999,10 +2999,10 @@ export function InboxTab({
                     {/* 1. PDF Letterhead Document Preview Container (Draggable & Scalable) */}
                     {currentBatchDoc && (() => {
                       const baseScale = isLandscapeDoc
-                        ? (viewMode === 'mobile' ? 0.32 : 0.58)
+                        ? (isSummaryDoc ? (viewMode === 'mobile' ? 0.65 : 0.92) : (viewMode === 'mobile' ? 0.32 : 0.58))
                         : (viewMode === 'mobile' ? 0.48 : 0.80)
                       const effectiveScale = baseScale * viewerZoom
-                      const originalHeightMm = isLandscapeDoc ? 210 : 297
+                      const originalHeightMm = isLandscapeDoc ? (isSummaryDoc ? 285 : 210) : 297
                       if (isContractReviewDoc) {
                         const crReviewId = (currentBatchDoc as any)?.rawContractReview?.reviewId || (currentBatchDoc as any)?.reviewId
                         const crToken = (currentBatchDoc as any)?.rawContractReview?.approvalToken || (currentBatchDoc as any)?.approvalToken || (currentBatchDoc.url ? currentBatchDoc.url.split('/').pop()?.split('?')[0] : '')
@@ -3064,7 +3064,7 @@ export function InboxTab({
                             className={cn(
                               "relative mx-auto shrink-0 bg-white shadow-xl border border-slate-200 rounded-sm origin-top box-border",
                               isDragging ? "transition-none" : "transition-transform duration-150 ease-out",
-                              isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                              isLandscapeDoc ? (isSummaryDoc ? "w-[297mm] min-h-[285mm]" : "w-[297mm] min-h-[210mm]") : "w-[210mm] min-h-[297mm]"
                             )}
                             style={{
                               backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
@@ -4440,15 +4440,15 @@ export function InboxTab({
                           (currentBatchDoc?.category as any) === 'SUMMARY' ||
                           apdItem?.title?.toLowerCase().includes('summary')
                         const printUrl = isSummary
-                          ? `/print/summary/${apdItem.activityId}?embed=1`
+                          ? `/print/summary/${apdItem.activityId}?embed=1&from=approval`
                           : `/print/apd/${apdItem.activityId}?embed=1`
 
                         if (isSummary) {
                           return (
-                            <div className="w-[297mm] h-[210mm] min-h-[210mm] max-h-[210mm] overflow-hidden flex justify-center p-0 m-0">
+                            <div className="w-[297mm] min-h-[285mm] h-[285mm] overflow-visible flex justify-center p-0 m-0">
                               <iframe
                                 src={printUrl}
-                                className="w-[297mm] min-h-[210mm] h-[210mm] border-0 bg-white shadow-none p-0 m-0 block"
+                                className="w-[297mm] min-h-[285mm] h-[285mm] border-0 bg-white shadow-none p-0 m-0 block"
                                 title="Preview Dokumen Summary APD"
                                 onLoad={(e) => {
                                   const iframe = e.target as HTMLIFrameElement
@@ -5434,6 +5434,10 @@ function getHistoryItemLinks(item: any) {
     viewUrl = `/dashboard/repair-retread/form-wo`
     downloadUrl = rawId ? `/api/form-wo/${rawId}/pdf` : null
   } else if (
+    actType.includes('summary') ||
+    title.includes('summary') ||
+    Boolean((item as any)?.apdSummaryId) ||
+    (item as any)?.category === 'SUMMARY' ||
     actType.includes('apd') ||
     actType.includes('tools') ||
     actType.includes('material') ||
@@ -5441,9 +5445,13 @@ function getHistoryItemLinks(item: any) {
     title.includes('tools') ||
     title.includes('material')
   ) {
-    rawId = actId.replace(/[^0-9]/g, '')
-    const isSummary = actType.includes('summary') || title.includes('summary')
-    viewUrl = isSummary ? `/print/summary/${rawId}` : `/print/apd/${rawId}`
+    rawId = (item as any)?.apdSummaryId ? String((item as any).apdSummaryId) : actId.replace(/[^0-9]/g, '')
+    const isSummary =
+      actType.includes('summary') ||
+      title.includes('summary') ||
+      Boolean((item as any)?.apdSummaryId) ||
+      (item as any)?.category === 'SUMMARY'
+    viewUrl = isSummary ? `/print/summary/${rawId}?embed=1&from=approval` : `/print/apd/${rawId}`
     downloadUrl = isSummary
       ? `/print/summary/${rawId}`
       : actId.startsWith('rfr-') || actType.includes('rfr')
@@ -5563,7 +5571,14 @@ export function HistoryTab({
         title.includes('ptw') ||
         title.includes('izin kerja'))
 
+    const isSummaryItem =
+      (item as any)?.category === 'SUMMARY' ||
+      actType.includes('summary') ||
+      title.includes('summary') ||
+      Boolean((item as any)?.apdSummaryId)
+
     const isApd =
+      isSummaryItem ||
       actId.startsWith('rfr-') ||
       actId.startsWith('apd-') ||
       actType.includes('apd') ||
@@ -5764,7 +5779,14 @@ export function HistoryTab({
         title.includes('ptw') ||
         title.includes('izin kerja'))
 
+    const isSummaryItem =
+      (item as any)?.category === 'SUMMARY' ||
+      actType.includes('summary') ||
+      title.includes('summary') ||
+      Boolean((item as any)?.apdSummaryId)
+
     const isApd =
+      isSummaryItem ||
       actId.startsWith('rfr-') ||
       actId.startsWith('apd-') ||
       actType.includes('apd') ||

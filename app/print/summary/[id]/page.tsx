@@ -1,5 +1,6 @@
 import { getSummaryDetails } from '@/lib/summary-engine';
 import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL, buildDynamicApdColumns, formatApdItemColHeader } from '@/lib/summary-constants';
+import { resolveUploadUrl } from '@/lib/resolve-upload-url';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,13 +10,14 @@ export default async function PrintSummaryPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ embed?: string; autoPrint?: string; printOnly?: string }>;
+  searchParams?: Promise<{ embed?: string; autoPrint?: string; printOnly?: string; from?: string; mode?: string }>;
 }) {
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const isEmbed = resolvedSearchParams?.embed === '1' || resolvedSearchParams?.embed === 'true';
   const autoPrint = resolvedSearchParams?.autoPrint === '1' || resolvedSearchParams?.autoPrint === 'true';
   const hideDocsCol = resolvedSearchParams?.printOnly === '1' || resolvedSearchParams?.printOnly === 'true';
+  const isApproval = resolvedSearchParams?.from === 'approval' || resolvedSearchParams?.mode === 'approval' || (isEmbed && !hideDocsCol && !autoPrint);
   const summaryId = Number(id);
   const data = await getSummaryDetails(summaryId);
 
@@ -103,19 +105,25 @@ export default async function PrintSummaryPage({
   const isUltraDense = empCount > 17;
   const isExtremeDense = empCount > 23;
 
-  // Calibrated font sizing — prevents microscopic text while fitting 30-row dense summaries on 1 A4 Landscape page
-  const thFontSize = isExtremeDense ? '6.4pt' : isUltraDense ? '7pt' : '7.5pt';
-  const itemHeaderFontSize = isExtremeDense ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '6.8pt';
-  const qtyFontSize = isExtremeDense ? '7pt' : isUltraDense ? '8pt' : '8.5pt';
-  const textFontSize = isExtremeDense ? '6.5pt' : isUltraDense ? '7.2pt' : '7.5pt';
-  const remarksFontSize = isExtremeDense ? '5.8pt' : isUltraDense ? '6.5pt' : '7pt';
+  // Calibrated font sizing:
+  // In Approval mode: enlarged and high-contrast so managers/atasan can comfortably read rows and columns
+  // In Print mode: strictly calibrated to fit within 1 A4 Landscape page
+  const thFontSize = isApproval ? '7.5pt' : (isExtremeDense ? '6.4pt' : isUltraDense ? '7pt' : '7.5pt');
+  const itemHeaderFontSize = isApproval ? '6.5pt' : (isExtremeDense ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '6.8pt');
+  const qtyFontSize = isApproval ? '8pt' : (isExtremeDense ? '7pt' : isUltraDense ? '8pt' : '8.5pt');
+  const textFontSize = isApproval ? '7.8pt' : (isExtremeDense ? '6.5pt' : isUltraDense ? '7.2pt' : '7.5pt');
+  const remarksFontSize = isApproval ? '7.2pt' : (isExtremeDense ? '5.8pt' : isUltraDense ? '6.5pt' : '7pt');
 
-  const padV = isExtremeDense ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '3px';
-  const padH = '1px';
-  const rowHeight = isExtremeDense ? '13px' : isUltraDense ? '17px' : isDense ? '19px' : '22px';
+  const padV = isApproval ? '3px' : (isExtremeDense ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '3px');
+  const padH = isApproval ? '2px' : '1px';
+  const rowHeight = isApproval ? '22px' : (isExtremeDense ? '13px' : isUltraDense ? '17px' : isDense ? '19px' : '22px');
 
-  const sigContainerHeight = isExtremeDense ? '22px' : isUltraDense ? '32px' : '38px';
-  const sigImgHeight = isExtremeDense ? '20px' : isUltraDense ? '28px' : '34px';
+  const sigContainerHeight = isApproval ? '42px' : (isExtremeDense ? '22px' : isUltraDense ? '32px' : '38px');
+  const sigImgHeight = isApproval ? '38px' : (isExtremeDense ? '20px' : isUltraDense ? '28px' : '34px');
+  const sigTitleFontSize = isApproval ? '8.5pt' : (isExtremeDense ? '7pt' : '7.5pt');
+  const sigNameFontSize = isApproval ? '8.5pt' : (isExtremeDense ? '7pt' : '7.5pt');
+  const sigRoleFontSize = isApproval ? '7.2pt' : (isExtremeDense ? '6.2pt' : '6.5pt');
+  const sigMetaFontSize = isApproval ? '6.5pt' : '5.5pt';
 
   const th: React.CSSProperties = { 
     border: '1px solid #000', 
@@ -170,24 +178,24 @@ export default async function PrintSummaryPage({
   const emptyRowCount = Math.max(0, targetTotalRows - emps.length);
 
   // Column width allocations (calibrated for A4 Landscape printable width without right-edge clipping)
-  const colWidthName = isExtremeDense ? '84px' : isUltraDense ? '90px' : '98px';
-  const colWidthSite = isExtremeDense ? '40px' : isUltraDense ? '44px' : '50px';
-  const colWidthRemarks = isExtremeDense ? '58px' : isUltraDense ? '64px' : '74px';
+  const colWidthName = isApproval ? '110px' : (isExtremeDense ? '84px' : isUltraDense ? '90px' : '98px');
+  const colWidthSite = isApproval ? '54px' : (isExtremeDense ? '40px' : isUltraDense ? '44px' : '50px');
+  const colWidthRemarks = isApproval ? '85px' : (isExtremeDense ? '58px' : isUltraDense ? '64px' : '74px');
 
   return (
     <div className="print-page-wrapper" style={{ 
       fontFamily: 'Arial, sans-serif', 
       fontSize: '8pt', 
-      padding: isEmbed ? '4mm 6mm' : '0', 
+      padding: isEmbed ? (isApproval ? '6mm 8mm 12mm 8mm' : '4mm 6mm') : '0', 
       margin: '0 auto',
       background: '#fff',
       boxSizing: 'border-box',
       width: '100%',
       maxWidth: '100%',
-      minHeight: isEmbed ? '210mm' : undefined,
+      minHeight: isApproval ? 'auto' : (isEmbed ? '210mm' : undefined),
       display: 'flex',
       flexDirection: 'column',
-      justifyContent: 'space-between',
+      justifyContent: isApproval ? 'flex-start' : 'space-between',
     }}>
       <style>{`
         @page { 
@@ -277,7 +285,7 @@ export default async function PrintSummaryPage({
       </div>
 
       {/* Table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '2px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isApproval ? '28px' : (isExtremeDense ? '2px' : '6px'), tableLayout: 'fixed', boxSizing: 'border-box' }}>
         <colgroup>
           <col style={{ width: '18px' }} />
           <col style={{ width: colWidthName }} />
@@ -442,19 +450,33 @@ export default async function PrintSummaryPage({
         };
 
         return (
-          <div suppressHydrationWarning style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isExtremeDense ? '2px' : isDense ? '3px' : '5px', flexShrink: 0, breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+          <div
+            suppressHydrationWarning
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${colCount}, 1fr)`,
+              gap: isApproval ? '16px' : '8px',
+              textAlign: 'center',
+              marginTop: isApproval ? '20px' : (isExtremeDense ? '2px' : isDense ? '3px' : '5px'),
+              paddingTop: isApproval ? '16px' : undefined,
+              borderTop: isApproval ? '1px dashed #cbd5e1' : undefined,
+              flexShrink: 0,
+              breakInside: 'avoid',
+              pageBreakInside: 'avoid',
+            }}
+          >
             {/* Diajukan Oleh */}
             <div suppressHydrationWarning>
-              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
-                <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
-                  {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
+              <div style={{ fontSize: sigTitleFontSize, fontWeight: 'bold', marginBottom: isApproval ? '4px' : '2px' }}>Diajukan Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: isApproval ? '4px' : '2px', height: sigContainerHeight }}>
+                <div style={{ width: isApproval ? '140px' : '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
+                  {data.submitterSignatureUrl && <img src={resolveUploadUrl(data.submitterSignatureUrl)} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: isApproval ? '130px' : '120px' }} />}
                 </div>
               </div>
-              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
-              <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
+              <div style={{ fontSize: sigNameFontSize, fontWeight: 'bold' }}>{data.generatedByName}</div>
+              <div style={{ fontSize: sigRoleFontSize, color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
               {data.generatedAt && (
-                <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(data.generatedAt)}</div>
+                <div style={{ fontSize: sigMetaFontSize, color: '#777', marginTop: '1px' }}>{fmtDate(data.generatedAt)}</div>
               )}
             </div>
 
@@ -477,8 +499,8 @@ export default async function PrintSummaryPage({
                 })();
                 return (
                   <div key={appr.id || idx} suppressHydrationWarning>
-                    <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
+                    <div style={{ fontSize: sigTitleFontSize, fontWeight: 'bold', marginBottom: isApproval ? '4px' : '2px' }}>Diperiksa Oleh,</div>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: isApproval ? '4px' : '2px', height: sigContainerHeight }}>
                       <div
                         id={`approver-cell-${idx + 1}`}
                         data-approver-id={appr.approverEmployeeId}
@@ -487,37 +509,37 @@ export default async function PrintSummaryPage({
                         data-level={appr.level}
                         data-resolved={appr.signatureUrl ? 'true' : 'false'}
                         suppressHydrationWarning
-                        style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px', position: 'relative' }}
+                        style={{ width: isApproval ? '140px' : '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px', position: 'relative' }}
                       >
-                        {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
+                        {appr.signatureUrl && <img src={resolveUploadUrl(appr.signatureUrl)} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: isApproval ? '130px' : '120px' }} />}
                       </div>
                     </div>
-                    <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
-                    <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>{roleDisplay}</div>
+                    <div style={{ fontSize: sigNameFontSize, fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
+                    <div style={{ fontSize: sigRoleFontSize, color: '#444' }}>{roleDisplay}</div>
                     {appr.reviewedAt && (
-                      <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(appr.reviewedAt)}</div>
+                      <div style={{ fontSize: sigMetaFontSize, color: '#777', marginTop: '1px' }}>{fmtDate(appr.reviewedAt)}</div>
                     )}
                     {appr.decisionNote && !isAutoDefaultNote(appr.decisionNote) && (
-                      <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px', fontStyle: 'italic' }}>Catatan: {appr.decisionNote}</div>
+                      <div style={{ fontSize: sigMetaFontSize, color: '#777', marginTop: '1px', fontStyle: 'italic' }}>Catatan: {appr.decisionNote}</div>
                     )}
                   </div>
                 );
               })
             ) : (
               <div>
-                <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
-                  <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
+                <div style={{ fontSize: sigTitleFontSize, fontWeight: 'bold', marginBottom: isApproval ? '4px' : '2px' }}>Diperiksa Oleh,</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: isApproval ? '4px' : '2px', height: sigContainerHeight }}>
+                  <div style={{ width: isApproval ? '140px' : '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
                 </div>
-                <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>.............</div>
-                <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>(Section Head — {data.sectionName})</div>
+                <div style={{ fontSize: sigNameFontSize, fontWeight: 'bold' }}>.............</div>
+                <div style={{ fontSize: sigRoleFontSize, color: '#444' }}>(Section Head — {data.sectionName})</div>
               </div>
             )}
 
             {/* Disetujui Oleh (Department Head) */}
             <div suppressHydrationWarning>
-              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
+              <div style={{ fontSize: sigTitleFontSize, fontWeight: 'bold', marginBottom: isApproval ? '4px' : '2px' }}>Disetujui Oleh,</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: isApproval ? '4px' : '2px', height: sigContainerHeight }}>
                 <div
                   id="approver-cell-dept"
                   data-approver-id={deptHead?.approverEmployeeId}
@@ -526,18 +548,18 @@ export default async function PrintSummaryPage({
                   data-level={2}
                   data-resolved={deptHead?.signatureUrl ? 'true' : 'false'}
                   suppressHydrationWarning
-                  style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px', position: 'relative' }}
+                  style={{ width: isApproval ? '140px' : '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px', position: 'relative' }}
                 >
-                  {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
+                  {deptHead?.signatureUrl && <img src={resolveUploadUrl(deptHead.signatureUrl)} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: isApproval ? '130px' : '120px' }} />}
                 </div>
               </div>
-              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
-              <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
+              <div style={{ fontSize: sigNameFontSize, fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
+              <div style={{ fontSize: sigRoleFontSize, color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
               {deptHead?.reviewedAt && (
-                <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(deptHead.reviewedAt)}</div>
+                <div style={{ fontSize: sigMetaFontSize, color: '#777', marginTop: '1px' }}>{fmtDate(deptHead.reviewedAt)}</div>
               )}
               {deptHead?.decisionNote && !isAutoDefaultNote(deptHead.decisionNote) && (
-                <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px', fontStyle: 'italic' }}>Catatan: {deptHead.decisionNote}</div>
+                <div style={{ fontSize: sigMetaFontSize, color: '#777', marginTop: '1px', fontStyle: 'italic' }}>Catatan: {deptHead.decisionNote}</div>
               )}
             </div>
           </div>

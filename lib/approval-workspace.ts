@@ -1654,6 +1654,8 @@ async function normalizeApprovalRows(rawRows: RawApprovalRecordRow[]) {
       fiveRReport: fiveR,
       maritalStatusRequestId: row.maritalStatusRequestId,
       flightRouteRequestId: row.flightRouteRequestId,
+      apdRequestId: row.apdRequestId,
+      apdSummaryId: row.apdSummaryId,
       templateKey: isAttPerm ? 'attendance-permission' : (row.templateKey ?? null),
       attendancePermissionRequestId: isAttPerm ? (attPerm?.id ?? attPermId ?? null) : null,
       attendancePermission: isAttPerm
