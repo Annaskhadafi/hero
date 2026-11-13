@@ -99,14 +99,12 @@ export interface WarehouseRepairMetrics {
   [key: string]: number
 }
 
-export const PRESET_SLOCS = [
-  { code: "RS01", desc: "Balikpapan" },
-  { code: "RS02", desc: "Samarinda" },
-  { code: "RS03", desc: "Sangatta" },
-  { code: "RS04", desc: "Tabang" },
-  { code: "RS05", desc: "Berau" },
-  { code: "HO01", desc: "Jakarta Head Office" },
-]
+import { DEFAULT_REPAIR_SITES } from "@/lib/repair-master"
+
+export const PRESET_SLOCS = DEFAULT_REPAIR_SITES.map((site) => ({
+  code: site.siteCode,
+  desc: site.siteName,
+}))
 
 export { WarehouseRepairPageShell } from "./shell"
 

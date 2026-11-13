@@ -93,7 +93,7 @@ export function ItemFormDialog({
     typeId: item?.typeId ? String(item.typeId) : "",
     unitId: item?.unitId ? String(item.unitId) : "",
     storageLocation: item?.storageLocation ?? "RS01",
-    storageLocationDesc: item?.storageLocationDesc ?? "Balikpapan",
+    storageLocationDesc: item?.storageLocationDesc ?? "CP Balikpapan",
     minimumStock: item?.minimumStock ?? 0,
     photoUrl: item?.photoUrl ?? "",
     isActive: item?.isActive ?? true,
@@ -110,7 +110,7 @@ export function ItemFormDialog({
         typeId: item.typeId ? String(item.typeId) : "",
         unitId: item.unitId ? String(item.unitId) : "",
         storageLocation: item.storageLocation ?? "RS01",
-        storageLocationDesc: item.storageLocationDesc ?? "Balikpapan",
+        storageLocationDesc: item.storageLocationDesc ?? "CP Balikpapan",
         minimumStock: item.minimumStock ?? 0,
         photoUrl: item.photoUrl ?? "",
         isActive: item.isActive ?? true,
@@ -123,7 +123,7 @@ export function ItemFormDialog({
         typeId: "",
         unitId: "",
         storageLocation: "RS01",
-        storageLocationDesc: "Balikpapan",
+        storageLocationDesc: "CP Balikpapan",
         minimumStock: 0,
         photoUrl: "",
         isActive: true,
@@ -166,7 +166,7 @@ export function ItemFormDialog({
           itemName: form.itemName.trim(),
           materialDesc: form.materialDesc?.trim() || null,
           storageLocation: form.storageLocation?.trim() || "RS01",
-          storageLocationDesc: form.storageLocationDesc?.trim() || "Balikpapan",
+          storageLocationDesc: form.storageLocationDesc?.trim() || "CP Balikpapan",
           minimumStock: Number(form.minimumStock || 0),
           typeId: form.typeId ? Number(form.typeId) : null,
           unitId: form.unitId ? Number(form.unitId) : null,
@@ -450,11 +450,11 @@ export function TransactionFormDialog({
   const [itemId, setItemId] = useState(() => (transaction?.itemId ? String(transaction.itemId) : ""))
   const [quantity, setQuantity] = useState(() => Number(transaction?.quantity ?? 1))
   const [targetSLoc, setTargetSLoc] = useState(() => (transaction as any)?.targetSLoc || "RS01")
-  const [targetSLocDesc, setTargetSLocDesc] = useState(() => (transaction as any)?.targetSLocDesc || "Balikpapan")
+  const [targetSLocDesc, setTargetSLocDesc] = useState(() => (transaction as any)?.targetSLocDesc || "CP Balikpapan")
   const [updateItemLocation, setUpdateItemLocation] = useState(false)
   const [outboundType, setOutboundType] = useState(() => (transaction as any)?.outboundType || "Pemakaian Internal")
   const [destinationSLoc, setDestinationSLoc] = useState(() => (transaction as any)?.destinationSLoc || "RS02")
-  const [destinationSLocDesc, setDestinationSLocDesc] = useState(() => (transaction as any)?.destinationSLocDesc || "Samarinda")
+  const [destinationSLocDesc, setDestinationSLocDesc] = useState(() => (transaction as any)?.destinationSLocDesc || "CP Sangatta")
   const [note, setNote] = useState(() => transaction?.note || "")
 
   const selectedItem = useMemo(() => items.find((i) => String(i.id) === String(itemId)), [items, itemId])
@@ -465,20 +465,20 @@ export function TransactionFormDialog({
       setItemId(String(transaction.itemId))
       setQuantity(Number(transaction.quantity))
       setTargetSLoc((transaction as any).targetSLoc || "RS01")
-      setTargetSLocDesc((transaction as any).targetSLocDesc || "Balikpapan")
+      setTargetSLocDesc((transaction as any).targetSLocDesc || "CP Balikpapan")
       setOutboundType((transaction as any).outboundType || "Pemakaian Internal")
       setDestinationSLoc((transaction as any).destinationSLoc || "RS02")
-      setDestinationSLocDesc((transaction as any).destinationSLocDesc || "Samarinda")
+      setDestinationSLocDesc((transaction as any).destinationSLocDesc || "CP Sangatta")
       setNote(transaction.note || "")
     } else {
       setTransactionDate(new Date().toISOString().slice(0, 10))
       setItemId("")
       setQuantity(1)
       setTargetSLoc("RS01")
-      setTargetSLocDesc("Balikpapan")
+      setTargetSLocDesc("CP Balikpapan")
       setOutboundType("Pemakaian Internal")
       setDestinationSLoc("RS02")
-      setDestinationSLocDesc("Samarinda")
+      setDestinationSLocDesc("CP Sangatta")
       setNote("")
     }
   }, [transaction])
@@ -603,7 +603,7 @@ export function TransactionFormDialog({
               <p className="text-muted-foreground"><span className="font-medium text-foreground">Material Desc:</span> {selectedItem.materialDesc}</p>
             ) : null}
             <div className="flex flex-wrap items-center gap-4 text-muted-foreground pt-1">
-              <span>S-Loc Asal: <strong className="text-foreground">{selectedItem.storageLocation || "RS01"} ({selectedItem.storageLocationDesc || "Balikpapan"})</strong></span>
+              <span>S-Loc Asal: <strong className="text-foreground">{selectedItem.storageLocation || "RS01"} ({selectedItem.storageLocationDesc || "CP Balikpapan"})</strong></span>
               <span>Kategori: <strong className="text-foreground">{selectedItem.typeName || "-"}</strong></span>
               <span>Satuan: <strong className="text-foreground">{selectedItem.unitName || "-"}</strong></span>
             </div>
@@ -637,7 +637,7 @@ export function TransactionFormDialog({
                 onChange={(e) => setTargetSLoc(e.target.value)}
               />
               <HeroInput
-                placeholder="Deskripsi S-Loc (contoh: Balikpapan)"
+                placeholder="Deskripsi S-Loc (contoh: CP Balikpapan)"
                 value={targetSLocDesc}
                 onChange={(e) => setTargetSLocDesc(e.target.value)}
               />
@@ -754,7 +754,7 @@ export function TransferStockDialog({
   const [itemId, setItemId] = useState(() => (defaultItem ? String(defaultItem.id) : ""))
   const [transactionDate, setTransactionDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [toSLoc, setToSLoc] = useState("RS02")
-  const [toSLocDesc, setToSLocDesc] = useState("Samarinda")
+  const [toSLocDesc, setToSLocDesc] = useState("CP Sangatta")
   const [quantity, setQuantity] = useState(1)
   const [note, setNote] = useState("")
   const [updateItemLocation, setUpdateItemLocation] = useState(false)
@@ -767,7 +767,7 @@ export function TransferStockDialog({
 
   const itemOptions = items.map((i) => ({
     value: String(i.id),
-    label: `${i.itemCode} - ${i.itemName} [Stok: ${i.stock}]`,
+    label: `${i.itemCode} - ${i.itemName}${i.materialDesc ? ` (${i.materialDesc})` : ""} [Stok: ${i.stock}]`,
   }))
 
   const handleSave = () => {
@@ -789,7 +789,7 @@ export function TransferStockDialog({
         transactionDate,
         itemId: Number(itemId),
         fromSLoc: selectedItem.storageLocation || "RS01",
-        fromSLocDesc: selectedItem.storageLocationDesc || "Balikpapan",
+        fromSLocDesc: selectedItem.storageLocationDesc || "CP Balikpapan",
         toSLoc,
         toSLocDesc,
         quantity: Number(quantity),
@@ -835,7 +835,7 @@ export function TransferStockDialog({
               <Badge variant="outline">Stok: {selectedItem.stock}</Badge>
             </div>
             <p className="text-muted-foreground">
-              Gudang Asal: <strong className="text-foreground">{selectedItem.storageLocation || "RS01"} ({selectedItem.storageLocationDesc || "Balikpapan"})</strong>
+              Gudang Asal: <strong className="text-foreground">{selectedItem.storageLocation || "RS01"} ({selectedItem.storageLocationDesc || "CP Balikpapan"})</strong>
             </p>
           </div>
         ) : null}
