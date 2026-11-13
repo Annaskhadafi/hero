@@ -12,8 +12,50 @@ import {
 } from '@/lib/timesheet-scheduling'
 import { normalizeApiHariLiburResponse, normalizeOpenHolidayResponse } from '@/lib/openholiday'
 import { resolveAttendanceShiftFromRoster } from '@/lib/timesheet/attendance-roster-shift'
+import { canEmployeeSeeSplChecklist } from '@/lib/daily-activity-spl-visibility'
 
 describe('scheduling timesheet workflow', () => {
+  it('limits unscoped SPL visibility to its requester and honors explicit recipients', () => {
+    const base = {
+      employeeId: 10,
+      requestedByEmployeeId: 10,
+      sectionId: null,
+      positionId: null,
+      employeeSectionId: 3,
+      employeePositionId: 7,
+      participantEmployeeIds: [],
+      itemAssignedEmployeeIds: [],
+    }
+
+    expect(canEmployeeSeeSplChecklist(base)).toBe(true)
+    expect(canEmployeeSeeSplChecklist({ ...base, employeeId: 11 })).toBe(false)
+    expect(
+      canEmployeeSeeSplChecklist({
+        ...base,
+        employeeId: 11,
+        sectionId: 3,
+        positionId: 7,
+        participantEmployeeIds: [10],
+      })
+    ).toBe(false)
+    expect(
+      canEmployeeSeeSplChecklist({
+        ...base,
+        employeeId: 11,
+        sectionId: 3,
+        positionId: 7,
+        participantEmployeeIds: [11],
+      })
+    ).toBe(true)
+    expect(
+      canEmployeeSeeSplChecklist({
+        ...base,
+        employeeId: 11,
+        itemAssignedEmployeeIds: [10],
+      })
+    ).toBe(false)
+  })
+
   it.each([
     ['DS', 'day'],
     ['NS', 'night'],
