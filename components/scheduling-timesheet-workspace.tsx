@@ -32,6 +32,8 @@ import {
   Trash2,
   Undo2,
   Users,
+  Building2,
+  CalendarRange,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -120,7 +122,15 @@ import {
   type TimesheetExportTab,
   type TimesheetEmployeeExportRow,
   type TimesheetDayData,
+  type ExportAttendanceDateHeader,
 } from '@/lib/timesheet/export-attendance-excel'
+import {
+  buildCkCutoffDateRange,
+  formatCkCutoffLabel,
+  formatCkCutoffFullRange,
+  getPreviousPeriod,
+  type CkCutoffDateItem,
+} from '@/lib/timesheet/cutoff-utils'
 import {
   Table,
   TableBody,
@@ -2081,6 +2091,12 @@ export function SchedulingTimesheetWorkspace({
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null)
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
+
+  // Cut-off Tagihan Khusus Customer CK (16 - 15) vs Standar Kalender (1 - Akhir Bulan)
+  const [attendanceExportCutoff, setAttendanceExportCutoff] = useState<'calendar' | 'ck_16_15'>('calendar')
+  const [exportConfigDialogOpen, setExportConfigDialogOpen] = useState(false)
+  const [exportDialogCutoff, setExportDialogCutoff] = useState<'calendar' | 'ck_16_15'>('ck_16_15')
+  const [exportDialogActiveTab, setExportDialogActiveTab] = useState<string>('attendance')
 
   const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
   const [dialogAttendanceDraft, setDialogAttendanceDraft] = useState<{
@@ -5237,13 +5253,23 @@ export function SchedulingTimesheetWorkspace({
     printable.document.close()
   }
 
-  async function exportAttendanceGrid(customMode?: 'attendance' | 'checkin-checkout' | 'work-hours') {
+  async function exportAttendanceGrid(
+    customMode?: 'attendance' | 'checkin-checkout' | 'work-hours',
+    cutoffModeOverride?: 'calendar' | 'ck_16_15'
+  ) {
     const activeMode = customMode ?? attendanceGridExportMode
+    const effectiveCutoff = cutoffModeOverride ?? attendanceExportCutoff
+    const isCkCutoff = effectiveCutoff === 'ck_16_15'
+    const dateHeaders = isCkCutoff ? buildCkCutoffDateRange(period, holidays) : undefined
+    const cutoffLabel = isCkCutoff ? formatCkCutoffLabel(period) : undefined
+
     try {
       await exportAttendanceGridToExcel({
         siteName: site?.name ?? 'Semua Site',
         period,
-        days,
+        days: isCkCutoff && dateHeaders ? dateHeaders.map((dh) => dh.day) : days,
+        dateHeaders,
+        cutoffLabel,
         mode: activeMode,
         rows: displayedAttendanceRows.map((row) => ({
           employee: {
@@ -5254,7 +5280,18 @@ export function SchedulingTimesheetWorkspace({
             section: row.employee.section,
             department: row.employee.department,
           },
-          getAttendanceCell: (day: number) => getAttendanceCell(row.employee.id, day),
+          getAttendanceCell: (day: number, dateItem?: ExportAttendanceDateHeader) => {
+            if (dateItem && dateItem.period && dateItem.period !== period) {
+              return resolveCrossPeriodAttendanceCell(
+                row.employee.id,
+                dateItem.period,
+                day,
+                undefined,
+                row.employee
+              )
+            }
+            return getAttendanceCell(row.employee.id, day)
+          },
           totalHours: row.totalHours,
         })),
         weekdayLabel: (p, d) => weekdayLabel(p, d),
@@ -5266,7 +5303,10 @@ export function SchedulingTimesheetWorkspace({
         'checkin-checkout': 'Jam Masuk & Pulang',
         'work-hours': 'Durasi Jam Kerja',
       }
-      toast.success(`Export Excel Visual Grid (${modeLabelMap[activeMode] || activeMode}) berhasil diunduh!`)
+      const cutoffSuffix = isCkCutoff ? ` (${cutoffLabel})` : ''
+      toast.success(
+        `Export Excel Visual Grid (${modeLabelMap[activeMode] || activeMode}${cutoffSuffix}) berhasil diunduh!`
+      )
     } catch (err) {
       toast.error('Gagal mengekspor Excel Attendance: ' + (err instanceof Error ? err.message : String(err)))
     }
@@ -5631,6 +5671,94 @@ export function SchedulingTimesheetWorkspace({
       scheduledClockIn: punctuality.scheduledClockIn,
       shiftCode: punctuality.shiftCode,
       isCrossDay,
+    }
+  }
+
+  function resolveCrossPeriodAttendanceCell(
+    employeeId: number,
+    targetPeriod: string,
+    day: number,
+    fallbackScheduleCode?: string,
+    employeeObj?: EmployeeOption
+  ): ManualAttendanceCell {
+    if (targetPeriod === period) {
+      return getAttendanceCell(employeeId, day, fallbackScheduleCode, employeeObj)
+    }
+
+    const rowObj = rows.find((r) => r.employee.id === employeeId)
+    const empObj = employeeObj ?? rowObj?.employee ?? employees.find((e) => e.id === employeeId)
+    const empSiteId = empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const effectiveTz = empSiteConfig.timezone || 'WITA'
+
+    const targetDateStr = `${targetPeriod}-${String(day).padStart(2, '0')}`
+
+    // Check attendanceOverrideByCell or attendanceOverrides for targetPeriod
+    const overrideMatch = attendanceOverrides.find(
+      (o) =>
+        o.employeeId === employeeId &&
+        o.period === targetPeriod &&
+        o.day === day &&
+        (siteId === 'all' || String(o.siteId) === siteId)
+    )
+
+    if (overrideMatch) {
+      return {
+        status: normalizeAttendanceStatus(overrideMatch.status) || 'empty',
+        clockIn: overrideMatch.clockIn || undefined,
+        clockOut: overrideMatch.clockOut || undefined,
+        note: overrideMatch.note || undefined,
+        source: overrideMatch.source as any,
+        overtimeHours: overrideMatch.overtimeHours ?? undefined,
+      }
+    }
+
+    // Check attendanceRecords from DB
+    const recs = attendanceRecords.filter(
+      (r) =>
+        r.employeeId === employeeId &&
+        (siteId === 'all' || String(r.siteId) === siteId) &&
+        getLocalDateStr(r.eventTime, effectiveTz) === targetDateStr
+    )
+
+    if (recs.length > 0) {
+      let earliestIn: string | undefined
+      let latestOut: string | undefined
+      for (const r of recs) {
+        const parts = getTimezoneDateParts(new Date(r.eventTime), effectiveTz)
+        const timeStr = `${String(parts.hours).padStart(2, '0')}:${String(parts.minutes).padStart(2, '0')}`
+        const isOut = r.eventType.toLowerCase().includes('out')
+        if (isOut) {
+          if (!latestOut || timeStr > latestOut) latestOut = timeStr
+        } else {
+          if (!earliestIn || timeStr < earliestIn) earliestIn = timeStr
+        }
+      }
+      return {
+        status: 'present',
+        clockIn: earliestIn,
+        clockOut: latestOut,
+        source: 'attendance',
+      }
+    }
+
+    // Resolve schedule from savedPlans for targetPeriod
+    const targetPlan = savedPlans.find(
+      (p) =>
+        p.period === targetPeriod &&
+        (String(p.siteId) === siteId ||
+          p.fixedSchedule?.some((item) => item.employeeId === employeeId) ||
+          p.draftSchedule?.some((item) => item.employeeId === employeeId))
+    )
+    const planSched = (
+      targetPlan?.fixedSchedule?.length ? targetPlan.fixedSchedule : targetPlan?.draftSchedule
+    )?.find((item) => item.employeeId === employeeId)?.schedule
+    const targetCode = planSched?.[day - 1] || fallbackScheduleCode || ''
+    const rosterStatus = normalizeAttendanceStatus(targetCode)
+
+    return {
+      status: rosterStatus || 'empty',
+      source: 'schedule',
     }
   }
 
@@ -8637,8 +8765,13 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  function buildTimesheetExportRows(targetTab: TimesheetExportTab): TimesheetEmployeeExportRow[] {
+  function buildTimesheetExportRows(
+    targetTab: TimesheetExportTab,
+    customDateItems?: CkCutoffDateItem[]
+  ): TimesheetEmployeeExportRow[] {
     const sourceRows = displayedAttendanceRows.length > 0 ? displayedAttendanceRows : rows
+    const isCustomDateRange = Boolean(customDateItems && customDateItems.length > 0)
+
     return sourceRows.map((row) => {
       const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
       const daysData: TimesheetDayData[] = []
@@ -8658,15 +8791,54 @@ export function SchedulingTimesheetWorkspace({
       let payrollWorkDaysPresent = 0
       let payrollOffDaysPresent = 0
 
-      for (const day of days) {
-        const scheduleCode = row.schedule[day - 1] as string
-        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+      const iterItems = isCustomDateRange
+        ? customDateItems!
+        : days.map((d) => ({
+            day: d,
+            period,
+            isHoliday: Boolean(holidaysByDay.get(d)),
+            isWeekend: isWeekend(period, d),
+          }))
+
+      for (const item of iterItems) {
+        const day = item.day
+        const itemPeriod = item.period || period
+        const isCurrentPeriod = itemPeriod === period
+
+        let scheduleCode = ''
+        let cell: ManualAttendanceCell
+
+        if (isCurrentPeriod) {
+          scheduleCode = (row.schedule[day - 1] as string) || ''
+          cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        } else {
+          // Resolve for cross-period (e.g. previous month 16..30)
+          const targetPlan = savedPlans.find(
+            (p) =>
+              p.period === itemPeriod &&
+              (String(p.siteId) === siteId ||
+                p.fixedSchedule?.some((it) => it.employeeId === row.employee.id) ||
+                p.draftSchedule?.some((it) => it.employeeId === row.employee.id))
+          )
+          const planSched = (
+            targetPlan?.fixedSchedule?.length ? targetPlan.fixedSchedule : targetPlan?.draftSchedule
+          )?.find((it) => it.employeeId === row.employee.id)?.schedule
+          scheduleCode = planSched?.[day - 1] || ''
+          cell = resolveCrossPeriodAttendanceCell(
+            row.employee.id,
+            itemPeriod,
+            day,
+            scheduleCode,
+            row.employee
+          )
+        }
+
         const isFieldBreakDay =
           scheduleCode === 'FB' ||
           cell.status === 'field_break' ||
-          (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+          (isCurrentPeriod && (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false))
         const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
-        const isHolidayDay = Boolean(holidaysByDay.get(day))
+        const isHolidayDay = Boolean(item.isHoliday)
         const isWorkDay = !isRosterOff
         const isAbsent =
           cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
@@ -8682,7 +8854,15 @@ export function SchedulingTimesheetWorkspace({
                 ? 'Alpha'
                 : '-'
 
-        const allowance = getAllowanceAmounts(row, day)
+        const allowance = isCurrentPeriod
+          ? getAllowanceAmounts(row, day)
+          : {
+              rule: { msa: false, meals: false, specialAllowance: false },
+              msaAmount: 0,
+              mealsAmount: 0,
+              specialAllowanceAmount: 0,
+              empSiteConfig: getEmployeeSiteConfig(row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))),
+            }
 
         if (targetTab === 'attendance') {
           let cellHours = 0
@@ -16362,6 +16542,163 @@ export function SchedulingTimesheetWorkspace({
               >
                 <Download className="mr-1.5 size-3.5" />
                 Download PDF Grid
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Konfigurasi Ekspor & Cut-Off Tagihan (Excel) */}
+      <Dialog open={exportConfigDialogOpen} onOpenChange={setExportConfigDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <Building2 className="size-5 text-emerald-600" />
+              <span>Konfigurasi Ekspor & Cut-Off Tagihan (Excel)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pilih periode cut-off penagihan customer (Standar Kalender atau Khusus Customer CK 16 - 15) dan format worksheet Excel yang akan diunduh.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* 1. Pilihan Periode Cut-off Tagihan */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-700">
+                1. Pilihan Periode Cut-Off Tagihan
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setExportDialogCutoff('calendar')}
+                  className={cn(
+                    'flex flex-col text-left p-3 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'calendar'
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-slate-900'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs">Standar Kalender</span>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      1 – Akhir Bulan
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    Tanggal 1 s/d {days[days.length - 1] || 31} {period}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-1">
+                    Format standar operasional bulanan normal
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExportDialogCutoff('ck_16_15')}
+                  className={cn(
+                    'flex flex-col text-left p-3 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'ck_16_15'
+                      ? 'border-emerald-600 bg-emerald-50/80 ring-2 ring-emerald-500/20 text-emerald-950'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs text-emerald-900">
+                      Khusus Customer CK
+                    </span>
+                    <Badge className="bg-emerald-600 text-white text-[10px] px-1.5 py-0">
+                      16 – 15
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] font-medium text-emerald-700">
+                    {formatCkCutoffFullRange(period)}
+                  </span>
+                  <span className="text-[10px] text-emerald-600/80 mt-1">
+                    Khusus penagihan PT Cipta Kridatama (16 bulan lalu – 15 bulan berjalan)
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Pilihan Format Dokumen / Tab Excel */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-700">
+                2. Pilihan Format Worksheet / Tab
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { id: 'attendance', label: 'Attendance Grid', desc: 'Matriks kehadiran & jam kerja visual', icon: CalendarRange },
+                  { id: 'all_5_tabs', label: 'Semua 5 Tab Sekaligus', desc: '1 File Excel berisi 5 sheet lengkap', icon: FileSpreadsheet },
+                  { id: 'checkin-checkout', label: 'Jam Masuk & Pulang', desc: 'Grid Clock In & Out harian', icon: Clock },
+                  { id: 'work-hours', label: 'Durasi Jam Kerja', desc: 'Grid durasi kerja aktif per hari', icon: Activity },
+                ].map((item) => {
+                  const Icon = item.icon
+                  const isSelected = exportDialogActiveTab === item.id
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setExportDialogActiveTab(item.id)}
+                      className={cn(
+                        'flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-colors',
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30 text-primary'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
+                      )}
+                    >
+                      <Icon className="size-4 shrink-0 text-slate-500" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-semibold text-xs truncate">{item.label}</span>
+                        <span className="text-[10px] text-muted-foreground truncate">{item.desc}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Banner Informasi Cut-off CK */}
+            {exportDialogCutoff === 'ck_16_15' && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900 flex items-start gap-2">
+                <Building2 className="size-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Format Penagihan Customer CK Aktif:</span>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Kolom tanggal akan otomatis dimulai dari tanggal <strong>16 {formatCkCutoffLabel(period).split('-')[0]?.trim()}</strong> sampai dengan tanggal <strong>15 {formatCkCutoffLabel(period).split('-')[1]?.trim()}</strong>. Data absensi dan jadwal periode sebelumnya otomatis diikutsertakan.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExportConfigDialogOpen(false)}
+                className="h-9 px-4 text-xs"
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  setAttendanceExportCutoff(exportDialogCutoff)
+                  setExportConfigDialogOpen(false)
+                  if (exportDialogActiveTab === 'all_5_tabs') {
+                    await exportAllTimesheetTabs(exportDialogCutoff)
+                  } else if (exportDialogActiveTab === 'checkin-checkout' || exportDialogActiveTab === 'work-hours') {
+                    await exportAttendanceGrid(exportDialogActiveTab as 'checkin-checkout' | 'work-hours', exportDialogCutoff)
+                  } else {
+                    await exportAttendanceGrid(undefined, exportDialogCutoff)
+                  }
+                }}
+                className={cn(
+                  'h-9 px-4 text-xs font-semibold text-white shadow-sm',
+                  exportDialogCutoff === 'ck_16_15' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-primary hover:bg-primary/90'
+                )}
+              >
+                <Download className="mr-1.5 size-3.5" />
+                Unduh Excel Sekarang
               </Button>
             </div>
           </div>

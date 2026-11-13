@@ -13,6 +13,16 @@ export interface AttendanceExportEmployee {
   department?: string | null
 }
 
+export interface ExportAttendanceDateHeader {
+  day: number
+  dateStr?: string
+  period?: string
+  displayHeader: string // e.g. "16 Sep" or "Tgl 16"
+  subHeader: string // e.g. "Rab" or "Rab*"
+  isWeekend?: boolean
+  isHoliday?: boolean
+}
+
 export interface AttendanceExportCell {
   status: string
   clockIn?: string | null
@@ -23,7 +33,7 @@ export interface AttendanceExportCell {
 
 export interface AttendanceExportRow {
   employee: AttendanceExportEmployee
-  getAttendanceCell: (day: number) => AttendanceExportCell
+  getAttendanceCell: (day: number, dateItem?: ExportAttendanceDateHeader) => AttendanceExportCell
   statusCounts?: {
     present?: number
     off?: number
@@ -39,6 +49,9 @@ export interface ExportAttendanceExcelOptions {
   siteName: string
   period: string
   days: number[]
+  dateHeaders?: ExportAttendanceDateHeader[]
+  cutoffLabel?: string
+  customFileName?: string
   mode: 'attendance' | 'checkin-checkout' | 'work-hours'
   rows: AttendanceExportRow[]
   weekdayLabel: (period: string, day: number) => string
@@ -204,6 +217,9 @@ export async function exportAttendanceGridToExcel({
   siteName,
   period,
   days,
+  dateHeaders,
+  cutoffLabel,
+  customFileName,
   mode,
   rows,
   weekdayLabel,
@@ -230,11 +246,16 @@ export async function exportAttendanceGridToExcel({
   const titleRow1 = sheet.addRow(['PT CHITRA PARATAMA — HERO SYSTEM'])
   titleRow1.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF003461' } }
 
-  const titleRow2 = sheet.addRow([`LAPORAN REKAPITULASI KEHADIRAN KARYAWAN (${modeTitle})`])
+  const titleRow2 = sheet.addRow([
+    cutoffLabel
+      ? `LAPORAN REKAPITULASI KEHADIRAN KARYAWAN (${modeTitle}) — ${cutoffLabel.toUpperCase()}`
+      : `LAPORAN REKAPITULASI KEHADIRAN KARYAWAN (${modeTitle})`,
+  ])
   titleRow2.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF1E293B' } }
 
+  const cutoffSub = cutoffLabel ? ` | ${cutoffLabel}` : ''
   const titleRow3 = sheet.addRow([
-    `Site / Proyek: ${siteName.toUpperCase()} | Periode: ${periodLabel} (${period}) | Total Karyawan: ${rows.length} Orang`,
+    `Site / Proyek: ${siteName.toUpperCase()} | Periode: ${periodLabel} (${period})${cutoffSub} | Total Karyawan: ${rows.length} Orang`,
   ])
   titleRow3.font = { name: 'Calibri', size: 10, bold: false, color: { argb: 'FF475569' } }
 
@@ -256,9 +277,17 @@ export async function exportAttendanceGridToExcel({
     'Role / Jabatan',
   ]
 
-  days.forEach((day) => {
-    topHeaderRow.push(`Tgl ${day}`)
-  })
+  const colDateCount = dateHeaders && dateHeaders.length > 0 ? dateHeaders.length : days.length
+
+  if (dateHeaders && dateHeaders.length > 0) {
+    dateHeaders.forEach((dh) => {
+      topHeaderRow.push(dh.displayHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      topHeaderRow.push(`Tgl ${day}`)
+    })
+  }
 
   topHeaderRow.push(
     'Hadir (Hari)',
@@ -273,17 +302,23 @@ export async function exportAttendanceGridToExcel({
   header1.height = 24
 
   const subHeaderRow = ['', '', '', '', '', '']
-  days.forEach((day) => {
-    const wday = weekdayLabel(period, day)
-    const isHoliday = holidaysByDay.has(day)
-    subHeaderRow.push(isHoliday ? `${wday}*` : wday)
-  })
+  if (dateHeaders && dateHeaders.length > 0) {
+    dateHeaders.forEach((dh) => {
+      subHeaderRow.push(dh.subHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      const wday = weekdayLabel(period, day)
+      const isHoliday = holidaysByDay.has(day)
+      subHeaderRow.push(isHoliday ? `${wday}*` : wday)
+    })
+  }
   subHeaderRow.push('M / DS / NS', 'OFF', 'I / C / AL', 'S / SD', 'Jam Kerja', 'SPL Jam')
 
   const header2 = sheet.addRow(subHeaderRow)
   header2.height = 20
 
-  const totalCols = 6 + days.length + 6
+  const totalCols = 6 + colDateCount + 6
 
   // Merge metadata header cells vertically (Rows 6 & 7)
   for (let col = 1; col <= 6; col++) {
@@ -323,12 +358,21 @@ export async function exportAttendanceGridToExcel({
     }
 
     // Highlight Weekend / Holiday subheader columns
-    if (col > 6 && col <= 6 + days.length) {
-      const dayNum = days[col - 7]
-      const wday = weekdayLabel(period, dayNum).toLowerCase()
-      const isWeekend =
-        wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
-      const isHoliday = holidaysByDay.has(dayNum)
+    if (col > 6 && col <= 6 + colDateCount) {
+      const itemIdx = col - 7
+      let isWeekend = false
+      let isHoliday = false
+      if (dateHeaders && dateHeaders.length > 0) {
+        const dh = dateHeaders[itemIdx]
+        isWeekend = Boolean(dh.isWeekend)
+        isHoliday = Boolean(dh.isHoliday)
+      } else {
+        const dayNum = days[itemIdx]
+        const wday = weekdayLabel(period, dayNum).toLowerCase()
+        isWeekend =
+          wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
+        isHoliday = holidaysByDay.has(dayNum)
+      }
 
       if (isWeekend || isHoliday) {
         cell2.fill = {
@@ -354,7 +398,7 @@ export async function exportAttendanceGridToExcel({
   }
 
   let rowNumber = 1
-  const dailyPresentTotals = new Array(days.length).fill(0)
+  const dailyPresentTotals = new Array(colDateCount).fill(0)
   let grandTotalPresent = 0
   let grandTotalOff = 0
   let grandTotalLeave = 0
@@ -411,8 +455,11 @@ export async function exportAttendanceGridToExcel({
 
         const cellStyles: { colIndex: number; bg: string; text: string }[] = []
 
-        days.forEach((day, dayIndex) => {
-          const cell = row.getAttendanceCell(day)
+        const dateIterList = dateHeaders && dateHeaders.length > 0 ? dateHeaders : days.map((d) => ({ day: d }))
+
+        dateIterList.forEach((dateItem, dayIndex) => {
+          const day = dateItem.day
+          const cell = row.getAttendanceCell(day, dateHeaders ? dateHeaders[dayIndex] : undefined)
           const rawStatus = (cell.status || '').toUpperCase()
           const clockIn = cell.clockIn || ''
           const clockOut = cell.clockOut || ''
@@ -601,7 +648,7 @@ export async function exportAttendanceGridToExcel({
       col.width = 20 // Departemen
     } else if (colNumber === 6) {
       col.width = 18 // Role
-    } else if (colNumber <= 6 + days.length) {
+    } else if (colNumber <= 6 + colDateCount) {
       col.width = mode === 'checkin-checkout' ? 14 : 7.5 // Uniform date columns
     } else {
       col.width = 13 // Summary columns
@@ -616,7 +663,10 @@ export async function exportAttendanceGridToExcel({
   const url = window.URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `Rekap_Attendance_Grid_${siteName.replace(/\s+/g, '_')}_${period}.xlsx`
+  const cleanSiteName = siteName.replace(/\s+/g, '_')
+  const cutoffSuffix = cutoffLabel ? '_CK_Cutoff_16-15' : ''
+  anchor.download =
+    customFileName || `Rekap_Attendance_Grid_${cleanSiteName}${cutoffSuffix}_${period}.xlsx`
   document.body.appendChild(anchor)
   anchor.click()
   document.body.removeChild(anchor)
@@ -948,12 +998,14 @@ export interface ExportTimesheetTabOptions {
   siteName: string
   period: string
   days: number[]
+  dateHeaders?: ExportAttendanceDateHeader[]
   rows: TimesheetEmployeeExportRow[]
   weekdayLabel: (period: string, day: number) => string
   holidaysByDay?: Map<number, { name?: string; localName?: string }>
   info?: {
     rateText?: string
     project?: string
+    cutoffLabel?: string
   }
   customFileName?: string
 }
@@ -962,6 +1014,8 @@ export interface ExportAllTimesheetTabsOptions {
   siteName: string
   period: string
   days: number[]
+  dateHeaders?: ExportAttendanceDateHeader[]
+  cutoffLabel?: string
   tabs: {
     tab: TimesheetExportTab
     rows: TimesheetEmployeeExportRow[]
@@ -1116,13 +1170,16 @@ export function buildTimesheetWorksheet(
     color: { argb: TIMESHEET_PALETTE.headerBg },
   }
 
-  const titleRow2 = sheet.addRow([meta.title])
+  const titleRow2 = sheet.addRow([
+    info?.cutoffLabel ? `${meta.title} — ${info.cutoffLabel.toUpperCase()}` : meta.title,
+  ])
   titleRow2.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E293B' } }
 
   const infoSubText = info?.rateText ? ` | ${info.rateText}` : ''
   const projectText = info?.project ? ` · ${info.project}` : ''
+  const cutoffNotice = info?.cutoffLabel ? ` | ${info.cutoffLabel}` : ''
   const titleRow3 = sheet.addRow([
-    `Site / Proyek: ${siteName.toUpperCase()}${projectText} | Periode: ${periodLabel} (${period})${infoSubText} | Total: ${rows.length} Karyawan`,
+    `Site / Proyek: ${siteName.toUpperCase()}${projectText} | Periode: ${periodLabel} (${period})${cutoffNotice}${infoSubText} | Total: ${rows.length} Karyawan`,
   ])
   titleRow3.font = { name: 'Calibri', size: 9.5, bold: false, color: { argb: 'FF475569' } }
 
@@ -1137,10 +1194,17 @@ export function buildTimesheetWorksheet(
   const baseHeaders = ['No', 'Nama Karyawan', 'Manpower', 'Section / Role', 'Departemen']
   const totalBaseCols = baseHeaders.length // 5
 
+  const colDateCount = options.dateHeaders && options.dateHeaders.length > 0 ? options.dateHeaders.length : days.length
   const topHeaderRow = [...baseHeaders]
-  days.forEach((day) => {
-    topHeaderRow.push(`Tgl ${day}`)
-  })
+  if (options.dateHeaders && options.dateHeaders.length > 0) {
+    options.dateHeaders.forEach((dh) => {
+      topHeaderRow.push(dh.displayHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      topHeaderRow.push(`Tgl ${day}`)
+    })
+  }
 
   if (isAttendance) {
     topHeaderRow.push('Hadir', 'OFF', 'Izin', 'Sakit', 'Alpha', 'Total Jam')
@@ -1160,11 +1224,17 @@ export function buildTimesheetWorksheet(
   header1.height = 22
 
   const subHeaderRow = ['', '', '', '', '']
-  days.forEach((day) => {
-    const wday = weekdayLabel(period, day)
-    const isHoliday = holidaysByDay.has(day)
-    subHeaderRow.push(isHoliday ? `${wday}*` : wday)
-  })
+  if (options.dateHeaders && options.dateHeaders.length > 0) {
+    options.dateHeaders.forEach((dh) => {
+      subHeaderRow.push(dh.subHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      const wday = weekdayLabel(period, day)
+      const isHoliday = holidaysByDay.has(day)
+      subHeaderRow.push(isHoliday ? `${wday}*` : wday)
+    })
+  }
 
   if (isAttendance) {
     subHeaderRow.push('Masuk', 'OFF', 'Cuti/Izin', 'Sakit', 'Alpha', 'Jam Kerja')
@@ -1234,12 +1304,21 @@ export function buildTimesheetWorksheet(
     }
 
     // Highlight Weekend / Holiday subheader columns
-    if (col > totalBaseCols && col <= totalBaseCols + days.length) {
-      const dayNum = days[col - totalBaseCols - 1]
-      const wday = weekdayLabel(period, dayNum).toLowerCase()
-      const isWeekend =
-        wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
-      const isHoliday = holidaysByDay.has(dayNum)
+    if (col > totalBaseCols && col <= totalBaseCols + colDateCount) {
+      const itemIdx = col - totalBaseCols - 1
+      let isWeekend = false
+      let isHoliday = false
+      if (options.dateHeaders && options.dateHeaders.length > 0) {
+        const dh = options.dateHeaders[itemIdx]
+        isWeekend = Boolean(dh.isWeekend)
+        isHoliday = Boolean(dh.isHoliday)
+      } else {
+        const dayNum = days[itemIdx]
+        const wday = weekdayLabel(period, dayNum).toLowerCase()
+        isWeekend =
+          wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
+        isHoliday = holidaysByDay.has(dayNum)
+      }
 
       if (isHoliday) {
         cell2.fill = {
@@ -1283,7 +1362,7 @@ export function buildTimesheetWorksheet(
   let rowCounter = 1
 
   // Grand totals tracking
-  const dailySums = new Array(days.length).fill(0)
+  const dailySums = new Array(colDateCount).fill(0)
   let grandTotalAttendance = {
     present: 0,
     off: 0,
@@ -1368,9 +1447,12 @@ export function buildTimesheetWorksheet(
           align?: 'center' | 'right' | 'left'
         }[] = []
 
-        days.forEach((day, dayIndex) => {
+        const dateIterList = options.dateHeaders && options.dateHeaders.length > 0 ? options.dateHeaders : days.map((d) => ({ day: d }))
+
+        dateIterList.forEach((dateItem, dayIndex) => {
+          const day = dateItem.day
           const dayData = row.daysData[dayIndex] || { day, displayVal: '-' }
-          const isHoliday = holidaysByDay.has(day)
+          const isHoliday = 'isHoliday' in dateItem && dateItem.isHoliday !== undefined ? Boolean(dateItem.isHoliday) : holidaysByDay.has(day)
           const colIndex = totalBaseCols + dayIndex + 1
 
           if (isAttendance) {
@@ -1941,7 +2023,7 @@ export function buildTimesheetWorksheet(
       col.width = 22 // Section / Role
     } else if (colNumber === 5) {
       col.width = 20 // Departemen
-    } else if (colNumber <= totalBaseCols + days.length) {
+    } else if (colNumber <= totalBaseCols + colDateCount) {
       col.width = isAttendance ? 13 : isAllowance ? 11 : 8.5
     } else {
       col.width = isAttendance ? 10 : isPayrollOvertime ? 15 : 18
@@ -1983,7 +2065,8 @@ export async function exportTimesheetWorkspaceTabToExcel(
 
   const meta = getTabMetadata(options.tab)
   const cleanSite = options.siteName.replace(/\s+/g, '_')
-  const defaultFilename = `${meta.filePrefix}_${cleanSite}_${options.period}.xlsx`
+  const cutoffSuffix = options.info?.cutoffLabel ? '_CK_Cutoff_16-15' : ''
+  const defaultFilename = `${meta.filePrefix}_${cleanSite}${cutoffSuffix}_${options.period}.xlsx`
   const filename = options.customFileName || defaultFilename
 
   await downloadWorkbook(workbook, filename)
@@ -2005,15 +2088,20 @@ export async function exportTimesheetWorkspaceAllTabsToExcel(
       siteName: options.siteName,
       period: options.period,
       days: options.days,
+      dateHeaders: options.dateHeaders,
       rows: item.rows,
       weekdayLabel: options.weekdayLabel,
       holidaysByDay: options.holidaysByDay,
-      info: item.info,
+      info: {
+        ...item.info,
+        cutoffLabel: options.cutoffLabel,
+      },
     })
   }
 
   const cleanSite = options.siteName.replace(/\s+/g, '_')
-  const defaultFilename = `Rekap_Timesheet_Lengkap_5_Tab_${cleanSite}_${options.period}.xlsx`
+  const cutoffSuffix = options.cutoffLabel ? '_CK_Cutoff_16-15' : ''
+  const defaultFilename = `Rekap_Timesheet_Lengkap_5_Tab_${cleanSite}${cutoffSuffix}_${options.period}.xlsx`
   const filename = options.customFileName || defaultFilename
 
   await downloadWorkbook(workbook, filename)
