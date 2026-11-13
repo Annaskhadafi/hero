@@ -17,6 +17,8 @@ export type AttendanceDayData = {
   isHoliday: boolean
   holidayName?: string
   overtime?: OvertimeCalculationResult
+  hasManualOvertimeOverride?: boolean
+  manualOvertimeHours?: number | null
   workingTimeFrom?: string
   workingTimeTo?: string
   configuredOvertimeIntervals?: OvertimeInterval[]
@@ -472,33 +474,61 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
           configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
         )
 
-    let ot = (day.overtime?.totalHours ?? 0)
+    const hasManualOverride = Boolean(
+      day.hasManualOvertimeOverride ||
+      day.overtime?.source === 'Legacy' ||
+      (day.manualOvertimeHours !== undefined && day.manualOvertimeHours !== null)
+    )
+
+    let ot = hasManualOverride
+      ? (day.manualOvertimeHours ?? day.overtime?.totalHours ?? 0)
+      : (day.overtime?.totalHours ?? 0)
+
     const hasManualOvertime = ot > 0
     const isRealtimeMode = input.overtimeMode === 'realtime'
 
-    // Jika mode realtime: Overtime To mengikuti jam realtime pulang aktual (clockOut)
-    // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
-    if (ot > 0 && hasManualAttendance && day.clockOut && isRealtimeMode) {
-      otTo = day.clockOut.replace(':', '.')
-    }
+    if (hasManualOverride) {
+      if (ot <= 0) {
+        ot = 0
+        otFrom = ''
+        otTo = ''
+      } else {
+        if (!otFrom && configuredOvertimeIntervals[0]) {
+          otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+        }
+        if (!otTo) {
+          otTo = day.clockOut
+            ? day.clockOut.replace(':', '.')
+            : formatOvertimeIntervalEnd(
+                configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+              )
+        }
+      }
+    } else {
+      // Jika mode realtime: Overtime To mengikuti jam realtime pulang aktual (clockOut)
+      // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
+      if (ot > 0 && hasManualAttendance && day.clockOut && isRealtimeMode) {
+        otTo = day.clockOut.replace(':', '.')
+      }
 
-    if (otFrom === '00.00' && otTo === '00.00') {
-      otFrom = ''
-      otTo = ''
-    }
-    if ((isAbsent || isStatusWithoutTime || isOff) && !hasManualOvertime) {
-      ot = 0
-    } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
-      ot = configuredOvertimeIntervals.reduce((sum, inv) => {
-        if (!inv || !inv.start || !inv.end) return sum
-        const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
-        const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
-        if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
-        let startMin = sh * 60 + sm
-        let endMin = eh * 60 + em
-        if (endMin < startMin) endMin += 1440
-        return sum + (endMin - startMin) / 60
-      }, 0)
+      if (otFrom === '00.00' && otTo === '00.00') {
+        otFrom = ''
+        otTo = ''
+      }
+      if ((isAbsent || isStatusWithoutTime || isOff) && !hasManualOvertime) {
+        ot = 0
+      } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
+        ot = configuredOvertimeIntervals.reduce((sum, inv) => {
+          if (!inv || !inv.start || !inv.end) return sum
+          const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
+          const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
+          if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
+          let startMin = sh * 60 + sm
+          let endMin = eh * 60 + em
+          if (endMin < startMin) endMin += 1440
+          return sum + (endMin - startMin) / 60
+        }, 0)
+      }
     }
 
     if (ot > 0 && !isAbsent && !isStatusWithoutTime) {
@@ -2355,7 +2385,7 @@ export async function generateSummaryTablePdf(
 export function buildAttendanceDayData(params: {
   period: string
   dayCount: number
-  getCell: (day: number) => { status: string; clockIn: string; clockOut: string }
+  getCell: (day: number) => { status: string; clockIn: string; clockOut: string; overtimeHours?: number | null }
   getScheduleCode: (day: number) => string
   holidays: Array<{ day?: number; date: string; localName?: string; name?: string }>
   getOvertime?: (day: number) => OvertimeCalculationResult
@@ -2367,6 +2397,17 @@ export function buildAttendanceDayData(params: {
     const day = i + 1
     const cell = getCell(day)
     const holiday = holidayByDay.get(day)
+    const ovt = getOvertime?.(day)
+    const hasManualOverride =
+      (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) ||
+      ovt?.source === 'Legacy'
+    const manualOtHours =
+      cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null
+        ? Number(cell.overtimeHours)
+        : ovt?.source === 'Legacy'
+          ? ovt.totalHours
+          : null
+
     return {
       day,
       dayName: getDayName(period, day),
@@ -2376,7 +2417,9 @@ export function buildAttendanceDayData(params: {
       scheduleCode: getScheduleCode(day),
       isHoliday: Boolean(holiday),
       holidayName: holiday?.localName ?? holiday?.name,
-      overtime: getOvertime?.(day),
+      overtime: ovt,
+      hasManualOvertimeOverride: hasManualOverride,
+      manualOvertimeHours: manualOtHours,
     }
   })
 }

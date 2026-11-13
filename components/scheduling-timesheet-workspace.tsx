@@ -16,11 +16,13 @@ import {
   Clock,
   Clock3,
   Download,
+  ExternalLink,
   Eye,
   FileSpreadsheet,
   FileText,
   History,
   Layers,
+  Loader2,
   Pencil,
   RefreshCw,
   RotateCcw,
@@ -2022,7 +2024,10 @@ export function SchedulingTimesheetWorkspace({
     'payable_site_allowance',
   ])
   const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
+  const [isPreviewingSitePdf, setIsPreviewingSitePdf] = useState(false)
+  const [isDownloadingSitePdf, setIsDownloadingSitePdf] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
+  const lastPdfUrlRef = useRef<string | null>(null)
   const [summaryGridPdfModalOpen, setSummaryGridPdfModalOpen] = useState(false)
   const [summaryGridSiteId, setSummaryGridSiteId] = useState<string>(siteId)
   const [summaryGridType, setSummaryGridType] = useState<SummaryView>('ovt_spl')
@@ -7403,6 +7408,11 @@ export function SchedulingTimesheetWorkspace({
       return
     }
 
+    const toastId = 'bulk-pdf-download'
+    setIsDownloadingSitePdf(true)
+    toast.loading('Menyiapkan download PDF... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
@@ -7412,6 +7422,7 @@ export function SchedulingTimesheetWorkspace({
 
       // 1. OVERTIME SUMMARY
       if (selectedPdfDocTypes.includes('overtime_summary')) {
+        toast.loading('Menyiapkan Overtime Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
@@ -7420,42 +7431,54 @@ export function SchedulingTimesheetWorkspace({
 
       // 2. OVERTIME SPL SUMMARY
       if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        toast.loading('Menyiapkan Overtime SPL Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 2. MSA summary
+      // 3. MSA summary
       if (selectedPdfDocTypes.includes('msa_summary')) {
+        toast.loading('Menyiapkan MSA Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 3. MLS summary
+      // 4. MLS summary
       if (selectedPdfDocTypes.includes('mls_summary')) {
+        toast.loading('Menyiapkan MLS Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 4. TU summary
+      // 5. TU summary
       if (selectedPdfDocTypes.includes('tu_summary')) {
+        toast.loading('Menyiapkan TU Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 5. Overtime Record & 6. Payable Site Allowance per employee
+      // 6. Overtime Record & 7. Payable Site Allowance per employee
       const shouldIncludeOvertimeRecord = selectedPdfDocTypes.includes('overtime_record')
       const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
 
       if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
-        for (const employee of filteredSelected) {
+        for (let i = 0; i < filteredSelected.length; i++) {
+          const employee = filteredSelected[i]
+          if (i % 2 === 0 || i === filteredSelected.length - 1) {
+            toast.loading(
+              `Memproses lembar PDF (${i + 1}/${filteredSelected.length}: ${employee.name})...`,
+              { id: toastId }
+            )
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
           if (shouldIncludeOvertimeRecord) {
             const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime)
             const otSource = await PDFDocument.load(otPdf)
@@ -7472,7 +7495,7 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (merged.getPageCount() === 0) {
-        toast.error('Tidak ada halaman PDF yang dihasilkan.')
+        toast.error('Tidak ada halaman PDF yang dihasilkan.', { id: toastId })
         return
       }
 
@@ -7491,6 +7514,7 @@ export function SchedulingTimesheetWorkspace({
         })
         .join('_')
 
+      toast.loading('Mengunduh berkas PDF gabungan...', { id: toastId })
       const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -7500,15 +7524,25 @@ export function SchedulingTimesheetWorkspace({
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url)
+        } catch {
+          // ignore
+        }
+      }, 60000)
       toast.success(
-        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`
+        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`,
+        { id: toastId }
       )
     } catch (error) {
       console.error('[Bulk PDF Download Error]', error)
       toast.error('Bulk download PDF Overtime gagal', {
+        id: toastId,
         description: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      setIsDownloadingSitePdf(false)
     }
   }
 
@@ -7635,11 +7669,19 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function openPdfPreview(pdf: Uint8Array, title: string) {
-    if (pdfPreview) {
-      URL.revokeObjectURL(pdfPreview.url)
+    if (lastPdfUrlRef.current) {
+      const oldUrl = lastPdfUrlRef.current
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(oldUrl)
+        } catch {
+          // ignore
+        }
+      }, 60000)
     }
     const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
+    lastPdfUrlRef.current = url
     setPdfPreview({ url, title })
   }
 
@@ -7699,6 +7741,11 @@ export function SchedulingTimesheetWorkspace({
       return
     }
 
+    const toastId = 'preview-site-pdf'
+    setIsPreviewingSitePdf(true)
+    toast.loading('Menyiapkan Preview PDF... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
     try {
       const { PDFDocument } = await import('pdf-lib')
       const merged = await PDFDocument.create()
@@ -7707,6 +7754,7 @@ export function SchedulingTimesheetWorkspace({
       const empIds = filteredEmployees.map((e) => e.id)
 
       if (selectedPdfDocTypes.includes('overtime_summary')) {
+        toast.loading('Memproses Overtime Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
@@ -7714,6 +7762,7 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        toast.loading('Memproses Overtime SPL Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
@@ -7721,6 +7770,7 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (selectedPdfDocTypes.includes('msa_summary')) {
+        toast.loading('Memproses MSA Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
@@ -7728,6 +7778,7 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (selectedPdfDocTypes.includes('mls_summary')) {
+        toast.loading('Memproses MLS Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
@@ -7735,6 +7786,7 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (selectedPdfDocTypes.includes('tu_summary')) {
+        toast.loading('Memproses TU Summary...', { id: toastId })
         const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
@@ -7745,7 +7797,15 @@ export function SchedulingTimesheetWorkspace({
       const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
 
       if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
-        for (const employee of filteredEmployees) {
+        for (let i = 0; i < filteredEmployees.length; i++) {
+          const employee = filteredEmployees[i]
+          if (i % 2 === 0 || i === filteredEmployees.length - 1) {
+            toast.loading(
+              `Memproses lembar PDF (${i + 1}/${filteredEmployees.length}: ${employee.name})...`,
+              { id: toastId }
+            )
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
           if (shouldIncludeOvertimeRecord) {
             const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
             const otSource = await PDFDocument.load(otPdf)
@@ -7762,21 +7822,27 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (merged.getPageCount() === 0) {
-        toast.error('Tidak ada halaman PDF yang dipilih untuk di-preview.')
+        toast.error('Tidak ada halaman PDF yang dipilih untuk di-preview.', { id: toastId })
         return
       }
 
       const activeSections = activeSectionsLabel
+      toast.loading('Menyimpan dokumen preview...', { id: toastId })
+      const mergedBytes = await merged.save()
 
       openPdfPreview(
-        await merged.save(),
+        mergedBytes,
         `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period}${pdfUseExternalSignatures ? ' (Eksternal)' : ''} (${activeSections || 'Semua'})`
       )
+      toast.success('Preview PDF siap ditampilkan.', { id: toastId })
     } catch (error) {
       console.error('[Preview PDF Site Error]', error)
       toast.error('Preview PDF site gagal', {
+        id: toastId,
         description: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      setIsPreviewingSitePdf(false)
     }
   }
 
@@ -13153,6 +13219,7 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           variant="outline"
                           disabled={
+                            isPreviewingSitePdf ||
                             rows.length === 0 ||
                             siteId === 'all' ||
                             selectedPdfDocTypes.length === 0 ||
@@ -13168,13 +13235,20 @@ export function SchedulingTimesheetWorkspace({
                                 : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
                           }
                         >
-                          <Eye className="mr-1.5 size-3.5" /> Preview PDF (
-                          {selectedPdfDocTypes.length})
+                          {isPreviewingSitePdf ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin text-indigo-600" />
+                          ) : (
+                            <Eye className="mr-1.5 size-3.5" />
+                          )}
+                          {isPreviewingSitePdf
+                            ? 'Menyiapkan...'
+                            : `Preview PDF (${selectedPdfDocTypes.length})`}
                         </Button>
                         <Button
                           size="sm"
                           variant="default"
                           disabled={
+                            isDownloadingSitePdf ||
                             (selectedOvertimeEmployeeIds.length === 0 && rows.length === 0) ||
                             selectedPdfDocTypes.length === 0 ||
                             (availableSiteSections.length > 1 && !hasAnySectionActive)
@@ -13189,9 +13263,14 @@ export function SchedulingTimesheetWorkspace({
                                 : `Download PDF (${selectedPdfDocTypes.length} jenis dokumen, ${selectedOvertimeEmployeeIds.length} karyawan)`
                           }
                         >
-                          <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih{' '}
-                          {selectedOvertimeEmployeeIds.length > 0
-                            ? `(${selectedOvertimeEmployeeIds.length})`
+                          {isDownloadingSitePdf ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <Download className="mr-1.5 size-3.5" />
+                          )}
+                          {isDownloadingSitePdf ? 'Mengunduh...' : 'Download PDF Terpilih'}
+                          {!isDownloadingSitePdf && selectedOvertimeEmployeeIds.length > 0
+                            ? ` (${selectedOvertimeEmployeeIds.length})`
                             : ''}
                         </Button>
                       </div>
@@ -15621,7 +15700,6 @@ export function SchedulingTimesheetWorkspace({
                         ],
                       })
                       if (result.ok) {
-                        router.refresh()
                         toast.success('Attendance saved ke database.')
                       } else {
                         toast.error('Save attendance failed', {
@@ -16054,43 +16132,132 @@ export function SchedulingTimesheetWorkspace({
       <Dialog
         open={Boolean(pdfPreview)}
         onOpenChange={(open) => {
-          if (!open && pdfPreview) {
-            URL.revokeObjectURL(pdfPreview.url)
+          if (!open) {
+            if (pdfPreview?.url) {
+              const closingUrl = pdfPreview.url
+              setTimeout(() => {
+                try {
+                  URL.revokeObjectURL(closingUrl)
+                } catch {
+                  // ignore
+                }
+              }, 60000)
+            }
             setPdfPreview(null)
           }
         }}
       >
-        <DialogContent className="max-w-[96vw] gap-0 overflow-hidden bg-white p-0">
-          <DialogHeader className="flex flex-row items-center justify-between border-b p-4">
-            <DialogTitle className="truncate pr-4 text-sm font-black text-[#082033]">
-              {pdfPreview?.title ?? 'Preview PDF'}
-            </DialogTitle>
+        <DialogContent className="max-w-[96vw] gap-0 overflow-hidden bg-white p-0 shadow-2xl sm:max-w-[94vw]">
+          <DialogHeader className="flex flex-row items-center justify-between border-b px-4 py-3 bg-slate-50/70">
+            <div className="flex items-center gap-2 min-w-0 pr-4">
+              <FileText className="size-4 shrink-0 text-indigo-600" />
+              <DialogTitle className="truncate text-sm font-bold text-slate-800">
+                {pdfPreview?.title ?? 'Preview PDF'}
+              </DialogTitle>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {pdfPreview ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs font-semibold"
+                    onClick={() => {
+                      if (pdfPreview?.url) {
+                        window.open(pdfPreview.url, '_blank')
+                      }
+                    }}
+                    title="Buka dokumen di tab baru browser"
+                  >
+                    <ExternalLink className="mr-1.5 size-3.5 text-slate-600" /> Buka di Tab Baru
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-8 bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700"
+                    asChild
+                  >
+                    <a
+                      href={pdfPreview.url}
+                      download={`${(pdfPreview.title || 'document').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
+                    >
+                      <Download className="mr-1.5 size-3.5" /> Download PDF
+                    </a>
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </DialogHeader>
-          <div className="h-[calc(100vh-140px)] min-h-[70vh] bg-[#f5f7fb]">
+          <div className="relative h-[calc(100vh-140px)] min-h-[70vh] w-full bg-[#525659]">
             {pdfPreview ? (
-              <iframe src={pdfPreview.url} title={pdfPreview.title} className="h-full w-full" />
+              <object
+                data={pdfPreview.url}
+                type="application/pdf"
+                className="h-full w-full"
+              >
+                <iframe
+                  src={pdfPreview.url}
+                  title={pdfPreview.title}
+                  className="h-full w-full border-0 bg-white"
+                >
+                  <div className="flex h-full flex-col items-center justify-center p-8 text-center text-slate-600 bg-white">
+                    <FileText className="mb-3 size-12 text-slate-400" />
+                    <p className="font-semibold text-slate-800">
+                      Preview PDF tidak dapat ditampilkan langsung di browser ini.
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Silakan gunakan tombol di bawah untuk membuka dokumen di tab baru atau mengunduh dokumen.
+                    </p>
+                    <div className="mt-4 flex gap-2">
+                      <Button size="sm" onClick={() => window.open(pdfPreview.url, '_blank')}>
+                        <ExternalLink className="mr-1.5 size-4" /> Buka di Tab Baru
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={pdfPreview.url} download>
+                          <Download className="mr-1.5 size-4" /> Download PDF
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </iframe>
+              </object>
             ) : null}
           </div>
-          <div className="flex items-center justify-end gap-2 border-t p-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (pdfPreview) {
-                  URL.revokeObjectURL(pdfPreview.url)
+          <div className="flex items-center justify-between border-t bg-slate-50/50 px-4 py-2.5">
+            <span className="text-[11px] text-slate-500">
+              Tips: Jika tampilan dokumen tidak muncul di browser Anda, klik tombol &quot;Buka di Tab Baru&quot; di atas.
+            </span>
+            <div className="flex items-center gap-2">
+              {pdfPreview ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(pdfPreview.url, '_blank')}
+                >
+                  <ExternalLink className="mr-1.5 size-3.5" /> Buka di Tab Baru
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  if (pdfPreview?.url) {
+                    const closingUrl = pdfPreview.url
+                    setTimeout(() => {
+                      try {
+                        URL.revokeObjectURL(closingUrl)
+                      } catch {
+                        // ignore
+                      }
+                    }, 60000)
+                  }
                   setPdfPreview(null)
-                }
-              }}
-            >
-              <X className="mr-1.5 size-3.5" /> Tutup
-            </Button>
-            {pdfPreview ? (
-              <Button size="sm" asChild>
-                <a href={pdfPreview.url} download>
-                  <Download className="mr-1.5 size-3.5" /> Download PDF
-                </a>
+                }}
+              >
+                <X className="mr-1.5 size-3.5" /> Tutup
               </Button>
-            ) : null}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
