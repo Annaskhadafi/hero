@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { repairMasterItems, repairMasterSites } from "@/db/schema/repair-master"
+import { parseBahasaMaterialExcel } from "@/lib/bahasa-material"
 import {
   DEFAULT_REPAIR_SITES,
   mergeRepairMasterItemsWithStockSap,
@@ -99,16 +100,82 @@ async function ensureRepairMasterTables() {
 async function ensureDefaultRepairSites() {
   await ensureRepairMasterTables()
 
-  await db
-    .insert(repairMasterSites)
-    .values(
-      DEFAULT_REPAIR_SITES.map((site, index) => ({
+  for (const [index, site] of DEFAULT_REPAIR_SITES.entries()) {
+    await db
+      .insert(repairMasterSites)
+      .values({
         siteCode: site.siteCode,
         siteName: site.siteName,
         sortOrder: index + 1,
-      })),
-    )
-    .onConflictDoNothing({ target: repairMasterSites.siteCode })
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: repairMasterSites.siteCode,
+        set: {
+          siteName: site.siteName,
+          sortOrder: index + 1,
+          updatedAt: new Date(),
+        },
+      })
+  }
+}
+
+export async function syncBahasaMaterialItems() {
+  try {
+    await ensureRepairMasterTables()
+
+    const parsedItems = parseBahasaMaterialExcel()
+    if (parsedItems.length === 0) {
+      return { success: false, count: 0, message: "File Bahasa Material.xlsx tidak ditemukan atau kosong" }
+    }
+
+    let count = 0
+    for (const [index, item] of parsedItems.entries()) {
+      const materialCode = normalizeRepairMasterCode(item.materialCode)
+      await db
+        .insert(repairMasterItems)
+        .values({
+          materialCode,
+          materialName: item.materialName.trim(),
+          valuationStockValue: cleanText(item.valuationStockValue),
+          currency: item.currency || "USD",
+          valuatedStock: cleanText(item.valuatedStock),
+          uom: cleanText(item.uom)?.toUpperCase() ?? "PC",
+          category: cleanText(item.category),
+          smu: cleanText(item.smu),
+          defaultQty: cleanText(item.defaultQty),
+          standardTime: cleanText(item.standardTime),
+          notes: cleanText(item.notes),
+          isActive: true,
+          sortOrder: index + 1,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: repairMasterItems.materialCode,
+          set: {
+            materialName: item.materialName.trim(),
+            valuationStockValue: cleanText(item.valuationStockValue),
+            currency: item.currency || "USD",
+            uom: cleanText(item.uom)?.toUpperCase() ?? "PC",
+            category: cleanText(item.category),
+            notes: cleanText(item.notes),
+            sortOrder: index + 1,
+            updatedAt: new Date(),
+          },
+        })
+      count++
+    }
+
+    revalidatePath(REPAIR_MASTER_PATH)
+    return { success: true, count, message: `Berhasil sinkronisasi ${count} item dari Bahasa Material.xlsx` }
+  } catch (error) {
+    console.error("Error syncing Bahasa Material items:", error)
+    return {
+      success: false,
+      count: 0,
+      error: error instanceof Error ? error.message : "Gagal memproses Bahasa Material.xlsx",
+    }
+  }
 }
 
 async function getStockSapRows(materialCodes: string[]) {
@@ -147,10 +214,23 @@ async function getStockSapRows(materialCodes: string[]) {
 export async function getRepairMasterData() {
   await ensureDefaultRepairSites()
 
-  const [items, sites] = await Promise.all([
-    db.select().from(repairMasterItems).orderBy(asc(repairMasterItems.sortOrder), asc(repairMasterItems.materialCode)),
-    db.select().from(repairMasterSites).orderBy(asc(repairMasterSites.sortOrder), asc(repairMasterSites.siteCode)),
-  ])
+  let items = await db
+    .select()
+    .from(repairMasterItems)
+    .orderBy(asc(repairMasterItems.sortOrder), asc(repairMasterItems.materialCode))
+
+  if (items.length === 0) {
+    await syncBahasaMaterialItems()
+    items = await db
+      .select()
+      .from(repairMasterItems)
+      .orderBy(asc(repairMasterItems.sortOrder), asc(repairMasterItems.materialCode))
+  }
+
+  const sites = await db
+    .select()
+    .from(repairMasterSites)
+    .orderBy(asc(repairMasterSites.sortOrder), asc(repairMasterSites.siteCode))
 
   if (items.length === 0) {
     return { items, sites }

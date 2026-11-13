@@ -4,20 +4,20 @@ export type DefaultRepairSite = {
 }
 
 export const DEFAULT_REPAIR_SITES: DefaultRepairSite[] = [
-  { siteCode: "0201", siteName: "CP DMP" },
+  { siteCode: "0201", siteName: "CP BUMA TANJUNG" },
   { siteCode: "0202", siteName: "CP SBS" },
-  { siteCode: "0204", siteName: "CP BSI BANYUWANGI" },
-  { siteCode: "0205", siteName: "CP SOROWAKO VALE" },
-  { siteCode: "0206", siteName: "CP BENGKULU CDE" },
+  { siteCode: "0203", siteName: "CP Malinau" },
+  { siteCode: "0204", siteName: "CP Banyuwangi" },
+  { siteCode: "0205", siteName: "CP Sorowako" },
+  { siteCode: "0206", siteName: "CP Bengkulu" },
   { siteCode: "CONS", siteName: "CP MHU" },
-  { siteCode: "RS01", siteName: "BPN" },
-  { siteCode: "RS02", siteName: "SANGGATA" },
+  { siteCode: "RS01", siteName: "CP Balikpapan" },
+  { siteCode: "RS02", siteName: "CP Sangatta" },
   { siteCode: "RS03", siteName: "CP BMB" },
   { siteCode: "RS04", siteName: "CP BIB" },
   { siteCode: "RS07", siteName: "CP KIM" },
-  { siteCode: "RS08", siteName: "CP BERAU" },
-  { siteCode: "RS14", siteName: "CP PALU" },
-  { siteCode: "0203", siteName: "malinau" },
+  { siteCode: "RS08", siteName: "CP Berau" },
+  { siteCode: "RS14", siteName: "CP SIS TANJUNG" },
 ]
 
 export function normalizeRepairMasterCode(value: string) {
