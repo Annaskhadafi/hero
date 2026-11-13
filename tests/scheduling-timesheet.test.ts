@@ -11,8 +11,23 @@ import {
   type ScheduleCode,
 } from '@/lib/timesheet-scheduling'
 import { normalizeApiHariLiburResponse, normalizeOpenHolidayResponse } from '@/lib/openholiday'
+import { resolveAttendanceShiftFromRoster } from '@/lib/timesheet/attendance-roster-shift'
 
 describe('scheduling timesheet workflow', () => {
+  it.each([
+    ['DS', 'day'],
+    ['NS', 'night'],
+    ['ST', 'standby'],
+  ])('maps roster %s to attendance shift %s', (rosterCode, shiftCode) => {
+    expect(
+      resolveAttendanceShiftFromRoster(rosterCode, [
+        { value: 'day', label: 'Shift Pagi' },
+        { value: 'night', label: 'Shift Malam' },
+        { value: 'standby', label: 'Standby / On-call' },
+      ])?.value
+    ).toBe(shiftCode)
+  })
+
   it('grants PJO Site access to roster, attendance, and Schedule V2 within site scope', () => {
     const accessSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-access.ts'), 'utf8')
     const scheduleV2Source = fs.readFileSync(
