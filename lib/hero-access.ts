@@ -220,6 +220,24 @@ export async function getMenuPermissionForRole(
     }
   }
 
+  if (
+    roleName.trim().toLowerCase() === 'pjo site' &&
+    [
+      'scheduling_timesheet',
+      'scheduling_timesheet_attendance',
+      'scheduling_timesheet_schedule_v2',
+    ].includes(resource)
+  ) {
+    return {
+      roleName,
+      canView: true,
+      canEdit: true,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'site',
+    }
+  }
+
   const [permission] = await db
     .select({
       canView: roleMenuPermissions.canView,
