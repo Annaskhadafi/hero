@@ -62,7 +62,7 @@ test('verify JSA HSE approval workflow, HSE officer selection, auto-TTD online, 
     }
   }
 
-  // 6. Test JSA Document Preview & Online Signature Controls
+  // 6. Test JSA Document Preview & 1-Click Online Signature (Auto-TTD)
   const previewBtns = browser.locator('button[title="Preview Dokumen JSA"]');
   if ((await previewBtns.count()) > 0) {
     await previewBtns.first().click();
@@ -74,17 +74,19 @@ test('verify JSA HSE approval workflow, HSE officer selection, auto-TTD online, 
     await expect(screen.getByText(/Pelaksana \/ Pembuat JSA/i).first()).toBeVisible();
     await expect(screen.getByText(/Verifikasi Departemen HSE/i).first()).toBeVisible();
 
-    // Verify 1-Click Approve (Auto TTD) button exists in preview header
-    const autoApproveBtn = browser.locator('button:has-text("Approve (Auto TTD)")').first();
-    if (await autoApproveBtn.isVisible()) {
-      await expect(autoApproveBtn).toBeVisible();
-    }
-
     await app.screenshot('004-jsa-document-sheet-preview');
 
-    // Close preview modal via escape or clicking close
-    await browser.keyboard.press('Escape');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Test 1-Click Approve (Auto TTD) button inside preview header (Kayak SPL & Daily Activity)
+    const autoApproveBtn = browser.locator('button:has-text("Approve (Auto TTD)")').first();
+    if (await autoApproveBtn.isVisible()) {
+      await autoApproveBtn.click();
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await app.screenshot('005-jsa-approved-auto-ttd-success');
+    } else {
+      // Close preview modal via escape if already approved
+      await browser.keyboard.press('Escape');
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   }
 
   // 7. Test Central Approval Inbox Integration (/dashboard/approval)
@@ -93,5 +95,5 @@ test('verify JSA HSE approval workflow, HSE officer selection, auto-TTD online, 
 
   // Verify Central Approval Inbox loaded with unified categories
   await expect(screen.getByText(/Central Approval/i).first()).toBeVisible();
-  await app.screenshot('005-jsa-central-approval-inbox');
+  await app.screenshot('006-jsa-central-approval-inbox');
 });

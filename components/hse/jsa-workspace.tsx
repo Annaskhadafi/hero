@@ -152,26 +152,36 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
   }
 
   const handlePreview = async (id: string) => {
+    const localItem = jsaList.find((j) => j.id === id)
+    if (localItem) {
+      setSelectedJsa(localItem)
+      setPrintOpen(true)
+    }
     try {
       setIsLoadingJsa(true)
       const data = await getJsaById(id)
-      setSelectedJsa(data)
+      if (data) setSelectedJsa(data)
       setPrintOpen(true)
     } catch {
-      toast.error('Gagal mengambil data JSA')
+      if (!localItem) toast.error('Gagal mengambil data JSA')
     } finally {
       setIsLoadingJsa(false)
     }
   }
 
   const handleOpenApproval = async (id: string) => {
+    const localItem = jsaList.find((j) => j.id === id)
+    if (localItem) {
+      setSelectedJsa(localItem)
+      setApprovalOpen(true)
+    }
     try {
       setIsLoadingJsa(true)
       const data = await getJsaById(id)
-      setSelectedJsa(data)
+      if (data) setSelectedJsa(data)
       setApprovalOpen(true)
     } catch {
-      toast.error('Gagal mengambil data JSA')
+      if (!localItem) toast.error('Gagal mengambil data JSA')
     } finally {
       setIsLoadingJsa(false)
     }
