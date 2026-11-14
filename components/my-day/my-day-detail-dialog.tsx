@@ -33,6 +33,8 @@ import {
 import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 import { formatPhotoDisplayUrl } from "@/lib/photo-url";
 import { DailyActivityPhotoThumbnail } from "@/components/daily-activity-photo-thumbnail";
+import { DailyActivityCreateSplModal } from "@/components/daily-activity-create-spl-modal";
+import type { EmployeeActivityRow } from "@/lib/daily-activity-dashboard";
 
 interface LightboxPhoto {
   url: string;
@@ -199,6 +201,68 @@ export function MyDayDetailDialog({
   onClose,
 }: MyDayDetailDialogProps) {
   const [lightboxPhoto, setLightboxPhoto] = React.useState<LightboxPhoto | null>(null);
+  const [isCreateSplOpen, setIsCreateSplOpen] = React.useState(false);
+
+  const employeeRow: EmployeeActivityRow = React.useMemo(() => {
+    const rawDate = activity?.workDate
+      ? typeof activity.workDate === 'string'
+        ? activity.workDate.split('T')[0]
+        : activity.workDate.toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    const tasks = (activity?.items || []).map((it, idx) => ({
+      id: String(it.id || idx + 1),
+      sessionItemId: it.id,
+      label: it.snapshotLabel || activity?.title || 'Aktivitas Lapangan',
+      unitNumber: it.unitNumber || activity?.unitNumber || '-',
+      startedAt: it.startedAt ? formatSafeWallClockTime(it.startedAt).replace('.', ':') : '17:00',
+      endedAt: it.endedAt ? formatSafeWallClockTime(it.endedAt).replace('.', ':') : '21:00',
+      points: it.actualPoints ?? 0,
+      remarks: it.remark || activity?.remarks || '',
+      photoUrl: it.photoUrl || null,
+      photos: it.photos || [],
+      selected: true,
+    }));
+
+    return {
+      sessionId: activity?.sessionId ?? activity?.id,
+      employeeDbId: employee?.id,
+      rawWorkDate: rawDate,
+      employeeId: employee?.employeeSn || employee?.employeeId || String(employee?.id || ''),
+      name: employee?.name || activity?.employeeName || 'Karyawan',
+      jobTitle: employee?.jobTitle || 'Serviceman',
+      department: employee?.department || 'Central Services',
+      section: employee?.section || 'Service Operation Others',
+      siteId: site?.id,
+      siteName: site?.name || site?.location || 'Site Operasional',
+      customerName: site?.customerName || '-',
+      workDate: rawDate,
+      shift: (activity?.shiftCode?.toLowerCase().includes('malam') ? 'Malam' : 'Pagi') as any,
+      checkInTime: activity?.startTime ? formatSafeWallClockTime(activity.startTime).replace('.', ':') : '07:00',
+      checkOutTime: activity?.endTime ? formatSafeWallClockTime(activity.endTime).replace('.', ':') : undefined,
+      primaryActivity: activity?.title || 'Aktivitas Lapangan',
+      unitTireId: activity?.unitNumber || '-',
+      allUnits: activity?.unitNumber ? [activity.unitNumber] : [],
+      status: 'Selesai',
+      progress: 100,
+      lastUpdate: rawDate,
+      sessionsCount: 1,
+      tasksCount: tasks.length || 1,
+      totalPoints: activity?.pointsNet ?? 0,
+      tasks: tasks.length > 0 ? tasks : [{
+        id: '1',
+        label: activity?.title || 'Aktivitas Lapangan',
+        unitNumber: activity?.unitNumber || '-',
+        startedAt: activity?.startTime ? formatSafeWallClockTime(activity.startTime).replace('.', ':') : '17:00',
+        endedAt: activity?.endTime ? formatSafeWallClockTime(activity.endTime).replace('.', ':') : '21:00',
+        points: activity?.pointsNet ?? 0,
+        remarks: activity?.remarks || '',
+        photoUrl: activity?.photos?.[0]?.url || null,
+        photos: activity?.photos?.map(p => p.url) || [],
+        selected: true,
+      }],
+    };
+  }, [activity, employee, site]);
 
   if (!activity) return null;
 
@@ -739,19 +803,27 @@ export function MyDayDetailDialog({
                 Ekspor Data CSV
               </Button>
               <Button
-                asChild
+                type="button"
                 size="sm"
-                className="rounded-xl bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs font-semibold"
+                onClick={() => setIsCreateSplOpen(true)}
+                className="rounded-xl bg-[#1d72f2] hover:bg-blue-600 text-white gap-1.5 text-xs font-semibold cursor-pointer"
               >
-                <Link href="/dashboard/overtime-requests">
-                  <Clock className="w-3.5 h-3.5" />
-                  Buat SPL Lembur
-                </Link>
+                <Clock className="w-3.5 h-3.5" />
+                Buat SPL Lembur
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Pop-up Buat SPL Lembur Langsung dari Aktivitas Harian */}
+      {isCreateSplOpen && (
+        <DailyActivityCreateSplModal
+          isOpen={isCreateSplOpen}
+          onClose={() => setIsCreateSplOpen(false)}
+          employee={employeeRow}
+        />
+      )}
 
       {/* Lightbox Photo Preview Modal */}
       {lightboxPhoto && (
