@@ -66,7 +66,14 @@ export default async function OvertimeRequestsPage({ searchParams }: OvertimeReq
     userEmail.startsWith('admin_') ||
     userEmail.includes('admin')
 
-  const isSiteAdmin = accessRole === 'site admin'
+  const jobTitleLower = (activeEmployee?.jobTitle || '').toLowerCase()
+  const isSiteAdmin =
+    accessRole === 'site admin' ||
+    accessRole.includes('site') ||
+    accessRole.includes('pjo') ||
+    jobTitleLower.includes('pjo') ||
+    jobTitleLower.includes('site lead') ||
+    jobTitleLower.includes('site head')
 
   const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows, initialSettings] = await Promise.all([
     db

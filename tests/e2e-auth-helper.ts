@@ -59,7 +59,7 @@ export async function loginToHero(
 
     // Wait for login processing and redirect away from /sign-in
     if (browser?.waitForURL) {
-      await browser.waitForURL(/.*\/dashboard.*/, { timeout: 60000 }).catch(() => {})
+      await browser.waitForURL(/.*\/dashboard(\/.*)?/, { timeout: 60000 }).catch(() => {})
     } else {
       await submitBtn.waitFor({ state: 'detached', timeout: 60000 }).catch(() => {})
     }

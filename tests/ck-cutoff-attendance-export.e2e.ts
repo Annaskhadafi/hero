@@ -27,27 +27,32 @@ test('Verifikasi Fitur Export Attendance Cut-Off CK (16-15) & Penyelarasan Overt
     await new Promise((resolve) => setTimeout(resolve, 6000))
   }
 
-  // 3. Verifikasi opsi Cut-off Tagihan di toolbar (1 - Akhir vs 16 - 15 CK)
-  const ckCutoffPill = browser.locator('button:has-text("16 – 15 (CK)"), button:has-text("16 - 15")').first()
-  if (await ckCutoffPill.isVisible({ timeout: 10000 }).catch(() => false)) {
-    await ckCutoffPill.click()
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-  }
-
-  // 4. Buka dropdown "Ekspor Data" dan pilih "Pilihan Cut-Off & Konfigurasi Ekspor..."
+  // 3. Verifikasi opsi Cut-off Tagihan & Rentang Tanggal di toolbar atau dropdown Ekspor Data
+  const cutoffBtn = browser.locator('button:has-text("Cut-Off & Rentang Tanggal"), button:has-text("Cut-off")').first()
   const exportDropdownBtn = browser.locator('button:has-text("Ekspor Data"), button:has-text("Export Data")').first()
+
   if (await exportDropdownBtn.isVisible({ timeout: 10000 }).catch(() => false)) {
     await exportDropdownBtn.click()
     await new Promise((resolve) => setTimeout(resolve, 1500))
 
-    const dialogMenuOption = browser.locator('[role="menuitem"]:has-text("Pilihan Cut-Off"), [role="menuitem"]:has-text("Konfigurasi Ekspor")').first()
+    const dialogMenuOption = browser.locator('[role="menuitem"]:has-text("Pilihan Cut-Off"), [role="menuitem"]:has-text("Tanggal Kustom")').first()
     if (await dialogMenuOption.isVisible({ timeout: 5000 }).catch(() => false)) {
       await dialogMenuOption.click()
       await new Promise((resolve) => setTimeout(resolve, 2500))
     }
+  } else if (await cutoffBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await cutoffBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 2500))
   }
 
-  // 5. Screenshot modal/dialog konfigurasi ekspor cut-off tagihan CK
+  // 4. Di dalam Dialog: Verifikasi tombol preset dan input tanggal
+  const customPresetBtn = browser.locator('button:has-text("Kustom Bebas")').first()
+  if (await customPresetBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await customPresetBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+
+  // 5. Screenshot modal/dialog konfigurasi ekspor cut-off tagihan kustom
   await app.screenshot('01-ck-cutoff-export-dialog')
 
   // 6. Tutup modal konfigurasi

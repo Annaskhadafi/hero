@@ -130,6 +130,9 @@ import {
   buildCkCutoffDateRange,
   formatCkCutoffLabel,
   formatCkCutoffFullRange,
+  buildCustomDateRange,
+  formatCustomDateRangeLabel,
+  formatCustomDateRangeFull,
   getPreviousPeriod,
   type CkCutoffDateItem,
 } from '@/lib/timesheet/cutoff-utils'
@@ -2097,11 +2100,14 @@ export function SchedulingTimesheetWorkspace({
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
 
-  // Cut-off Tagihan Khusus Customer CK (16 - 15) vs Standar Kalender (1 - Akhir Bulan)
+  // Cut-off Tagihan Khusus Customer CK (16 - 15) vs Standar Kalender (1 - Akhir Bulan) vs Rentang Tanggal Kustom
   const [attendanceExportCutoff, setAttendanceExportCutoff] = useState<'calendar' | 'ck_16_15'>('calendar')
   const [exportConfigDialogOpen, setExportConfigDialogOpen] = useState(false)
-  const [exportDialogCutoff, setExportDialogCutoff] = useState<'calendar' | 'ck_16_15'>('ck_16_15')
-  const [exportDialogActiveTab, setExportDialogActiveTab] = useState<string>('attendance')
+  const [exportDialogCutoff, setExportDialogCutoff] = useState<'ck_16_15' | 'calendar' | 'custom'>('ck_16_15')
+  const [exportDialogActiveTab, setExportDialogActiveTab] = useState<string>('all_5_tabs')
+  const [customExportStartDate, setCustomExportStartDate] = useState<string>('')
+  const [customExportEndDate, setCustomExportEndDate] = useState<string>('')
+  const [isDownloadingCustomExcel, setIsDownloadingCustomExcel] = useState(false)
 
   const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
   const [dialogAttendanceDraft, setDialogAttendanceDraft] = useState<{
@@ -5260,13 +5266,24 @@ export function SchedulingTimesheetWorkspace({
 
   async function exportAttendanceGrid(
     customMode?: 'attendance' | 'checkin-checkout' | 'work-hours',
-    cutoffModeOverride?: 'calendar' | 'ck_16_15'
+    cutoffModeOverride?: 'calendar' | 'ck_16_15',
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
   ) {
     const activeMode = customMode ?? attendanceGridExportMode
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
     const effectiveCutoff = cutoffModeOverride ?? attendanceExportCutoff
-    const isCkCutoff = effectiveCutoff === 'ck_16_15'
-    const dateHeaders = isCkCutoff ? buildCkCutoffDateRange(period, holidays) : undefined
-    const cutoffLabel = isCkCutoff ? formatCkCutoffLabel(period) : undefined
+    const isCkCutoff = !isCustom && effectiveCutoff === 'ck_16_15'
+    const dateHeaders = isCustom
+      ? customDateHeaders
+      : isCkCutoff
+      ? buildCkCutoffDateRange(period, holidays)
+      : undefined
+    const cutoffLabel = isCustom
+      ? customCutoffLabel
+      : isCkCutoff
+      ? formatCkCutoffLabel(period)
+      : undefined
 
     try {
       await exportAttendanceGridToExcel({
@@ -9271,9 +9288,14 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function exportTimesheetTab(tab: TimesheetExportTab) {
+  async function exportTimesheetTab(
+    tab: TimesheetExportTab,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     try {
-      const tabRows = buildTimesheetExportRows(tab)
+      const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+      const tabRows = buildTimesheetExportRows(tab, customDateHeaders)
       if (tabRows.length === 0) {
         toast.error('Tidak ada data karyawan untuk diekspor.')
         return
@@ -9296,27 +9318,37 @@ export function SchedulingTimesheetWorkspace({
         rateText = `Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`
       }
 
+      const cleanSite = (site?.name ?? 'Semua Site').replace(/\s+/g, '_')
+      const cutoffSuffix = customCutoffLabel ? `_${customCutoffLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}` : ''
+      const customFileName = isCustom
+        ? `Rekap_${tab}_${cleanSite}${cutoffSuffix}.xlsx`
+        : undefined
+
       await exportTimesheetWorkspaceTabToExcel({
         tab,
         siteName: site?.name ?? 'Semua Site',
         period,
-        days,
+        days: isCustom ? customDateHeaders!.map((dh) => dh.day) : days,
+        dateHeaders: customDateHeaders,
         rows: tabRows,
         weekdayLabel: (p, d) => weekdayLabel(p, d),
         holidaysByDay,
         info: {
           rateText,
           project: rate.project,
+          cutoffLabel: customCutoffLabel,
         },
+        customFileName,
       })
-      toast.success(`Export Excel ${attendanceTabLabel(tab)} berhasil diunduh!`)
+      toast.success(`Export Excel ${attendanceTabLabel(tab)}${customCutoffLabel ? ` (${customCutoffLabel})` : ''} berhasil diunduh!`)
     } catch (err) {
       toast.error('Gagal mengekspor Excel: ' + (err instanceof Error ? err.message : String(err)))
     }
   }
 
-  async function exportAllTimesheetTabs() {
+  async function exportAllTimesheetTabs(customDateHeaders?: CkCutoffDateItem[], customCutoffLabel?: string) {
     try {
+      const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
       const allTabs: TimesheetExportTab[] = ['attendance', 'lokasi', 'msa', 'meals', 'ovt']
       const tabsData = allTabs.map((t) => {
         let rateText: string | undefined = undefined
@@ -9338,25 +9370,80 @@ export function SchedulingTimesheetWorkspace({
 
         return {
           tab: t,
-          rows: buildTimesheetExportRows(t),
+          rows: buildTimesheetExportRows(t, customDateHeaders),
           info: {
             rateText,
             project: rate.project,
+            cutoffLabel: customCutoffLabel,
           },
         }
       })
 
+      const cleanSite = (site?.name ?? 'Semua Site').replace(/\s+/g, '_')
+      const cutoffSuffix = customCutoffLabel ? `_${customCutoffLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}` : ''
+      const customFileName = isCustom
+        ? `Rekap_Timesheet_5_Tab_${cleanSite}${cutoffSuffix}.xlsx`
+        : undefined
+
       await exportTimesheetWorkspaceAllTabsToExcel({
         siteName: site?.name ?? 'Semua Site',
         period,
-        days,
+        days: isCustom ? customDateHeaders!.map((dh) => dh.day) : days,
+        dateHeaders: customDateHeaders,
+        cutoffLabel: customCutoffLabel,
+        customFileName,
         tabs: tabsData,
         weekdayLabel: (p, d) => weekdayLabel(p, d),
         holidaysByDay,
       })
-      toast.success('Export Excel 5 Tab Lengkap berhasil diunduh!')
+      toast.success(`Export Excel 5 Tab Lengkap${customCutoffLabel ? ` (${customCutoffLabel})` : ''} berhasil diunduh!`)
     } catch (err) {
       toast.error('Gagal mengekspor Excel 5 Tab: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async function handleDownloadCustomDateExcel() {
+    if (!customExportStartDate || !customExportEndDate) {
+      toast.error('Silakan tentukan tanggal mulai dan tanggal selesai terlebih dahulu.')
+      return
+    }
+    if (customExportStartDate > customExportEndDate) {
+      toast.error('Tanggal mulai tidak boleh lebih besar dari tanggal selesai.')
+      return
+    }
+
+    setIsDownloadingCustomExcel(true)
+    try {
+      const customDateHeaders = buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+      if (customDateHeaders.length === 0) {
+        toast.error('Rentang tanggal tidak valid.')
+        return
+      }
+
+      const cutoffLabel = formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+
+      if (exportDialogActiveTab === 'all_5_tabs') {
+        await exportAllTimesheetTabs(customDateHeaders, cutoffLabel)
+      } else if (exportDialogActiveTab === 'checkin-checkout' || exportDialogActiveTab === 'work-hours') {
+        await exportAttendanceGrid(exportDialogActiveTab as 'checkin-checkout' | 'work-hours', undefined, customDateHeaders, cutoffLabel)
+      } else if (exportDialogActiveTab === 'attendance') {
+        await exportTimesheetTab('attendance', customDateHeaders, cutoffLabel)
+      } else if (
+        exportDialogActiveTab === 'lokasi' ||
+        exportDialogActiveTab === 'msa' ||
+        exportDialogActiveTab === 'meals' ||
+        exportDialogActiveTab === 'ovt'
+      ) {
+        await exportTimesheetTab(exportDialogActiveTab as TimesheetExportTab, customDateHeaders, cutoffLabel)
+      } else {
+        await exportAttendanceGrid('attendance', undefined, customDateHeaders, cutoffLabel)
+      }
+
+      setExportConfigDialogOpen(false)
+    } catch (err) {
+      toast.error('Gagal mengunduh Excel: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setIsDownloadingCustomExcel(false)
     }
   }
 
@@ -12579,6 +12666,21 @@ export function SchedulingTimesheetWorkspace({
                         <FileText className="size-3.5 text-blue-600" />
                         <span>PDF Summary Grid</span>
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const prev = getPreviousPeriod(period)
+                          setCustomExportStartDate((prevDate) => prevDate || `${prev}-16`)
+                          setCustomExportEndDate((prevDate) => prevDate || `${period}-15`)
+                          setExportConfigDialogOpen(true)
+                        }}
+                        className="h-8.5 rounded-lg border-emerald-300 bg-emerald-50/80 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900 shadow-2xs gap-1.5"
+                        title="Buka dialog ekspor Excel dengan opsi pilihan tanggal & cut-off khusus (misal 16 Sept - 15 Okt, 17 Sept - 16 Nov, dsb)"
+                      >
+                        <CalendarRange className="size-3.5 text-emerald-600" />
+                        <span>Cut-Off & Rentang Tanggal</span>
+                      </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -12592,7 +12694,33 @@ export function SchedulingTimesheetWorkspace({
                             <ChevronDown className="size-3 text-slate-400" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-72">
+                        <DropdownMenuContent align="end" className="w-80">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
+                            <span>Cut-Off & Rentang Tanggal</span>
+                            <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 h-4">Fleksibel</Badge>
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const prev = getPreviousPeriod(period)
+                              setCustomExportStartDate((prevDate) => prevDate || `${prev}-16`)
+                              setCustomExportEndDate((prevDate) => prevDate || `${period}-15`)
+                              setExportConfigDialogOpen(true)
+                            }}
+                            className="cursor-pointer gap-2 py-2.5 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/90 rounded-md text-emerald-950 font-semibold mb-1"
+                          >
+                            <CalendarRange className="size-4.5 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-xs text-emerald-950">
+                                Pilihan Cut-Off & Tanggal Kustom...
+                              </span>
+                              <span className="text-[10px] text-emerald-700 font-normal">
+                                Tentukan tanggal & bulan bebas (mis. 16–15, 17–16)
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
                           <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                             Export Excel Tab (.xlsx)
                           </DropdownMenuLabel>
@@ -16717,87 +16845,213 @@ export function SchedulingTimesheetWorkspace({
 
       {/* Dialog Konfigurasi Ekspor & Cut-Off Tagihan (Excel) */}
       <Dialog open={exportConfigDialogOpen} onOpenChange={setExportConfigDialogOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
-              <Building2 className="size-5 text-emerald-600" />
-              <span>Konfigurasi Ekspor & Cut-Off Tagihan (Excel)</span>
+              <CalendarRange className="size-5 text-emerald-600" />
+              <span>Ekspor Excel Rentang Tanggal / Cut-Off Tagihan</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Pilih periode cut-off penagihan customer (Standar Kalender atau Khusus Customer CK 16 - 15) dan format worksheet Excel yang akan diunduh.
+              Tentukan rentang tanggal mulai dan tanggal selesai kustom (misal untuk tagihan customer CK 16 Sept – 15 Okt, 17 Sept – 16 Nov, atau periode kustom lainnya).
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* 1. Pilihan Periode Cut-off Tagihan */}
+            {/* 1. Preset Cepat */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-slate-700">
-                1. Pilihan Periode Cut-Off Tagihan
+                1. Pilihan Cepat (Preset Periode)
               </Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* Preset CK 16-15 */}
                 <button
                   type="button"
-                  onClick={() => setExportDialogCutoff('calendar')}
+                  onClick={() => {
+                    setExportDialogCutoff('ck_16_15')
+                    const prev = getPreviousPeriod(period)
+                    setCustomExportStartDate(`${prev}-16`)
+                    setCustomExportEndDate(`${period}-15`)
+                  }}
                   className={cn(
-                    'flex flex-col text-left p-3 rounded-xl border transition-all text-xs',
-                    exportDialogCutoff === 'calendar'
-                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-slate-900'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                  )}
-                >
-                  <div className="flex items-center justify-between w-full mb-1">
-                    <span className="font-semibold text-xs">Standar Kalender</span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                      1 – Akhir Bulan
-                    </Badge>
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">
-                    Tanggal 1 s/d {days[days.length - 1] || 31} {period}
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-1">
-                    Format standar operasional bulanan normal
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setExportDialogCutoff('ck_16_15')}
-                  className={cn(
-                    'flex flex-col text-left p-3 rounded-xl border transition-all text-xs',
+                    'flex flex-col text-left p-2.5 rounded-xl border transition-all text-xs',
                     exportDialogCutoff === 'ck_16_15'
-                      ? 'border-emerald-600 bg-emerald-50/80 ring-2 ring-emerald-500/20 text-emerald-950'
+                      ? 'border-emerald-600 bg-emerald-50/90 ring-2 ring-emerald-500/20 text-emerald-950 shadow-2xs'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                   )}
                 >
                   <div className="flex items-center justify-between w-full mb-1">
                     <span className="font-semibold text-xs text-emerald-900">
-                      Khusus Customer CK
+                      Cust CK (16 – 15)
                     </span>
-                    <Badge className="bg-emerald-600 text-white text-[10px] px-1.5 py-0">
-                      16 – 15
+                    <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">
+                      Preset
                     </Badge>
                   </div>
                   <span className="text-[11px] font-medium text-emerald-700">
                     {formatCkCutoffFullRange(period)}
                   </span>
                   <span className="text-[10px] text-emerald-600/80 mt-1">
-                    Khusus penagihan PT Cipta Kridatama (16 bulan lalu – 15 bulan berjalan)
+                    16 bln lalu s/d 15 bln aktif
+                  </span>
+                </button>
+
+                {/* Preset Standar Kalender */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExportDialogCutoff('calendar')
+                    const lastD = days[days.length - 1] || 31
+                    setCustomExportStartDate(`${period}-01`)
+                    setCustomExportEndDate(`${period}-${String(lastD).padStart(2, '0')}`)
+                  }}
+                  className={cn(
+                    'flex flex-col text-left p-2.5 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'calendar'
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-slate-900 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs">Standar Kalender</span>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                      1 – Akhir
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    1 s/d {days[days.length - 1] || 31} {period}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-1">
+                    Format bulanan normal
+                  </span>
+                </button>
+
+                {/* Preset Kustom */}
+                <button
+                  type="button"
+                  onClick={() => setExportDialogCutoff('custom')}
+                  className={cn(
+                    'flex flex-col text-left p-2.5 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'custom'
+                      ? 'border-blue-600 bg-blue-50/90 ring-2 ring-blue-500/20 text-blue-950 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs text-blue-900">
+                      Kustom Bebas
+                    </span>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-blue-300 text-blue-700">
+                      Manual
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] font-medium text-blue-700">
+                    Bebas Pilih Tanggal
+                  </span>
+                  <span className="text-[10px] text-blue-600/80 mt-1">
+                    Atur tanggal mulai & selesai
                   </span>
                 </button>
               </div>
             </div>
 
-            {/* 2. Pilihan Format Dokumen / Tab Excel */}
+            {/* 2. Form Pemilihan Tanggal Mulai & Tanggal Selesai */}
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <CalendarDays className="size-3.5 text-slate-500" />
+                <span>2. Rentang Tanggal Ekspor (Mulai s/d Selesai)</span>
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-slate-600">
+                    Tanggal Mulai (Dari):
+                  </label>
+                  <Input
+                    type="date"
+                    value={customExportStartDate}
+                    onChange={(e) => {
+                      setCustomExportStartDate(e.target.value)
+                      setExportDialogCutoff('custom')
+                    }}
+                    className="h-9 bg-white text-xs border-slate-300"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-slate-600">
+                    Tanggal Selesai (Sampai):
+                  </label>
+                  <Input
+                    type="date"
+                    value={customExportEndDate}
+                    onChange={(e) => {
+                      setCustomExportEndDate(e.target.value)
+                      setExportDialogCutoff('custom')
+                    }}
+                    className="h-9 bg-white text-xs border-slate-300"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time feedback summary */}
+              {customExportStartDate && customExportEndDate ? (
+                customExportStartDate <= customExportEndDate ? (
+                  <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-950 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      <span className="font-semibold text-emerald-900">
+                        {formatCustomDateRangeFull(customExportStartDate, customExportEndDate)}
+                      </span>
+                    </div>
+                    <Badge className="bg-emerald-600 text-white text-[10px] px-2 py-0.5 font-semibold">
+                      {buildCustomDateRange(customExportStartDate, customExportEndDate, holidays).length} Hari
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-900 flex items-center gap-2">
+                    <AlertTriangle className="size-4 text-rose-600 shrink-0" />
+                    <span className="font-medium">Tanggal mulai tidak boleh melebihi tanggal selesai!</span>
+                  </div>
+                )
+              ) : null}
+            </div>
+
+            {/* 3. Pilihan Format Dokumen / Tab Excel */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-slate-700">
-                2. Pilihan Format Worksheet / Tab
+                3. Pilihan Format Worksheet / Tab
               </Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
-                  { id: 'attendance', label: 'Attendance Grid', desc: 'Matriks kehadiran & jam kerja visual', icon: CalendarRange },
-                  { id: 'all_5_tabs', label: 'Semua 5 Tab Sekaligus', desc: '1 File Excel berisi 5 sheet lengkap', icon: FileSpreadsheet },
-                  { id: 'checkin-checkout', label: 'Jam Masuk & Pulang', desc: 'Grid Clock In & Out harian', icon: Clock },
-                  { id: 'work-hours', label: 'Durasi Jam Kerja', desc: 'Grid durasi kerja aktif per hari', icon: Activity },
+                  {
+                    id: 'all_5_tabs',
+                    label: 'Semua 5 Tab Sekaligus',
+                    desc: '1 File Excel berisi 5 sheet lengkap (Rekomendasi)',
+                    icon: FileSpreadsheet,
+                    featured: true,
+                  },
+                  {
+                    id: 'attendance',
+                    label: 'Attendance Grid',
+                    desc: 'Matriks visual kehadiran & jam kerja harian',
+                    icon: CalendarRange,
+                  },
+                  {
+                    id: 'checkin-checkout',
+                    label: 'Jam Masuk & Pulang',
+                    desc: 'Grid Clock In & Out harian',
+                    icon: Clock,
+                  },
+                  {
+                    id: 'work-hours',
+                    label: 'Durasi Jam Kerja',
+                    desc: 'Grid durasi kerja aktif per hari',
+                    icon: Activity,
+                  },
+                  {
+                    id: 'ovt',
+                    label: 'Overtime Record',
+                    desc: 'Grid rekapitulasi lembur harian',
+                    icon: Clock3,
+                  },
                 ].map((item) => {
                   const Icon = item.icon
                   const isSelected = exportDialogActiveTab === item.id
@@ -16809,13 +17063,20 @@ export function SchedulingTimesheetWorkspace({
                       className={cn(
                         'flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-colors',
                         isSelected
-                          ? 'border-primary bg-primary/5 ring-1 ring-primary/30 text-primary'
+                          ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500/30 text-emerald-950 font-medium'
                           : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
                       )}
                     >
-                      <Icon className="size-4 shrink-0 text-slate-500" />
+                      <Icon className={cn('size-4 shrink-0', isSelected ? 'text-emerald-600' : 'text-slate-500')} />
                       <div className="flex flex-col min-w-0">
-                        <span className="font-semibold text-xs truncate">{item.label}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-xs truncate">{item.label}</span>
+                          {item.featured && (
+                            <Badge className="bg-emerald-600 text-white text-[8px] px-1 py-0 h-3.5">
+                              Paling Lengkap
+                            </Badge>
+                          )}
+                        </div>
                         <span className="text-[10px] text-muted-foreground truncate">{item.desc}</span>
                       </div>
                     </button>
@@ -16824,20 +17085,7 @@ export function SchedulingTimesheetWorkspace({
               </div>
             </div>
 
-            {/* Banner Informasi Cut-off CK */}
-            {exportDialogCutoff === 'ck_16_15' && (
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900 flex items-start gap-2">
-                <Building2 className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold">Format Penagihan Customer CK Aktif:</span>
-                  <p className="text-[11px] text-emerald-700 mt-0.5">
-                    Kolom tanggal akan otomatis dimulai dari tanggal <strong>16 {formatCkCutoffLabel(period).split('-')[0]?.trim()}</strong> sampai dengan tanggal <strong>15 {formatCkCutoffLabel(period).split('-')[1]?.trim()}</strong>. Data absensi dan jadwal periode sebelumnya otomatis diikutsertakan.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t">
               <Button
                 variant="outline"
                 size="sm"
@@ -16848,24 +17096,26 @@ export function SchedulingTimesheetWorkspace({
               </Button>
               <Button
                 size="sm"
-                onClick={async () => {
-                  setAttendanceExportCutoff(exportDialogCutoff)
-                  setExportConfigDialogOpen(false)
-                  if (exportDialogActiveTab === 'all_5_tabs') {
-                    await exportAllTimesheetTabs(exportDialogCutoff)
-                  } else if (exportDialogActiveTab === 'checkin-checkout' || exportDialogActiveTab === 'work-hours') {
-                    await exportAttendanceGrid(exportDialogActiveTab as 'checkin-checkout' | 'work-hours', exportDialogCutoff)
-                  } else {
-                    await exportAttendanceGrid(undefined, exportDialogCutoff)
-                  }
-                }}
-                className={cn(
-                  'h-9 px-4 text-xs font-semibold text-white shadow-sm',
-                  exportDialogCutoff === 'ck_16_15' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-primary hover:bg-primary/90'
-                )}
+                disabled={
+                  isDownloadingCustomExcel ||
+                  !customExportStartDate ||
+                  !customExportEndDate ||
+                  customExportStartDate > customExportEndDate
+                }
+                onClick={handleDownloadCustomDateExcel}
+                className="h-9 px-4 text-xs font-semibold text-white shadow-sm bg-emerald-600 hover:bg-emerald-700"
               >
-                <Download className="mr-1.5 size-3.5" />
-                Unduh Excel Sekarang
+                {isDownloadingCustomExcel ? (
+                  <>
+                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    Menyiapkan Excel...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-1.5 size-3.5" />
+                    Unduh Excel ({formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)})
+                  </>
+                )}
               </Button>
             </div>
           </div>

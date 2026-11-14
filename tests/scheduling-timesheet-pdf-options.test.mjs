@@ -63,3 +63,25 @@ test('Overtime Record Signatures Module Contract Verification', () => {
   assert.match(content, /names\.externalSignatureCount/, 'Should respect externalSignatureCount in Overtime Record')
   assert.match(content, /isTwoSigners/, 'Should calculate isTwoSigners in drawOvertimeRecordSignatures')
 })
+
+test('Site Attendance PDF Preview & Download Stability & Feedback Contract', () => {
+  const filePath = path.resolve(process.cwd(), 'components/scheduling-timesheet-workspace.tsx')
+  const content = fs.readFileSync(filePath, 'utf-8')
+
+  // 1. Loading indicators & states
+  assert.match(content, /const \[isPreviewingSitePdf, setIsPreviewingSitePdf\] = useState\(false\)/, 'Should define isPreviewingSitePdf state')
+  assert.match(content, /const \[isDownloadingSitePdf, setIsDownloadingSitePdf\] = useState\(false\)/, 'Should define isDownloadingSitePdf state')
+  assert.match(content, /isPreviewingSitePdf\s*\?\s*['"]Menyiapkan\.\.\.['"]/, 'Should show Menyiapkan... text on button during preview generation')
+  assert.match(content, /isDownloadingSitePdf\s*\?\s*['"]Mengunduh\.\.\.['"]/, 'Should show Mengunduh... text on button during bulk download')
+
+  // 2. Progressive feedback toasts & yields
+  assert.match(content, /const toastId = 'preview-site-pdf'/, 'Should use stable toastId for preview')
+  assert.match(content, /toast\.loading\('Menyiapkan Preview PDF\.\.\. Mohon tunggu'/, 'Should notify user immediately on preview click')
+  assert.match(content, /toast\.loading\('Menyiapkan download PDF\.\.\. Mohon tunggu'/, 'Should notify user immediately on download click')
+
+  // 3. Robust PDF preview modal with fallback & Open in New Tab
+  assert.match(content, /<object\s+data=\{pdfPreview\.url\}/, 'Should render <object> tag for PDF preview')
+  assert.match(content, /<ExternalLink className="mr-1\.5 size-3\.5 text-slate-600" \/>\s*Buka di Tab Baru/, 'Should render Buka di Tab Baru button in dialog header')
+  assert.match(content, /window\.open\(pdfPreview\.url,\s*['_"]_blank['_"]\)/, 'Should support opening PDF blob in new window/tab')
+  assert.match(content, /setTimeout\(\(\) => \{[\s\S]*?URL\.revokeObjectURL/, 'Should safely delay revoking blob URL so external tabs remain readable')
+})

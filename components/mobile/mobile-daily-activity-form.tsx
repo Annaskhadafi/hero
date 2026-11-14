@@ -3350,6 +3350,25 @@ export function MobileDailyActivityForm({
     return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, handleDraftsChanged)
   }, [activeDraftKey, queuedDraftKey])
 
+  // Protect against accidental refresh / page close when user is filling activities
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isDirty = (window as any)?.__heroFormIsDirty
+      if (isDirty && !isSubmitting) {
+        e.preventDefault()
+        e.returnValue = ''
+        return ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (typeof window !== 'undefined') {
+        (window as any).__heroFormIsDirty = false
+      }
+    }
+  }, [isSubmitting])
+
   useEffect(() => {
     // Prevent wiping active draft on initial mount!
     if (isFirstMountRef.current) {
@@ -3385,6 +3404,10 @@ export function MobileDailyActivityForm({
       queuedPhotoPayloads.length > 0 ||
       hasCheckedRoute ||
       hasSelfInputContent
+
+    if (typeof window !== 'undefined') {
+      (window as any).__heroFormIsDirty = hasAnyContent && !isSubmitting
+    }
 
     if (!hasAnyContent) return
 
@@ -4054,6 +4077,9 @@ export function MobileDailyActivityForm({
       } catch {}
       window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
 
+      if (typeof window !== 'undefined') {
+        (window as any).__heroFormIsDirty = false
+      }
       const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
       window.location.replace(targetUrl)
     } catch (error) {
@@ -4112,6 +4138,9 @@ export function MobileDailyActivityForm({
     } catch {}
     window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT, { detail: { deletedKey: activeDraftKey } }))
 
+    if (typeof window !== 'undefined') {
+      (window as any).__heroFormIsDirty = false
+    }
     toast.success('Draft berhasil dibersihkan.')
     window.location.replace('/mobile/activity')
   }

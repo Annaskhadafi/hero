@@ -3,6 +3,9 @@ import {
   getPreviousPeriod,
   formatCkCutoffLabel,
   formatCkCutoffFullRange,
+  buildCustomDateRange,
+  formatCustomDateRangeLabel,
+  formatCustomDateRangeFull,
 } from '../lib/timesheet/cutoff-utils'
 
 describe('CK Billing Cut-off Date Range Utilities (16 - 15)', () => {
@@ -92,5 +95,29 @@ describe('CK Billing Cut-off Date Range Utilities (16 - 15)', () => {
     expect(formatCkCutoffLabel('2026-10')).toBe('Cut-off Tagihan CK (16 Sep - 15 Okt 2026)')
     expect(formatCkCutoffFullRange('2026-10')).toBe('16 September s/d 15 Oktober 2026')
     expect(formatCkCutoffFullRange('2026-01')).toBe('16 Desember 2025 s/d 15 Januari 2026')
+  })
+
+  test('buildCustomDateRange handles arbitrary date ranges correctly (e.g. 17 Sept - 16 Nov 2026)', () => {
+    const range = buildCustomDateRange('2026-09-17', '2026-11-16')
+    // Sept: 17..30 = 14 days
+    // Oct: 1..31 = 31 days
+    // Nov: 1..16 = 16 days
+    // Total = 61 days
+    expect(range.length).toBe(61)
+    expect(range[0].dateStr).toBe('2026-09-17')
+    expect(range[0].displayHeader).toBe('17 Sep')
+    expect(range[13].dateStr).toBe('2026-09-30')
+    expect(range[14].dateStr).toBe('2026-10-01')
+    expect(range[44].dateStr).toBe('2026-10-31')
+    expect(range[45].dateStr).toBe('2026-11-01')
+    expect(range[60].dateStr).toBe('2026-11-16')
+    expect(range[60].displayHeader).toBe('16 Nov')
+  })
+
+  test('formats custom date range labels nicely in Indonesian', () => {
+    expect(formatCustomDateRangeLabel('2026-09-16', '2026-10-15')).toBe('Cut-off (16 Sep - 15 Okt 2026)')
+    expect(formatCustomDateRangeLabel('2026-09-17', '2026-11-16')).toBe('Cut-off (17 Sep - 16 Nov 2026)')
+    expect(formatCustomDateRangeFull('2026-09-16', '2026-10-15')).toBe('16 September s/d 15 Oktober 2026')
+    expect(formatCustomDateRangeFull('2025-12-16', '2026-01-15')).toBe('16 Desember 2025 s/d 15 Januari 2026')
   })
 })

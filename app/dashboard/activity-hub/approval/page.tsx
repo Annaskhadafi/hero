@@ -95,6 +95,7 @@ export default async function DailyActivityApprovalListPage() {
     const userRole = ((session?.user as any)?.role || '').toLowerCase()
     const accessRole = (currentEmployee?.accessRole || '').toLowerCase()
     const roleCol = ((currentEmployee as any)?.role || '').toLowerCase()
+    const jobTitleLower = (currentEmployee?.jobTitle || '').toLowerCase()
     const isAdmin =
       userRole === 'admin' ||
       userRole === 'superadmin' ||
@@ -108,14 +109,74 @@ export default async function DailyActivityApprovalListPage() {
       accessRole === 'hr' ||
       normalizedEmail === 'chitra.operation.hero@gmail.com'
 
-    const isSiteAdmin = accessRole === 'site admin'
-
-    const sessionConditions = [isNull(dailyActivitySessions.deletedAt)]
-    if (isSiteAdmin && currentEmployee?.siteId) {
-      sessionConditions.push(eq(dailyActivitySessions.siteId, currentEmployee.siteId))
+    // Fetch sites where current employee is the registered Site Head (PJO)
+    const headedSites = currentEmployee?.id
+      ? await safeQuery(
+          () =>
+            db
+              .select({ id: sites.id })
+              .from(sites)
+              .where(eq(sites.headEmployeeId, currentEmployee.id)),
+          [],
+          'fetchHeadedSites'
+        )
+      : []
+    const siteIdsSet = new Set(headedSites.map((s) => s.id))
+    if (currentEmployee?.siteId) {
+      siteIdsSet.add(currentEmployee.siteId)
     }
 
-    // Get latest sessions with their approval status (capped at 300 recent sessions for peak performance)
+    const isSiteLeadOrPjo =
+      headedSites.length > 0 ||
+      accessRole.includes('site') ||
+      accessRole.includes('pjo') ||
+      jobTitleLower.includes('pjo') ||
+      jobTitleLower.includes('site head') ||
+      jobTitleLower.includes('site lead') ||
+      jobTitleLower.includes('site manager') ||
+      jobTitleLower.includes('project manager') ||
+      jobTitleLower.includes('site admin')
+
+    const isSectionHeadOrLeader =
+      jobTitleLower.includes('section head') ||
+      jobTitleLower.includes('leader') ||
+      jobTitleLower.includes('supervisor') ||
+      jobTitleLower.includes('foreman') ||
+      accessRole.includes('leader') ||
+      accessRole.includes('supervisor')
+
+    const isDeptHeadOrManager =
+      jobTitleLower.includes('dept') ||
+      jobTitleLower.includes('department head') ||
+      jobTitleLower.includes('manager') ||
+      accessRole.includes('manager')
+
+    // Fetch all sessions where current employee participated as team member
+    const teamMemberSessionIds = currentEmployee?.id
+      ? await safeQuery(
+          () =>
+            db
+              .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+              .from(dailyActivitySessionTeamMembers)
+              .where(eq(dailyActivitySessionTeamMembers.employeeId, currentEmployee.id)),
+          [],
+          'fetchTeamMemberSessionIds'
+        )
+      : []
+    const userTeamSessionIdSet = new Set(teamMemberSessionIds.map((t) => t.sessionId))
+
+    const sessionConditions = [isNull(dailyActivitySessions.deletedAt)]
+    if (!isAdmin) {
+      if (isSiteLeadOrPjo && siteIdsSet.size > 0) {
+        sessionConditions.push(inArray(dailyActivitySessions.siteId, Array.from(siteIdsSet)))
+      } else if (isDeptHeadOrManager && currentEmployee?.department) {
+        sessionConditions.push(eq(employees.department, currentEmployee.department))
+      } else if (isSectionHeadOrLeader && currentEmployee?.section) {
+        sessionConditions.push(eq(employees.section, currentEmployee.section))
+      }
+    }
+
+    // Get latest sessions with their approval status (up to 1,000 sessions for complete visibility)
     const rawSessions = await safeQuery(
       () =>
         db
@@ -139,7 +200,7 @@ export default async function DailyActivityApprovalListPage() {
           .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
           .where(and(...sessionConditions))
           .orderBy(desc(dailyActivitySessions.id))
-          .limit(300),
+          .limit(isAdmin ? 1500 : 1000),
       [],
       'fetchRawSessions'
     )
@@ -183,10 +244,11 @@ export default async function DailyActivityApprovalListPage() {
     // Row-Level Security (RLS) Filter: Admin sees ALL, users strictly see their own / assigned sessions
     const sessions = rawSessions.filter((s) => {
       if (isAdmin) return true
-      if (isSiteAdmin && currentEmployee?.siteId) return s.siteId === currentEmployee.siteId
+      if (isSiteLeadOrPjo && s.siteId && siteIdsSet.has(s.siteId)) return true
 
       // Creator / Owner of this session or included as Team Member
       if (currentEmployee?.id && s.employeeId === currentEmployee.id) return true
+      if (userTeamSessionIdSet.has(s.sessionId)) return true
       if (currentEmployee?.name && (s.summaryRemark || '').toLowerCase().includes(currentEmployee.name.toLowerCase().trim())) return true
 
       // Assigned approver for any step of this session
@@ -200,11 +262,9 @@ export default async function DailyActivityApprovalListPage() {
       if (isAssignedApprover) return true
 
       // Section Head / Leader
-      const jobTitleLower = (currentEmployee?.jobTitle || '').toLowerCase()
-      const isSectionHeadOrLeader = jobTitleLower.includes('section head') || jobTitleLower.includes('leader') || jobTitleLower.includes('supervisor') || jobTitleLower.includes('foreman')
       if (isSectionHeadOrLeader && currentEmployee?.section && s.section === currentEmployee.section) return true
 
-      const isDeptHeadOrManager = jobTitleLower.includes('dept') || jobTitleLower.includes('department head') || jobTitleLower.includes('manager')
+      // Dept Head / Manager
       if (isDeptHeadOrManager && currentEmployee?.department && s.department === currentEmployee.department) return true
 
       return false
