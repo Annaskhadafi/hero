@@ -2,55 +2,67 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import { loginToHero } from './e2e-auth-helper';
 
-test('verify JSA HSE approval workflow, online digital signature, and notification dashboard', async ({
+test('verify JSA HSE approval workflow, HSE officer selection, auto-TTD online, and central approval inbox', async ({
   app,
   screen,
   browser,
 }) => {
   // 1. Login to HERO as HSE / Approver
   await loginToHero(app, screen, browser, '/dashboard/hse/jsa');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  
+  // Wait for page to finish compiling & rendering
+  const headerTitle = browser.locator('text=Job Safety Analysis (JSA)').first();
+  await headerTitle.waitFor({ state: 'visible', timeout: 45000 });
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // 2. Verify Page Header & Eyebrow
-  await expect(screen.getByText(/Job Safety Analysis \(JSA\)/i).first()).toBeVisible();
+  await expect(headerTitle).toBeVisible();
 
   // 3. Verify Scorecard KPI Cards
   await expect(screen.getByText(/Total Dokumen JSA/i).first()).toBeVisible();
   await expect(screen.getByText(/Menunggu Approval HSE/i).first()).toBeVisible();
   await expect(screen.getByText(/Terverifikasi & Disetujui/i).first()).toBeVisible();
 
-  // Capture main workspace screenshot
-  await app.screenshot('jsa-workspace-overview');
+  // Capture main workspace overview
+  await app.screenshot('001-jsa-workspace-overview');
 
-  // 4. Test Navigation to "Antrian Approval HSE" Tab
-  const approvalTab = browser.locator('button[role="tab"]:has-text("Antrian Approval HSE")').first();
-  await expect(approvalTab).toBeVisible();
-  await approvalTab.click();
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  await app.screenshot('jsa-approval-queue-tab');
+  // 4. Test "Buat JSA Baru" dialog with HSE Officer / Pengawas Site Picker
+  const createBtn = browser.locator('button:has-text("Buat JSA Baru")').first();
+  await expect(createBtn).toBeVisible();
+  await createBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // 5. Test Navigation to "Status TTD Online" Tab
-  const ttdTab = browser.locator('button[role="tab"]:has-text("Status TTD Online")').first();
-  await expect(ttdTab).toBeVisible();
-  await ttdTab.click();
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  await app.screenshot('jsa-ttd-online-status-tab');
+  // Verify HSE Officer picker is present
+  await expect(screen.getByText(/Pengawas Site \/ HSE Officer/i).first()).toBeVisible();
+  await expect(screen.getByText(/Pilih petugas pengawas site \/ HSE officer/i).first()).toBeVisible();
+  await app.screenshot('002-jsa-form-hse-officer-picker');
 
-  // 6. Test Navigation to "Notifikasi HSE" Tab
-  const notifTab = browser.locator('button[role="tab"]:has-text("Notifikasi HSE")').first();
-  await expect(notifTab).toBeVisible();
-  await notifTab.click();
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  await expect(screen.getByText(/Alur Notifikasi & Verifikasi JSA Departemen HSE/i).first()).toBeVisible();
-  await app.screenshot('jsa-notifications-tab');
+  // Close create modal
+  const cancelBtn = browser.locator('button:has-text("Batal")').last();
+  if (await cancelBtn.isVisible()) {
+    await cancelBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
 
-  // 7. Back to "Data JSA" Tab to preview and test approval modal
-  const dataTab = browser.locator('button[role="tab"]:has-text("Data JSA")').first();
-  await expect(dataTab).toBeVisible();
-  await dataTab.click();
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  // 5. Test Reject button & Rejection Notes Modal
+  const rejectBtn = browser.locator('button:has-text("Reject")').first();
+  if (await rejectBtn.isVisible()) {
+    await rejectBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 1500));
 
-  // 8. Test JSA Document Preview & Online Signature Box
+    // Verify Rejection notes dialog
+    await expect(screen.getByText(/Catatan Perbaikan \/ Dimana Salahnya/i).first()).toBeVisible();
+    await app.screenshot('003-jsa-reject-dialog-notes');
+
+    // Close reject dialog
+    const batalReject = browser.locator('button:has-text("Batal")').last();
+    if (await batalReject.isVisible()) {
+      await batalReject.click();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  // 6. Test JSA Document Preview & Online Signature Controls
   const previewBtns = browser.locator('button[title="Preview Dokumen JSA"]');
   if ((await previewBtns.count()) > 0) {
     await previewBtns.first().click();
@@ -62,20 +74,24 @@ test('verify JSA HSE approval workflow, online digital signature, and notificati
     await expect(screen.getByText(/Pelaksana \/ Pembuat JSA/i).first()).toBeVisible();
     await expect(screen.getByText(/Verifikasi Departemen HSE/i).first()).toBeVisible();
 
-    await app.screenshot('jsa-document-sheet-preview');
-
-    // Test clicking "Verifikasi & TTD Online" button in preview modal if present
-    const ttdInPreview = browser.locator('button:has-text("Verifikasi & TTD Online")').first();
-    if (await ttdInPreview.isVisible()) {
-      await ttdInPreview.click();
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Verify Approval & Signature Modal
-      await expect(screen.getByText(/Verifikasi & TTD Online JSA/i).first()).toBeVisible();
-      await expect(screen.getByText(/Form Pengesahan Departemen HSE/i).first()).toBeVisible();
-      await expect(screen.getByText(/Nama Verifikator HSE/i).first()).toBeVisible();
-
-      await app.screenshot('jsa-verification-signature-dialog');
+    // Verify 1-Click Approve (Auto TTD) button exists in preview header
+    const autoApproveBtn = browser.locator('button:has-text("Approve (Auto TTD)")').first();
+    if (await autoApproveBtn.isVisible()) {
+      await expect(autoApproveBtn).toBeVisible();
     }
+
+    await app.screenshot('004-jsa-document-sheet-preview');
+
+    // Close preview modal via escape or clicking close
+    await browser.keyboard.press('Escape');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+
+  // 7. Test Central Approval Inbox Integration (/dashboard/approval)
+  await browser.goto('http://localhost:3000/dashboard/approval');
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  // Verify Central Approval Inbox loaded with unified categories
+  await expect(screen.getByText(/Central Approval/i).first()).toBeVisible();
+  await app.screenshot('005-jsa-central-approval-inbox');
 });

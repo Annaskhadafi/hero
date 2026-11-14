@@ -36,6 +36,7 @@ import {
   HeroKpiCard,
   HeroStatusBadge,
   HeroConfirmDialog,
+  HeroFormDialog,
   HeroFormField,
   HeroInput,
   HeroTextarea,
@@ -479,6 +480,8 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
                       size="icon"
                       onClick={() => handlePreview(row.id)}
                       disabled={isLoadingJsa}
+                      title="Preview Dokumen JSA"
+                      aria-label="Preview Dokumen JSA"
                       className="h-8 w-8 text-blue-600 hover:bg-blue-50 cursor-pointer"
                     >
                       <Eye className="h-4 w-4" />
@@ -1067,6 +1070,67 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
         tone="destructive"
         isProcessing={isDeleting}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* DIALOG CATATAN REJECT JSA (Baku @/components/templates) */}
+      <HeroFormDialog
+        open={rejectDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectDialogOpen(false)
+            setRejectTargetJsa(null)
+            setRejectReason('')
+          }
+        }}
+        title={`Tolak / Minta Revisi JSA: ${rejectTargetJsa?.jsaNumber || ''}`}
+        description="Berikan catatan perbaikan atau penjelasan letak kesalahan dokumen agar pelaksana pekerjaan dapat merevisi JSA ini."
+        submitLabel="Tolak & Kirim Catatan"
+        cancelLabel="Batal"
+        isSubmitting={isRejecting}
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleConfirmReject()
+        }}
+      >
+        <div className="space-y-4">
+          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-800">
+            <strong>Pekerjaan:</strong> {rejectTargetJsa?.jobDescription}
+            <br />
+            <strong>Pembuat:</strong> {rejectTargetJsa?.teamMembers || 'Pelaksana'}
+          </div>
+
+          <HeroFormField
+            label="Catatan Perbaikan / Dimana Salahnya"
+            required
+            info="Jelaskan secara spesifik langkah atau identifikasi bahaya mana yang perlu diperbaiki."
+          >
+            <HeroTextarea
+              rows={4}
+              placeholder="Contoh: Pada langkah 2 mohon tambahkan APD kacamata safety dan perhatikan jarak aman radius forklift minimal 5 meter..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              autoFocus
+            />
+          </HeroFormField>
+        </div>
+      </HeroFormDialog>
+
+      {/* CONFIRM REVERT STATUS DIALOG */}
+      <HeroConfirmDialog
+        open={revertDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRevertDialogOpen(false)
+            setRevertTargetJsa(null)
+          }
+        }}
+        title={`Revert Status JSA: ${revertTargetJsa?.jsaNumber || ''}`}
+        description="Apakah Anda yakin ingin mengembalikan status dokumen JSA ini ke 'Pending' (Menunggu Verifikasi)? Catatan penolakan atau status approval akan direset."
+        confirmLabel="Ya, Revert ke Pending"
+        cancelLabel="Batal"
+        tone="warning"
+        isProcessing={isReverting}
+        onConfirm={handleConfirmRevert}
       />
     </div>
   )

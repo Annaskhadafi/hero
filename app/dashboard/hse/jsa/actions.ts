@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { eq, desc, sql } from 'drizzle-orm'
+import { eq, desc, asc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { db } from '@/db'
 import { heroJsas, heroJsaSettings, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'

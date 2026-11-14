@@ -7752,58 +7752,6 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-      if (merged.getPageCount() === 0) {
-        toast.error('Tidak ada halaman PDF yang dihasilkan.', { id: toastId })
-        return
-      }
-
-      const activeSections = activeSelectedSections.slice(0, 3).join('_')
-
-      const selectedDocLabels = selectedPdfDocTypes
-        .map((t) => {
-          if (t === 'overtime_summary') return 'OT-Summary'
-          if (t === 'ovt_spl_summary') return 'SPL-Summary'
-          if (t === 'msa_summary') return 'MSA-Summary'
-          if (t === 'mls_summary') return 'MLS-Summary'
-          if (t === 'tu_summary') return 'TU-Summary'
-          if (t === 'overtime_record') return 'OT-Record'
-          if (t === 'payable_site_allowance') return 'Site-Allowance'
-          return t
-        })
-        .join('_')
-
-      toast.loading('Mengunduh berkas PDF gabungan...', { id: toastId })
-      const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
-      a.download = `Export_PDF_${period}_${selectedDocLabels || 'Selected'}${extSuffix}_${activeSections || 'all'}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => {
-        try {
-          URL.revokeObjectURL(url)
-        } catch {
-          // ignore
-        }
-      }, 60000)
-      toast.success(
-        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`,
-        { id: toastId }
-      )
-    } catch (error) {
-      console.error('[Bulk PDF Download Error]', error)
-      toast.error('Bulk download PDF Overtime gagal', {
-        id: toastId,
-        description: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      setIsDownloadingSitePdf(false)
-    }
-  }
-
   async function buildEmployeeAllowanceDayData(
     employee: EmployeeOption,
     customDateHeaders?: CkCutoffDateItem[]
