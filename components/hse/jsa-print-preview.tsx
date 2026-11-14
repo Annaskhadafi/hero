@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Printer, RectangleHorizontal, RectangleVertical } from 'lucide-react'
+import { PenTool, Printer, RectangleHorizontal, RectangleVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -10,15 +10,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { JsaDocumentSheet, type JsaDocumentData } from './jsa-document-sheet'
+import { JsaApprovalDialog } from './jsa-approval-dialog'
 
 interface JsaPrintPreviewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   data: JsaDocumentData | null | undefined
+  onApproved?: () => void
 }
 
-export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewProps) {
+export function JsaPrintPreview({ open, onOpenChange, data, onApproved }: JsaPrintPreviewProps) {
   const [orientation, setOrientation] = React.useState<'portrait' | 'landscape'>('portrait')
+  const [approvalOpen, setApprovalOpen] = React.useState(false)
   const printRef = React.useRef<HTMLDivElement>(null)
 
   const handlePrint = () => {
@@ -28,6 +31,8 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
   }
 
   if (!data) return null
+
+  const isPendingApproval = !data.signatures?.verifierUrl || data.status === 'pending'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,6 +80,17 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
               </button>
             </div>
 
+            {isPendingApproval && (
+              <Button
+                type="button"
+                onClick={() => setApprovalOpen(true)}
+                className="gap-2 h-9 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+              >
+                <PenTool className="w-4 h-4" />
+                Verifikasi & TTD Online
+              </Button>
+            )}
+
             <Button onClick={handlePrint} className="gap-2 h-9 cursor-pointer">
               <Printer className="w-4 h-4" />
               Cetak PDF
@@ -88,6 +104,16 @@ export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewPro
           </div>
         </div>
       </DialogContent>
+
+      <JsaApprovalDialog
+        open={approvalOpen}
+        onOpenChange={setApprovalOpen}
+        jsa={data}
+        onSuccess={() => {
+          onApproved?.()
+          onOpenChange(false)
+        }}
+      />
     </Dialog>
   )
 }

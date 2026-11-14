@@ -13,6 +13,7 @@ export interface JsaDocumentData {
   permits?: string[] | null
   ppeRequirements?: string[] | null
   riskLevel?: string | null
+  status?: string | null
   signatures?: Partial<{
     creatorName?: string
     executorUrl?: string
@@ -20,6 +21,7 @@ export interface JsaDocumentData {
     verifierName?: string
     verifierDate?: string
     verifierUrl?: string
+    verifierTitle?: string
   }> | null
   createdAt?: string | Date | null
   updatedAt?: string | Date | null
@@ -496,6 +498,9 @@ export function JsaDocumentSheet({ data, orientation = 'portrait', className = '
                 <p className="font-bold text-[7.5pt] text-black uppercase">
                   {signatures.verifierName || 'HSE Officer / Pengawas Site'}
                 </p>
+                {signatures.verifierTitle && (
+                  <p className="text-[6pt] text-gray-700 font-semibold uppercase">{signatures.verifierTitle}</p>
+                )}
                 <p className="text-[6pt] text-gray-600">Tanggal: {verifierFormattedDate}</p>
               </div>
             </div>

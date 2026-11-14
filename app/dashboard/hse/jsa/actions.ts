@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { eq, desc, sql } from 'drizzle-orm'
+import { randomUUID } from 'crypto'
 import { db } from '@/db'
 import { heroJsas, heroJsaSettings, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'
 import { getServerSession } from '@/lib/auth-session'
@@ -9,6 +10,7 @@ import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { buildHseSafetyEmail, resolveHseSafetyRecipients, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getAppUrl } from '@/lib/workflow-email'
+import { uploadBufferToS3 } from '@/lib/s3-storage'
 
 async function checkJsaPermission(action: 'view' | 'edit' | 'delete'): Promise<boolean> {
   try {
@@ -50,10 +52,12 @@ async function ensureJsaTables() {
           permits jsonb not null default '[]'::jsonb,
           ppe_requirements jsonb not null default '[]'::jsonb,
           risk_level varchar(50) not null,
+          status varchar(50) not null default 'pending',
           signatures jsonb not null default '{}'::jsonb,
           created_at timestamp not null default now(),
           updated_at timestamp not null default now()
         );
+        alter table hero_jsas add column if not exists status varchar(50) not null default 'pending';
       `)
       await db.execute(sql`
         create table if not exists hero_jsa_steps (
@@ -85,6 +89,31 @@ async function ensureJsaTables() {
   }
 
   return jsaTablesPromise
+}
+
+async function persistSignature(signatureDataUrl: string): Promise<string> {
+  if (!signatureDataUrl) return ''
+  if (!signatureDataUrl.startsWith('data:image/')) {
+    return signatureDataUrl
+  }
+
+  try {
+    const matches = signatureDataUrl.match(/^data:([A-Za-z-+/]+);base64,(.+)$/)
+    if (!matches || matches.length !== 3) {
+      return signatureDataUrl
+    }
+
+    const mimeType = matches[1]
+    const ext = mimeType.split('/')[1] || 'png'
+    const buffer = Buffer.from(matches[2], 'base64')
+    const key = `upload/jsa-signature-${randomUUID()}.${ext}`
+
+    await uploadBufferToS3(buffer, key, mimeType)
+    return `/api/uploads/${key}`
+  } catch (err) {
+    console.error('[JSA] Failed to persist signature to S3:', err)
+    return signatureDataUrl
+  }
 }
 
 export async function getJsaSettings(): Promise<JsaSettings> {
@@ -202,6 +231,9 @@ export async function saveJsa(
       jobDescription: data.jobDescription,
       riskLevel: data.riskLevel,
       teamMembers: data.teamMembers,
+      creatorName: (data.signatures as any)?.creatorName || 'Manpower',
+      equipmentNumber: data.equipmentNumber,
+      jsaId,
     }
   } else {
     // Create new JSA
@@ -212,7 +244,7 @@ export async function saveJsa(
       data.jsaNumber = `JSA/${dateStr}/${randStr}`
     }
 
-    const [inserted] = await db.insert(heroJsas).values(data).returning()
+    const [inserted] = await db.insert(heroJsas).values({ ...data, status: 'pending' }).returning()
     if (steps.length > 0) {
       await db.insert(heroJsaSteps).values(
         steps.map((step) => ({
@@ -228,36 +260,51 @@ export async function saveJsa(
       jobDescription: inserted.jobDescription,
       riskLevel: inserted.riskLevel,
       teamMembers: inserted.teamMembers,
+      creatorName: (inserted.signatures as any)?.creatorName || 'Manpower',
+      equipmentNumber: inserted.equipmentNumber,
+      jsaId: inserted.id,
     }
   }
 
   // Handle notifications asynchronously without failing JSA save if email/bell fails
   if (notificationPayload) {
     try {
+      const isCreate = notificationPayload.mode === 'create'
+      const creatorName = notificationPayload.creatorName || 'Manpower'
+      const targetApprovalUrl = `/dashboard/hse/jsa?tab=approval&id=${notificationPayload.jsaId}`
+
       const emailContent = buildHseSafetyEmail({
-        title: notificationPayload.mode === 'create' ? `JSA baru: ${notificationPayload.jsaNumber}` : `JSA diperbarui: ${notificationPayload.jsaNumber}`,
-        intro:
-          notificationPayload.mode === 'create'
-            ? `${notificationPayload.jobDescription} telah didaftarkan ke sistem JSA.`
-            : `${notificationPayload.jobDescription} telah diperbarui di sistem JSA.`,
+        title: isCreate
+          ? `Permohonan Verifikasi & Approval JSA: ${notificationPayload.jsaNumber}`
+          : `JSA diperbarui: ${notificationPayload.jsaNumber}`,
+        intro: isCreate
+          ? `Dokumen Job Safety Analysis (JSA) baru telah diajukan oleh ${creatorName} dan saat ini menunggu verifikasi serta tanda tangan online dari Departemen HSE / Pengawas Site.`
+          : `${notificationPayload.jobDescription} telah diperbarui di sistem JSA.`,
         details: [
           `Nomor JSA: ${notificationPayload.jsaNumber}`,
-          `Risk level: ${notificationPayload.riskLevel}`,
+          `Pembuat: ${creatorName}`,
+          `Pekerjaan: ${notificationPayload.jobDescription}`,
+          `No. Unit/Peralatan: ${notificationPayload.equipmentNumber || '-'}`,
+          `Tingkat Risiko: ${notificationPayload.riskLevel}`,
           notificationPayload.teamMembers ? `Tim: ${notificationPayload.teamMembers}` : null,
+          isCreate ? `Status: Menunggu Verifikasi & TTD Online HSE` : null,
         ],
-        ctaLabel: 'Buka JSA',
-        ctaUrl: getAppUrl('/dashboard/hse/jsa'),
+        ctaLabel: isCreate ? 'Verifikasi & TTD JSA' : 'Buka JSA',
+        ctaUrl: getAppUrl(targetApprovalUrl),
       })
-      const extraRecipients = settings.notificationRecipients
+      const extraRecipients = [
+        settings.notificationRecipients,
+        settings.defaultSignerEmail,
+      ].filter(Boolean).join(',')
+
       await sendHseSafetyEmail({
-        templateCode: notificationPayload.mode === 'create' ? 'hse_jsa_created' : 'hse_jsa_updated',
-        templateName: notificationPayload.mode === 'create' ? 'HSE JSA Created' : 'HSE JSA Updated',
+        templateCode: isCreate ? 'hse_jsa_approval_request' : 'hse_jsa_updated',
+        templateName: isCreate ? 'HSE JSA Approval Request' : 'HSE JSA Updated',
         variables: notificationPayload,
         extraTo: extraRecipients,
-        fallbackSubject:
-          notificationPayload.mode === 'create'
-            ? `JSA baru: ${notificationPayload.jsaNumber}`
-            : `Update JSA: ${notificationPayload.jsaNumber}`,
+        fallbackSubject: isCreate
+          ? `[HERO HSE] Permohonan Verifikasi & Approval JSA - ${notificationPayload.jsaNumber}`
+          : `[HERO HSE] Update JSA: ${notificationPayload.jsaNumber}`,
         fallbackHtml: emailContent.html,
         fallbackText: emailContent.text,
       }).catch((e) => console.warn('[JSA Email Warn]', e))
@@ -266,17 +313,15 @@ export async function saveJsa(
       if (bellRecipients?.to?.length > 0) {
         await notifyWorkflowBellRecipients({
           recipientEmails: bellRecipients.to,
-          eventType: notificationPayload.mode === 'create' ? 'hse_jsa_created' : 'hse_jsa_updated',
-          category: 'hse_alerts',
-          title:
-            notificationPayload.mode === 'create'
-              ? `JSA baru: ${notificationPayload.jsaNumber}`
-              : `Update JSA: ${notificationPayload.jsaNumber}`,
-          body:
-            notificationPayload.mode === 'create'
-              ? `${notificationPayload.jobDescription} ditambahkan ke register JSA.`
-              : `${notificationPayload.jobDescription} diperbarui di register JSA.`,
-          url: '/dashboard/hse/jsa',
+          eventType: isCreate ? 'hse_jsa_approval_request' : 'hse_jsa_updated',
+          category: 'approval_requests',
+          title: isCreate
+            ? `Review & Approval JSA: ${notificationPayload.jsaNumber}`
+            : `Update JSA: ${notificationPayload.jsaNumber}`,
+          body: isCreate
+            ? `${creatorName} mengajukan JSA baru (${notificationPayload.jsaNumber}) untuk pekerjaan "${notificationPayload.jobDescription}" yang memerlukan verifikasi dan TTD online Anda.`
+            : `${notificationPayload.jobDescription} diperbarui di register JSA.`,
+          url: targetApprovalUrl,
           tagPrefix: 'hse-jsa',
           metadata: {
             jsaId: id,
@@ -310,4 +355,130 @@ export async function deleteJsa(id: string) {
   await db.delete(heroJsas).where(eq(heroJsas.id, id))
   revalidatePath('/dashboard/hse/jsa')
   return { success: true }
+}
+
+export async function verifyJsaAction(input: {
+  id: string
+  decision: 'approved' | 'rejected'
+  verifierName: string
+  verifierTitle?: string
+  verifierSignatureUrl?: string
+  verifierNotes?: string
+  rejectionReason?: string
+}) {
+  const session = await getServerSession()
+  if (!session?.user) throw new Error('Unauthorized: Anda harus login untuk melakukan verifikasi.')
+
+  const canEdit = await checkJsaPermission('edit')
+  if (!canEdit) throw new Error('Role Anda tidak memiliki akses untuk verifikasi JSA.')
+
+  await ensureJsaTables()
+
+  const [existing] = await db.select().from(heroJsas).where(eq(heroJsas.id, input.id)).limit(1)
+  if (!existing) throw new Error('Data JSA tidak ditemukan.')
+
+  let finalSignatureUrl = input.verifierSignatureUrl || ''
+  if (input.decision === 'approved') {
+    if (!finalSignatureUrl) {
+      throw new Error('Tanda tangan online wajib diberikan untuk menyetujui JSA.')
+    }
+    if (finalSignatureUrl.startsWith('data:image/')) {
+      finalSignatureUrl = await persistSignature(finalSignatureUrl)
+    }
+  }
+
+  const existingSignatures = ((existing.signatures as any) || {}) as Record<string, any>
+  const newSignatures = {
+    ...existingSignatures,
+    verifierName: input.verifierName.trim(),
+    verifierTitle: (input.verifierTitle || 'HSE Officer / Pengawas Site').trim(),
+    verifierUrl: input.decision === 'approved' ? finalSignatureUrl : (existingSignatures.verifierUrl || ''),
+    verifierDate: new Date().toISOString(),
+    verifierNotes: (input.verifierNotes || '').trim(),
+    rejectionReason: input.decision === 'rejected' ? (input.rejectionReason || '').trim() : '',
+    approvalStatus: input.decision,
+    verifiedAt: new Date().toISOString(),
+    verifiedByEmail: session.user.email,
+  }
+
+  const newStatus = input.decision === 'approved' ? 'approved' : 'rejected'
+
+  await db
+    .update(heroJsas)
+    .set({
+      status: newStatus,
+      signatures: newSignatures,
+      updatedAt: new Date(),
+    })
+    .where(eq(heroJsas.id, input.id))
+
+  // Dispatch confirmation notifications to creator and HSE team
+  try {
+    const settings = await getJsaSettings()
+    const extraRecipients = [settings.notificationRecipients, settings.defaultSignerEmail].filter(Boolean).join(',')
+    const bellRecipients = await resolveHseSafetyRecipients({ extraTo: extraRecipients }).catch(() => ({ to: [] }))
+
+    const title = input.decision === 'approved'
+      ? `JSA Disetujui: ${existing.jsaNumber}`
+      : `JSA Perlu Revisi / Ditolak: ${existing.jsaNumber}`
+
+    const body = input.decision === 'approved'
+      ? `Dokumen JSA (${existing.jsaNumber}) telah diverifikasi & ditandatangani online oleh ${input.verifierName}.`
+      : `Dokumen JSA (${existing.jsaNumber}) ditolak/perlu revisi oleh ${input.verifierName}. Alasan: ${input.rejectionReason || '-'}`
+
+    if (bellRecipients?.to?.length > 0) {
+      await notifyWorkflowBellRecipients({
+        recipientEmails: bellRecipients.to,
+        eventType: input.decision === 'approved' ? 'hse_jsa_approved' : 'hse_jsa_rejected',
+        category: 'approval_requests',
+        title,
+        body,
+        url: `/dashboard/hse/jsa?tab=approval&id=${existing.id}`,
+        tagPrefix: 'hse-jsa',
+        metadata: {
+          jsaId: existing.id,
+          jsaNumber: existing.jsaNumber,
+          decision: input.decision,
+        },
+      }).catch((e) => console.warn('[JSA Verify Bell Warn]', e))
+    }
+
+    const emailContent = buildHseSafetyEmail({
+      title,
+      intro: body,
+      details: [
+        `Nomor JSA: ${existing.jsaNumber}`,
+        `Pekerjaan: ${existing.jobDescription}`,
+        `Status: ${input.decision === 'approved' ? 'DISETUJUI (APPROVED)' : 'DITOLAK (REJECTED)'}`,
+        `Verifikator: ${input.verifierName} (${input.verifierTitle || 'HSE Officer'})`,
+        input.verifierNotes ? `Catatan: ${input.verifierNotes}` : null,
+        input.rejectionReason ? `Alasan Penolakan: ${input.rejectionReason}` : null,
+      ],
+      ctaLabel: 'Lihat Dokumen JSA',
+      ctaUrl: getAppUrl(`/dashboard/hse/jsa?id=${existing.id}`),
+    })
+
+    await sendHseSafetyEmail({
+      templateCode: input.decision === 'approved' ? 'hse_jsa_approved' : 'hse_jsa_rejected',
+      templateName: input.decision === 'approved' ? 'HSE JSA Approved' : 'HSE JSA Rejected',
+      variables: {
+        jsaNumber: existing.jsaNumber,
+        status: newStatus,
+        verifierName: input.verifierName,
+      },
+      extraTo: extraRecipients,
+      fallbackSubject: `[HERO HSE] ${title}`,
+      fallbackHtml: emailContent.html,
+      fallbackText: emailContent.text,
+    }).catch((e) => console.warn('[JSA Verify Email Warn]', e))
+  } catch (err) {
+    console.warn('[JSA Verify Notification Warn]', err)
+  }
+
+  revalidatePath('/dashboard/hse/jsa')
+  revalidatePath('/dashboard/approval')
+  revalidatePath(`/print/jsa/${input.id}`)
+  revalidatePath('/jsa')
+
+  return { success: true, status: newStatus }
 }
