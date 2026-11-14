@@ -32,6 +32,7 @@ type CertificationRecord = {
   attachmentName: string
   attachmentType: string
   attachmentPreview: string
+  attachmentUrl?: string
   reminder: { enabled: boolean; recipients: string[]; escalationRecipients: string[]; daysBeforeExpiry: number[]; lastSent: string; nextReminder: string }
 }
 
