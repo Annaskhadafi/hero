@@ -65,6 +65,7 @@ import { getTimezoneDateParts } from '@/lib/indonesia-timezone'
 import { apdSummaries } from '@/db/schema/apd-summary'
 import { tireRepairJobcards } from '@/db/schema/tire-repair'
 import { maritalStatusRequests } from '@/db/schema/marital-status'
+import { heroJsas } from '@/db/schema/jsa'
 import { ensureMaritalStatusRequestSchema } from '@/lib/marital-status-data'
 import {
   ensurePtwApprovalsExist,
@@ -4067,6 +4068,92 @@ async function getPtwInboxItems(
   })
 }
 
+export async function getJsaInboxItems(
+  email: string,
+  currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
+) {
+  try {
+    const rawJsas = await db
+      .select()
+      .from(heroJsas)
+      .where(or(eq(heroJsas.status, 'pending'), eq(heroJsas.status, 'rejected')))
+      .orderBy(desc(heroJsas.createdAt))
+      .limit(50)
+
+    if (!rawJsas || rawJsas.length === 0) return []
+
+    const userEmailNorm = (email || '').trim().toLowerCase()
+    const empEmailNorm = (currentEmployee?.email || '').trim().toLowerCase()
+    const empNameNorm = (currentEmployee?.name || '').trim().toLowerCase()
+
+    const isHseOrAdmin =
+      !currentEmployee ||
+      (currentEmployee.departmentName || '').toLowerCase().includes('hse') ||
+      (currentEmployee.departmentName || '').toLowerCase().includes('safety') ||
+      (currentEmployee.jobTitle || '').toLowerCase().includes('hse') ||
+      (currentEmployee.jobTitle || '').toLowerCase().includes('safety') ||
+      (currentEmployee.jobTitle || '').toLowerCase().includes('pjo') ||
+      (currentEmployee.jobTitle || '').toLowerCase().includes('site manager') ||
+      (currentEmployee.jobTitle || '').toLowerCase().includes('superintendent')
+
+    const filteredJsas = rawJsas.filter((jsa) => {
+      const sig = (jsa.signatures || {}) as Record<string, any>
+      const targetEmail = (sig.targetApproverEmail || '').trim().toLowerCase()
+      const targetName = (sig.targetApproverName || '').trim().toLowerCase()
+
+      if (targetEmail || targetName) {
+        if (targetEmail && (targetEmail === userEmailNorm || targetEmail === empEmailNorm)) {
+          return true
+        }
+        if (targetName && empNameNorm && (empNameNorm.includes(targetName) || targetName.includes(empNameNorm))) {
+          return true
+        }
+        return isHseOrAdmin
+      }
+
+      return isHseOrAdmin
+    })
+
+    return filteredJsas.map((jsa) => {
+      const sig = (jsa.signatures || {}) as Record<string, any>
+      const creatorName = sig.creatorName || (jsa.teamMembers ? jsa.teamMembers.split(',')[0] : 'Pelaksana')
+      const targetApproverName = sig.targetApproverName || sig.verifierName || 'HSE Officer'
+      const isReverted = jsa.status === 'rejected'
+      const createdDate = jsa.createdAt ? new Date(jsa.createdAt) : new Date()
+      const dueAt = new Date(createdDate.getTime() + 24 * 60 * 60 * 1000)
+
+      return {
+        id: `jsa-${jsa.id}`,
+        category: 'JSA' as const,
+        categoryLabel: 'Job Safety Analysis (JSA)',
+        approvalId: jsa.id,
+        jsaId: jsa.id,
+        documentNumber: jsa.jsaNumber,
+        title: `JSA: ${jsa.jobDescription}`,
+        employeeName: creatorName,
+        applicantName: creatorName,
+        location: jsa.equipmentNumber ? `Unit: ${jsa.equipmentNumber}` : 'Site Mining Workshop',
+        description: jsa.jobDescription,
+        riskLevel: jsa.riskLevel,
+        teamMembers: jsa.teamMembers,
+        stepLabel: isReverted ? 'Perlu Revisi' : `Verifikasi: ${targetApproverName}`,
+        approverName: targetApproverName,
+        approverRole: 'Pengawas Site / HSE Officer',
+        isReverted,
+        actionLabel: isReverted ? 'Revisi Dokumen' : 'Verifikasi & TTD',
+        submittedAt: jsa.createdAt,
+        dueAt,
+        dueState: getContractReviewDueState(dueAt, new Date()),
+        url: `/dashboard/hse/jsa?tab=approval&id=${jsa.id}`,
+        rawJsa: jsa,
+      }
+    })
+  } catch (err) {
+    console.warn('[getJsaInboxItems] Caught error:', err)
+    return []
+  }
+}
+
 export async function getSopWinRequestInboxItems(
   email: string,
   currentEmployee: Awaited<ReturnType<typeof getEmployeeByEmail>> | null
@@ -4409,6 +4496,7 @@ export async function getApprovalCenterData(
       overtimeInboxItems,
       ptwInboxItems,
       sopWinRequestInboxItems,
+      jsaInboxItems,
     ] = await Promise.all([
       !isOvertimeOnly && !isPtwOnly
         ? safeQuery(
@@ -4466,6 +4554,9 @@ export async function getApprovalCenterData(
             [],
             'getSopWinRequestInboxItems'
           )
+        : Promise.resolve([]),
+      !isDailyOnly && !isOvertimeOnly
+        ? safeQuery(() => getJsaInboxItems(email, currentEmployee as any), [], 'getJsaInboxItems')
         : Promise.resolve([]),
     ])
     const queue = approvalRows
@@ -5886,7 +5977,8 @@ export async function getApprovalCenterData(
       dailyActivityInboxItems.length +
       overtimeInboxItems.length +
       ptwInboxItems.length +
-      sopWinRequestInboxItems.length
+      sopWinRequestInboxItems.length +
+      jsaInboxItems.length
 
     const dueSoonWorkflowItems =
       contractReviewInboxItems.filter((item) => item.dueState === 'due_soon').length +
@@ -5895,7 +5987,8 @@ export async function getApprovalCenterData(
       dailyActivityInboxItems.filter((item) => item.dueState === 'due_soon').length +
       overtimeInboxItems.filter((item) => item.dueState === 'due_soon').length +
       ptwInboxItems.filter((item) => item.dueState === 'due_soon').length +
-      sopWinRequestInboxItems.filter((item) => item.dueState === 'due_soon').length
+      sopWinRequestInboxItems.filter((item) => item.dueState === 'due_soon').length +
+      jsaInboxItems.filter((item) => item.dueState === 'due_soon').length
 
     const overdueWorkflowItems =
       contractReviewInboxItems.filter((item) => item.dueState === 'overdue').length +
@@ -5904,7 +5997,8 @@ export async function getApprovalCenterData(
       dailyActivityInboxItems.filter((item) => item.dueState === 'overdue').length +
       overtimeInboxItems.filter((item) => item.dueState === 'overdue').length +
       ptwInboxItems.filter((item) => item.dueState === 'overdue').length +
-      sopWinRequestInboxItems.filter((item) => item.dueState === 'overdue').length
+      sopWinRequestInboxItems.filter((item) => item.dueState === 'overdue').length +
+      jsaInboxItems.filter((item) => item.dueState === 'overdue').length
 
     return {
       currentUserName: currentEmployee?.name ?? email,
@@ -5918,6 +6012,7 @@ export async function getApprovalCenterData(
         dailyActivityCount: dailyActivityInboxItems.length,
         overtimeCount: overtimeInboxItems.length,
         ptwCount: ptwInboxItems.length,
+        jsaCount: jsaInboxItems.length,
         sopWinRequestCount: sopWinRequestInboxItems.length,
         contractReviewCount: contractReviewInboxItems.length,
         rfrCount: rfrInboxItems.length,
@@ -5956,6 +6051,7 @@ export async function getApprovalCenterData(
       overtimeInboxItems,
       ptwInboxItems,
       sopWinRequestInboxItems,
+      jsaInboxItems,
       inboxGroups,
       historyGroups,
     }
@@ -5971,6 +6067,7 @@ export async function getApprovalCenterData(
         dailyActivityCount: 0,
         overtimeCount: 0,
         ptwCount: 0,
+        jsaCount: 0,
         sopWinRequestCount: 0,
         contractReviewCount: 0,
         rfrCount: 0,
@@ -5993,6 +6090,7 @@ export async function getApprovalCenterData(
       overtimeInboxItems: [],
       ptwInboxItems: [],
       sopWinRequestInboxItems: [],
+      jsaInboxItems: [],
       inboxGroups: [],
       historyGroups: [],
     }

@@ -93,6 +93,11 @@ import {
   normalizePermitTypes,
 } from '@/lib/ptw-helpers'
 import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
+import {
+  quickApproveJsaAction,
+  quickRejectJsaAction,
+  revertJsaAction,
+} from '@/app/dashboard/hse/jsa/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
@@ -464,6 +469,7 @@ export function InboxTab({
   dailyActivityItems = [],
   overtimeItems = [],
   ptwItems = [],
+  jsaItems = [],
   contractReviewItems = [],
   sopWinRequestItems = [],
   trainingRequestItems = [],
@@ -475,6 +481,7 @@ export function InboxTab({
   dailyActivityItems?: ApprovalCenterData['dailyActivityInboxItems']
   overtimeItems?: ApprovalCenterData['overtimeInboxItems']
   ptwItems?: ApprovalCenterData['ptwInboxItems']
+  jsaItems?: any[]
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
   trainingRequestItems?: any[]
@@ -892,6 +899,30 @@ export function InboxTab({
       })
     }
 
+    for (const j of jsaItems) {
+      const isReverted = Boolean((j as any).isReverted)
+      list.push({
+        id: j.id,
+        category: 'JSA',
+        categoryLabel: 'Job Safety Analysis (JSA)',
+        documentNumber: j.documentNumber || `JSA-${j.jsaId}`,
+        title: j.title || `Job Safety Analysis`,
+        employeeName: j.employeeName,
+        location: j.location,
+        stepLabel: j.stepLabel || (isReverted ? 'Perlu Revisi' : 'Menunggu Approval HSE'),
+        approverName: j.approverName || 'HSE Officer',
+        approverRole: j.approverRole || 'HSE Dept',
+        dueState: j.dueState,
+        dueAt: j.dueAt,
+        submittedAt: j.submittedAt,
+        url: j.url || `/dashboard/hse/jsa?tab=approval&id=${j.jsaId}`,
+        jsaId: j.jsaId,
+        isReverted,
+        actionLabel: j.actionLabel || (isReverted ? 'Revisi Dokumen' : 'Verifikasi & TTD ↗'),
+        rawJsa: j,
+      })
+    }
+
     for (const cr of contractReviewItems) {
       list.push({
         id: cr.id,
@@ -1226,7 +1257,7 @@ export function InboxTab({
     }
 
     return sorted
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, groups, filterCategory, processedBatchIds])
+  }, [dailyActivityItems, overtimeItems, ptwItems, jsaItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, groups, filterCategory, processedBatchIds])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -1936,6 +1967,25 @@ export function InboxTab({
         }
         await approveApprovalGroupAction(formData)
         successCount++
+      }
+
+      // JSA Items
+      const jsaItemsToProcess = itemsToProcess.filter(it => it.category === 'JSA' && (it as any).rawJsa)
+      for (const item of jsaItemsToProcess) {
+        const jsaId = (item as any).rawJsa.id
+        if (action === 'approve') {
+          const res = await quickApproveJsaAction(jsaId, reason || 'Disetujui via Central Approval Inbox')
+          if (res.success) successCount++
+          else failCount++
+        } else if (action === 'revert') {
+          const res = await revertJsaAction(jsaId)
+          if (res.success) successCount++
+          else failCount++
+        } else if (action === 'reject') {
+          const res = await quickRejectJsaAction(jsaId, reason || 'Ditolak via Central Approval Inbox')
+          if (res.success) successCount++
+          else failCount++
+        }
       }
 
       // General Items
@@ -7468,6 +7518,7 @@ export function ApprovalWorkbench({
             dailyActivityItems={safeData.dailyActivityInboxItems || []}
             overtimeItems={isDailyOnly ? [] : safeData.overtimeInboxItems || []}
             ptwItems={isDailyOnly ? [] : safeData.ptwInboxItems || []}
+            jsaItems={isDailyOnly ? [] : (safeData as any).jsaInboxItems || []}
             contractReviewItems={isDailyOnly ? [] : safeData.contractReviewInboxItems || []}
             sopWinRequestItems={isDailyOnly ? [] : safeData.sopWinRequestInboxItems || []}
             trainingRequestItems={isDailyOnly ? [] : safeData.trainingRequestInboxItems || []}

@@ -9,6 +9,9 @@ import {
 
 export type AttendanceDayData = {
   day: number
+  dateLabel?: string
+  dateStr?: string
+  period?: string
   dayName: string
   status: string
   clockIn: string
@@ -43,6 +46,8 @@ export type AttendanceDayData = {
 type OvertimeRecordInput = {
   documentTitle?: string
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   employeeId?: number
   employeeName: string
   employeeSn: string
@@ -61,6 +66,8 @@ type OvertimeRecordInput = {
 
 type SiteAllowanceInput = {
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   employeeName: string
   employeeSn: string
   department: string
@@ -320,7 +327,8 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   const valX = colonX + 15
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -543,10 +551,11 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
     // Col 0: Date
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], rowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -746,7 +755,8 @@ export async function appendSummarySplPersonPages(
   const valX = colonX + 15
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -984,10 +994,11 @@ export async function appendSummarySplPersonPages(
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
     // Col 0: Tanggal
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], dynamicRowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -1549,7 +1560,8 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   const valX = colonX + 15 // posisi value setelah titik dua
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN: ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -1717,10 +1729,11 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
         : undefined
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], rowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -1867,6 +1880,8 @@ const ALLOWANCE_RECORD_COLUMNS: Record<AllowanceRecordView, string> = {
 export async function generateEmployeeAllowanceRecordPdf(input: {
   view: AllowanceRecordView
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   employeeName: string
   employeeSn: string
   department: string
@@ -1875,6 +1890,7 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
   signatures: PdfSignatureNames
   days: Array<{
     day: number
+    dateLabel?: string
     dayName: string
     scheduleCode: string
     status: string
@@ -1923,7 +1939,8 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
   const valX = colonX + 15
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -1995,10 +2012,11 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
           : undefined
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], rowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -2117,9 +2135,18 @@ export type SummaryTableRow = {
 export type SummaryTableInput = {
   view: SummaryTableView
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   siteName: string
   project?: string
   dayCount: number
+  customDateHeaders?: Array<{
+    day: number
+    dateStr?: string
+    displayHeader?: string
+    isWeekend?: boolean
+    isHoliday?: boolean
+  }>
   rows: SummaryTableRow[]
   signatures: PdfSignatureNames
   holidays?: Array<{ day?: number; date: string; localName?: string; name?: string }>
@@ -2151,15 +2178,18 @@ export async function generateSummaryTablePdf(
   const pageHeight = 595
   const LM = 30
   const tableW = pageWidth - LM * 2
-  const dayW = 16
+  const dateHeaders = input.customDateHeaders
+  const effectiveDayCount = dateHeaders && dateHeaders.length > 0 ? dateHeaders.length : input.dayCount
+  const availableTableW = tableW - 18 - 40 - 42 - 40 - 34
+  const dayW = effectiveDayCount > 31 ? Math.max(11, Math.min(16, (availableTableW - 80) / effectiveDayCount)) : 16
 
   const widths: number[] = [
     18,
-    Math.max(80, tableW - 18 - 40 - 42 - dayW * input.dayCount - 40 - 34),
+    Math.max(70, tableW - 18 - 40 - 42 - dayW * effectiveDayCount - 40 - 34),
     40,
     42,
   ]
-  for (let i = 0; i < input.dayCount; i++) widths.push(dayW)
+  for (let i = 0; i < effectiveDayCount; i++) widths.push(dayW)
   widths.push(40, 34)
 
   const colX: number[] = []
@@ -2170,7 +2200,11 @@ export async function generateSummaryTablePdf(
   }
 
   const headerLabels: string[] = ['No', 'Name', 'SN', 'LOC']
-  for (let i = 1; i <= input.dayCount; i++) headerLabels.push(String(i))
+  if (dateHeaders && dateHeaders.length > 0) {
+    dateHeaders.forEach((dh) => headerLabels.push(String(dh.day)))
+  } else {
+    for (let i = 1; i <= effectiveDayCount; i++) headerLabels.push(String(i))
+  }
   headerLabels.push('Total', 'Remark')
 
   const headerBg = rgb(0.9, 0.9, 0.9)
@@ -2182,15 +2216,20 @@ export async function generateSummaryTablePdf(
 
   const drawTableHeader = (top: number) => {
     headerLabels.forEach((label, index) => {
-      const isDayColumn = index >= 4 && index < 4 + input.dayCount
-      const isTotalColumn = index === 4 + input.dayCount
+      const isDayColumn = index >= 4 && index < 4 + effectiveDayCount
+      const isTotalColumn = index === 4 + effectiveDayCount
       let bgColor = headerBg
       let textColor = rgb(0, 0, 0)
       if (isDayColumn) {
-        const day = index - 3
-        const dayName = getDayName(input.period, day)
-        const isWeekend = dayName === 'Saturday' || dayName === 'Sunday'
-        const isHoliday = holidayDays.has(day)
+        const dIdx = index - 4
+        const dateItem = dateHeaders?.[dIdx]
+        const day = dateItem ? dateItem.day : index - 3
+        const isWeekend = dateItem
+          ? Boolean(dateItem.isWeekend)
+          : (getDayName(input.period, day) === 'Saturday' || getDayName(input.period, day) === 'Sunday')
+        const isHoliday = dateItem
+          ? Boolean(dateItem.isHoliday)
+          : holidayDays.has(day)
         if (isHoliday) {
           bgColor = cHolidayBg
           textColor = cRedText
@@ -2205,7 +2244,7 @@ export async function generateSummaryTablePdf(
       drawCell(page, colX[index], top - 15, widths[index], 15, {
         text: label,
         font: fontBold,
-        fontSize: 6,
+        fontSize: effectiveDayCount > 31 ? 5 : 6,
         align: index === 1 ? 'left' : 'center',
         bgColor,
         color: textColor,
@@ -2247,7 +2286,8 @@ export async function generateSummaryTablePdf(
     font: fontBold,
     size: 11,
   })
-  const subtitle = [formatPeriodLabel(input.period), input.siteName, input.project]
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  const subtitle = [periodText, input.siteName, input.project]
     .filter(Boolean)
     .join('  ·  ')
   page.drawText(subtitle, {
@@ -2385,13 +2425,56 @@ export async function generateSummaryTablePdf(
 export function buildAttendanceDayData(params: {
   period: string
   dayCount: number
-  getCell: (day: number) => { status: string; clockIn: string; clockOut: string; overtimeHours?: number | null }
-  getScheduleCode: (day: number) => string
+  dateItems?: Array<{
+    period: string
+    day: number
+    dateStr: string
+    displayHeader?: string
+    isHoliday?: boolean
+  }>
+  getCell: (day: number, period?: string, dateStr?: string) => { status: string; clockIn: string; clockOut: string; overtimeHours?: number | null }
+  getScheduleCode: (day: number, period?: string, dateStr?: string) => string
   holidays: Array<{ day?: number; date: string; localName?: string; name?: string }>
-  getOvertime?: (day: number) => OvertimeCalculationResult
+  getOvertime?: (day: number, period?: string, dateStr?: string) => OvertimeCalculationResult
 }): AttendanceDayData[] {
-  const { period, dayCount, getCell, getScheduleCode, holidays, getOvertime } = params
+  const { period, dayCount, dateItems, getCell, getScheduleCode, holidays, getOvertime } = params
   const holidayByDay = new Map(holidays.map((h) => [h.day ?? Number(h.date.slice(-2)), h]))
+
+  if (dateItems && dateItems.length > 0) {
+    return dateItems.map((item) => {
+      const cell = getCell(item.day, item.period, item.dateStr)
+      const holidayMatch = holidays.find(
+        (h) => h.date === item.dateStr || (h.day === item.day && h.date?.startsWith(item.period))
+      )
+      const ovt = getOvertime?.(item.day, item.period, item.dateStr)
+      const hasManualOverride =
+        (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) ||
+        ovt?.source === 'Legacy'
+      const manualOtHours =
+        cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null
+          ? Number(cell.overtimeHours)
+          : ovt?.source === 'Legacy'
+            ? ovt.totalHours
+            : null
+
+      return {
+        day: item.day,
+        dateLabel: item.displayHeader || String(item.day),
+        dateStr: item.dateStr,
+        period: item.period,
+        dayName: getDayName(item.period, item.day),
+        status: cell?.status || 'empty',
+        clockIn: cell?.clockIn || '',
+        clockOut: cell?.clockOut || '',
+        scheduleCode: getScheduleCode(item.day, item.period, item.dateStr),
+        isHoliday: Boolean(holidayMatch),
+        holidayName: holidayMatch?.localName ?? holidayMatch?.name,
+        overtime: ovt,
+        hasManualOvertimeOverride: hasManualOverride,
+        manualOvertimeHours: manualOtHours,
+      }
+    })
+  }
 
   return Array.from({ length: dayCount }, (_, i) => {
     const day = i + 1

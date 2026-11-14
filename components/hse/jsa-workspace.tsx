@@ -19,6 +19,9 @@ import {
   Clock,
   User,
   ExternalLink,
+  RotateCcw,
+  XCircle,
+  Check,
 } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -43,7 +46,15 @@ import {
 import { JsaFormDialog } from './jsa-form-dialog'
 import { JsaPrintPreview } from './jsa-print-preview'
 import { JsaApprovalDialog } from './jsa-approval-dialog'
-import { deleteJsa, getJsaById, saveJsaSettings, type JsaSettings } from '@/app/dashboard/hse/jsa/actions'
+import {
+  deleteJsa,
+  getJsaById,
+  saveJsaSettings,
+  quickApproveJsaAction,
+  quickRejectJsaAction,
+  revertJsaAction,
+  type JsaSettings,
+} from '@/app/dashboard/hse/jsa/actions'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 interface JsaWorkspaceProps {
@@ -64,6 +75,17 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
   const [approvalOpen, setApprovalOpen] = React.useState(false)
   const [deleteTargetId, setDeleteTargetId] = React.useState<string | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
+
+  // Quick Approval, Reject (dengan catatan), and Revert states
+  const [isQuickApprovingId, setIsQuickApprovingId] = React.useState<string | null>(null)
+  const [rejectDialogOpen, setRejectDialogOpen] = React.useState(false)
+  const [rejectTargetJsa, setRejectTargetJsa] = React.useState<any>(null)
+  const [rejectReason, setRejectReason] = React.useState('')
+  const [isRejecting, setIsRejecting] = React.useState(false)
+
+  const [revertDialogOpen, setRevertDialogOpen] = React.useState(false)
+  const [revertTargetJsa, setRevertTargetJsa] = React.useState<any>(null)
+  const [isReverting, setIsReverting] = React.useState(false)
 
   const [selectedJsa, setSelectedJsa] = React.useState<any>(null)
   const [isLoadingJsa, setIsLoadingJsa] = React.useState(false)
@@ -166,6 +188,72 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
       toast.error('Gagal menghapus dokumen JSA')
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleQuickApprove = async (id: string) => {
+    try {
+      setIsQuickApprovingId(id)
+      const res = await quickApproveJsaAction(id)
+      if (res.success) {
+        toast.success('JSA berhasil disetujui & TTD digital otomatis disematkan!')
+        router.refresh()
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menyetujui JSA')
+    } finally {
+      setIsQuickApprovingId(null)
+    }
+  }
+
+  const handleOpenReject = (jsa: any) => {
+    setRejectTargetJsa(jsa)
+    setRejectReason('')
+    setRejectDialogOpen(true)
+  }
+
+  const handleConfirmReject = async () => {
+    if (!rejectTargetJsa) return
+    if (!rejectReason.trim()) {
+      toast.error('Catatan penolakan / dimana salahnya wajib diisi.')
+      return
+    }
+    try {
+      setIsRejecting(true)
+      const res = await quickRejectJsaAction(rejectTargetJsa.id, rejectReason)
+      if (res.success) {
+        toast.success(`JSA ${rejectTargetJsa.jsaNumber} ditolak dan catatan revisi terkirim.`)
+        setRejectDialogOpen(false)
+        setRejectTargetJsa(null)
+        router.refresh()
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal menolak JSA')
+    } finally {
+      setIsRejecting(false)
+    }
+  }
+
+  const handleOpenRevert = (jsa: any) => {
+    setRevertTargetJsa(jsa)
+    setRevertDialogOpen(true)
+  }
+
+  const handleConfirmRevert = async () => {
+    if (!revertTargetJsa) return
+    try {
+      setIsReverting(true)
+      const res = await revertJsaAction(revertTargetJsa.id)
+      if (res.success) {
+        toast.success(`Status JSA ${revertTargetJsa.jsaNumber} berhasil dikembalikan ke Pending.`)
+        setRevertDialogOpen(false)
+        setRevertTargetJsa(null)
+        router.refresh()
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Gagal merevert JSA')
+    } finally {
+      setIsReverting(false)
     }
   }
 
@@ -328,26 +416,59 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
         header: 'Aksi',
         render: (row) => {
           const isApproved = row.status === 'approved' || Boolean(row.signatures?.verifierUrl)
+          const isRejected = row.status === 'rejected'
+          const isPending = !isApproved && !isRejected
 
           return (
             <TooltipProvider>
-              <div className="flex items-center justify-end gap-1">
-                {/* Tombol Cepat: Verifikasi & TTD Online */}
-                {!isApproved && (
+              <div className="flex items-center justify-end gap-1.5">
+                {/* 1-Click Approve & Reject Buttons (Kayak SPL / Daily Activity) */}
+                {isPending && (
+                  <>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleQuickApprove(row.id)}
+                      disabled={Boolean(isQuickApprovingId) || isLoadingJsa}
+                      className="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs gap-1 shadow-xs cursor-pointer"
+                    >
+                      {isQuickApprovingId === row.id ? (
+                        <Clock className="size-3.5 animate-spin" />
+                      ) : (
+                        <Check className="size-3.5" />
+                      )}
+                      <span>Approve</span>
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenReject(row)}
+                      disabled={Boolean(isQuickApprovingId) || isLoadingJsa}
+                      className="h-8 px-2 border-rose-200 text-rose-700 hover:bg-rose-50 font-semibold text-xs gap-1 cursor-pointer"
+                    >
+                      <XCircle className="size-3.5 text-rose-600" />
+                      <span>Reject</span>
+                    </Button>
+                  </>
+                )}
+
+                {/* Revert Button if already decided */}
+                {(isApproved || isRejected) && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => handleOpenApproval(row.id)}
+                        onClick={() => handleOpenRevert(row)}
                         disabled={isLoadingJsa}
-                        className="h-8 px-2 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer"
+                        className="h-8 px-2 border-amber-200 text-amber-700 hover:bg-amber-50 font-semibold text-xs gap-1 cursor-pointer"
                       >
-                        <PenTool className="h-3.5 w-3.5 mr-1 text-emerald-600" />
-                        <span className="text-xs font-semibold">TTD HSE</span>
+                        <RotateCcw className="size-3.5 text-amber-600" />
+                        <span>Revert</span>
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Verifikasi & Tanda Tangan Online HSE</TooltipContent>
+                    <TooltipContent>Kembalikan status ke Pending (Revert)</TooltipContent>
                   </Tooltip>
                 )}
 
@@ -416,7 +537,7 @@ export function JsaWorkspace({ jsaList, settings }: JsaWorkspaceProps) {
         },
       },
     ],
-    [isLoadingJsa]
+    [isLoadingJsa, isQuickApprovingId]
   )
 
   return (

@@ -52,12 +52,16 @@ test('Verifikasi Fitur Export Attendance Cut-Off CK (16-15) & Penyelarasan Overt
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
-  // 5. Screenshot modal/dialog konfigurasi ekspor cut-off tagihan kustom
+  // 5. Screenshot modal/dialog konfigurasi ekspor cut-off tagihan kustom (Excel & PDF)
   await app.screenshot('01-ck-cutoff-export-dialog')
 
-  // 6. Tutup modal konfigurasi
+  // 6. Tutup modal konfigurasi atau klik Terapkan ke Toolbar
+  const applyBtn = browser.locator('button:has-text("Terapkan ke Toolbar")').first()
   const closeBtn = browser.locator('button:has-text("Tutup"), button:has-text("Batal"), [aria-label="Close"]').first()
-  if (await closeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+  if (await applyBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await applyBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  } else if (await closeBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
     await closeBtn.click()
     await new Promise((resolve) => setTimeout(resolve, 2000))
   }
@@ -69,6 +73,6 @@ test('Verifikasi Fitur Export Attendance Cut-Off CK (16-15) & Penyelarasan Overt
     await new Promise((resolve) => setTimeout(resolve, 4000))
   }
 
-  // 8. Screenshot Overtime Summary grid (menampilkan sinkronisasi lembur Aditia & rekan Balikpapan)
+  // 8. Screenshot Overtime Summary grid (menampilkan sinkronisasi lembur & opsi cut-off aktif)
   await app.screenshot('02-attendance-overtime-summary-view')
 })

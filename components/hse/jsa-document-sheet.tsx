@@ -482,7 +482,14 @@ export function JsaDocumentSheet({ data, orientation = 'portrait', className = '
                 Verifikasi Departemen HSE / Pengawas
               </div>
               <div className="h-11 flex items-center justify-center my-0.5">
-                {resolvedVerifierSignature ? (
+                {data.status === 'rejected' ? (
+                  <div className="bg-rose-50 border border-rose-300 rounded px-1.5 py-0.5 text-center text-[6pt] text-rose-800 max-w-[160px]">
+                    <span className="font-bold uppercase block text-[6.5pt]">Ditolak / Perlu Revisi</span>
+                    {(signatures as any)?.rejectionReason && (
+                      <span className="italic block line-clamp-2 text-[5.5pt] mt-0.5">&quot;{(signatures as any).rejectionReason}&quot;</span>
+                    )}
+                  </div>
+                ) : resolvedVerifierSignature ? (
                   <img
                     src={resolvedVerifierSignature}
                     alt="TTD Verifikasi HSE"
@@ -496,10 +503,10 @@ export function JsaDocumentSheet({ data, orientation = 'portrait', className = '
               </div>
               <div className="text-center pt-0.5 border-t border-gray-300">
                 <p className="font-bold text-[7.5pt] text-black uppercase">
-                  {signatures.verifierName || 'HSE Officer / Pengawas Site'}
+                  {signatures.verifierName || (signatures as any).targetApproverName || 'HSE Officer / Pengawas Site'}
                 </p>
-                {signatures.verifierTitle && (
-                  <p className="text-[6pt] text-gray-700 font-semibold uppercase">{signatures.verifierTitle}</p>
+                {((signatures as any).targetApproverTitle || signatures.verifierTitle) && (
+                  <p className="text-[6pt] text-gray-700 font-semibold uppercase">{(signatures as any).targetApproverTitle || signatures.verifierTitle}</p>
                 )}
                 <p className="text-[6pt] text-gray-600">Tanggal: {verifierFormattedDate}</p>
               </div>

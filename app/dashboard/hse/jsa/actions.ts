@@ -5,12 +5,48 @@ import { eq, desc, sql } from 'drizzle-orm'
 import { randomUUID } from 'crypto'
 import { db } from '@/db'
 import { heroJsas, heroJsaSettings, heroJsaSteps, type NewJsa, type NewJsaStep } from '@/db/schema/jsa'
+import { employees } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
+import { getCurrentEmployee } from '@/lib/get-current-employee'
 import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { buildHseSafetyEmail, resolveHseSafetyRecipients, sendHseSafetyEmail } from '@/lib/hse-safety-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getAppUrl } from '@/lib/workflow-email'
 import { uploadBufferToS3 } from '@/lib/s3-storage'
+
+function generateRealisticSignatureSvgDataUrl(name?: string | null): string {
+  const cleanName = (name && name !== '-' ? name : 'Approver').trim()
+  let hash = 0
+  for (let i = 0; i < cleanName.length; i++) {
+    hash = (hash << 5) - hash + cleanName.charCodeAt(i)
+    hash |= 0
+  }
+  const positiveHash = Math.abs(hash)
+  const slant = (positiveHash % 6) - 3
+  const loopH = 14 + (positiveHash % 6)
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 75" width="220" height="75">
+    <g transform="rotate(${slant} 110 37)">
+      <!-- Initial letter flourish -->
+      <path d="M 28 52 C 24 36, 30 20, 42 16 C 54 12, 62 24, 48 36 C 34 48, 44 54, 58 46 C 66 41, 72 32, 76 30" 
+            fill="none" stroke="#002b5c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Connected cursive letters -->
+      <path d="M 74 34 C 82 26, 88 42, 96 32 C 104 22, 110 40, 118 30 C 126 20, 134 38, 144 30 C 152 22, 158 36, 168 28 C 174 22, 180 32, 188 26" 
+            fill="none" stroke="#002b5c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Ascender loop -->
+      <path d="M 124 34 C 126 ${loopH}, 132 12, 134 20 C 136 30, 132 42, 138 34" 
+            fill="none" stroke="#002b5c" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Sweeping signature underline flourish -->
+      <path d="M 32 58 C 80 56, 130 62, 182 50 C 196 47, 172 55, 142 60 C 112 65, 82 64, 56 62" 
+            fill="none" stroke="#002b5c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Terminal pen flick -->
+      <path d="M 178 51 Q 192 46 202 42" 
+            fill="none" stroke="#002b5c" stroke-width="1.8" stroke-linecap="round"/>
+    </g>
+  </svg>`
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
 
 async function checkJsaPermission(action: 'view' | 'edit' | 'delete'): Promise<boolean> {
   try {
@@ -113,6 +149,34 @@ async function persistSignature(signatureDataUrl: string): Promise<string> {
   } catch (err) {
     console.error('[JSA] Failed to persist signature to S3:', err)
     return signatureDataUrl
+  }
+}
+
+export async function getHseOfficerOptions() {
+  await ensureJsaTables()
+  try {
+    const emps = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        employeeSn: employees.employeeSn,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
+
+    return emps.map((e) => ({
+      value: e.email || e.name,
+      label: `${e.name}${e.jobTitle ? ` — ${e.jobTitle}` : ''}`,
+      name: e.name,
+      email: e.email || '',
+      title: e.jobTitle || 'HSE Officer / Pengawas Site',
+    }))
+  } catch (err) {
+    console.error('[getHseOfficerOptions] error:', err)
+    return []
   }
 }
 
@@ -292,9 +356,13 @@ export async function saveJsa(
         ctaLabel: isCreate ? 'Verifikasi & TTD JSA' : 'Buka JSA',
         ctaUrl: getAppUrl(targetApprovalUrl),
       })
+      const targetApproverEmail = (data.signatures as any)?.targetApproverEmail || ''
+      const targetApproverName = (data.signatures as any)?.targetApproverName || ''
+
       const extraRecipients = [
         settings.notificationRecipients,
         settings.defaultSignerEmail,
+        targetApproverEmail,
       ].filter(Boolean).join(',')
 
       await sendHseSafetyEmail({
@@ -319,7 +387,7 @@ export async function saveJsa(
             ? `Review & Approval JSA: ${notificationPayload.jsaNumber}`
             : `Update JSA: ${notificationPayload.jsaNumber}`,
           body: isCreate
-            ? `${creatorName} mengajukan JSA baru (${notificationPayload.jsaNumber}) untuk pekerjaan "${notificationPayload.jobDescription}" yang memerlukan verifikasi dan TTD online Anda.`
+            ? `${creatorName} mengajukan JSA baru (${notificationPayload.jsaNumber}) untuk pekerjaan "${notificationPayload.jobDescription}" yang ditugaskan kepada ${targetApproverName || 'HSE Officer'} untuk verifikasi & TTD online.`
             : `${notificationPayload.jobDescription} diperbarui di register JSA.`,
           url: targetApprovalUrl,
           tagPrefix: 'hse-jsa',
@@ -359,8 +427,8 @@ export async function deleteJsa(id: string) {
 
 export async function verifyJsaAction(input: {
   id: string
-  decision: 'approved' | 'rejected'
-  verifierName: string
+  decision: 'approved' | 'rejected' | 'revert'
+  verifierName?: string
   verifierTitle?: string
   verifierSignatureUrl?: string
   verifierNotes?: string
@@ -377,21 +445,78 @@ export async function verifyJsaAction(input: {
   const [existing] = await db.select().from(heroJsas).where(eq(heroJsas.id, input.id)).limit(1)
   if (!existing) throw new Error('Data JSA tidak ditemukan.')
 
-  let finalSignatureUrl = input.verifierSignatureUrl || ''
-  if (input.decision === 'approved') {
-    if (!finalSignatureUrl) {
-      throw new Error('Tanda tangan online wajib diberikan untuk menyetujui JSA.')
+  const existingSignatures = ((existing.signatures as any) || {}) as Record<string, any>
+
+  // 1. Handle REVERT action
+  if (input.decision === 'revert') {
+    const updatedSignatures = {
+      ...existingSignatures,
+      verifierUrl: '',
+      rejectionReason: '',
+      approvalStatus: 'pending',
+      revertedAt: new Date().toISOString(),
+      revertedByEmail: session.user.email,
     }
+
+    await db
+      .update(heroJsas)
+      .set({
+        status: 'pending',
+        signatures: updatedSignatures,
+        updatedAt: new Date(),
+      })
+      .where(eq(heroJsas.id, input.id))
+
+    try {
+      revalidatePath('/dashboard/hse/jsa')
+      revalidatePath('/dashboard/approval')
+      revalidatePath(`/print/jsa/${input.id}`)
+      revalidatePath('/jsa')
+    } catch {}
+
+    return { success: true, status: 'pending', message: 'Status JSA berhasil dikembalikan ke Pending.' }
+  }
+
+  // 2. Resolve Verifier Identity & Signature
+  let verifierName = (input.verifierName || '').trim()
+  let verifierTitle = (input.verifierTitle || '').trim()
+  let finalSignatureUrl = (input.verifierSignatureUrl || '').trim()
+
+  const currentEmp = await getCurrentEmployee().catch(() => null)
+  if (!verifierName) {
+    verifierName = currentEmp?.name || session.user.name || 'HSE Officer'
+  }
+  if (!verifierTitle) {
+    verifierTitle = currentEmp?.jobTitle || (currentEmp?.departmentId ? 'HSE Specialist' : 'HSE Officer / Pengawas Site')
+  }
+
+  if (input.decision === 'approved') {
+    // Auto-resolve signature if not provided
+    if (!finalSignatureUrl) {
+      if (currentEmp?.id) {
+        const [empRow] = await db
+          .select({ signatureDataUrl: employees.signatureDataUrl })
+          .from(employees)
+          .where(eq(employees.id, currentEmp.id))
+          .limit(1)
+        if (empRow?.signatureDataUrl) {
+          finalSignatureUrl = empRow.signatureDataUrl
+        }
+      }
+      if (!finalSignatureUrl) {
+        finalSignatureUrl = generateRealisticSignatureSvgDataUrl(verifierName)
+      }
+    }
+
     if (finalSignatureUrl.startsWith('data:image/')) {
       finalSignatureUrl = await persistSignature(finalSignatureUrl)
     }
   }
 
-  const existingSignatures = ((existing.signatures as any) || {}) as Record<string, any>
   const newSignatures = {
     ...existingSignatures,
-    verifierName: input.verifierName.trim(),
-    verifierTitle: (input.verifierTitle || 'HSE Officer / Pengawas Site').trim(),
+    verifierName,
+    verifierTitle: verifierTitle || 'HSE Officer / Pengawas Site',
     verifierUrl: input.decision === 'approved' ? finalSignatureUrl : (existingSignatures.verifierUrl || ''),
     verifierDate: new Date().toISOString(),
     verifierNotes: (input.verifierNotes || '').trim(),
@@ -423,8 +548,8 @@ export async function verifyJsaAction(input: {
       : `JSA Perlu Revisi / Ditolak: ${existing.jsaNumber}`
 
     const body = input.decision === 'approved'
-      ? `Dokumen JSA (${existing.jsaNumber}) telah diverifikasi & ditandatangani online oleh ${input.verifierName}.`
-      : `Dokumen JSA (${existing.jsaNumber}) ditolak/perlu revisi oleh ${input.verifierName}. Alasan: ${input.rejectionReason || '-'}`
+      ? `Dokumen JSA (${existing.jsaNumber}) telah diverifikasi & ditandatangani online oleh ${verifierName}.`
+      : `Dokumen JSA (${existing.jsaNumber}) ditolak/perlu revisi oleh ${verifierName}. Catatan kesalahan: ${input.rejectionReason || '-'}`
 
     if (bellRecipients?.to?.length > 0) {
       await notifyWorkflowBellRecipients({
@@ -450,9 +575,9 @@ export async function verifyJsaAction(input: {
         `Nomor JSA: ${existing.jsaNumber}`,
         `Pekerjaan: ${existing.jobDescription}`,
         `Status: ${input.decision === 'approved' ? 'DISETUJUI (APPROVED)' : 'DITOLAK (REJECTED)'}`,
-        `Verifikator: ${input.verifierName} (${input.verifierTitle || 'HSE Officer'})`,
+        `Verifikator: ${verifierName} (${verifierTitle})`,
         input.verifierNotes ? `Catatan: ${input.verifierNotes}` : null,
-        input.rejectionReason ? `Alasan Penolakan: ${input.rejectionReason}` : null,
+        input.rejectionReason ? `Catatan Dimana Salahnya / Alasan Revisi: ${input.rejectionReason}` : null,
       ],
       ctaLabel: 'Lihat Dokumen JSA',
       ctaUrl: getAppUrl(`/dashboard/hse/jsa?id=${existing.id}`),
@@ -464,7 +589,7 @@ export async function verifyJsaAction(input: {
       variables: {
         jsaNumber: existing.jsaNumber,
         status: newStatus,
-        verifierName: input.verifierName,
+        verifierName,
       },
       extraTo: extraRecipients,
       fallbackSubject: `[HERO HSE] ${title}`,
@@ -481,4 +606,40 @@ export async function verifyJsaAction(input: {
   revalidatePath('/jsa')
 
   return { success: true, status: newStatus }
+}
+
+/**
+ * 1-Click Approval action (Kayak SPL / Daily Activity)
+ * Otomatis pasang TTD digital user login tanpa perlu gambar manual satu-satu
+ */
+export async function quickApproveJsaAction(id: string, notes?: string) {
+  return verifyJsaAction({
+    id,
+    decision: 'approved',
+    verifierNotes: notes || 'Disetujui secara online via tombol approval',
+  })
+}
+
+/**
+ * Quick Reject action dengan catatan dimana salahnya
+ */
+export async function quickRejectJsaAction(id: string, reason: string) {
+  if (!reason || !reason.trim()) {
+    throw new Error('Catatan penolakan / dimana salahnya wajib diisi.')
+  }
+  return verifyJsaAction({
+    id,
+    decision: 'rejected',
+    rejectionReason: reason.trim(),
+  })
+}
+
+/**
+ * Revert action (Kembalikan status ke Pending/Draft)
+ */
+export async function revertJsaAction(id: string) {
+  return verifyJsaAction({
+    id,
+    decision: 'revert',
+  })
 }

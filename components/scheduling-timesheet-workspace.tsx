@@ -5784,6 +5784,29 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
+  function resolveCrossPeriodScheduleCode(
+    employeeId: number,
+    targetPeriod: string,
+    day: number,
+    defaultCode = 'IN'
+  ): string {
+    if (targetPeriod === period) {
+      const row = rows.find((r) => r.employee.id === employeeId)
+      return (row?.schedule?.[day - 1] as string) || defaultCode
+    }
+    const targetPlan = plans.find(
+      (p) =>
+        p.period === targetPeriod &&
+        (String(p.siteId) === siteId ||
+          p.fixedSchedule?.some((it) => it.employeeId === employeeId) ||
+          p.draftSchedule?.some((it) => it.employeeId === employeeId))
+    )
+    const planSched = (
+      targetPlan?.fixedSchedule?.length ? targetPlan.fixedSchedule : targetPlan?.draftSchedule
+    )?.find((it) => it.employeeId === employeeId)?.schedule
+    return planSched?.[day - 1] || defaultCode
+  }
+
   function updateAttendanceCell(
     employeeId: number,
     day: number,
@@ -6861,22 +6884,56 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function buildEmployeeOvertimePdf(employee: EmployeeOption, showTotalOvertime = true) {
+  async function buildEmployeeOvertimePdf(
+    employee: EmployeeOption,
+    showTotalOvertime = true,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
+  ) {
     const { generateOvertimeRecordPdf, buildAttendanceDayData } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     const employeeSchedule = employeeRow?.schedule ?? []
     const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
     const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
+
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
+    const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
+
     const dayData = buildAttendanceDayData({
       period,
       dayCount,
-      getCell: (day) => getAttendanceCell(employee.id, day),
-      getScheduleCode: (day) => employeeSchedule[day - 1] ?? 'IN',
+      dateItems: customDateHeaders?.map((dh) => ({
+        period: dh.period,
+        day: dh.day,
+        dateStr: dh.dateStr,
+        displayHeader: dh.displayHeader,
+        isHoliday: dh.isHoliday,
+      })),
+      getCell: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          const schedCode = resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+          return resolveCrossPeriodAttendanceCell(employee.id, targetPeriod, day, schedCode, employee)
+        }
+        return getAttendanceCell(employee.id, day)
+      },
+      getScheduleCode: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          return resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+        }
+        return employeeSchedule[day - 1] ?? 'IN'
+      },
       holidays,
-      getOvertime: (day) => {
-        const scheduleCode = employeeSchedule[day - 1] ?? 'IN'
-        const cell = getAttendanceCell(employee.id, day, scheduleCode)
+      getOvertime: (day, targetPeriod) => {
+        const itemPeriod = targetPeriod || period
+        const scheduleCode = itemPeriod !== period
+          ? resolveCrossPeriodScheduleCode(employee.id, itemPeriod, day, 'IN')
+          : (employeeSchedule[day - 1] ?? 'IN')
+        const cell = itemPeriod !== period
+          ? resolveCrossPeriodAttendanceCell(employee.id, itemPeriod, day, scheduleCode, employee)
+          : getAttendanceCell(employee.id, day, scheduleCode)
         const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
         const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
 
@@ -6913,9 +6970,10 @@ export function SchedulingTimesheetWorkspace({
             workingIntervals: [],
           }
         }
+        const effectiveSchedule = itemPeriod === period ? employeeSchedule : [scheduleCode]
         const res = calculateDayOvertime(
-          employeeSchedule,
-          day,
+          effectiveSchedule,
+          itemPeriod === period ? day : 1,
           cell.clockIn,
           cell.clockOut,
           staff,
@@ -6930,7 +6988,11 @@ export function SchedulingTimesheetWorkspace({
         }
       },
     }).map((day) => {
-      const cell = getAttendanceCell(employee.id, day.day)
+      const itemPeriod = day.period || period
+      const isCurrentPeriod = itemPeriod === period
+      const cell = isCurrentPeriod
+        ? getAttendanceCell(employee.id, day.day)
+        : resolveCrossPeriodAttendanceCell(employee.id, itemPeriod, day.day, day.scheduleCode, employee)
       const inM = cell.clockIn ? minutesFromTime(cell.clockIn) : null
       const outM = cell.clockOut ? minutesFromTime(cell.clockOut) : null
       const isNightShift =
@@ -6938,8 +7000,8 @@ export function SchedulingTimesheetWorkspace({
         (inM != null && outM != null && (outM < inM || inM >= 15 * 60))
       const shiftKey = isNightShift ? 'nightShift' : 'dayShift'
       const dayKey = classifyOvertimePolicyDay({
-        schedule: employeeSchedule,
-        dayIndex: day.day - 1,
+        schedule: isCurrentPeriod ? employeeSchedule : [day.scheduleCode],
+        dayIndex: isCurrentPeriod ? day.day - 1 : 0,
         isHoliday: day.isHoliday,
         rosterType: empSiteConfig.rosterType,
       })
@@ -6998,7 +7060,7 @@ export function SchedulingTimesheetWorkspace({
         day.scheduleCode === 'FB' ||
         day.scheduleCode === 'Libur') && !hasOvertimeHours
 
-      const dateStr = `${period}-${String(day.day).padStart(2, '0')}`
+      const dateStr = day.dateStr || `${period}-${String(day.day).padStart(2, '0')}`
       const empSpls = (approvedSplByEmployee.get(employee.id) ?? []).filter((w) => {
         if (w.workDate) {
           const wStr = typeof w.workDate === 'string' ? w.workDate.slice(0, 10) : new Date(w.workDate).toISOString().slice(0, 10)
@@ -7047,6 +7109,8 @@ export function SchedulingTimesheetWorkspace({
     return generateOvertimeRecordPdf({
       documentTitle: 'OVERTIME RECORD',
       period,
+      periodLabelOverride: effPeriodLabel,
+      cutoffLabel: effCutoffLabel,
       employeeId: employee.id,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
@@ -7063,15 +7127,23 @@ export function SchedulingTimesheetWorkspace({
 
   async function buildEmployeeAllowanceRecordPdf(
     employee: EmployeeOption,
-    view: 'msa' | 'meals' | 'lokasi'
+    view: 'msa' | 'meals' | 'lokasi',
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
   ) {
     const { generateEmployeeAllowanceRecordPdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
-    const dayData = await buildEmployeeAllowanceDayData(employee)
+    const dayData = await buildEmployeeAllowanceDayData(employee, customDateHeaders)
     const secSigs = getSectionSignatures(employee.section, employee)
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
+    const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
     return generateEmployeeAllowanceRecordPdf({
       view,
       period,
+      periodLabelOverride: effPeriodLabel,
+      cutoffLabel: effCutoffLabel,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
@@ -7125,7 +7197,11 @@ export function SchedulingTimesheetWorkspace({
     return attendanceView === 'attendance' ? 'ovt' : (attendanceView as SummaryView)
   }
 
-  function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
+  function buildSummaryRows(
+    view: SummaryView,
+    employeeIds?: number[],
+    customDateHeaders?: CkCutoffDateItem[]
+  ) {
     let sourceRows = rows
     if (employeeIds) {
       const idSet = new Set(employeeIds)
@@ -7154,21 +7230,38 @@ export function SchedulingTimesheetWorkspace({
       remark: string
     }> = []
     let no = 1
+
+    const effectiveDateItems = customDateHeaders && customDateHeaders.length > 0
+      ? customDateHeaders
+      : days.map((d) => ({
+          period,
+          day: d,
+          dateStr: `${period}-${String(d).padStart(2, '0')}`,
+          isHoliday: Boolean(holidaysByDay.get(d)),
+        }))
+
     for (const [dept, sections] of grouped) {
       for (const [section, sectionRows] of sections) {
         for (const row of sectionRows) {
           const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           // Nilai tiap hari — samakan persis dengan tabel di layar
-          const dailyValues = days.map((day) => {
-            const code = row.schedule[day - 1] as string
-            const cell = getAttendanceCell(row.employee.id, day, code)
-            const allowance = getAllowanceAmounts(row, day)
+          const dailyValues = effectiveDateItems.map((item) => {
+            const itemPeriod = item.period || period
+            const isCurrentPeriod = itemPeriod === period
+            const code = isCurrentPeriod
+              ? (row.schedule[item.day - 1] as string)
+              : resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, item.day, 'IN')
+            const cell = isCurrentPeriod
+              ? getAttendanceCell(row.employee.id, item.day, code)
+              : resolveCrossPeriodAttendanceCell(row.employee.id, itemPeriod, item.day, code, row.employee)
+            const allowance = getCrossPeriodAllowanceAmounts(row, item.day, itemPeriod, item.isHoliday)
+
             const isFieldBreakDay =
               code === 'FB' ||
               cell.status === 'field_break' ||
-              (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+              (isCurrentPeriod && (fieldBreakDaysByEmployee.get(row.employee.id)?.has(item.day) ?? false))
             const isRosterOff = code === 'OFF' || code === 'Libur'
-            const isHolidayDay = Boolean(holidaysByDay.get(day))
+            const isHolidayDay = Boolean(item.isHoliday)
             const isAbsent =
               cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
             const isEmptyWorkDay =
@@ -7184,12 +7277,17 @@ export function SchedulingTimesheetWorkspace({
                     : '-'
 
             if (view === 'ovt') {
-              const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+              const otInfo = isCurrentPeriod
+                ? calculateTotalDayOvertime(row.schedule, item.day, cell, row.employee.id, staff)
+                : calculateTotalDayOvertime([code], 1, cell, row.employee.id, staff)
               return otInfo.displayValue
             }
             if (view === 'ovt_spl') {
               if (staff) return '-'
-              const splHours = getApprovedSplHoursForDay(row.employee.id, day)
+              const splHours = getApprovedSplHoursForDate(
+                row.employee.id,
+                item.dateStr || `${itemPeriod}-${String(item.day).padStart(2, '0')}`
+              )
               if (splHours > 0) return String(roundOvertimeHours(splHours))
               if (cell.status !== 'present') {
                 if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
@@ -7222,10 +7320,16 @@ export function SchedulingTimesheetWorkspace({
           })
           // Total — samakan dengan kolom Total di layar
           let total = 0
-          for (const day of days) {
-            const cell = getAttendanceCell(row.employee.id, day)
-            const code = row.schedule[day - 1] as string
-            const allowance = getAllowanceAmounts(row, day)
+          for (const item of effectiveDateItems) {
+            const itemPeriod = item.period || period
+            const isCurrentPeriod = itemPeriod === period
+            const code = isCurrentPeriod
+              ? (row.schedule[item.day - 1] as string)
+              : resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, item.day, 'IN')
+            const cell = isCurrentPeriod
+              ? getAttendanceCell(row.employee.id, item.day)
+              : resolveCrossPeriodAttendanceCell(row.employee.id, itemPeriod, item.day, code, row.employee)
+            const allowance = getCrossPeriodAllowanceAmounts(row, item.day, itemPeriod, item.isHoliday)
             if (view === 'lokasi') {
               total += allowance.specialAllowanceAmount
               continue
@@ -7236,10 +7340,15 @@ export function SchedulingTimesheetWorkspace({
             else if (view === 'meals') total += allowance.mealsAmount
             else if (view === 'ovt_spl') {
               if (!staff) {
-                total += getApprovedSplHoursForDay(row.employee.id, day)
+                total += getApprovedSplHoursForDate(
+                  row.employee.id,
+                  item.dateStr || `${itemPeriod}-${String(item.day).padStart(2, '0')}`
+                )
               }
             } else if (!staff) {
-              const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+              const otInfo = isCurrentPeriod
+                ? calculateTotalDayOvertime(row.schedule, item.day, cell, row.employee.id, staff)
+                : calculateTotalDayOvertime([code], 1, cell, row.employee.id, staff)
               total += otInfo.totalOvertime
             }
           }
@@ -7273,23 +7382,43 @@ export function SchedulingTimesheetWorkspace({
   async function buildSummaryPdf(
     view: SummaryView,
     employeeIds?: number[],
-    customSignatures?: typeof pdfSignatures
+    customSignatures?: typeof pdfSignatures,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
   ) {
     const { generateSummaryTablePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
     const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures, view)
+    const effectiveDayCount = customDateHeaders && customDateHeaders.length > 0
+      ? customDateHeaders.length
+      : dayCount
     return generateSummaryTablePdf({
       view: view === 'ovt' ? 'ot' : view === 'ovt_spl' ? 'spl' : view,
       period,
+      periodLabelOverride,
+      cutoffLabel: customCutoffLabel,
+      customDateHeaders: customDateHeaders?.map((d) => ({
+        day: d.day,
+        dateStr: d.dateStr,
+        displayHeader: d.displayHeader,
+        isWeekend: d.isWeekend,
+        isHoliday: d.isHoliday,
+      })),
       siteName: site?.name || '',
       project: rate.project,
-      dayCount,
-      rows: buildSummaryRows(view, employeeIds),
+      dayCount: effectiveDayCount,
+      rows: buildSummaryRows(view, employeeIds, customDateHeaders),
       signatures: finalSignatures,
       holidays,
     })
   }
 
-  async function downloadSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
+  async function downloadSummaryPdf(
+    view: SummaryView,
+    customEmpIds?: number[],
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     try {
       if (availableSiteSections.length > 1 && !hasAnySectionActive) {
         toast.error('Pilih minimal satu section yang tersedia.')
@@ -7310,9 +7439,24 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
+      const effectiveDateHeaders = customDateHeaders ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? buildCkCutoffDateRange(period, holidays)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+          : undefined
+      )
+      const effectiveCutoffLabel = customCutoffLabel ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? formatCkCutoffLabel(period)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+          : undefined
+      )
+
       const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
       const empIds = selectedEmps.map((e) => e.id)
-      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
 
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -7331,7 +7475,8 @@ export function SchedulingTimesheetWorkspace({
                 : 'TU'
       const activeSections = activeSectionsLabel.replace(/[\s\/]+/g, '_')
       const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
-      a.download = `${label}_Summary_${sitePart}_${period}${extSuffix}_${activeSections || 'all'}.pdf`
+      const cutoffSuffix = effectiveCutoffLabel ? `_${effectiveCutoffLabel.replace(/[\s–-]+/g, '_')}` : ''
+      a.download = `${label}_Summary_${sitePart}_${period}${cutoffSuffix}${extSuffix}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -7345,7 +7490,12 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function previewSummaryPdf(view: SummaryView, customEmpIds?: number[]) {
+  async function previewSummaryPdf(
+    view: SummaryView,
+    customEmpIds?: number[],
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     try {
       if (availableSiteSections.length > 1 && !hasAnySectionActive) {
         toast.error('Pilih minimal satu section yang tersedia.')
@@ -7366,9 +7516,24 @@ export function SchedulingTimesheetWorkspace({
         return
       }
 
+      const effectiveDateHeaders = customDateHeaders ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? buildCkCutoffDateRange(period, holidays)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+          : undefined
+      )
+      const effectiveCutoffLabel = customCutoffLabel ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? formatCkCutoffLabel(period)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+          : undefined
+      )
+
       const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
       const empIds = selectedEmps.map((e) => e.id)
-      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
       const label =
         view === 'ovt'
           ? 'Overtime'
@@ -7379,7 +7544,8 @@ export function SchedulingTimesheetWorkspace({
               : view === 'meals'
                 ? 'MLS'
                 : 'TU'
-      openPdfPreview(pdf, `${label} Summary Grid – ${site?.name || ''} – ${period}`)
+      const cutoffPart = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
+      openPdfPreview(pdf, `${label} Summary Grid – ${site?.name || ''} – ${period}${cutoffPart}`)
     } catch (error) {
       console.error('[Preview Summary PDF Error]', error)
       toast.error('Gagal menampilkan preview PDF', {
@@ -7390,8 +7556,11 @@ export function SchedulingTimesheetWorkspace({
 
   async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
-      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
-      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
+      const isCk = attendanceExportCutoff === 'ck_16_15'
+      const customDateHeaders = isCk ? buildCkCutoffDateRange(period, holidays) : undefined
+      const cutoffLabel = isCk ? formatCkCutoffLabel(period) : undefined
+      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, customDateHeaders, cutoffLabel)
+      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}${cutoffLabel ? ` (${cutoffLabel})` : ''}`)
     } catch (error) {
       console.error('[Preview PDF OT Error]', error)
       toast.error('Preview PDF Overtime gagal', {
@@ -7400,7 +7569,11 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function bulkDownloadOvertimePdf(showTotalOvertime: boolean) {
+  async function bulkDownloadOvertimePdf(
+    showTotalOvertime: boolean,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     if (selectedPdfDocTypes.length === 0) {
       toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
       return
@@ -7425,6 +7598,21 @@ export function SchedulingTimesheetWorkspace({
       return
     }
 
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
     const toastId = 'bulk-pdf-download'
     setIsDownloadingSitePdf(true)
     toast.loading('Menyiapkan download PDF... Mohon tunggu', { id: toastId })
@@ -7440,7 +7628,7 @@ export function SchedulingTimesheetWorkspace({
       // 1. OVERTIME SUMMARY
       if (selectedPdfDocTypes.includes('overtime_summary')) {
         toast.loading('Menyiapkan Overtime Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7449,7 +7637,7 @@ export function SchedulingTimesheetWorkspace({
       // 2. OVERTIME SPL SUMMARY
       if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
         toast.loading('Menyiapkan Overtime SPL Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7458,7 +7646,7 @@ export function SchedulingTimesheetWorkspace({
       // 3. MSA summary
       if (selectedPdfDocTypes.includes('msa_summary')) {
         toast.loading('Menyiapkan MSA Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7467,7 +7655,7 @@ export function SchedulingTimesheetWorkspace({
       // 4. MLS summary
       if (selectedPdfDocTypes.includes('mls_summary')) {
         toast.loading('Menyiapkan MLS Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7476,7 +7664,7 @@ export function SchedulingTimesheetWorkspace({
       // 5. TU summary
       if (selectedPdfDocTypes.includes('tu_summary')) {
         toast.loading('Menyiapkan TU Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7497,19 +7685,72 @@ export function SchedulingTimesheetWorkspace({
             await new Promise((resolve) => setTimeout(resolve, 0))
           }
           if (shouldIncludeOvertimeRecord) {
-            const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime)
+            const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
             const otSource = await PDFDocument.load(otPdf)
             const pages = await merged.copyPages(otSource, otSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
           }
           if (shouldIncludeSiteAllowance) {
-            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowancePdf = await buildEmployeeAllowancePdf(employee, effectiveDateHeaders, effectiveCutoffLabel)
             const allowanceSource = await PDFDocument.load(allowancePdf)
             const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
           }
         }
       }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada halaman PDF yang dihasilkan.', { id: toastId })
+        return
+      }
+
+      const activeSections = activeSelectedSections.slice(0, 3).join('_')
+
+      const selectedDocLabels = selectedPdfDocTypes
+        .map((t) => {
+          if (t === 'overtime_summary') return 'OT-Summary'
+          if (t === 'ovt_spl_summary') return 'SPL-Summary'
+          if (t === 'msa_summary') return 'MSA-Summary'
+          if (t === 'mls_summary') return 'MLS-Summary'
+          if (t === 'tu_summary') return 'TU-Summary'
+          if (t === 'overtime_record') return 'OT-Record'
+          if (t === 'payable_site_allowance') return 'Site-Allowance'
+          return t
+        })
+        .join('_')
+
+      toast.loading('Mengunduh berkas PDF gabungan...', { id: toastId })
+      const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
+      const cutoffSuffix = effectiveCutoffLabel ? `_${effectiveCutoffLabel.replace(/[\s–-]+/g, '_')}` : ''
+      a.download = `Export_PDF_${period}_${selectedDocLabels || 'Selected'}${cutoffSuffix}${extSuffix}_${activeSections || 'all'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url)
+        } catch {
+          // ignore
+        }
+      }, 60000)
+      toast.success(
+        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`,
+        { id: toastId }
+      )
+    } catch (error) {
+      console.error('[Bulk PDF Download Error]', error)
+      toast.error('Bulk download PDF Overtime gagal', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setIsDownloadingSitePdf(false)
+    }
+  }
 
       if (merged.getPageCount() === 0) {
         toast.error('Tidak ada halaman PDF yang dihasilkan.', { id: toastId })
@@ -7563,18 +7804,40 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function buildEmployeeAllowanceDayData(employee: EmployeeOption) {
+  async function buildEmployeeAllowanceDayData(
+    employee: EmployeeOption,
+    customDateHeaders?: CkCutoffDateItem[]
+  ) {
     const { buildAttendanceDayData } = await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     if (!employeeRow) throw new Error('Data schedule karyawan tidak ditemukan.')
     return buildAttendanceDayData({
       period,
       dayCount,
-      getCell: (day) => getAttendanceCell(employee.id, day),
-      getScheduleCode: (day) => employeeRow.schedule[day - 1] as string,
+      dateItems: customDateHeaders?.map((dh) => ({
+        period: dh.period,
+        day: dh.day,
+        dateStr: dh.dateStr,
+        displayHeader: dh.displayHeader,
+        isHoliday: dh.isHoliday,
+      })),
+      getCell: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          const schedCode = resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+          return resolveCrossPeriodAttendanceCell(employee.id, targetPeriod, day, schedCode, employee)
+        }
+        return getAttendanceCell(employee.id, day)
+      },
+      getScheduleCode: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          return resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+        }
+        return employeeRow.schedule[day - 1] as string
+      },
       holidays,
     }).map((day) => {
-      const allowance = getAllowanceAmounts(employeeRow, day.day)
+      const itemPeriod = day.period || period
+      const allowance = getCrossPeriodAllowanceAmounts(employeeRow, day.day, itemPeriod, day.isHoliday)
       return {
         ...day,
         msaAmount: allowance.msaAmount,
@@ -7587,12 +7850,22 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  async function buildEmployeeAllowancePdf(employee: EmployeeOption) {
+  async function buildEmployeeAllowancePdf(
+    employee: EmployeeOption,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
+  ) {
     const { generateSiteAllowancePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
-    const dayData = await buildEmployeeAllowanceDayData(employee)
+    const dayData = await buildEmployeeAllowanceDayData(employee, customDateHeaders)
     const secSigs = getSectionSignatures(employee.section, employee)
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
+    const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
     return generateSiteAllowancePdf({
       period,
+      periodLabelOverride: effPeriodLabel,
+      cutoffLabel: effCutoffLabel,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
@@ -7735,7 +8008,10 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function previewAllSiteOvertimePdf() {
+  async function previewAllSiteOvertimePdf(
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     if (selectedPdfDocTypes.length === 0) {
       toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
       return
@@ -7758,6 +8034,21 @@ export function SchedulingTimesheetWorkspace({
       return
     }
 
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
     const toastId = 'preview-site-pdf'
     setIsPreviewingSitePdf(true)
     toast.loading('Menyiapkan Preview PDF... Mohon tunggu', { id: toastId })
@@ -7772,7 +8063,7 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('overtime_summary')) {
         toast.loading('Memproses Overtime Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7780,7 +8071,7 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
         toast.loading('Memproses Overtime SPL Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7788,7 +8079,7 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('msa_summary')) {
         toast.loading('Memproses MSA Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7796,7 +8087,7 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('mls_summary')) {
         toast.loading('Memproses MLS Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7804,7 +8095,7 @@ export function SchedulingTimesheetWorkspace({
 
       if (selectedPdfDocTypes.includes('tu_summary')) {
         toast.loading('Memproses TU Summary...', { id: toastId })
-        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -7824,13 +8115,13 @@ export function SchedulingTimesheetWorkspace({
             await new Promise((resolve) => setTimeout(resolve, 0))
           }
           if (shouldIncludeOvertimeRecord) {
-            const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
+            const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
             const otSource = await PDFDocument.load(otPdf)
             const pages = await merged.copyPages(otSource, otSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
           }
           if (shouldIncludeSiteAllowance) {
-            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowancePdf = await buildEmployeeAllowancePdf(employee, effectiveDateHeaders, effectiveCutoffLabel)
             const allowanceSource = await PDFDocument.load(allowancePdf)
             const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
@@ -7847,9 +8138,10 @@ export function SchedulingTimesheetWorkspace({
       toast.loading('Menyimpan dokumen preview...', { id: toastId })
       const mergedBytes = await merged.save()
 
+      const cutoffSuffix = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
       openPdfPreview(
         mergedBytes,
-        `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period}${pdfUseExternalSignatures ? ' (Eksternal)' : ''} (${activeSections || 'Semua'})`
+        `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period}${cutoffSuffix}${pdfUseExternalSignatures ? ' (Eksternal)' : ''} (${activeSections || 'Semua'})`
       )
       toast.success('Preview PDF siap ditampilkan.', { id: toastId })
     } catch (error) {
@@ -8161,8 +8453,7 @@ export function SchedulingTimesheetWorkspace({
     return calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
   }
 
-  function approvedSplDocumentsForDay(employeeId: number, day: number) {
-    const workDate = `${period}-${String(day).padStart(2, '0')}`
+  function approvedSplDocumentsForDate(employeeId: number, dateStr: string) {
     return (approvedSplByEmployee.get(employeeId) ?? []).filter((spl) => {
       const status = (spl.status || '').toLowerCase()
       if (status !== 'approved' && status !== 'closed') return false
@@ -8172,12 +8463,17 @@ export function SchedulingTimesheetWorkspace({
       if (Number.isNaN(splDate.getTime())) return false
       return new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(splDate) === workDate
+      }).format(splDate) === dateStr
     })
   }
 
-  function getApprovedSplHoursForDay(employeeId: number, day: number): number {
-    const docs = approvedSplDocumentsForDay(employeeId, day)
+  function approvedSplDocumentsForDay(employeeId: number, day: number) {
+    const workDate = `${period}-${String(day).padStart(2, '0')}`
+    return approvedSplDocumentsForDate(employeeId, workDate)
+  }
+
+  function getApprovedSplHoursForDate(employeeId: number, dateStr: string): number {
+    const docs = approvedSplDocumentsForDate(employeeId, dateStr)
     if (docs.length === 0) return 0
 
     const intervals: Array<{ start: number; end: number }> = []
@@ -8218,6 +8514,11 @@ export function SchedulingTimesheetWorkspace({
     let span = Math.round((totalMin / 60) * 10) / 10
     if (span >= 12) span = 11
     return roundOvertimeHours(span)
+  }
+
+  function getApprovedSplHoursForDay(employeeId: number, day: number): number {
+    const workDate = `${period}-${String(day).padStart(2, '0')}`
+    return getApprovedSplHoursForDate(employeeId, workDate)
   }
 
   function calculateTotalDayOvertime(
@@ -8640,6 +8941,84 @@ export function SchedulingTimesheetWorkspace({
       day === firstEligibleDay
     )
     return { ...eligibility, rule, msaAmount, mealsAmount, specialAllowanceAmount, empSiteConfig, empRate }
+  }
+
+  function getCrossPeriodAllowanceAmounts(
+    row: (typeof rows)[number],
+    day: number,
+    itemPeriod: string,
+    isHolidayDay = false
+  ) {
+    if (itemPeriod === period) {
+      return getAllowanceAmounts(row, day)
+    }
+    const scheduleCode = resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, day, 'IN')
+    const cell = resolveCrossPeriodAttendanceCell(row.employee.id, itemPeriod, day, scheduleCode, row.employee)
+    const isFieldBreakDay = scheduleCode === 'FB' || cell.status === 'field_break'
+    const attendanceStatus = cell.status
+
+    let eligibleMsa = false
+    let eligibleMeals = false
+
+    if (!isFieldBreakDay) {
+      if (
+        attendanceStatus === 'empty' ||
+        attendanceStatus === 'leave' ||
+        attendanceStatus === 'absent'
+      ) {
+        eligibleMsa = false
+        eligibleMeals = false
+      } else {
+        const upperCode = String(scheduleCode ?? '').trim().toUpperCase()
+        if (
+          attendanceStatus === 'present' ||
+          attendanceStatus === 'sick' ||
+          upperCode === 'SAKIT' ||
+          upperCode === 'S' ||
+          upperCode === 'SD' ||
+          upperCode === 'ST'
+        ) {
+          eligibleMsa = true
+          eligibleMeals = true
+        } else {
+          eligibleMsa = isMsaEligibleDay(scheduleCode, isFieldBreakDay)
+          eligibleMeals = isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay)
+        }
+      }
+    }
+
+    const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
+    const rule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
+      manpower: row.employee.manpower,
+      pointOfHire: row.employee.pointOfHire,
+      workLocations: [
+        row.employee.workLocation,
+        row.employee.siteLocation,
+        row.employee.locationName,
+      ],
+    })
+    const empRate = getAllowanceRateForEmployee(row.employee)
+    const msaAmount =
+      !rule.msa || !eligibleMsa || empSiteConfig.msaType === 'none'
+        ? 0
+        : empSiteConfig.msaType === 'same-all'
+          ? empRate.msaNonStaff
+          : staff
+            ? empRate.msaStaff
+            : empRate.msaNonStaff
+    const mealsAmount =
+      empSiteConfig.mealsType === 'none' || !rule.meals || !eligibleMeals
+        ? 0
+        : staff
+          ? empRate.mealsStaff
+          : empRate.mealsNonStaff
+    const specialAllowanceAmount = getSpecialAllowanceAmount(
+      rule,
+      eligibleMsa,
+      false
+    )
+    return { eligibleMsa, eligibleMeals, rule, msaAmount, mealsAmount, specialAllowanceAmount, empSiteConfig, empRate }
   }
 
   const payrollRows =
@@ -9444,6 +9823,67 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Gagal mengunduh Excel: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setIsDownloadingCustomExcel(false)
+    }
+  }
+
+  async function handleDownloadCustomDatePdf(isPreview = false) {
+    if (!customExportStartDate || !customExportEndDate) {
+      toast.error('Silakan tentukan tanggal mulai dan tanggal selesai terlebih dahulu.')
+      return
+    }
+    if (customExportStartDate > customExportEndDate) {
+      toast.error('Tanggal mulai tidak boleh lebih besar dari tanggal selesai.')
+      return
+    }
+
+    const customDateHeaders = buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+    if (customDateHeaders.length === 0) {
+      toast.error('Rentang tanggal tidak valid.')
+      return
+    }
+
+    const cutoffLabel = formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+
+    if (exportDialogActiveTab === 'ovt_spl') {
+      if (isPreview) {
+        await previewSummaryPdf('ovt_spl', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('ovt_spl', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'ovt') {
+      if (isPreview) {
+        await previewSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'msa') {
+      if (isPreview) {
+        await previewSummaryPdf('msa', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('msa', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'meals') {
+      if (isPreview) {
+        await previewSummaryPdf('meals', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('meals', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'lokasi') {
+      if (isPreview) {
+        await previewSummaryPdf('lokasi', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('lokasi', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else {
+      if (isPreview) {
+        await previewAllSiteOvertimePdf(customDateHeaders, cutoffLabel)
+      } else {
+        await bulkDownloadOvertimePdf(includeTotalOvertime, customDateHeaders, cutoffLabel)
+      }
+    }
+
+    if (!isPreview) {
+      setExportConfigDialogOpen(false)
     }
   }
 
@@ -13248,6 +13688,37 @@ export function SchedulingTimesheetWorkspace({
                           )}
                         </div>
 
+                        {/* Selector Cut-Off & Rentang Tanggal untuk PDF */}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const prev = getPreviousPeriod(period)
+                            setCustomExportStartDate((prevDate) => prevDate || `${prev}-16`)
+                            setCustomExportEndDate((prevDate) => prevDate || `${period}-15`)
+                            setExportConfigDialogOpen(true)
+                          }}
+                          className={cn(
+                            'border-border/70 h-8 rounded-lg px-2.5 text-xs font-semibold shadow-2xs hover:bg-slate-50 gap-1.5 transition-colors',
+                            attendanceExportCutoff === 'ck_16_15'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                              : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate
+                              ? 'border-blue-300 bg-blue-50 text-blue-800'
+                              : 'bg-white text-slate-700'
+                          )}
+                          title="Atur rentang cut-off tanggal untuk dokumen PDF & Excel (1-Akhir vs 16-15 CK vs Kustom)"
+                        >
+                          <CalendarRange className={cn('size-3.5', attendanceExportCutoff === 'ck_16_15' ? 'text-emerald-600' : 'text-slate-500')} />
+                          <span>
+                            {attendanceExportCutoff === 'ck_16_15'
+                              ? 'Cut-off: 16–15 (CK)'
+                              : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate
+                              ? `Rentang: ${formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)}`
+                              : 'Cut-off: 1–Akhir'}
+                          </span>
+                        </Button>
+
                         {/* Multi-select Dropdown Pilihan Dokumen PDF */}
                         <Popover
                           open={pdfDocTypesPickerOpen}
@@ -16843,16 +17314,16 @@ export function SchedulingTimesheetWorkspace({
         </DialogContent>
       </Dialog>
 
-      {/* Dialog Konfigurasi Ekspor & Cut-Off Tagihan (Excel) */}
+      {/* Dialog Konfigurasi Ekspor & Cut-Off Tagihan (Excel & PDF) */}
       <Dialog open={exportConfigDialogOpen} onOpenChange={setExportConfigDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
               <CalendarRange className="size-5 text-emerald-600" />
-              <span>Ekspor Excel Rentang Tanggal / Cut-Off Tagihan</span>
+              <span>Ekspor Excel & PDF Rentang Tanggal / Cut-Off Tagihan</span>
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Tentukan rentang tanggal mulai dan tanggal selesai kustom (misal untuk tagihan customer CK 16 Sept – 15 Okt, 17 Sept – 16 Nov, atau periode kustom lainnya).
+              Tentukan rentang tanggal mulai dan tanggal selesai kustom (misal untuk tagihan customer CK 16 Sept – 15 Okt, 17 Sept – 16 Nov, atau periode kustom lainnya). Berlaku untuk unduhan berkas Excel maupun berkas PDF resmi.
             </DialogDescription>
           </DialogHeader>
 
@@ -17014,17 +17485,22 @@ export function SchedulingTimesheetWorkspace({
               ) : null}
             </div>
 
-            {/* 3. Pilihan Format Dokumen / Tab Excel */}
+            {/* 3. Pilihan Format Dokumen / Tab (Excel & PDF) */}
             <div className="space-y-2">
-              <Label className="text-xs font-semibold text-slate-700">
-                3. Pilihan Format Worksheet / Tab
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">
+                  3. Pilihan Format Dokumen / Lembar Kerja (Excel & PDF)
+                </Label>
+                <span className="text-[10px] text-slate-500">
+                  Pilih format lembar untuk unduhan Excel atau PDF
+                </span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
                   {
                     id: 'all_5_tabs',
-                    label: 'Semua 5 Tab Sekaligus',
-                    desc: '1 File Excel berisi 5 sheet lengkap (Rekomendasi)',
+                    label: 'Semua Tab Sekaligus (Bulk)',
+                    desc: 'Excel 5 sheet lengkap / Bulk PDF semua dokumen',
                     icon: FileSpreadsheet,
                     featured: true,
                   },
@@ -17035,22 +17511,40 @@ export function SchedulingTimesheetWorkspace({
                     icon: CalendarRange,
                   },
                   {
-                    id: 'checkin-checkout',
-                    label: 'Jam Masuk & Pulang',
-                    desc: 'Grid Clock In & Out harian',
-                    icon: Clock,
-                  },
-                  {
-                    id: 'work-hours',
-                    label: 'Durasi Jam Kerja',
-                    desc: 'Grid durasi kerja aktif per hari',
-                    icon: Activity,
-                  },
-                  {
                     id: 'ovt',
                     label: 'Overtime Record',
-                    desc: 'Grid rekapitulasi lembur harian',
+                    desc: 'Rekapitulasi lembur harian (Excel & PDF)',
                     icon: Clock3,
+                  },
+                  {
+                    id: 'ovt_spl',
+                    label: 'Overtime SPL Summary',
+                    desc: 'Surat Perintah Lembur harian (Excel & PDF)',
+                    icon: FileText,
+                  },
+                  {
+                    id: 'msa',
+                    label: 'MSA Summary Grid',
+                    desc: 'Meal & Site Allowance (Excel & PDF)',
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    id: 'meals',
+                    label: 'MLS Summary Grid',
+                    desc: 'Uang makan harian (Excel & PDF)',
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    id: 'lokasi',
+                    label: 'TU Summary Grid',
+                    desc: 'Tunjangan khusus / lokasi (Excel & PDF)',
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    id: 'checkin-checkout',
+                    label: 'Jam Masuk & Pulang',
+                    desc: 'Grid Clock In & Out harian (Excel)',
+                    icon: Clock,
                   },
                 ].map((item) => {
                   const Icon = item.icon
@@ -17061,7 +17555,7 @@ export function SchedulingTimesheetWorkspace({
                       type="button"
                       onClick={() => setExportDialogActiveTab(item.id)}
                       className={cn(
-                        'flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-colors',
+                        'flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-colors cursor-pointer',
                         isSelected
                           ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500/30 text-emerald-950 font-medium'
                           : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
@@ -17073,7 +17567,7 @@ export function SchedulingTimesheetWorkspace({
                           <span className="font-semibold text-xs truncate">{item.label}</span>
                           {item.featured && (
                             <Badge className="bg-emerald-600 text-white text-[8px] px-1 py-0 h-3.5">
-                              Paling Lengkap
+                              Rekomendasi
                             </Badge>
                           )}
                         </div>
@@ -17085,38 +17579,97 @@ export function SchedulingTimesheetWorkspace({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setExportConfigDialogOpen(false)}
-                className="h-9 px-4 text-xs"
+                className="h-9 px-3 text-xs"
               >
                 Batal
               </Button>
-              <Button
-                size="sm"
-                disabled={
-                  isDownloadingCustomExcel ||
-                  !customExportStartDate ||
-                  !customExportEndDate ||
-                  customExportStartDate > customExportEndDate
-                }
-                onClick={handleDownloadCustomDateExcel}
-                className="h-9 px-4 text-xs font-semibold text-white shadow-sm bg-emerald-600 hover:bg-emerald-700"
-              >
-                {isDownloadingCustomExcel ? (
-                  <>
-                    <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    Menyiapkan Excel...
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-1.5 size-3.5" />
-                    Unduh Excel ({formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)})
-                  </>
-                )}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (exportDialogCutoff === 'ck_16_15') {
+                      setAttendanceExportCutoff('ck_16_15')
+                      toast.success('Cut-Off Customer CK (16–15) diaktifkan untuk halaman & toolbar.')
+                    } else if (exportDialogCutoff === 'calendar') {
+                      setAttendanceExportCutoff('calendar')
+                      toast.success('Standar Kalender (1–Akhir) diaktifkan untuk halaman & toolbar.')
+                    } else {
+                      setAttendanceExportCutoff('ck_16_15')
+                      toast.success(`Rentang tanggal kustom (${formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)}) diterapkan.`)
+                    }
+                    setExportConfigDialogOpen(false)
+                  }}
+                  className="h-9 px-3 text-xs text-slate-700 border-slate-300"
+                  title="Terapkan cut-off ini agar tombol di halaman utama otomatis menggunakan rentang ini"
+                >
+                  <Check className="mr-1.5 size-3.5 text-slate-500" />
+                  Terapkan ke Toolbar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    isPreviewingSitePdf ||
+                    !customExportStartDate ||
+                    !customExportEndDate ||
+                    customExportStartDate > customExportEndDate
+                  }
+                  onClick={() => handleDownloadCustomDatePdf(true)}
+                  className="h-9 px-3 text-xs font-semibold text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100"
+                  title="Pratinjau dokumen PDF dengan rentang cut-off tanggal yang dipilih"
+                >
+                  <Eye className="mr-1.5 size-3.5 text-indigo-600" />
+                  Preview PDF
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    isDownloadingSitePdf ||
+                    !customExportStartDate ||
+                    !customExportEndDate ||
+                    customExportStartDate > customExportEndDate
+                  }
+                  onClick={() => handleDownloadCustomDatePdf(false)}
+                  className="h-9 px-3 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm"
+                  title="Unduh dokumen PDF resmi dengan rentang cut-off tanggal yang dipilih"
+                >
+                  <FileText className="mr-1.5 size-3.5" />
+                  Unduh PDF
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={
+                    isDownloadingCustomExcel ||
+                    !customExportStartDate ||
+                    !customExportEndDate ||
+                    customExportStartDate > customExportEndDate
+                  }
+                  onClick={handleDownloadCustomDateExcel}
+                  className="h-9 px-3.5 text-xs font-semibold text-white shadow-sm bg-emerald-600 hover:bg-emerald-700"
+                  title="Unduh spreadsheet Excel dengan rentang cut-off tanggal yang dipilih"
+                >
+                  {isDownloadingCustomExcel ? (
+                    <>
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      Menyiapkan...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-1.5 size-3.5" />
+                      Unduh Excel
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
