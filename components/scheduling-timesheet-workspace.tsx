@@ -5794,7 +5794,7 @@ export function SchedulingTimesheetWorkspace({
       const row = rows.find((r) => r.employee.id === employeeId)
       return (row?.schedule?.[day - 1] as string) || defaultCode
     }
-    const targetPlan = plans.find(
+    const targetPlan = (savedPlans || []).find(
       (p) =>
         p.period === targetPeriod &&
         (String(p.siteId) === siteId ||
