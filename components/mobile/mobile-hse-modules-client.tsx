@@ -1452,7 +1452,7 @@ export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
               <img
                 src="/images/hiradc-risk-matrix-table.jpg"
                 alt="Matriks Risiko HIRADC (Likelihood vs Severity)"
-                className="w-full h-auto object-contain rounded-none block"
+                className="w-full h-[200px] sm:h-[220px] object-fill rounded-none block"
                 loading="eager"
               />
             </div>
