@@ -44,6 +44,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { OsmDetailDialog } from "@/components/hse/osm-detail-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { OsmPerformanceDashboard } from "@/components/hse/osm-performance-dashboard";
 
 type OsmClientPageProps = {
   initialData: any;
@@ -481,6 +482,9 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
           tone="cyan"
         />
       </div>
+
+      {/* 2.5. HSE On Spot Monitoring Performance Dashboard */}
+      <OsmPerformanceDashboard />
 
       {/* 3. Search Bar, Status Pills & Filter Button (Benchmarking Image 2) */}
       <div className="rounded-xl border bg-card p-3.5 space-y-3.5 shadow-2xs">

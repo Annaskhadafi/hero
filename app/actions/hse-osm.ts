@@ -262,6 +262,287 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
   }
 }
 
+export interface HseOsmPerformanceFilter {
+  year?: number
+  department?: string
+  siteId?: number | null
+}
+
+export interface HseOsmPerformanceMetrics {
+  year: number
+  overallPercentage: number
+  q1Percentage: number
+  q2Percentage: number
+  q3Percentage: number
+  q4Percentage: number
+  totalSessions: number
+  totalTarget: number
+  siteLeaderboard: {
+    siteId: number | null
+    siteName: string
+    totalSessions: number
+    targetSessions: number
+    percentage: number
+    q1: number
+    q2: number
+    q3: number
+    q4: number
+  }[]
+  monthlyBreakdown: {
+    id: string
+    department: string
+    siteName: string
+    employeeName: string
+    badgeNumber: string
+    totalTarget: number
+    jan: number
+    feb: number
+    mar: number
+    apr: number
+    may: number
+    jun: number
+    jul: number
+    aug: number
+    sep: number
+    oct: number
+    nov: number
+    dec: number
+    totalAchieved: number
+    percentage: number
+  }[]
+  availableYears: number[]
+  availableDepartments: string[]
+  availableSites: { id: number; name: string }[]
+}
+
+export async function getHseOsmPerformanceMetrics(filter: HseOsmPerformanceFilter = {}) {
+  try {
+    const selectedYear = filter.year || new Date().getFullYear()
+
+    // 1. Fetch available sites & departments for filter controls
+    const [allSites, allDepts] = await Promise.all([
+      db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)).orderBy(sites.name),
+      db.select({ name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)).orderBy(masterDepartments.name),
+    ])
+
+    // 2. Fetch all non-deleted sessions for the selected year
+    const sessions = await db
+      .select({
+        id: heroHseOsmSessions.id,
+        inspectionDate: heroHseOsmSessions.inspectionDate,
+        leadBadgeNumber: heroHseOsmSessions.leadBadgeNumber,
+        leadEmployeeName: heroHseOsmSessions.leadEmployeeName,
+        leadDepartment: heroHseOsmSessions.leadDepartment,
+        siteId: heroHseOsmSessions.siteId,
+        siteName: sites.name,
+      })
+      .from(heroHseOsmSessions)
+      .leftJoin(sites, eq(heroHseOsmSessions.siteId, sites.id))
+      .where(
+        and(
+          isNull(heroHseOsmSessions.deletedAt),
+          sql`${heroHseOsmSessions.inspectionDate} LIKE ${selectedYear + '-%'}`
+        )
+      )
+
+    // Filter by department and siteId if selected
+    let filteredSessions = sessions
+    if (filter.department && filter.department !== 'ALL') {
+      filteredSessions = filteredSessions.filter((s) => s.leadDepartment === filter.department)
+    }
+    if (filter.siteId && filter.siteId !== 0) {
+      filteredSessions = filteredSessions.filter((s) => s.siteId === filter.siteId)
+    }
+
+    // 3. Aggregate Monthly & Quarterly sessions
+    // Target is 2 sessions per inspector per month (Total target: 24 per year)
+    const inspectorMap = new Map<string, {
+      department: string
+      siteName: string
+      employeeName: string
+      badgeNumber: string
+      months: number[]
+    }>()
+
+    const siteMap = new Map<string, {
+      siteId: number | null
+      siteName: string
+      q1: number
+      q2: number
+      q3: number
+      q4: number
+      total: number
+      inspectors: Set<string>
+    }>()
+
+    for (const s of allSites) {
+      siteMap.set(s.name, {
+        siteId: s.id,
+        siteName: s.name,
+        q1: 0,
+        q2: 0,
+        q3: 0,
+        q4: 0,
+        total: 0,
+        inspectors: new Set<string>(),
+      })
+    }
+
+    for (const sess of filteredSessions) {
+      const siteDisplayName = sess.siteName || 'Head Office / Balikpapan'
+      const inspectorKey = `${sess.leadBadgeNumber || sess.leadEmployeeName}_${siteDisplayName}`
+      
+      if (!inspectorMap.has(inspectorKey)) {
+        inspectorMap.set(inspectorKey, {
+          department: sess.leadDepartment || 'Mining Operations',
+          siteName: siteDisplayName,
+          employeeName: sess.leadEmployeeName || 'Unknown Inspector',
+          badgeNumber: sess.leadBadgeNumber || '-',
+          months: Array(12).fill(0),
+        })
+      }
+
+      const insp = inspectorMap.get(inspectorKey)!
+      const monthIndex = parseInt(sess.inspectionDate.split('-')[1] || '1', 10) - 1
+      if (monthIndex >= 0 && monthIndex < 12) {
+        insp.months[monthIndex] += 1
+      }
+
+      // Site map
+      if (!siteMap.has(siteDisplayName)) {
+        siteMap.set(siteDisplayName, {
+          siteId: sess.siteId,
+          siteName: siteDisplayName,
+          q1: 0,
+          q2: 0,
+          q3: 0,
+          q4: 0,
+          total: 0,
+          inspectors: new Set<string>(),
+        })
+      }
+      const siteData = siteMap.get(siteDisplayName)!
+      siteData.total += 1
+      siteData.inspectors.add(inspectorKey)
+      if (monthIndex >= 0 && monthIndex <= 2) siteData.q1 += 1
+      else if (monthIndex >= 3 && monthIndex <= 5) siteData.q2 += 1
+      else if (monthIndex >= 6 && monthIndex <= 8) siteData.q3 += 1
+      else if (monthIndex >= 9 && monthIndex <= 11) siteData.q4 += 1
+    }
+
+    const currentMonth = new Date().getFullYear() === selectedYear ? new Date().getMonth() + 1 : 12
+    const targetPerMonth = 2
+    const totalTargetMonths = Math.max(1, currentMonth) * targetPerMonth
+
+    const monthlyBreakdown = Array.from(inspectorMap.entries()).map(([key, data]) => {
+      const totalAchieved = data.months.reduce((acc, val) => acc + val, 0)
+      const target = totalTargetMonths
+      const percentage = target > 0 ? Math.round((totalAchieved / target) * 100) : 0
+      return {
+        id: key,
+        department: data.department,
+        siteName: data.siteName,
+        employeeName: data.employeeName,
+        badgeNumber: data.badgeNumber,
+        totalTarget: target,
+        jan: data.months[0],
+        feb: data.months[1],
+        mar: data.months[2],
+        apr: data.months[3],
+        may: data.months[4],
+        jun: data.months[5],
+        jul: data.months[6],
+        aug: data.months[7],
+        sep: data.months[8],
+        oct: data.months[9],
+        nov: data.months[10],
+        dec: data.months[11],
+        totalAchieved,
+        percentage,
+      }
+    })
+
+    monthlyBreakdown.sort((a, b) => b.percentage - a.percentage)
+
+    const siteLeaderboard = Array.from(siteMap.values())
+      .filter((s) => s.total > 0 || (filter.siteId && s.siteId === filter.siteId))
+      .map((s) => {
+        const inspectorCount = Math.max(1, s.inspectors.size)
+        const targetSessions = inspectorCount * totalTargetMonths
+        const percentage = targetSessions > 0 ? Math.round((s.total / targetSessions) * 100) : 0
+        return {
+          siteId: s.siteId,
+          siteName: s.siteName,
+          totalSessions: s.total,
+          targetSessions,
+          percentage,
+          q1: s.q1,
+          q2: s.q2,
+          q3: s.q3,
+          q4: s.q4,
+        }
+      })
+
+    siteLeaderboard.sort((a, b) => b.percentage - a.percentage || b.totalSessions - a.totalSessions)
+
+    const totalInspectors = Math.max(1, inspectorMap.size)
+    const quarterTarget = totalInspectors * (3 * targetPerMonth)
+    const totalOverallTarget = totalInspectors * totalTargetMonths
+
+    let totalQ1 = 0
+    let totalQ2 = 0
+    let totalQ3 = 0
+    let totalQ4 = 0
+
+    for (const insp of Array.from(inspectorMap.values())) {
+      totalQ1 += insp.months[0] + insp.months[1] + insp.months[2]
+      totalQ2 += insp.months[3] + insp.months[4] + insp.months[5]
+      totalQ3 += insp.months[6] + insp.months[7] + insp.months[8]
+      totalQ4 += insp.months[9] + insp.months[10] + insp.months[11]
+    }
+
+    const totalSessionsAll = filteredSessions.length
+    const overallPercentage = totalOverallTarget > 0 ? Math.round((totalSessionsAll / totalOverallTarget) * 100) : 0
+    const q1Percentage = quarterTarget > 0 ? Math.round((totalQ1 / quarterTarget) * 100) : 0
+    const q2Percentage = quarterTarget > 0 ? Math.round((totalQ2 / quarterTarget) * 100) : 0
+    const q3Percentage = quarterTarget > 0 ? Math.round((totalQ3 / quarterTarget) * 100) : 0
+    const q4Percentage = quarterTarget > 0 ? Math.round((totalQ4 / quarterTarget) * 100) : 0
+
+    const deptSet = new Set<string>()
+    for (const d of allDepts) {
+      if (d.name) deptSet.add(d.name)
+    }
+    for (const s of sessions) {
+      if (s.leadDepartment) deptSet.add(s.leadDepartment)
+    }
+
+    const currentYr = new Date().getFullYear()
+    const availableYears = [currentYr - 1, currentYr, currentYr + 1]
+
+    return {
+      success: true,
+      data: {
+        year: selectedYear,
+        overallPercentage,
+        q1Percentage,
+        q2Percentage,
+        q3Percentage,
+        q4Percentage,
+        totalSessions: totalSessionsAll,
+        totalTarget: totalOverallTarget,
+        siteLeaderboard,
+        monthlyBreakdown,
+        availableYears,
+        availableDepartments: Array.from(deptSet).sort(),
+        availableSites: allSites,
+      },
+    }
+  } catch (error: any) {
+    console.error('getHseOsmPerformanceMetrics error:', error)
+    return { success: false, error: error?.message || 'Gagal memuat data OSM performance' }
+  }
+}
+
 export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
   try {
     const actor = await getActorEmployee()
