@@ -39,10 +39,10 @@ export async function loginToHero(
   await app.open(openUrl)
   await new Promise((resolve) => setTimeout(resolve, 1500))
 
-  // Check if already authenticated and redirected to dashboard
+  // Check if already authenticated and redirected to dashboard or mobile
   if (browser?.url) {
     const currentUrl = String(browser.url() || '')
-    if (!currentUrl.includes('/sign-in') && currentUrl.includes('/dashboard')) {
+    if (!currentUrl.includes('/sign-in') && (currentUrl.includes('/dashboard') || currentUrl.includes('/mobile') || (options.targetUrl && currentUrl.includes(options.targetUrl)))) {
       return
     }
   }
@@ -51,12 +51,12 @@ export async function loginToHero(
   if (browser?.locator) {
     const emailLocator = browser.locator('#email, input[name="username"]').first()
     const isVisible = await emailLocator
-      .waitFor({ state: 'visible', timeout: 30000 })
+      .waitFor({ state: 'visible', timeout: 8000 })
       .then(() => true)
       .catch(() => false)
     if (!isVisible) {
       const currentUrl = String(browser.url ? browser.url() : '')
-      if (currentUrl.includes('/dashboard')) return
+      if (currentUrl.includes('/dashboard') || currentUrl.includes('/mobile') || (options.targetUrl && currentUrl.includes(options.targetUrl))) return
     }
   }
 
@@ -75,7 +75,7 @@ export async function loginToHero(
 
     // Wait for login processing and redirect away from /sign-in
     if (browser?.waitForURL) {
-      await browser.waitForURL(/.*\/dashboard(\/.*)?/, { timeout: 60000 }).catch(() => {})
+      await browser.waitForURL(/.*(\/dashboard|\/mobile)(\/.*)?/, { timeout: 60000 }).catch(() => {})
     } else {
       await submitBtn.waitFor({ state: 'detached', timeout: 60000 }).catch(() => {})
     }
