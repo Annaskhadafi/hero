@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { emailSmtpSettings, emailTemplates, employees, masterSections, sites } from '@/db/schema/hero'
 import { sendEmailViaSmtp, logEmailDeliveryRecord, type EmailAttachment } from '@/lib/email-delivery'
-import { getPublicAppUrl } from '@/lib/auth-config'
+import { getEmailAppUrl, replaceLocalAppUrlsForEmail } from '@/lib/auth-config'
 
 type TemplateVariables = Record<string, string | number | boolean | Date | null | undefined>
 
@@ -127,9 +127,7 @@ async function getActiveTransportSettings() {
 }
 
 export function getAppUrl(path = '') {
-  const baseUrl = getPublicAppUrl()
-  if (!path) return baseUrl
-  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`
+  return getEmailAppUrl(path)
 }
 
 export function buildWorkflowEmailContent(input: {
@@ -360,8 +358,11 @@ export function buildSopWinWorkflowEmailContent(input: {
 
 export async function resolveWorkflowTemplateContent(request: WorkflowTemplateContentRequest) {
   const template = await getActiveTemplate(request.templateCode)
-  const rawVars = request.variables ?? {}
-  const publicAppUrl = getPublicAppUrl()
+  const rawVars: TemplateVariables = {}
+  const publicAppUrl = getEmailAppUrl()
+  for (const [key, value] of Object.entries(request.variables ?? {})) {
+    rawVars[key] = typeof value === 'string' ? replaceLocalAppUrlsForEmail(value, publicAppUrl) : value
+  }
 
   const defaultApprovalUrl = getAppUrl('/dashboard/approval')
   const defaultDashboardUrl = getAppUrl('/dashboard')
@@ -447,8 +448,10 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
   const ccList = request.exactCc
     ? uniqueEmails(splitEmails(request.cc))
     : uniqueEmails([...splitEmails(template?.ccEmail), ...splitEmails(request.cc)])
-  const subject = renderTemplate(template?.subject || request.fallbackSubject, variables)
-    .replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+  const subject = replaceLocalAppUrlsForEmail(
+    renderTemplate(template?.subject || request.fallbackSubject, variables),
+    publicAppUrl
+  )
 
   let rawHtml = template?.htmlContent || request.fallbackHtml || ''
   if (resolvedCategoryBadge && (request.templateCode?.startsWith('apd_request_') || request.templateCode?.startsWith('material_tools_'))) {
@@ -458,11 +461,11 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
     )
   }
 
-  const rawHtmlClean = rawHtml.replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
-  const rawTextClean = (template?.textContent || request.fallbackText || '').replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+  const rawHtmlClean = replaceLocalAppUrlsForEmail(rawHtml, publicAppUrl)
+  const rawTextClean = replaceLocalAppUrlsForEmail(template?.textContent || request.fallbackText || '', publicAppUrl)
 
-  const html = renderTemplate(rawHtmlClean, variables, true).replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
-  const text = renderTemplate(rawTextClean, variables).replace(/http:\/\/(?:localhost|127\.0\.0\.1):3000/gi, publicAppUrl)
+  const html = replaceLocalAppUrlsForEmail(renderTemplate(rawHtmlClean, variables, true), publicAppUrl)
+  const text = replaceLocalAppUrlsForEmail(renderTemplate(rawTextClean, variables), publicAppUrl)
 
   return {
     template,

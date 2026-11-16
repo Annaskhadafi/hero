@@ -2458,6 +2458,10 @@ const attendanceImportHistorySchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
 })
+const attendanceSourceDataSchema = attendanceImportHistorySchema.superRefine(({ period }, ctx) => {
+  const month = Number(period.slice(5, 7))
+  if (month < 1 || month > 12) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid month' })
+})
 const saveAttendanceEmployeeAliasSchema = z.object({
   siteId: z.number().int().positive(),
   employeeId: z.number().int().positive(),
@@ -2900,6 +2904,95 @@ export async function getAttendanceImportHistoryAction(
     )
     .orderBy(desc(timesheetAttendanceImportPreviews.createdAt))
     .limit(10)
+}
+
+/** Read-only source logs for the selected site and month. */
+export async function getAttendanceSourceDataAction(
+  input: z.infer<typeof attendanceSourceDataSchema>
+) {
+  const payload = attendanceSourceDataSchema.parse(input)
+  const access = await getCurrentMenuPermission('scheduling_timesheet_attendance')
+  const effectiveAccess = access
+  if (!effectiveAccess.canView) throw new Error('Unauthorized scheduling timesheet access')
+
+  const context = await getCurrentEmployeeAccessContext()
+  const global = hasGlobalDataAccess(effectiveAccess)
+  if (!global && effectiveAccess.dataScope === 'own' && !context?.employeeId) {
+    throw new Error('Unauthorized scheduling timesheet access')
+  }
+  const accessibleSiteIds = global ? null : context?.siteId != null ? [context.siteId] : []
+  if (accessibleSiteIds && !accessibleSiteIds.includes(payload.siteId)) {
+    throw new Error('Attendance site is outside your data scope')
+  }
+
+  const [year, month] = payload.period.split('-').map(Number)
+  const start = new Date(Date.UTC(year, month - 1, 1))
+  const end = new Date(Date.UTC(year, month, 1))
+  // Include adjacent dates so night-shift punches crossing month boundaries remain visible.
+  start.setUTCDate(start.getUTCDate() - 1)
+  end.setUTCDate(end.getUTCDate() + 1)
+  const employeeScope =
+    !global && effectiveAccess.dataScope === 'own' && context?.employeeId
+      ? eq(attendanceRecords.employeeId, context.employeeId)
+      : undefined
+
+  const [records, overrides] = await Promise.all([
+    db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.siteId, payload.siteId),
+          gte(attendanceRecords.eventTime, start),
+          lt(attendanceRecords.eventTime, end),
+          employeeScope
+        )
+      )
+      .orderBy(asc(attendanceRecords.eventTime)),
+    db
+      .select()
+      .from(timesheetAttendanceRealOverrides)
+      .where(
+        and(
+          eq(timesheetAttendanceRealOverrides.siteId, payload.siteId),
+          eq(timesheetAttendanceRealOverrides.period, payload.period),
+          employeeScope
+            ? eq(timesheetAttendanceRealOverrides.employeeId, context!.employeeId)
+            : undefined
+        )
+      )
+      .orderBy(asc(timesheetAttendanceRealOverrides.employeeId), asc(timesheetAttendanceRealOverrides.day)),
+  ])
+
+  return {
+    records: records.map((record) => ({
+      employeeId: record.employeeId,
+      siteId: record.siteId,
+      eventType: record.eventType,
+      eventTime: record.eventTime.toISOString(),
+      status: record.status,
+      locationNote: record.locationNote,
+      photoUrl: record.photoUrl,
+      latitude: record.latitude,
+      longitude: record.longitude,
+    })),
+    overrides: overrides.map((override) => ({
+      siteId: override.siteId,
+      period: override.period,
+      employeeId: override.employeeId,
+      day: override.day,
+      status: override.status,
+      clockIn: override.clockIn,
+      clockOut: override.clockOut,
+      note: override.note,
+      source: override.source,
+      overtimeHours: override.overtimeHours ?? null,
+      validationFlags: Array.isArray(override.validationFlags)
+        ? (override.validationFlags as string[])
+        : [],
+      updatedAt: override.updatedAt.toISOString(),
+    })),
+  }
 }
 
 export async function saveAttendanceEmployeeAliasAction(

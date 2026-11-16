@@ -17,6 +17,7 @@ import { eq, desc, inArray, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
+import { getEmailAppUrl } from "@/lib/auth-config";
 import { format } from "date-fns";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
@@ -185,7 +186,7 @@ export async function scheduleCandidateInterviewStage(candidateId: number, data:
   const smtpSettings = await getEmailSmtpSettingsData();
   const interviewDate = format(data.scheduledAt, "EEEE, dd MMMM yyyy");
   const interviewTime = format(data.scheduledAt, "HH:mm");
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "http://localhost:3000";
+  const baseUrl = getEmailAppUrl();
   const evalFormUrl = `${baseUrl}/dashboard/hc/recruitment/wawancara?interviewId=${interview.id}`;
 
   // 1. Send Email to Candidate

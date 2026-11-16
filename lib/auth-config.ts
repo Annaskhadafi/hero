@@ -111,32 +111,64 @@ export function getTrustedOrigins(request?: Request) {
     );
 }
 
+export const HERO_PRODUCTION_APP_URL = "https://hero.chitraparatama.com";
+
+const LOCAL_APP_ORIGIN_REGEX = /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i;
+const LOCAL_APP_URL_GLOBAL_REGEX = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?/gi;
+
+export function isLocalAppOrigin(value?: string | null) {
+    if (!value) {
+        return false;
+    }
+
+    return LOCAL_APP_ORIGIN_REGEX.test(value.trim());
+}
+
+export function getEmailAppUrl(path = "") {
+    const candidates = [
+        process.env.EMAIL_APP_URL,
+        process.env.PUBLIC_APP_URL,
+        process.env.BETTER_AUTH_URL,
+        process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+        process.env.APP_URL,
+        process.env.NEXT_PUBLIC_APP_URL,
+        process.env.VERCEL_PROJECT_PRODUCTION_URL
+            ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+            : undefined,
+        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    ];
+
+    const baseUrl =
+        candidates
+            .map((value) => normalizeOrigin(value?.replace(/\/api\/auth\/?$/, "")))
+            .find((origin): origin is string => Boolean(origin) && !isLocalAppOrigin(origin)) ??
+        HERO_PRODUCTION_APP_URL;
+
+    if (!path) {
+        return baseUrl;
+    }
+
+    return `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+export function replaceLocalAppUrlsForEmail(content: string, targetBaseUrl?: string) {
+    if (!content) {
+        return content;
+    }
+
+    const normalizedTarget = normalizeOrigin(targetBaseUrl);
+    const safeBaseUrl =
+        normalizedTarget && !isLocalAppOrigin(normalizedTarget)
+            ? normalizedTarget
+            : getEmailAppUrl();
+
+    return content.replace(LOCAL_APP_URL_GLOBAL_REGEX, safeBaseUrl);
+}
+
 export function getPublicAppUrl() {
     if (typeof window !== "undefined" && window.location?.origin) {
         return window.location.origin;
     }
 
-    const customUrl =
-        process.env.BETTER_AUTH_URL ||
-        process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
-        process.env.APP_URL ||
-        process.env.NEXT_PUBLIC_APP_URL;
-
-    if (customUrl) {
-        const origin = normalizeOrigin(customUrl.replace(/\/api\/auth\/?$/, ""));
-        if (origin) return origin;
-    }
-
-    const candidates = [
-        process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined,
-        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-    ];
-    const origin = candidates.map(normalizeOrigin).find(Boolean);
-    if (origin) {
-        return origin;
-    }
-
-    return process.env.NODE_ENV === "production"
-        ? "https://hero.chitraparatama.com"
-        : "http://localhost:3000";
+    return getEmailAppUrl();
 }

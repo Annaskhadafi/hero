@@ -19,6 +19,7 @@ import {
 } from "@/lib/human-capital-email";
 import { notifyWorkflowBellRecipients } from "@/lib/workflow-notification-center";
 import { getTemplateRecipientScopeEmails, sendWorkflowEmailToMany } from "@/lib/workflow-email";
+import { getEmailAppUrl } from "@/lib/auth-config";
 
 const LEADER_PERFORMANCE_PATH = "/dashboard/hc/leader-performance";
 
@@ -272,7 +273,7 @@ async function sendLeaderPerformanceNotifications(id: number) {
           `Masukan: ${review.feedback || "-"}`,
         ],
         ctaLabel: "Lihat Evaluasi",
-        ctaUrl: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard/hc/leader-performance`,
+        ctaUrl: getEmailAppUrl("/dashboard/hc/leader-performance"),
       });
 
       if (hcTo.length > 0) {
@@ -319,7 +320,7 @@ async function sendLeaderPerformanceNotifications(id: number) {
           `Status: Reviewed`,
         ],
         ctaLabel: "Lihat Evaluasi",
-        ctaUrl: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/dashboard/hc/leader-performance`,
+        ctaUrl: getEmailAppUrl("/dashboard/hc/leader-performance"),
       });
 
       if (hcTo.length > 0) {

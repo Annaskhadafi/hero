@@ -66,7 +66,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { HeroSearchableSelect } from '@/components/templates'
+import { HeroDataTable, HeroSearchableSelect, HeroSwitch } from '@/components/templates'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   Select,
@@ -83,6 +83,7 @@ import {
   deleteSchedulingTimesheetPlanAction,
   discardAttendanceImportPreviewAction,
   getAttendanceImportHistoryAction,
+  getAttendanceSourceDataAction,
   getIndonesiaHolidaysAction,
   reopenSchedulingPeriodAction,
   rollbackAttendanceImportPreviewAction,
@@ -1906,6 +1907,20 @@ export function SchedulingTimesheetWorkspace({
     return String(currentEmployeeSiteId ?? sites[0]?.id ?? 'all')
   }, [currentEmployeeSiteId, sites])
   const [siteId, setSiteId] = useState(userDefaultSiteId)
+  const [showAttendanceSource, setShowAttendanceSource] = useState(false)
+  const [sourceData, setSourceData] = useState<{ key: string; records: AttendanceRealRecord[]; overrides: { employeeId: number; day: number; source: string; status: string; clockIn: string; clockOut: string }[] } | null>(null)
+  const [sourceError, setSourceError] = useState('')
+  useEffect(() => {
+    if (!showAttendanceSource || siteId === 'all') return
+    let active = true
+    const key = `${siteId}:${period}`
+    setSourceData(null)
+    setSourceError('')
+    getAttendanceSourceDataAction({ siteId: Number(siteId), period })
+      .then((data) => { if (active) setSourceData({ key, ...data }) })
+      .catch((error) => { if (active) setSourceError(error instanceof Error ? error.message : 'Gagal memuat data sumber') })
+    return () => { active = false }
+  }, [showAttendanceSource, siteId, period])
   const [roster, setRoster] = useState('5:2')
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null)
   const [selectedPermanentCell, setSelectedPermanentCell] = useState<{
@@ -3214,14 +3229,16 @@ export function SchedulingTimesheetWorkspace({
 
     // Group records by cell key first
     const grouped = new Map<string, AttendanceRealRecord[]>()
-    for (const record of attendanceRecords) {
+    for (const record of (showAttendanceSource ? sourceData?.records ?? [] : attendanceRecords)) {
       if (siteId !== 'all' && record.siteId != null && String(record.siteId) !== siteId) {
         continue
       }
       const dateStr = getLocalDateStr(record.eventTime, effectiveTz)
-      if (!dateStr || !dateStr.startsWith(period)) continue
-      const day = dayFromDate(dateStr, period)
-      if (!day) continue
+      if (!dateStr) continue
+      const day = showAttendanceSource
+        ? Math.round((Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${period}-01T00:00:00Z`)) / 86400000) + 1
+        : dayFromDate(dateStr, period)
+      if (day == null || (!showAttendanceSource && !day) || day < 0 || day > daysInMonth(period) + 1) continue
       const key = attendanceKey(record.employeeId, day)
       const list = grouped.get(key) ?? []
       list.push(record)
@@ -3233,7 +3250,7 @@ export function SchedulingTimesheetWorkspace({
     // and day d has early morning check-out (< 12:00 local time),
     // attribute that check-out to day d-1 and remove it from day d.
     const employeeIds = new Set<number>()
-    for (const record of attendanceRecords) {
+    for (const record of (showAttendanceSource ? sourceData?.records ?? [] : attendanceRecords)) {
       if (siteId === 'all' || record.siteId == null || String(record.siteId) === siteId) {
         employeeIds.add(record.employeeId)
       }
@@ -3242,7 +3259,7 @@ export function SchedulingTimesheetWorkspace({
 
     for (const empId of employeeIds) {
       const empRow = rows.find((r) => r.employee.id === empId)
-      for (let d = 2; d <= daysInCurrentPeriod; d++) {
+      for (let d = showAttendanceSource ? 1 : 2; d <= daysInCurrentPeriod + (showAttendanceSource ? 1 : 0); d++) {
         const curKey = attendanceKey(empId, d)
         const curRecords = grouped.get(curKey)
         if (!curRecords || curRecords.length === 0) continue
@@ -3279,7 +3296,9 @@ export function SchedulingTimesheetWorkspace({
             )
           })
 
-        const isYesterdayNightShift = prevIsScheduledNight || prevHasNightPunch || prevHasOpenCheckIn
+        const isYesterdayNightShift = showAttendanceSource
+          ? prevHasNightPunch || prevHasOpenCheckIn
+          : prevIsScheduledNight || prevHasNightPunch || prevHasOpenCheckIn
 
         if (isYesterdayNightShift) {
           const curCheckIns = curRecords.filter((r) => {
@@ -3319,9 +3338,9 @@ export function SchedulingTimesheetWorkspace({
               grouped.set(prevKey, prevRecords)
             }
 
-            const remainingCurRecords = curRecords.filter(
-              (r) => !morningCheckouts.some((mc) => mc.id === r.id)
-            )
+            const remainingCurRecords = showAttendanceSource && prevHasCheckout
+              ? curRecords
+              : curRecords.filter((r) => !morningCheckouts.includes(r))
 
             if (remainingCurRecords.length > 0) {
               grouped.set(curKey, remainingCurRecords)
@@ -3365,6 +3384,8 @@ export function SchedulingTimesheetWorkspace({
     return map
   }, [
     attendanceRecords,
+    showAttendanceSource,
+    sourceData,
     employees,
     period,
     site,
@@ -13292,7 +13313,41 @@ export function SchedulingTimesheetWorkspace({
       {mode === 'attendance' ? (
         attendanceWorkspaceOpen ? (
           <section className="space-y-4">
-            {selectedAttendancePlan || siteId !== 'all' ? (
+            {selectedAttendancePlan || siteId !== 'all' ? showAttendanceSource ? (
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4">
+                  <HeroSwitch label="Lihat Data Sumber" checked={showAttendanceSource} onCheckedChange={setShowAttendanceSource} />
+                  <HeroSearchableSelect placeholder="Pilih site" options={sites.map((item) => ({ value: String(item.id), label: item.name }))} value={siteId} onChange={setSiteId} width="w-48" disabled={isAttendanceDirty} />
+                  <Input type="month" aria-label="Pilih bulan" value={period} onChange={(e) => setPeriod(e.target.value)} className="h-9 w-[150px]" disabled={isAttendanceDirty} />
+                  <Button variant="ghost" className="h-9" disabled={isAttendanceDirty} onClick={() => { setShowAttendanceSource(false); setAttendanceWorkspaceOpen(false) }}>Kembali ke list</Button>
+                </div>
+                <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Mode hanya baca. Data sumber berasal dari log attendance saat ini atau impor Excel yang masih tersimpan; nilainya dapat berbeda dari kondisi tepat sebelum edit manual. Riwayat impor yang tidak dapat dibuktikan tidak ditampilkan.</p>
+                {isAttendanceDirty ? <p className="text-sm text-amber-700">Simpan perubahan attendance sebelum mengganti site atau bulan.</p> : null}
+                {sourceError ? <p role="alert" className="text-sm text-red-700">Gagal memuat data sumber: {sourceError}</p> : null}
+                <HeroDataTable
+                  title={`Data sumber attendance - ${site?.name ?? ''} - ${period}`}
+                  data={sourceData?.key === `${siteId}:${period}` ? rows.map((row) => ({ id: row.employee.id, name: row.employee.name })) : []}
+                  columns={[
+                    { key: 'name', header: 'Karyawan', sortable: true },
+                    ...days.map((day) => ({ key: `day-${day}`, header: String(day), render: (item: { id: number }) => {
+                      const cell = attendanceByCell.get(attendanceKey(item.id, day))
+                      const override = sourceData?.overrides.find((entry) => entry.employeeId === item.id && entry.day === day)
+                      if (!cell && override?.source === 'excel') return <span title="Impor Excel yang saat ini tersimpan">{override.status === 'present' ? `${override.clockIn || '--:--'}–${override.clockOut || '--:--'}` : attendanceStatusLabel(normalizeAttendanceStatus(override.status))}<br />Excel</span>
+                      if (!cell) return <span title={override ? 'Data sumber tidak tersedia' : 'Tidak ada log attendance'}>{override ? 'Data sumber tidak tersedia' : '—'}</span>
+                      const clockIn = timeFromIso(cell.clockIn?.eventTime, effectiveSiteClockConfig.timezone)
+                      const clockOut = timeFromIso(cell.clockOut?.eventTime, effectiveSiteClockConfig.timezone)
+                      const crossDay = cell.clockIn && cell.clockOut && getLocalDateStr(cell.clockIn.eventTime, effectiveSiteClockConfig.timezone) !== getLocalDateStr(cell.clockOut.eventTime, effectiveSiteClockConfig.timezone)
+                      return <span title="Log attendance">{clockIn || '--:--'}–{clockOut || '--:--'}{crossDay ? ' (+1)' : ''}<br />Attendance</span>
+                    } }))
+                  ]}
+                  searchKeys={['name']}
+                  showSelection={false}
+                  enableExport={false}
+                  loading={!sourceError && sourceData?.key !== `${siteId}:${period}`}
+                  emptyMessage="Tidak ada karyawan untuk site ini."
+                />
+              </section>
+            ) : (
               <section className="space-y-4">
                 {/* 1. Header & Actions Bar */}
                 <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-0 shadow-xs">
@@ -13344,6 +13399,7 @@ export function SchedulingTimesheetWorkspace({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      <HeroSwitch label="Lihat Data Sumber" checked={showAttendanceSource} onCheckedChange={setShowAttendanceSource} />
                       <Button
                         size="sm"
                         variant="ghost"

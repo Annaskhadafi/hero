@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { emailDeliveryLogs, employees } from "@/db/schema/hero";
+import { getEmailAppUrl, replaceLocalAppUrlsForEmail } from "@/lib/auth-config";
 
 export type EmailTransportSettings = {
   host: string;
@@ -47,6 +48,16 @@ function formatFromAddress(settings: EmailTransportSettings) {
   }
 
   return `"${fromName.replaceAll('"', '\\"')}" <${settings.fromEmail}>`;
+}
+
+function sanitizeEmailPayloadForDelivery(payload: EmailDeliveryPayload): EmailDeliveryPayload {
+  const emailAppUrl = getEmailAppUrl();
+  return {
+    ...payload,
+    subject: replaceLocalAppUrlsForEmail(payload.subject, emailAppUrl),
+    html: payload.html ? replaceLocalAppUrlsForEmail(payload.html, emailAppUrl) : payload.html,
+    text: replaceLocalAppUrlsForEmail(payload.text, emailAppUrl),
+  };
 }
 
 function cleanEmailContent(html?: string) {
@@ -103,6 +114,7 @@ export async function logEmailDeliveryRecord(data: {
   htmlContent?: string | null;
   textContent?: string | null;
 }) {
+  const emailAppUrl = getEmailAppUrl();
   await db.insert(emailDeliveryLogs).values({
     employeeId: await resolveActorEmployeeId(data.actorEmail),
     deliveryChannel: "email",
@@ -111,11 +123,11 @@ export async function logEmailDeliveryRecord(data: {
     fromEmail: data.fromEmail ?? "system@hero.chitra.com",
     templateName: data.templateName ?? "CS Forecast Daily Report",
     templateCode: data.templateCode ?? "cs_forecast_daily_report",
-    subject: data.subject,
+    subject: replaceLocalAppUrlsForEmail(data.subject, emailAppUrl),
     status: data.status,
     errorMessage: data.errorMessage ?? null,
-    htmlContent: data.htmlContent ?? null,
-    textContent: data.textContent ?? null,
+    htmlContent: data.htmlContent ? replaceLocalAppUrlsForEmail(data.htmlContent, emailAppUrl) : data.htmlContent ?? null,
+    textContent: data.textContent ? replaceLocalAppUrlsForEmail(data.textContent, emailAppUrl) : data.textContent ?? null,
     sentAt: data.status === "sent" ? new Date() : null,
   });
 }
@@ -123,8 +135,9 @@ export async function logEmailDeliveryRecord(data: {
 
 export async function sendEmailViaSmtp(
   settings: EmailTransportSettings,
-  payload: EmailDeliveryPayload,
+  rawPayload: EmailDeliveryPayload,
 ) {
+  const payload = sanitizeEmailPayloadForDelivery(rawPayload);
   if (!settings.host.trim()) {
     throw new Error("Host SMTP belum diisi.");
   }

@@ -18,6 +18,7 @@ import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl, isLocalAppOrigin } from '@/lib/auth-config'
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
@@ -25,18 +26,26 @@ import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center
 import { generateRfrPdf, type RfrPdfData } from '@/lib/rfr-pdf'
 
 async function getBaseUrl(): Promise<string> {
-  let baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!baseUrl) {
-    try {
-      const headersList = await headers()
-      const host = headersList.get('host')
-      const protocol = headersList.get('x-forwarded-proto') || 'http'
-      if (host) baseUrl = `${protocol}://${host}`
-    } catch (e) {
-      // headers fallback
-    }
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (envUrl && !isLocalAppOrigin(envUrl)) {
+    return envUrl.replace(/\/+$/, '')
   }
-  return baseUrl || 'http://localhost:3000'
+
+  try {
+    const headersList = await headers()
+    const host = headersList.get('x-forwarded-host')?.split(',')[0]?.trim() || headersList.get('host')
+    const protocol = headersList.get('x-forwarded-proto') || 'https'
+    if (host) {
+      const candidate = `${protocol}://${host}`
+      if (!isLocalAppOrigin(candidate)) {
+        return candidate
+      }
+    }
+  } catch (e) {
+    // headers fallback
+  }
+
+  return getEmailAppUrl()
 }
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {

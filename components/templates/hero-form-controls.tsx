@@ -274,7 +274,7 @@ export function HeroSwitch({
         {description && <div className="text-[11px] text-slate-500">{description}</div>}
       </div>
 
-      <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
     </div>
   )
 }

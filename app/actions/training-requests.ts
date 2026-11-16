@@ -18,6 +18,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl } from '@/lib/auth-config'
 import crypto from 'crypto'
 
 function safeRevalidatePath(path: string) {
@@ -374,7 +375,7 @@ export async function createTrainingRequest(input: CreateTrainingRequestInput) {
       // SMTP Email Notification
       const smtpSettings = await getSmtpSettings()
       if (smtpSettings) {
-        const baseUrl = process.env.BETTER_AUTH_URL || 'https://hero.chitraparatama.com'
+        const baseUrl = getEmailAppUrl()
         const link = `${baseUrl}/dashboard/training/pengajuan?id=${createdRequest.id}`
         await sendEmailViaSmtp(smtpSettings, {
           to: activeStep.approverEmail,
@@ -744,7 +745,7 @@ export async function approveTrainingRequestStep(
 
         const smtpSettings = await getSmtpSettings()
         if (smtpSettings) {
-          const baseUrl = process.env.BETTER_AUTH_URL || 'https://hero.chitraparatama.com'
+          const baseUrl = getEmailAppUrl()
           const link = `${baseUrl}/dashboard/training/pengajuan?id=${request.id}`
           await sendEmailViaSmtp(smtpSettings, {
             to: request.requesterEmail,
@@ -802,7 +803,7 @@ export async function approveTrainingRequestStep(
 
         const smtpSettings = await getSmtpSettings()
         if (smtpSettings) {
-          const baseUrl = process.env.BETTER_AUTH_URL || 'https://hero.chitraparatama.com'
+          const baseUrl = getEmailAppUrl()
           const link = `${baseUrl}/dashboard/training/pengajuan?id=${request.id}`
           await sendEmailViaSmtp(smtpSettings, {
             to: nextApproval.approverEmail,

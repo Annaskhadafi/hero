@@ -24,6 +24,7 @@ import { getCandidateInterviews } from "@/app/actions/interviews";
 import { getCandidateMcu } from "@/app/actions/mcu";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
+import { getEmailAppUrl } from "@/lib/auth-config";
 import { getHcEmailTemplateByType } from "@/app/actions/hc-email-templates";
 import { renderHcTemplate } from "@/lib/hc-email-utils";
 import { getHumanCapitalPolicyCcRecipients } from "@/lib/human-capital-email";
@@ -1031,7 +1032,7 @@ export async function hireAndCreateEmployee(candidateId: number, startDate?: str
         if (rec) jobTitle = rec.jobTitle;
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://hero.chitraparatama.com";
+      const baseUrl = getEmailAppUrl();
       const onboardingUrl = `${baseUrl}/onboarding/${onboardingToken}`;
       const startDateLabel = startDate ? new Date(startDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "Akan diinformasikan";
 
@@ -2389,7 +2390,7 @@ export async function sendStartDateEmails(candidateIds: number[], startDate: str
         if (rec) jobTitle = rec.jobTitle;
       }
 
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://hero.chitraparatama.com";
+      const baseUrl = getEmailAppUrl();
       const onboardingUrl = `${baseUrl}/onboarding/${token}`;
       const startDateLabel = new Date(startDate).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
 

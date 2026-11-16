@@ -90,7 +90,7 @@ export async function sendSummaryPendingApprovalEmail(
     }
 
     const levelLabel = roleLabel || (level === 1 ? 'Section Head (Diperiksa Oleh)' : 'Department Head (Disetujui Oleh)');
-    const approvalUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/approval`;
+    const approvalUrl = `${getPublicAppUrl()}/dashboard/approval`;
 
     await sendWorkflowEmail({
       to: approver.email,
@@ -132,7 +132,7 @@ export async function sendSummaryReturnedEmail(
       return;
     }
 
-    const previewUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/summary?preview=${summary.id}`;
+    const previewUrl = `${getPublicAppUrl()}/dashboard/summary?preview=${summary.id}`;
 
     await sendWorkflowEmail({
       to: generator.email,

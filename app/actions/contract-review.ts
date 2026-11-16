@@ -30,6 +30,7 @@ function safeRevalidatePath(path: string) {
 }
 import { randomUUID } from 'crypto'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl, isLocalAppOrigin } from '@/lib/auth-config'
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
@@ -38,20 +39,26 @@ import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessRole, getCurrentMenuPermission, isSuperAdminRole } from '@/lib/hero-access'
 
 async function getBaseUrl(): Promise<string> {
-  let baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!baseUrl) {
-    try {
-      const headersList = await headers()
-      const host = headersList.get('host')
-      const protocol = headersList.get('x-forwarded-proto') || 'http'
-      if (host) {
-        baseUrl = `${protocol}://${host}`
-      }
-    } catch (e) {
-      // headers() might throw if run outside request context
-    }
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (envUrl && !isLocalAppOrigin(envUrl)) {
+    return envUrl.replace(/\/+$/, '')
   }
-  return baseUrl || 'http://localhost:3000'
+
+  try {
+    const headersList = await headers()
+    const host = headersList.get('x-forwarded-host')?.split(',')[0]?.trim() || headersList.get('host')
+    const protocol = headersList.get('x-forwarded-proto') || 'https'
+    if (host) {
+      const candidate = `${protocol}://${host}`
+      if (!isLocalAppOrigin(candidate)) {
+        return candidate
+      }
+    }
+  } catch (e) {
+    // headers() might throw if run outside request context
+  }
+
+  return getEmailAppUrl()
 }
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
