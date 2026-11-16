@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import http from 'http'
+import https from 'https'
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { NodeHttpHandler } from '@smithy/node-http-handler'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
@@ -178,6 +180,21 @@ function getS3Client() {
   }
 
   if (!s3Client) {
+    const isHttps = !serverEnv.s3Endpoint || serverEnv.s3Endpoint.startsWith('https')
+    const agent = isHttps
+      ? new https.Agent({
+          keepAlive: true,
+          keepAliveMsecs: 1000,
+          maxSockets: 50,
+          timeout: 60_000,
+        })
+      : new http.Agent({
+          keepAlive: true,
+          keepAliveMsecs: 1000,
+          maxSockets: 50,
+          timeout: 60_000,
+        })
+
     s3Client = new S3Client({
       region: serverEnv.s3Region,
       endpoint: serverEnv.s3Endpoint || undefined,
@@ -190,6 +207,8 @@ function getS3Client() {
       requestHandler: new NodeHttpHandler({
         connectionTimeout: 30_000,
         requestTimeout: 120_000,
+        httpsAgent: isHttps ? agent : undefined,
+        httpAgent: !isHttps ? agent : undefined,
       }),
       maxAttempts: 3,
     })
@@ -299,6 +318,7 @@ export async function uploadAnyFileToS3(
       }
     } catch (putError: any) {
       lastError = putError
+      s3Client = null // Reset cached client so subsequent attempts create fresh HTTP connection
       const isAbortedByUser = abortSignal?.aborted
       if (isAbortedByUser || attempt === maxAttempts) {
         break

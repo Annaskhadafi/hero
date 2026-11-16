@@ -357,9 +357,9 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
             </div>
 
             {/* Content Grid */}
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-12 gap-6">
               {/* Left Column (Hazards & Controls) */}
-              <div className="col-span-2 space-y-6">
+              <div className="col-span-6 space-y-6">
                 <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
                   <div className="flex items-center gap-2 mb-6">
                     <span className="text-amber-500">⚠️</span>
@@ -417,7 +417,7 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
               </div>
 
               {/* Right Column (Analysis & Verification) */}
-              <div className="space-y-6">
+              <div className="col-span-6 space-y-6">
                 <div className="border border-slate-200 rounded-2xl p-6 bg-white text-center shadow-sm">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">RISK MATRIX ANALYSIS</p>
                   <div className="text-6xl font-black text-slate-900 tracking-tighter mb-6">
@@ -462,11 +462,11 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
                   </div>
                 </div>
 
-                <div className="border border-slate-200 rounded-2xl p-2 bg-white shadow-sm overflow-hidden flex items-center justify-center">
+                <div className="border border-slate-300 rounded-none p-0.5 bg-white shadow-sm flex items-center justify-center">
                   <img
                     src="/images/hiradc-risk-matrix-table.jpg"
                     alt="Matriks Risiko HIRADC (Likelihood vs Severity)"
-                    className="w-full h-auto object-contain rounded-xl"
+                    className="w-full h-auto object-contain rounded-none block"
                     loading="eager"
                   />
                 </div>
