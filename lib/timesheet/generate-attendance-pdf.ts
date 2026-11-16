@@ -540,13 +540,14 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }
     }
 
-    // Khusus CK-MHU (MP): Seluruh hari hadir otomatis dihitung 11 jam lembur merata (From 05.00 To 18.00)
+    // Khusus CK-MHU (MP): Seluruh hari hadir otomatis dihitung 11 jam lembur merata (From 05.00 To 18.00 untuk DS, 17.00 To 06.00 untuk NS)
     // PENTING: Hari OFF / Libur / FB TIDAK BOLEH mendapatkan lembur otomatis 11 jam (wajib kosong)
+    const isNightShift = day.scheduleCode === 'NS' || (Boolean(day.workingTimeFrom) && (String(day.workingTimeFrom).startsWith('17') || String(day.workingTimeFrom).startsWith('18')))
     const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
     if (isMhuSite && !isAbsent && !isStatusWithoutTime && !isOff) {
       ot = 11
-      if (!otFrom) otFrom = '05.00'
-      if (!otTo) otTo = '18.00'
+      if (!otFrom) otFrom = isNightShift ? '17.00' : '05.00'
+      if (!otTo) otTo = isNightShift ? '06.00' : '18.00'
     } else if (isOff && (!hasManualOverride || ot <= 0)) {
       ot = 0
       otFrom = ''
@@ -601,8 +602,8 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
         : (!isOff || hasManualOvertime) && (hasOvertimeIntervals || hasManualOvertime) && !isAbsent && !isStatusWithoutTime
 
     if (!isOff && (hasManualOvertime || isMhuSite) && !otFrom && !otTo) {
-      otFrom = isMhuSite ? '05.00' : (workFrom || '07.00')
-      otTo = isMhuSite ? '18.00' : (workTo || '18.00')
+      otFrom = isMhuSite ? (isNightShift ? '17.00' : '05.00') : (workFrom || '07.00')
+      otTo = isMhuSite ? (isNightShift ? '06.00' : '18.00') : (workTo || '18.00')
     }
 
     // Col 2-3: Working Time From & To
