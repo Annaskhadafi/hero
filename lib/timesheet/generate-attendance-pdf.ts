@@ -1155,11 +1155,11 @@ async function drawSummarySplSignatures(
 
   const labels: [string, string][] = isPjo
     ? [
-        ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'PJO'],
+        ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || 'PJO'],
         ['Approved by :', names.approvedBy?.trim() || names.pjoLeader?.trim() || 'Leader'],
       ]
     : [
-        ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Pengaju'],
+        ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || 'Pengaju'],
         ['Approved by :', names.pjoLeader?.trim() || 'PJO'],
         ['Approved by :', names.approvedBy?.trim() || 'Leader'],
       ]
@@ -1216,7 +1216,7 @@ async function drawOvertimeRecordSignatures(
     ]
   } else {
     labels = [
-      ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
+      ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || '-'],
       ['Approved by:', names.pjoLeader?.trim() || 'Supervisor / Leader'],
       ['Approved by:', names.approvedBy?.trim() || 'PJO / Manager'],
       ['Diketahui oleh:', names.hrName?.trim() || 'HC / Admin'],
