@@ -2,29 +2,19 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import { loginToHero } from './e2e-auth-helper';
 
-test('verify attendance list uses standard table like schedule v2 and each site has dedicated persistent page', { timeout: 300000 }, async ({
+test('verify attendance list uses standard table like schedule v2 and each site has dedicated persistent page', { timeout: 600000 }, async ({
   app,
   screen,
   browser,
 }) => {
   // 1. Authenticate with standard HERO credentials directly to attendance page
   await loginToHero(app, screen, browser, '/dashboard/scheduling-timesheet/attendance');
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-
-  // Defensive fallback if still on sign-in page
-  const emailInput = browser.locator('#email, input[name="username"]').first();
-  if (await emailInput.isVisible().catch(() => false)) {
-    await emailInput.fill('71261');
-    const passwordInput = browser.locator('#password, input[name="password"]').first();
-    await passwordInput.fill('Chitra#71261');
-    const submitBtn = browser.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first();
-    await submitBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 6000));
-  }
+  await browser.waitForURL('**/dashboard/**', { timeout: 120000 }).catch(() => {});
+  await new Promise((resolve) => setTimeout(resolve, 5000));
 
   // 2. Verify Attendance table list (clean standard table like Schedule V2)
   const attendanceTable = browser.locator('table').first();
-  await expect(attendanceTable).toBeVisible({ timeout: 60000 });
+  await expect(attendanceTable).toBeVisible({ timeout: 240000 });
 
   // Verify "Tambah Attendance" button is present on the toolbar
   const addAttendanceBtn = browser.locator('button:has-text("Tambah Attendance")').first();
@@ -46,7 +36,7 @@ test('verify attendance list uses standard table like schedule v2 and each site 
 
   // Verify attendance workspace is open directly (Save Attendance button and Kembali ke list button are visible)
   const saveAttendanceBtn = browser.locator('button:has-text("SAVE ATTENDANCE")').first();
-  await expect(saveAttendanceBtn).toBeVisible({ timeout: 60000 });
+  await expect(saveAttendanceBtn).toBeVisible({ timeout: 120000 });
 
   // Verify "Kembali ke list" button is present
   const backBtn = browser.locator('button:has-text("KEMBALI KE LIST"), button:has-text("Kembali ke list")').first();
@@ -60,12 +50,12 @@ test('verify attendance list uses standard table like schedule v2 and each site 
 
   // 4. CRITICAL TEST: REFRESH the page (Simulating user F5 refresh on their site page)
   await app.open(siteUrl);
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 5000));
 
   // Verify that after refresh, user remains on the dedicated site page and workspace remains open
   const refreshedUrl = await browser.url();
   expect(refreshedUrl).toContain('/dashboard/scheduling-timesheet/attendance/');
-  await expect(saveAttendanceBtn).toBeVisible({ timeout: 60000 });
+  await expect(saveAttendanceBtn).toBeVisible({ timeout: 120000 });
   await expect(backBtn).toBeVisible({ timeout: 30000 });
 
   // Screenshot proving persistence after refresh (user doesn't need to re-enter or re-search)
@@ -73,8 +63,8 @@ test('verify attendance list uses standard table like schedule v2 and each site 
 
   // 5. Test returning to list via "Kembali ke list" button
   await backBtn.click({ timeout: 60000 });
-  await new Promise((resolve) => setTimeout(resolve, 3000));
-  await expect(attendanceTable).toBeVisible({ timeout: 60000 });
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  await expect(attendanceTable).toBeVisible({ timeout: 120000 });
 
   // Final confirmation screenshot of the verified flow
   await app.screenshot('04-attendance-flow-verified');

@@ -315,10 +315,7 @@ def update_monthly_presentation(title, description, screenshots, system="HERO", 
     # Add detail evidence slide
     slide_num = add_detail_slide(prs, title, description, screenshots, system=system)
 
-    out_buf = io.BytesIO()
-    prs.save(out_buf)
-    with open(target_path, "wb") as f:
-        f.write(out_buf.getvalue())
+    prs.save(target_path)
     print(f"[SUCCESS] Monthly presentation successfully updated: {target_path}")
     return target_path, slide_num
 
