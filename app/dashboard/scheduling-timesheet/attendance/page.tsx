@@ -26,13 +26,23 @@ const SchedulingTimesheetWorkspace = dynamic(
   }
 )
 
-export default async function SchedulingTimesheetAttendancePage() {
+export default async function SchedulingTimesheetAttendancePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ siteId?: string; period?: string }>
+}) {
   const permission = await getCurrentMenuPermission('scheduling_timesheet_attendance')
 
   if (!permission.canView) {
     const permittedTabs = await getPermittedSchedulingTabs()
     const fallback = permittedTabs[0]?.href ?? '/dashboard'
     redirect(fallback)
+  }
+
+  const resolvedSearchParams = searchParams ? await searchParams : undefined
+  if (resolvedSearchParams?.siteId) {
+    const periodParam = resolvedSearchParams.period ? `?period=${resolvedSearchParams.period}` : ''
+    redirect(`/dashboard/scheduling-timesheet/attendance/${resolvedSearchParams.siteId}${periodParam}`)
   }
 
   const options = await getSchedulingTimesheetAttendanceOptions()

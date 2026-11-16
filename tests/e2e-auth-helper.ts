@@ -39,10 +39,25 @@ export async function loginToHero(
   await app.open(openUrl)
   await new Promise((resolve) => setTimeout(resolve, 1500))
 
+  // Check if already authenticated and redirected to dashboard
+  if (browser?.url) {
+    const currentUrl = String(browser.url() || '')
+    if (!currentUrl.includes('/sign-in') && currentUrl.includes('/dashboard')) {
+      return
+    }
+  }
+
   // Wait for login form to load
   if (browser?.locator) {
     const emailLocator = browser.locator('#email, input[name="username"]').first()
-    await emailLocator.waitFor({ state: 'visible', timeout: 30000 })
+    const isVisible = await emailLocator
+      .waitFor({ state: 'visible', timeout: 30000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!isVisible) {
+      const currentUrl = String(browser.url ? browser.url() : '')
+      if (currentUrl.includes('/dashboard')) return
+    }
   }
 
   // Fill credentials
@@ -53,6 +68,7 @@ export async function loginToHero(
       .locator('button[type="submit"], button:has-text("Masuk ke HERO")')
       .first()
 
+    await emailInput.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {})
     await emailInput.fill(username)
     await passwordInput.fill(password)
     await submitBtn.click()

@@ -36,6 +36,7 @@ import {
   Users,
   Building2,
   CalendarRange,
+  ArrowRight,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -1836,6 +1837,9 @@ export function SchedulingTimesheetWorkspace({
   currentEmployeeName = 'User Management',
   canEdit = true,
   canDelete = true,
+  initialSiteId,
+  initialPeriod,
+  initialAttendanceWorkspaceOpen,
 }: {
   mode?: SchedulingTimesheetMode
   employees: EmployeeOption[]
@@ -1900,12 +1904,16 @@ export function SchedulingTimesheetWorkspace({
   }>
   canEdit?: boolean
   canDelete?: boolean
+  initialSiteId?: string
+  initialPeriod?: string
+  initialAttendanceWorkspaceOpen?: boolean
 }) {
   const router = useRouter()
-  const [period, setPeriod] = useState(currentMonthPeriod)
+  const [period, setPeriod] = useState(initialPeriod || currentMonthPeriod)
   const userDefaultSiteId = useMemo(() => {
+    if (initialSiteId) return String(initialSiteId)
     return String(currentEmployeeSiteId ?? sites[0]?.id ?? 'all')
-  }, [currentEmployeeSiteId, sites])
+  }, [initialSiteId, currentEmployeeSiteId, sites])
   const [siteId, setSiteId] = useState(userDefaultSiteId)
   const [showAttendanceSource, setShowAttendanceSource] = useState(false)
   const [sourceData, setSourceData] = useState<{ key: string; records: AttendanceRealRecord[]; overrides: { employeeId: number; day: number; source: string; status: string; clockIn: string; clockOut: string }[] } | null>(null)
@@ -1921,6 +1929,28 @@ export function SchedulingTimesheetWorkspace({
       .catch((error) => { if (active) setSourceError(error instanceof Error ? error.message : 'Gagal memuat data sumber') })
     return () => { active = false }
   }, [showAttendanceSource, siteId, period])
+
+  const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(
+    initialAttendanceWorkspaceOpen ?? false
+  )
+
+  useEffect(() => {
+    if (initialSiteId && initialSiteId !== siteId) {
+      setSiteId(initialSiteId)
+    }
+  }, [initialSiteId])
+
+  useEffect(() => {
+    if (initialPeriod && initialPeriod !== period) {
+      setPeriod(initialPeriod)
+    }
+  }, [initialPeriod])
+
+  useEffect(() => {
+    if (typeof initialAttendanceWorkspaceOpen === 'boolean') {
+      setAttendanceWorkspaceOpen(initialAttendanceWorkspaceOpen)
+    }
+  }, [initialAttendanceWorkspaceOpen])
   const [roster, setRoster] = useState('5:2')
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null)
   const [selectedPermanentCell, setSelectedPermanentCell] = useState<{
@@ -2181,7 +2211,6 @@ export function SchedulingTimesheetWorkspace({
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false)
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false)
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
-  const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(false)
   const [payrollWorkspaceOpen, setPayrollWorkspaceOpen] = useState(false)
   const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime' | 'time'>(
     'allowance'
@@ -2608,6 +2637,9 @@ export function SchedulingTimesheetWorkspace({
     setSiteId(String(nextSiteId))
     setPeriod(nextPeriod)
     setAttendanceWorkspaceOpen(true)
+    if (mode === 'attendance') {
+      router.push(`/dashboard/scheduling-timesheet/attendance/${nextSiteId}?period=${nextPeriod}`)
+    }
   }
 
   function openPayrollWorkspace(nextSiteId: number, nextPeriod: string) {
@@ -2639,7 +2671,11 @@ export function SchedulingTimesheetWorkspace({
           overrides: [],
         })
         setAttendanceCreateOpen(false)
-        openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+        if (mode === 'attendance') {
+          router.push(`/dashboard/scheduling-timesheet/attendance/${numericSiteId}?period=${attendanceCreatePeriod}`)
+        } else {
+          openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+        }
         router.refresh()
         toast.success('Attendance dibuat. Schedule dapat dilengkapi nanti.')
       } catch (error) {
@@ -2665,8 +2701,18 @@ export function SchedulingTimesheetWorkspace({
         toast.success(
           target.recreate ? 'Attendance dikosongkan. Silakan isi ulang.' : 'Attendance dihapus.'
         )
-        if (target.recreate) openAttendanceWorkspace(target.siteId, target.period)
-        else setAttendanceWorkspaceOpen(false)
+        if (target.recreate) {
+          if (mode === 'attendance') {
+            router.push(`/dashboard/scheduling-timesheet/attendance/${target.siteId}?period=${target.period}`)
+          } else {
+            openAttendanceWorkspace(target.siteId, target.period)
+          }
+        } else {
+          setAttendanceWorkspaceOpen(false)
+          if (mode === 'attendance') {
+            router.push('/dashboard/scheduling-timesheet/attendance')
+          }
+        }
         router.refresh()
       } catch (error) {
         toast.error('Gagal menghapus attendance', {
@@ -13386,14 +13432,27 @@ export function SchedulingTimesheetWorkspace({
                             label: item.name,
                           }))}
                           value={siteId}
-                          onChange={(val) => setSiteId(val)}
+                          onChange={(val) => {
+                            setSiteId(val)
+                            if (mode === 'attendance') {
+                              router.push(`/dashboard/scheduling-timesheet/attendance/${val}?period=${period}`)
+                            }
+                          }}
                           width="w-48"
                         />
                         <Input
                           type="month"
                           aria-label="Pilih bulan"
                           value={period}
-                          onChange={(e) => setPeriod(e.target.value)}
+                          onChange={(e) => {
+                            const nextPeriod = e.target.value
+                            setPeriod(nextPeriod)
+                            if (mode === 'attendance' && siteId && siteId !== 'all') {
+                              const url = new URL(window.location.href)
+                              url.searchParams.set('period', nextPeriod)
+                              window.history.replaceState(null, '', url.toString())
+                            }
+                          }}
                           className="h-9 w-[150px] bg-white text-xs font-semibold"
                         />
                       </div>
@@ -13403,7 +13462,12 @@ export function SchedulingTimesheetWorkspace({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setAttendanceWorkspaceOpen(false)}
+                        onClick={() => {
+                          setAttendanceWorkspaceOpen(false)
+                          if (mode === 'attendance') {
+                            router.push('/dashboard/scheduling-timesheet/attendance')
+                          }
+                        }}
                         className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium"
                       >
                         <ChevronLeft className="mr-1 size-4" /> Kembali ke list
@@ -15728,7 +15792,67 @@ export function SchedulingTimesheetWorkspace({
             )}
           </section>
         ) : (
-          <>
+          <div className="space-y-4">
+            {/* Dedicated Per-Site Navigation Grid */}
+            <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-5 shadow-xs">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="size-4.5 text-blue-600" />
+                    <h3 className="font-display text-foreground text-sm font-bold tracking-tight">
+                      Halaman Site Attendance (Dedicated Per-Site)
+                    </h3>
+                  </div>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    Setiap site memiliki URL halaman tersendiri. Buka site langsung agar saat refresh halaman tidak kembali ke awal.
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-xs font-semibold w-fit border-blue-200 bg-blue-50 text-blue-700">
+                  {sites.length} Site Aktif
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {sites.map((item) => {
+                  const isMySite = currentEmployeeSiteId === item.id
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => openAttendanceWorkspace(item.id, period)}
+                      className={cn(
+                        'group flex flex-col items-start justify-between rounded-xl border p-3 text-left transition-all',
+                        isMySite
+                          ? 'border-blue-300 bg-blue-50/70 hover:border-blue-500 hover:bg-blue-100/60 shadow-xs'
+                          : 'border-border/70 bg-white hover:border-blue-300 hover:bg-slate-50/80 shadow-2xs'
+                      )}
+                    >
+                      <div className="flex w-full items-center justify-between gap-1">
+                        <span className="font-display line-clamp-1 text-xs font-bold text-slate-800 transition-colors group-hover:text-blue-600">
+                          {item.name}
+                        </span>
+                        {isMySite && (
+                          <Badge
+                            variant="outline"
+                            className="h-4 px-1 py-0 text-[9px] font-semibold border-blue-300 bg-blue-100 text-blue-700"
+                          >
+                            Site Anda
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-muted-foreground line-clamp-1 mt-1 text-[10px]">
+                        {item.location || 'Semua Section'}
+                      </span>
+                      <div className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold text-blue-600 group-hover:underline">
+                        <span>Buka Site</span>
+                        <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </Card>
+
             <MinimalTableShell
               label="Attendance"
               title="Attendance"
@@ -15961,7 +16085,7 @@ export function SchedulingTimesheetWorkspace({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          </>
+          </div>
         )
       ) : null}
 
