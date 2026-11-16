@@ -19,6 +19,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { HiradcRiskMatrixTable } from '@/components/hiradc/hiradc-risk-matrix-table'
 import {
   PERMIT_TYPE_OPTIONS,
   EQUIPMENT_CHECKLIST_PER_TYPE,
@@ -1448,13 +1449,8 @@ export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
                 </div>
               </div>
             </div>
-            <div className="border border-slate-300 rounded-none p-0.5 bg-white shadow-sm flex items-center justify-center">
-              <img
-                src="/images/hiradc-risk-matrix-table.jpg"
-                alt="Matriks Risiko HIRADC (Likelihood vs Severity)"
-                className="w-full h-[200px] sm:h-[220px] object-fill rounded-none block"
-                loading="eager"
-              />
+            <div className="shadow-sm">
+              <HiradcRiskMatrixTable />
             </div>
           </div>
         </div>
