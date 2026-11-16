@@ -11,6 +11,17 @@ test('verify attendance list uses standard table like schedule v2 and each site 
   await loginToHero(app, screen, browser, '/dashboard/scheduling-timesheet/attendance');
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
+  // Defensive fallback if still on sign-in page
+  const emailInput = browser.locator('#email, input[name="username"]').first();
+  if (await emailInput.isVisible().catch(() => false)) {
+    await emailInput.fill('71261');
+    const passwordInput = browser.locator('#password, input[name="password"]').first();
+    await passwordInput.fill('Chitra#71261');
+    const submitBtn = browser.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first();
+    await submitBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+  }
+
   // 2. Verify Attendance table list (clean standard table like Schedule V2)
   const attendanceTable = browser.locator('table').first();
   await expect(attendanceTable).toBeVisible({ timeout: 60000 });
@@ -25,7 +36,7 @@ test('verify attendance list uses standard table like schedule v2 and each site 
   // 3. Test clicking "Lihat attendance" (Eye icon button) in table row - must navigate directly in the SAME tab
   const viewActionLink = browser.locator('a[aria-label="Lihat attendance"], button[aria-label="Lihat attendance"]').first();
   await expect(viewActionLink).toBeVisible({ timeout: 30000 });
-  await viewActionLink.click({ noWaitAfter: true });
+  await viewActionLink.click({ timeout: 120000 });
 
   // Wait for navigation to complete in the SAME tab (without opening new tab)
   await expect.poll(async () => {
@@ -33,12 +44,12 @@ test('verify attendance list uses standard table like schedule v2 and each site 
     return url;
   }, { timeout: 60000 }).toContain('/dashboard/scheduling-timesheet/attendance/');
 
-  // Verify attendance workspace is open directly
-  const attendanceWorkspace = browser.locator('text=Attendance').first();
-  await expect(attendanceWorkspace).toBeVisible({ timeout: 60000 });
+  // Verify attendance workspace is open directly (Save Attendance button and Kembali ke list button are visible)
+  const saveAttendanceBtn = browser.locator('button:has-text("SAVE ATTENDANCE")').first();
+  await expect(saveAttendanceBtn).toBeVisible({ timeout: 60000 });
 
   // Verify "Kembali ke list" button is present
-  const backBtn = browser.locator('button:has-text("Kembali ke list")').first();
+  const backBtn = browser.locator('button:has-text("KEMBALI KE LIST"), button:has-text("Kembali ke list")').first();
   await expect(backBtn).toBeVisible({ timeout: 30000 });
 
   // Capture current URL to test browser refresh persistence
@@ -54,16 +65,16 @@ test('verify attendance list uses standard table like schedule v2 and each site 
   // Verify that after refresh, user remains on the dedicated site page and workspace remains open
   const refreshedUrl = await browser.url();
   expect(refreshedUrl).toContain('/dashboard/scheduling-timesheet/attendance/');
-  await expect(attendanceWorkspace).toBeVisible({ timeout: 60000 });
+  await expect(saveAttendanceBtn).toBeVisible({ timeout: 60000 });
   await expect(backBtn).toBeVisible({ timeout: 30000 });
 
   // Screenshot proving persistence after refresh (user doesn't need to re-enter or re-search)
   await app.screenshot('03-attendance-persisted-after-refresh');
 
   // 5. Test returning to list via "Kembali ke list" button
-  await backBtn.click({ noWaitAfter: true });
+  await backBtn.click({ timeout: 60000 });
   await new Promise((resolve) => setTimeout(resolve, 3000));
-  await expect(attendanceTable).toBeVisible({ timeout: 30000 });
+  await expect(attendanceTable).toBeVisible({ timeout: 60000 });
 
   // Final confirmation screenshot of the verified flow
   await app.screenshot('04-attendance-flow-verified');

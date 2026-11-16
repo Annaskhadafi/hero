@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createHseOsmFinding } from "@/app/actions/hse-osm";
 import { uploadFile } from "@/app/actions/upload";
 import { compressImageFile } from "@/lib/client-image-compression";
 import { resolveClientUploadUrl } from "@/lib/client-upload-url";
-import { HSE_OSM_DEFAULT_CLASSIFICATIONS, type HseOsmRiskLevel, type HseOsmFindingCondition } from "@/lib/hse-osm-constants";
+import { HSE_OSM_ASPECT_LABELS, HSE_OSM_DEFAULT_CLASSIFICATIONS, type HseOsmRiskLevel, type HseOsmFindingCondition } from "@/lib/hse-osm-constants";
 
 type OsmFindingModalProps = {
   isOpen: boolean;
@@ -39,7 +39,7 @@ export function OsmFindingModal({
     classifications[0]?.id
   );
   const [classificationName, setClassificationName] = useState<string>(
-    categoryOptions[0]?.name || "Vehicle & Mobile Equipment Pneumatic & Hand Tools"
+    categoryOptions[0]?.name || "Keselamatan - Alat Pelindung Diri (APD)"
   );
   const [description, setDescription] = useState("");
   const [riskLevel, setRiskLevel] = useState<HseOsmRiskLevel>("MEDIUM");
@@ -232,12 +232,25 @@ export function OsmFindingModal({
               <SelectTrigger className="w-full text-xs">
                 <SelectValue placeholder="Pilih klasifikasi temuan..." />
               </SelectTrigger>
-              <SelectContent>
-                {categoryOptions.map((cat, idx) => (
-                  <SelectItem key={idx} value={cat.name} className="text-xs">
-                    {idx + 1}. {cat.name}
-                  </SelectItem>
-                ))}
+              <SelectContent className="max-h-72">
+                {(['Keselamatan', 'Kesehatan', 'Lingkungan'] as const).map((aspect) => {
+                  const items = categoryOptions.filter((c: any) =>
+                    c.aspect ? c.aspect === aspect : c.name.toLowerCase().startsWith(aspect.toLowerCase())
+                  )
+                  if (items.length === 0) return null
+                  return (
+                    <SelectGroup key={aspect}>
+                      <SelectLabel className="font-bold text-[11px] text-[#003461] bg-slate-100/90 dark:bg-slate-800 px-2.5 py-1 sticky top-0 z-10 border-b border-slate-200/60 dark:border-slate-700">
+                        {HSE_OSM_ASPECT_LABELS[aspect]}
+                      </SelectLabel>
+                      {items.map((cat, idx) => (
+                        <SelectItem key={(cat as any).code || idx} value={cat.name} className="text-xs py-1.5 pl-3">
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )
+                })}
               </SelectContent>
             </Select>
           </div>

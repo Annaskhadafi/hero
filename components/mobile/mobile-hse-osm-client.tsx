@@ -54,7 +54,9 @@ import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -135,6 +137,7 @@ async function uploadPhotoSafe(file: File, uploadTarget = 'hse-osm'): Promise<st
 import { compressImageFile } from '@/lib/client-image-compression'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
 import {
+  HSE_OSM_ASPECT_LABELS,
   HSE_OSM_DEFAULT_CLASSIFICATIONS,
   HSE_OSM_DEFAULT_FOCUS_ITEMS,
   HSE_OSM_FINDING_CONDITIONS,
@@ -2176,21 +2179,31 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   </p>
                 </div>
 
-                {/* Classification Type (10 Categories) */}
+                {/* Classification Type (30 Categories across 3 Aspects) */}
                 <div className="space-y-1">
                   <Label className="text-muted-foreground text-[11px] font-semibold">
-                    Tipe Klasifikasi (10 Kategori Standar HSE)
+                    Tipe Klasifikasi (30 Kategori Referensi HSE)
                   </Label>
                   <Select value={wizardClassification} onValueChange={setWizardClassification}>
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      {HSE_OSM_DEFAULT_CLASSIFICATIONS.map((c, idx) => (
-                        <SelectItem key={idx} value={c.name} className="text-xs">
-                          {idx + 1}. {c.name}
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-72">
+                      {(['Keselamatan', 'Kesehatan', 'Lingkungan'] as const).map((aspect) => {
+                        const items = HSE_OSM_DEFAULT_CLASSIFICATIONS.filter((c) => c.aspect === aspect)
+                        return (
+                          <SelectGroup key={aspect}>
+                            <SelectLabel className="font-bold text-[11px] text-[#003461] bg-slate-100/90 dark:bg-slate-800 px-2.5 py-1 sticky top-0 z-10 border-b border-slate-200/60 dark:border-slate-700">
+                              {HSE_OSM_ASPECT_LABELS[aspect]}
+                            </SelectLabel>
+                            {items.map((c) => (
+                              <SelectItem key={c.code} value={c.name} className="text-xs py-1.5 pl-3">
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -3209,7 +3222,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 {/* 2. Tipe Klasifikasi */}
                 <div className="space-y-1">
                   <Label className="text-muted-foreground text-[11px] font-semibold">
-                    Tipe Klasifikasi (10 Kategori Standar HSE){' '}
+                    Tipe Klasifikasi (30 Kategori Referensi HSE){' '}
                     <span className="text-red-500">*</span>
                   </Label>
                   <Select
@@ -3219,12 +3232,22 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                     <SelectTrigger className="h-9 text-xs">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      {HSE_OSM_DEFAULT_CLASSIFICATIONS.map((c, idx) => (
-                        <SelectItem key={idx} value={c.name} className="text-xs">
-                          {idx + 1}. {c.name}
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-72">
+                      {(['Keselamatan', 'Kesehatan', 'Lingkungan'] as const).map((aspect) => {
+                        const items = HSE_OSM_DEFAULT_CLASSIFICATIONS.filter((c) => c.aspect === aspect)
+                        return (
+                          <SelectGroup key={aspect}>
+                            <SelectLabel className="font-bold text-[11px] text-[#003461] bg-slate-100/90 dark:bg-slate-800 px-2.5 py-1 sticky top-0 z-10 border-b border-slate-200/60 dark:border-slate-700">
+                              {HSE_OSM_ASPECT_LABELS[aspect]}
+                            </SelectLabel>
+                            {items.map((c) => (
+                              <SelectItem key={c.code} value={c.name} className="text-xs py-1.5 pl-3">
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
