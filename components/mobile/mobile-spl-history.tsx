@@ -393,9 +393,9 @@ export function MobileSplHistory({
       )}
 
       {/* ── List Cards ── */}
-      {filtered.slice(0, visible).map((row) => (
+      {filtered.slice(0, visible).map((row, idx) => (
         <details
-          key={`${row.id}-${row.participantName || row.workerNames.join('-')}`}
+          key={`${row.id}-${row.participantName || ''}-${idx}`}
           className="group overflow-hidden rounded-[1.25rem] bg-white shadow-[0_14px_32px_rgba(8,32,51,0.08)] border border-slate-100/80"
         >
           <summary className="flex min-h-12 cursor-pointer list-none items-start justify-between gap-3 p-4">
