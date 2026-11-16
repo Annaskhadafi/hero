@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Activity,
@@ -7214,24 +7215,11 @@ export function SchedulingTimesheetWorkspace({
         const cell = itemPeriod !== period
           ? resolveCrossPeriodAttendanceCell(employee.id, itemPeriod, day, scheduleCode, employee)
           : getAttendanceCell(employee.id, day, scheduleCode)
-        const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
-        const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
-
-        if (manualVal !== null) {
-          const finalVal = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal))
-          return {
-            totalHours: finalVal,
-            intervals: [],
-            totalMinutes: Math.round(finalVal * 60),
-            autoMinutes: Math.round(finalVal * 60),
-            splMinutes: 0,
-            unauthorizedMinutes: 0,
-            source: 'Legacy' as const,
-            splNumbers: [],
-            workingIntervals: [],
-          }
-        }
-
+        const isMhuSite = Boolean(
+          (site?.name && /mhu/i.test(site.name)) ||
+          empSiteConfig.project === 'CK MHU' ||
+          employee.siteId === 128
+        )
         const isOffDay =
           cell.status === 'off' ||
           scheduleCode === 'OFF' ||
@@ -7250,11 +7238,8 @@ export function SchedulingTimesheetWorkspace({
             workingIntervals: [],
           }
         }
-        const isMhuSite = Boolean(
-          (site?.name && /mhu/i.test(site.name)) ||
-          empSiteConfig.project === 'CK MHU' ||
-          employee.siteId === 128
-        )
+
+        // Khusus CK-MHU (MP): Seluruh hari hadir otomatis 11 jam lembur merata (From 05.00 To 18.00)
         if (
           isMhuSite &&
           !isOffDay &&
@@ -7262,10 +7247,10 @@ export function SchedulingTimesheetWorkspace({
           cell.status !== 'sick' &&
           cell.status !== 'absent'
         ) {
-          const finalMhuOt = manualVal !== null ? manualVal : 11
+          const finalMhuOt = 11
           return {
             totalHours: finalMhuOt,
-            intervals: [{ start: '06.00', end: '18.00', hours: finalMhuOt, type: 'continuous' }],
+            intervals: [{ start: '05.00', end: '18.00', hours: finalMhuOt, type: 'continuous' }],
             totalMinutes: Math.round(finalMhuOt * 60),
             autoMinutes: Math.round(finalMhuOt * 60),
             splMinutes: 0,
@@ -7273,6 +7258,24 @@ export function SchedulingTimesheetWorkspace({
             source: 'Policy' as const,
             splNumbers: [],
             workingIntervals: [{ start: '06.00', end: '18.00', hours: 12 }],
+          }
+        }
+
+        const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+        const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
+        if (manualVal !== null) {
+          const finalVal = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal))
+          return {
+            totalHours: finalVal,
+            intervals: [],
+            totalMinutes: Math.round(finalVal * 60),
+            autoMinutes: Math.round(finalVal * 60),
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Legacy' as const,
+            splNumbers: [],
+            workingIntervals: [],
           }
         }
 
@@ -8754,18 +8757,6 @@ export function SchedulingTimesheetWorkspace({
     approvedSplOnly = false,
     excludeSpl = false
   ): OvertimeCalculationResult {
-    if (!ignoreOverride) {
-      const key = attendanceKey(employeeId, day)
-      const cell = manualAttendance[key]
-      if (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-        return legacyOvertimeResult(Number(cell.overtimeHours))
-      }
-      const override = attendanceOverrideByCell.get(key)
-      if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
-        return legacyOvertimeResult(Number(override.overtimeHours))
-      }
-    }
-
     const empSiteId =
       employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
     const empSiteConfig = getEmployeeSiteConfig(empSiteId)
@@ -8799,9 +8790,21 @@ export function SchedulingTimesheetWorkspace({
       return legacyOvertimeResult(0)
     }
 
-    // Khusus CK-MHU: Seluruh hari kerja otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk kerja)
+    // Khusus CK-MHU (MP): Seluruh hari kerja hadir otomatis 11 jam lembur merata (kecuali OFF / tidak masuk kerja)
     if (isMhuSite && !isNonWork) {
       return legacyOvertimeResult(11)
+    }
+
+    if (!ignoreOverride) {
+      const key = attendanceKey(employeeId, day)
+      const manualCell = manualAttendance[key]
+      if (manualCell && manualCell.overtimeHours !== undefined && manualCell.overtimeHours !== null) {
+        return legacyOvertimeResult(Number(manualCell.overtimeHours))
+      }
+      const override = attendanceOverrideByCell.get(key)
+      if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
+        return legacyOvertimeResult(Number(override.overtimeHours))
+      }
     }
     const defaultIn =
       shiftCode === 'NS' ? empSiteConfig.nightShiftClockIn : empSiteConfig.dayShiftClockIn
@@ -13365,7 +13368,7 @@ export function SchedulingTimesheetWorkspace({
                   <HeroSwitch label="Lihat Data Sumber" checked={showAttendanceSource} onCheckedChange={setShowAttendanceSource} />
                   <HeroSearchableSelect placeholder="Pilih site" options={sites.map((item) => ({ value: String(item.id), label: item.name }))} value={siteId} onChange={setSiteId} width="w-48" disabled={isAttendanceDirty} />
                   <Input type="month" aria-label="Pilih bulan" value={period} onChange={(e) => setPeriod(e.target.value)} className="h-9 w-[150px]" disabled={isAttendanceDirty} />
-                  <Button variant="ghost" className="h-9" disabled={isAttendanceDirty} onClick={() => { setShowAttendanceSource(false); setAttendanceWorkspaceOpen(false) }}>Kembali ke list</Button>
+                  <Button variant="ghost" className="h-9" disabled={isAttendanceDirty} onClick={() => { setShowAttendanceSource(false); setAttendanceWorkspaceOpen(false); if (mode === 'attendance') router.push('/dashboard/scheduling-timesheet/attendance') }}>Kembali ke list</Button>
                 </div>
                 <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Mode hanya baca. Data sumber berasal dari log attendance saat ini atau impor Excel yang masih tersimpan; nilainya dapat berbeda dari kondisi tepat sebelum edit manual. Riwayat impor yang tidak dapat dibuktikan tidak ditampilkan.</p>
                 {isAttendanceDirty ? <p className="text-sm text-amber-700">Simpan perubahan attendance sebelum mengganti site atau bulan.</p> : null}
@@ -15792,67 +15795,7 @@ export function SchedulingTimesheetWorkspace({
             )}
           </section>
         ) : (
-          <div className="space-y-4">
-            {/* Dedicated Per-Site Navigation Grid */}
-            <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-5 shadow-xs">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Building2 className="size-4.5 text-blue-600" />
-                    <h3 className="font-display text-foreground text-sm font-bold tracking-tight">
-                      Halaman Site Attendance (Dedicated Per-Site)
-                    </h3>
-                  </div>
-                  <p className="text-muted-foreground mt-0.5 text-xs">
-                    Setiap site memiliki URL halaman tersendiri. Buka site langsung agar saat refresh halaman tidak kembali ke awal.
-                  </p>
-                </div>
-                <Badge variant="outline" className="text-xs font-semibold w-fit border-blue-200 bg-blue-50 text-blue-700">
-                  {sites.length} Site Aktif
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                {sites.map((item) => {
-                  const isMySite = currentEmployeeSiteId === item.id
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => openAttendanceWorkspace(item.id, period)}
-                      className={cn(
-                        'group flex flex-col items-start justify-between rounded-xl border p-3 text-left transition-all',
-                        isMySite
-                          ? 'border-blue-300 bg-blue-50/70 hover:border-blue-500 hover:bg-blue-100/60 shadow-xs'
-                          : 'border-border/70 bg-white hover:border-blue-300 hover:bg-slate-50/80 shadow-2xs'
-                      )}
-                    >
-                      <div className="flex w-full items-center justify-between gap-1">
-                        <span className="font-display line-clamp-1 text-xs font-bold text-slate-800 transition-colors group-hover:text-blue-600">
-                          {item.name}
-                        </span>
-                        {isMySite && (
-                          <Badge
-                            variant="outline"
-                            className="h-4 px-1 py-0 text-[9px] font-semibold border-blue-300 bg-blue-100 text-blue-700"
-                          >
-                            Site Anda
-                          </Badge>
-                        )}
-                      </div>
-                      <span className="text-muted-foreground line-clamp-1 mt-1 text-[10px]">
-                        {item.location || 'Semua Section'}
-                      </span>
-                      <div className="mt-2.5 flex items-center gap-1 text-[11px] font-semibold text-blue-600 group-hover:underline">
-                        <span>Buka Site</span>
-                        <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </Card>
-
+          <>
             <MinimalTableShell
               label="Attendance"
               title="Attendance"
@@ -15916,7 +15859,13 @@ export function SchedulingTimesheetWorkspace({
                       onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
                     >
                       <TableCell className="text-primary px-4 py-3 font-semibold hover:underline">
-                        {historySite?.name ?? `Site ${plan.siteId}`}
+                        <Link
+                          href={`/dashboard/scheduling-timesheet/attendance/${plan.siteId}?period=${plan.period}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:underline"
+                        >
+                          {historySite?.name ?? `Site ${plan.siteId}`}
+                        </Link>
                       </TableCell>
                       <TableCell
                         className="px-4 py-3 font-medium tabular-nums"
@@ -15947,29 +15896,34 @@ export function SchedulingTimesheetWorkspace({
                       <TableCell className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <Button
+                            asChild
                             id={`btn-open-attendance-${plan.siteId}-${plan.period}`}
                             size="icon"
                             variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openAttendanceWorkspace(plan.siteId, plan.period)
-                            }}
                             aria-label="Lihat attendance"
                             title="Lihat attendance"
                           >
-                            <Eye className="size-4" />
+                            <Link
+                              href={`/dashboard/scheduling-timesheet/attendance/${plan.siteId}?period=${plan.period}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Eye className="size-4" />
+                            </Link>
                           </Button>
                           <Button
+                            asChild
+                            id={`btn-edit-attendance-${plan.siteId}-${plan.period}`}
                             size="icon"
                             variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openAttendanceWorkspace(plan.siteId, plan.period)
-                            }}
                             aria-label="Edit attendance"
                             title="Edit attendance"
                           >
-                            <Pencil className="size-4" />
+                            <Link
+                              href={`/dashboard/scheduling-timesheet/attendance/${plan.siteId}?period=${plan.period}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Pencil className="size-4" />
+                            </Link>
                           </Button>
                           <Button
                             size="icon"
@@ -16085,7 +16039,7 @@ export function SchedulingTimesheetWorkspace({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          </div>
+          </>
         )
       ) : null}
 

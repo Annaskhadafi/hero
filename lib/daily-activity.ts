@@ -3084,7 +3084,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         )
       )
       .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.id))
-      .limit(100),
+      .limit(2500),
     db
       .select({
         id: overtimeCommandLetterItems.id,

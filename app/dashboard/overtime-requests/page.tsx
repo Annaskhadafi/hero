@@ -98,7 +98,7 @@ export default async function OvertimeRequestsPage({ searchParams }: OvertimeReq
       .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
       .where(isSiteAdmin && activeEmployee?.siteId ? eq(overtimeCommandLetters.siteId, activeEmployee.siteId) : undefined)
       .orderBy(desc(overtimeCommandLetters.id))
-      .limit(isAdmin ? 500 : 250),
+      .limit(isAdmin ? 2500 : 1500),
     db
       .select({
         id: employees.id,

@@ -539,6 +539,14 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       }
     }
 
+    // Khusus CK-MHU (MP): Seluruh hari hadir otomatis dihitung 11 jam lembur merata (From 05.00 To 18.00)
+    const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
+    if (isMhuSite && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+      ot = 11
+      if (!otFrom) otFrom = '05.00'
+      if (!otTo) otTo = '18.00'
+    }
+
     if (ot > 0 && !isAbsent && !isStatusWithoutTime) {
       totalOT += ot
     }
@@ -582,11 +590,13 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? (hasManualOvertime ? '18.00' : '')).replace(':', '.')
       : ''
     const shouldRenderOtTimes =
-      (!isOff || hasManualOvertime) && (hasOvertimeIntervals || hasManualOvertime) && !isAbsent && !isStatusWithoutTime
+      isMhuSite
+        ? (!isOff || hasManualAttendance) && !isAbsent && !isStatusWithoutTime && ot > 0
+        : (!isOff || hasManualOvertime) && (hasOvertimeIntervals || hasManualOvertime) && !isAbsent && !isStatusWithoutTime
 
-    if (hasManualOvertime && !otFrom && !otTo) {
-      otFrom = workFrom || '07.00'
-      otTo = workTo || '18.00'
+    if ((hasManualOvertime || isMhuSite) && !otFrom && !otTo) {
+      otFrom = isMhuSite ? '05.00' : (workFrom || '07.00')
+      otTo = isMhuSite ? '18.00' : (workTo || '18.00')
     }
 
     // Col 2-3: Working Time From & To

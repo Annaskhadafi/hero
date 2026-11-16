@@ -100,7 +100,7 @@ export function MobileSplHistory({
 }) {
   const [query, setQuery] = useState(initialQuery)
   const [status, setStatus] = useState('all')
-  const [visible, setVisible] = useState(8)
+  const [visible, setVisible] = useState(30)
 
   useEffect(() => {
     if (initialQuery) {
