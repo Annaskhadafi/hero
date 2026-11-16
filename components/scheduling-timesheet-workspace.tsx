@@ -2914,14 +2914,37 @@ export function SchedulingTimesheetWorkspace({
     }
 
     const filtered = employees.filter((employee) => {
+      const isDirectMember = String(employee.siteId) === siteId
+      const hasSiteAttendance = siteAttendanceEmployeeIds.has(employee.id)
+      const isScheduled = scheduledEmployeeIds.has(employee.id)
+      const isUnassignedMatchingLocation = !employee.siteId && employee.locationName && employee.locationName === selectedSiteExtracted
+
+      // In attendance or payroll view:
+      // If the employee belongs to another site (e.g. mutated/transferred to another site),
+      // they MUST only appear if they actually have attendance records or overrides in this site for this period!
+      // They should NOT appear as ghost rows from old/stale schedules.
+      if (mode === 'attendance' || mode === 'payroll') {
+        if (hasSiteAttendance) return true
+        if (isDirectMember) return true
+        if (isUnassignedMatchingLocation) return true
+        return false
+      }
+
+      // In schedule or other modes:
+      // If employee already belongs to another site and has no attendance in this site for this period,
+      // do not pull them in from stale saved plan schedules.
+      if (employee.siteId && String(employee.siteId) !== siteId && !hasSiteAttendance) {
+        return false
+      }
+
       // 1. Employee belongs directly to this site
-      if (String(employee.siteId) === siteId) return true
+      if (isDirectMember) return true
       // 2. Included in this site's saved/scheduled plan roster
-      if (scheduledEmployeeIds.has(employee.id)) return true
+      if (isScheduled) return true
       // 3. Has attendance records or overrides in this site for the selected period
-      if (siteAttendanceEmployeeIds.has(employee.id)) return true
+      if (hasSiteAttendance) return true
       // 4. Fallback matching site location name ONLY for unassigned employees without siteId
-      if (!employee.siteId && employee.locationName && employee.locationName === selectedSiteExtracted) return true
+      if (isUnassignedMatchingLocation) return true
       return false
     })
 

@@ -13,6 +13,7 @@ import { buildHumanCapitalEmail, sendHumanCapitalEmail } from "@/lib/human-capit
 import { getServerSession } from "@/lib/auth-session";
 import { OBSOLETE_DEPARTMENT_CODES, OBSOLETE_SECTION_CODES } from "@/lib/org-seed-data";
 import { recordEmployeeLocationTransfer } from "@/lib/hero-admin";
+import { syncScheduleV2EmployeeSiteAcrossPlans } from "@/app/dashboard/admin-actions";
 
 export async function getEmployeesForContract(filters?: {
   departmentId?: number;
@@ -362,6 +363,7 @@ export async function updateEmployee(id: number, data: {
         actionByName: session.user.name || session.user.email || 'Admin',
       });
     }
+    await syncScheduleV2EmployeeSiteAcrossPlans(id, before.siteId, data.siteId);
   }
 
   if (updated.authUserId && (data.fullName !== undefined || data.email !== undefined)) {

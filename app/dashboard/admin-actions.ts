@@ -707,7 +707,7 @@ async function normalizeScheduleV2DraftRows(siteId: number, period: string, rows
   return result
 }
 
-async function syncScheduleV2EmployeeSiteAcrossPlans(
+export async function syncScheduleV2EmployeeSiteAcrossPlans(
   employeeId: number,
   sourceSiteId: number | null,
   targetSiteId: number
@@ -764,8 +764,26 @@ async function syncScheduleV2EmployeeSiteAcrossPlans(
       .where(eq(timesheetSchedulingPlansV2.siteId, sourceSiteId))
 
     for (const plan of sourcePlans) {
-      // Keep roster history intact for current and past periods; only remove from future periods!
-      if (plan.period <= currentPeriodStr) continue
+      // Keep roster history intact for past periods.
+      if (plan.period < currentPeriodStr) continue
+
+      // For current period, keep in source site ONLY IF employee has actual attendance in source site this month.
+      if (plan.period === currentPeriodStr) {
+        const attendanceInSource = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.siteId, sourceSiteId),
+              eq(attendanceRecords.employeeId, employeeId),
+              sql`to_char(${attendanceRecords.eventTime}, 'YYYY-MM') = ${plan.period}`
+            )
+          )
+        if ((attendanceInSource[0]?.count ?? 0) > 0) {
+          continue
+        }
+      }
+
       const remove = (rows: ScheduleV2Row[]) => rows.filter((row) => row.employeeId !== employeeId)
       await tx
         .update(timesheetSchedulingPlansV2)
@@ -775,6 +793,43 @@ async function syncScheduleV2EmployeeSiteAcrossPlans(
           updatedAt: new Date(),
         })
         .where(eq(timesheetSchedulingPlansV2.id, plan.id))
+    }
+
+    // Also remove from legacy V1 plans if any
+    const sourceV1Plans = await tx
+      .select({
+        id: timesheetSchedulingPlans.id,
+        period: timesheetSchedulingPlans.period,
+        draftSchedule: timesheetSchedulingPlans.draftSchedule,
+        fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+      })
+      .from(timesheetSchedulingPlans)
+      .where(eq(timesheetSchedulingPlans.siteId, sourceSiteId))
+
+    for (const plan of sourceV1Plans) {
+      if (plan.period < currentPeriodStr) continue
+      if (plan.period === currentPeriodStr) {
+        const attendanceInSource = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.siteId, sourceSiteId),
+              eq(attendanceRecords.employeeId, employeeId),
+              sql`to_char(${attendanceRecords.eventTime}, 'YYYY-MM') = ${plan.period}`
+            )
+          )
+        if ((attendanceInSource[0]?.count ?? 0) > 0) continue
+      }
+      const removeV1 = (rows: any[]) => (rows ?? []).filter((row: any) => row.employeeId !== employeeId)
+      await tx
+        .update(timesheetSchedulingPlans)
+        .set({
+          draftSchedule: removeV1(plan.draftSchedule as any[]),
+          fixedSchedule: removeV1(plan.fixedSchedule as any[]),
+          updatedAt: new Date(),
+        })
+        .where(eq(timesheetSchedulingPlans.id, plan.id))
     }
   })
 }
