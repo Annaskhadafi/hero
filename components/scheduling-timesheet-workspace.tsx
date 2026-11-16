@@ -7002,14 +7002,15 @@ export function SchedulingTimesheetWorkspace({
     const defaultSectionApprovedBy = normSection.includes('hse') ? rendra : romy
     const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
 
-    const isSingleEmployeeRecord = Boolean(employee && !sectionName)
+    const isSingleEmployeeRecord = Boolean(employee)
     const effectivePreparedBy =
+      (isSingleEmployeeRecord ? employee?.name : null) ||
+      cfgPreparedBy ||
       (normSection.includes('repair')
         ? arjun
         : normSection.includes('hse')
           ? fathurrahman
-          : cfgPreparedBy) ||
-      (isSingleEmployeeRecord ? employee?.name : defaultSectionPreparedBy) ||
+          : defaultSectionPreparedBy) ||
       baseSignatures.preparedBy
 
     const effectivePjo =
@@ -7416,6 +7417,11 @@ export function SchedulingTimesheetWorkspace({
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
+    const personalSigs = {
+      ...getSummaryPdfSignatures(secSigs),
+      preparedBy: employee.name,
+      externalPreparedBy: employee.name,
+    }
     return generateOvertimeRecordPdf({
       documentTitle: 'OVERTIME RECORD',
       period,
@@ -7427,7 +7433,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures(secSigs),
+      signatures: personalSigs,
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
@@ -7446,6 +7452,11 @@ export function SchedulingTimesheetWorkspace({
       await import('@/lib/timesheet/generate-attendance-pdf')
     const dayData = await buildEmployeeAllowanceDayData(employee, customDateHeaders)
     const secSigs = getSectionSignatures(employee.section, employee)
+    const personalSigs = {
+      ...getSummaryPdfSignatures(secSigs),
+      preparedBy: employee.name,
+      externalPreparedBy: employee.name,
+    }
     const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
     const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
     const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
@@ -7459,7 +7470,7 @@ export function SchedulingTimesheetWorkspace({
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures(secSigs),
+      signatures: personalSigs,
       days: dayData,
     })
   }
