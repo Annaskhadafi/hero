@@ -7224,7 +7224,8 @@ export function SchedulingTimesheetWorkspace({
           cell.status === 'off' ||
           scheduleCode === 'OFF' ||
           scheduleCode === 'FB' ||
-          scheduleCode === 'Libur'
+          scheduleCode === 'Libur' ||
+          cell.workingTimeFrom === 'OFF'
         if (isOffDay) {
           return {
             totalHours: 0,
@@ -8776,7 +8777,8 @@ export function SchedulingTimesheetWorkspace({
       shiftCode === 'OFF' ||
       shiftCode === 'FB' ||
       shiftCode === 'Libur' ||
-      cellStatus === 'off'
+      cellStatus === 'off' ||
+      cell.workingTimeFrom === 'OFF'
     const isNonWork =
       isOff ||
       cellStatus === 'sick' ||
@@ -8786,6 +8788,21 @@ export function SchedulingTimesheetWorkspace({
       cellStatus === 'standby' ||
       cellStatus === 'empty'
     const isHol = isHoliday(period, day, holidays)
+    if (isOff) {
+      if (!ignoreOverride) {
+        const key = attendanceKey(employeeId, day)
+        const manualCell = manualAttendance[key]
+        if (manualCell && manualCell.overtimeHours !== undefined && manualCell.overtimeHours !== null) {
+          return legacyOvertimeResult(Number(manualCell.overtimeHours))
+        }
+        const override = attendanceOverrideByCell.get(key)
+        if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
+          return legacyOvertimeResult(Number(override.overtimeHours))
+        }
+      }
+      return legacyOvertimeResult(0)
+    }
+
     if (!clockIn && !clockOut && isNonWork) {
       return legacyOvertimeResult(0)
     }
@@ -8965,7 +8982,11 @@ export function SchedulingTimesheetWorkspace({
       scheduleCode === 'FB' ||
       cell.status === 'field_break' ||
       (fieldBreakDaysByEmployee.get(employeeId)?.has(day) ?? false)
-    const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur' || cell.status === 'off'
+    const isRosterOff =
+      scheduleCode === 'OFF' ||
+      scheduleCode === 'Libur' ||
+      cell.status === 'off' ||
+      cell.workingTimeFrom === 'OFF'
     const isHolidayDay = Boolean(holidaysByDay.get(day))
     // Catatan instruksi atasan & Mas Ojan:
     // Overtime Summary TIDAK terinput / di-OFF-kan dari akumulasi lembur SPL otomatis.

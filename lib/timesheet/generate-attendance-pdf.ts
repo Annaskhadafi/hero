@@ -448,7 +448,8 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
       day.scheduleCode === 'Libur' ||
-      day.status === 'off'
+      day.status === 'off' ||
+      day.workingTimeFrom === 'OFF'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const isAbsent =
@@ -540,14 +541,19 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     }
 
     // Khusus CK-MHU (MP): Seluruh hari hadir otomatis dihitung 11 jam lembur merata (From 05.00 To 18.00)
+    // PENTING: Hari OFF / Libur / FB TIDAK BOLEH mendapatkan lembur otomatis 11 jam (wajib kosong)
     const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
-    if (isMhuSite && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+    if (isMhuSite && !isAbsent && !isStatusWithoutTime && !isOff) {
       ot = 11
       if (!otFrom) otFrom = '05.00'
       if (!otTo) otTo = '18.00'
+    } else if (isOff && (!hasManualOverride || ot <= 0)) {
+      ot = 0
+      otFrom = ''
+      otTo = ''
     }
 
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime) {
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualOverride)) {
       totalOT += ot
     }
 
@@ -591,10 +597,10 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       : ''
     const shouldRenderOtTimes =
       isMhuSite
-        ? (!isOff || hasManualAttendance) && !isAbsent && !isStatusWithoutTime && ot > 0
+        ? !isOff && !isAbsent && !isStatusWithoutTime && ot > 0
         : (!isOff || hasManualOvertime) && (hasOvertimeIntervals || hasManualOvertime) && !isAbsent && !isStatusWithoutTime
 
-    if ((hasManualOvertime || isMhuSite) && !otFrom && !otTo) {
+    if (!isOff && (hasManualOvertime || isMhuSite) && !otFrom && !otTo) {
       otFrom = isMhuSite ? '05.00' : (workFrom || '07.00')
       otTo = isMhuSite ? '18.00' : (workTo || '18.00')
     }
@@ -857,7 +863,8 @@ export async function appendSummarySplPersonPages(
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
       day.scheduleCode === 'Libur' ||
-      day.status === 'off'
+      day.status === 'off' ||
+      day.workingTimeFrom === 'OFF'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const isAbsent =
@@ -873,8 +880,13 @@ export async function appendSummarySplPersonPages(
     const hasAttendance =
       !isAbsent &&
       (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
+    const hasManualOverride = Boolean(
+      day.hasManualOvertimeOverride ||
+      day.overtime?.source === 'Legacy' ||
+      (day.manualOvertimeHours !== undefined && day.manualOvertimeHours !== null)
+    )
     const configuredOvertimeIntervals =
-      isOff && !hasManualAttendance
+      isOff && !hasManualOverride
         ? []
         : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
     const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
@@ -889,7 +901,9 @@ export async function appendSummarySplPersonPages(
       configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
     )
 
-    let ot = day.overtime?.totalHours ?? 0
+    let ot = hasManualOverride
+      ? (day.manualOvertimeHours ?? day.overtime?.totalHours ?? 0)
+      : (day.overtime?.totalHours ?? 0)
     const isRealtimeMode = input.overtimeMode === 'realtime'
 
     // Jika mode realtime, atau hari libur/OFF: Overtime To mengikuti jam realtime pulang aktual (clockOut)
@@ -945,14 +959,19 @@ export async function appendSummarySplPersonPages(
     }
 
     // Khusus CK-MHU: Seluruh hari kerja normal otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk)
+    // PENTING: Hari OFF / Libur / FB TIDAK BOLEH mendapatkan lembur otomatis 11 jam (wajib kosong)
     const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
-    if (isMhuSite && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+    if (isMhuSite && !isAbsent && !isStatusWithoutTime && !isOff) {
       ot = 11
       if (!otFrom) otFrom = '06.00'
       if (!otTo) otTo = '18.00'
+    } else if (isOff && (!hasManualOverride || ot <= 0)) {
+      ot = 0
+      otFrom = ''
+      otTo = ''
     }
 
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualOverride)) {
       totalOT += ot
     }
 
@@ -1032,7 +1051,7 @@ export async function appendSummarySplPersonPages(
     })
 
     const shouldRenderOtTimes =
-      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+      !isAbsent && !isStatusWithoutTime && (!isOff || hasManualOverride) && ot > 0
 
     // Col 2-3: Overtime Mulai & Selesai
     drawCell(page, colX[2], y, cols[2], dynamicRowH, {
@@ -2016,7 +2035,8 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
       day.scheduleCode === 'Libur' ||
-      day.status === 'off'
+      day.status === 'off' ||
+      day.workingTimeFrom === 'OFF'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const bgColor = isFb
       ? rgb(0.95, 0.9, 1)
