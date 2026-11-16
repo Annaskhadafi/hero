@@ -162,14 +162,16 @@ export function PdfCanvasViewer({
 
         setLoadingProgress("Mengunduh isi dokumen...");
 
+        const resolvedPdfUrl =
+          typeof window !== 'undefined' && url && url.startsWith('/')
+            ? `${window.location.origin}${url}`
+            : url;
+
         const loadingTask = window.pdfjsLib.getDocument({
-          url,
+          url: resolvedPdfUrl,
           withCredentials: true,
           disableAutoFetch: false,
           disableStream: false,
-          cMapUrl: "https://unpkg.com/pdfjs-dist@3.11.174/cmaps/",
-          cMapPacked: true,
-          standardFontDataUrl: "https://unpkg.com/pdfjs-dist@3.11.174/standard_fonts/",
         });
 
         loadingTask.onProgress = (progressData: { loaded: number; total: number }) => {
