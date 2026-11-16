@@ -77,7 +77,7 @@ type SiteAllowanceInput = {
   days: AttendanceDayData[]
 }
 
-function formatPeriodLabel(period: string) {
+export function formatPeriodLabel(period: string) {
   const [year, month] = period.split('-').map(Number)
   const months = [
     '',

@@ -6,6 +6,7 @@ import {
   buildCustomDateRange,
   formatCustomDateRangeLabel,
   formatCustomDateRangeFull,
+  formatPeriodLabel,
 } from '../lib/timesheet/cutoff-utils'
 
 describe('CK Billing Cut-off Date Range Utilities (16 - 15)', () => {
@@ -119,5 +120,12 @@ describe('CK Billing Cut-off Date Range Utilities (16 - 15)', () => {
     expect(formatCustomDateRangeLabel('2026-09-17', '2026-11-16')).toBe('Cut-off (17 Sep - 16 Nov 2026)')
     expect(formatCustomDateRangeFull('2026-09-16', '2026-10-15')).toBe('16 September s/d 15 Oktober 2026')
     expect(formatCustomDateRangeFull('2025-12-16', '2026-01-15')).toBe('16 Desember 2025 s/d 15 Januari 2026')
+  })
+
+  test('formats period label properly for PDF titles', () => {
+    expect(formatPeriodLabel('2026-10')).toBe('October-2026')
+    expect(formatPeriodLabel('2026-01')).toBe('January-2026')
+    expect(formatPeriodLabel('2026-11')).toBe('November-2026')
+    expect(formatPeriodLabel('')).toBe('')
   })
 })

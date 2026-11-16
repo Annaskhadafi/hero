@@ -134,6 +134,7 @@ import {
   buildCustomDateRange,
   formatCustomDateRangeLabel,
   formatCustomDateRangeFull,
+  formatPeriodLabel,
   getPreviousPeriod,
   type CkCutoffDateItem,
 } from '@/lib/timesheet/cutoff-utils'

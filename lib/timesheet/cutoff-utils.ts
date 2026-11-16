@@ -151,6 +151,27 @@ export function buildCkCutoffDateRange(
  * Returns formatted label for CK Cut-off period.
  * Example: 'Cut-off Tagihan CK (16 Sep - 15 Okt 2026)'
  */
+export function formatPeriodLabel(period: string): string {
+  if (!period) return ''
+  const [year, month] = period.split('-').map(Number)
+  const months = [
+    '',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ]
+  return `${months[month] || ''}-${year || ''}`
+}
+
 export function formatCkCutoffLabel(period: string): string {
   const prevPeriod = getPreviousPeriod(period)
   const [, prevMonthStr] = prevPeriod.split('-')
