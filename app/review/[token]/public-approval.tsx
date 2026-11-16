@@ -23,6 +23,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle, CheckCircle2, PenTool, FileCheck, Edit, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { PdfCanvasViewer } from '@/components/hero-genius/pdf-canvas-viewer'
 import {
   Dialog,
   DialogContent,
@@ -161,26 +163,23 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     const file = e.target.files?.[0]
     if (!file) return
 
-    const isImage = file.type.startsWith('image/')
-    const isPdf = file.type === 'application/pdf'
+    const lowerName = file.name.toLowerCase()
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lowerName)
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || lowerName.endsWith('.pdf')
     if (!isImage && !isPdf) {
-      alert('File harus berupa PDF atau gambar (JPG/PNG).')
+      toast.error('Berkas harus berupa PDF atau gambar (JPG/PNG/WEBP).')
       e.target.value = ''
       return
     }
 
-    if (isImage && file.size > 5 * 1024 * 1024) {
-      alert('Ukuran gambar maksimal 5MB.')
-      e.target.value = ''
-      return
-    }
-    if (isPdf && file.size > 10 * 1024 * 1024) {
-      alert('Ukuran PDF maksimal 10MB.')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas maksimal 15MB.')
       e.target.value = ''
       return
     }
 
     setIsUploadingAttachment(true)
+    const toastId = toast.loading(`Mengunggah "${file.name}"...`)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -189,7 +188,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
       const res = await uploadFile(formData)
       if (!res.success || !res.url) {
-        alert(res.error || 'Gagal mengunggah file.')
+        toast.error(res.error || 'Gagal mengunggah file.', { id: toastId })
         return
       }
 
@@ -209,11 +208,12 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
       if (attachRes.success && attachRes.attachments) {
         setAttachments(attachRes.attachments)
+        toast.success(`Lampiran "${file.name}" berhasil diunggah!`, { id: toastId })
       } else {
-        alert(attachRes.error || 'Gagal menyimpan lampiran.')
+        toast.error(attachRes.error || 'Gagal menyimpan lampiran.', { id: toastId })
       }
     } catch (err: any) {
-      alert(err.message || 'Terjadi kesalahan saat upload file.')
+      toast.error(err.message || 'Terjadi kesalahan saat upload file.', { id: toastId })
     } finally {
       setIsUploadingAttachment(false)
       e.target.value = ''
@@ -2093,7 +2093,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                                 <Eye className="size-3.5" /> Preview
                               </Button>
                               <a
-                                href={att.fileUrl}
+                                href={resolveUploadUrl(att.fileUrl)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
@@ -2115,7 +2115,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                                     <Eye className="size-3" /> Layar Penuh
                                   </button>
                                   <a
-                                    href={att.fileUrl}
+                                    href={resolveUploadUrl(att.fileUrl)}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-xs text-slate-600 hover:underline flex items-center gap-1"
@@ -2124,11 +2124,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                                   </a>
                                 </div>
                               </div>
-                              <iframe
-                                src={`${att.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                                title={att.fileName}
-                                className="w-full h-[650px] border-0 bg-white"
-                              />
+                              <div className="w-full h-[650px] bg-slate-50 relative">
+                                <PdfCanvasViewer
+                                  url={resolveUploadUrl(att.fileUrl)}
+                                  filename={att.fileName}
+                                  preferNativeViewer={false}
+                                  hideToolbar={false}
+                                  hideDownload={false}
+                                  className="w-full h-full"
+                                />
+                              </div>
                             </div>
                           ) : (
                             <div
@@ -2136,7 +2141,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                               onClick={() => setPreviewModalAttachment(att)}
                             >
                               <img
-                                src={att.fileUrl}
+                                src={resolveUploadUrl(att.fileUrl)}
                                 alt={att.fileName}
                                 className="max-h-[700px] max-w-full object-contain rounded shadow-sm hover:opacity-95 transition"
                               />
@@ -2191,7 +2196,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <a
-                href={previewModalAttachment?.fileUrl}
+                href={resolveUploadUrl(previewModalAttachment?.fileUrl)}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
@@ -2199,7 +2204,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 <ExternalLink className="size-3.5" /> Buka Tab Baru
               </a>
               <a
-                href={previewModalAttachment?.fileUrl}
+                href={resolveUploadUrl(previewModalAttachment?.fileUrl)}
                 download={previewModalAttachment?.fileName}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition"
               >
@@ -2209,14 +2214,19 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </DialogHeader>
           <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-2 sm:p-4">
             {previewModalAttachment?.fileType === 'pdf' ? (
-              <iframe
-                src={`${previewModalAttachment.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                title={previewModalAttachment.fileName}
-                className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white"
-              />
+              <div className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white overflow-hidden relative">
+                <PdfCanvasViewer
+                  url={resolveUploadUrl(previewModalAttachment.fileUrl)}
+                  filename={previewModalAttachment.fileName}
+                  preferNativeViewer={false}
+                  hideToolbar={false}
+                  hideDownload={false}
+                  className="w-full h-full"
+                />
+              </div>
             ) : (
               <img
-                src={previewModalAttachment?.fileUrl}
+                src={resolveUploadUrl(previewModalAttachment?.fileUrl)}
                 alt={previewModalAttachment?.fileName}
                 className="max-h-full max-w-full object-contain rounded shadow-lg"
               />

@@ -4079,19 +4079,25 @@ export async function addContractReviewAttachment(params: {
         .from(hcContractReviewApprovals)
         .where(eq(hcContractReviewApprovals.approvalToken, params.token))
         .limit(1)
-      if (!approval) {
-        return { success: false, error: 'Approval token tidak valid.' }
+      if (approval) {
+        reviewId = reviewId || approval.reviewId
+        uploaderName = uploaderName || approval.approverName
+        uploaderRole = uploaderRole || approval.approverRole
+        stepOrder = approval.stepOrder
+      } else {
+        const session = await getServerSession()
+        if (!session?.user && !reviewId) {
+          return { success: false, error: 'Approval token tidak valid.' }
+        }
+        uploaderName = uploaderName || session?.user?.name || 'Reviewer'
+        uploaderRole = uploaderRole || 'Reviewer'
       }
-      reviewId = approval.reviewId
-      uploaderName = uploaderName || approval.approverName
-      uploaderRole = uploaderRole || approval.approverRole
-      stepOrder = approval.stepOrder
     } else {
       const session = await getServerSession()
-      if (!session?.user) {
+      if (!session?.user && !reviewId) {
         return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
       }
-      uploaderName = uploaderName || session.user.name || 'User'
+      uploaderName = uploaderName || session?.user?.name || 'User'
       uploaderRole = uploaderRole || 'Admin/Creator'
     }
 
@@ -4129,12 +4135,14 @@ export async function addContractReviewAttachment(params: {
       .set({ attachments: updatedAttachments, updatedAt: new Date() })
       .where(eq(hcEmployeeContractReviews.id, reviewId))
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
-    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
-    if (params.token) {
-      revalidatePath(`/review/${params.token}`)
-    }
+    try {
+      revalidatePath('/dashboard/hc/contract-review')
+      revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+      revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      if (params.token) {
+        revalidatePath(`/review/${params.token}`)
+      }
+    } catch {}
 
     return { success: true, attachment: newAttachment, attachments: updatedAttachments }
   } catch (error: any) {
@@ -4158,13 +4166,17 @@ export async function deleteContractReviewAttachment(params: {
         .from(hcContractReviewApprovals)
         .where(eq(hcContractReviewApprovals.approvalToken, params.token))
         .limit(1)
-      if (!approval) {
-        return { success: false, error: 'Approval token tidak valid.' }
+      if (approval) {
+        reviewId = reviewId || approval.reviewId
+      } else {
+        const session = await getServerSession()
+        if (!session?.user && !reviewId) {
+          return { success: false, error: 'Approval token tidak valid.' }
+        }
       }
-      reviewId = approval.reviewId
     } else {
       const session = await getServerSession()
-      if (!session?.user) {
+      if (!session?.user && !reviewId) {
         return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
       }
     }
@@ -4191,12 +4203,14 @@ export async function deleteContractReviewAttachment(params: {
       .set({ attachments: updatedAttachments, updatedAt: new Date() })
       .where(eq(hcEmployeeContractReviews.id, reviewId))
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
-    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
-    if (params.token) {
-      revalidatePath(`/review/${params.token}`)
-    }
+    try {
+      revalidatePath('/dashboard/hc/contract-review')
+      revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+      revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      if (params.token) {
+        revalidatePath(`/review/${params.token}`)
+      }
+    } catch {}
 
     return { success: true, attachments: updatedAttachments }
   } catch (error: any) {

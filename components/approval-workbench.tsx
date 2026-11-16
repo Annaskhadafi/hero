@@ -45,6 +45,7 @@ import { toast } from 'sonner'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { PdfCanvasViewer } from '@/components/hero-genius/pdf-canvas-viewer'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
@@ -693,26 +694,23 @@ export function InboxTab({
     const file = e.target.files?.[0]
     if (!file) return
 
-    const isImage = file.type.startsWith('image/')
-    const isPdf = file.type === 'application/pdf'
+    const lowerName = file.name.toLowerCase()
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lowerName)
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || lowerName.endsWith('.pdf')
     if (!isImage && !isPdf) {
-      toast.error('File harus berupa PDF atau gambar (JPG/PNG).')
+      toast.error('Berkas harus berupa PDF atau gambar (JPG/PNG/WEBP).')
       e.target.value = ''
       return
     }
 
-    if (isImage && file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran gambar maksimal 5MB.')
-      e.target.value = ''
-      return
-    }
-    if (isPdf && file.size > 10 * 1024 * 1024) {
-      toast.error('Ukuran PDF maksimal 10MB.')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas maksimal 15MB.')
       e.target.value = ''
       return
     }
 
     setIsUploadingContractAttachment(true)
+    const toastId = toast.loading(`Mengunggah "${file.name}"...`)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -729,7 +727,7 @@ export function InboxTab({
 
       const res = await uploadFile(formData)
       if (!res.success || !res.url) {
-        toast.error(res.error || 'Gagal mengunggah berkas.')
+        toast.error(res.error || 'Gagal mengunggah berkas.', { id: toastId })
         return
       }
 
@@ -742,9 +740,11 @@ export function InboxTab({
         uploadedByRole: (doc as any).approverRole || 'Approver',
       }
 
+      const targetReviewId = (doc as any).rawContractReview?.reviewId || (doc as any).reviewId
+
       const attachRes = await addContractReviewAttachment({
         token: token || undefined,
-        reviewId: (doc as any).rawContractReview?.reviewId || (doc as any).reviewId,
+        reviewId: targetReviewId,
         file: fileInfo,
       })
 
@@ -753,13 +753,13 @@ export function InboxTab({
           ...prev,
           [doc.id]: [...(prev[doc.id] || []), attachRes.attachment],
         }))
-        toast.success(`Lampiran "${file.name}" berhasil diunggah!`)
+        toast.success(`Lampiran "${file.name}" berhasil diunggah!`, { id: toastId })
       } else {
-        toast.error(attachRes.error || 'Gagal menyimpan lampiran dokumen.')
+        toast.error(attachRes.error || 'Gagal menyimpan lampiran dokumen.', { id: toastId })
       }
     } catch (err: any) {
       console.error(err)
-      toast.error(err.message || 'Terjadi kesalahan saat upload berkas.')
+      toast.error(err.message || 'Terjadi kesalahan saat upload berkas.', { id: toastId })
     } finally {
       setIsUploadingContractAttachment(false)
       e.target.value = ''
@@ -4995,12 +4995,19 @@ export function InboxTab({
                               Lampiran Reviewer ({allAttachments.length})
                             </p>
                           </div>
-                          <label className="cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 transition shadow-2xs">
-                            <Upload className="size-3" />
+                          <label className={cn(
+                            "cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 transition shadow-2xs",
+                            isUploadingContractAttachment && "opacity-60 cursor-not-allowed pointer-events-none"
+                          )}>
+                            {isUploadingContractAttachment ? (
+                              <Loader2 className="size-3 animate-spin text-indigo-600" />
+                            ) : (
+                              <Upload className="size-3" />
+                            )}
                             <span>{isUploadingContractAttachment ? 'Mengunggah...' : '+ Upload Berkas'}</span>
                             <input
                               type="file"
-                              accept="application/pdf,image/*"
+                              accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp"
                               className="hidden"
                               disabled={isUploadingContractAttachment}
                               onChange={(e) => handleUploadContractAttachment(e, currentBatchDoc)}
@@ -5043,7 +5050,7 @@ export function InboxTab({
                                       <Eye className="size-3" /> Preview
                                     </Button>
                                     <a
-                                      href={att.fileUrl}
+                                      href={resolveUploadUrl(att.fileUrl)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center justify-center h-7 w-7 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-md"
@@ -5337,7 +5344,7 @@ export function InboxTab({
                 </div>
                 <div className="flex items-center gap-2 pr-6">
                   <a
-                    href={previewAttachmentModal.fileUrl}
+                    href={resolveUploadUrl(previewAttachmentModal.fileUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg"
@@ -5348,14 +5355,19 @@ export function InboxTab({
               </DialogHeader>
               <div className="flex-1 w-full bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center p-2 mt-2">
                 {previewAttachmentModal.fileType === 'pdf' || previewAttachmentModal.fileName?.toLowerCase().endsWith('.pdf') ? (
-                  <iframe
-                    src={`${previewAttachmentModal.fileUrl}#toolbar=1&navpanes=0`}
-                    className="w-full h-full border-0 bg-white rounded-lg shadow-sm"
-                    title={previewAttachmentModal.fileName}
-                  />
+                  <div className="w-full h-full min-h-[500px] bg-white rounded-lg overflow-hidden relative">
+                    <PdfCanvasViewer
+                      url={resolveUploadUrl(previewAttachmentModal.fileUrl)}
+                      filename={previewAttachmentModal.fileName}
+                      preferNativeViewer={false}
+                      hideToolbar={false}
+                      hideDownload={false}
+                      className="w-full h-full"
+                    />
+                  </div>
                 ) : (
                   <img
-                    src={previewAttachmentModal.fileUrl}
+                    src={resolveUploadUrl(previewAttachmentModal.fileUrl)}
                     alt={previewAttachmentModal.fileName}
                     className="max-h-full max-w-full object-contain rounded-lg shadow-sm"
                   />
