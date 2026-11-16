@@ -88,26 +88,48 @@ async function uploadPhotoSafe(file: File, uploadTarget = 'hse-osm'): Promise<st
   formData.append('file', file)
   formData.append('uploadTarget', uploadTarget)
 
-  try {
-    const apiRes = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    })
-    if (apiRes.ok) {
-      const data = await apiRes.json()
-      if (data.success && data.url) {
-        return data.url
+  let lastErrorMsg = 'Gagal mengunggah foto ke Cloud Storage.'
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    // 1. Try fast streaming API route first
+    try {
+      const apiRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      if (apiRes.ok) {
+        const data = await apiRes.json()
+        if (data.success && data.url) {
+          return data.url
+        }
+        if (data.error) lastErrorMsg = data.error
+      } else {
+        const errJson = await apiRes.json().catch(() => null)
+        if (errJson?.error) lastErrorMsg = errJson.error
       }
+    } catch (err: any) {
+      console.warn(`[uploadPhotoSafe] Attempt ${attempt} API route error, falling back to Server Action:`, err)
+      lastErrorMsg = err?.message || lastErrorMsg
     }
-  } catch (err) {
-    console.warn('[uploadPhotoSafe] API route error, falling back to Server Action:', err)
+
+    // 2. Fall back to Server Action
+    try {
+      const res = await uploadFile(formData)
+      if (res.success && res.url) {
+        return res.url
+      }
+      if (res.error) lastErrorMsg = res.error
+    } catch (err: any) {
+      console.warn(`[uploadPhotoSafe] Attempt ${attempt} Server Action error:`, err)
+      lastErrorMsg = err?.message || lastErrorMsg
+    }
+
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 600))
+    }
   }
 
-  const res = await uploadFile(formData)
-  if (res.success && res.url) {
-    return res.url
-  }
-  throw new Error(res.error || 'Gagal mengunggah foto ke Cloud Storage.')
+  throw new Error(lastErrorMsg)
 }
 
 import { compressImageFile } from '@/lib/client-image-compression'
@@ -656,16 +678,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
           mimeType: 'image/webp',
         })
 
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('uploadTarget', 'hse-osm')
-
-        const res = await uploadFile(formData)
-        if (res.success && res.url) {
-          newUrls.push(res.url)
-        } else {
-          throw new Error(res.error || 'Gagal mengunggah foto.')
-        }
+        const url = await uploadPhotoSafe(file, 'hse-osm')
+        newUrls.push(url)
       }
 
       if (target === 'wizard') {
@@ -705,16 +719,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
           mimeType: 'image/webp',
         })
 
-        const formData = new FormData()
-        formData.append('file', file)
-        formData.append('uploadTarget', 'hse-osm')
-
-        const res = await uploadFile(formData)
-        if (res.success && res.url) {
-          newUrls.push(res.url)
-        } else {
-          throw new Error(res.error || 'Gagal mengunggah foto.')
-        }
+        const url = await uploadPhotoSafe(file, 'hse-osm')
+        newUrls.push(url)
       }
       setEditingFindingPhotos((prev) => [...prev, ...newUrls])
     } catch (err: any) {
