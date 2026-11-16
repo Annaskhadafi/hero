@@ -49,7 +49,7 @@ const APPROVAL_ROLES_MAP: Record<string, string> = {
   section_head_initial: 'Section Head',
   employee: 'Karyawan',
   section_head_confirmation: 'Section Head',
-  central_service_manager: 'Department Head',
+  central_service_manager: 'Manager',
   hr: 'HR',
 }
 
@@ -243,7 +243,7 @@ export function ContractReviewClientForm({
     hrName: initialData?.hrName || "Kesuma Bagaskara",
     hrTitle: initialData?.hrTitle || resolveEmployeeTitle(initialData?.hrName || "Kesuma Bagaskara", "HR-GA"),
     nextSuperiorName: initialData?.nextSuperiorName || "",
-    nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Department Head") : ""),
+    nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Manager") : ""),
     recommendation: initialData?.recommendation || "contract_extended",
     contractExtendedMonths: initialData?.contractExtendedMonths || "",
     contractEndDate: initialData?.contractEndDate || "",
@@ -644,7 +644,7 @@ export function ContractReviewClientForm({
       const superiorName = isCk ? 'Andi Safari' : (masterHeadMap?.departments?.[String(emp.departmentId)]?.headName || 'Romy Hidayat')
       const superiorTitle = isCk ? 'HSE Coordinator' : 'Department Head'
       const nextSuperiorName = masterHeadMap?.departments?.[String(emp.departmentId)]?.headName || 'Romy Hidayat'
-      const nextSuperiorTitle = 'Department Head'
+      const nextSuperiorTitle = 'Manager'
       const hrName = currentForm.hrName || approvalSettings?.approvalMatrix?.hrName || 'Kesuma Bagaskara'
       const hrTitle = currentForm.hrTitle || resolveEmployeeTitle(hrName, 'HR-GA')
 
@@ -694,7 +694,7 @@ export function ContractReviewClientForm({
       }
 
       const managerName = masterDepartmentHead?.headName || approvalSettings.approvalMatrix.managerName
-      const managerTitle = masterDepartmentHead?.headTitle || 'Department Head'
+      const managerTitle = masterDepartmentHead?.headTitle || 'Manager'
 
       // For Site: find PJO/TE at same site from employees list
       let leaderName = sectionHeadName
@@ -738,7 +738,7 @@ export function ContractReviewClientForm({
         superiorName: finalSuperiorName,
         superiorTitle: currentForm.superiorTitle || superiorTitle || resolveEmployeeTitle(finalSuperiorName, "Superior"),
         nextSuperiorName: finalNextSuperiorName,
-        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle || resolveEmployeeTitle(finalNextSuperiorName, "Department Head"),
+        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle || resolveEmployeeTitle(finalNextSuperiorName, "Manager"),
         hrName,
         hrTitle,
       }
@@ -865,7 +865,7 @@ export function ContractReviewClientForm({
       superiorName: finalSuperiorName,
       superiorTitle: currentForm.superiorTitle || newSupTitle || resolveEmployeeTitle(finalSuperiorName, 'Superior'),
       nextSuperiorName: finalNextSuperiorName,
-      nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle || resolveEmployeeTitle(finalNextSuperiorName, 'Department Head'),
+      nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle || resolveEmployeeTitle(finalNextSuperiorName, 'Manager'),
       hrName: finalHrName,
       hrTitle: newHrTitle || currentForm.hrTitle || resolveEmployeeTitle(finalHrName, 'HR-GA'),
     }
@@ -913,7 +913,7 @@ export function ContractReviewClientForm({
       }
     }
     if (form.nextSuperiorName && !form.nextSuperiorTitle) {
-      const resolved = resolveEmployeeTitle(form.nextSuperiorName, 'Department Head')
+      const resolved = resolveEmployeeTitle(form.nextSuperiorName, 'Manager')
       if (resolved && resolved !== form.nextSuperiorTitle) {
         updated.nextSuperiorTitle = resolved
         shouldUpdate = true
@@ -1078,7 +1078,7 @@ export function ContractReviewClientForm({
           leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
           superiorTitle: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
           hrTitle: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
-          nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
+          nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Manager'),
           employeeId: form.employeeId ? parseInt(form.employeeId) : null,
           contractExtendedMonths: form.contractExtendedMonths ? parseInt(form.contractExtendedMonths as string) : null,
           todayDate: new Date(form.todayDate),
@@ -1677,7 +1677,7 @@ export function ContractReviewClientForm({
       </table>
       <div className="font-bold mb-1.5">Recommendation</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 text-[7.5pt]">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Purpose to Permanent</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
@@ -1887,9 +1887,9 @@ export function ContractReviewClientForm({
         key: 'next_superior',
         label: 'Next Superior Signature',
         name: nextSuperiorName,
-        title: form.nextSuperiorTitle || resolveEmployeeTitle(nextSuperiorName, 'Department Head'),
-        signatureUrl: getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, visibleManagerApprovalSig || findSignatureForName(nextSuperiorName)),
-        meta: managerApprovalMeta || getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, nextSuperiorApprover),
+        title: form.nextSuperiorTitle || resolveEmployeeTitle(nextSuperiorName, 'Manager'),
+        signatureUrl: getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head', 'manager', 'Manager'], nextSuperiorName, visibleManagerApprovalSig || findSignatureForName(nextSuperiorName)),
+        meta: managerApprovalMeta || getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head', 'manager', 'Manager'], nextSuperiorName, nextSuperiorApprover),
       },
       {
         key: 'hr',
@@ -2692,7 +2692,7 @@ export function ContractReviewClientForm({
                 <Select value={form.recommendation} onValueChange={(val) => setForm({ ...form, recommendation: val })}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Pilih Rekomendasi" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="confirm_permanent">Confirm to Permanent</SelectItem>
+                    <SelectItem value="confirm_permanent">Purpose to Permanent</SelectItem>
                     <SelectItem value="contract_extended">Contract Extended</SelectItem>
                     <SelectItem value="terminate_probation">Unsuccessful Probationary</SelectItem>
                     <SelectItem value="contract_ended">Contract Ended</SelectItem>
@@ -2767,7 +2767,7 @@ export function ContractReviewClientForm({
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
                     if (m) {
-                      setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Department Head" }))
+                      setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Manager" }))
                       syncApprovalSignatory('nextSuperior', m.name, m)
                     } else {
                       setForm(prev => ({ ...prev, nextSuperiorName: "", nextSuperiorTitle: "" }))
@@ -2776,7 +2776,7 @@ export function ContractReviewClientForm({
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
-                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Department Head'}` }))}
+                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Manager'}` }))}
                   widthClassName="w-full"
                 />
               </div>

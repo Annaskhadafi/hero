@@ -174,7 +174,7 @@ export function ContractReviewClientPage({
       section_head_initial: 'Section Head',
       employee: 'Karyawan',
       section_head_confirmation: 'Section Head Confirmation',
-      central_service_manager: 'Department Head',
+      central_service_manager: 'Manager',
       hr: 'HR',
     }
     return role ? labels[role] || role.replaceAll('_', ' ') : ''
@@ -1370,7 +1370,7 @@ export function ContractReviewClientPage({
               <div className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Manager & HR</p>
                 <div className="space-y-1">
-                  <Label>Central Service Manager</Label>
+                  <Label>Manager</Label>
                   <SearchableSelect label="Manager" placeholder="Pilih Manager..." value={(() => { const emp = employees.find((e: any) => e.name === settingsForm.approvalMatrix.managerName); return emp ? String(emp.id) : '' })()} onValueChange={(val) => updateApproverField('manager', val)} options={employeeOptions} widthClassName="w-full" />
                   <Input value={settingsForm.approvalMatrix.managerEmail} onChange={(e) => setSettingsForm({ ...settingsForm, approvalMatrix: { ...settingsForm.approvalMatrix, managerEmail: e.target.value } })} placeholder="Email..." className="h-8 text-xs" />
                 </div>

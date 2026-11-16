@@ -3756,7 +3756,7 @@ const CONTRACT_REVIEW_ROLE_LABELS: Record<string, string> = {
   section_head_initial: 'Section Head',
   employee: 'Karyawan',
   section_head_confirmation: 'Section Head',
-  central_service_manager: 'Department Head',
+  central_service_manager: 'Manager',
   hr: 'HR',
 }
 

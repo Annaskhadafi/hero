@@ -224,7 +224,7 @@ export function ContractReviewPrintableDoc({
   const leaderApprover = approvalsList?.find((s: any) => s.stepOrder === 1)
   const employeeApprover = approvalsList?.find((s: any) => s.stepOrder === 2 || s.approverRole === 'employee')
   const superiorApprover = approvalsList?.find((s: any) => s.stepOrder === 3 || s.approverRole === 'section_head_confirmation')
-  const nextSuperiorApprover = approvalsList?.find((s: any) => s.stepOrder === 4 || s.approverRole === 'central_service_manager')
+  const nextSuperiorApprover = approvalsList?.find((s: any) => s.stepOrder === 4 || s.approverRole === 'central_service_manager' || (s.approverRole || '').toLowerCase().includes('manager') || s.approverRole === 'department_head')
   const hrApprover = approvalsList?.find((s: any) => s.stepOrder === 5 || s.approverRole === 'hr')
 
   const leaderName = form.leaderName || leaderApprover?.approverName || ''
@@ -236,13 +236,13 @@ export function ContractReviewPrintableDoc({
   const leaderSig = previewLeaderSig || getStepSignature(1, ['pjo_or_te_initial', 'section_head_initial', 'leader'], leaderName, form.leaderSignatureDataUrl)
   const employeeSig = getStepSignature(2, ['employee'], employeeDisplayName)
   const superiorSig = getStepSignature(3, ['section_head_confirmation', 'section_head', 'superior'], superiorName)
-  const nextSuperiorSig = getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName)
+  const nextSuperiorSig = getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head', 'manager', 'Manager'], nextSuperiorName)
   const hrSig = getStepSignature(5, ['hr', 'hr_ga'], hrName)
 
   const leaderMeta = getStepMeta(1, ['pjo_or_te_initial', 'section_head_initial', 'leader'], leaderName, leaderApprover)
   const employeeMeta = getStepMeta(2, ['employee'], employeeDisplayName, employeeApprover)
   const superiorMeta = getStepMeta(3, ['section_head_confirmation', 'section_head', 'superior'], superiorName, superiorApprover)
-  const nextSuperiorMeta = getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, nextSuperiorApprover)
+  const nextSuperiorMeta = getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head', 'manager', 'Manager'], nextSuperiorName, nextSuperiorApprover)
   const hrMeta = getStepMeta(5, ['hr', 'hr_ga'], hrName, hrApprover)
 
   const displaySignatories: Array<{
@@ -285,7 +285,7 @@ export function ContractReviewPrintableDoc({
       key: 'next_superior',
       label: 'Next Superior Signature',
       name: nextSuperiorName,
-      title: form.nextSuperiorTitle || 'Department Head',
+      title: form.nextSuperiorTitle || 'Manager',
       signatureUrl: nextSuperiorSig,
       meta: nextSuperiorMeta,
     },
@@ -319,7 +319,7 @@ export function ContractReviewPrintableDoc({
   // Any dynamic steps beyond step 5
   for (const step of approvalsList) {
     const role = step.approverRole || ''
-    const isStandardRole = ['pjo_or_te_initial', 'section_head_initial', 'employee', 'section_head_confirmation', 'central_service_manager', 'hr'].includes(role)
+    const isStandardRole = ['pjo_or_te_initial', 'section_head_initial', 'employee', 'section_head_confirmation', 'central_service_manager', 'manager', 'Manager', 'dept_head', 'department_head', 'hr'].includes(role)
     if (!isStandardRole || step.stepOrder > 5) {
       const normalized = (step.approverName || '').trim().toLowerCase()
       if (normalized && !seenSignerKeys.has(normalized)) {
@@ -407,7 +407,7 @@ export function ContractReviewPrintableDoc({
       </table>
       <div className="font-bold mb-1.5">Recommendation</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 text-[7.5pt]">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Purpose to Permanent</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>

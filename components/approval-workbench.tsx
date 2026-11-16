@@ -5089,7 +5089,7 @@ export function InboxTab({
                             placeholder="Pilih Rekomendasi Evaluasi"
                             options={[
                               { value: 'contract_extended', label: 'Perpanjangan Masa Kontrak (Contract Extended)' },
-                              { value: 'confirm_permanent', label: 'Pengangkatan Karyawan Tetap (Confirm Permanent)' },
+                              { value: 'confirm_permanent', label: 'Pengangkatan Karyawan Tetap (Purpose to Permanent)' },
                               { value: 'terminate_probation', label: 'Pemutusan Masa Percobaan (Terminate Probation)' },
                               { value: 'contract_ended', label: 'Selesai Kontrak / Tidak Diperpanjang (Contract Ended)' },
                             ]}
