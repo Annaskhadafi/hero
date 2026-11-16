@@ -610,6 +610,16 @@ const updateScheduleV2CellSchema = scheduleV2KeySchema.extend({
   code: scheduleV2CodeSchema,
 })
 
+const updateScheduleV2BatchCellsSchema = scheduleV2KeySchema.extend({
+  cells: z.array(
+    z.object({
+      employeeId: z.number().int().positive(),
+      day: z.number().int().positive(),
+      code: scheduleV2CodeSchema,
+    })
+  ),
+})
+
 async function getActiveScheduleEmployees(siteId: number) {
   const rows = await db
     .select({ id: employees.id, section: employees.section, role: employees.role })
@@ -1128,6 +1138,98 @@ export async function updateSchedulingTimesheetPlanV2CellAction(
   })
   revalidateSchedulingV2Paths()
   return { ok: true, updatedAt: now.toISOString() }
+}
+
+export async function updateSchedulingTimesheetPlanV2BatchCellsAction(
+  input: z.infer<typeof updateScheduleV2BatchCellsSchema>
+) {
+  const payload = updateScheduleV2BatchCellsSchema.parse(input)
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const actorUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+
+  if (!payload.cells.length) return { ok: true, updatedCount: 0 }
+
+  await db.transaction(async (tx) => {
+    const [plan] = await tx
+      .select({
+        status: timesheetSchedulingPlansV2.status,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .limit(1)
+    if (!plan) throw new Error('Schedule V2 tidak ditemukan.')
+
+    const dayCount = getScheduleV2DayCount(payload.period)
+    let draftSchedule = [...((plan.draftSchedule ?? []) as ScheduleV2Row[])]
+    let activeSchedule = [...((plan.activeSchedule ?? []) as ScheduleV2Row[])]
+
+    const updatesByEmp = new Map<number, Map<number, string>>()
+    for (const cell of payload.cells) {
+      if (cell.day > dayCount) continue
+      if (!updatesByEmp.has(cell.employeeId)) updatesByEmp.set(cell.employeeId, new Map())
+      updatesByEmp.get(cell.employeeId)!.set(cell.day, cell.code)
+    }
+
+    for (const [empId, dayMap] of updatesByEmp.entries()) {
+      let draftRow = draftSchedule.find((r) => r.employeeId === empId)
+      if (!draftRow) {
+        draftRow = { employeeId: empId, schedule: Array(dayCount).fill('') }
+        draftSchedule.push(draftRow)
+      }
+      let activeRow = activeSchedule.find((r) => r.employeeId === empId)
+      if (!activeRow && plan.status === 'active') {
+        activeRow = { employeeId: empId, schedule: Array(dayCount).fill('') }
+        activeSchedule.push(activeRow)
+      }
+
+      const nextDraftSched = [...draftRow.schedule]
+      const nextActiveSched = activeRow ? [...activeRow.schedule] : null
+
+      for (const [day, code] of dayMap.entries()) {
+        nextDraftSched[day - 1] = code as any
+        if (nextActiveSched) nextActiveSched[day - 1] = code as any
+      }
+
+      draftRow.schedule = nextDraftSched
+      if (activeRow && nextActiveSched) activeRow.schedule = nextActiveSched
+    }
+
+    await tx
+      .update(timesheetSchedulingPlansV2)
+      .set({
+        draftSchedule,
+        ...(plan.status === 'active' ? { activeSchedule } : {}),
+        updatedByUserId: actorUserId,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+  })
+
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_cell_updated',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}:${payload.cells.length}_cells`,
+    description: `Batch updated ${payload.cells.length} roster cells in Schedule V2.`,
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, updatedCount: payload.cells.length, updatedAt: now.toISOString() }
 }
 
 const scheduleV2EmployeeAssignmentSchema = scheduleV2KeySchema.extend({
@@ -1882,60 +1984,88 @@ export async function saveAttendanceRealOverridesAction(
         set: { attendanceStatus: 'saved', lastSavedAt: now, savedByUserId, updatedAt: now },
       })
 
-    // Synchronize attendance overtime to existing SPLs for matching employees & dates
-    for (const ov of validOverrides) {
-      if (ov.overtimeHours != null && ov.employeeId && ov.day) {
+    // Synchronize attendance overtime to existing SPLs for matching employees & dates (optimized batch)
+    const overtimeOverrides = validOverrides.filter(
+      (ov) => ov.overtimeHours != null && Number(ov.overtimeHours) > 0 && ov.employeeId && ov.day
+    )
+
+    if (overtimeOverrides.length > 0) {
+      const targetEmpIds = [...new Set(overtimeOverrides.map((o) => o.employeeId))]
+      const partSplRows = await tx
+        .select({
+          splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+          employeeId: overtimeCommandLetterParticipants.employeeId,
+        })
+        .from(overtimeCommandLetterParticipants)
+        .where(inArray(overtimeCommandLetterParticipants.employeeId, targetEmpIds))
+
+      const partSplMap = new Map<number, Set<number>>()
+      for (const p of partSplRows) {
+        if (!partSplMap.has(p.employeeId)) partSplMap.set(p.employeeId, new Set())
+        partSplMap.get(p.employeeId)!.add(p.splId)
+      }
+
+      const allPartSplIds = [...new Set(partSplRows.map((p) => p.splId))]
+      const monthStart = new Date(`${payload.period}-01T00:00:00.000Z`)
+      const monthEnd = new Date(`${payload.period}-31T23:59:59.999Z`)
+
+      const splConditions = [
+        gte(overtimeCommandLetters.workDate, monthStart),
+        lte(overtimeCommandLetters.workDate, monthEnd),
+      ]
+      if (allPartSplIds.length > 0) {
+        splConditions.push(
+          or(
+            inArray(overtimeCommandLetters.requestedByEmployeeId, targetEmpIds),
+            inArray(overtimeCommandLetters.id, allPartSplIds)
+          )!
+        )
+      } else {
+        splConditions.push(inArray(overtimeCommandLetters.requestedByEmployeeId, targetEmpIds))
+      }
+
+      const matchingSpls = await tx
+        .select({
+          id: overtimeCommandLetters.id,
+          requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
+          plannedStartAt: overtimeCommandLetters.plannedStartAt,
+          workDate: overtimeCommandLetters.workDate,
+        })
+        .from(overtimeCommandLetters)
+        .where(and(...splConditions))
+
+      for (const ov of overtimeOverrides) {
         const dateStr = `${payload.period}-${String(ov.day).padStart(2, '0')}`
-        const startDay = new Date(`${dateStr}T00:00:00.000Z`)
-        const endDay = new Date(`${dateStr}T23:59:59.999Z`)
+        const startDayTime = new Date(`${dateStr}T00:00:00.000Z`).getTime()
+        const endDayTime = new Date(`${dateStr}T23:59:59.999Z`).getTime()
         const otHours = Number(ov.overtimeHours)
+        const empSplIds = partSplMap.get(ov.employeeId)
 
-        if (otHours > 0) {
-          // Find matching SPLs
-          const partSplRows = await tx
-            .select({ splId: overtimeCommandLetterParticipants.overtimeCommandLetterId })
-            .from(overtimeCommandLetterParticipants)
-            .where(eq(overtimeCommandLetterParticipants.employeeId, ov.employeeId))
+        const matched = matchingSpls.filter((spl) => {
+          const splTime = spl.workDate ? new Date(spl.workDate).getTime() : 0
+          if (splTime < startDayTime || splTime > endDayTime) return false
+          return spl.requestedByEmployeeId === ov.employeeId || empSplIds?.has(spl.id)
+        })
 
-          const partSplIds = partSplRows.map((p) => p.splId)
+        for (const spl of matched) {
+          const start = spl.plannedStartAt
+            ? new Date(spl.plannedStartAt)
+            : new Date(`${dateStr}T17:00:00.000Z`)
+          const newEnd = new Date(start.getTime() + Math.round(otHours * 60) * 60 * 1000)
+          await tx
+            .update(overtimeCommandLetters)
+            .set({ plannedEndAt: newEnd, updatedAt: now })
+            .where(eq(overtimeCommandLetters.id, spl.id))
 
-          const matchingSpls = await tx
-            .select({
-              id: overtimeCommandLetters.id,
-              plannedStartAt: overtimeCommandLetters.plannedStartAt,
-            })
-            .from(overtimeCommandLetters)
+          await tx
+            .update(overtimeCommandLetterParticipants)
+            .set({ overtimeCreditMinutes: Math.round(otHours * 60), updatedAt: now })
             .where(
               and(
-                partSplIds.length > 0
-                  ? or(
-                      eq(overtimeCommandLetters.requestedByEmployeeId, ov.employeeId),
-                      inArray(overtimeCommandLetters.id, partSplIds)
-                    )
-                  : eq(overtimeCommandLetters.requestedByEmployeeId, ov.employeeId),
-                gte(overtimeCommandLetters.workDate, startDay),
-                lte(overtimeCommandLetters.workDate, endDay)
+                eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, spl.id),
+                eq(overtimeCommandLetterParticipants.employeeId, ov.employeeId)
               )
             )
-
-          for (const spl of matchingSpls) {
-            const start = spl.plannedStartAt ? new Date(spl.plannedStartAt) : new Date(`${dateStr}T17:00:00.000Z`)
-            const newEnd = new Date(start.getTime() + Math.round(otHours * 60) * 60 * 1000)
-            await tx
-              .update(overtimeCommandLetters)
-              .set({ plannedEndAt: newEnd, updatedAt: now })
-              .where(eq(overtimeCommandLetters.id, spl.id))
-
-            await tx
-              .update(overtimeCommandLetterParticipants)
-              .set({ overtimeCreditMinutes: Math.round(otHours * 60), updatedAt: now })
-              .where(
-                and(
-                  eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, spl.id),
-                  eq(overtimeCommandLetterParticipants.employeeId, ov.employeeId)
-                )
-              )
-          }
         }
       }
     }

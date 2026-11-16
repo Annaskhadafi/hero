@@ -91,6 +91,7 @@ import {
   saveSchedulingConfigAction,
   saveSchedulingTimesheetPlanAction,
   updateSchedulingTimesheetPlanV2CellAction,
+  updateSchedulingTimesheetPlanV2BatchCellsAction,
   saveTimesheetFieldBreakPlansAction,
   saveTimesheetPayrollSnapshotAction,
   submitSchedulingPeriodForReviewAction,
@@ -1997,6 +1998,13 @@ export function SchedulingTimesheetWorkspace({
     day: number
   } | null>(null)
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false)
+  const [isBulkEditAttendanceOpen, setIsBulkEditAttendanceOpen] = useState(false)
+  const [bulkRosterEditCode, setBulkRosterEditCode] = useState<ScheduleCode | ''>('')
+  const [bulkAttendanceStatus, setBulkAttendanceStatus] = useState<AttendanceCellStatus>('off')
+  const [bulkClockIn, setBulkClockIn] = useState('')
+  const [bulkClockOut, setBulkClockOut] = useState('')
+  const [bulkNote, setBulkNote] = useState('')
+  const [bulkOvertimeHours, setBulkOvertimeHours] = useState('')
   const [attendanceView, setAttendanceView] = useState<
     'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt' | 'ovt_spl'
   >('attendance')
@@ -5857,17 +5865,192 @@ export function SchedulingTimesheetWorkspace({
     )
   }
 
+  function selectAllWeekends() {
+    const daysCount = daysInMonth(period)
+    const weekendKeys: string[] = []
+    const [year, month] = period.split('-').map(Number)
+    for (let day = 1; day <= daysCount; day++) {
+      const date = new Date(year, month - 1, day)
+      const dayOfWeek = date.getDay()
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        for (const empRow of displayedAttendanceRows) {
+          weekendKeys.push(attendanceKey(empRow.employee.id, day))
+        }
+      }
+    }
+    setSelectedAttendanceKeys(weekendKeys)
+    setMultiSelectAttendance(true)
+    toast.info(`${weekendKeys.length} sel akhir pekan (Sabtu & Minggu) dipilih.`)
+  }
+
   function applyBulkAttendance(patch: Partial<ManualAttendanceCell>) {
     if (!guardOpenPeriod('Bulk edit attendance')) return
-    setManualAttendance((current) => {
-      const next = { ...current }
-      for (const key of selectedAttendanceKeys) {
-        const [employeeId, day] = key.split('-').map(Number)
-        next[key] = { ...getAttendanceCell(employeeId, day), source: 'manual', ...patch }
+    if (selectedAttendanceKeys.length === 0) {
+      toast.error('Pilih setidaknya 1 sel attendance terlebih dahulu.')
+      return
+    }
+    const numericSiteId = Number(
+      siteId !== 'all' && Number(siteId) > 0 ? siteId : (sites[0]?.id || 126)
+    )
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+
+    const nextManual = { ...manualAttendance }
+    const overridesToSave: any[] = []
+
+    for (const key of selectedAttendanceKeys) {
+      const [employeeId, day] = key.split('-').map(Number)
+      const existing = getAttendanceCell(employeeId, day)
+      const isNonPresent = patch.status && patch.status !== 'present'
+      const updated: ManualAttendanceCell = {
+        ...existing,
+        source: 'manual',
+        ...patch,
+        ...(isNonPresent ? { clockIn: '', clockOut: '', overtimeHours: null } : {}),
       }
-      return next
+      nextManual[key] = updated
+      overridesToSave.push({
+        employeeId,
+        day,
+        status: updated.status,
+        clockIn: updated.clockIn || '',
+        clockOut: updated.clockOut || '',
+        note: updated.note || '',
+        source: 'manual',
+        overtimeHours: updated.overtimeHours ?? null,
+      })
+    }
+
+    setManualAttendance(nextManual)
+    setIsAttendanceDirty(false)
+    const count = overridesToSave.length
+    clearAttendanceSelection()
+
+    startSavingAttendance(async () => {
+      try {
+        const result = await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period,
+          overrides: overridesToSave,
+        })
+        if (result.ok) {
+          toast.success(`${count} sel attendance berhasil disimpan ke database.`)
+          router.refresh()
+        } else {
+          toast.error('Gagal menyimpan bulk attendance.')
+        }
+      } catch (err) {
+        toast.error('Gagal menyimpan bulk attendance ke database.')
+      }
     })
-    setIsAttendanceDirty(true)
+  }
+
+  async function onSaveBulkAttendance() {
+    if (!guardOpenPeriod('Bulk edit attendance')) return
+    if (selectedAttendanceKeys.length === 0) {
+      toast.error('Pilih setidaknya 1 sel untuk di-edit.')
+      return
+    }
+    const numericSiteId = Number(
+      siteId !== 'all' && Number(siteId) > 0 ? siteId : (sites[0]?.id || 126)
+    )
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+
+    // 1. Update Roster if selected
+    if (bulkRosterEditCode) {
+      const sanitizedCode = (['IN', 'Libur', 'Sakit', 'Emergency'].includes(bulkRosterEditCode)
+        ? ''
+        : bulkRosterEditCode) as '' | 'OFF' | 'NS' | 'DS' | 'ST' | 'FB' | 'AL'
+      const rosterCells = selectedAttendanceKeys.map((key) => {
+        const [empId, day] = key.split('-').map(Number)
+        return { employeeId: empId, day, code: sanitizedCode }
+      })
+      try {
+        if (savedPlan?.sourceVersion === 'v2') {
+          await updateSchedulingTimesheetPlanV2BatchCellsAction({
+            siteId: numericSiteId,
+            period,
+            cells: rosterCells,
+          })
+        }
+        setOverrides((curr) => {
+          const next = { ...curr }
+          for (const c of rosterCells) {
+            next[`${c.employeeId}-${c.day}`] = bulkRosterEditCode as ScheduleCode
+          }
+          return next
+        })
+      } catch (err) {
+        console.error('[Bulk Roster Edit Error]', err)
+      }
+    }
+
+    // 2. Prepare attendance cells
+    const isNonPresent = bulkAttendanceStatus !== 'present'
+    const finalClockIn = isNonPresent ? '' : bulkClockIn
+    const finalClockOut = isNonPresent ? '' : bulkClockOut
+    const finalOt = isNonPresent
+      ? null
+      : bulkOvertimeHours !== ''
+        ? Number(bulkOvertimeHours)
+        : null
+
+    const nextManual = { ...manualAttendance }
+    const overridesToSave: any[] = []
+
+    for (const key of selectedAttendanceKeys) {
+      const [employeeId, day] = key.split('-').map(Number)
+      const existing = getAttendanceCell(employeeId, day)
+      const updated: ManualAttendanceCell = {
+        ...existing,
+        status: bulkAttendanceStatus,
+        clockIn: finalClockIn,
+        clockOut: finalClockOut,
+        note:
+          bulkNote !== ''
+            ? bulkNote
+            : isNonPresent
+              ? `${bulkAttendanceStatus.toUpperCase()}`
+              : existing?.note || 'Manual edit',
+        overtimeHours: finalOt,
+        source: 'manual',
+      }
+      nextManual[key] = updated
+      overridesToSave.push({
+        employeeId,
+        day,
+        status: updated.status,
+        clockIn: updated.clockIn || '',
+        clockOut: updated.clockOut || '',
+        note: updated.note || '',
+        source: 'manual',
+        overtimeHours: finalOt,
+      })
+    }
+
+    setManualAttendance(nextManual)
+    setIsAttendanceDirty(false)
+    setIsBulkEditAttendanceOpen(false)
+    const count = overridesToSave.length
+    clearAttendanceSelection()
+
+    // 3. Save to database directly
+    startSavingAttendance(async () => {
+      try {
+        const result = await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period,
+          overrides: overridesToSave,
+        })
+        if (result.ok) {
+          toast.success(`Berhasil menyimpan perubahan untuk ${count} sel ke database.`)
+          router.refresh()
+        } else {
+          toast.error('Gagal menyimpan perubahan ke database.')
+        }
+      } catch (err) {
+        toast.error('Error saat menyimpan ke database.')
+      }
+    })
   }
 
   function clearAttendanceSelection() {
@@ -7472,7 +7655,9 @@ export function SchedulingTimesheetWorkspace({
               ? 'MSA'
               : view === 'meals'
                 ? 'MLS'
-                : 'TU'
+                : view === 'attendance'
+                  ? 'Attendance'
+                  : 'TU'
       const activeSections = activeSectionsLabel.replace(/[\s\/]+/g, '_')
       const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
       const cutoffSuffix = effectiveCutoffLabel ? `_${effectiveCutoffLabel.replace(/[\s–-]+/g, '_')}` : ''
@@ -7543,7 +7728,9 @@ export function SchedulingTimesheetWorkspace({
               ? 'MSA'
               : view === 'meals'
                 ? 'MLS'
-                : 'TU'
+                : view === 'attendance'
+                  ? 'Attendance'
+                  : 'TU'
       const cutoffPart = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
       openPdfPreview(pdf, `${label} Summary Grid – ${site?.name || ''} – ${period}${cutoffPart}`)
     } catch (error) {
@@ -8100,6 +8287,158 @@ export function SchedulingTimesheetWorkspace({
       })
     } finally {
       setIsPreviewingSitePdf(false)
+    }
+  }
+
+  async function previewOvertimeRecordOnlyPdf(
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
+    const allEmployees = rows.map((row) => row.employee)
+    if (allEmployees.length === 0) {
+      toast.error('Tidak ada karyawan untuk site ini.')
+      return
+    }
+    const filteredEmployees = availableSiteSections.length > 1
+      ? allEmployees.filter((emp) => isEmployeeSectionIncluded(emp))
+      : allEmployees
+
+    if (filteredEmployees.length === 0) {
+      toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
+      return
+    }
+
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
+    const toastId = 'preview-ot-record-pdf'
+    setIsPreviewingSitePdf(true)
+    toast.loading('Menyiapkan Preview Overtime Record... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const merged = await PDFDocument.create()
+
+      for (let i = 0; i < filteredEmployees.length; i++) {
+        const employee = filteredEmployees[i]
+        const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
+        const otSource = await PDFDocument.load(otPdf)
+        const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada lembar Overtime Record yang dihasilkan.', { id: toastId })
+        return
+      }
+
+      const mergedBytes = await merged.save()
+      const cutoffSuffix = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
+      openPdfPreview(
+        mergedBytes,
+        `Overtime Record • ${site?.name ?? 'Site'} • ${period}${cutoffSuffix} (${filteredEmployees.length} Karyawan)`
+      )
+      toast.success('Preview Overtime Record siap ditampilkan.', { id: toastId })
+    } catch (error) {
+      console.error('[Preview Overtime Record Error]', error)
+      toast.error('Gagal menampilkan preview Overtime Record', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setIsPreviewingSitePdf(false)
+    }
+  }
+
+  async function downloadOvertimeRecordOnlyPdf(
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
+    const allEmployees = rows.map((row) => row.employee)
+    if (allEmployees.length === 0) {
+      toast.error('Tidak ada karyawan untuk site ini.')
+      return
+    }
+    const filteredEmployees = availableSiteSections.length > 1
+      ? allEmployees.filter((emp) => isEmployeeSectionIncluded(emp))
+      : allEmployees
+
+    if (filteredEmployees.length === 0) {
+      toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
+      return
+    }
+
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
+    const toastId = 'download-ot-record-pdf'
+    setIsDownloadingSitePdf(true)
+    toast.loading('Menyiapkan download Overtime Record... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const merged = await PDFDocument.create()
+
+      for (let i = 0; i < filteredEmployees.length; i++) {
+        const employee = filteredEmployees[i]
+        const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
+        const otSource = await PDFDocument.load(otPdf)
+        const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada lembar Overtime Record yang dihasilkan.', { id: toastId })
+        return
+      }
+
+      const mergedBytes = await merged.save()
+      const cutoffPart = effectiveCutoffLabel ? `-${effectiveCutoffLabel.replace(/[\s\(\)\/]/g, '_')}` : ''
+      const safeSite = (site?.name || 'site').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const blob = new Blob([new Uint8Array(mergedBytes)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Overtime_Record_${safeSite}_${period}${cutoffPart}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`Overtime Record berhasil diunduh (${filteredEmployees.length} karyawan).`, { id: toastId })
+    } catch (error) {
+      console.error('[Download Overtime Record Error]', error)
+      toast.error('Gagal mengunduh Overtime Record', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setIsDownloadingSitePdf(false)
     }
   }
 
@@ -9759,9 +10098,15 @@ export function SchedulingTimesheetWorkspace({
         exportDialogActiveTab === 'lokasi' ||
         exportDialogActiveTab === 'msa' ||
         exportDialogActiveTab === 'meals' ||
-        exportDialogActiveTab === 'ovt'
+        exportDialogActiveTab === 'ovt' ||
+        exportDialogActiveTab === 'ovt_summary' ||
+        exportDialogActiveTab === 'ovt_record'
       ) {
-        await exportTimesheetTab(exportDialogActiveTab as TimesheetExportTab, customDateHeaders, cutoffLabel)
+        const targetTab: TimesheetExportTab =
+          exportDialogActiveTab === 'ovt_summary' || exportDialogActiveTab === 'ovt_record'
+            ? 'ovt'
+            : (exportDialogActiveTab as TimesheetExportTab)
+        await exportTimesheetTab(targetTab, customDateHeaders, cutoffLabel)
       } else {
         await exportAttendanceGrid('attendance', undefined, customDateHeaders, cutoffLabel)
       }
@@ -9792,17 +10137,29 @@ export function SchedulingTimesheetWorkspace({
 
     const cutoffLabel = formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
 
-    if (exportDialogActiveTab === 'ovt_spl') {
+    if (exportDialogActiveTab === 'ovt_summary') {
+      if (isPreview) {
+        await previewSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'ovt' || exportDialogActiveTab === 'ovt_record') {
+      if (isPreview) {
+        await previewOvertimeRecordOnlyPdf(customDateHeaders, cutoffLabel)
+      } else {
+        await downloadOvertimeRecordOnlyPdf(customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'ovt_spl') {
       if (isPreview) {
         await previewSummaryPdf('ovt_spl', undefined, customDateHeaders, cutoffLabel)
       } else {
         await downloadSummaryPdf('ovt_spl', undefined, customDateHeaders, cutoffLabel)
       }
-    } else if (exportDialogActiveTab === 'ovt') {
+    } else if (exportDialogActiveTab === 'attendance') {
       if (isPreview) {
-        await previewSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+        await previewSummaryPdf('attendance', undefined, customDateHeaders, cutoffLabel)
       } else {
-        await downloadSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+        await downloadSummaryPdf('attendance', undefined, customDateHeaders, cutoffLabel)
       }
     } else if (exportDialogActiveTab === 'msa') {
       if (isPreview) {
@@ -14243,11 +14600,27 @@ export function SchedulingTimesheetWorkspace({
                   enabled={multiSelectAttendance}
                   selectedCount={selectedAttendanceKeys.length}
                   onToggle={() => setMultiSelectAttendance((value) => !value)}
+                  onOpenBulkEditModal={() => {
+                    if (selectedAttendanceKeys.length === 0) {
+                      toast.error('Pilih setidaknya 1 sel untuk di-edit.')
+                      return
+                    }
+                    setIsBulkEditAttendanceOpen(true)
+                  }}
+                  onSelectAllWeekends={selectAllWeekends}
                   onSetPresent={() =>
                     applyBulkAttendance({
                       status: 'present',
                       clockIn: '08:00',
                       clockOut: '17:00',
+                    })
+                  }
+                  onSetOff={() =>
+                    applyBulkAttendance({
+                      status: 'off',
+                      clockIn: '',
+                      clockOut: '',
+                      note: 'OFF (Roster 5:2)',
                     })
                   }
                   onSetSick={() =>
@@ -16467,6 +16840,221 @@ export function SchedulingTimesheetWorkspace({
         </DialogContent>
       </Dialog>
 
+      {/* ── Dialog Bulk Edit Attendance Real (Pop-up Sesuai Permintaan User) ── */}
+      <Dialog
+        open={isBulkEditAttendanceOpen}
+        onOpenChange={(open) => !open && setIsBulkEditAttendanceOpen(false)}
+      >
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Edit Attendance Real — Bulk ({selectedAttendanceKeys.length} Sel Terpilih)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="bg-surface-container-low text-muted-foreground flex flex-wrap items-center justify-between gap-2 rounded-2xl p-3 text-sm">
+              <div>
+                Terpilih:{' '}
+                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                  {selectedAttendanceKeys.length} Sel
+                </span>{' '}
+                • Periode: <span className="font-semibold text-slate-900">{period}</span> • Site:{' '}
+                <span className="font-semibold text-slate-900">{site?.name || 'Semua Site'}</span>
+              </div>
+              <span className="inline-flex items-center rounded-md bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                Bulk Action Mode
+              </span>
+            </div>
+
+            {/* EDIT ROSTER SECTION */}
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold tracking-wide text-orange-950 uppercase">
+                  Edit Roster ({selectedAttendanceKeys.length} Sel Terpilih)
+                </Label>
+                <p className="text-xs text-orange-900/75">
+                  Perubahan ini langsung mengubah roster aktif untuk karyawan dan tanggal terpilih.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <NativeSelect
+                  value={bulkRosterEditCode}
+                  onValueChange={(value) => setBulkRosterEditCode(value as ScheduleCode)}
+                  disabled={isFinalized || isSavingSchedule}
+                  className="h-9 w-[180px] bg-white text-xs font-medium"
+                  options={[
+                    { value: '', label: 'Jangan Ubah Roster' },
+                    { value: 'OFF', label: 'OFF (Libur)' },
+                    { value: 'DS', label: 'DS (Day Shift)' },
+                    { value: 'NS', label: 'NS (Night Shift)' },
+                    { value: 'FB', label: 'FB (Field Break)' },
+                    { value: 'ST', label: 'ST (Standby)' },
+                    { value: 'AL', label: 'AL (Annual Leave)' },
+                  ]}
+                />
+              </div>
+            </div>
+
+            {/* STATUS, JAM MASUK, JAM PULANG */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <NativeSelect
+                  value={bulkAttendanceStatus}
+                  onValueChange={(value) => {
+                    const nextStatus = value as AttendanceCellStatus
+                    setBulkAttendanceStatus(nextStatus)
+                    if (nextStatus !== 'present') {
+                      setBulkClockIn('')
+                      setBulkClockOut('')
+                    } else {
+                      if (!bulkClockIn) setBulkClockIn('08:00')
+                      if (!bulkClockOut) setBulkClockOut('17:00')
+                    }
+                  }}
+                  options={[
+                    { value: 'present', label: 'Masuk' },
+                    { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
+                    { value: 'standby', label: 'Standby (ST)' },
+                    { value: 'field_break', label: 'Field Break (FB)' },
+                    { value: 'sick', label: 'Sakit' },
+                    { value: 'leave', label: 'Izin' },
+                    { value: 'absent', label: 'Alpha' },
+                    { value: 'empty', label: '-' },
+                  ]}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Jam Masuk</Label>
+                <Input
+                  type="time"
+                  value={bulkClockIn}
+                  onChange={(e) => {
+                    setBulkClockIn(e.target.value)
+                    if (e.target.value && bulkAttendanceStatus !== 'present') {
+                      setBulkAttendanceStatus('present')
+                    }
+                  }}
+                  disabled={bulkAttendanceStatus !== 'present'}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Jam Pulang</Label>
+                <Input
+                  type="time"
+                  value={bulkClockOut}
+                  onChange={(e) => {
+                    setBulkClockOut(e.target.value)
+                    if (e.target.value && bulkAttendanceStatus !== 'present') {
+                      setBulkAttendanceStatus('present')
+                    }
+                  }}
+                  disabled={bulkAttendanceStatus !== 'present'}
+                />
+              </div>
+            </div>
+
+            {/* PRESET JAM BUTTONS */}
+            {bulkAttendanceStatus === 'present' && (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="text-[11px] font-medium">Preset jam:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('08:00')
+                    setBulkClockOut('17:00')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-100"
+                >
+                  08:00 - 17:00 (Office)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('07:00')
+                    setBulkClockOut('18:00')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-100"
+                >
+                  07:00 - 18:00 (10 Jam)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('20:00')
+                    setBulkClockOut('05:00')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-100"
+                >
+                  20:00 - 05:00 (Night)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('')
+                    setBulkClockOut('')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-rose-600 hover:bg-slate-100"
+                >
+                  Kosongkan Jam
+                </button>
+              </div>
+            )}
+
+            {/* CATATAN */}
+            <div className="space-y-2">
+              <Label>Catatan</Label>
+              <Input
+                value={bulkNote}
+                onChange={(e) => setBulkNote(e.target.value)}
+                placeholder="Contoh: Sesuai roster 5:2 / lembur operasional / izin"
+              />
+            </div>
+
+            {/* TOTAL OVERTIME & ACTIONS */}
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center space-x-2">
+                <Label
+                  htmlFor="bulk-overtime-override"
+                  className="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                >
+                  Total Overtime:
+                </Label>
+                <Input
+                  id="bulk-overtime-override"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="24"
+                  className="h-9 w-24"
+                  value={bulkOvertimeHours}
+                  onChange={(e) => setBulkOvertimeHours(e.target.value)}
+                  placeholder="Auto"
+                />
+                <span className="text-muted-foreground text-[11px] italic">
+                  (Kosongkan untuk otomatis)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsBulkEditAttendanceOpen(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={onSaveBulkAttendance}
+                  disabled={isSavingAttendance || isSavingSchedule}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
+                >
+                  {isSavingAttendance || isSavingSchedule ? 'Menyimpan...' : 'Simpan'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={selectedEmployeeId !== null}
         onOpenChange={(open) => !open && setSelectedEmployeeId(null)}
@@ -17453,22 +18041,28 @@ export function SchedulingTimesheetWorkspace({
                     featured: true,
                   },
                   {
-                    id: 'attendance',
-                    label: 'Attendance Grid',
-                    desc: 'Matriks visual kehadiran & jam kerja harian',
-                    icon: CalendarRange,
+                    id: 'ovt_summary',
+                    label: 'Overtime Summary',
+                    desc: 'Rekapitulasi lembur bulanan matriks (Excel & PDF)',
+                    icon: Clock3,
                   },
                   {
                     id: 'ovt',
                     label: 'Overtime Record',
-                    desc: 'Rekapitulasi lembur harian (Excel & PDF)',
-                    icon: Clock3,
+                    desc: 'Lembar lembur resmi per karyawan (PDF)',
+                    icon: FileText,
                   },
                   {
                     id: 'ovt_spl',
                     label: 'Overtime SPL Summary',
                     desc: 'Surat Perintah Lembur harian (Excel & PDF)',
                     icon: FileText,
+                  },
+                  {
+                    id: 'attendance',
+                    label: 'Attendance Grid',
+                    desc: 'Matriks visual kehadiran & jam kerja harian (Excel & PDF)',
+                    icon: CalendarRange,
                   },
                   {
                     id: 'msa',
