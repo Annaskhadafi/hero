@@ -402,8 +402,8 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
 
   return (
     <AdminPageShell
-      title="OSM list"
-      eyebrow="OSM Management  /  OSM list"
+      title="ON SPOT MONITORING"
+      eyebrow="OSM Management  /  ON SPOT MONITORING"
       description="Daftar pemantauan On the Spot Monitoring (OSM) inspeksi keselamatan lapangan, temuan bahaya, & tindak lanjut perbaikan."
       actions={
         <div className="flex items-center gap-2">
@@ -438,7 +438,7 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
         <div className="flex-1 text-xs leading-relaxed">
           <span className="font-bold">Pelaksanaan Inspeksi Hanya Dilakukan Melalui HP:</span>
           <span className="ml-1 text-blue-800/90 dark:text-blue-300">
-            Sesuai standar operasional, pelaksanaan inspeksi On the Spot Monitoring (OSM) dan input temuan keselamatan hanya dapat dilakukan secara mobile melalui aplikasi <strong>HERO Mobile (HP)</strong> langsung di lapangan. Aplikasi HERO Desktop ini difokuskan sebagai <strong>OSM List</strong> untuk monitoring, peninjauan bukti temuan, dan verifikasi perbaikan.
+            Sesuai standar operasional, pelaksanaan inspeksi On the Spot Monitoring (OSM) dan input temuan keselamatan hanya dapat dilakukan secara mobile melalui aplikasi <strong>HERO Mobile (HP)</strong> langsung di lapangan. Aplikasi HERO Desktop ini difokuskan sebagai <strong>ON SPOT MONITORING</strong> untuk monitoring, peninjauan bukti temuan, dan verifikasi perbaikan.
           </span>
         </div>
       </div>
@@ -619,8 +619,8 @@ export function OsmClientPage({ initialData }: OsmClientPageProps) {
         idField="id"
         loading={isLoading}
         onRowClick={(row) => handleOpenDetail(row.id)}
-        exportFileName={`OSM_List_${new Date().toISOString().slice(0, 10)}`}
-        pdfTitle="Laporan On the Spot Monitoring (OSM List) — HERO HSE"
+        exportFileName={`ON_SPOT_MONITORING_${new Date().toISOString().slice(0, 10)}`}
+        pdfTitle="Laporan ON SPOT MONITORING — HERO HSE"
         emptyMessage="Tidak ada data inspeksi OSM yang sesuai dengan kriteria filter."
         showSelection={false}
         showPagination={true}

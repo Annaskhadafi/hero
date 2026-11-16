@@ -28,8 +28,8 @@ test("OSM Desktop and Mobile Migration Verification", async (t) => {
       .from(navbarMenuItems)
       .where(eq(navbarMenuItems.resource, "hse_osm"));
 
-    assert.ok(osmMenu.length >= 1, "OSM List menu item must exist in hero_navbar_menu_items");
-    assert.equal(osmMenu[0].title, "OSM List");
+    assert.ok(osmMenu.length >= 1, "ON SPOT MONITORING menu item must exist in hero_navbar_menu_items");
+    assert.equal(osmMenu[0].title, "ON SPOT MONITORING");
     assert.equal(osmMenu[0].url, "/dashboard/hse/osm");
     assert.equal(osmMenu[0].section, "HSE");
     assert.equal(osmMenu[0].groupLabel, "Safety Management");

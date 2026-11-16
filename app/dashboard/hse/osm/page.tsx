@@ -4,7 +4,7 @@ import { getHseOsmDashboardData, getHseOsmSessions } from "@/app/actions/hse-osm
 import { OsmClientPage } from "./client-page";
 
 export const metadata = {
-  title: "OSM list — HSE | HERO",
+  title: "ON SPOT MONITORING — HSE | HERO",
   description: "Daftar monitoring inspeksi keselamatan On the Spot Monitoring (OSM), temuan bahaya, & pelacakan tindakan korektif.",
 };
 

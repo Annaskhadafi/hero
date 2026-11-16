@@ -1477,7 +1477,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'HSE',
     groupLabel: 'Safety Management',
-    title: 'OSM List',
+    title: 'ON SPOT MONITORING',
     url: '/dashboard/hse/osm',
     iconName: 'checklist',
     resource: 'hse_osm',
@@ -6589,7 +6589,7 @@ export async function ensureHeroGovernanceSeedData() {
       .set({
         section: 'HSE',
         groupLabel: 'Safety Management',
-        title: 'OSM List',
+        title: 'ON SPOT MONITORING',
         url: '/dashboard/hse/osm',
         resource: 'hse_osm',
         iconName: 'checklist',
