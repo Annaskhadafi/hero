@@ -76,20 +76,14 @@ export function drawPdfSignatures(
   let labels: [string, string][] = []
 
   if (names.useExternalOnly) {
-    const count = names.externalSignatureCount ?? 2
+    const customerSigner =
+      names.externalApprovedBy?.trim() ||
+      names.approvedBy?.trim() ||
+      'Plant. Suptend Department CK-MHU'
     labels = [
       ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || '-'],
-      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
+      ['Approved by:', customerSigner],
     ]
-    if (count === 3) {
-      const thirdSigner = names.customSigners?.[0]
-      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
-    } else if (count >= 4) {
-      const thirdSigner = names.customSigners?.[0]
-      const fourthSigner = names.customSigners?.[1]
-      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
-      labels.push([fourthSigner?.label || 'Diketahui oleh:', fourthSigner?.name || names.hrName || '-'])
-    }
   } else {
     labels = [
       ['Dibuat oleh :', names.preparedBy || '-'],

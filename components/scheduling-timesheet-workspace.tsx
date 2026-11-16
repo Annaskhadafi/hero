@@ -7046,6 +7046,12 @@ export function SchedulingTimesheetWorkspace({
       summaryOverride?.approvedBy?.trim() || baseSignatures.approvedBy || cfg.approvedBy || ''
     const resolvedHr =
       summaryOverride?.hrName?.trim() || baseSignatures.hrName || cfg.hrName || ''
+    const isMhuSite = Boolean(
+      (site?.name && /mhu/i.test(site.name)) ||
+      cfg.project === 'CK MHU' ||
+      (siteId && Number(siteId) === 128)
+    )
+    const defaultCustomer = isMhuSite ? 'Plant. Suptend Department CK-MHU' : 'Customer / SPV Eksternal'
     const resolvedExtPreparedBy =
       summaryOverride?.externalPreparedBy?.trim() ||
       cfg.externalPreparedBy ||
@@ -7055,11 +7061,11 @@ export function SchedulingTimesheetWorkspace({
       summaryOverride?.externalApprovedBy?.trim() ||
       cfg.externalApprovedBy ||
       baseSignatures.externalApprovedBy ||
-      ''
+      defaultCustomer
 
     if (pdfUseExternalSignatures) {
       const extPrep = resolvedExtPreparedBy || resolvedPreparedBy
-      const extAppr = resolvedExtApprovedBy || resolvedApprovedBy
+      const extAppr = resolvedExtApprovedBy || defaultCustomer
       return {
         ...baseSignatures,
         preparedBy: extPrep,
@@ -7069,7 +7075,7 @@ export function SchedulingTimesheetWorkspace({
         pjoLeader: '',
         hrName: '',
         useExternalOnly: true,
-        externalSignatureCount: pdfExternalSignatureCount || cfg.externalSignatureCount || 2,
+        externalSignatureCount: 2,
         omitExternal: false,
         logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
         customSigners: cfg.customSigners || baseSignatures.customSigners,
@@ -7177,6 +7183,32 @@ export function SchedulingTimesheetWorkspace({
             workingIntervals: [],
           }
         }
+        const isMhuSite = Boolean(
+          (site?.name && /mhu/i.test(site.name)) ||
+          empSiteConfig.project === 'CK MHU' ||
+          employee.siteId === 128
+        )
+        if (
+          isMhuSite &&
+          !isOffDay &&
+          cell.status !== 'leave' &&
+          cell.status !== 'sick' &&
+          cell.status !== 'absent'
+        ) {
+          const finalMhuOt = manualVal !== null ? manualVal : 11
+          return {
+            totalHours: finalMhuOt,
+            intervals: [{ start: '06.00', end: '18.00', hours: finalMhuOt, type: 'continuous' }],
+            totalMinutes: Math.round(finalMhuOt * 60),
+            autoMinutes: Math.round(finalMhuOt * 60),
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Policy' as const,
+            splNumbers: [],
+            workingIntervals: [{ start: '06.00', end: '18.00', hours: 12 }],
+          }
+        }
+
         const effectiveSchedule = itemPeriod === period ? employeeSchedule : [scheduleCode]
         const res = calculateDayOvertime(
           effectiveSchedule,
@@ -8670,6 +8702,11 @@ export function SchedulingTimesheetWorkspace({
     const empSiteId =
       employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
     const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const isMhuSite = Boolean(
+      (site?.name && /mhu/i.test(site.name)) ||
+      empSiteConfig.project === 'CK MHU' ||
+      empSiteId === 128
+    )
 
     if (staff || empSiteConfig.overtimeType === 'none') {
       return legacyOvertimeResult(0)
@@ -8693,6 +8730,11 @@ export function SchedulingTimesheetWorkspace({
     const isHol = isHoliday(period, day, holidays)
     if (!clockIn && !clockOut && isNonWork) {
       return legacyOvertimeResult(0)
+    }
+
+    // Khusus CK-MHU: Seluruh hari kerja otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk kerja)
+    if (isMhuSite && !isNonWork) {
+      return legacyOvertimeResult(11)
     }
     const defaultIn =
       shiftCode === 'NS' ? empSiteConfig.nightShiftClockIn : empSiteConfig.dayShiftClockIn
@@ -8978,6 +9020,22 @@ export function SchedulingTimesheetWorkspace({
     const empSiteId =
       employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
     const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const isMhuSite = Boolean(
+      (site?.name && /mhu/i.test(site.name)) ||
+      empSiteConfig.project === 'CK MHU' ||
+      empSiteId === 128
+    )
+
+    // Khusus CK-MHU: Seluruh hari kerja otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk kerja)
+    if (isMhuSite) {
+      const mhuOt = 11
+      return {
+        lemburWajib: mhuOt,
+        lemburSpl: 0,
+        totalOvertime: mhuOt,
+        displayValue: String(mhuOt),
+      }
+    }
     const dayKey = classifyOvertimePolicyDay({
       schedule,
       dayIndex: day - 1,
@@ -17785,7 +17843,7 @@ export function SchedulingTimesheetWorkspace({
                 <p className="text-xs font-semibold text-slate-800">Format Approval & Tanda Tangan</p>
                 <p className="text-[11px] text-slate-500">
                   {pdfUseExternalSignatures
-                    ? `Format Approval Eksternal (${pdfExternalSignatureCount} kolom tanda tangan)`
+                    ? 'Format Approval Eksternal (2 Kolom: Manpower vs Customer Plant. Suptend Department CK-MHU)'
                     : 'Format Standar Internal HERO'}
                 </p>
               </div>
@@ -17794,10 +17852,13 @@ export function SchedulingTimesheetWorkspace({
                   <Switch
                     id="toggle-modal-external-pdf"
                     checked={pdfUseExternalSignatures}
-                    onCheckedChange={setPdfUseExternalSignatures}
+                    onCheckedChange={(val) => {
+                      setPdfUseExternalSignatures(val)
+                      if (val) setPdfExternalSignatureCount(2)
+                    }}
                   />
                   <label htmlFor="toggle-modal-external-pdf" className="text-xs font-medium text-slate-700 cursor-pointer select-none">
-                    Eksternal
+                    Eksternal (2 Kolom Tanda Tangan)
                   </label>
                 </div>
                 {pdfUseExternalSignatures && (

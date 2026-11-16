@@ -934,6 +934,14 @@ export async function appendSummarySplPersonPages(
       }
     }
 
+    // Khusus CK-MHU: Seluruh hari kerja normal otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk)
+    const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
+    if (isMhuSite && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+      ot = 11
+      if (!otFrom) otFrom = '06.00'
+      if (!otTo) otTo = '18.00'
+    }
+
     if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
       totalOT += ot
     }
@@ -1165,20 +1173,17 @@ async function drawOvertimeRecordSignatures(
 
   let labels: [string, string][] = []
   if (names.useExternalOnly) {
-    const count = names.externalSignatureCount ?? 2
+    const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
+    const customerSigner =
+      names.externalApprovedBy?.trim() ||
+      names.approvedBy?.trim() ||
+      (isMhuSite ? 'Plant. Suptend Department CK-MHU' : 'Customer / SPV Eksternal')
+
+    // 2 Kolom Approval Eksternal: Manpower vs Customer (Plant. Suptend Department CK-MHU)
     labels = [
-      ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || input.employeeName || '-'],
-      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
+      ['Dibuat oleh :', input.employeeName || names.externalPreparedBy?.trim() || names.preparedBy || '-'],
+      ['Approved by:', customerSigner],
     ]
-    if (count === 3) {
-      const thirdSigner = names.customSigners?.[0]
-      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
-    } else if (count >= 4) {
-      const thirdSigner = names.customSigners?.[0]
-      const fourthSigner = names.customSigners?.[1]
-      labels.push([thirdSigner?.label || 'Approved by:', thirdSigner?.name || names.pjoLeader || '-'])
-      labels.push([fourthSigner?.label || 'Diketahui oleh:', fourthSigner?.name || names.hrName || '-'])
-    }
   } else {
     labels = [
       ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
