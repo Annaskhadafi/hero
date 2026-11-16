@@ -461,6 +461,15 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
                     </div>
                   </div>
                 </div>
+
+                <div className="border border-slate-200 rounded-2xl p-2 bg-white shadow-sm overflow-hidden flex items-center justify-center">
+                  <img
+                    src="/images/hiradc-risk-matrix-table.jpg"
+                    alt="Matriks Risiko HIRADC (Likelihood vs Severity)"
+                    className="w-full h-auto object-contain rounded-xl"
+                    loading="eager"
+                  />
+                </div>
               </div>
             </div>
 

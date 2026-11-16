@@ -103,6 +103,14 @@ export function HiradcDesignOneReport({ entry, className }: HiradcDesignOneRepor
         <div className="space-y-6">
           <div className="hiradc-print-section border border-slate-200 rounded-2xl p-6 bg-white text-center shadow-sm"><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">RISK MATRIX ANALYSIS</p><div className="text-6xl font-black text-slate-900 tracking-tighter mb-6">{entry.scoreBefore || "-"}</div><div className="flex items-center justify-center gap-6 border-t border-slate-100 pt-6"><div><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">LIKELIHOOD</p><p className="text-xl font-bold text-slate-800">{entry.likelihoodBefore || "-"}</p></div><div className="w-px h-8 bg-slate-200" /><div><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">SEVERITY</p><p className="text-xl font-bold text-slate-800">{entry.severityBefore || "-"}</p></div></div></div>
           <div className="hiradc-print-section bg-[#1a2332] rounded-2xl p-6 text-white shadow-lg"><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">VERIFICATION INFO</p><div className="space-y-4"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">👤</div><div><p className="text-[10px] font-bold text-slate-400 uppercase">PIC REPORTER</p><p className="font-bold text-slate-100 text-sm">{picName}</p></div></div><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">📅</div><div><p className="text-[10px] font-bold text-slate-400 uppercase">LAST REVIEW</p><p className="font-bold text-slate-100 text-sm">{dateStr}</p></div></div></div></div>
+          <div className="hiradc-print-section border border-slate-200 rounded-2xl p-2 bg-white shadow-sm overflow-hidden flex items-center justify-center">
+            <img
+              src="/images/hiradc-risk-matrix-table.jpg"
+              alt="Matriks Risiko HIRADC (Likelihood vs Severity)"
+              className="w-full h-auto object-contain rounded-xl"
+              loading="eager"
+            />
+          </div>
         </div>
       </div>
     </div>
