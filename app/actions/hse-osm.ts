@@ -465,7 +465,7 @@ export async function getHseOsmPerformanceMetrics(filter: HseOsmPerformanceFilte
     monthlyBreakdown.sort((a, b) => b.percentage - a.percentage)
 
     const siteLeaderboard = Array.from(siteMap.values())
-      .filter((s) => s.total > 0 || (filter.siteId && s.siteId === filter.siteId))
+      .filter((s) => !filter.siteId || s.siteId === filter.siteId)
       .map((s) => {
         const inspectorCount = Math.max(1, s.inspectors.size)
         const targetSessions = inspectorCount * totalTargetMonths
@@ -483,7 +483,7 @@ export async function getHseOsmPerformanceMetrics(filter: HseOsmPerformanceFilte
         }
       })
 
-    siteLeaderboard.sort((a, b) => b.percentage - a.percentage || b.totalSessions - a.totalSessions)
+    siteLeaderboard.sort((a, b) => b.percentage - a.percentage || b.totalSessions - a.totalSessions || a.siteName.localeCompare(b.siteName))
 
     const totalInspectors = Math.max(1, inspectorMap.size)
     const quarterTarget = totalInspectors * (3 * targetPerMonth)

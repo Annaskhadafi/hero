@@ -27,6 +27,41 @@ interface OsmPerformanceDashboardProps {
   className?: string
 }
 
+function getSiteShortName(name: string): string {
+  if (name.includes('Sangatta KABO')) return 'SGT KABO'
+  if (name.includes('Balikpapan External')) return 'BPN Ext'
+  if (name.includes('Balikpapan')) return 'BPN'
+  if (name.includes('BUMA Tanjung')) return 'BUMA'
+  if (name.includes('Tj. Redeb')) return 'Tj.Redeb'
+  if (name.includes('Tj. Adaro')) return 'Adaro'
+  if (name.includes('TU Batu Hijau')) return 'Batu Hijau'
+  if (name.includes('TU Gresik')) return 'Gresik'
+  if (name.includes('Vale - Sorowako')) return 'Sorowako'
+  if (name.includes('Petrosea SDA')) return 'Petrosea'
+  if (name.includes('CDE - Bengkulu')) return 'Bengkulu'
+  if (name.includes('BSI - Banyuwangi')) return 'Banyuwangi'
+  if (name.includes('PKA Musi Rawas')) return 'Musi Rawas'
+  if (name.includes('PT SMJ - Berau')) return 'SMJ Berau'
+  if (name.includes('KPUC - Malinau')) return 'Malinau'
+  if (name.includes('AMM Mifa')) return 'AMM Mifa'
+  if (name.includes('AMM Tabang')) return 'AMM Tabang'
+  if (name.includes('PPA TJ-Enim')) return 'PPA TJ'
+  if (name.includes('PPA BIB')) return 'PPA BIB'
+  if (name.includes('CK BIB')) return 'CK BIB'
+  if (name.includes('CK MHU')) return 'CK MHU'
+  if (name.includes('CK MIFA')) return 'CK MIFA'
+  if (name.includes('CK BMB')) return 'CK BMB'
+  if (name.includes('CK DBA')) return 'CK DBA'
+  if (name.includes('CK KIM')) return 'CK KIM'
+  if (name.includes('CK NCN')) return 'CK NCN'
+  if (name.includes('Jakarta')) return 'Jakarta'
+  if (name.includes('Makassar')) return 'Makassar'
+  if (name.includes('Palembang')) return 'Palembang'
+  if (name.includes('Pekanbaru')) return 'Pekanbaru'
+  if (name.includes('Sebamban')) return 'Sebamban'
+  return name.replace(/^(PT |CV )/, '').slice(0, 8)
+}
+
 export function OsmPerformanceDashboard({
   initialYear = new Date().getFullYear(),
   initialSiteId = null,
@@ -50,7 +85,7 @@ export function OsmPerformanceDashboard({
 
   // Leaderboard pagination
   const [leaderboardPage, setLeaderboardPage] = useState<number>(1)
-  const leaderboardPageSize = 6
+  const leaderboardPageSize = 7
 
   const fetchMetrics = () => {
     setIsLoading(true)
@@ -91,7 +126,7 @@ export function OsmPerformanceDashboard({
     detailPage * detailPageSize
   )
 
-  // Leaderboard pagination
+  // Leaderboard rows: all active sites from Master Data
   const leaderboardRows = data?.siteLeaderboard || []
   const totalLeaderboardPages = Math.max(1, Math.ceil(leaderboardRows.length / leaderboardPageSize))
   const paginatedLeaderboard = leaderboardRows.slice(
@@ -99,8 +134,8 @@ export function OsmPerformanceDashboard({
     leaderboardPage * leaderboardPageSize
   )
 
-  // Top sites for combo/stacked chart (top 12 sites)
-  const chartSites = (data?.siteLeaderboard || []).slice(0, 14)
+  // All sites from master data for combo/stacked chart
+  const chartSites = data?.siteLeaderboard || []
   const maxChartValue = Math.max(
     6,
     ...chartSites.map((s) => s.q1 + s.q2 + s.q3 + s.q4)
@@ -325,8 +360,8 @@ export function OsmPerformanceDashboard({
             <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-foreground">Peringkat Kepatuhan Site</span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
-                  {leaderboardRows.length} Site
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-semibold border border-blue-200/60 dark:border-blue-800">
+                  {leaderboardRows.length} Lokasi Site (Master Data)
                 </span>
               </div>
               <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
@@ -435,88 +470,114 @@ export function OsmPerformanceDashboard({
               </div>
             </div>
 
-            {/* Visual Stacked Bars */}
-            <div className="pt-3">
+            {/* Visual Stacked Bars (Scrollable to accommodate all 35 sites) */}
+            <div className="pt-2">
               {chartSites.length === 0 ? (
                 <div className="py-12 text-center text-xs text-muted-foreground">
-                  Belum ada sesi OSM untuk ditampilkan di grafik.
+                  Belum ada data lokasi site di Master Data.
                 </div>
               ) : (
-                <div className="h-44 w-full flex items-end justify-between gap-1.5 sm:gap-2 px-1 pb-4 pt-2 border-b border-border/70 relative">
-                  {/* Horizontal Grid lines */}
-                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
-                    <div className="border-b border-dashed border-foreground" />
-                    <div className="border-b border-dashed border-foreground" />
-                    <div className="border-b border-dashed border-foreground" />
-                  </div>
+                <div className="overflow-x-auto pb-2 scrollbar-thin">
+                  <div className="h-48 min-w-[950px] w-full flex items-end justify-between gap-1 sm:gap-1.5 px-2 pb-5 pt-3 border-b border-border/70 relative">
+                    {/* Horizontal Grid lines */}
+                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20">
+                      <div className="border-b border-dashed border-foreground" />
+                      <div className="border-b border-dashed border-foreground" />
+                      <div className="border-b border-dashed border-foreground" />
+                    </div>
 
-                  {chartSites.map((site) => {
-                    const total = site.q1 + site.q2 + site.q3 + site.q4
-                    const barHeightPct = maxChartValue > 0 ? (total / maxChartValue) * 100 : 0
-                    const q1Pct = total > 0 ? (site.q1 / total) * 100 : 0
-                    const q2Pct = total > 0 ? (site.q2 / total) * 100 : 0
-                    const q3Pct = total > 0 ? (site.q3 / total) * 100 : 0
-                    const q4Pct = total > 0 ? (site.q4 / total) * 100 : 0
+                    {chartSites.map((site) => {
+                      const total = site.q1 + site.q2 + site.q3 + site.q4
+                      const barHeightPct = maxChartValue > 0 ? (total / maxChartValue) * 100 : 0
+                      const q1Pct = total > 0 ? (site.q1 / total) * 100 : 0
+                      const q2Pct = total > 0 ? (site.q2 / total) * 100 : 0
+                      const q3Pct = total > 0 ? (site.q3 / total) * 100 : 0
+                      const q4Pct = total > 0 ? (site.q4 / total) * 100 : 0
+                      const shortName = getSiteShortName(site.siteName)
 
-                    return (
-                      <div
-                        key={site.siteId ?? site.siteName}
-                        className="flex-1 flex flex-col items-center h-full justify-end group relative"
-                      >
-                        {/* Tooltip */}
-                        <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded shadow-md pointer-events-none z-20 whitespace-nowrap border border-border">
-                          <span className="font-bold">{site.siteName}</span>: {total} sesi (Q1:{site.q1} Q2:{site.q2} Q3:{site.q3} Q4:{site.q4})
-                        </div>
-
-                        {/* Stacked Bar Container */}
+                      return (
                         <div
-                          className="w-full max-w-[28px] rounded-t-sm flex flex-col-reverse overflow-hidden transition-all duration-300"
-                          style={{ height: `${Math.max(6, barHeightPct)}%` }}
+                          key={site.siteId ?? site.siteName}
+                          className="flex-1 min-w-[24px] max-w-[36px] flex flex-col items-center h-full justify-end group relative cursor-pointer"
                         >
-                          {site.q1 > 0 && (
-                            <div
-                              style={{ height: `${q1Pct}%` }}
-                              className="bg-emerald-500 hover:brightness-110"
-                              title={`Q1: ${site.q1}`}
-                            />
-                          )}
-                          {site.q2 > 0 && (
-                            <div
-                              style={{ height: `${q2Pct}%` }}
-                              className="bg-sky-500 hover:brightness-110"
-                              title={`Q2: ${site.q2}`}
-                            />
-                          )}
-                          {site.q3 > 0 && (
-                            <div
-                              style={{ height: `${q3Pct}%` }}
-                              className="bg-pink-500 hover:brightness-110"
-                              title={`Q3: ${site.q3}`}
-                            />
-                          )}
-                          {site.q4 > 0 && (
-                            <div
-                              style={{ height: `${q4Pct}%` }}
-                              className="bg-amber-500 hover:brightness-110"
-                              title={`Q4: ${site.q4}`}
-                            />
-                          )}
-                        </div>
+                          {/* Tooltip */}
+                          <div className="absolute -top-12 opacity-0 group-hover:opacity-100 transition-opacity bg-popover text-popover-foreground text-[10px] px-2.5 py-1.5 rounded-lg shadow-lg pointer-events-none z-30 whitespace-nowrap border border-border">
+                            <div className="font-bold text-xs">{site.siteName}</div>
+                            <div className="text-muted-foreground">Total: {total} sesi ({site.percentage}%)</div>
+                            <div className="flex gap-2 text-[9px] mt-0.5">
+                              <span className="text-emerald-600">Q1: {site.q1}</span>
+                              <span className="text-sky-600">Q2: {site.q2}</span>
+                              <span className="text-pink-600">Q3: {site.q3}</span>
+                              <span className="text-amber-600">Q4: {site.q4}</span>
+                            </div>
+                          </div>
 
-                        {/* X-axis Label */}
-                        <span className="text-[10px] font-mono text-muted-foreground truncate w-full text-center mt-1">
-                          {site.siteName.slice(0, 4)}
-                        </span>
-                      </div>
-                    )
-                  })}
+                          {/* Stacked Bar Container */}
+                          <div
+                            className="w-full rounded-t-sm flex flex-col-reverse overflow-hidden transition-all duration-300 shadow-2xs"
+                            style={{ height: `${total > 0 ? Math.max(8, barHeightPct) : 3}%` }}
+                          >
+                            {total === 0 ? (
+                              <div className="bg-muted-foreground/20 w-full h-full rounded-t-xs" title={`${site.siteName}: 0 sesi`} />
+                            ) : (
+                              <>
+                                {site.q1 > 0 && (
+                                  <div
+                                    style={{ height: `${q1Pct}%` }}
+                                    className="bg-emerald-500 hover:brightness-110"
+                                    title={`Q1: ${site.q1}`}
+                                  />
+                                )}
+                                {site.q2 > 0 && (
+                                  <div
+                                    style={{ height: `${q2Pct}%` }}
+                                    className="bg-sky-500 hover:brightness-110"
+                                    title={`Q2: ${site.q2}`}
+                                  />
+                                )}
+                                {site.q3 > 0 && (
+                                  <div
+                                    style={{ height: `${q3Pct}%` }}
+                                    className="bg-pink-500 hover:brightness-110"
+                                    title={`Q3: ${site.q3}`}
+                                  />
+                                )}
+                                {site.q4 > 0 && (
+                                  <div
+                                    style={{ height: `${q4Pct}%` }}
+                                    className="bg-amber-500 hover:brightness-110"
+                                    title={`Q4: ${site.q4}`}
+                                  />
+                                )}
+                              </>
+                            )}
+                          </div>
+
+                          {/* X-axis Label */}
+                          <span
+                            className="text-[9px] font-mono text-muted-foreground truncate w-full text-center mt-1.5 block group-hover:text-foreground group-hover:font-semibold"
+                            title={site.siteName}
+                          >
+                            {shortName}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="pt-2 text-center text-[10px] text-muted-foreground">
-            Sumbu X: Lokasi Site &nbsp;•&nbsp; Sumbu Y: Total Frekuensi Sesi OSM
+          {/* Reference Image centered blue pill: Lokasi Site */}
+          <div className="pt-2 flex flex-col items-center justify-center gap-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600 text-white text-[10px] font-bold shadow-xs">
+              <span>▲</span>
+              <span>Lokasi Site (Master Data)</span>
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              Sumbu X: 35 Lokasi Site Master Data &nbsp;•&nbsp; Sumbu Y: Total Frekuensi Sesi OSM
+            </div>
           </div>
         </div>
 
