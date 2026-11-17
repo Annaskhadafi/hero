@@ -126,7 +126,17 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
  */
 export function getAppBaseUrl(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin
+    const origin = window.location.origin
+    const isLocalContainer =
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      origin.includes('capacitor://') ||
+      origin.startsWith('file:') ||
+      origin.startsWith('content:')
+    // In mobile APK / webview containers with local origin, fallback to configured production domain
+    if (!isLocalContainer) {
+      return origin
+    }
   }
 
   const configured =
@@ -211,8 +221,18 @@ export function resolveUploadUrl(
     }
   }
 
-  if (options?.absolute && finalRelativeUrl.startsWith('/')) {
-    return `${getAppBaseUrl()}${finalRelativeUrl}`
+  if (finalRelativeUrl.startsWith('/')) {
+    if (options?.absolute) {
+      return `${getAppBaseUrl()}${finalRelativeUrl}`
+    }
+    if (
+      typeof window !== 'undefined' &&
+      (window.location.origin.includes('capacitor://') ||
+        window.location.origin.startsWith('file:') ||
+        window.location.origin.startsWith('content:'))
+    ) {
+      return `${getAppBaseUrl()}${finalRelativeUrl}`
+    }
   }
 
   return finalRelativeUrl

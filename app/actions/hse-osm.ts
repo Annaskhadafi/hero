@@ -1117,6 +1117,7 @@ export async function verifyHseOsmFinding(
   input: {
     status: 'CLOSED' | 'REJECTED'
     rejectionReason?: string
+    actionPhotoUrls?: string[]
   }
 ) {
   try {
@@ -1131,15 +1132,22 @@ export async function verifyHseOsmFinding(
       return { success: false, error: 'Temuan tidak ditemukan' }
     }
 
+    const updatePayload: Record<string, any> = {
+      status: input.status,
+      rejectionReason: input.status === 'REJECTED' ? input.rejectionReason || '' : '',
+      verifiedAt: new Date(),
+      verifiedBy: actor?.employee?.name || actor?.sessionUser?.name || 'HSE Coordinator',
+      updatedAt: new Date(),
+    }
+
+    // Persist attached proof photos if supplied during close / verification
+    if (input.actionPhotoUrls && input.actionPhotoUrls.length > 0) {
+      updatePayload.actionPhotoUrls = input.actionPhotoUrls
+    }
+
     const [updatedFinding] = await db
       .update(heroHseOsmFindings)
-      .set({
-        status: input.status,
-        rejectionReason: input.status === 'REJECTED' ? input.rejectionReason || '' : '',
-        verifiedAt: new Date(),
-        verifiedBy: actor?.employee?.name || actor?.sessionUser?.name || 'HSE Coordinator',
-        updatedAt: new Date(),
-      })
+      .set(updatePayload)
       .where(eq(heroHseOsmFindings.id, findingId))
       .returning()
 
@@ -1303,10 +1311,10 @@ export async function updateHseOsmFindingPhotos(findingId: number, photoUrls: st
       .where(eq(heroHseOsmSessions.id, finding.sessionId))
       .limit(1)
 
-    if (sessionRow?.status === 'SUBMITTED' || sessionRow?.status === 'COMPLETED') {
+    if (sessionRow?.status === 'COMPLETED') {
       return {
         success: false,
-        error: 'Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi.',
+        error: 'Laporan OSM telah selesai (Completed) dan ditutup secara permanen. Foto temuan tidak dapat diubah lagi.',
       }
     }
 

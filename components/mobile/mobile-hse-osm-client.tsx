@@ -136,6 +136,7 @@ async function uploadPhotoSafe(file: File, uploadTarget = 'hse-osm'): Promise<st
 
 import { compressImageFile } from '@/lib/client-image-compression'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import {
   HSE_OSM_ASPECT_LABELS,
   HSE_OSM_DEFAULT_CLASSIFICATIONS,
@@ -368,6 +369,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
 
   // Active action/verification modal state in mobile
   const [selectedPhotoModal, setSelectedPhotoModal] = useState<string | null>(null)
+  const [lightboxError, setLightboxError] = useState(false)
   const [actionFinding, setActionFinding] = useState<any>(null)
   const [actionTakenText, setActionTakenText] = useState('')
   const [actionPhotos, setActionPhotos] = useState<string[]>([])
@@ -975,6 +977,10 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   // Handle Action Submit (Corrective Action / Verify)
   async function handleExecuteAction() {
     if (!actionFinding) return
+    if (isUploadingPhoto) {
+      alert('Foto bukti sedang diunggah ke cloud storage. Mohon tunggu proses upload selesai.')
+      return
+    }
     setIsSubmittingAction(true)
     try {
       if (actionMode === 'action') {
@@ -985,7 +991,10 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
         })
         if (!res.success) throw new Error(res.error || 'Gagal menyimpan perbaikan.')
       } else if (actionMode === 'close') {
-        const res = await verifyHseOsmFinding(actionFinding.id, { status: 'CLOSED' })
+        const res = await verifyHseOsmFinding(actionFinding.id, {
+          status: 'CLOSED',
+          actionPhotoUrls: actionPhotos.length > 0 ? actionPhotos : undefined,
+        })
         if (!res.success) throw new Error(res.error || 'Gagal memverifikasi penutupan.')
       } else if (actionMode === 'reject') {
         if (!rejectionReasonText.trim()) throw new Error('Alasan penolakan perbaikan wajib diisi.')
@@ -2337,7 +2346,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={resolveClientUploadUrl(url)}
+                          src={resolveUploadUrl(url, { absolute: true })}
                           alt={`Foto ${idx + 1}`}
                           className="size-full object-cover"
                         />
@@ -2964,7 +2973,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                         <span className="size-1.5 rounded-full bg-rose-500" />
                         Foto Kondisi Temuan (Before)
                       </span>
-                      {!s.isLocked && (
+                      {(!s.isLocked || f.status !== 'CLOSED') && (
                         <Button
                           type="button"
                           variant="ghost"
@@ -2986,10 +2995,20 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                         {f.photoUrls.map((pUrl: string, pIdx: number) => (
                           <div
                             key={pIdx}
-                            onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(pUrl))}
+                            onClick={() => {
+                              setLightboxError(false)
+                              setSelectedPhotoModal(resolveUploadUrl(pUrl, { absolute: true }))
+                            }}
                             className="relative aspect-video cursor-pointer overflow-hidden rounded-lg border bg-slate-950 shadow-2xs transition hover:opacity-90"
                           >
-                            <OsmFindingThumbnail url={pUrl} alt="Foto Temuan (Before)" />
+                            <OsmFindingThumbnail
+                              url={pUrl}
+                              alt="Foto Temuan (Before)"
+                              onReplacePhoto={() => {
+                                setManagePhotosFinding(f)
+                                setEditingFindingPhotos([...(f.photoUrls || [])])
+                              }}
+                            />
                           </div>
                         ))}
                       </div>
@@ -2998,7 +3017,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                         <span className="text-muted-foreground mb-1 block text-[10px]">
                           Belum ada foto temuan awal
                         </span>
-                        {!s.isLocked && (
+                        {(!s.isLocked || f.status !== 'CLOSED') && (
                           <Button
                             type="button"
                             variant="outline"
@@ -3040,7 +3059,10 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                             {f.actionPhotoUrls.map((apUrl: string, apIdx: number) => (
                               <div
                                 key={apIdx}
-                                onClick={() => setSelectedPhotoModal(resolveClientUploadUrl(apUrl))}
+                                onClick={() => {
+                                  setLightboxError(false)
+                                  setSelectedPhotoModal(resolveUploadUrl(apUrl, { absolute: true }))
+                                }}
                                 className="relative size-16 cursor-pointer overflow-hidden rounded-lg border border-emerald-300 bg-slate-950 shadow-xs transition hover:opacity-90 dark:border-emerald-700"
                               >
                                 <OsmFindingThumbnail url={apUrl} alt="Foto Bukti (After)" />
@@ -3088,6 +3110,20 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                             variant="outline"
                             onClick={() => {
                               setActionFinding(f)
+                              setActionTakenText(f.actionTaken || '')
+                              setActionPhotos(f.actionPhotoUrls || [])
+                              setActionMode('action')
+                            }}
+                            className="h-7 border-emerald-300 px-2 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400"
+                          >
+                            <Camera className="mr-1 size-3" />
+                            {f.actionPhotoUrls && f.actionPhotoUrls.length > 0 ? 'Edit Bukti' : '+ Bukti Foto'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setActionFinding(f)
                               setActionMode('reject')
                             }}
                             className="h-7 border-red-300 px-2 text-xs text-red-600"
@@ -3098,6 +3134,8 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                             size="sm"
                             onClick={() => {
                               setActionFinding(f)
+                              setActionTakenText(f.actionTaken || '')
+                              setActionPhotos(f.actionPhotoUrls || [])
                               setActionMode('close')
                             }}
                             className="h-7 bg-emerald-600 px-2.5 text-xs text-white"
@@ -3338,7 +3376,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={resolveClientUploadUrl(url)}
+                          src={resolveUploadUrl(url, { absolute: true })}
                           alt={`Foto ${idx + 1}`}
                           className="size-full object-cover"
                         />
@@ -3464,28 +3502,48 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs font-semibold">Foto Bukti Perbaikan (Maks. 3)</Label>
-                    <div className="flex gap-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">Foto Bukti Perbaikan (Maks. 3)</Label>
+                      {actionPhotos.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground">{actionPhotos.length}/3 Foto</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       {actionPhotos.map((url, idx) => (
-                        <div key={idx} className="relative size-16 overflow-hidden rounded border">
+                        <div key={idx} className="relative size-16 overflow-hidden rounded-lg border bg-slate-950">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={resolveClientUploadUrl(url)}
-                            alt="Bukti"
+                            src={resolveUploadUrl(url, { absolute: true })}
+                            alt={`Bukti ${idx + 1}`}
                             className="size-full object-cover"
                           />
+                          <button
+                            type="button"
+                            onClick={() => setActionPhotos((prev) => prev.filter((_, i) => i !== idx))}
+                            className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-red-600 text-white shadow"
+                          >
+                            <X className="size-3" />
+                          </button>
                         </div>
                       ))}
                       {actionPhotos.length < 3 && (
-                        <label className="flex size-16 cursor-pointer items-center justify-center rounded border-2 border-dashed">
+                        <label className="flex size-16 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 hover:border-amber-500 hover:bg-amber-50/20 dark:border-slate-700">
                           <input
                             type="file"
                             accept="image/*"
                             capture="environment"
                             className="hidden"
+                            disabled={isUploadingPhoto}
                             onChange={(e) => handlePhotoUpload(e, 'action')}
                           />
-                          <Camera className="text-muted-foreground size-5" />
+                          {isUploadingPhoto ? (
+                            <Loader2 className="size-5 animate-spin text-amber-600" />
+                          ) : (
+                            <>
+                              <Camera className="text-muted-foreground size-5" />
+                              <span className="text-[8px] font-medium text-slate-500 mt-0.5">Tambah</span>
+                            </>
+                          )}
                         </label>
                       )}
                     </div>
@@ -3494,10 +3552,73 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
               )}
 
               {actionMode === 'close' && (
-                <p className="text-muted-foreground text-xs">
-                  Pastikan bahaya telah tuntas dieliminasi sebelum memverifikasi penutupan tiket
-                  ini.
-                </p>
+                <div className="space-y-3 text-xs">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800/50 dark:bg-emerald-950/20">
+                    <span className="block font-bold text-emerald-800 dark:text-emerald-300">
+                      Tindakan Perbaikan (After):
+                    </span>
+                    <p className="mt-1 text-foreground leading-relaxed">
+                      {actionFinding.actionTaken || 'Tindakan perbaikan di lapangan telah diselesaikan.'}
+                    </p>
+                    {actionFinding.actionSubmittedBy && (
+                      <span className="mt-1 block text-[10px] text-emerald-700/80 dark:text-emerald-400">
+                        Oleh: {actionFinding.actionSubmittedBy}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold">Foto Bukti Selesai (Opsional / Tambahan)</Label>
+                      {actionPhotos.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground">{actionPhotos.length}/3 Foto</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {actionPhotos.map((url, idx) => (
+                        <div key={idx} className="relative size-16 overflow-hidden rounded-lg border border-emerald-300 bg-slate-950 dark:border-emerald-700">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={resolveUploadUrl(url, { absolute: true })}
+                            alt={`Bukti Selesai ${idx + 1}`}
+                            className="size-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setActionPhotos((prev) => prev.filter((_, i) => i !== idx))}
+                            className="absolute top-1 right-1 flex size-5 items-center justify-center rounded-full bg-red-600 text-white shadow"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </div>
+                      ))}
+                      {actionPhotos.length < 3 && (
+                        <label className="flex size-16 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50/20 dark:border-emerald-800">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            disabled={isUploadingPhoto}
+                            onChange={(e) => handlePhotoUpload(e, 'action')}
+                          />
+                          {isUploadingPhoto ? (
+                            <Loader2 className="size-5 animate-spin text-emerald-600" />
+                          ) : (
+                            <>
+                              <Camera className="size-5 text-emerald-600" />
+                              <span className="text-[8px] font-medium text-emerald-700 mt-0.5">Bukti Foto</span>
+                            </>
+                          )}
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-muted-foreground text-[11px] leading-relaxed">
+                    Pastikan bahaya telah tuntas dieliminasi di lapangan sebelum memverifikasi penutupan tiket temuan ini.
+                  </p>
+                </div>
               )}
 
               {actionMode === 'reject' && (
@@ -3517,6 +3638,7 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                   variant="outline"
                   size="sm"
                   onClick={() => setActionMode(null)}
+                  disabled={isSubmittingAction}
                   className="flex-1 text-xs"
                 >
                   Batal
@@ -3524,16 +3646,30 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
                 <Button
                   size="sm"
                   onClick={handleExecuteAction}
-                  disabled={isSubmittingAction}
-                  className={`flex-1 text-xs text-white ${
+                  disabled={isSubmittingAction || isUploadingPhoto}
+                  className={`flex-1 text-xs font-bold text-white ${
                     actionMode === 'action'
-                      ? 'bg-amber-600'
+                      ? 'bg-amber-600 hover:bg-amber-700'
                       : actionMode === 'close'
-                        ? 'bg-emerald-600'
-                        : 'bg-red-600'
+                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                        : 'bg-red-600 hover:bg-red-700'
                   }`}
                 >
-                  {isSubmittingAction ? 'Menyimpan...' : 'Kirim'}
+                  {isUploadingPhoto ? (
+                    <>
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      Mengunggah Foto...
+                    </>
+                  ) : isSubmittingAction ? (
+                    <>
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      Menyimpan...
+                    </>
+                  ) : actionMode === 'close' ? (
+                    'Tutup Tiket (Close)'
+                  ) : (
+                    'Kirim'
+                  )}
                 </Button>
               </div>
             </div>
@@ -3700,32 +3836,52 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
         {/* Photo Lightbox */}
         {selectedPhotoModal && (
           <div
-            onClick={() => setSelectedPhotoModal(null)}
+            onClick={() => {
+              setSelectedPhotoModal(null)
+              setLightboxError(false)
+            }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-3"
           >
-            <div className="relative flex max-h-[85vh] max-w-full items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={selectedPhotoModal}
-                alt="Preview"
-                className="max-h-[85vh] max-w-full rounded object-contain"
-                onError={(e) => {
-                  ;(e.target as HTMLElement).style.display = 'none'
-                  const fallback = document.getElementById('lightbox-fallback')
-                  if (fallback) fallback.style.display = 'flex'
+            <div
+              className="relative flex max-h-[85vh] max-w-full flex-col items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedPhotoModal(null)
+                  setLightboxError(false)
                 }}
-              />
-              <div
-                id="lightbox-fallback"
-                style={{ display: 'none' }}
-                className="max-w-xs flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900 p-6 text-center text-slate-300"
+                className="absolute -top-10 right-0 z-10 flex size-8 items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-sm hover:bg-white/30"
               >
-                <ImageOff className="mb-2 size-8 text-amber-500" />
-                <span className="block text-sm font-bold">Gagal Memuat Foto</span>
-                <span className="mt-1 block text-xs text-slate-400">
-                  Berkas foto tidak ditemukan di server atau telah kedaluwarsa.
-                </span>
-              </div>
+                <X className="size-4" />
+              </button>
+              {!lightboxError ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={resolveUploadUrl(selectedPhotoModal, { absolute: true })}
+                  alt="Preview"
+                  className="max-h-[85vh] max-w-full rounded object-contain shadow-2xl"
+                  onError={() => setLightboxError(true)}
+                />
+              ) : (
+                <div className="max-w-xs flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900 p-6 text-center text-slate-300">
+                  <ImageOff className="mx-auto mb-2 size-8 text-amber-500" />
+                  <span className="block text-sm font-bold">Gagal Memuat Foto</span>
+                  <span className="mt-1 block text-xs text-slate-400">
+                    Berkas foto tidak dapat diakses atau koneksi internet terputus.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLightboxError(false)}
+                    className="mt-3 h-8 gap-1 border-slate-700 text-xs text-slate-200 hover:bg-slate-800"
+                  >
+                    <RefreshCw className="size-3" /> Coba Lagi
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -3736,27 +3892,82 @@ export function MobileHseOsmClient({ initialData }: MobileHseOsmClientProps) {
   return null
 }
 
-function OsmFindingThumbnail({ url, alt }: { url: string; alt: string }) {
+function OsmFindingThumbnail({
+  url,
+  alt,
+  onReplacePhoto,
+}: {
+  url: string
+  alt: string
+  onReplacePhoto?: () => void
+}) {
   const [hasError, setHasError] = useState(false)
-  const resolved = resolveClientUploadUrl(url)
+  const [retryKey, setRetryKey] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
 
-  if (hasError || !resolved) {
+  // Use absolute URL resolution to ensure seamless rendering in APK, mobile WebViews, and web browsers
+  const rawResolved = resolveUploadUrl(url, { absolute: true })
+  const resolved = useMemo(() => {
+    if (!rawResolved) return ''
+    if (retryKey === 0) return rawResolved
+    const sep = rawResolved.includes('?') ? '&' : '?'
+    return `${rawResolved}${sep}retry=${retryKey}`
+  }, [rawResolved, retryKey])
+
+  if (!url || (hasError && retryKey >= 2)) {
     return (
-      <div className="flex size-full flex-col items-center justify-center bg-slate-900 p-1 text-center text-slate-400 select-none">
+      <div
+        className="flex size-full flex-col items-center justify-center bg-slate-900 p-1 text-center text-slate-400 select-none cursor-pointer hover:bg-slate-800 transition-colors"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (onReplacePhoto) {
+            onReplacePhoto()
+          } else {
+            setHasError(false)
+            setIsLoading(true)
+            setRetryKey((k) => k + 1)
+          }
+        }}
+        title="Klik untuk memuat ulang atau ganti foto"
+      >
         <ImageOff className="mb-0.5 size-4 text-amber-500" />
         <span className="text-[8.5px] font-bold text-slate-300">Gagal Muat</span>
-        <span className="text-[7px] text-slate-500">Klik / Ganti</span>
+        <span className="text-[7px] text-blue-400 underline">
+          {onReplacePhoto ? 'Klik / Ganti Foto' : 'Coba Lagi'}
+        </span>
       </div>
     )
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={resolved}
-      alt={alt}
-      onError={() => setHasError(true)}
-      className="size-full object-cover"
-    />
+    <div className="relative size-full">
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60">
+          <Loader2 className="size-4 animate-spin text-slate-400" />
+        </div>
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        key={resolved}
+        src={resolved}
+        alt={alt}
+        onLoad={() => {
+          setIsLoading(false)
+          setHasError(false)
+        }}
+        onError={() => {
+          setIsLoading(false)
+          if (retryKey < 2) {
+            // Auto retry once with cache buster in case of transient network glitch
+            setTimeout(() => {
+              setRetryKey((k) => k + 1)
+            }, 800)
+          } else {
+            setHasError(true)
+          }
+        }}
+        className="size-full object-cover"
+      />
+    </div>
   )
 }

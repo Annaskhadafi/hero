@@ -570,6 +570,15 @@ export function OsmDetailDialog({
                               <Button
                                 size="sm"
                                 variant="outline"
+                                onClick={() => openActionModal(f, "submit_action")}
+                                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs h-7.5 px-3 gap-1"
+                              >
+                                <Camera className="size-3.5" />
+                                {f.actionPhotoUrls && f.actionPhotoUrls.length > 0 ? "Edit Bukti Foto" : "+ Bukti Foto"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 onClick={() => openActionModal(f, "verify_reject")}
                                 className="border-red-300 text-red-700 hover:bg-red-50 text-xs h-7.5 px-3 gap-1"
                               >
@@ -781,13 +790,28 @@ function OsmFindingDetailImage({
   className?: string;
 }) {
   const [hasError, setHasError] = useState(false);
-  const resolved = resolveClientUploadUrl(url);
+  const [retryKey, setRetryKey] = useState(0);
+  const rawResolved = resolveClientUploadUrl(url, { absolute: true });
+  const resolved = rawResolved
+    ? retryKey === 0
+      ? rawResolved
+      : `${rawResolved}${rawResolved.includes('?') ? '&' : '?'}retry=${retryKey}`
+    : '';
 
-  if (hasError || !resolved) {
+  if (!url || (hasError && retryKey >= 2)) {
     return (
-      <div className="size-full flex flex-col items-center justify-center p-2 bg-slate-900 text-slate-400 text-center select-none">
+      <div
+        className="size-full flex flex-col items-center justify-center p-2 bg-slate-900 text-slate-400 text-center select-none cursor-pointer hover:bg-slate-800 transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          setHasError(false);
+          setRetryKey((k) => k + 1);
+        }}
+        title="Klik untuk coba lagi"
+      >
         <ImageOff className="size-4 text-amber-500 mb-1" />
         <span className="text-[9px] font-bold text-slate-300">Gagal Muat</span>
+        <span className="text-[7.5px] text-blue-400 underline">Coba Lagi</span>
       </div>
     );
   }
@@ -795,9 +819,17 @@ function OsmFindingDetailImage({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      key={resolved}
       src={resolved}
       alt={alt}
-      onError={() => setHasError(true)}
+      onLoad={() => setHasError(false)}
+      onError={() => {
+        if (retryKey < 2) {
+          setTimeout(() => setRetryKey((k) => k + 1), 800);
+        } else {
+          setHasError(true);
+        }
+      }}
       className={className}
     />
   );

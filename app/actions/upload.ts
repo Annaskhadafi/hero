@@ -91,6 +91,11 @@ export async function uploadFile(formData: FormData) {
     const isPublicCareerCv = uploadTarget === 'public-career-cv'
     const isContractReviewAttachment = uploadTarget === 'contract-review-attachment'
 
+    const isPublicTarget =
+      uploadTarget === 'public-career-cv' ||
+      uploadTarget === 'hse-osm' ||
+      uploadTarget === 'attendance'
+
     if (isContractReviewAttachment) {
       const approvalToken = (formData.get('approvalToken') as string | null)?.trim()
       const session = await getServerSession()
@@ -110,7 +115,7 @@ export async function uploadFile(formData: FormData) {
           return { success: false, error: 'Unauthorized: Token approval tidak valid.' }
         }
       }
-    } else if (!isPublicCareerCv) {
+    } else if (!isPublicTarget) {
       const access = await requireUploadSession()
       if (!access.success) return access
     }
