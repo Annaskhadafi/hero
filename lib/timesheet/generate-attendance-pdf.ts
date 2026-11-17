@@ -1201,24 +1201,39 @@ async function drawOvertimeRecordSignatures(
   const names = input.signatures
   const isPjo = Boolean(input.isPjo || names.isPjo)
 
+  const isKpcSite = Boolean(input.siteName && /kpc/i.test(input.siteName))
+  const normalizeSigner = (val?: string): string => {
+    const trimmed = (val || '').trim()
+    if (
+      (isKpcSite && trimmed.toLowerCase().startsWith('plant. spv department')) ||
+      (trimmed.toLowerCase().startsWith('plant. spv department') && trimmed.toLowerCase().includes('kpc'))
+    ) {
+      return 'Leader WS.KPC'
+    }
+    return trimmed
+  }
+
   let labels: [string, string][] = []
   if (names.useExternalOnly) {
     const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
-    const customerSigner =
+    const rawCustomer =
       names.externalApprovedBy?.trim() ||
       names.approvedBy?.trim() ||
-      (isMhuSite ? 'Plant. Suptend Department CK-MHU' : 'Customer / SPV Eksternal')
+      (isKpcSite ? 'Leader WS.KPC' : isMhuSite ? 'Plant. Suptend Department CK-MHU' : 'Customer / SPV Eksternal')
+    const customerSigner = normalizeSigner(rawCustomer) || (isKpcSite ? 'Leader WS.KPC' : 'Customer / SPV Eksternal')
 
-    // 2 Kolom Approval Eksternal: Manpower vs Customer (Plant. Suptend Department CK-MHU)
+    // 2 Kolom Approval Eksternal: Manpower vs Customer (Plant. Suptend Department CK-MHU / Leader WS.KPC)
     labels = [
       ['Dibuat oleh :', input.employeeName || names.externalPreparedBy?.trim() || names.preparedBy || '-'],
       ['Approved by:', customerSigner],
     ]
   } else {
+    const rawApproved = names.approvedBy?.trim() || (isKpcSite ? 'Leader WS.KPC' : 'PJO / Manager')
+    const approvedSigner = normalizeSigner(rawApproved) || (isKpcSite ? 'Leader WS.KPC' : 'PJO / Manager')
     labels = [
       ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || '-'],
       ['Approved by:', names.pjoLeader?.trim() || 'Supervisor / Leader'],
-      ['Approved by:', names.approvedBy?.trim() || 'PJO / Manager'],
+      ['Approved by:', approvedSigner],
       ['Diketahui oleh:', names.hrName?.trim() || 'HC / Admin'],
     ]
   }

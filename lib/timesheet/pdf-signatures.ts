@@ -75,11 +75,23 @@ export function drawPdfSignatures(
 ) {
   let labels: [string, string][] = []
 
+  const normalizeSigner = (val: string): string => {
+    const trimmed = (val || '').trim()
+    if (
+      trimmed.toLowerCase().startsWith('plant. spv department') &&
+      trimmed.toLowerCase().includes('kpc')
+    ) {
+      return 'Leader WS.KPC'
+    }
+    return trimmed
+  }
+
   if (names.useExternalOnly) {
-    const customerSigner =
+    const rawCustomer =
       names.externalApprovedBy?.trim() ||
       names.approvedBy?.trim() ||
       'Plant. Suptend Department CK-MHU'
+    const customerSigner = normalizeSigner(rawCustomer)
     labels = [
       ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || '-'],
       ['Approved by:', customerSigner],
@@ -88,7 +100,7 @@ export function drawPdfSignatures(
     labels = [
       ['Dibuat oleh :', names.preparedBy || '-'],
       ['Approved by:', names.pjoLeader || '-'],
-      ['Approved by:', names.approvedBy || '-'],
+      ['Approved by:', normalizeSigner(names.approvedBy || '-')],
       ['Diketahui oleh:', names.hrName || ''],
     ]
 
@@ -97,12 +109,12 @@ export function drawPdfSignatures(
         labels.push(['Dibuat oleh (Eksternal):', names.externalPreparedBy.trim()])
       }
       if (names.externalApprovedBy?.trim()) {
-        labels.push(['Approved by (SPV Eksternal):', names.externalApprovedBy.trim()])
+        labels.push(['Approved by (SPV Eksternal):', normalizeSigner(names.externalApprovedBy.trim())])
       }
       if (names.customSigners && names.customSigners.length > 0) {
         names.customSigners
           .filter((s) => s.label.trim() && s.name.trim())
-          .forEach((s) => labels.push([s.label.trim(), s.name.trim()]))
+          .forEach((s) => labels.push([s.label.trim(), normalizeSigner(s.name.trim())]))
       }
     }
   }

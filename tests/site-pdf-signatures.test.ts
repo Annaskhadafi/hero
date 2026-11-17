@@ -286,4 +286,84 @@ describe('Site PDF & Signatures Configuration', () => {
     const mlsDoc = await PDFDocument.load(mlsPdfBytes)
     expect(mlsDoc.getPageCount()).toBeGreaterThanOrEqual(1)
   })
+
+  it('renders "Leader WS.KPC" for Sangatta KPC approval instead of "Plant. SPV Department (Sangatta KPC)"', async () => {
+    const kpcSignatures = {
+      preparedBy: 'Reza Hendrawan Iskandar',
+      pjoLeader: 'Reza Hendrawan Iskandar',
+      approvedBy: 'Plant. SPV Department (Sangatta KPC)',
+      hrName: 'Kesuma Bagaskara',
+      externalPreparedBy: '',
+      externalApprovedBy: '',
+      customSigners: [],
+      useExternalOnly: false,
+      omitExternal: true,
+    }
+
+    const pdfBytes = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-11',
+      employeeId: 71261,
+      employeeName: 'Muhammad Fadzri',
+      employeeSn: '71261',
+      department: 'Central Services',
+      section: 'Service Operation',
+      siteName: 'Sangatta KPC',
+      signatures: kpcSignatures,
+      days: [
+        {
+          day: 1,
+          dayName: 'Friday',
+          status: 'present',
+          clockIn: '06:45',
+          clockOut: '17:00',
+          scheduleCode: 'DS',
+          isHoliday: false,
+          workingTimeFrom: '07:00',
+          overtime: { totalHours: 2 },
+        },
+      ],
+      isNonStaff: true,
+      showTotalOvertime: true,
+    })
+
+    expect(pdfBytes).toBeInstanceOf(Uint8Array)
+    const doc = await PDFDocument.load(pdfBytes)
+    expect(doc.getPageCount()).toBe(1)
+
+    // Also test useExternalOnly for Sangatta KPC
+    const externalKpcPdf = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-11',
+      employeeId: 71261,
+      employeeName: 'Muhammad Fadzri',
+      employeeSn: '71261',
+      department: 'Central Services',
+      section: 'Service Operation',
+      siteName: 'Sangatta KPC',
+      signatures: {
+        ...kpcSignatures,
+        useExternalOnly: true,
+        omitExternal: false,
+      },
+      days: [
+        {
+          day: 1,
+          dayName: 'Friday',
+          status: 'present',
+          clockIn: '06:45',
+          clockOut: '17:00',
+          scheduleCode: 'DS',
+          isHoliday: false,
+          workingTimeFrom: '07:00',
+          overtime: { totalHours: 2 },
+        },
+      ],
+      isNonStaff: true,
+      showTotalOvertime: true,
+    })
+    expect(externalKpcPdf).toBeInstanceOf(Uint8Array)
+    const extDoc = await PDFDocument.load(externalKpcPdf)
+    expect(extDoc.getPageCount()).toBe(1)
+  })
 })

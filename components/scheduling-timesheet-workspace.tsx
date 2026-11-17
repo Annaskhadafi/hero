@@ -868,7 +868,15 @@ function normalizePdfConfig(
   const headEmp = site?.headEmployeeId
     ? (employees.find((e) => e.id === site.headEmployeeId)?.name ?? '')
     : ''
-  const defaultApprovedBy = site ? `Plant. SPV Department (${site.name})` : ''
+  const isKpcSite = Boolean(
+    (site?.name && /kpc/i.test(site.name)) ||
+    (siteId && String(siteId) === '215')
+  )
+  const defaultApprovedBy = isKpcSite
+    ? 'Leader WS.KPC'
+    : site
+      ? `Plant. SPV Department (${site.name})`
+      : ''
   const customSigners = Array.isArray(cfg.customSigners)
     ? (cfg.customSigners as PdfConfigSigner[])
     : []
@@ -876,10 +884,19 @@ function normalizePdfConfig(
   const parseSummaryCfg = (subRaw: unknown): SummarySignaturesConfig => {
     if (!subRaw || typeof subRaw !== 'object') return {}
     const s = subRaw as Record<string, unknown>
+    let summaryAppr = typeof s.approvedBy === 'string' ? s.approvedBy : undefined
+    if (
+      isKpcSite &&
+      summaryAppr &&
+      (summaryAppr.toLowerCase().startsWith('plant. spv department') ||
+        summaryAppr.toLowerCase().includes('sangatta kpc'))
+    ) {
+      summaryAppr = 'Leader WS.KPC'
+    }
     return {
       preparedBy: typeof s.preparedBy === 'string' ? s.preparedBy : undefined,
       pjoLeader: typeof s.pjoLeader === 'string' ? s.pjoLeader : undefined,
-      approvedBy: typeof s.approvedBy === 'string' ? s.approvedBy : undefined,
+      approvedBy: summaryAppr,
       hrName: typeof s.hrName === 'string' ? s.hrName : undefined,
       externalPreparedBy: typeof s.externalPreparedBy === 'string' ? s.externalPreparedBy : undefined,
       externalApprovedBy: typeof s.externalApprovedBy === 'string' ? s.externalApprovedBy : undefined,
@@ -909,11 +926,21 @@ function normalizePdfConfig(
     },
   }
 
+  let normalizedApprovedBy = (cfg.approvedBy as string) || ''
+  if (
+    isKpcSite &&
+    (!normalizedApprovedBy ||
+      normalizedApprovedBy.toLowerCase().startsWith('plant. spv department') ||
+      normalizedApprovedBy.toLowerCase().includes('sangatta kpc'))
+  ) {
+    normalizedApprovedBy = 'Leader WS.KPC'
+  }
+
   return {
     preparedBy: (cfg.preparedBy as string) || '',
     pjoLeader: (cfg.pjoLeader as string) || headEmp || '',
     pjoLeaderCk: (cfg.pjoLeaderCk as string) || '',
-    approvedBy: (cfg.approvedBy as string) || '',
+    approvedBy: normalizedApprovedBy,
     hrName: (cfg.hrName as string) || '',
     externalPreparedBy: (cfg.externalPreparedBy as string) || '',
     externalApprovedBy: (cfg.externalApprovedBy as string) || '',
@@ -2443,7 +2470,18 @@ export function SchedulingTimesheetWorkspace({
     const defaultManager = matchedSection?.departmentHeadName || ''
     const siteHeadName =
       employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
-    const approvedByName = cfg.approvedBy || defaultManager || siteHeadName || ''
+    const isKpcSite = Boolean(
+      (site?.name && /kpc/i.test(site.name)) ||
+      (site?.id && String(site.id) === '215')
+    )
+    let approvedByName = cfg.approvedBy || (isKpcSite ? 'Leader WS.KPC' : defaultManager || siteHeadName || '')
+    if (
+      isKpcSite &&
+      (approvedByName.toLowerCase().startsWith('plant. spv department') ||
+        approvedByName.toLowerCase().includes('sangatta kpc'))
+    ) {
+      approvedByName = 'Leader WS.KPC'
+    }
 
     // HR: cari employee dengan role/department HR di site yang sama
     const hrKeywords = ['hr', 'hrd', 'human resource', 'human capital']
@@ -6958,14 +6996,28 @@ export function SchedulingTimesheetWorkspace({
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
 
+    const isKpcSite = Boolean(
+      (site?.name && /kpc/i.test(site.name)) ||
+      (siteId && String(siteId) === '215') ||
+      (employee?.siteId && String(employee.siteId) === '215')
+    )
+
     const isPlaceholderApprovedBy = (val?: string) =>
       !val || val.trim().toLowerCase().startsWith('plant. spv department')
 
     const cfgPreparedBy = cfg.preparedBy?.trim() || ''
     const cfgPjo = cfg.pjoLeader?.trim() || ''
-    const cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy)
+    let cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy)
       ? cfg.approvedBy?.trim() || ''
       : ''
+    if (
+      isKpcSite &&
+      (!cfgApprovedBy ||
+        cfg.approvedBy?.toLowerCase().startsWith('plant. spv department') ||
+        cfg.approvedBy?.toLowerCase().includes('sangatta kpc'))
+    ) {
+      cfgApprovedBy = 'Leader WS.KPC'
+    }
     const cfgHr = cfg.hrName?.trim() || ''
 
     const sectionApproval = siteApprovalSections.find((s) => {
@@ -7022,9 +7074,9 @@ export function SchedulingTimesheetWorkspace({
       defaultSectionPjo
 
     const effectiveApprovedBy =
-      (normSection.includes('hse') ? rendra : cfgApprovedBy) ||
+      (isKpcSite ? (cfgApprovedBy || 'Leader WS.KPC') : (normSection.includes('hse') ? rendra : cfgApprovedBy)) ||
       sectionApprovedBy ||
-      baseSignatures.approvedBy ||
+      (isKpcSite ? 'Leader WS.KPC' : baseSignatures.approvedBy) ||
       defaultSectionApprovedBy
 
     const effectiveHr = cfgHr || baseSignatures.hrName || kesuma
@@ -7111,8 +7163,20 @@ export function SchedulingTimesheetWorkspace({
     const resolvedPreparedBy = summaryOverride?.preparedBy?.trim() || defaultPrep
     const resolvedPjo =
       summaryOverride?.pjoLeader?.trim() || baseSignatures.pjoLeader || cfg.pjoLeader || ''
-    const resolvedApprovedBy =
+    const isKpcSite = Boolean(
+      (site?.name && /kpc/i.test(site.name)) ||
+      (siteId && Number(siteId) === 215)
+    )
+    let resolvedApprovedBy =
       summaryOverride?.approvedBy?.trim() || baseSignatures.approvedBy || cfg.approvedBy || ''
+    if (
+      isKpcSite &&
+      (!resolvedApprovedBy ||
+        resolvedApprovedBy.toLowerCase().startsWith('plant. spv department') ||
+        resolvedApprovedBy.toLowerCase().includes('sangatta kpc'))
+    ) {
+      resolvedApprovedBy = 'Leader WS.KPC'
+    }
     const resolvedHr =
       summaryOverride?.hrName?.trim() || baseSignatures.hrName || cfg.hrName || ''
     const isMhuSite = Boolean(
@@ -7120,17 +7184,28 @@ export function SchedulingTimesheetWorkspace({
       cfg.project === 'CK MHU' ||
       (siteId && Number(siteId) === 128)
     )
-    const defaultCustomer = isMhuSite ? 'Plant. Suptend Department CK-MHU' : 'Customer / SPV Eksternal'
+    const defaultCustomer = isKpcSite
+      ? 'Leader WS.KPC'
+      : isMhuSite
+        ? 'Plant. Suptend Department CK-MHU'
+        : 'Customer / SPV Eksternal'
     const resolvedExtPreparedBy =
       summaryOverride?.externalPreparedBy?.trim() ||
       cfg.externalPreparedBy ||
       baseSignatures.externalPreparedBy ||
       ''
-    const resolvedExtApprovedBy =
+    let resolvedExtApprovedBy =
       summaryOverride?.externalApprovedBy?.trim() ||
       cfg.externalApprovedBy ||
       baseSignatures.externalApprovedBy ||
       defaultCustomer
+    if (
+      isKpcSite &&
+      (resolvedExtApprovedBy.toLowerCase().startsWith('plant. spv department') ||
+        resolvedExtApprovedBy.toLowerCase().includes('sangatta kpc'))
+    ) {
+      resolvedExtApprovedBy = 'Leader WS.KPC'
+    }
 
     if (pdfUseExternalSignatures) {
       const extPrep = resolvedExtPreparedBy || resolvedPreparedBy
@@ -12627,7 +12702,11 @@ export function SchedulingTimesheetWorkspace({
                                 value: e.name,
                                 label: e.role ? `${e.name} (${e.role})` : e.name,
                               }))}
-                              placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
+                              placeholder={
+                                site?.name && /kpc/i.test(site.name)
+                                  ? 'Leader WS.KPC'
+                                  : `Plant. SPV Department (${site?.name || 'Site'})`
+                              }
                               allowCustom={true}
                               widthClassName="w-full"
                             />
