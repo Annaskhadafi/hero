@@ -7,10 +7,10 @@ test('verify excellence troubleshooting and ticketing dashboard matches referenc
   screen,
   browser,
 }) => {
-  // 1. Perform login with standard credentials targeting helpdesk
-  await loginToHero(app, screen, browser, { targetUrl: '/dashboard/helpdesk' });
+  // 1. Perform login with standard credentials
+  await loginToHero(app, screen, browser);
 
-  // 2. Ensure /dashboard/helpdesk is open with active session
+  // 2. Open /dashboard/helpdesk with active session
   await app.open('/dashboard/helpdesk');
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
@@ -49,9 +49,9 @@ test('verify excellence troubleshooting and ticketing dashboard matches referenc
   await app.screenshot('01-excellence-troubleshoot-overview');
 
   // 7. Test Interactive Ticket Selection: Click a ticket in the table
-  const ticketTkt42 = browser.locator('td:has-text("TKT-0042")').first();
-  if (await ticketTkt42.isVisible().catch(() => false)) {
-    await ticketTkt42.click();
+  const ticketRow = browser.locator('td:has-text("TCK-2026-0042"), td:has-text("TCK-2026-0031")').first();
+  if (await ticketRow.isVisible().catch(() => false)) {
+    await ticketRow.click();
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
 

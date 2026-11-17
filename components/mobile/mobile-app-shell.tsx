@@ -29,6 +29,7 @@ import {
   Heart,
   Store,
   ImagePlus,
+  Wrench,
   X,
 } from 'lucide-react'
 
@@ -97,6 +98,13 @@ export function MobileAppShell({
     { type: 'link', label: 'Informasi HO', href: '/mobile/information', icon: Bell },
     { type: 'section', label: 'Produktivitas' },
     { type: 'link', label: 'Aktivitas Harian', href: '/mobile/activity', icon: ClipboardList, resource: 'tire_service' },
+    {
+      type: 'link',
+      label: 'Troubleshoot & Tiket',
+      href: '/mobile/helpdesk',
+      icon: Wrench,
+      resource: 'helpdesk',
+    },
     {
       type: 'link',
       label: mobileActivityDrawerItem.label,

@@ -395,6 +395,15 @@ export function MobileDashboardServices({
       description: 'Catatan tugas harian & log kerja',
     },
     {
+      title: 'Troubleshoot & Tiket',
+      href: '/mobile/helpdesk',
+      resource: 'helpdesk',
+      icon: Wrench,
+      bg: 'bg-rose-500/10 text-rose-600',
+      section: 'Operasional',
+      description: 'Lapor kendala telematika & tiket sistem',
+    },
+    {
       title: 'Input Progress',
       href: '/mobile/activity/input',
       resource: 'tire_service',
