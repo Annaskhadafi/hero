@@ -43,6 +43,9 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   'rfr',
   'road-hazard',
   'twibbon-templates',
+  'troubleshooting-attachments',
+  'troubleshooting',
+  'service-desk',
 ])
 
 function getContentType(fileName: string) {

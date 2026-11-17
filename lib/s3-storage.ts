@@ -82,7 +82,10 @@ function getObjectKeyFromUrl(objectUrl: string) {
       cleanPath.startsWith('marital-status/') ||
       cleanPath.startsWith('rfr/') ||
       cleanPath.startsWith('road-hazard/') ||
-      cleanPath.startsWith('twibbon-templates/')
+      cleanPath.startsWith('twibbon-templates/') ||
+      cleanPath.startsWith('troubleshooting-attachments/') ||
+      cleanPath.startsWith('troubleshooting/') ||
+      cleanPath.startsWith('service-desk/')
     ) {
       return cleanPath
     }

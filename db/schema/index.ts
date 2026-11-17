@@ -292,6 +292,7 @@ export * from './safety-induction'
 
 // Helpdesk & Ticketing
 export * from './helpdesk'
+export * from './service-desk'
 
 // APD & Inventory
 export { masterApd } from './apd'

@@ -57,6 +57,9 @@ export function extractS3ObjectKeyFromUrl(objectUrl: string | null | undefined):
       'rfr/',
       'road-hazard/',
       'twibbon-templates/',
+      'troubleshooting-attachments/',
+      'troubleshooting/',
+      'service-desk/',
     ]
     for (const prefix of prefixes) {
       if (cleanPath.startsWith(prefix)) {
