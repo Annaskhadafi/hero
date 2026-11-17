@@ -361,6 +361,11 @@ export function MobileDashboardTroubleshootWidget({
                 <div className="flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-1.5 font-bold font-mono text-slate-900 dark:text-slate-100">
                     <span>{ticket.ticketNumber}</span>
+                    {ticket.queuePosition && ['baru', 'assigned', 'investigasi', 'menunggu_part'].includes(ticket.status) && (
+                      <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-300/60 font-sans">
+                        Q#{ticket.queuePosition}
+                      </span>
+                    )}
                     {ticket.unitCode && (
                       <span className="text-muted-foreground font-sans font-normal">
                         · {ticket.unitCode}
@@ -666,6 +671,43 @@ export function MobileDashboardTroubleshootWidget({
 
               {/* Scrollable Body */}
               <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                {/* Status Antrian & Estimasi Penanganan (Mobile) */}
+                {['baru', 'assigned', 'investigasi', 'menunggu_part'].includes(selectedTicket.status) && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-300/80 dark:border-amber-700/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200 text-xs">
+                        <Clock className="size-3.5 text-amber-600" />
+                        <span>Status Antrian Penanganan</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white font-extrabold text-[10px]">
+                        Antrian #{selectedTicket.queuePosition || 1}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-950 dark:text-amber-100">
+                      Berada di urutan ke-{selectedTicket.queuePosition || 1} pada teknisi <span className="font-bold">{selectedTicket.assignedEmployeeName || 'Admin'}</span>.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200 dark:border-amber-800/60 text-[10px]">
+                      <div>
+                        <span className="text-amber-800/80 dark:text-amber-300 block font-semibold">Estimasi Mulai:</span>
+                        <span className="font-bold text-amber-950 dark:text-amber-100">
+                          {(selectedTicket.estimatedWaitHours || 0) === 0 ? 'Segera / Prioritas' : `~${selectedTicket.estimatedWaitHours} Jam lagi`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-amber-800/80 dark:text-amber-300 block font-semibold">Target Selesai:</span>
+                        <span className="font-bold text-amber-950 dark:text-amber-100">
+                          {new Date(selectedTicket.targetSlaAt).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })} WIB
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Judul & Temuan */}
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-border/80 space-y-1.5">
                   <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">

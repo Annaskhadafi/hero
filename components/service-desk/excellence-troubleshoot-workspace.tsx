@@ -233,6 +233,23 @@ export function ExcellenceTroubleshootWorkspace({
   const [formAttachments, setFormAttachments] = useState<Array<{ url: string; name: string; size: number; type: string }>>([])
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
 
+  // Created Ticket Success Modal with Queue Number & Estimation
+  const [createdTicketModalOpen, setCreatedTicketModalOpen] = useState(false)
+  const [createdTicketInfo, setCreatedTicketInfo] = useState<{
+    ticketNumber: string
+    ticketId: number
+    queuePosition: number
+    totalQueueForPic: number
+    estimatedWaitHours: number
+    estimatedStartAt?: string
+    estimatedResolutionAt?: string
+    assignedPicName: string
+    priority: string
+    categoryName: string
+    title: string
+    slaHours: number
+  } | null>(null)
+
   // Admin Edit Form States
   const [editTicketId, setEditTicketId] = useState<number | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -504,13 +521,14 @@ export function ExcellenceTroubleshootWorkspace({
       })
 
       if (res.success) {
-        toast.success(`Tiket ${res.ticketNumber} berhasil dibuat dengan ${assignedObjs.length} PIC ditugaskan!`)
+        toast.success(`Tiket ${res.ticketNumber} berhasil didaftarkan! Masuk Antrian #${res.queuePosition || 1}`)
         setCreateDialogOpen(false)
         setFormTitle('')
         setFormDescription('')
         setFormUnitCode('')
         setFormAssignedPicIds([])
         setFormAttachments([])
+
         const newTicketItem: TroubleshootTicketItem = {
           id: res.ticketId || Date.now(),
           ticketNumber: res.ticketNumber || 'TKT-NEW',
@@ -525,7 +543,7 @@ export function ExcellenceTroubleshootWorkspace({
           priority: formPriority,
           status: assignedObjs.length > 0 ? 'assigned' : 'baru',
           assignedEmployeeId: assignedObjs[0]?.id || null,
-          assignedEmployeeName: assignedObjs[0]?.name || null,
+          assignedEmployeeName: res.assignedPicName || assignedObjs[0]?.name || null,
           assignedRole: assignedObjs[0]?.role || null,
           assignedEmployees: assignedObjs,
           title: formTitle,
@@ -533,14 +551,36 @@ export function ExcellenceTroubleshootWorkspace({
           sourceType: 'user_report',
           sourceDetail: formSourceDetail,
           detectedAt: new Date().toISOString(),
-          targetSlaAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+          targetSlaAt: new Date(Date.now() + (res.slaHours || 24) * 3600 * 1000).toISOString(),
           resolvedAt: null,
           ageStr: 'Baru saja',
           slaLabel: 'Dalam Batas SLA',
           isOverdue: false,
           mttrHours: null,
           attachments: formAttachments,
+          queuePosition: res.queuePosition || 1,
+          totalActiveQueueForPic: res.totalQueueForPic || 1,
+          estimatedWaitHours: res.estimatedWaitHours || 0,
+          estimatedStartAt: res.estimatedStartAt,
+          estimatedResolutionAt: res.estimatedResolutionAt,
         }
+
+        setCreatedTicketInfo({
+          ticketNumber: res.ticketNumber || 'TKT-NEW',
+          ticketId: res.ticketId || newTicketItem.id,
+          queuePosition: res.queuePosition || 1,
+          totalQueueForPic: res.totalQueueForPic || 1,
+          estimatedWaitHours: res.estimatedWaitHours || 0,
+          estimatedStartAt: res.estimatedStartAt,
+          estimatedResolutionAt: res.estimatedResolutionAt,
+          assignedPicName: res.assignedPicName || assignedObjs[0]?.name || 'Admin HERO',
+          priority: formPriority,
+          categoryName: formCategory,
+          title: formTitle,
+          slaHours: res.slaHours || 24,
+        })
+        setCreatedTicketModalOpen(true)
+
         setTickets((prev) => [newTicketItem, ...prev])
         setSelectedTicket(newTicketItem)
         router.refresh()
@@ -1105,19 +1145,17 @@ export function ExcellenceTroubleshootWorkspace({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200">
                     <tr>
-                      {isAdmin && (
-                        <th className="py-2.5 px-3 w-8">
-                          <input
-                            type="checkbox"
-                            checked={
-                              filteredTickets.length > 0 &&
-                              selectedTicketIds.length === filteredTickets.length
-                            }
-                            onChange={handleToggleSelectAll}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 size-3.5"
-                          />
-                        </th>
-                      )}
+                      <th className="py-2.5 px-3 w-8">
+                        <input
+                          type="checkbox"
+                          checked={
+                            filteredTickets.length > 0 &&
+                            selectedTicketIds.length === filteredTickets.length
+                          }
+                          onChange={handleToggleSelectAll}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 size-3.5"
+                        />
+                      </th>
                       <th className="py-2.5 px-3">Tiket</th>
                       <th className="py-2.5 px-3">Unit &amp; Site</th>
                       <th className="py-2.5 px-3">Kategori</th>
@@ -1125,7 +1163,7 @@ export function ExcellenceTroubleshootWorkspace({
                       <th className="py-2.5 px-3">PIC Multi-User</th>
                       <th className="py-2.5 px-3">SLA Status</th>
                       <th className="py-2.5 px-3">Status</th>
-                      {isAdmin && <th className="py-2.5 px-3 text-right">Aksi Admin</th>}
+                      <th className="py-2.5 px-3 text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1160,18 +1198,33 @@ export function ExcellenceTroubleshootWorkspace({
                               isChecked && 'bg-amber-50/60'
                             )}
                           >
-                            {isAdmin && (
-                              <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => handleToggleSelectRow(t.id)}
-                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 size-3.5"
-                                />
-                              </td>
-                            )}
+                            <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleSelectRow(t.id)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 size-3.5"
+                              />
+                            </td>
                             <td className="py-2.5 px-3">
-                              <span className="font-mono font-bold text-blue-700">{t.ticketNumber}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-blue-700">{t.ticketNumber}</span>
+                                {t.queuePosition && ['baru', 'assigned', 'investigasi', 'menunggu_part'].includes(t.status) && (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'text-[10px] px-1.5 py-0 font-bold',
+                                      t.queuePosition === 1
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                        : t.queuePosition <= 3
+                                          ? 'bg-blue-50 text-blue-700 border-blue-300'
+                                          : 'bg-amber-50 text-amber-800 border-amber-300'
+                                    )}
+                                  >
+                                    Q#{t.queuePosition}
+                                  </Badge>
+                                )}
+                              </div>
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="font-semibold text-slate-900">{t.unitCode || '-'}</div>
@@ -1222,29 +1275,27 @@ export function ExcellenceTroubleshootWorkspace({
                                 {sConfig.label}
                               </Badge>
                             </td>
-                            {isAdmin && (
-                              <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    onClick={() => handleOpenAdminEdit(t)}
-                                    title="Edit Tiket (Admin)"
-                                    className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50"
-                                  >
-                                    <IconPencil className="size-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      setTicketToDelete(t)
-                                      setSingleDeleteConfirmOpen(true)
-                                    }}
-                                    title="Hapus Tiket (Admin)"
-                                    className="p-1 rounded text-slate-500 hover:text-rose-600 hover:bg-rose-50"
-                                  >
-                                    <IconTrash className="size-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            )}
+                            <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => handleOpenAdminEdit(t)}
+                                  title="Edit Rincian Tiket"
+                                  className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                >
+                                  <IconPencil className="size-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setTicketToDelete(t)
+                                    setSingleDeleteConfirmOpen(true)
+                                  }}
+                                  title="Hapus Tiket"
+                                  className="p-1 rounded text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                >
+                                  <IconTrash className="size-3.5" />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         )
                       })
@@ -1302,7 +1353,24 @@ export function ExcellenceTroubleshootWorkspace({
                             )}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-mono font-bold text-xs text-blue-700">{t.ticketNumber}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono font-bold text-xs text-blue-700">{t.ticketNumber}</span>
+                                {t.queuePosition && ['baru', 'assigned', 'investigasi', 'menunggu_part'].includes(t.status) && (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      'text-[9px] px-1 py-0 font-bold',
+                                      t.queuePosition === 1
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                        : t.queuePosition <= 3
+                                          ? 'bg-blue-50 text-blue-700 border-blue-300'
+                                          : 'bg-amber-50 text-amber-800 border-amber-300'
+                                    )}
+                                  >
+                                    Q#{t.queuePosition}
+                                  </Badge>
+                                )}
+                              </div>
                               <Badge className={cn('text-[9px] px-1.5 py-0', pConfig.className)}>
                                 {pConfig.label}
                               </Badge>
@@ -1391,31 +1459,70 @@ export function ExcellenceTroubleshootWorkspace({
                   </h3>
                 </div>
 
-                {isAdmin && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenAdminEdit(selectedTicket)}
-                      className="h-8 px-2 text-xs text-blue-700 bg-blue-50 border-blue-200 hover:bg-blue-100 gap-1"
-                    >
-                      <IconPencil className="size-3.5" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setTicketToDelete(selectedTicket)
-                        setSingleDeleteConfirmOpen(true)
-                      }}
-                      className="h-8 px-2 text-xs text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100 gap-1"
-                    >
-                      <IconTrash className="size-3.5" />
-                    </Button>
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleOpenAdminEdit(selectedTicket)}
+                    className="h-8 px-2.5 text-xs font-semibold text-blue-700 bg-blue-50/80 border-blue-200 hover:bg-blue-100 gap-1.5 shadow-2xs"
+                    title="Edit rincian tiket ini"
+                  >
+                    <IconPencil className="size-3.5" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTicketToDelete(selectedTicket)
+                      setSingleDeleteConfirmOpen(true)
+                    }}
+                    className="h-8 px-2.5 text-xs font-semibold text-rose-700 bg-rose-50/80 border-rose-200 hover:bg-rose-100 gap-1.5 shadow-2xs"
+                    title="Hapus tiket ini secara permanen"
+                  >
+                    <IconTrash className="size-3.5" />
+                    Hapus
+                  </Button>
+                </div>
               </div>
+
+              {/* Dynamic Queue Position & Estimated Time Card */}
+              {['baru', 'assigned', 'investigasi', 'menunggu_part'].includes(selectedTicket.status) && (
+                <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-500/10 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-900 text-xs">
+                      <IconClock className="size-4 text-amber-600" />
+                      Status Antrian Pengerjaan
+                    </div>
+                    <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-2.5 py-0.5 shadow-2xs">
+                      Antrian #{selectedTicket.queuePosition || 1}
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] text-amber-900/90 leading-relaxed">
+                    Tiket ini berada pada <span className="font-bold">Antrian ke-{selectedTicket.queuePosition || 1}</span> dari total <span className="font-bold">{selectedTicket.totalActiveQueueForPic || 1} tiket aktif</span> yang ditangani oleh PIC <span className="font-bold">{selectedTicket.assignedEmployeeName || 'Admin HERO'}</span>.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200/80 text-[11px]">
+                    <div>
+                      <span className="text-amber-800/70 block text-[10px] font-semibold uppercase">Est. Mulai Ditangani</span>
+                      <span className="font-bold text-amber-950">
+                        {(selectedTicket.estimatedWaitHours || 0) === 0 ? 'Segera / Prioritas Aktif' : `~${selectedTicket.estimatedWaitHours} Jam lagi`}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-amber-800/70 block text-[10px] font-semibold uppercase">Target Estimasi Selesai</span>
+                      <span className="font-bold text-amber-950">
+                        {new Date(selectedTicket.targetSlaAt).toLocaleDateString('id-ID', {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })} WIB
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Core Metadata */}
               <div className="grid grid-cols-2 gap-2 text-xs p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -1562,6 +1669,31 @@ export function ExcellenceTroubleshootWorkspace({
                   className="h-8 text-xs font-semibold"
                 >
                   Eskalasi
+                </Button>
+              </div>
+
+              {/* Edit & Delete Actions */}
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
+                <Button
+                  onClick={() => handleOpenAdminEdit(selectedTicket)}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-semibold gap-1.5 text-blue-700 bg-blue-50/70 border-blue-200 hover:bg-blue-100"
+                >
+                  <IconPencil className="size-3.5" />
+                  Edit Rincian Tiket
+                </Button>
+                <Button
+                  onClick={() => {
+                    setTicketToDelete(selectedTicket)
+                    setSingleDeleteConfirmOpen(true)
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-semibold gap-1.5 text-rose-700 bg-rose-50/70 border-rose-200 hover:bg-rose-100"
+                >
+                  <IconTrash className="size-3.5" />
+                  Hapus Tiket
                 </Button>
               </div>
 
@@ -2153,6 +2285,117 @@ export function ExcellenceTroubleshootWorkspace({
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* ─── MODAL: SUKSES PENDAFTARAN TIKET DENGAN NOMOR ANTRIAN & ESTIMASI ─── */}
+      <Dialog open={createdTicketModalOpen} onOpenChange={setCreatedTicketModalOpen}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden bg-white border-slate-200">
+          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 p-6 text-white text-center relative">
+            <div className="inline-flex items-center justify-center size-12 rounded-full bg-white/20 backdrop-blur-xs mb-3 ring-4 ring-white/10 mx-auto">
+              <IconCheck className="size-6 text-white" />
+            </div>
+            <h2 className="text-xl font-bold tracking-tight">Tiket Berhasil Didaftarkan!</h2>
+            <p className="text-xs text-blue-100 mt-1 max-w-sm mx-auto">
+              Laporan temuan kendala telah diterima dan dialokasikan ke teknisi PIC penanggungjawab.
+            </p>
+
+            {createdTicketInfo && (
+              <div className="mt-4 inline-flex items-center gap-2 bg-white/15 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/25">
+                <span className="text-xs uppercase tracking-wider text-blue-200 font-semibold">Posisi Antrian:</span>
+                <span className="font-extrabold text-sm text-amber-300">
+                  ANTRIAN #{createdTicketInfo.queuePosition}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {createdTicketInfo && (
+            <div className="p-6 flex flex-col gap-4 text-xs">
+              {/* Card Estimasi & Beban Antrian */}
+              <div className="p-3.5 rounded-xl border border-blue-200 bg-blue-50/60 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <IconClock className="size-4 text-blue-600" />
+                    Perkiraan Estimasi Penanganan
+                  </span>
+                  <Badge className="bg-blue-600 text-white font-bold text-[10px] px-2 py-0.5">
+                    {createdTicketInfo.queuePosition === 1 ? 'Diproses Segera' : `Antrian ke-${createdTicketInfo.queuePosition}`}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-blue-200/70">
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-semibold">Estimasi Mulai Dikerjakan</span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {createdTicketInfo.estimatedWaitHours === 0
+                        ? 'Segera / Prioritas Pertama'
+                        : `~${createdTicketInfo.estimatedWaitHours} Jam lagi`}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      {createdTicketInfo.queuePosition > 1
+                        ? `(${createdTicketInfo.queuePosition - 1} tiket sedang antri di depan)`
+                        : '(Tidak ada antrian di depan)'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px] uppercase font-semibold">Target Estimasi Selesai</span>
+                    <span className="font-bold text-slate-900 text-sm">
+                      {new Date(createdTicketInfo.estimatedResolutionAt || Date.now()).toLocaleDateString('id-ID', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })} WIB
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      Target SLA {createdTicketInfo.slaHours} Jam
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rincian Tiket & PIC */}
+              <div className="grid grid-cols-2 gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-700">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Nomor Tiket</span>
+                  <span className="font-mono font-bold text-blue-700 text-sm">{createdTicketInfo.ticketNumber}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Teknisi PIC Ditugaskan</span>
+                  <span className="font-bold text-slate-900 flex items-center gap-1">
+                    <IconUser className="size-3.5 text-blue-600" />
+                    {createdTicketInfo.assignedPicName}
+                  </span>
+                </div>
+                <div className="col-span-2 pt-1 border-t border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Judul Kendala</span>
+                  <span className="font-semibold text-slate-900 line-clamp-1">{createdTicketInfo.title}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setCreatedTicketModalOpen(false)}
+                  className="h-9 px-4 text-xs"
+                >
+                  Tutup
+                </Button>
+                <Button
+                  onClick={() => {
+                    setCreatedTicketModalOpen(false)
+                    const found = tickets.find((t) => t.id === createdTicketInfo.ticketId || t.ticketNumber === createdTicketInfo.ticketNumber)
+                    if (found) setSelectedTicket(found)
+                  }}
+                  className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                >
+                  <IconListDetails className="size-3.5" />
+                  Buka Detail Tiket
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

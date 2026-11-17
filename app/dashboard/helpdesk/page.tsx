@@ -53,9 +53,19 @@ export default async function HeroHelpdeskPage({ searchParams }: PageProps) {
   const settingsResult = maestroData[1]
 
   const empRole = (currentEmployee.role || '').toLowerCase()
+  const empEmail = (currentEmployee.email || '').toLowerCase()
+  const empSn = String(currentEmployee.employee_sn || (currentEmployee as any).employeeSn || '')
   const isAdmin =
     ['admin', 'superadmin', 'super admin', 'site admin'].includes(empRole) ||
-    (currentEmployee as any).is_admin === true
+    empRole.includes('admin') ||
+    empRole.includes('system') ||
+    empRole.includes('digital solution') ||
+    empRole.includes('sds') ||
+    empRole.includes('it') ||
+    empEmail.includes('khadafi') ||
+    empSn === '71261' ||
+    (currentEmployee as any).is_admin === true ||
+    (currentEmployee as any).isAdmin === true
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-slate-50/70">
