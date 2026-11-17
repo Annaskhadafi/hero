@@ -70,6 +70,7 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
   serverExternalPackages: ['face-api.js', 'pptxgenjs', 'libheif-js', 'heic-decode', 'onnxruntime-node', 'sharp'],
   experimental: {
+    agentUpgrade: 'security',
     optimizePackageImports: [
       'lucide-react',
       '@tabler/icons-react',
