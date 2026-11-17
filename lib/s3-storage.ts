@@ -186,13 +186,13 @@ function getS3Client() {
           keepAlive: true,
           keepAliveMsecs: 1000,
           maxSockets: 50,
-          timeout: 60_000,
+          timeout: 120_000,
         })
       : new http.Agent({
           keepAlive: true,
           keepAliveMsecs: 1000,
           maxSockets: 50,
-          timeout: 60_000,
+          timeout: 120_000,
         })
 
     s3Client = new S3Client({
@@ -319,18 +319,20 @@ export async function uploadAnyFileToS3(
     } catch (putError: any) {
       lastError = putError
       s3Client = null // Reset cached client so subsequent attempts create fresh HTTP connection
-      const isAbortedByUser = abortSignal?.aborted
+      const isAbortedByUser = abortSignal?.aborted && !abortSignal?.reason?.name?.includes('Timeout')
       if (isAbortedByUser || attempt === maxAttempts) {
         break
       }
+      const errMsg = putError?.cause?.message || putError?.message || putError
       console.warn(
-        `[uploadAnyFileToS3] Attempt ${attempt}/${maxAttempts} failed (${putError?.message || putError}), retrying in ${attempt * 500}ms...`
+        `[uploadAnyFileToS3] Attempt ${attempt}/${maxAttempts} failed (${errMsg}), retrying in ${attempt * 500}ms...`
       )
       await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
     }
   }
 
-  throw lastError
+  const finalMessage = lastError?.cause?.message || lastError?.message || 'Koneksi ke S3 Cloud Storage terputus atau timeout.'
+  throw new Error(finalMessage)
 }
 
 export async function createDirectS3UploadUrl(

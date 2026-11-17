@@ -303,6 +303,7 @@ export function removeActivityDraft(key: string) {
     if (key === ACTIVITY_DRAFT_STORAGE_KEY) {
       window.localStorage.removeItem(ACTIVITY_DRAFT_STORAGE_KEY)
     }
+    void removeDraftFromIndexedDb(key)
 
     let parsed: any[] = []
     try {
@@ -356,8 +357,7 @@ export function stripHeavyBase64FromDraft<T>(value: T): T {
       // Jika sudah ada URL remote cloud (/api/ atau http), buang string dataUrl base64
       if (p.previewUrl || p.url) {
         p.dataUrl = ''
-      } else if (typeof p.dataUrl === 'string' && p.dataUrl.length > 50000) {
-        // Jika dataUrl base64 terlalu besar (>50KB), kosongkan agar tidak memakan kuota 5MB localStorage
+      } else if (typeof p.dataUrl === 'string' && (p.dataUrl.length > 15000 || p.dataUrl.startsWith('data:'))) {
         p.dataUrl = ''
       }
       return p
@@ -369,7 +369,7 @@ export function stripHeavyBase64FromDraft<T>(value: T): T {
       return urls.filter((u) => {
         if (typeof u !== 'string') return false
         if (hasRemote && u.startsWith('data:')) return false
-        if (u.startsWith('data:') && u.length > 50000) return false
+        if (u.startsWith('data:') && u.length > 15000) return false
         return true
       })
     }
@@ -405,22 +405,201 @@ export function stripHeavyBase64FromDraft<T>(value: T): T {
   }
 }
 
+export function stripAllBase64FromDraft<T>(value: T): T {
+  if (!value || typeof value !== 'object') return value
+
+  try {
+    const clone = JSON.parse(JSON.stringify(value))
+
+    const removeBase64 = (p: any) => {
+      if (!p || typeof p !== 'object') return p
+      if (typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:')) {
+        p.dataUrl = ''
+      }
+      return p
+    }
+
+    const filterUrls = (urls: any[]) => {
+      if (!Array.isArray(urls)) return urls
+      return urls.filter((u) => typeof u === 'string' && !u.startsWith('data:'))
+    }
+
+    if (clone.photo) clone.photo = removeBase64(clone.photo)
+    if (Array.isArray(clone.photos)) clone.photos = clone.photos.map(removeBase64)
+    if (Array.isArray(clone.photoUrls)) clone.photoUrls = filterUrls(clone.photoUrls)
+    if (Array.isArray(clone.previewUrls)) clone.previewUrls = filterUrls(clone.previewUrls)
+
+    if (Array.isArray(clone.selfInputActivities)) {
+      clone.selfInputActivities = clone.selfInputActivities.map((act: any) => {
+        if (act.photo) act.photo = removeBase64(act.photo)
+        if (Array.isArray(act.photos)) act.photos = act.photos.map(removeBase64)
+        if (Array.isArray(act.photoUrls)) act.photoUrls = filterUrls(act.photoUrls)
+        if (Array.isArray(act.previewUrls)) act.previewUrls = filterUrls(act.previewUrls)
+        return act
+      })
+    }
+
+    if (Array.isArray(clone.routeSessionItems)) {
+      clone.routeSessionItems = clone.routeSessionItems.map((item: any) => {
+        if (item.photo) item.photo = removeBase64(item.photo)
+        if (Array.isArray(item.photos)) item.photos = item.photos.map(removeBase64)
+        if (Array.isArray(item.photoUrls)) item.photoUrls = filterUrls(item.photoUrls)
+        if (Array.isArray(item.previewUrls)) item.previewUrls = filterUrls(item.previewUrls)
+        return item
+      })
+    }
+
+    return clone as T
+  } catch {
+    return value
+  }
+}
+
+export function evictStaleDraftsFromLocalStorage(currentKey?: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i)
+      if (!k) continue
+      if (k === currentKey || k === ACTIVITY_DRAFT_INDEX_STORAGE_KEY) continue
+      if (
+        k.startsWith('hero:draft:activity:server-') ||
+        k.startsWith('hero:draft:activity:idx_') ||
+        k.startsWith('hero:offline_req:') ||
+        k.startsWith('hero:cache:')
+      ) {
+        keysToRemove.push(k)
+      }
+    }
+    keysToRemove.forEach((k) => {
+      try {
+        window.localStorage.removeItem(k)
+      } catch {}
+    })
+  } catch {}
+}
+
+const DRAFT_IDB_NAME = 'hero_offline_storage_v1'
+const DRAFT_IDB_STORE = 'drafts'
+
+function openDraftIndexedDb(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !window.indexedDB) {
+    return Promise.resolve(null)
+  }
+  return new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open(DRAFT_IDB_NAME, 1)
+      req.onupgradeneeded = () => {
+        const db = req.result
+        if (!db.objectStoreNames.contains(DRAFT_IDB_STORE)) {
+          db.createObjectStore(DRAFT_IDB_STORE)
+        }
+      }
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => resolve(null)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+export async function writeDraftToIndexedDb<T>(key: string, value: T): Promise<boolean> {
+  try {
+    const db = await openDraftIndexedDb()
+    if (!db) return false
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(DRAFT_IDB_STORE, 'readwrite')
+        const store = tx.objectStore(DRAFT_IDB_STORE)
+        store.put(value, key)
+        tx.oncomplete = () => resolve(true)
+        tx.onerror = () => resolve(false)
+      } catch {
+        resolve(false)
+      }
+    })
+  } catch {
+    return false
+  }
+}
+
+export async function readDraftFromIndexedDb<T>(key: string): Promise<T | null> {
+  try {
+    const db = await openDraftIndexedDb()
+    if (!db) return null
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(DRAFT_IDB_STORE, 'readonly')
+        const store = tx.objectStore(DRAFT_IDB_STORE)
+        const req = store.get(key)
+        req.onsuccess = () => resolve((req.result as T) ?? null)
+        req.onerror = () => resolve(null)
+      } catch {
+        resolve(null)
+      }
+    })
+  } catch {
+    return null
+  }
+}
+
+export async function removeDraftFromIndexedDb(key: string): Promise<boolean> {
+  try {
+    const db = await openDraftIndexedDb()
+    if (!db) return false
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(DRAFT_IDB_STORE, 'readwrite')
+        const store = tx.objectStore(DRAFT_IDB_STORE)
+        store.delete(key)
+        tx.oncomplete = () => resolve(true)
+        tx.onerror = () => resolve(false)
+      } catch {
+        resolve(false)
+      }
+    })
+  } catch {
+    return false
+  }
+}
+
 export function writeDraft<T>(key: string, value: T): { ok: true; error?: never } | { ok: false; error: string } {
   if (typeof window === 'undefined') return { ok: true }
+
+  // Always back up full draft to IndexedDB asynchronously (no 5MB quota limit)
+  if (typeof window.indexedDB !== 'undefined') {
+    void writeDraftToIndexedDb(key, value)
+  }
+
+  // Attempt 1: Standard localStorage write
   try {
     window.localStorage.setItem(key, JSON.stringify(value))
     return { ok: true }
-  } catch (error) {
-    // If quota exceeded or write failed, strip heavy base64 strings and retry
+  } catch {
+    // Attempt 2: Strip heavy base64 strings and retry
     try {
       const lightweight = stripHeavyBase64FromDraft(value)
       window.localStorage.setItem(key, JSON.stringify(lightweight))
       return { ok: true }
-    } catch (retryError) {
-      const detail = retryError instanceof Error && retryError.message.trim() ? ` (${retryError.message.trim()})` : ''
-      return {
-        ok: false,
-        error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+    } catch {
+      // Attempt 3: Evict stale drafts and strip ALL base64
+      try {
+        evictStaleDraftsFromLocalStorage(key)
+        const ultraLight = stripAllBase64FromDraft(value)
+        window.localStorage.setItem(key, JSON.stringify(ultraLight))
+        return { ok: true }
+      } catch (retryError) {
+        // If IndexedDB exists and was used, do not fail or scare the user
+        if (typeof window.indexedDB !== 'undefined') {
+          console.warn('[writeDraft] localStorage exhausted, draft safely persisted to IndexedDB.')
+          return { ok: true }
+        }
+        const detail = retryError instanceof Error && retryError.message.trim() ? ` (${retryError.message.trim()})` : ''
+        return {
+          ok: false,
+          error: `Draft tidak dapat disimpan di perangkat ini. Penyimpanan browser mungkin diblokir atau penuh${detail}.`,
+        }
       }
     }
   }

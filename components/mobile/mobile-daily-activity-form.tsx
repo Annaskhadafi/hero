@@ -393,12 +393,23 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   formData.append('file', compressed)
   formData.append('uploadTarget', 'activity-photos')
 
-  const result = await uploadFile(formData)
-  if (!result.success || !result.url) {
-    throw new Error(result.error || `Gagal upload evidence ${file.name}.`)
+  let lastError: any = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await uploadFile(formData)
+      if (result.success && result.url) {
+        return result.readableUrl || result.url
+      }
+      lastError = new Error(result.error || `Gagal upload evidence ${file.name}.`)
+    } catch (err: any) {
+      lastError = err
+    }
+    if (attempt < 3) {
+      await new Promise((r) => setTimeout(r, attempt * 1200))
+    }
   }
 
-  return result.readableUrl || result.url
+  throw lastError || new Error(`Gagal upload evidence ${file.name}.`)
 }
 
 async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
@@ -458,7 +469,12 @@ async function prepareEvidence(
 
   const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
   if (selectedFiles.length > 0) {
-    return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
+    const uploadedUrls: string[] = []
+    for (const f of selectedFiles) {
+      const u = await uploadActivityPhoto(f)
+      uploadedUrls.push(u)
+    }
+    return { payloads: [], urls: uploadedUrls }
   }
 
   if (restored) {
@@ -1580,15 +1596,15 @@ export function MobileDailyActivityForm({
     // Process photo uploads in background so Save Draft and Submit are fast
     void (async () => {
       try {
-        const uploaded = await Promise.all(
-          compressedFiles.map(async (cf) => {
-            try {
-              return await uploadActivityPhoto(cf)
-            } catch {
-              return null
-            }
-          })
-        )
+        const uploaded: (string | null)[] = []
+        for (const cf of compressedFiles) {
+          try {
+            const u = await uploadActivityPhoto(cf)
+            uploaded.push(u)
+          } catch {
+            uploaded.push(null)
+          }
+        }
         const validUploaded = uploaded.filter((u): u is string => typeof u === 'string' && u.length > 0)
         if (validUploaded.length > 0) {
           if (targetId === 'single') {
@@ -5508,6 +5524,9 @@ export function MobileDailyActivityForm({
                   setSubmitState({ kind: 'error', message: localResult.error })
                   toast.error(localResult.error, { duration: 5000 })
                 } else {
+                  if (submitState.kind === 'error' && submitState.message.includes('Draft tidak dapat disimpan')) {
+                    setSubmitState({ kind: 'idle', message: '' })
+                  }
                   if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
                     saveActivityDraftIndexEntry(draftKey, completeDraftPayload, serverDraftSessionId || undefined)
                     if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
