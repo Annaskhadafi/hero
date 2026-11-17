@@ -1642,8 +1642,8 @@ export async function resolveCerApprovalRoute(
     cat.includes('server')
   if (isItDevice) {
     let itApprover: { id: number | null; name: string } = {
-      id: 1016, // Arif Maulana Ghafar (BIMA Supervisor)
-      name: 'Arif Maulana Ghafar (BIMA Supervisor)',
+      id: 1016, // Arif Maulana Ghafar
+      name: 'Arif Maulana Ghafar',
     }
     try {
       const [bima] = await db
@@ -1652,7 +1652,7 @@ export async function resolveCerApprovalRoute(
         .where(or(ilike(employees.name, '%Arif Maulana%'), eq(employees.employeeSn, '50330')))
         .limit(1)
       if (bima) {
-        itApprover = { id: bima.id, name: `${bima.name} (BIMA Supervisor)` }
+        itApprover = { id: bima.id, name: bima.name }
       }
     } catch {
       // fallback to default
@@ -1775,7 +1775,7 @@ export async function resolveCerApprovalRoute(
   // 7. Asset Tagging (Syamsul Bahri, id: 990) - Final step penginputan Kelompok & Nomor Aset
   steps.push({
     stepOrder: stepOrder++,
-    label: 'Asset Tagging',
+    label: 'Asset Tagging (Input No.Aset & Kelompok Aset)',
     approverName: 'Syamsul Bahri',
     approverEmployeeId: 990,
     approverNodeId: null,
@@ -2341,7 +2341,7 @@ export async function resolveApprovalRouteForActivity(
     if (!hasAssetTagging) {
       filteredSteps.push({
         stepOrder: 999,
-        label: 'Asset Tagging',
+        label: 'Asset Tagging (Input No.Aset & Kelompok Aset)',
         approverName: 'Syamsul Bahri',
         approverEmployeeId: 990,
         approverNodeId: null,

@@ -387,25 +387,12 @@ export function FormWoApprovalDialog({ item, group }: FormWoApprovalDialogProps)
                     <SignaturePad
                       onSignatureChange={setSignatureFile}
                       onDataUrlChange={setLiveSignatureUrl}
+                      onSaveToProfile={(url) => {
+                        setProfileSig(url)
+                        setIsUsingProfileSig(true)
+                      }}
                     />
                   </div>
-                  {liveSignatureUrl && !isUsingProfileSig && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSaveToProfile}
-                      disabled={isSavingProfileSig}
-                      className="w-full text-xs font-semibold border-sky-200 text-sky-700 hover:bg-sky-50 h-7"
-                    >
-                      {isSavingProfileSig ? (
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Save className="mr-1.5 h-3 w-3" />
-                      )}
-                      Simpan TTD Ini ke Profil HERO Saya
-                    </Button>
-                  )}
                 </div>
               )}
             </div>

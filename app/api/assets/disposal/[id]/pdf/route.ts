@@ -37,9 +37,9 @@ export async function GET(
       return NextResponse.json({ error: 'Data Asset Disposal tidak ditemukan' }, { status: 404 })
     }
 
-    const isSuperAdmin = isSuperAdminRole(session.user.role)
+    const isSuperAdmin = isSuperAdminRole((session.user as any)?.role)
     const isApplicant =
-      (disposal.applicantEmployeeId && session.user.employeeId === disposal.applicantEmployeeId) ||
+      (disposal.applicantEmployeeId && (session.user as any)?.employeeId === disposal.applicantEmployeeId) ||
       (session.user.name && disposal.applicantName && session.user.name.toLowerCase() === disposal.applicantName.toLowerCase())
 
     if (!isSuperAdmin && !isApplicant) {
@@ -102,7 +102,7 @@ export async function GET(
         level: app.level || 1,
         title: app.decisionNote?.startsWith('Step') ? app.decisionNote : (app.formName || `Step ${app.level}`),
         approverName: app.approverName || 'Approver',
-        jobTitle: app.approverRole || null,
+        jobTitle: app.formName || null,
         status: app.status || 'Pending',
         reviewedAt: app.reviewedAt,
         decisionNote: app.decisionNote && !app.decisionNote.startsWith('Step') ? app.decisionNote : null,

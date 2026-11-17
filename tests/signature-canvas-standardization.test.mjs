@@ -76,3 +76,17 @@ test('Five-R, JSA, and Summary approval dialogs use unified SignaturePad', () =>
   assert.ok(jsaContent.includes('SignaturePad'), 'JSA form dialog must use SignaturePad')
   assert.ok(summaryContent.includes('SignaturePad'), 'Summary approval dialog must use SignaturePad')
 })
+
+test('Asset approval dialog and CER receive dialog do not render duplicate save signature buttons', () => {
+  const sigPadFile = path.join(root, 'components/signature-pad.tsx')
+  const sigPadContent = fs.readFileSync(sigPadFile, 'utf8')
+  assert.ok(sigPadContent.includes('onSaveToProfile'), 'SignaturePad must support onSaveToProfile prop')
+
+  const assetDialogFile = path.join(root, 'components/asset-approval-dialog.tsx')
+  const assetContent = fs.readFileSync(assetDialogFile, 'utf8')
+  assert.ok(!assetContent.includes('Simpan Coretan Ini ke Profil HERO Saya'), 'Must not render redundant Simpan Coretan button in asset-approval-dialog')
+
+  const cerReceiveFile = path.join(root, 'app/dashboard/assets/cer/components/cer-receive-dialog.tsx')
+  const cerReceiveContent = fs.readFileSync(cerReceiveFile, 'utf8')
+  assert.ok(!cerReceiveContent.includes('Simpan TTD Ini ke Profil HERO Saya'), 'Must not render redundant Simpan TTD button in cer-receive-dialog')
+})

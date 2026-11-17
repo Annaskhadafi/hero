@@ -21,6 +21,10 @@ import {
   Calendar,
   X,
   SlidersHorizontal,
+  Upload,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -59,6 +63,7 @@ import {
   type BudgetControllerPageData,
 } from '../actions'
 import type { CerCapexBudget } from '@/db/schema/cer'
+import { BudgetImportDialog } from './budget-import-dialog'
 
 export interface BudgetControllerViewProps {
   data: BudgetControllerPageData
@@ -84,7 +89,37 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
+
+  // Sorting state
+  type SortField =
+    | 'budgetCode'
+    | 'budgetName'
+    | 'assetCategory'
+    | 'site'
+    | 'department'
+    | 'allocatedAmount'
+    | 'usedAmount'
+    | 'remainingAmount'
+    | 'percentage'
+
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc')
+      } else {
+        setSortField(null)
+        setSortDirection('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
 
   // Form modal state
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -102,6 +137,9 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
   const [deleteTarget, setDeleteTarget] = useState<CerCapexBudget | null>(null)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false)
 
+  // Import modal state
+  const [isImportOpen, setIsImportOpen] = useState(false)
+
   // Options for HeroSearchableSelect
   const fiscalYearOptions = useMemo<HeroSearchableSelectOption[]>(() => {
     return FISCAL_YEARS.map((y) => ({
@@ -116,6 +154,14 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
       ...ASSET_CATEGORIES.map((cat) => ({ value: cat, label: cat })),
     ]
   }, [])
+
+  const deptFilterOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return [
+      { value: 'all', label: 'Semua Departemen' },
+      { value: 'none', label: 'Tanpa Departemen (Global)' },
+      ...data.departments.map((d) => ({ value: String(d.id), label: d.name })),
+    ]
+  }, [data.departments])
 
   const categoryFormOptions = useMemo<HeroSearchableSelectOption[]>(() => {
     return ASSET_CATEGORIES.map((cat) => ({ value: cat, label: cat }))
@@ -135,33 +181,95 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
     ]
   }, [data.departments])
 
-  // Filter budgets
-  const filteredBudgets = useMemo(() => {
-    return data.budgets.filter((b) => {
+  // Lookup maps for fast name resolution
+  const siteMap = useMemo(() => new Map(data.sites.map((s) => [s.id, s.name])), [data.sites])
+  const deptMap = useMemo(() => new Map(data.departments.map((d) => [d.id, d.name])), [data.departments])
+
+  // Filter & sort budgets
+  const filteredAndSortedBudgets = useMemo(() => {
+    const filtered = data.budgets.filter((b) => {
       const matchYear = b.fiscalYear === selectedYear
       const matchCategory =
         selectedCategory === 'all' ||
         b.assetCategory.toLowerCase() === selectedCategory.toLowerCase()
+
+      const matchDept =
+        selectedDepartment === 'all'
+          ? true
+          : selectedDepartment === 'none'
+          ? !b.departmentId
+          : b.departmentId === Number(selectedDepartment)
+
       const q = searchQuery.trim().toLowerCase()
+      const deptName = b.departmentId ? deptMap.get(b.departmentId) || '' : ''
+      const siteName = b.siteId ? siteMap.get(b.siteId) || '' : ''
+
       const matchSearch =
         !q ||
         b.budgetCode.toLowerCase().includes(q) ||
         b.budgetName.toLowerCase().includes(q) ||
         (b.notes && b.notes.toLowerCase().includes(q)) ||
-        b.assetCategory.toLowerCase().includes(q)
+        b.assetCategory.toLowerCase().includes(q) ||
+        deptName.toLowerCase().includes(q) ||
+        siteName.toLowerCase().includes(q)
 
-      return matchYear && matchCategory && matchSearch
+      return matchYear && matchCategory && matchDept && matchSearch
     })
-  }, [data.budgets, selectedYear, selectedCategory, searchQuery])
+
+    if (!sortField) return filtered
+
+    return [...filtered].sort((a, b) => {
+      let valA: string | number = ''
+      let valB: string | number = ''
+
+      if (sortField === 'budgetCode') {
+        valA = a.budgetCode.toLowerCase()
+        valB = b.budgetCode.toLowerCase()
+      } else if (sortField === 'budgetName') {
+        valA = a.budgetName.toLowerCase()
+        valB = b.budgetName.toLowerCase()
+      } else if (sortField === 'assetCategory') {
+        valA = a.assetCategory.toLowerCase()
+        valB = b.assetCategory.toLowerCase()
+      } else if (sortField === 'site') {
+        valA = (a.siteId ? siteMap.get(a.siteId) || '' : 'Semua Site (Global)').toLowerCase()
+        valB = (b.siteId ? siteMap.get(b.siteId) || '' : 'Semua Site (Global)').toLowerCase()
+      } else if (sortField === 'department') {
+        valA = (a.departmentId ? deptMap.get(a.departmentId) || '' : 'Semua Dept').toLowerCase()
+        valB = (b.departmentId ? deptMap.get(b.departmentId) || '' : 'Semua Dept').toLowerCase()
+      } else if (sortField === 'allocatedAmount') {
+        valA = Number(a.allocatedAmount) || 0
+        valB = Number(b.allocatedAmount) || 0
+      } else if (sortField === 'usedAmount') {
+        valA = Number(a.usedAmount) || 0
+        valB = Number(b.usedAmount) || 0
+      } else if (sortField === 'remainingAmount') {
+        valA = Number(a.remainingAmount) || 0
+        valB = Number(b.remainingAmount) || 0
+      } else if (sortField === 'percentage') {
+        const allocA = Number(a.allocatedAmount) || 0
+        const usedA = Number(a.usedAmount) || 0
+        valA = allocA > 0 ? usedA / allocA : 0
+
+        const allocB = Number(b.allocatedAmount) || 0
+        const usedB = Number(b.usedAmount) || 0
+        valB = allocB > 0 ? usedB / allocB : 0
+      }
+
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+      return 0
+    })
+  }, [data.budgets, selectedYear, selectedCategory, selectedDepartment, searchQuery, sortField, sortDirection, deptMap, siteMap])
 
   // Summary Metrics
   const totalAllocated = useMemo(() => {
-    return filteredBudgets.reduce((acc, b) => acc + (Number(b.allocatedAmount) || 0), 0)
-  }, [filteredBudgets])
+    return filteredAndSortedBudgets.reduce((acc, b) => acc + (Number(b.allocatedAmount) || 0), 0)
+  }, [filteredAndSortedBudgets])
 
   const totalUsed = useMemo(() => {
-    return filteredBudgets.reduce((acc, b) => acc + (Number(b.usedAmount) || 0), 0)
-  }, [filteredBudgets])
+    return filteredAndSortedBudgets.reduce((acc, b) => acc + (Number(b.usedAmount) || 0), 0)
+  }, [filteredAndSortedBudgets])
 
   const totalRemaining = totalAllocated - totalUsed
   const usagePercentage = totalAllocated > 0 ? Math.round((totalUsed / totalAllocated) * 100) : 0
@@ -255,6 +363,31 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
     })
   }
 
+  const renderSortableHeader = (label: string, field: SortField, align: 'left' | 'center' | 'right' = 'left') => {
+    const isActive = sortField === field
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(field)}
+        className={`group inline-flex items-center gap-1.5 transition-colors hover:text-slate-900 cursor-pointer ${
+          align === 'right' ? 'justify-end w-full' : align === 'center' ? 'justify-center w-full' : 'justify-start'
+        } ${isActive ? 'text-blue-700 font-extrabold' : 'text-slate-600'}`}
+        title={`Urutkan berdasarkan ${label}`}
+      >
+        <span>{label}</span>
+        {isActive ? (
+          sortDirection === 'asc' ? (
+            <ArrowUp className="size-3 text-blue-600 shrink-0" />
+          ) : (
+            <ArrowDown className="size-3 text-blue-600 shrink-0" />
+          )
+        ) : (
+          <ArrowUpDown className="size-3 opacity-30 group-hover:opacity-100 transition-opacity shrink-0" />
+        )}
+      </button>
+    )
+  }
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -286,14 +419,26 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
             </Button>
 
             {data.permissions.canEdit && (
-              <Button
-                size="sm"
-                onClick={handleOpenCreate}
-                className="h-9 gap-1.5 bg-slate-900 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
-              >
-                <Plus className="h-4 w-4" />
-                Tambah Pagu CapEx
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsImportOpen(true)}
+                  className="h-9 gap-1.5 border-slate-200 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                >
+                  <Upload className="h-3.5 w-3.5 text-emerald-600" />
+                  Import Excel
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={handleOpenCreate}
+                  className="h-9 gap-1.5 bg-slate-900 text-xs font-semibold text-white shadow-sm hover:bg-slate-800"
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah Pagu CapEx
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -303,7 +448,7 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
           <HeroKpiCard
             title={`Total Pagu CapEx (${selectedYear})`}
             value={formatRupiah(totalAllocated)}
-            description={`${filteredBudgets.length} akun anggaran aktif`}
+            description={`${filteredAndSortedBudgets.length} akun anggaran aktif`}
             tone="blue"
             icon={<DollarSign className="size-5" />}
           />
@@ -343,7 +488,7 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Cari kode, nama anggaran, kategori..."
+                  placeholder="Cari kode, nama anggaran, kategori, dept, site..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/50 pl-9 pr-8 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -359,12 +504,12 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                 )}
               </div>
 
-              {/* Right: Select Year & Category Dropdowns */}
+              {/* Right: Select Year, Category, & Department Dropdowns */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* Year Select */}
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-semibold text-slate-500">Tahun:</span>
-                  <div className="w-36">
+                  <div className="w-32">
                     <HeroSearchableSelect
                       options={fiscalYearOptions}
                       value={String(selectedYear)}
@@ -377,7 +522,7 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                 {/* Category Select */}
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-semibold text-slate-500">Kategori:</span>
-                  <div className="w-48">
+                  <div className="w-44">
                     <HeroSearchableSelect
                       options={categoryFilterOptions}
                       value={selectedCategory}
@@ -387,14 +532,30 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                   </div>
                 </div>
 
+                {/* Department Select */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-500">Departemen:</span>
+                  <div className="w-48">
+                    <HeroSearchableSelect
+                      options={deptFilterOptions}
+                      value={selectedDepartment}
+                      onChange={(val) => setSelectedDepartment(val)}
+                      placeholder="Semua Departemen"
+                    />
+                  </div>
+                </div>
+
                 {/* Reset filter button if modified */}
-                {(selectedCategory !== 'all' || searchQuery) && (
+                {(selectedCategory !== 'all' || selectedDepartment !== 'all' || searchQuery || sortField) && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => {
                       setSelectedCategory('all')
+                      setSelectedDepartment('all')
                       setSearchQuery('')
+                      setSortField(null)
+                      setSortDirection('asc')
                     }}
                     className="h-9 gap-1 text-xs text-slate-500 hover:text-slate-800"
                   >
@@ -415,25 +576,31 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                     No
                   </TableHead>
                   <TableHead className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Kode &amp; Nama Anggaran
+                    {renderSortableHeader('Kode Anggaran', 'budgetCode')}
                   </TableHead>
                   <TableHead className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Kategori Aset
+                    {renderSortableHeader('Nama Anggaran', 'budgetName')}
                   </TableHead>
                   <TableHead className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Site / Departemen
+                    {renderSortableHeader('Kategori Aset', 'assetCategory')}
+                  </TableHead>
+                  <TableHead className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    {renderSortableHeader('Site', 'site')}
+                  </TableHead>
+                  <TableHead className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                    {renderSortableHeader('Departemen', 'department')}
                   </TableHead>
                   <TableHead className="text-right text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Total Pagu (Rp)
+                    {renderSortableHeader('Total Pagu (Rp)', 'allocatedAmount', 'right')}
                   </TableHead>
                   <TableHead className="text-right text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Terpakai (Rp)
+                    {renderSortableHeader('Terpakai (Rp)', 'usedAmount', 'right')}
                   </TableHead>
                   <TableHead className="text-right text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Sisa Saldo (Rp)
+                    {renderSortableHeader('Sisa Saldo (Rp)', 'remainingAmount', 'right')}
                   </TableHead>
                   <TableHead className="w-36 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    Penyerapan
+                    {renderSortableHeader('Penyerapan', 'percentage', 'center')}
                   </TableHead>
                   <TableHead className="w-24 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600">
                     Aksi
@@ -442,13 +609,13 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
               </TableHeader>
 
               <TableBody>
-                {filteredBudgets.length === 0 ? (
+                {filteredAndSortedBudgets.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-12">
+                    <TableCell colSpan={11} className="py-12">
                       <HeroEmptyState
                         title="Tidak Ada Data Pagu Anggaran"
                         description={
-                          searchQuery || selectedCategory !== 'all'
+                          searchQuery || selectedCategory !== 'all' || selectedDepartment !== 'all'
                             ? 'Tidak ada akun anggaran yang cocok dengan kriteria filter Anda.'
                             : `Belum ada data pagu CapEx untuk tahun ${selectedYear}. Silakan tambahkan pagu anggaran baru.`
                         }
@@ -458,13 +625,13 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredBudgets.map((b, idx) => {
+                  filteredAndSortedBudgets.map((b, idx) => {
                     const alloc = Number(b.allocatedAmount) || 0
                     const used = Number(b.usedAmount) || 0
                     const rem = Number(b.remainingAmount) || 0
                     const pct = alloc > 0 ? Math.min(100, Math.round((used / alloc) * 100)) : 0
-                    const siteName = data.sites.find((s) => s.id === b.siteId)?.name || 'Semua Site (Global)'
-                    const deptName = data.departments.find((d) => d.id === b.departmentId)?.name || 'Semua Dept'
+                    const siteName = (b.siteId && siteMap.get(b.siteId)) || 'Semua Site (Global)'
+                    const deptName = (b.departmentId && deptMap.get(b.departmentId)) || 'Semua Dept'
                     const isUsed = used > 0
 
                     return (
@@ -474,20 +641,22 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                           {idx + 1}
                         </TableCell>
 
-                        {/* Kode & Nama Anggaran */}
+                        {/* Kode Anggaran */}
+                        <TableCell className="font-mono text-xs">
+                          <span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 font-mono text-[11px] font-bold text-blue-700 border border-blue-100">
+                            {b.budgetCode}
+                          </span>
+                        </TableCell>
+
+                        {/* Nama Anggaran */}
                         <TableCell>
                           <div className="flex flex-col gap-0.5">
                             <span className="font-semibold text-xs text-slate-900">{b.budgetName}</span>
-                            <div className="flex items-center gap-1.5">
-                              <span className="inline-block rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-blue-700">
-                                {b.budgetCode}
+                            {b.notes && (
+                              <span className="truncate text-[10px] text-slate-400 max-w-[220px]" title={b.notes}>
+                                {b.notes}
                               </span>
-                              {b.notes && (
-                                <span className="truncate text-[10px] text-slate-400" title={b.notes}>
-                                  • {b.notes}
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </TableCell>
 
@@ -498,12 +667,14 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
                           </Badge>
                         </TableCell>
 
-                        {/* Site / Dept */}
-                        <TableCell>
-                          <div className="flex flex-col text-xs text-slate-600">
-                            <span className="font-medium text-slate-700">{siteName}</span>
-                            <span className="text-[10px] text-slate-400">{deptName}</span>
-                          </div>
+                        {/* Site */}
+                        <TableCell className="text-xs font-medium text-slate-800">
+                          {siteName}
+                        </TableCell>
+
+                        {/* Departemen */}
+                        <TableCell className="text-xs text-slate-600">
+                          {deptName}
                         </TableCell>
 
                         {/* Pagu (Allocated) */}
@@ -710,6 +881,12 @@ export function BudgetControllerView({ data }: BudgetControllerViewProps) {
           tone="destructive"
           isProcessing={isPending}
           onConfirm={handleDeleteConfirm}
+        />
+
+        {/* IMPORT BUDGET CAPEX DIALOG */}
+        <BudgetImportDialog
+          open={isImportOpen}
+          onOpenChange={setIsImportOpen}
         />
       </div>
     </TooltipProvider>

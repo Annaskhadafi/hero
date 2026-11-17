@@ -1,6 +1,9 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { Maximize2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 
 export interface CerBastDocumentData {
   cerNumber: string
@@ -18,6 +21,7 @@ export interface CerBastDocumentData {
   vendorName?: string | null
   totalEstimatedPrice?: string | number | null
   kelompokAset?: string | null
+  goodsPhotoUrl?: string | null
   items?: Array<{
     itemDescription: string
     quantity: number
@@ -86,6 +90,7 @@ export function CerBastDocumentView({
   containerRef?: React.Ref<HTMLDivElement>
   liveSignatureUrl?: string | null
 }) {
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const bastNo = data.bastNumber || `BAST-${data.cerNumber.replace(/^CER\//, '')}`
   const effectiveReceiverSig = liveSignatureUrl || data.receiverSignatureUrl
 
@@ -214,8 +219,7 @@ export function CerBastDocumentView({
                   <th className="px-2.5 py-1.5">KELOMPOK ASET</th>
                   <th className="px-2.5 py-1.5">NOMOR ASET</th>
                   <th className="w-16 px-2.5 py-1.5 text-center">QTY</th>
-                  <th className="w-24 px-2.5 py-1.5 text-center">KONDISI</th>
-                  <th className="px-2.5 py-1.5">CATATAN PEMERIKSAAN</th>
+                  <th className="px-2.5 py-1.5">CATATAN PENERIMAAN / BAST</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -251,11 +255,8 @@ export function CerBastDocumentView({
                       <td className="px-2.5 py-1.5 text-center font-semibold text-slate-800">
                         {it.quantity} Unit
                       </td>
-                      <td className="px-2.5 py-1.5 text-center font-bold text-emerald-700">
-                        Baik &amp; Lengkap
-                      </td>
                       <td className="px-2.5 py-1.5 text-slate-600 text-[11px]">
-                        {it.notes || data.receiverNotes || 'Sesuai pesanan & berfungsi normal'}
+                        {data.receiverNotes || it.notes || 'Sesuai pesanan & berfungsi normal'}
                       </td>
                     </tr>
                   ))
@@ -274,9 +275,6 @@ export function CerBastDocumentView({
                     <td className="px-2.5 py-1.5 text-center font-semibold text-slate-800">
                       1 Unit
                     </td>
-                    <td className="px-2.5 py-1.5 text-center font-bold text-emerald-700">
-                      Baik &amp; Lengkap
-                    </td>
                     <td className="px-2.5 py-1.5 text-slate-600 text-[11px]">
                       {data.receiverNotes || 'Sesuai pesanan & berfungsi normal'}
                     </td>
@@ -284,6 +282,56 @@ export function CerBastDocumentView({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Lampiran Dokumentasi Fisik Aset */}
+          <div className="mt-2.5 rounded-lg border border-slate-300 bg-slate-50/80 p-2 text-xs">
+            <div className="flex items-center justify-between mb-1.5 border-b border-slate-200 pb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <span className="inline-block size-2 rounded-full bg-emerald-500"></span>
+                LAMPIRAN DOKUMENTASI FISIK ASET (FOTO PENERIMAAN)
+              </span>
+              <span className="text-[9px] text-slate-500 italic">
+                Bukti visual kondisi fisik saat serah terima di lokasi
+              </span>
+            </div>
+            {data.goodsPhotoUrl ? (
+              <div className="flex items-start gap-4">
+                <div
+                  onClick={() => setIsLightboxOpen(true)}
+                  className="h-72 w-[460px] shrink-0 rounded-lg border border-slate-300 bg-white p-2 overflow-hidden shadow-xs flex items-center justify-center cursor-zoom-in group relative hover:border-sky-400 transition-colors"
+                  title="Klik untuk memperbesar foto aset (resolusi penuh)"
+                >
+                  <img
+                    src={resolveUploadUrl(data.goodsPhotoUrl)}
+                    alt="Foto Fisik Aset"
+                    className="h-full w-full object-contain rounded transition-transform duration-200 group-hover:scale-[1.02]"
+                  />
+                  <div className="absolute bottom-2.5 right-2.5 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] px-2.5 py-1 rounded-md font-medium opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 shadow-sm pointer-events-none">
+                    <Maximize2 className="h-3 w-3 text-sky-400" />
+                    <span>Lihat Ukuran Penuh</span>
+                  </div>
+                </div>
+                <div className="space-y-2 text-[11px] text-slate-700 py-1 flex-1">
+                  <p className="font-bold text-slate-900 text-xs">Verifikasi Kondisi Fisik Barang:</p>
+                  <div className="rounded-md border border-slate-200 bg-white/90 p-3 shadow-2xs">
+                    <p className="text-slate-700 italic leading-relaxed text-xs">
+                      "{data.receiverNotes || 'Barang telah diterima lengkap, segel utuh, dan berfungsi normal sesuai spesifikasi.'}"
+                    </p>
+                  </div>
+                  <p className="font-mono text-[10px] text-emerald-800 font-semibold pt-1">
+                    Status: Foto Fisik Terlampir • {formatIndoDateTime(data.receivedAt || new Date())}
+                  </p>
+                  <p className="text-[10px] text-slate-400 italic">
+                    * Klik bingkai foto di samping untuk melihat tampilan foto aset dalam resolusi penuh.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-16 rounded border border-dashed border-slate-300 bg-white/70 text-slate-400 text-[10px] italic">
+                (Foto fisik barang belum diunggah — silakan ambil / unggah foto pada panel kanan)
+              </div>
+            )}
           </div>
 
           {/* Yellow Banner / Pernyataan Resmi */}
@@ -298,16 +346,14 @@ export function CerBastDocumentView({
         </div>
       </div>
 
-      {/* Signature Grid (Work Order Style Horizontal Multi-Column) */}
+      {/* Signature Grid (Work Order Style Horizontal 2-Column) */}
       <div className="mt-4 overflow-hidden rounded-lg border border-slate-300 bg-white/95 text-xs shadow-xs">
         <table className="w-full table-fixed border-collapse">
           <thead>
             <tr className="divide-x divide-slate-300 border-b border-slate-300 bg-slate-100/90 text-[10px] font-bold text-slate-800 uppercase">
-              <th className="px-2 py-1.5 text-center">YANG MENYERAHKAN</th>
-              <th className="px-2 py-1.5 text-center">DIPERIKSA OLEH (FINANCE)</th>
-              <th className="px-2 py-1.5 text-center">DIKETAHUI OLEH (ATASAN)</th>
-              <th className="px-2 py-1.5 text-center bg-emerald-50 text-emerald-900">
-                YANG MENERIMA (PIC LOKASI)
+              <th className="w-1/2 px-2 py-1.5 text-center">YANG MENYERAHKAN</th>
+              <th className="w-1/2 px-2 py-1.5 text-center bg-emerald-50 text-emerald-900">
+                YANG MENERIMA
               </th>
             </tr>
           </thead>
@@ -319,18 +365,6 @@ export function CerBastDocumentView({
                   {data.vendorName || 'Vendor / Supplier'}
                 </span>
                 <span className="block text-[9px] text-slate-400">Penyerah Barang</span>
-              </td>
-
-              {/* Diperiksa Oleh Finance */}
-              <td className="h-18 p-1.5 text-center align-middle sm:h-20">
-                <span className="text-xs font-bold text-emerald-700">✓ Disetujui</span>
-                <span className="block text-[9px] text-slate-500">Finance &amp; Accounting</span>
-              </td>
-
-              {/* Diketahui Oleh Atasan */}
-              <td className="h-18 p-1.5 text-center align-middle sm:h-20">
-                <span className="text-xs font-bold text-emerald-700">✓ Disetujui</span>
-                <span className="block text-[9px] text-slate-500">Direksi &amp; Manajemen</span>
               </td>
 
               {/* Yang Menerima */}
@@ -350,8 +384,8 @@ export function CerBastDocumentView({
             </tr>
 
             <tr className="divide-x divide-slate-300 border-t border-slate-300 bg-slate-50/70">
-              {/* Box 1 */}
-              <td className="space-y-0.5 px-2 py-2 text-center align-top">
+              {/* Box 1: Yang Menyerahkan */}
+              <td className="space-y-0.5 px-3 py-2 text-center align-top">
                 <p className="truncate text-[11px] leading-snug font-bold text-slate-900">
                   ( {data.vendorName || 'Vendor Rekanan'} )
                 </p>
@@ -363,37 +397,13 @@ export function CerBastDocumentView({
                 </p>
               </td>
 
-              {/* Box 2 */}
-              <td className="space-y-0.5 px-2 py-2 text-center align-top">
-                <p className="truncate text-[11px] leading-snug font-bold text-slate-900">
-                  ( {data.financeCheckerName || 'Syamsul Bahri / Evo Dwi'} )
-                </p>
-                <p className="truncate text-[10px] leading-snug font-medium text-slate-600">
-                  Finance &amp; Accounting Specialist
-                </p>
-                <p className="font-mono text-[9px] text-slate-500">
-                  {data.financeCheckedAt ? formatIndoDateTime(data.financeCheckedAt) : '-'}
-                </p>
-              </td>
-
-              {/* Box 3 */}
-              <td className="space-y-0.5 px-2 py-2 text-center align-top">
-                <p className="truncate text-[11px] leading-snug font-bold text-slate-900">
-                  ( Manajemen PT Chitra Paratama )
-                </p>
-                <p className="truncate text-[10px] leading-snug font-medium text-slate-600">
-                  Approval Direksi Lengkap
-                </p>
-                <p className="font-mono text-[9px] text-slate-500">Full Approved</p>
-              </td>
-
-              {/* Box 4 */}
-              <td className="space-y-0.5 px-2 py-2 text-center align-top bg-emerald-50/30">
+              {/* Box 2: Yang Menerima */}
+              <td className="space-y-0.5 px-3 py-2 text-center align-top bg-emerald-50/30">
                 <p className="truncate text-[11px] leading-snug font-bold text-emerald-950">
                   ( {data.applicantName} )
                 </p>
-                <p className="truncate text-[10px] leading-snug font-medium text-emerald-800">
-                  {data.applicantJobTitle || 'Penerima Barang / PIC Lokasi'}
+                <p className="truncate text-[10px] leading-snug font-semibold text-emerald-800">
+                  {data.applicantJobTitle || 'Pemohon Pengadaan'}
                 </p>
                 <p className="font-mono text-[9px] text-emerald-700">
                   {formatIndoDateTime(data.receivedAt || new Date())}
@@ -408,6 +418,26 @@ export function CerBastDocumentView({
           </tbody>
         </table>
       </div>
+
+      {/* Lightbox Dialog untuk Pratinjau Resolusi Penuh Foto Fisik Aset */}
+      {data.goodsPhotoUrl && (
+        <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
+          <DialogContent className="max-w-4xl p-2 bg-slate-950/95 border-slate-800 text-white flex flex-col items-center">
+            <DialogTitle className="sr-only">Pratinjau Foto Fisik Aset Resolusi Penuh</DialogTitle>
+            <div className="relative w-full max-h-[82vh] flex items-center justify-center overflow-hidden p-2">
+              <img
+                src={resolveUploadUrl(data.goodsPhotoUrl)}
+                alt="Foto Fisik Aset Resolusi Penuh"
+                className="max-h-[78vh] w-auto max-w-full object-contain rounded-lg shadow-2xl"
+              />
+            </div>
+            <div className="w-full px-4 pb-2 text-center text-xs text-slate-300">
+              <p className="font-semibold text-white">{data.subject || 'Foto Fisik Serah Terima Aset'}</p>
+              <p className="text-slate-400 text-[11px] mt-0.5">{data.receiverNotes || 'Kondisi barang telah diverifikasi.'}</p>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

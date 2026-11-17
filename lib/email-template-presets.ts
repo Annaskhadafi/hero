@@ -4080,7 +4080,7 @@ Terdapat permohonan pengadaan aset modal (CER) baru yang membutuhkan persetujuan
 - Pemohon: {{applicantName}}
 - Site / Dept: {{siteName}} / {{departmentName}}
 - Estimasi Biaya: Rp {{totalEstimatedPrice}}
-- Tahap Approval: {{approvalStep}}
+- Job Title: {{approvalStep}}
 
 Silakan tinjau dan lakukan persetujuan melalui tautan berikut:
 {{approvalLink}}
@@ -4096,7 +4096,7 @@ Sistem HERO PT Chitra Paratama`,
       siteName: 'BALIKPAPAN',
       departmentName: 'CENTRAL SERVICES',
       totalEstimatedPrice: '25.000.000',
-      approvalStep: 'Atasan Langsung',
+      approvalStep: 'Department Head',
       approvalLink: 'https://hero.chitraparatama.com/dashboard/approval',
     },
   },

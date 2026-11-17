@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useTransition } from 'react'
+import React, { useState, useEffect, useRef, useTransition } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -43,12 +43,17 @@ import {
   Check,
   ChevronUp,
   ChevronDown,
+  PenLine,
+  Upload,
 } from 'lucide-react'
 import { HeroSearchableSelect, type HeroSearchableSelectOption } from '@/components/templates'
+import { SignaturePad } from '@/components/signature-pad'
+import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { toast } from 'sonner'
 import { uploadFile } from '@/app/actions/upload'
 import {
   createCerRequestAction,
+  resubmitCerRequestAction,
   getCapExBudgetsForSelection,
   previewCerApprovalChain,
   getActiveEmployeesForCerSelection,
@@ -71,6 +76,8 @@ export interface CerFormDialogProps {
     siteId: number | null
   } | null
   onSuccess?: () => void
+  mode?: 'create' | 'revision'
+  initialData?: any
 }
 
 export interface UnitItem {
@@ -126,6 +133,8 @@ export function CerFormDialog({
   sections,
   currentEmployee,
   onSuccess,
+  mode = 'create',
+  initialData = null,
 }: CerFormDialogProps) {
   const [step, setStep] = useState<1 | 2>(1)
   const [isPending, startTransition] = useTransition()
@@ -167,6 +176,98 @@ export function CerFormDialog({
   // Attachments
   const [uploadedLampiran, setUploadedLampiran] = useState<UploadedAttachment[]>([])
   const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false)
+
+  // Submitter Signature State
+  const [submitterSig, setSubmitterSig] = useState<string | null>(null)
+  const [profileSig, setProfileSig] = useState<string | null>(null)
+  const [sigMode, setSigMode] = useState<'profile' | 'draw' | 'upload'>('profile')
+  const [uploadedSigUrl, setUploadedSigUrl] = useState<string | null>(null)
+  const signatureFileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (open) {
+      getUserSignatureAction()
+        .then((res) => {
+          if (res && res.success && res.signatureDataUrl) {
+            setProfileSig(res.signatureDataUrl)
+            setSubmitterSig(res.signatureDataUrl)
+            setSigMode('profile')
+          } else {
+            setSigMode('draw')
+            setSubmitterSig(null)
+          }
+        })
+        .catch(() => {
+          setSigMode('draw')
+        })
+    }
+  }, [open])
+
+  // Preload form data when opening in revision mode
+  useEffect(() => {
+    if (open && mode === 'revision' && initialData) {
+      setStep(1)
+      setSubject(initialData.cer.subject || '')
+      setPurchaseType(initialData.cer.purchaseType || 'Tambahan / Baru')
+      setBudgetSource(initialData.cer.budgetSource || 'Anggaran')
+      setSelectedBudgetId(initialData.cer.capexBudgetId || null)
+      if (initialData.cer.dateRequired) {
+        setDateRequired(new Date(initialData.cer.dateRequired).toISOString().slice(0, 10))
+      }
+      setPurchasePurpose(initialData.cer.purchasePurpose || '')
+      setVendorName(initialData.cer.vendorName || '')
+      if (initialData.cer.departmentId) setDepartmentId(initialData.cer.departmentId)
+      if (initialData.cer.sectionId) setSectionId(initialData.cer.sectionId)
+      if (initialData.cer.siteId) setSiteId(initialData.cer.siteId)
+      if (initialData.cer.assetCategory) setAssetCategory(initialData.cer.assetCategory)
+      if (initialData.items && initialData.items.length > 0) {
+        setItems(
+          initialData.items.map((it: any) => ({
+            id: String(it.id || `item-${Math.random()}`),
+            description: it.description || '',
+            qty: Number(it.qty) || 1,
+            pricePerUnit: Number(it.pricePerUnit) || 0,
+            totalPrice: Number(it.totalPrice) || 0,
+            allocation: it.allocation || '',
+            holderName: it.holderName || '',
+            holderEmployeeId: it.holderEmployeeId || null,
+            estimatedLifespan: it.estimatedLifespan || '3 Tahun',
+          }))
+        )
+      }
+      if (initialData.attachments && initialData.attachments.length > 0) {
+        setUploadedLampiran(initialData.attachments)
+      }
+      if (initialData.approvals && initialData.approvals.length > 0) {
+        setPreviewSteps(
+          initialData.approvals.map((ap: any, idx: number) => ({
+            ...ap,
+            stepOrder: idx + 1,
+            isLocked: (ap.status || '').toLowerCase() === 'approved',
+          }))
+        )
+      }
+    }
+  }, [open, mode, initialData])
+
+  const handleSignatureImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Format berkas harus berupa gambar (PNG, JPG, atau WebP).')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      setUploadedSigUrl(result)
+      setSubmitterSig(result)
+      toast.success('Gambar tanda tangan pemohon berhasil dimuat.')
+    }
+    reader.readAsDataURL(file)
+  }
 
   // Step 2 Preview Approval Chain
   const [previewSteps, setPreviewSteps] = useState<any[]>([])
@@ -271,10 +372,15 @@ export function CerFormDialog({
     }))
   }, [allEmployees])
 
-  // Move step up or down
+  // Move step up or down (Approved steps are locked)
   const handleMoveApprover = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1
     if (targetIndex < 0 || targetIndex >= previewSteps.length) return
+
+    if (previewSteps[index]?.isLocked || previewSteps[targetIndex]?.isLocked) {
+      toast.error('Approver yang sudah menyetujui (Approved) terkunci dan tidak dapat digeser.')
+      return
+    }
 
     setPreviewSteps((prev) => {
       const copy = [...prev]
@@ -287,6 +393,11 @@ export function CerFormDialog({
 
   // Change employee on an approver step
   const handleApproverEmployeeChange = (index: number, newEmpIdStr: string) => {
+    if (previewSteps[index]?.isLocked) {
+      toast.error('Approver yang sudah menyetujui (Approved) terkunci dan tidak dapat diubah.')
+      return
+    }
+
     const empId = parseInt(newEmpIdStr, 10)
     const found = allEmployees.find((e) => e.id === empId)
     if (!found) return
@@ -294,8 +405,13 @@ export function CerFormDialog({
     setPreviewSteps((prev) =>
       prev.map((step, idx) => {
         if (idx === index) {
+          const isSpecial =
+            step.label?.toLowerCase().includes('bima') ||
+            step.label?.toLowerCase().includes('budget') ||
+            step.label?.toLowerCase().includes('tagging')
           return {
             ...step,
+            label: isSpecial ? step.label : found.jobTitle || 'Approver',
             approverEmployeeId: found.id,
             approverName: found.name,
             jobTitle: found.jobTitle,
@@ -308,6 +424,11 @@ export function CerFormDialog({
 
   // Remove an approver step
   const handleRemoveApprover = (index: number) => {
+    if (previewSteps[index]?.isLocked) {
+      toast.error('Approver yang sudah menyetujui (Approved) terkunci dan tidak dapat dihapus.')
+      return
+    }
+
     if (previewSteps.length <= 1) {
       toast.error('Minimal harus ada 1 approver dalam rantai persetujuan.')
       return
@@ -324,7 +445,7 @@ export function CerFormDialog({
       ...prev,
       {
         stepOrder: prev.length + 1,
-        label: 'Verifikator Tambahan',
+        label: defaultEmp?.jobTitle || 'Approver',
         approverName: defaultEmp ? defaultEmp.name : 'Pilih Approver',
         approverEmployeeId: defaultEmp ? defaultEmp.id : null,
         jobTitle: defaultEmp?.jobTitle || 'Approver',
@@ -421,6 +542,8 @@ export function CerFormDialog({
     setUploadedLampiran([])
     setSelectedAttachments([])
     setPreviewSteps([])
+    setSubmitterSig(profileSig || null)
+    setUploadedSigUrl(null)
   }
 
   // Handle Add Unit Item
@@ -527,6 +650,11 @@ export function CerFormDialog({
       return
     }
 
+    if (mode === 'revision' && previewSteps && previewSteps.length > 0) {
+      setStep(2)
+      return
+    }
+
     setIsLoadingPreview(true)
     try {
       if (currentEmployee?.id) {
@@ -550,7 +678,57 @@ export function CerFormDialog({
 
   // Submit Final CER Request
   const handleSubmitFinal = () => {
+    if (!submitterSig && mode !== 'revision') {
+      toast.error('Silakan bubuhkan tanda tangan pemohon terlebih dahulu pada bagian tanda tangan (Section 4).')
+      return
+    }
+
     startTransition(async () => {
+      if (mode === 'revision' && initialData?.cer?.id) {
+        const res = await resubmitCerRequestAction({
+          cerId: initialData.cer.id,
+          subject,
+          purchaseType,
+          budgetSource,
+          capexBudgetId: budgetSource === 'Anggaran' ? selectedBudgetId : null,
+          dateRequired,
+          purchasePurpose,
+          vendorName,
+          items: items.map((it) => ({
+            id: it.id && !it.id.startsWith('item-') ? Number(it.id) : undefined,
+            description: it.description,
+            qty: Number(it.qty),
+            pricePerUnit: Number(it.pricePerUnit),
+            totalPrice: Number(it.totalPrice),
+            allocation: it.allocation,
+            holderName: it.holderName,
+            holderEmployeeId: it.holderEmployeeId || null,
+            estimatedLifespan: it.estimatedLifespan,
+          })),
+          attachments: uploadedLampiran,
+          customApprovers: previewSteps.map((s, idx) => ({
+            stepOrder: idx + 1,
+            label: s.label,
+            approverName: s.approverName,
+            approverEmployeeId: s.approverEmployeeId,
+            jobTitle: s.jobTitle,
+            approvalMode: s.approvalMode,
+            isLocked: Boolean(s.isLocked),
+            status: s.status,
+          })),
+        })
+
+        if (res.success) {
+          toast.success(res.message)
+          resetForm()
+          onOpenChange(false)
+          if (onSuccess) onSuccess()
+        } else {
+          toast.error(res.message)
+        }
+        return
+      }
+
       const res = await createCerRequestAction({
         subject,
         dateRequired,
@@ -582,6 +760,7 @@ export function CerFormDialog({
           approverName: s.approverName,
           approverEmployeeId: s.approverEmployeeId,
         })),
+        applicantSignatureUrl: submitterSig,
       })
 
       if (res.success) {
@@ -608,10 +787,14 @@ export function CerFormDialog({
             <div>
               <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <FileText className="h-4 w-4 text-blue-600" />
-                Formulir Pengadaan Aset (CER)
+                {mode === 'revision'
+                  ? `Revisi Formulir Pengadaan CER — ${initialData?.cer?.cerNumber || ''}`
+                  : 'Formulir Pengadaan Aset (CER)'}
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500 mt-0.5">
-                Capital Expenditure Request &amp; Analisis Pagu Anggaran
+                {mode === 'revision'
+                  ? 'Perbaiki rincian pengadaan atau sesuaikan urutan persetujuan yang belum disetujui'
+                  : 'Capital Expenditure Request & Analisis Pagu Anggaran'}
               </DialogDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -636,6 +819,43 @@ export function CerFormDialog({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
           {step === 1 && (
             <div className="space-y-6">
+              {mode === 'revision' && (
+                <div className="p-4 rounded-xl border border-amber-300 bg-amber-50/95 text-amber-900 shadow-xs flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg bg-amber-200/90 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 font-bold">
+                    ⚠️
+                  </div>
+                  <div className="space-y-2.5 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/80 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-amber-950">Permintaan Revisi dari Approver</span>
+                        <Badge variant="outline" className="text-[10px] bg-amber-100 text-amber-800 border-amber-300">
+                          Perlu Revisi
+                        </Badge>
+                      </div>
+                      {(initialData?.cer?.reverterName || initialData?.cer?.reverterJobTitle) && (
+                        <div className="text-[11px] text-amber-900 font-semibold flex items-center gap-1.5 bg-amber-100/80 px-2.5 py-0.5 rounded-md border border-amber-300/60">
+                          <span className="text-slate-600 font-normal">Direvert oleh:</span>
+                          <span className="text-amber-950 font-bold">{initialData?.cer?.reverterName || 'Approver'}</span>
+                          {initialData?.cer?.reverterJobTitle && (
+                            <span className="text-amber-800 font-medium">({initialData?.cer?.reverterJobTitle})</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                        Catatan Perbaikan:
+                      </span>
+                      <div className="p-2.5 rounded-lg bg-white/90 border border-amber-200 text-xs text-amber-950 font-medium leading-relaxed italic shadow-2xs">
+                        &quot;{initialData?.cer?.lastRevertNote || 'Mohon sesuaikan rincian pengadaan aset sesuai instruksi approver.'}&quot;
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-600 pt-0.5">
+                      Anda dapat mengubah item barang/jasa, kuantitas, harga, vendor, lampiran, serta susunan approver yang belum disetujui pada Step 2.
+                    </p>
+                  </div>
+                </div>
+              )}
               {/* CARD 1: INFORMASI DASAR & PEMOHON */}
               <Card className="border-slate-200 bg-white shadow-xs">
                 <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-3 px-4 sm:px-6">
@@ -1365,7 +1585,9 @@ export function CerFormDialog({
                               </Badge>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="font-semibold text-slate-900 truncate">{s.label}</span>
+                                  <span className="font-semibold text-slate-900 truncate">
+                                    {(s.approverName || 'Pilih Approver').replace(/\s*\(BIMA Supervisor\)/gi, '')}
+                                  </span>
                                   {isBima && (
                                     <Badge className="bg-indigo-600 text-white text-[9px] px-1 py-0 h-4">
                                       IT Validation
@@ -1378,7 +1600,13 @@ export function CerFormDialog({
                                   )}
                                 </div>
                                 <span className="text-[11px] text-slate-600 truncate block">
-                                  {s.approverName} {s.jobTitle ? `• ${s.jobTitle}` : ''}
+                                  {isBima
+                                    ? 'BIMA Supervisor'
+                                    : s.label?.toLowerCase().includes('budget')
+                                    ? 'Budget Validator'
+                                    : s.label?.toLowerCase().includes('tagging')
+                                    ? 'Asset Tagging'
+                                    : s.jobTitle || s.label}
                                   {isDirector && (
                                     <span className="text-blue-700 font-medium ml-1">
                                       (CC: Freshya Ochtovita)
@@ -1388,58 +1616,65 @@ export function CerFormDialog({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                              {/* Reorder Buttons */}
-                              <div className="flex items-center border border-slate-200 rounded-md bg-white">
+                            {s.isLocked ? (
+                              <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+                                <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                <span>✓ Disetujui (Terkunci)</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                {/* Reorder Buttons */}
+                                <div className="flex items-center border border-slate-200 rounded-md bg-white">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-slate-500 hover:text-slate-900"
+                                    disabled={idx === 0 || previewSteps[idx - 1]?.isLocked}
+                                    onClick={() => handleMoveApprover(idx, 'up')}
+                                    title="Geser ke Atas"
+                                  >
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-slate-500 hover:text-slate-900"
+                                    disabled={idx === previewSteps.length - 1}
+                                    onClick={() => handleMoveApprover(idx, 'down')}
+                                    title="Geser ke Bawah"
+                                  >
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+
+                                {/* Change Employee Dropdown */}
+                                {employeeOptions.length > 0 && (
+                                  <div className="w-52">
+                                    <HeroSearchableSelect
+                                      options={employeeOptions}
+                                      value={String(s.approverEmployeeId || '')}
+                                      onChange={(val) => handleApproverEmployeeChange(idx, val)}
+                                      placeholder="Ganti approver..."
+                                      searchPlaceholder="Cari personil..."
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Delete Button */}
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="h-7 w-7 text-slate-500 hover:text-slate-900"
-                                  disabled={idx === 0}
-                                  onClick={() => handleMoveApprover(idx, 'up')}
-                                  title="Geser ke Atas"
+                                  className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                                  onClick={() => handleRemoveApprover(idx)}
+                                  title="Hapus Approver"
                                 >
-                                  <ChevronUp className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-slate-500 hover:text-slate-900"
-                                  disabled={idx === previewSteps.length - 1}
-                                  onClick={() => handleMoveApprover(idx, 'down')}
-                                  title="Geser ke Bawah"
-                                >
-                                  <ChevronDown className="h-3.5 w-3.5" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
-
-                              {/* Change Employee Dropdown */}
-                              {employeeOptions.length > 0 && (
-                                <div className="w-52">
-                                  <HeroSearchableSelect
-                                    options={employeeOptions}
-                                    value={String(s.approverEmployeeId || '')}
-                                    onChange={(val) => handleApproverEmployeeChange(idx, val)}
-                                    placeholder="Ganti approver..."
-                                    searchPlaceholder="Cari personil..."
-                                  />
-                                </div>
-                              )}
-
-                              {/* Delete Button */}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-slate-400 hover:text-rose-600"
-                                onClick={() => handleRemoveApprover(idx)}
-                                title="Hapus Approver"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
+                            )}
                           </div>
                         )
                       })}
@@ -1458,6 +1693,165 @@ export function CerFormDialog({
                       </p>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* STEP 2: TANDA TANGAN DIGITAL PEMOHON */}
+              <Card className="border-slate-200 bg-white shadow-xs">
+                <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-3 px-4 sm:px-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                    <div>
+                      <CardTitle className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                        <PenLine className="h-4 w-4 text-emerald-600" />
+                        4. Tanda Tangan Digital Pemohon (Diajukan Oleh) <span className="text-rose-500">*</span>
+                      </CardTitle>
+                      <CardDescription className="text-[11px] text-slate-500">
+                        Bubuhkan tanda tangan Anda sebagai pemohon resmi pengadaan CapEx ini. Tanda tangan akan dicantumkan pada kolom &quot;DIAJUKAN OLEH&quot; di dokumen PDF resmi.
+                      </CardDescription>
+                    </div>
+                    {submitterSig && (
+                      <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px] font-semibold gap-1 self-start sm:self-auto shrink-0">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600" /> TTD Siap Dicantumkan
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6 space-y-3.5 text-xs">
+                  {/* Mode switcher tabs */}
+                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-semibold max-w-md">
+                    {profileSig && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSigMode('profile')
+                          setSubmitterSig(profileSig)
+                        }}
+                        className={`flex-1 py-1.5 px-3 rounded-md transition-all text-center text-xs ${
+                          sigMode === 'profile'
+                            ? 'bg-white text-emerald-800 shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        TTD Profil HERO
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSigMode('draw')
+                        if (sigMode === 'profile') setSubmitterSig(null)
+                      }}
+                      className={`flex-1 py-1.5 px-3 rounded-md transition-all text-center text-xs ${
+                        sigMode === 'draw'
+                          ? 'bg-white text-blue-800 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Coretan Tangan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSigMode('upload')
+                        if (uploadedSigUrl) {
+                          setSubmitterSig(uploadedSigUrl)
+                        } else if (sigMode === 'profile') {
+                          setSubmitterSig(null)
+                        }
+                      }}
+                      className={`flex-1 py-1.5 px-3 rounded-md transition-all text-center text-xs ${
+                        sigMode === 'upload'
+                          ? 'bg-white text-indigo-800 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Upload Gambar
+                    </button>
+                  </div>
+
+                  {/* Hidden input for upload */}
+                  <input
+                    ref={signatureFileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleSignatureImageUpload}
+                  />
+
+                  {/* Mode Profile */}
+                  {sigMode === 'profile' && profileSig && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-4 flex flex-col items-center justify-center min-h-[120px] max-w-md relative">
+                      <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Terdaftar di Profil
+                      </span>
+                      <img
+                        src={profileSig}
+                        alt="Tanda Tangan Pemohon"
+                        className="max-h-24 object-contain my-1"
+                      />
+                      <p className="text-[11px] font-semibold text-slate-700 mt-1">
+                        {currentEmployee?.name || 'Pemohon'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Mode Draw */}
+                  {sigMode === 'draw' && (
+                    <div className="max-w-md space-y-2">
+                      <p className="text-[11px] text-slate-500">
+                        Goreskan tanda tangan Anda pada area putih di bawah ini:
+                      </p>
+                      <SignaturePad
+                        onDataUrlChange={(dataUrl) => setSubmitterSig(dataUrl)}
+                        onSaveToProfile={(dataUrl) => {
+                          setProfileSig(dataUrl)
+                          setSigMode('profile')
+                          setSubmitterSig(dataUrl)
+                        }}
+                        height={130}
+                      />
+                    </div>
+                  )}
+
+                  {/* Mode Upload */}
+                  {sigMode === 'upload' && (
+                    <div className="max-w-md space-y-2">
+                      {uploadedSigUrl ? (
+                        <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4 flex flex-col items-center justify-center min-h-[120px] relative">
+                          <img
+                            src={uploadedSigUrl}
+                            alt="Unggahan Tanda Tangan"
+                            className="max-h-24 object-contain my-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => signatureFileInputRef.current?.click()}
+                            className="h-7 text-xs mt-2"
+                          >
+                            <Upload className="h-3.5 w-3.5 mr-1" /> Ganti Gambar
+                          </Button>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => signatureFileInputRef.current?.click()}
+                          className="border-2 border-dashed border-slate-300 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all text-center min-h-[120px]"
+                        >
+                          <div className="p-2 bg-indigo-50 rounded-full text-indigo-600 mb-2">
+                            <Upload className="h-5 w-5" />
+                          </div>
+                          <p className="text-xs font-bold text-slate-800">
+                            Klik untuk Unggah Gambar Tanda Tangan
+                          </p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Format PNG, JPG, JPEG, atau WebP (Maks. 5 MB)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -1539,7 +1933,8 @@ export function CerFormDialog({
                     </>
                   ) : (
                     <>
-                      <Check className="h-3.5 w-3.5" /> Kirim Pengajuan CER
+                      <Check className="h-3.5 w-3.5" />{' '}
+                      {mode === 'revision' ? 'Kirim Revisi Pengajuan (Resubmit)' : 'Kirim Pengajuan CER'}
                     </>
                   )}
                 </Button>

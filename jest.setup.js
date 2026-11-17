@@ -26,3 +26,21 @@ if (typeof global.setImmediate === 'undefined') {
   global.setImmediate = (fn, ...args) => setTimeout(fn, 0, ...args)
   global.clearImmediate = (id) => clearTimeout(id)
 }
+
+jest.mock('better-auth', () => ({
+  betterAuth: jest.fn(() => ({
+    api: {
+      getSession: jest.fn(),
+    },
+  })),
+}))
+jest.mock('better-auth/adapters/drizzle', () => ({
+  drizzleAdapter: jest.fn(),
+}))
+jest.mock('better-auth/next-js', () => ({
+  nextCookies: jest.fn(),
+}))
+jest.mock('better-auth/plugins/magic-link', () => ({
+  magicLink: jest.fn(),
+}))
+

@@ -129,6 +129,7 @@ export const cerRequests = pgTable(
     financeCheckNotes: text('finance_check_notes'),
     pdfUrl: text('pdf_url'),
     bastPdfUrl: text('bast_pdf_url'),
+    applicantSignatureUrl: text('applicant_signature_url'),
     receiverSignatureUrl: text('receiver_signature_url'),
     approvedAt: timestamp('approved_at'),
     receivedAt: timestamp('received_at'),
@@ -222,6 +223,7 @@ export const cerBasts = pgTable(
     userSignedAt: timestamp('user_signed_at'),
     pdfUrl: text('pdf_url'),
     bastPdfUrl: text('bast_pdf_url'),
+    applicantSignatureUrl: text('applicant_signature_url'),
     receiverSignatureUrl: text('receiver_signature_url'),
     status: text('status').notNull().default('draft'), // 'draft', 'signed', 'completed'
     notes: text('notes').notNull().default(''),

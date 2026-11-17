@@ -6,7 +6,7 @@ import { cerRequests, cerItems } from '@/db/schema/cer'
 import { approvals, employees, sites, masterDepartments, masterSections } from '@/db/schema/hero'
 import { generateCerPdf } from '@/lib/cer-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
-import { asc, eq } from 'drizzle-orm'
+import { asc, eq, and } from 'drizzle-orm'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +45,7 @@ export async function GET(
         kelompokAset: cerRequests.kelompokAset,
         status: cerRequests.status,
         pdfUrl: cerRequests.pdfUrl,
+        applicantSignatureUrl: cerRequests.applicantSignatureUrl,
         createdAt: cerRequests.createdAt,
         approvedAt: cerRequests.approvedAt,
         financeCheckedAt: cerRequests.financeCheckedAt,
@@ -71,15 +72,31 @@ export async function GET(
     }
 
     const userRole = ((session.user as any)?.role || '').toLowerCase()
+    const userEmpId = (session.user as any)?.employeeId
     const isSuperAdmin = isSuperAdminRole((session.user as any)?.role) || userRole.includes('admin') || userRole.includes('director') || userRole.includes('finance')
     const isApplicant =
-      (cer.applicantEmployeeId && session.user.employeeId === cer.applicantEmployeeId) ||
+      (cer.applicantEmployeeId && userEmpId === cer.applicantEmployeeId) ||
       (cer.createdById && session.user.id === cer.createdById) ||
       (session.user.name && cer.applicantName && session.user.name.toLowerCase() === cer.applicantName.toLowerCase())
 
-    if (!isSuperAdmin && !isApplicant) {
+    let isApprover = false
+    if (userEmpId) {
+      const [appr] = await db
+        .select({ id: approvals.id })
+        .from(approvals)
+        .where(
+          and(
+            eq(approvals.cerRequestId, cerId),
+            eq(approvals.approverEmployeeId, userEmpId)
+          )
+        )
+        .limit(1)
+      if (appr) isApprover = true
+    }
+
+    if (!isSuperAdmin && !isApplicant && !isApprover) {
       return NextResponse.json(
-        { error: 'Akses ditolak: Dokumen PDF hanya dapat diunduh oleh Pengaju dan Administrator' },
+        { error: 'Akses ditolak: Dokumen PDF hanya dapat diunduh oleh Pengaju, Approver, dan Administrator' },
         { status: 403 }
       )
     }
@@ -99,7 +116,7 @@ export async function GET(
         status: approvals.status,
         approverName: approvals.approverName,
         jobTitle: employees.jobTitle,
-        approverRole: approvals.approverRole,
+        formName: approvals.formName,
         decisionNote: approvals.decisionNote,
         signatureUrl: approvals.signatureUrl,
         reviewedAt: approvals.reviewedAt,
@@ -127,6 +144,7 @@ export async function GET(
       applicantName: cer.applicantName || 'Pemohon',
       applicantSn: cer.applicantSn || null,
       applicantJobTitle: cer.applicantJobTitle || 'Pemohon Capex',
+      applicantSignatureUrl: cer.applicantSignatureUrl || null,
       siteName: cer.siteName || 'Balikpapan',
       departmentName: cer.departmentName || 'Central Services',
       sectionName: cer.sectionName || null,
@@ -155,9 +173,9 @@ export async function GET(
       })),
       approvals: approvalRows.map((app) => ({
         stepOrder: app.level,
-        label: app.decisionNote || `Tahap ${app.level}`,
+        label: app.formName || app.decisionNote || `Tahap ${app.level}`,
         approverName: app.approverName,
-        jobTitle: app.jobTitle || app.approverRole || `Approver Step ${app.level}`,
+        jobTitle: app.jobTitle || app.formName || `Approver Step ${app.level}`,
         status: app.status,
         reviewedAt: app.reviewedAt,
         signatureUrl: app.signatureUrl,
@@ -175,16 +193,6 @@ export async function GET(
 
 
     const safeFilename = `CER_${cer.cerNumber.replace(/[\\/]/g, '_')}.pdf`
-    return new NextResponse(Buffer.from(pdfBuffer), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${safeFilename}"`,
-        'Cache-Control': 'public, max-age=3600',
-      },
-    })
-
-    const safeFilename = `CER_${cer.cerNumber.replace(/[\/\\]/g, '_')}.pdf`
-
     return new NextResponse(Buffer.from(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',

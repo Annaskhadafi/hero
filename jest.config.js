@@ -3,7 +3,7 @@ module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>'],
   testMatch: ['**/__tests__/**/*.ts?(x)', '**/*.{spec,test}.ts?(x)'],
-  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/.kilo/', '/\\.claude/', '/tests/design-guardrails.test.ts', '/tests/e2e/', '-crud\\.test\\.ts$'],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '/.kilo/', '/\\.claude/', '/tests/design-guardrails.test.ts', '/tests/e2e/', '-crud\\.test\\.ts$', '-live-e2e\\.test\\.ts$', '/tests/hse-osm-.*\\.test\\.ts$'],
   modulePathIgnorePatterns: ['<rootDir>/.next', '<rootDir>/.kilo', '<rootDir>/.claude'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',

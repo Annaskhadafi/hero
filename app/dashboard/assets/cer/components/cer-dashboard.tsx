@@ -11,6 +11,8 @@ import {
   Coins,
   RefreshCw,
   TrendingUp,
+  Layers,
+  UserCheck,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
@@ -20,17 +22,21 @@ import { CerTable } from './cer-table'
 import { CerFormDialog } from './cer-form-dialog'
 import type { CerOverviewData } from '../actions'
 
+export type CerTabKey = 'all_requests' | 'my_requests' | 'receiving' | 'requests'
+
 export interface CerDashboardProps {
   data: CerOverviewData
-  defaultTab?: 'requests' | 'receiving'
+  defaultTab?: CerTabKey | string
 }
 
-export function CerDashboard({ data, defaultTab = 'requests' }: CerDashboardProps) {
+export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboardProps) {
   const router = useRouter()
-  const initialTab = ['requests', 'receiving'].includes(defaultTab)
-    ? defaultTab
-    : 'requests'
-  const [activeTab, setActiveTab] = useState<'requests' | 'receiving'>(initialTab)
+  const initialTab = ['all_requests', 'my_requests', 'receiving'].includes(defaultTab as any)
+    ? (defaultTab as 'all_requests' | 'my_requests' | 'receiving')
+    : defaultTab === 'requests'
+    ? 'my_requests'
+    : 'all_requests'
+  const [activeTab, setActiveTab] = useState<'all_requests' | 'my_requests' | 'receiving'>(initialTab)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const refreshData = () => {
@@ -60,12 +66,26 @@ export function CerDashboard({ data, defaultTab = 'requests' }: CerDashboardProp
     }).format(val)
   }
 
-  // Filter for In-Progress Requests Tab (Daftar Pengajuan)
-  const inProgressRequests = data.requests.filter(
-    (r) => !['full_approved', 'received', 'completed'].includes(r.status)
-  )
+  // Tab 1: Semua CER di HERO (Seluruh pengajuan lintas pemohon untuk view umum & tracking)
+  const allRequests = data.requests
 
-  // Filter for Receiving & BAST Tab
+  // Tab 2: Daftar Pengajuan Saya (Pengajuan milik user yang login atau pending approval pada dirinya)
+  const myRequests = data.requests.filter((r) => {
+    if (!data.currentEmployee) return true
+    const isMine =
+      r.applicantEmployeeId === data.currentEmployee.id ||
+      (data.currentEmployee.email && r.applicantEmail === data.currentEmployee.email)
+    const isPendingOnMe = r.approvals?.some(
+      (a) =>
+        a.status === 'Pending' &&
+        (a.approverEmployeeId === data.currentEmployee?.id ||
+          (data.currentEmployee?.name &&
+            a.approverName.toLowerCase().includes(data.currentEmployee.name.toLowerCase())))
+    )
+    return isMine || isPendingOnMe
+  })
+
+  // Tab 3: Filter for Receiving & BAST Tab
   const receivingRequests = data.requests.filter((r) =>
     ['full_approved', 'received', 'completed'].includes(r.status)
   )
@@ -169,13 +189,24 @@ export function CerDashboard({ data, defaultTab = 'requests' }: CerDashboardProp
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-4">
         <TabsList className="h-10 w-full justify-start rounded-lg border border-slate-200/80 bg-slate-100/80 p-1 text-slate-600">
           <TabsTrigger
-            value="requests"
+            value="all_requests"
             className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
           >
-            <FileText className="h-3.5 w-3.5" />
+            <Layers className="h-3.5 w-3.5 text-blue-600" />
             Daftar Pengajuan
-            <Badge className="ml-1 rounded-full border-0 bg-slate-200 text-[10px] text-slate-700">
-              {inProgressRequests.length}
+            <Badge className="ml-1 rounded-full border-0 bg-blue-100 text-[10px] text-blue-800">
+              {allRequests.length}
+            </Badge>
+          </TabsTrigger>
+
+          <TabsTrigger
+            value="my_requests"
+            className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
+          >
+            <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+            Daftar Pengajuan Saya
+            <Badge className="ml-1 rounded-full border-0 bg-emerald-100 text-[10px] text-emerald-800">
+              {myRequests.length}
             </Badge>
           </TabsTrigger>
 
@@ -191,13 +222,30 @@ export function CerDashboard({ data, defaultTab = 'requests' }: CerDashboardProp
           </TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: ALL REQUESTS */}
-        <TabsContent value="requests" className="space-y-4">
+        {/* TAB 1: ALL REQUESTS (VIEW ONLY - SEMUA CER HERO) */}
+        <TabsContent value="all_requests" className="space-y-4">
           <CerTable
-            requests={inProgressRequests}
-            mode="requests"
+            requests={allRequests}
+            mode="all_requests"
             currentEmployee={data.currentEmployee}
             isFinanceOrAdmin={data.isFinanceOrAdmin}
+            sites={data.sites}
+            departments={data.departments}
+            sections={data.sections}
+            onRefresh={refreshData}
+          />
+        </TabsContent>
+
+        {/* TAB 2: MY REQUESTS (PENGAJUAN SAYA DENGAN ACTION ALUR KERJA) */}
+        <TabsContent value="my_requests" className="space-y-4">
+          <CerTable
+            requests={myRequests}
+            mode="my_requests"
+            currentEmployee={data.currentEmployee}
+            isFinanceOrAdmin={data.isFinanceOrAdmin}
+            sites={data.sites}
+            departments={data.departments}
+            sections={data.sections}
             onRefresh={refreshData}
           />
         </TabsContent>
@@ -224,6 +272,9 @@ export function CerDashboard({ data, defaultTab = 'requests' }: CerDashboardProp
             mode="receiving"
             currentEmployee={data.currentEmployee}
             isFinanceOrAdmin={data.isFinanceOrAdmin}
+            sites={data.sites}
+            departments={data.departments}
+            sections={data.sections}
             onRefresh={refreshData}
           />
         </TabsContent>

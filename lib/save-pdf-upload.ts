@@ -19,7 +19,7 @@ export async function saveGeneratedPdfUpload(
   if (isS3UploadConfigured()) {
     try {
       const s3Res = await uploadBufferToS3(Buffer.from(buffer), key, 'application/pdf')
-      if (s3Res && s3Res.success) {
+      if (s3Res && s3Res.url) {
         return `/api/uploads/${key}`
       }
     } catch (s3Err) {

@@ -203,7 +203,8 @@ export function AssetTransferDetailModal({
             <div className="flex items-center gap-2">
             {(() => {
               const canDownload = transfer.canDownload !== false
-              if (!canDownload || !transfer.pdfUrl) return null
+              if (!canDownload) return null
+              const pdfDownloadUrl = transfer.pdfUrl ? resolveUploadUrl(transfer.pdfUrl) : `/api/assets/transfer/${transfer.id}/pdf`
               return (
                 <Button
                   size="sm"
@@ -211,7 +212,7 @@ export function AssetTransferDetailModal({
                   asChild
                   className="h-9 gap-1.5 border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
                 >
-                  <a href={resolveUploadUrl(transfer.pdfUrl)} target="_blank" rel="noopener noreferrer">
+                  <a href={pdfDownloadUrl} target="_blank" rel="noopener noreferrer">
                     <Download className="size-4" /> Download PDF (A4)
                   </a>
                 </Button>
@@ -397,7 +398,11 @@ export function AssetTransferDetailModal({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Kelengkapan Barang yang Disertakan
             </h4>
-            {equipmentList.length > 0 ? (
+            {transfer.equipmentOtherNote ? (
+              <p className="text-xs font-medium text-foreground bg-muted/40 p-3 rounded-md border border-border/60 leading-relaxed whitespace-pre-line">
+                {transfer.equipmentOtherNote}
+              </p>
+            ) : equipmentList.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {equipmentList.map((item) => (
                   <Badge
@@ -410,14 +415,7 @@ export function AssetTransferDetailModal({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground italic">Tidak ada kelengkapan khusus yang dicatat.</p>
-            )}
-
-            {transfer.equipmentOtherNote && (
-              <div className="pt-2 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">Catatan Other:</span>{' '}
-                {transfer.equipmentOtherNote}
-              </div>
+              <p className="text-xs text-muted-foreground italic">Unit Lengkap beserta perlengkapan standar.</p>
             )}
           </div>
 

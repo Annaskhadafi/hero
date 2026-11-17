@@ -29,9 +29,19 @@ export interface CerBastPdfData {
   userSite?: string | null
   userSignedAt?: Date | string | null
   userSignatureUrl?: string | null
+  applicantName?: string | null
+  applicantJobTitle?: string | null
+  departmentName?: string | null
+  siteName?: string | null
+  assetCategory?: string | null
+  dateRequired?: string | null
+  receivedAt?: Date | string | null
+  receiverNotes?: string | null
+  receiverSignatureUrl?: string | null
   notes?: string | null
   vendorName?: string | null
   kelompokAset?: string | null
+  goodsPhotoUrl?: string | null
   items: CerBastPdfItem[]
 }
 
@@ -223,13 +233,11 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
 
   const cols = [
     { label: 'NO', w: 32, align: 'center' },
-    { label: 'DESKRIPSI BARANG / ASET', w: 220, align: 'left' },
-    { label: 'KELOMPOK ASET', w: 120, align: 'left' },
-    { label: 'NOMOR ASET', w: 110, align: 'left' },
-    { label: 'SERIAL NUMBER', w: 100, align: 'left' },
+    { label: 'DESKRIPSI BARANG / ASET', w: 250, align: 'left' },
+    { label: 'KELOMPOK ASET', w: 130, align: 'left' },
+    { label: 'NOMOR ASET', w: 130, align: 'left' },
     { label: 'QTY', w: 50, align: 'center' },
-    { label: 'KONDISI FISIK', w: 80, align: 'center' },
-    { label: 'CATATAN', w: contentW - (32 + 220 + 120 + 110 + 100 + 50 + 80), align: 'left' },
+    { label: 'CATATAN PENERIMAAN / BAST', w: contentW - (32 + 250 + 130 + 130 + 50), align: 'left' },
   ]
 
   let curColX = marginX
@@ -254,10 +262,8 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
       description: data.subject || 'Pengadaan Capex Unit',
       kelompokAset: data.kelompokAset || '-',
       assetNumber: '-',
-      serialNumber: '-',
       quantity: 1,
-      condition: 'Baik & Normal',
-      notes: data.notes || 'Sesuai pesanan & berfungsi normal',
+      notes: data.receiverNotes || data.notes || 'Sesuai pesanan & berfungsi normal',
     }
   ]
 
@@ -279,38 +285,150 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
     page.drawText(String(idx + 1), { x: cellX + 12, y: curY - 12, size: 7, font: fontRegular, color: textGray })
     cellX += cols[0].w
     // 1: Deskripsi
-    const descText = (it.description || '').substring(0, 36)
+    const descText = (it.description || '').substring(0, 42)
     const locHolder = [
       it.location ? `Site: ${it.location}` : null,
       it.holderName ? `Holder: ${it.holderName}` : null,
     ].filter(Boolean).join(' | ')
     if (locHolder) {
       page.drawText(descText, { x: cellX + 6, y: curY - 9, size: 7, font: fontBold, color: textDark })
-      page.drawText(locHolder.substring(0, 48), { x: cellX + 6, y: curY - 16, size: 5.5, font: fontRegular, color: textGray })
+      page.drawText(locHolder.substring(0, 50), { x: cellX + 6, y: curY - 16, size: 5.5, font: fontRegular, color: textGray })
     } else {
       page.drawText(descText, { x: cellX + 6, y: curY - 12, size: 7.5, font: fontBold, color: textDark })
     }
     cellX += cols[1].w
     // 2: Kelompok Aset
-    page.drawText((it.kelompokAset || data.kelompokAset || '-').substring(0, 20), { x: cellX + 6, y: curY - 12, size: 7, font: fontRegular, color: textDark })
+    page.drawText((it.kelompokAset || data.kelompokAset || '-').substring(0, 24), { x: cellX + 6, y: curY - 12, size: 7, font: fontRegular, color: textDark })
     cellX += cols[2].w
     // 3: Nomor Aset
-    page.drawText((it.assetNumber || '-').substring(0, 18), { x: cellX + 6, y: curY - 12, size: 7.5, font: fontBold, color: darkNavy })
+    page.drawText((it.assetNumber || '-').substring(0, 22), { x: cellX + 6, y: curY - 12, size: 7.5, font: fontBold, color: darkNavy })
     cellX += cols[3].w
-    // 4: Serial Number
-    page.drawText((it.serialNumber || '-').substring(0, 16), { x: cellX + 6, y: curY - 12, size: 7, font: fontRegular, color: textDark })
-    cellX += cols[4].w
-    // 5: Qty
+    // 4: Qty
     page.drawText(`${it.quantity || 1} Unit`, { x: cellX + 12, y: curY - 12, size: 7, font: fontRegular, color: textDark })
-    cellX += cols[5].w
-    // 6: Kondisi
-    page.drawText(it.condition || 'Baik & Lengkap', { x: cellX + 8, y: curY - 12, size: 7, font: fontBold, color: successGreen })
-    cellX += cols[6].w
-    // 7: Catatan
-    page.drawText((it.notes || data.notes || 'Berfungsi normal').substring(0, 25), { x: cellX + 6, y: curY - 12, size: 6.5, font: fontRegular, color: textGray })
+    cellX += cols[4].w
+    // 5: Catatan Penerimaan / BAST
+    page.drawText((data.receiverNotes || it.notes || data.notes || 'Sesuai pesanan & berfungsi normal').substring(0, 36), { x: cellX + 6, y: curY - 12, size: 6.5, font: fontRegular, color: textGray })
 
     curY -= rowH
   }
+
+  // 3.5. Lampiran Dokumentasi Fisik Aset (Foto Penerimaan)
+  curY -= 6
+  const photoSectionH = 145
+  page.drawRectangle({
+    x: marginX,
+    y: curY - photoSectionH,
+    width: contentW,
+    height: photoSectionH,
+    color: rgb(0.98, 0.98, 0.99),
+    borderColor: borderGray,
+    borderWidth: 0.8,
+  })
+
+  // Header of photo section
+  const photoHeaderH = 14
+  page.drawRectangle({
+    x: marginX,
+    y: curY - photoHeaderH,
+    width: contentW,
+    height: photoHeaderH,
+    color: bgLight,
+    borderColor: borderGray,
+    borderWidth: 0.8,
+  })
+
+  page.drawText('LAMPIRAN DOKUMENTASI FISIK ASET (FOTO PENERIMAAN)', {
+    x: marginX + 8,
+    y: curY - 10,
+    size: 6.5,
+    font: fontBold,
+    color: darkNavy,
+  })
+
+  const photoSubText = 'Bukti visual kondisi fisik saat serah terima di lokasi site'
+  const photoSubW = fontRegular.widthOfTextAtSize(photoSubText, 6)
+  page.drawText(photoSubText, {
+    x: width - marginX - photoSubW - 8,
+    y: curY - 10,
+    size: 6,
+    font: fontRegular,
+    color: textGray,
+  })
+
+  // Body of photo section
+  let embeddedGoodsPhoto = null
+  if (data.goodsPhotoUrl) {
+    embeddedGoodsPhoto = await embedSignatureImage(pdfDoc, data.goodsPhotoUrl)
+  }
+
+  const photoFrameW = 240
+  const photoFrameH = photoSectionH - photoHeaderH - 8
+  const photoFrameX = marginX + 8
+  const photoFrameY = curY - photoSectionH + 4
+
+  page.drawRectangle({
+    x: photoFrameX,
+    y: photoFrameY,
+    width: photoFrameW,
+    height: photoFrameH,
+    color: rgb(1, 1, 1),
+    borderColor: borderGray,
+    borderWidth: 0.5,
+  })
+
+  if (embeddedGoodsPhoto) {
+    const pAspect = embeddedGoodsPhoto.width / embeddedGoodsPhoto.height
+    let dW = photoFrameW - 4
+    let dH = dW / pAspect
+    if (dH > photoFrameH - 4) {
+      dH = photoFrameH - 4
+      dW = dH * pAspect
+    }
+    page.drawImage(embeddedGoodsPhoto, {
+      x: photoFrameX + (photoFrameW - dW) / 2,
+      y: photoFrameY + (photoFrameH - dH) / 2,
+      width: dW,
+      height: dH,
+    })
+  } else {
+    page.drawText('(Foto fisik belum terlampir)', {
+      x: photoFrameX + 40,
+      y: photoFrameY + photoFrameH / 2 - 3,
+      size: 6.5,
+      font: fontRegular,
+      color: textGray,
+    })
+  }
+
+  // Info beside photo
+  const infoX = photoFrameX + photoFrameW + 14
+  page.drawText('Verifikasi Visual Kondisi Fisik Barang:', {
+    x: infoX,
+    y: curY - photoHeaderH - 18,
+    size: 7.5,
+    font: fontBold,
+    color: textDark,
+  })
+
+  const cleanNote = (data.receiverNotes || 'Barang telah diterima lengkap, segel utuh, dan berfungsi normal sesuai spesifikasi.').substring(0, 110)
+  page.drawText(`"${cleanNote}"`, {
+    x: infoX,
+    y: curY - photoHeaderH - 34,
+    size: 6.5,
+    font: fontRegular,
+    color: textGray,
+  })
+
+  const verifyTime = `Status: Terverifikasi PIC Lokasi • ${formatIndoDateTime(data.receivedAt || data.handoverDate || new Date())}`
+  page.drawText(verifyTime, {
+    x: infoX,
+    y: curY - photoHeaderH - 54,
+    size: 6.5,
+    font: fontBold,
+    color: successGreen,
+  })
+
+  curY -= photoSectionH
 
   // 4. Yellow Bar / Pernyataan Tanggung Jawab (Work Order Style)
   curY -= 6
@@ -345,7 +463,7 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
 
   curY -= bannerH + 12
 
-  // 5. Signature Grid (Work Order Style Horizontal 4-Columns)
+  // 5. Signature Grid (Work Order Style Horizontal 2-Columns)
   const sigColumns = [
     {
       header: 'YANG MENYERAHKAN',
@@ -353,31 +471,15 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
       jobTitle: 'Supplier / Penyerah Barang',
       sigUrl: null,
       isApproved: true,
-      date: formatIndoDate(data.handoverDate),
+      date: formatIndoDate(data.handoverDate || data.receivedAt),
     },
     {
-      header: 'DIPERIKSA OLEH (FINANCE)',
-      name: 'Syamsul Bahri / Evo Dwi',
-      jobTitle: 'Finance & Accounting Specialist',
-      sigUrl: null,
-      isApproved: true,
-      date: 'Terverifikasi Finance',
-    },
-    {
-      header: 'DIKETAHUI OLEH (MANAJEMEN)',
-      name: 'Manajemen PT Chitra Paratama',
-      jobTitle: 'Approval Direksi Lengkap',
-      sigUrl: null,
-      isApproved: true,
-      date: 'Full Approved',
-    },
-    {
-      header: 'YANG MENERIMA (PIC LOKASI)',
-      name: data.userName,
-      jobTitle: data.userJobTitle || 'Penerima Barang / PIC Lokasi',
-      sigUrl: data.userSignatureUrl || null,
-      isApproved: Boolean(data.userSignatureUrl),
-      date: formatIndoDateTime(data.userSignedAt || data.handoverDate),
+      header: 'YANG MENERIMA',
+      name: data.applicantName || data.userName,
+      jobTitle: data.applicantJobTitle || data.userJobTitle || 'Pemohon Pengadaan',
+      sigUrl: data.receiverSignatureUrl || data.userSignatureUrl || null,
+      isApproved: Boolean(data.receiverSignatureUrl || data.userSignatureUrl),
+      date: formatIndoDateTime(data.receivedAt || data.userSignedAt || data.handoverDate),
     },
   ]
 

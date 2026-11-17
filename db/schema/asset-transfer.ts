@@ -61,6 +61,7 @@ export const assetTransfers = pgTable('hero_asset_transfers', {
   // Requester & Timestamps
   createdById: text('created_by_id').references(() => user.id, { onDelete: 'set null' }),
   applicantEmployeeId: integer('applicant_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  applicantSignatureUrl: text('applicant_signature_url'),
   pdfUrl: text('pdf_url'),
   submittedAt: timestamp('submitted_at').defaultNow(),
   transferredAt: timestamp('transferred_at'),

@@ -23,6 +23,12 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   Search,
   Eye,
   CheckCircle2,
@@ -37,12 +43,14 @@ import {
   ExternalLink,
   Clock,
   Trash2,
+  Edit,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { CerReceiveDialog } from './cer-receive-dialog'
 import { CerBastDialog } from './cer-bast-dialog'
 import { CerFinanceCheckModal } from './cer-finance-check-modal'
+import { CerFormDialog } from './cer-form-dialog'
 import { HeroConfirmDialog } from '@/components/templates'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { isSuperAdminUser } from '../utils'
@@ -53,6 +61,7 @@ import {
   resubmitCerRequestAction,
   rejectCerStepAction,
   deleteCerRequestAction,
+  getCerDetailForRevisionAction,
 } from '../actions'
 import type { CerOverviewData } from '../actions'
 
@@ -62,9 +71,21 @@ export interface CerTableProps {
   currentEmployee: CerOverviewData['currentEmployee']
   isFinanceOrAdmin?: boolean
   onRefresh?: () => void
+  sites?: any[]
+  departments?: any[]
+  sections?: any[]
 }
 
-export function CerTable({ requests, mode = 'requests', currentEmployee, isFinanceOrAdmin = false, onRefresh }: CerTableProps) {
+export function CerTable({
+  requests,
+  mode = 'requests',
+  currentEmployee,
+  isFinanceOrAdmin = false,
+  onRefresh,
+  sites = [],
+  departments = [],
+  sections = [],
+}: CerTableProps) {
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -84,9 +105,42 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
   const [isAssetApprovalOpen, setIsAssetApprovalOpen] = useState(false)
   const [isAssetSubmitting, setIsAssetSubmitting] = useState(false)
 
-  // Resubmit modal state
-  const [isResubmitOpen, setIsResubmitOpen] = useState(false)
-  const [resubmitPurpose, setResubmitPurpose] = useState('')
+  // Full Revision modal state
+  const [isRevisionOpen, setIsRevisionOpen] = useState(false)
+  const [revisionInitialData, setRevisionInitialData] = useState<any>(null)
+  const [isRevisionLoading, setIsRevisionLoading] = useState(false)
+
+  // Handle start revision by fetching prefilled data and opening CerFormDialog in revision mode
+  const handleStartRevision = async (cerId: number) => {
+    try {
+      setIsRevisionLoading(true)
+      const res = await getCerDetailForRevisionAction(cerId)
+      if (!res.success || !res.data) {
+        toast.error((res as any)?.message || (res as any)?.error || 'Gagal memuat rincian formulir CER untuk revisi')
+        return
+      }
+      setRevisionInitialData(res.data)
+      setIsRevisionOpen(true)
+    } catch (err: any) {
+      toast.error('Terjadi kesalahan saat memuat data: ' + (err?.message || ''))
+    } finally {
+      setIsRevisionLoading(false)
+    }
+  }
+
+  // Deep-link check for ?id=...&action=edit (e.g. from revision request email)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const idParam = params.get('id')
+    const actionParam = params.get('action')
+    if (actionParam === 'edit' && idParam) {
+      const cerId = parseInt(idParam, 10)
+      if (!isNaN(cerId) && cerId > 0) {
+        handleStartRevision(cerId)
+      }
+    }
+  }, [])
 
   // Delete modal state
   const [cerToDelete, setCerToDelete] = useState<CerOverviewData['requests'][number] | null>(null)
@@ -111,6 +165,54 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
   const formatRupiah = (val: any) => {
     const num = Number(val) || 0
     return new Intl.NumberFormat('id-ID').format(num)
+  }
+
+  // Format approver display role / job title
+  const formatApproverRoleOrJobTitle = (step: {
+    label?: string | null
+    jobTitle?: string | null
+    level?: number | null
+  }): string => {
+    const lbl = (step.label || '').toLowerCase()
+    const job = (step.jobTitle || '').toLowerCase()
+    if (lbl.includes('bima') || lbl.includes('it validation') || job.includes('bima')) {
+      return 'BIMA Supervisor'
+    }
+    if (lbl.includes('budget') || lbl.includes('controller') || lbl.includes('validator') || job.includes('budget')) {
+      return step.jobTitle || 'Budget Controller'
+    }
+    if (lbl.includes('tagging') || job.includes('tagging')) {
+      return 'Asset Tagging'
+    }
+    return step.jobTitle || step.label || '-'
+  }
+
+  // Filter real decision note (ignore system default labels and statuses)
+  const isRealDecisionNote = (note?: string | null, label?: string | null, jobTitle?: string | null): boolean => {
+    if (!note || !note.trim()) return false
+    const cleanNote = note.trim().toLowerCase()
+    const cleanLabel = (label || '').trim().toLowerCase()
+    const cleanJob = (jobTitle || '').trim().toLowerCase()
+
+    if (cleanNote === cleanLabel || cleanNote === cleanJob) return false
+    if (
+      [
+        'pending',
+        'approved',
+        'draft',
+        'in review',
+        'in_review',
+        'atasan langsung',
+        'verifikator tambahan',
+        'department manager',
+        'general manager',
+        'director',
+      ].includes(cleanNote)
+    ) {
+      return false
+    }
+    if (cleanNote.startsWith('tahap ')) return false
+    return true
   }
 
   // Format date
@@ -181,6 +283,13 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
 
   // Open Review Action (2-Column Work Order Style Review Modal)
   const handleOpenReview = (cer: typeof requests[number], appStepId: number) => {
+    const pendingStep = cer.approvals.find((a) => a.id === appStepId)
+    const resolvedStepLabel = formatApproverRoleOrJobTitle({
+      label: pendingStep?.formName || pendingStep?.decisionNote || cer.currentApproverTitle,
+      jobTitle: pendingStep?.approverJobTitle || cer.currentApproverJobTitle,
+      level: pendingStep?.level,
+    })
+
     setReviewTarget({
       approvalId: appStepId,
       targetId: cer.id,
@@ -190,32 +299,9 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
       employeeName: cer.applicantName,
       siteName: cer.siteName,
       totalAmount: Number(cer.totalEstimatedPrice),
-      stepLabel: cer.currentApproverTitle || 'Persetujuan CER',
+      stepLabel: resolvedStepLabel || 'Persetujuan CER',
     })
     setIsAssetApprovalOpen(true)
-  }
-
-  // Submit Resubmit
-  const handleResubmit = () => {
-    if (!selectedCer) return
-
-    startTransition(async () => {
-      const res = await resubmitCerRequestAction({
-        cerId: selectedCer.id,
-        subject: selectedCer.subject,
-        purchasePurpose: resubmitPurpose || selectedCer.purchasePurpose,
-        vendorName: selectedCer.vendorName,
-        items: [], // keep existing or updated
-      })
-
-      if (res.success) {
-        toast.success(res.message)
-        setIsResubmitOpen(false)
-        if (onRefresh) onRefresh()
-      } else {
-        toast.error(res.message)
-      }
-    })
   }
 
   // Handle Delete CER
@@ -286,14 +372,13 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
               <TableHead className="text-xs">Kategori Aset</TableHead>
               <TableHead className="text-right text-xs">Estimasi Nilai</TableHead>
               <TableHead className="text-center text-xs">Status</TableHead>
-              <TableHead className="min-w-[140px] text-xs">Posisi Approval</TableHead>
               <TableHead className="w-28 text-center text-xs">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredRequests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="py-8 text-center text-xs text-slate-500">
+                <TableCell colSpan={8} className="py-8 text-center text-xs text-slate-500">
                   Tidak ada data pengajuan CER yang cocok dengan kriteria filter.
                 </TableCell>
               </TableRow>
@@ -309,13 +394,13 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
                 )
 
                 const isApplicant = currentEmployee && r.applicantEmployeeId === currentEmployee.id;
-                const canAct = isApplicant || isSuperAdmin;
+                const canManageLifecycle = Boolean(isApplicant) || isSuperAdmin;
                 const pendingStep =
                   currentPendingApproval ||
                   (isSuperAdmin ? r.approvals.find((a) => a.status === 'Pending') : null);
                 const canDeleteThisRow =
-                  isFinanceOrAdmin ||
-                  (Boolean(isApplicant) && r.status !== 'completed' && r.status !== 'received')
+                  isSuperAdmin ||
+                  (Boolean(isApplicant) && r.status !== 'completed' && r.status !== 'received');
 
                 return (
                   <TableRow key={r.id} className="hover:bg-slate-50/60">
@@ -351,134 +436,214 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
                       Rp {formatRupiah(r.totalEstimatedPrice)}
                     </TableCell>
                     <TableCell className="text-center">{renderStatusBadge(r.status)}</TableCell>
-                    <TableCell>
-                      <span className="text-xs text-slate-700">
-                        {r.status === 'full_approved' || r.status === 'received' || r.status === 'completed'
-                          ? 'Direksi (Selesai)'
-                          : r.currentApproverTitle || r.currentApproverName || '-'}
-                      </span>
-                    </TableCell>
                     <TableCell className="text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {/* 1. Detail View */}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedCer(r)
-                            setIsDetailOpen(true)
-                          }}
-                          className="h-7 w-7 p-0 text-slate-500 hover:text-blue-700"
-                          title="Lihat Detail"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
+                        {mode === 'all_requests' ? (
+                          /* Tab 1: Daftar Pengajuan (Semua CER di HERO) - Hanya View Saja, Tanpa Tombol Action Apapun */
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedCer(r)
+                                    setIsDetailOpen(true)
+                                  }}
+                                  className="h-7 w-7 p-0 text-slate-500 hover:text-blue-700 hover:bg-blue-50"
+                                  title="Lihat Detail Pengajuan"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                <p className="text-xs">Lihat Detail Pengajuan</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : mode === 'receiving' ? (
+                          /* Tab Penerimaan & BAST */
+                          <div className="flex items-center justify-center gap-1.5">
+                            {r.status === 'completed' || r.status === 'received' ? (
+                              /* Setelah Aset Dikonfirmasi Terima: Tombol Detail BAST & Hapus */
+                              <TooltipProvider delayDuration={150}>
+                                <div className="flex items-center justify-center gap-1">
+                                  {/* 1. Lihat Detail BAST Modal */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setSelectedCer(r)
+                                          setIsReceiveOpen(true)
+                                        }}
+                                        className="h-7 w-7 p-0 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                                        title="Lihat Detail BAST"
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top">
+                                      <p className="text-xs">Lihat Detail BAST</p>
+                                    </TooltipContent>
+                                  </Tooltip>
 
-                        {/* 2. Approver Decision (If pending on current user or user is Super Admin) */}
-                        {pendingStep && ((currentPendingApproval && canAct) || isSuperAdmin) && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenReview(r, pendingStep.id)}
-                            className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
-                            title={isSuperAdmin && !currentPendingApproval ? 'Admin can approve' : undefined}
-                          >
-                            Tinjau
-                          </Button>
-                        )}
+                                  {/* 2. Hapus Pengajuan (Jika Admin/Finance) */}
+                                  {(canDeleteThisRow || isFinanceOrAdmin) && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setCerToDelete(r)}
+                                          className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                          title="Hapus Pengajuan"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top">
+                                        <p className="text-xs">Hapus Pengajuan</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </div>
+                              </TooltipProvider>
+                            ) : (
+                              /* Status Belum Diterima (full_approved): Tombol Konfirmasi Terima + Hapus */
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedCer(r)
+                                    setIsReceiveOpen(true)
+                                  }}
+                                  className="h-7 border-purple-300 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 gap-1.5"
+                                  title="Konfirmasi Penerimaan Aset Fisik & Terbitkan BAST"
+                                >
+                                  <PackageCheck className="h-3.5 w-3.5 text-purple-600" />
+                                  Konfirmasi Terima
+                                </Button>
+                                {(canDeleteThisRow || isFinanceOrAdmin) && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setCerToDelete(r)}
+                                    className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                    title="Hapus Pengajuan"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          /* Tab Daftar Pengajuan: Tombol standar alur pengajuan CER */
+                          <>
+                            {/* 1. Detail View */}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCer(r)
+                                setIsDetailOpen(true)
+                              }}
+                              className="h-7 w-7 p-0 text-slate-500 hover:text-blue-700"
+                              title="Lihat Detail"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
 
-                        {/* 2b. Finance Check Input No. Aset */}
-                        {r.status === 'pending_finance_check' && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setFinanceCheckCer(r)
-                              setIsFinanceCheckOpen(true)
-                            }}
-                            className="h-7 border-indigo-300 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100 gap-1"
-                          >
-                            <FileSignature className="h-3 w-3" /> Input No. Aset
-                          </Button>
-                        )}
+                            {/* 2. Approver Decision (If pending on current user or user is Super Admin) */}
+                            {pendingStep && (Boolean(currentPendingApproval) || isSuperAdmin) && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleOpenReview(r, pendingStep.id)}
+                                className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                                title={isSuperAdmin && !currentPendingApproval ? 'Admin can approve' : undefined}
+                              >
+                                Tinjau
+                              </Button>
+                            )}
 
-                        {/* 3. Revert / Resubmit (If status = need_revision and user is applicant) */}
-                        {r.status === 'need_revision' && (isApplicant || isSuperAdmin) && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedCer(r)
-                              setResubmitPurpose(r.purchasePurpose)
-                              setIsResubmitOpen(true)
-                            }}
-                            className="h-7 border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 gap-1"
-                          >
-                            <RotateCcw className="h-3 w-3" /> Resubmit
-                          </Button>
-                        )}
+                            {/* 2b. Finance Check Input No. Aset */}
+                            {r.status === 'pending_finance_check' && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setFinanceCheckCer(r)
+                                  setIsFinanceCheckOpen(true)
+                                }}
+                                className="h-7 border-indigo-300 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100 gap-1"
+                              >
+                                <FileSignature className="h-3 w-3" /> Input No. Aset
+                              </Button>
+                            )}
 
-                        {/* 4. Konfirmasi Penerimaan (If status = full_approved and user is applicant) */}
-                        {r.status === 'full_approved' && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedCer(r)
-                              setIsReceiveOpen(true)
-                            }}
-                            className="h-7 border-purple-300 bg-purple-50 px-2 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 gap-1"
-                          >
-                            <PackageCheck className="h-3 w-3" /> Terima
-                          </Button>
-                        )}
+                            {/* 3. Revert / Resubmit (If status = need_revision and user is applicant or Admin) */}
+                            {r.status === 'need_revision' && canManageLifecycle && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isRevisionLoading}
+                                onClick={() => handleStartRevision(r.id)}
+                                className="h-7 border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 gap-1"
+                                title="Revisi isi formulir dan urutan persetujuan"
+                              >
+                                {isRevisionLoading ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Edit className="h-3 w-3" />
+                                )}
+                                Revisi Pengajuan
+                              </Button>
+                            )}
 
-                        {/* 5. Buat BAST (If status = received) */}
-                        {r.status === 'received' && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedCer(r)
-                              setIsBastOpen(true)
-                            }}
-                            className="h-7 border-blue-300 bg-blue-50 px-2 text-[11px] font-semibold text-blue-800 hover:bg-blue-100 gap-1"
-                          >
-                            <FileSignature className="h-3 w-3" /> BAST
-                          </Button>
-                        )}
+                            {/* 4. Konfirmasi Penerimaan (HANYA Pengaju & Super Admin) */}
+                            {r.status === 'full_approved' && canManageLifecycle && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedCer(r)
+                                  setIsReceiveOpen(true)
+                                }}
+                                className="h-7 border-purple-300 bg-purple-50 px-2 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 gap-1"
+                              >
+                                <PackageCheck className="h-3 w-3" /> Terima
+                              </Button>
+                            )}
 
-                        {/* 6. Download PDF (If available) */}
-                        {(r.status === 'full_approved' || r.status === 'received' || r.status === 'completed' || r.pdfUrl) && (
-                          <a
-                            href={r.pdfUrl ? resolveUploadUrl(r.pdfUrl) : `/api/assets/cer/${r.id}/pdf`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md p-0 text-slate-500 hover:bg-slate-100 hover:text-blue-700"
-                            title="Unduh Dokumen PDF"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </a>
-                        )}
 
-                        {/* 7. Hapus Pengajuan (Super Admin / Finance, atau Pemohon jika belum BAST/received) */}
-                        {canDeleteThisRow && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCerToDelete(r)}
-                            className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                            title="Hapus Pengajuan"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                            {/* 6. Hapus Pengajuan (Super Admin / Finance, atau Pemohon jika belum BAST/received) */}
+                            {canDeleteThisRow && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setCerToDelete(r)}
+                                className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                title="Hapus Pengajuan"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </>
                         )}
                       </div>
                     </TableCell>
@@ -600,9 +765,20 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
                             {a.level}
                           </span>
                           <div>
-                            <span className="font-semibold text-slate-800">{a.approverName}</span>
-                            {a.decisionNote && (
-                              <span className="block text-[11px] text-slate-500">{a.decisionNote}</span>
+                            <span className="font-semibold text-slate-800">
+                              {(a.approverName || '').replace(/\s*\(BIMA Supervisor\)/gi, '')}
+                            </span>
+                            <span className="block text-[11px] text-slate-600 font-medium">
+                              {formatApproverRoleOrJobTitle({
+                                label: a.formName || a.decisionNote,
+                                jobTitle: a.approverJobTitle,
+                                level: a.level,
+                              })}
+                            </span>
+                            {isRealDecisionNote(a.decisionNote, a.formName, a.approverJobTitle) && (
+                              <span className="block text-[11px] text-slate-500 italic mt-0.5">
+                                Catatan: {a.decisionNote}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -641,18 +817,14 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
               </div>
 
               <DialogFooter className="gap-2 sm:justify-between">
-                {(selectedCer.status === 'full_approved' || selectedCer.status === 'received' || selectedCer.status === 'completed' || selectedCer.pdfUrl) ? (
-                  <a
-                    href={selectedCer.pdfUrl ? resolveUploadUrl(selectedCer.pdfUrl) : `/api/assets/cer/${selectedCer.id}/pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    <Download className="h-3.5 w-3.5" /> Unduh Dokumen CER PDF
-                  </a>
-                ) : (
-                  <div />
-                )}
+                <a
+                  href={selectedCer.pdfUrl ? resolveUploadUrl(selectedCer.pdfUrl) : `/api/assets/cer/${selectedCer.id}/pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <Download className="h-3.5 w-3.5" /> Pratinjau / Unduh Dokumen PDF
+                </a>
                 <Button type="button" variant="outline" size="sm" onClick={() => setIsDetailOpen(false)}>
                   Tutup
                 </Button>
@@ -724,55 +896,22 @@ export function CerTable({ requests, mode = 'requests', currentEmployee, isFinan
         }}
       />
 
-      {/* RESUBMIT DIALOG */}
-      <Dialog open={isResubmitOpen} onOpenChange={setIsResubmitOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold">Resubmit Form CER</DialogTitle>
-            <DialogDescription className="text-xs">
-              Kirimkan kembali form perbaikan langsung ke approver yang meminta revisi.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2 text-xs">
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
-              <span className="font-bold">Catatan Revisi dari Approver:</span>
-              <p className="mt-1 text-[11px]">{selectedCer?.lastRevertNote || '-'}</p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold text-slate-800">Pembaruan Justifikasi / Catatan Perbaikan</Label>
-              <Textarea
-                rows={3}
-                value={resubmitPurpose}
-                onChange={(e) => setResubmitPurpose(e.target.value)}
-                className="text-xs"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsResubmitOpen(false)}
-              disabled={isPending}
-            >
-              Batal
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleResubmit}
-              disabled={isPending}
-              className="bg-blue-700 font-bold text-white hover:bg-blue-800 text-xs"
-            >
-              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Resubmit ke Approver'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* FULL REVISION FORM CER DIALOG */}
+      <CerFormDialog
+        open={isRevisionOpen}
+        onOpenChange={setIsRevisionOpen}
+        mode="revision"
+        initialData={revisionInitialData}
+        sites={sites}
+        departments={departments}
+        sections={sections}
+        currentEmployee={currentEmployee}
+        onSuccess={() => {
+          setIsRevisionOpen(false)
+          setRevisionInitialData(null)
+          if (onRefresh) onRefresh()
+        }}
+      />
 
       {/* RECEIVE & BAST DIALOGS */}
       <CerReceiveDialog

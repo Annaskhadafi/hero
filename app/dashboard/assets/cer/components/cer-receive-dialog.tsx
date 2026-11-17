@@ -15,7 +15,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import {
   Camera,
-  UploadCloud,
   Loader2,
   CheckCircle,
   PackageCheck,
@@ -23,6 +22,7 @@ import {
   CheckCircle2,
   Printer,
   Download,
+  FileText,
   Save,
   FileCheck2,
 } from 'lucide-react'
@@ -51,10 +51,9 @@ export function CerReceiveDialog({
   const [isPending, startTransition] = useTransition()
   const [receivedDate, setReceivedDate] = useState<string>(new Date().toISOString().slice(0, 10))
   const [receiverNotes, setReceiverNotes] = useState<string>(
-    'Barang diterima lengkap, segel utuh, dan berfungsi normal sesuai spesifikasi.'
+    cer?.receiverNotes || 'Barang diterima lengkap, segel utuh, dan berfungsi normal sesuai spesifikasi.'
   )
-  const [goodsPhotoUrl, setGoodsPhotoUrl] = useState<string>('')
-  const [deliveryNoteUrl, setDeliveryNoteUrl] = useState<string>('')
+  const [goodsPhotoUrl, setGoodsPhotoUrl] = useState<string>(cer?.goodsPhotoUrl || '')
   
   // Signature management (matches Work Order approval dialog)
   const [profileSig, setProfileSig] = useState<string | null>(null)
@@ -63,9 +62,21 @@ export function CerReceiveDialog({
   const [isUsingProfileSig, setIsUsingProfileSig] = useState<boolean>(true)
   const [isSavingProfileSig, setIsSavingProfileSig] = useState<boolean>(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false)
-  const [isUploadingSuratJalan, setIsUploadingSuratJalan] = useState<boolean>(false)
   
   const printDocRef = useRef<HTMLDivElement>(null)
+
+  // Sync initial CER data
+  useEffect(() => {
+    if (open && cer) {
+      if (cer.receiverNotes) setReceiverNotes(cer.receiverNotes)
+      if (cer.goodsPhotoUrl) setGoodsPhotoUrl(cer.goodsPhotoUrl)
+      if (cer.receivedAt) {
+        try {
+          setReceivedDate(new Date(cer.receivedAt).toISOString().slice(0, 10))
+        } catch {}
+      }
+    }
+  }, [open, cer])
 
   // Auto-load signature from employee profile
   useEffect(() => {
@@ -144,36 +155,27 @@ export function CerReceiveDialog({
     }
   }
 
-  const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'suratJalan') => {
+  const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    const isPhoto = type === 'photo'
-    if (isPhoto) setIsUploadingPhoto(true)
-    else setIsUploadingSuratJalan(true)
-
+    setIsUploadingPhoto(true)
     try {
       const fd = new FormData()
       fd.append('file', files[0])
-      fd.append('prefix', 'cer-attachments')
+      fd.append('uploadTarget', 'cer-attachments')
 
       const res = await uploadFile(fd)
       if (res && res.success && res.url) {
-        if (isPhoto) {
-          setGoodsPhotoUrl(res.url)
-          toast.success('Foto kondisi fisik berhasil diunggah.')
-        } else {
-          setDeliveryNoteUrl(res.url)
-          toast.success('Foto surat jalan / invoice berhasil diunggah.')
-        }
+        setGoodsPhotoUrl(res.url)
+        toast.success('Foto kondisi fisik berhasil diunggah.')
       } else {
         toast.error('Gagal mengunggah berkas: ' + (res?.message || 'Error tidak diketahui'))
       }
     } catch (err: any) {
       toast.error('Gagal mengunggah berkas: ' + (err?.message || ''))
     } finally {
-      if (isPhoto) setIsUploadingPhoto(false)
-      else setIsUploadingSuratJalan(false)
+      setIsUploadingPhoto(false)
     }
   }
 
@@ -189,11 +191,11 @@ export function CerReceiveDialog({
     startTransition(async () => {
       try {
         const res = await confirmAssetReceivedAction({
+          cerId: cer.id,
           cerRequestId: cer.id,
           receivedDate,
           receiverNotes,
           goodsPhotoUrl: goodsPhotoUrl || undefined,
-          deliveryNoteUrl: deliveryNoteUrl || undefined,
           receiverSignatureUrl: effectiveSig,
         })
 
@@ -213,6 +215,11 @@ export function CerReceiveDialog({
 
   if (!cer) return null
 
+  const isAlreadySigned =
+    cer.status === 'completed' ||
+    cer.status === 'received' ||
+    Boolean(cer.bastNumber && cer.receivedAt)
+
   // Format data for CerBastDocumentView
   const bastDocData: CerBastDocumentData = {
     cerNumber: cer.cerNumber,
@@ -221,7 +228,7 @@ export function CerReceiveDialog({
     receivedAt: receivedDate ? new Date(receivedDate) : new Date(),
     applicantName: cer.applicantName || 'Pemohon',
     applicantSn: cer.applicantSn || null,
-    applicantJobTitle: cer.applicantJobTitle || 'PIC Lokasi',
+    applicantJobTitle: cer.applicantJobTitle || 'Pemohon Pengadaan',
     departmentName: cer.departmentName,
     sectionName: cer.sectionName,
     siteName: cer.siteName,
@@ -230,6 +237,7 @@ export function CerReceiveDialog({
     vendorName: cer.vendorName,
     totalEstimatedPrice: cer.totalEstimatedPrice,
     kelompokAset: cer.kelompokAset,
+    goodsPhotoUrl,
     receiverNotes,
     receiverSignatureUrl: isUsingProfileSig && profileSig ? profileSig : liveSignatureUrl,
     items: cer.items?.map((it: any) => ({
@@ -257,8 +265,17 @@ export function CerReceiveDialog({
         <DialogHeader className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-3 gap-2">
           <div>
             <DialogTitle className="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
-              <PackageCheck className="h-5 w-5 text-emerald-600" />
-              Konfirmasi Penerimaan Aset Fisik &amp; Terbitkan BAST — {cer.cerNumber}
+              {isAlreadySigned ? (
+                <>
+                  <FileCheck2 className="h-5 w-5 text-emerald-600" />
+                  Detail Berita Acara Serah Terima (BAST) — {cer.cerNumber}
+                </>
+              ) : (
+                <>
+                  <PackageCheck className="h-5 w-5 text-purple-600" />
+                  Konfirmasi Penerimaan Aset Fisik &amp; Terbitkan BAST — {cer.cerNumber}
+                </>
+              )}
             </DialogTitle>
             <p className="text-xs text-slate-500 mt-0.5">
               {cer.applicantName} • {cer.siteName} • {cer.subject}
@@ -275,6 +292,19 @@ export function CerReceiveDialog({
                 >
                   <Download className="mr-1.5 h-3.5 w-3.5 text-sky-600" />
                   Unduh Dokumen CER (PDF)
+                </Button>
+              </a>
+            ) : null}
+            {(cer.status === 'completed' || cer.status === 'received' || cer.bastPdfUrl) ? (
+              <a href={cer.bastPdfUrl ? resolveUploadUrl(cer.bastPdfUrl) : `/api/assets/cer/${cer.id}/bast-pdf`} target="_blank" rel="noopener noreferrer">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-emerald-300 bg-emerald-50 font-semibold text-emerald-800 hover:bg-emerald-100 shadow-xs text-xs h-9"
+                >
+                  <FileText className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
+                  Unduh Dokumen BAST (PDF)
                 </Button>
               </a>
             ) : null}
@@ -304,6 +334,19 @@ export function CerReceiveDialog({
 
           {/* Right Column: Physical Confirmation Controls & Signature */}
           <div className="flex flex-col gap-3 overflow-y-auto pr-1 h-auto lg:h-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm shrink-0">
+            {/* Banner Dokumen Telah Ditandatangani */}
+            {isAlreadySigned && (
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-start gap-2.5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-emerald-900">BAST Telah Ditandatangani &amp; Diterbitkan</p>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Dokumen ini telah resmi disahkan dan berstatus terkunci (read-only).
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Quick Summary Card */}
             <div className="rounded-xl bg-slate-50 p-3 text-xs space-y-1.5 border border-slate-200">
               <p className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
@@ -328,82 +371,95 @@ export function CerReceiveDialog({
             </div>
 
             {/* Area Tanda Tangan Digital Penerima */}
-            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
-                  <PenLine className="h-3.5 w-3.5 text-sky-600" />
-                  <span>Tanda Tangan Penerima (PIC Lokasi) *</span>
+            {isAlreadySigned ? (
+              <div className="space-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
+                    <PenLine className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Tanda Tangan Penerima (PIC Lokasi)</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Telah Ditandatangani
+                  </span>
                 </div>
-                {profileSig && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (isUsingProfileSig) {
-                        setIsUsingProfileSig(false)
-                        setLiveSignatureUrl(null)
-                        setSignatureFile(null)
-                      } else {
-                        setIsUsingProfileSig(true)
-                        setLiveSignatureUrl(profileSig)
-                      }
-                    }}
-                    className="h-6 text-[10px] font-semibold text-sky-700 hover:text-sky-800 hover:bg-sky-50 px-2"
-                  >
-                    {isUsingProfileSig ? 'Ubah / Gambar Manual' : 'Gunakan TTD Profil'}
-                  </Button>
-                )}
-              </div>
-
-              {isUsingProfileSig && profileSig ? (
-                <div className="space-y-2">
-                  <div className="relative rounded-lg border-2 border-emerald-200 bg-emerald-50/30 p-2 flex flex-col items-center justify-center min-h-[90px]">
-                    <span className="absolute top-1.5 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
-                      <CheckCircle2 className="h-3 w-3" />
-                      TTD Profil HERO Aktif
-                    </span>
+                <div className="rounded-lg border border-slate-200 bg-white p-2 flex items-center justify-center min-h-[80px]">
+                  {effectiveSigUrl || cer.receiverSignatureUrl ? (
                     <img
-                      src={profileSig}
-                      alt="Tanda Tangan Profil"
-                      className="max-h-16 object-contain my-1"
+                      src={resolveUploadUrl(effectiveSigUrl || cer.receiverSignatureUrl)}
+                      alt="Tanda Tangan Penerima"
+                      className="max-h-16 object-contain"
                     />
-                  </div>
-                  <p className="text-[11px] text-slate-500 text-center">
-                    Tanda tangan dari profil akun Anda akan otomatis tersemat pada BAST fisik.
-                  </p>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">Tanda tangan digital tercatat</span>
+                  )}
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-slate-500">
-                    Goreskan tanda tangan Anda pada kanvas di bawah ini:
-                  </p>
-                  <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-inner">
-                    <SignaturePad
-                      onSignatureChange={setSignatureFile}
-                      onDataUrlChange={setLiveSignatureUrl}
-                    />
+              </div>
+            ) : (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-slate-800 font-bold text-xs">
+                    <PenLine className="h-3.5 w-3.5 text-sky-600" />
+                    <span>Tanda Tangan Penerima (PIC Lokasi) *</span>
                   </div>
-                  {liveSignatureUrl && !isUsingProfileSig && (
+                  {profileSig && (
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={handleSaveToProfile}
-                      disabled={isSavingProfileSig}
-                      className="w-full text-xs font-semibold border-sky-200 text-sky-700 hover:bg-sky-50 h-7"
+                      onClick={() => {
+                        if (isUsingProfileSig) {
+                          setIsUsingProfileSig(false)
+                          setLiveSignatureUrl(null)
+                          setSignatureFile(null)
+                        } else {
+                          setIsUsingProfileSig(true)
+                          setLiveSignatureUrl(profileSig)
+                        }
+                      }}
+                      className="h-6 text-[10px] font-semibold text-sky-700 hover:text-sky-800 hover:bg-sky-50 px-2"
                     >
-                      {isSavingProfileSig ? (
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      ) : (
-                        <Save className="mr-1.5 h-3 w-3" />
-                      )}
-                      Simpan TTD Ini ke Profil HERO Saya
+                      {isUsingProfileSig ? 'Ubah / Gambar Manual' : 'Gunakan TTD Profil'}
                     </Button>
                   )}
                 </div>
-              )}
-            </div>
+
+                {isUsingProfileSig && profileSig ? (
+                  <div className="space-y-2">
+                    <div className="relative rounded-lg border-2 border-emerald-200 bg-emerald-50/30 p-2 flex flex-col items-center justify-center min-h-[90px]">
+                      <span className="absolute top-1.5 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
+                        <CheckCircle2 className="h-3 w-3" />
+                        TTD Profil HERO Aktif
+                      </span>
+                      <img
+                        src={profileSig}
+                        alt="Tanda Tangan Profil"
+                        className="max-h-16 object-contain my-1"
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 text-center">
+                      Tanda tangan dari profil akun Anda akan otomatis tersemat pada BAST fisik.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-[11px] text-slate-500">
+                      Goreskan tanda tangan Anda pada kanvas di bawah ini:
+                    </p>
+                    <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-inner">
+                      <SignaturePad
+                        onSignatureChange={setSignatureFile}
+                        onDataUrlChange={setLiveSignatureUrl}
+                        onSaveToProfile={(url) => {
+                          setProfileSig(url)
+                          setIsUsingProfileSig(true)
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Form Informasi Penerimaan Fisik */}
             <div className="space-y-2.5">
@@ -412,61 +468,78 @@ export function CerReceiveDialog({
                 <Input
                   type="date"
                   value={receivedDate}
+                  disabled={isAlreadySigned}
+                  readOnly={isAlreadySigned}
                   onChange={(e) => setReceivedDate(e.target.value)}
-                  className="h-9 text-xs mt-1"
+                  className={`h-9 text-xs mt-1 ${isAlreadySigned ? 'bg-slate-100 text-slate-700 border-slate-200 cursor-not-allowed' : ''}`}
                 />
               </div>
 
-              {/* Upload Foto Fisik Barang & Surat Jalan */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[11px] font-semibold text-slate-700">Foto Fisik Barang</Label>
-                  <label className="mt-1 flex flex-col items-center justify-center h-16 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer p-1 text-center">
+              {/* Upload / Tampilan Foto Fisik Barang */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Camera className="h-3.5 w-3.5 text-sky-600" />
+                    <span>Lampiran Foto Fisik Barang / Aset</span>
+                  </Label>
+                  {goodsPhotoUrl && (
+                    <span className="text-[10px] font-semibold text-emerald-700 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" /> Foto Terlampir
+                    </span>
+                  )}
+                </div>
+
+                {isAlreadySigned ? (
+                  goodsPhotoUrl ? (
+                    <div className="relative w-full h-56 rounded-lg overflow-hidden border border-slate-200 bg-slate-900/5 flex items-center justify-center shadow-xs">
+                      <img
+                        src={resolveUploadUrl(goodsPhotoUrl)}
+                        alt="Foto Barang Terlampir"
+                        className="h-full w-full object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-center text-xs text-slate-400 italic">
+                      Tidak ada foto fisik yang dilampirkan.
+                    </div>
+                  )
+                ) : (
+                  <label className="flex items-center justify-center border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer p-2 text-center transition-colors min-h-[64px]">
                     {isUploadingPhoto ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+                        <span>Mengunggah foto fisik...</span>
+                      </div>
                     ) : goodsPhotoUrl ? (
-                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-                        <CheckCircle className="h-3 w-3" /> Foto Terunggah
-                      </span>
+                      <div className="flex flex-col items-center gap-2 w-full p-1">
+                        <div className="relative w-full h-60 rounded-lg overflow-hidden border border-slate-300 bg-slate-900/5 flex items-center justify-center shadow-xs">
+                          <img
+                            src={resolveUploadUrl(goodsPhotoUrl)}
+                            alt="Foto Barang"
+                            className="h-full w-full object-contain"
+                          />
+                          <div className="absolute bottom-2 right-2 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] px-2.5 py-1 rounded-md font-medium flex items-center gap-1.5 shadow-sm">
+                            <Camera className="h-3 w-3 text-emerald-400" />
+                            <span>Klik untuk ganti foto</span>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <>
-                        <Camera className="h-4 w-4 text-slate-400 mb-0.5" />
-                        <span className="text-[10px] text-slate-600">Ambil / Upload</span>
-                      </>
+                      <div className="flex flex-col items-center justify-center text-slate-500 py-1">
+                        <Camera className="h-5 w-5 text-slate-400 mb-0.5" />
+                        <span className="text-[11px] font-medium text-slate-700">Ambil Foto / Unggah dari Perangkat</span>
+                        <span className="text-[9px] text-slate-400">JPG, PNG, atau WEBP</span>
+                      </div>
                     )}
                     <input
                       type="file"
                       accept="image/*"
                       capture="environment"
                       className="hidden"
-                      onChange={(e) => handleUploadPhoto(e, 'photo')}
+                      onChange={handleUploadPhoto}
                     />
                   </label>
-                </div>
-
-                <div>
-                  <Label className="text-[11px] font-semibold text-slate-700">Surat Jalan / Inv</Label>
-                  <label className="mt-1 flex flex-col items-center justify-center h-16 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 hover:bg-slate-100 cursor-pointer p-1 text-center">
-                    {isUploadingSuratJalan ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                    ) : deliveryNoteUrl ? (
-                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-                        <CheckCircle className="h-3 w-3" /> SJ Terunggah
-                      </span>
-                    ) : (
-                      <>
-                        <UploadCloud className="h-4 w-4 text-slate-400 mb-0.5" />
-                        <span className="text-[10px] text-slate-600">Upload Dokumen</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => handleUploadPhoto(e, 'suratJalan')}
-                    />
-                  </label>
-                </div>
+                )}
               </div>
 
               {/* Catatan Penerimaan */}
@@ -474,38 +547,60 @@ export function CerReceiveDialog({
                 <Label className="text-xs font-bold text-slate-700">Catatan Penerimaan / BAST</Label>
                 <Textarea
                   value={receiverNotes}
+                  disabled={isAlreadySigned}
+                  readOnly={isAlreadySigned}
                   onChange={(e) => setReceiverNotes(e.target.value)}
                   rows={2}
                   placeholder="Kondisi barang, kelengkapan aksesoris, dll..."
-                  className="resize-none text-xs mt-1"
+                  className={`resize-none text-xs mt-1 ${isAlreadySigned ? 'bg-slate-100 text-slate-700 border-slate-200 cursor-not-allowed' : ''}`}
                 />
               </div>
             </div>
 
             {/* Action Buttons */}
             <div className="flex flex-col gap-2 pt-2 mt-auto border-t border-slate-200">
-              <Button
-                type="button"
-                onClick={handleConfirmSubmit}
-                disabled={isPending || !effectiveSigUrl}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold w-full h-10 shadow-sm"
-              >
-                {isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                )}
-                Konfirmasi Aset Diterima &amp; Terbitkan BAST
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-                className="w-full text-xs text-slate-500 h-8"
-              >
-                Batal
-              </Button>
+              {isAlreadySigned ? (
+                <>
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-center text-xs text-emerald-800 font-semibold flex items-center justify-center gap-1.5 shadow-2xs">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    <span>Aset Diterima &amp; BAST Resmi Diterbitkan</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onOpenChange(false)}
+                    className="w-full text-xs text-slate-700 h-9 font-semibold hover:bg-slate-100 border-slate-300"
+                  >
+                    Tutup
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    onClick={handleConfirmSubmit}
+                    disabled={isPending || !effectiveSigUrl}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold w-full h-10 shadow-sm"
+                  >
+                    {isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                    )}
+                    Konfirmasi Aset Diterima &amp; Terbitkan BAST
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onOpenChange(false)}
+                    className="w-full text-xs text-slate-500 h-8"
+                  >
+                    Batal
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>

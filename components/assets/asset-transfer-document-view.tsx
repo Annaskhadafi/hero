@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 export interface AssetTransferDocumentData {
   transferNumber: string
@@ -19,6 +20,7 @@ export interface AssetTransferDocumentData {
   equipmentChecklist?: string[] | null
   equipmentOtherNote?: string | null
   notes?: string | null
+  assetPhotos?: Array<{ fileName: string; fileUrl: string }> | null
   approvals?: Array<{
     level: number
     title: string
@@ -30,6 +32,7 @@ export interface AssetTransferDocumentData {
     decisionNote?: string | null
   }>
   submitterSignatureUrl?: string | null
+  applicantSignatureUrl?: string | null
 }
 
 function formatIndoDate(val?: string | Date | null): string {
@@ -75,69 +78,100 @@ export function AssetTransferDocumentView({
   liveSignatureUrl?: string | null
   currentLevel?: number
 }) {
-  const approvalCols = doc.approvals && doc.approvals.length > 0
-    ? doc.approvals.map((app) => {
-        const isCurrent = currentLevel === app.level && app.status !== 'approved'
-        const sigUrl =
-          app.status === 'approved' && app.signatureUrl
-            ? app.signatureUrl
-            : isCurrent && liveSignatureUrl
-              ? liveSignatureUrl
-              : app.signatureUrl || null
+  let signatureColumns: Array<{
+    key: string
+    header: string
+    name: string
+    jobTitle: string
+    sigUrl: string | null
+    isApproved: boolean
+    dateTime: string | null
+    note: string | null
+  }> = []
 
-        let header = 'DISETUJUI OLEH'
-        if (app.title.toLowerCase().includes('holder') || app.title.toLowerCase().includes('penerima')) {
-          header = 'DITERIMA OLEH (HOLDER BARU)'
-        } else if (app.title.toLowerCase().includes('atasan') || app.title.toLowerCase().includes('head')) {
-          header = 'DIKETAHUI OLEH'
-        }
+  if (doc.approvals && doc.approvals.length >= 4) {
+    signatureColumns = doc.approvals.slice(0, 4).map((app) => {
+      const isCurrent = currentLevel === app.level && app.status !== 'approved'
+      const isApp = app.status === 'approved' || app.status === 'Approved'
+      const sigUrl =
+        isApp && app.signatureUrl
+          ? app.signatureUrl
+          : isCurrent && liveSignatureUrl
+            ? liveSignatureUrl
+            : app.signatureUrl || (app.level === 1 ? doc.applicantSignatureUrl : null)
 
-        return {
-          key: `appr-${app.level}`,
-          header,
-          name: app.approverName,
-          jobTitle: app.jobTitle || app.title,
-          sigUrl,
-          isApproved: app.status === 'approved' || (isCurrent && Boolean(liveSignatureUrl)),
-          dateTime: app.reviewedAt
-            ? formatIndoDateTime(app.reviewedAt)
-            : isCurrent && liveSignatureUrl
-              ? formatIndoDateTime(new Date())
-              : null,
-          note: app.decisionNote || null,
-        }
-      })
-    : [
-        {
-          key: 'new-holder',
-          header: 'DITERIMA OLEH (HOLDER BARU)',
-          name: doc.newHolderName,
-          jobTitle: doc.newHolderJobTitle || 'Pemegang Baru',
-          sigUrl: doc.status === 'completed' ? doc.submitterSignatureUrl : (liveSignatureUrl || null),
-          isApproved: doc.status === 'completed' || Boolean(liveSignatureUrl),
-          dateTime: doc.transferredAt ? formatIndoDateTime(doc.transferredAt) : null,
-          note: null,
-        },
-      ]
+      let header = 'DISETUJUI OLEH'
+      if (app.level === 1) header = 'DIAJUKAN (HOLDER ASAL)'
+      else if (app.level === 2) header = 'DISETUJUI (ATASAN HOLDER ASAL)'
+      else if (app.level === 3) header = 'DITERIMA (HOLDER BARU)'
+      else if (app.level === 4) header = 'DISETUJUI (ATASAN HOLDER BARU)'
 
-  const signatureColumns = [
-    {
-      key: 'current-holder',
-      header: 'DIAJUKAN OLEH (HOLDER ASAL)',
-      name: doc.currentHolderName,
-      jobTitle: doc.currentHolderJobTitle || 'Pemegang Asal',
-      sigUrl: doc.submitterSignatureUrl || null,
-      isApproved: true,
-      dateTime: doc.submittedAt ? formatIndoDateTime(doc.submittedAt) : null,
-      note: null,
-    },
-    ...approvalCols,
-  ]
+      return {
+        key: `step-${app.level}`,
+        header,
+        name: app.approverName || (app.level === 1 ? doc.currentHolderName : app.level === 3 ? doc.newHolderName : 'Approver'),
+        jobTitle: app.jobTitle || (app.level === 1 ? doc.currentHolderJobTitle || 'Pemegang Asal' : app.level === 3 ? doc.newHolderJobTitle || 'Pemegang Baru' : 'Approver'),
+        sigUrl,
+        isApproved: isApp || (app.level === 1 && Boolean(doc.applicantSignatureUrl)),
+        dateTime: app.reviewedAt ? formatIndoDateTime(app.reviewedAt) : (app.level === 1 && doc.submittedAt ? formatIndoDateTime(doc.submittedAt) : null),
+        note: app.decisionNote || null,
+      }
+    })
+  } else {
+    // 3-step or legacy fallback
+    const step1App = doc.approvals?.find((a) => a.level === 1)
+    const step2App = doc.approvals?.find((a) => a.level === 2)
+    const step3App = doc.approvals?.find((a) => a.level === 3)
+
+    const resolveAppCol = (level: number, defaultHeader: string, defaultName: string, defaultJob: string, app?: any) => {
+      const isCurrent = currentLevel === level && app?.status !== 'approved'
+      const isApp = app?.status === 'approved' || app?.status === 'Approved'
+      const sigUrl =
+        isApp && app?.signatureUrl
+          ? app.signatureUrl
+          : isCurrent && liveSignatureUrl
+            ? liveSignatureUrl
+            : app?.signatureUrl || null
+
+      return {
+        key: `step-${level}`,
+        header: defaultHeader,
+        name: app?.approverName || defaultName,
+        jobTitle: app?.jobTitle || defaultJob,
+        sigUrl,
+        isApproved: isApp,
+        dateTime: app?.reviewedAt ? formatIndoDateTime(app.reviewedAt) : null,
+        note: app?.decisionNote || null,
+      }
+    }
+
+    signatureColumns = [
+      {
+        key: 'current-holder',
+        header: 'DIAJUKAN (HOLDER ASAL)',
+        name: doc.currentHolderName,
+        jobTitle: doc.currentHolderJobTitle || 'Pemegang Asal',
+        sigUrl: doc.applicantSignatureUrl || doc.submitterSignatureUrl || null,
+        isApproved: Boolean(doc.applicantSignatureUrl || doc.submitterSignatureUrl),
+        dateTime: doc.submittedAt ? formatIndoDateTime(doc.submittedAt) : null,
+        note: null,
+      },
+      resolveAppCol(1, 'DISETUJUI (ATASAN HOLDER ASAL)', 'Atasan Langsung', 'Atasan Langsung', step1App),
+      resolveAppCol(2, 'DITERIMA (HOLDER BARU)', doc.newHolderName, doc.newHolderJobTitle || 'Pemegang Baru', step2App),
+      resolveAppCol(3, 'DISETUJUI (ATASAN HOLDER BARU)', 'Atasan Penerima', 'Atasan Penerima', step3App),
+    ]
+  }
+
+  const completenessText =
+    doc.equipmentOtherNote ||
+    (doc.equipmentChecklist && doc.equipmentChecklist.length > 0
+      ? doc.equipmentChecklist.join(', ')
+      : 'Unit Lengkap beserta perlengkapan standar')
 
   return (
     <div
       ref={containerRef}
-      className="print-area w-[297mm] min-w-[297mm] max-w-[297mm] min-h-[210mm] bg-white text-slate-900 border border-slate-300 p-8 shadow-md font-sans text-xs flex flex-col justify-between"
+      className="print-area w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 border border-slate-300 p-6 sm:p-7 shadow-md font-sans text-xs flex flex-col justify-between"
       style={{ boxSizing: 'border-box' }}
     >
       <div>
@@ -147,27 +181,27 @@ export function AssetTransferDocumentView({
             <img
               src="/cp_logo-removebg-preview.png"
               alt="Logo PT Chitra Paratama"
-              className="h-12 w-auto object-contain"
+              className="h-10 w-auto object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none'
               }}
             />
             <div>
-              <h2 className="text-base font-black tracking-tight text-slate-900 uppercase">
+              <h2 className="text-sm font-black tracking-tight text-slate-900 uppercase">
                 PT. CHITRA PARATAMA
               </h2>
-              <p className="text-[10px] font-semibold text-slate-600 tracking-wide uppercase">
+              <p className="text-[9px] font-semibold text-slate-600 tracking-wide uppercase">
                 Total Tire Solution • Asset Transfer &amp; Mutation
               </p>
             </div>
           </div>
           <div className="text-right">
-            <h1 className="text-base font-black text-slate-900 tracking-wide uppercase">
-              BERITA ACARA MUTASI / TRANSFER ASET
+            <h1 className="text-sm font-black text-slate-900 tracking-wide uppercase">
+              BERITA ACARA MUTASI ASET
             </h1>
-            <div className="mt-1 flex flex-col text-[11px] text-slate-700">
+            <div className="mt-0.5 flex flex-col text-[10.5px] text-slate-700">
               <span className="font-semibold">
-                No. Mutasi:{' '}
+                No:{' '}
                 <span className="font-mono font-bold text-slate-900">
                   {doc.transferNumber}
                 </span>
@@ -182,78 +216,60 @@ export function AssetTransferDocumentView({
           </div>
         </div>
 
-        {/* Metadata Section */}
-        <div className="mt-3.5 rounded-lg border border-slate-300 bg-slate-50/70 p-3">
-          <div className="grid grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
-            <div>
-              <span className="block text-[10px] font-semibold text-slate-500 uppercase">
-                Tanggal Pengajuan
-              </span>
-              <span className="font-bold text-slate-900">
-                {formatIndoDate(doc.submittedAt)}
-              </span>
-            </div>
-            <div>
-              <span className="block text-[10px] font-semibold text-slate-500 uppercase">
-                Pemegang Asal (Lokasi Asal)
-              </span>
-              <span className="font-bold text-slate-900">
-                {doc.currentHolderName}
-              </span>
-              <span className="block text-[10px] text-slate-600">
-                Site: {doc.currentLocationName}
-              </span>
-            </div>
-            <div>
-              <span className="block text-[10px] font-semibold text-slate-500 uppercase">
-                Pemegang Baru (Lokasi Tujuan)
-              </span>
-              <span className="font-bold text-slate-900">{doc.newHolderName}</span>
-              <span className="block text-[10px] text-slate-600">
-                Site: {doc.targetLocationName}
-              </span>
-            </div>
-            <div>
-              <span className="block text-[10px] font-semibold text-slate-500 uppercase">
-                Status Pemindahan
-              </span>
-              <span className="font-bold text-emerald-800 uppercase">
-                {doc.status === 'completed' ? 'Mutasi Selesai' : 'Dalam Proses'}
-              </span>
-              <span className="block text-[10px] text-slate-600">
-                Tgl: {doc.transferredAt ? formatIndoDate(doc.transferredAt) : '-'}
-              </span>
-            </div>
+        {/* Metadata Section: Pihak Asal vs Pihak Tujuan (Side-by-Side) */}
+        <div className="mt-3.5 grid grid-cols-2 gap-3">
+          {/* Pihak Asal */}
+          <div className="rounded-lg border border-slate-300 bg-slate-50/80 p-3 space-y-1">
+            <span className="block text-[9.5px] font-bold text-slate-500 uppercase">
+              PIHAK ASAL (PEMEGANG LAMA)
+            </span>
+            <p className="text-xs font-bold text-slate-900">
+              {doc.currentHolderName}
+            </p>
+            <p className="text-[10px] text-slate-600">
+              Lokasi Asal: <span className="font-semibold text-slate-800">{doc.currentLocationName}</span>
+            </p>
+            <p className="text-[10px] text-slate-500">
+              Tgl Pengajuan: {formatIndoDate(doc.submittedAt)}
+            </p>
           </div>
 
-          <div className="mt-2.5 pt-2 border-t border-slate-200 text-[11px]">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase mr-1.5">
-              Alasan &amp; Catatan Mutasi:
+          {/* Pihak Tujuan */}
+          <div className="rounded-lg border border-slate-300 bg-slate-50/80 p-3 space-y-1">
+            <span className="block text-[9.5px] font-bold text-emerald-700 uppercase">
+              PIHAK PENERIMA (PEMEGANG BARU)
             </span>
-            <span className="font-medium text-slate-800">{doc.notes || '-'}</span>
+            <p className="text-xs font-bold text-slate-900">
+              {doc.newHolderName}
+            </p>
+            <p className="text-[10px] text-slate-600">
+              Lokasi Tujuan: <span className="font-semibold text-slate-800">{doc.targetLocationName}</span>
+            </p>
+            <p className="text-[10px] text-slate-500">
+              Status Serah Terima: Hak Guna &amp; Fisik Dialihkan
+            </p>
           </div>
         </div>
 
         {/* Rincian Aset */}
-        <div className="mt-3">
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-700 mb-1">
+        <div className="mt-3.5 space-y-2">
+          <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">
             DETAIL ASET YANG DIMUTASI
           </p>
           <div className="overflow-hidden rounded-lg border border-slate-300 bg-white">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-300 bg-slate-100/90 text-[10px] font-bold text-slate-700 uppercase">
-                  <th className="w-10 px-2.5 py-1.5 text-center">NO</th>
+                  <th className="w-8 px-2 py-1.5 text-center">NO</th>
                   <th className="px-2.5 py-1.5">NAMA ASET</th>
                   <th className="px-2.5 py-1.5">NOMOR ASET</th>
                   <th className="px-2.5 py-1.5">SERIAL NUMBER</th>
                   <th className="px-2.5 py-1.5">LOKASI ASAL &rarr; TUJUAN</th>
-                  <th className="px-2.5 py-1.5">KELENGKAPAN FISIK</th>
                 </tr>
               </thead>
               <tbody>
                 <tr className="hover:bg-slate-50/80">
-                  <td className="px-2.5 py-2 text-center font-medium text-slate-500">
+                  <td className="px-2 py-2 text-center font-medium text-slate-500">
                     1
                   </td>
                   <td className="px-2.5 py-2 font-bold text-slate-900">
@@ -268,35 +284,93 @@ export function AssetTransferDocumentView({
                   <td className="px-2.5 py-2 font-medium text-slate-800">
                     {doc.currentLocationName} &rarr; {doc.targetLocationName}
                   </td>
-                  <td className="px-2.5 py-2 text-slate-700 text-[11px]">
-                    {doc.equipmentChecklist && doc.equipmentChecklist.length > 0
-                      ? doc.equipmentChecklist.join(', ')
-                      : 'Lengkap'}
-                    {doc.equipmentOtherNote ? ` (${doc.equipmentOtherNote})` : ''}
-                  </td>
                 </tr>
               </tbody>
             </table>
+
+            {/* Kelengkapan Fisik Aset */}
+            <div className="border-t border-slate-200 bg-slate-50/50 p-2.5 text-xs">
+              <span className="font-bold text-[10px] text-slate-600 uppercase block mb-0.5">
+                Kelengkapan Fisik Aset:
+              </span>
+              <p className="text-slate-800 text-[11px] leading-relaxed">
+                {completenessText}
+              </p>
+            </div>
           </div>
 
-          <div className="mt-2.5 flex items-center justify-between rounded-md border border-amber-300 bg-[#ffd700] px-3.5 py-1.5 text-xs font-bold text-slate-950 shadow-xs">
-            <span className="text-[10px] tracking-wide uppercase">
-              BERITA ACARA RESMI: KEPEMILIKAN FISIK &amp; TANGGUNG JAWAB BERALIH
-            </span>
-            <span className="text-[10px] font-semibold text-slate-900 italic">
-              Dengan disetujuinya dokumen ini, status lokasi aset di sistem pusat otomatis diperbarui
-            </span>
+          {/* Side-by-Side: Foto Fisik Aset & Catatan Tambahan */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Foto Fisik Aset */}
+            <div className="rounded-lg border border-slate-300 bg-slate-50/70 p-2.5 space-y-1.5 flex flex-col justify-between">
+              <span className="font-bold text-[10px] text-slate-700 uppercase block">
+                FOTO KONDISI FISIK ASET:
+              </span>
+              {doc.assetPhotos && doc.assetPhotos.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {doc.assetPhotos.map((photo, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded border border-slate-300 bg-white p-1 shadow-2xs space-y-0.5"
+                    >
+                      <img
+                        src={resolveUploadUrl(photo.fileUrl)}
+                        alt={photo.fileName || `Foto Fisik Aset ${idx + 1}`}
+                        className="h-20 w-auto max-w-[150px] object-contain rounded"
+                      />
+                      <span className="block text-[7.5px] font-mono text-center text-slate-500 truncate max-w-[150px]">
+                        {photo.fileName || `Foto ${idx + 1}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded border border-dashed border-slate-300 bg-white/60 p-3 text-center text-[10px] text-slate-400 italic">
+                  (Foto kondisi fisik tidak dilampirkan)
+                </div>
+              )}
+              <span className="text-[8px] text-slate-500 italic block">
+                Dokumentasi kondisi fisik sebelum serah terima.
+              </span>
+            </div>
+
+            {/* Catatan / Keterangan Tambahan */}
+            <div className="rounded-lg border border-slate-300 bg-slate-50/70 p-2.5 space-y-1.5 flex flex-col justify-between">
+              <div>
+                <span className="font-bold text-[10px] text-slate-700 uppercase block mb-1">
+                  CATATAN / KETERANGAN TAMBAHAN:
+                </span>
+                <p className="text-[10px] text-slate-800 leading-relaxed whitespace-pre-wrap">
+                  {doc.notes || 'Tidak ada catatan atau instruksi tambahan.'}
+                </p>
+              </div>
+              <span className="text-[8px] text-slate-500 italic block">
+                Alasan mutasi &amp; keterangan teknis pemindahan aset.
+              </span>
+            </div>
+          </div>
+
+          {/* Banner Kuning Ketentuan Mutasi */}
+          <div className="rounded-md border border-amber-300 bg-[#ffd700] px-3.5 py-2 text-xs font-bold text-slate-950 shadow-xs space-y-0.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] tracking-wide uppercase">
+                PERNYATAAN RESMI SERAH TERIMA &amp; MUTASI ASET
+              </span>
+            </div>
+            <p className="text-[9.5px] font-medium text-slate-900">
+              Catatan: Berita Acara ini diterbitkan sah. Hak guna dan tanggung jawab fisik resmi beralih ke Pemegang Baru setelah seluruh pihak menyelesaikan persetujuan di bawah ini.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Signature Grid */}
+      {/* Signature Grid (4 Columns in A4 Portrait) */}
       <div className="mt-4 overflow-hidden rounded-lg border border-slate-300 bg-white/95 text-xs shadow-xs">
         <table className="w-full table-fixed border-collapse">
           <thead>
-            <tr className="divide-x divide-slate-300 border-b border-slate-300 bg-slate-100/90 text-[10px] font-bold text-slate-800 uppercase">
+            <tr className="divide-x divide-slate-300 border-b border-slate-300 bg-slate-100/90 text-[9.5px] font-bold text-slate-800 uppercase">
               {signatureColumns.map((col) => (
-                <th key={col.key} className="px-2 py-1.5 text-center">
+                <th key={col.key} className="px-1.5 py-1.5 text-center">
                   {col.header}
                 </th>
               ))}
@@ -305,18 +379,18 @@ export function AssetTransferDocumentView({
           <tbody>
             <tr className="divide-x divide-slate-300 border-b border-slate-300 bg-white">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="h-16 p-1 text-center align-middle sm:h-18">
+                <td key={col.key} className="h-16 p-1 text-center align-middle">
                   {col.sigUrl ? (
                     <img
                       src={col.sigUrl}
                       alt={`TTD ${col.name}`}
-                      className="mx-auto h-11 w-auto max-w-[95%] object-contain sm:h-13"
+                      className="mx-auto h-12 w-auto max-w-[95%] object-contain"
                     />
                   ) : col.isApproved ? (
                     <span className="text-xs font-bold text-emerald-700">✓ Disetujui</span>
                   ) : (
                     <span className="text-[9px] font-medium text-slate-400 italic">
-                      (Menunggu persetujuan)
+                      (Menunggu)
                     </span>
                   )}
                 </td>
@@ -324,18 +398,18 @@ export function AssetTransferDocumentView({
             </tr>
             <tr className="divide-x divide-slate-300 border-t border-slate-300 bg-slate-50/70">
               {signatureColumns.map((col) => (
-                <td key={col.key} className="space-y-0.5 px-1.5 py-2 text-center align-top">
+                <td key={col.key} className="space-y-0.5 px-1.5 py-1.5 text-center align-top">
                   <p className="truncate text-[10px] leading-snug font-bold text-slate-900">
                     ( {col.name} )
                   </p>
-                  <p className="truncate text-[9px] leading-snug font-medium text-slate-600">
+                  <p className="truncate text-[8.5px] leading-snug font-medium text-slate-600">
                     {col.jobTitle}
                   </p>
-                  <p className="font-mono text-[8.5px] text-slate-500">
+                  <p className="font-mono text-[8px] text-slate-500">
                     {col.dateTime || '-'}
                   </p>
                   {col.note ? (
-                    <p className="line-clamp-2 text-[8px] leading-snug text-slate-500 italic">
+                    <p className="line-clamp-2 text-[7.5px] leading-snug text-slate-500 italic">
                       Catatan: {col.note}
                     </p>
                   ) : null}

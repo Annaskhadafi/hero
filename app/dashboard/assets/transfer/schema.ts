@@ -34,6 +34,7 @@ export const assetTransferInputSchema = z.object({
   currentHolderManagerId: z.coerce.number().optional().nullable(),
   newHolderManagerId: z.coerce.number().optional().nullable(),
   notes: z.string().optional().nullable(),
+  applicantSignatureUrl: z.string().min(1, 'Tanda tangan pemohon wajib dibubuhkan sebelum mengirimkan pengajuan'),
 })
 
 export type AssetTransferInput = z.infer<typeof assetTransferInputSchema>

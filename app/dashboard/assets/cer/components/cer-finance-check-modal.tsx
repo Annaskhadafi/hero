@@ -13,8 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
-import { Loader2, FileSignature, CheckCircle2, Package, Tag } from 'lucide-react'
+import { Loader2, FileSignature, CheckCircle2, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 import { getCerItemsAction, submitFinanceCheckCerAction } from '../actions'
 import type { CerItem } from '@/db/schema/cer'
@@ -33,16 +32,6 @@ interface CerFinanceCheckModalProps {
   onSuccess?: () => void
 }
 
-const PRESET_KELOMPOK_ASET = [
-  'IT Device & Elektronik',
-  'Mesin & Peralatan Berat',
-  'Peralatan Kantor (Office Equipment)',
-  'Kendaraan & Sarana Transportasi',
-  'Furniture & Fixtures',
-  'Instalasi & Bangunan',
-  'Alat Laboratorium & Keselamatan',
-]
-
 export function CerFinanceCheckModal({
   open,
   onOpenChange,
@@ -58,22 +47,23 @@ export function CerFinanceCheckModal({
   useEffect(() => {
     if (open && cer?.id) {
       setLoadingItems(true)
+
       getCerItemsAction(cer.id)
         .then((data: CerItem[]) => {
           setItems(
-            data.map((item, idx) => ({
+            data.map((item) => ({
               id: item.id,
               description: item.description,
               qty: item.qty,
               allocation: item.allocation || '',
               holderName: item.holderName || '',
-              assetNumber: item.assetNumber || `AST-${String(item.id).padStart(4, '0')}`,
+              assetNumber: item.assetNumber || '',
             }))
           )
           if (data[0]?.assetGroup) {
             setKelompokAset(data[0].assetGroup)
           } else {
-            setKelompokAset('IT Device & Elektronik')
+            setKelompokAset('')
           }
         })
         .catch((err) => {
@@ -93,8 +83,9 @@ export function CerFinanceCheckModal({
   const handleSubmit = () => {
     if (!cer?.id) return
 
-    if (!kelompokAset.trim()) {
-      toast.error('Pilih atau masukkan Kelompok Aset.')
+    const trimmedCat = kelompokAset.trim()
+    if (!trimmedCat) {
+      toast.error('Ketik Kelompok / Kategori Aset.')
       return
     }
 
@@ -107,7 +98,7 @@ export function CerFinanceCheckModal({
     startTransition(async () => {
       const res = await submitFinanceCheckCerAction({
         cerId: cer.id,
-        kelompokAset: kelompokAset.trim(),
+        kelompokAset: trimmedCat,
         items: items.map((it) => ({ id: it.id, assetNumber: it.assetNumber.trim() })),
         notes: notes.trim() || undefined,
       })
@@ -150,32 +141,19 @@ export function CerFinanceCheckModal({
             </p>
           </div>
 
-          {/* Form Kelompok Aset */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-slate-800">
-              Kelompok Aset <span className="text-rose-500">*</span>
+          {/* Form Kelompok Aset (Simple Direct Text Input) */}
+          <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+            <Label htmlFor="kelompok-aset" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5 text-indigo-600" />
+              Kelompok / Kategori Aset <span className="text-rose-500">*</span>
             </Label>
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
-              {PRESET_KELOMPOK_ASET.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setKelompokAset(k)}
-                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                    kelompokAset === k
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {k}
-                </button>
-              ))}
-            </div>
             <Input
+              id="kelompok-aset"
               value={kelompokAset}
               onChange={(e) => setKelompokAset(e.target.value)}
-              placeholder="Contoh: IT Device & Elektronik"
-              className="h-9 text-xs"
+              placeholder="Ketik kategori / kelompok aset (misal: Kelompok 1 (Masa Manfaat 4 Tahun), IT Device, dll)..."
+              className="h-9 text-xs bg-white border-slate-300 focus-visible:ring-indigo-500 font-medium"
+              autoFocus
             />
           </div>
 
@@ -216,11 +194,11 @@ export function CerFinanceCheckModal({
                       </div>
                     </div>
 
-                    <div className="w-full sm:w-56">
+                    <div className="w-full sm:w-64">
                       <Input
                         value={it.assetNumber}
                         onChange={(e) => handleAssetNumberChange(it.id, e.target.value)}
-                        placeholder="Contoh: AST-IT-2026-001"
+                        placeholder="Ketik Nomor Aset resmi..."
                         className="h-8 text-xs font-mono font-medium"
                       />
                     </div>

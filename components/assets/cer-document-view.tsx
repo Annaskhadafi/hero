@@ -98,6 +98,33 @@ function formatCurrency(val?: string | number | null): string {
   }).format(num)
 }
 
+function isRealDecisionNote(note?: string | null, label?: string | null, jobTitle?: string | null): boolean {
+  if (!note || !note.trim()) return false
+  const cleanNote = note.trim().toLowerCase()
+  const cleanLabel = (label || '').trim().toLowerCase()
+  const cleanJob = (jobTitle || '').trim().toLowerCase()
+
+  if (cleanNote === cleanLabel || cleanNote === cleanJob) return false
+  if (
+    [
+      'pending',
+      'approved',
+      'draft',
+      'in review',
+      'in_review',
+      'atasan langsung',
+      'verifikator tambahan',
+      'department manager',
+      'general manager',
+      'director',
+    ].includes(cleanNote)
+  ) {
+    return false
+  }
+  if (cleanNote.startsWith('tahap ')) return false
+  return true
+}
+
 export function CerDocumentView({
   doc,
   containerRef,
@@ -118,10 +145,27 @@ export function CerDocumentView({
       jobTitle: doc.applicantJobTitle || 'Pemohon Capex',
       sigUrl: doc.submitterSignatureUrl || null,
       isApproved: true,
+      isTagging: false,
       dateTime: doc.submittedAt ? formatIndoDateTime(doc.submittedAt) : null,
       note: null,
     },
-    ...doc.approvals.map((app) => {
+    ...doc.approvals
+      .filter((app) => {
+        const titleLower = (app.title || '').toLowerCase()
+        const noteLower = (app.decisionNote || '').toLowerCase()
+        const nameLower = (app.approverName || '').toLowerCase()
+        const jobLower = (app.jobTitle || '').toLowerCase()
+        const isTagging =
+          titleLower.includes('tagging') ||
+          titleLower.includes('nomor aset') ||
+          titleLower.includes('kelompok aset') ||
+          noteLower.includes('tagging') ||
+          noteLower.includes('nomor aset') ||
+          nameLower.includes('syamsul bahri') ||
+          jobLower.includes('tagging')
+        return !isTagging
+      })
+      .map((app) => {
       const isCurrent = currentLevel === app.level && app.status !== 'approved'
       const sigUrl =
         app.status === 'approved' && app.signatureUrl
@@ -131,19 +175,38 @@ export function CerDocumentView({
             : app.signatureUrl || null
 
       let header = 'DISETUJUI OLEH'
-      if (app.title.toLowerCase().includes('acknowledge') || app.title.toLowerCase().includes('bima')) {
+      const titleLower = (app.title || '').toLowerCase()
+      if (titleLower.includes('acknowledge') || titleLower.includes('bima')) {
         header = 'DIKETAHUI OLEH'
-      } else if (app.title.toLowerCase().includes('finance') || app.title.toLowerCase().includes('checked')) {
+      } else if (
+        titleLower.includes('finance') ||
+        titleLower.includes('checked') ||
+        titleLower.includes('tagging')
+      ) {
         header = 'DIPERIKSA OLEH'
+      }
+
+      const isTagging = titleLower.includes('tagging') || titleLower.includes('nomor aset')
+
+      let cleanJobTitle = (app.jobTitle || '').trim()
+      if (!cleanJobTitle || cleanJobTitle.toLowerCase().includes('verifikator tambahan') || cleanJobTitle.toLowerCase() === 'approver') {
+        if (titleLower.includes('budget') || titleLower.includes('controller') || titleLower.includes('validator')) {
+          cleanJobTitle = 'Budget Controller'
+        } else if (titleLower.includes('bima') || titleLower.includes('it validation')) {
+          cleanJobTitle = 'BIMA Supervisor'
+        } else {
+          cleanJobTitle = app.title || 'Approver'
+        }
       }
 
       return {
         key: `appr-${app.level}`,
         header,
-        name: app.approverName || 'Approver',
-        jobTitle: app.jobTitle || app.title,
+        name: (app.approverName || 'Approver').replace(/\s*\(BIMA Supervisor\)/gi, ''),
+        jobTitle: cleanJobTitle,
         sigUrl,
         isApproved: app.status === 'approved' || (isCurrent && Boolean(liveSignatureUrl)),
+        isTagging,
         dateTime: app.reviewedAt
           ? formatIndoDateTime(app.reviewedAt)
           : isCurrent && liveSignatureUrl
@@ -414,10 +477,12 @@ export function CerDocumentView({
                       className="mx-auto h-11 w-auto max-w-[95%] object-contain sm:h-13"
                     />
                   ) : col.isApproved ? (
-                    <span className="text-xs font-bold text-emerald-700">✓ Disetujui</span>
+                    <span className="text-xs font-bold text-emerald-700">
+                      {col.isTagging ? '✓ Asset Tagged' : '✓ Disetujui'}
+                    </span>
                   ) : (
                     <span className="text-[9px] font-medium text-slate-400 italic">
-                      (Menunggu persetujuan)
+                      {col.isTagging ? '(Input No. Aset & Kelompok)' : '(Menunggu persetujuan)'}
                     </span>
                   )}
                 </td>
@@ -429,13 +494,13 @@ export function CerDocumentView({
                   <p className="truncate text-[10px] leading-snug font-bold text-slate-900">
                     ( {col.name} )
                   </p>
-                  <p className="truncate text-[9px] leading-snug font-medium text-slate-600">
+                  <p className="text-[8.5px] leading-tight font-medium text-slate-600 break-words whitespace-normal max-w-full px-1">
                     {col.jobTitle}
                   </p>
                   <p className="font-mono text-[8.5px] text-slate-500">
                     {col.dateTime || '-'}
                   </p>
-                  {col.note ? (
+                  {isRealDecisionNote(col.note, col.header, col.jobTitle) ? (
                     <p className="line-clamp-2 text-[8px] leading-snug text-slate-500 italic">
                       Catatan: {col.note}
                     </p>

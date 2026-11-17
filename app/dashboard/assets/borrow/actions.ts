@@ -304,7 +304,7 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
 
     const validated = assetBorrowInputSchema.safeParse(rawInput)
     if (!validated.success) {
-      const firstError = validated.error.errors[0]?.message || 'Validasi formulir gagal'
+      const firstError = (validated.error as any).errors?.[0]?.message || validated.error.message || 'Validasi formulir gagal'
       return { success: false, message: firstError }
     }
 
@@ -846,7 +846,7 @@ export async function revertAssetBorrowAction(id: number, revertReason: string) 
         applicantName: borrower.name,
         documentNumber: borrow.borrowNumber,
         assetName: borrow.assetName,
-        revertedByName: empContext?.employeeName || borrow.holderName,
+        revertedByName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
         revertNote: revertReason.trim(),
         targetId: id,
       }).catch((err) => console.error('[revertAssetBorrowAction] Email error:', err))

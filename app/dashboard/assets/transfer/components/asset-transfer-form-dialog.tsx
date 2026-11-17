@@ -9,11 +9,13 @@ import {
   HeroSearchableSelect,
   HeroFileUpload,
 } from '@/components/templates'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { ArrowRight, Box, CheckCircle2, Info, MapPin, UserCheck, ShieldCheck } from 'lucide-react'
-import { EQUIPMENT_CHECKBOX_OPTIONS, type AssetTransferInput } from '../schema'
+import { ArrowRight, Box, CheckCircle2, Info, MapPin, UserCheck, ShieldCheck, PenTool, Upload } from 'lucide-react'
+import { SignaturePad } from '@/components/signature-pad'
+import { getUserSignatureAction } from '@/app/actions/user-signature'
+import type { AssetTransferInput } from '../schema'
 import { createAssetTransfer } from '../actions'
 
 interface AssetTransferFormDialogProps {
@@ -61,8 +63,7 @@ export function AssetTransferFormDialog({
 
   // Form states
   const [assetId, setAssetId] = React.useState<string>('')
-  const [selectedEquipment, setSelectedEquipment] = React.useState<string[]>([])
-  const [otherEquipmentNote, setOtherEquipmentNote] = React.useState<string>('')
+  const [equipmentText, setEquipmentText] = React.useState<string>('')
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null)
   const [currentHolderId, setCurrentHolderId] = React.useState<string>('')
   const [currentLocationId, setCurrentLocationId] = React.useState<string>('')
@@ -71,6 +72,53 @@ export function AssetTransferFormDialog({
   const [currentHolderManagerId, setCurrentHolderManagerId] = React.useState<string>('')
   const [newHolderManagerId, setNewHolderManagerId] = React.useState<string>('')
   const [notes, setNotes] = React.useState<string>('')
+
+  // Submitter Signature State
+  const [submitterSig, setSubmitterSig] = React.useState<string | null>(null)
+  const [profileSig, setProfileSig] = React.useState<string | null>(null)
+  const [uploadedSigUrl, setUploadedSigUrl] = React.useState<string | null>(null)
+  const [sigMode, setSigMode] = React.useState<'profile' | 'draw' | 'upload'>('profile')
+  const signatureFileInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Fetch saved user profile signature on modal open
+  React.useEffect(() => {
+    if (open) {
+      getUserSignatureAction()
+        .then((res) => {
+          if (res && res.success && res.signatureDataUrl) {
+            setProfileSig(res.signatureDataUrl)
+            setSubmitterSig(res.signatureDataUrl)
+            setSigMode('profile')
+          } else {
+            setSigMode('draw')
+          }
+        })
+        .catch(() => {
+          setSigMode('draw')
+        })
+    }
+  }, [open])
+
+  const handleSignatureImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('File harus berupa berkas gambar (PNG, JPG, atau WebP).')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Ukuran gambar tanda tangan maksimal 5 MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      setUploadedSigUrl(dataUrl)
+      setSubmitterSig(dataUrl)
+      toast.success('Gambar tanda tangan berhasil dimuat.')
+    }
+    reader.readAsDataURL(file)
+  }
 
   // Selected asset details
   const selectedAsset = React.useMemo(() => {
@@ -137,8 +185,7 @@ export function AssetTransferFormDialog({
   React.useEffect(() => {
     if (open && !prevOpenRef.current) {
       setAssetId('')
-      setSelectedEquipment([])
-      setOtherEquipmentNote('')
+      setEquipmentText('')
       setPhotoUrl(null)
       setCurrentHolderId('')
       setCurrentLocationId('')
@@ -147,6 +194,7 @@ export function AssetTransferFormDialog({
       setCurrentHolderManagerId('')
       setNewHolderManagerId('')
       setNotes('')
+      setUploadedSigUrl(null)
     }
     prevOpenRef.current = open
   }, [open])
@@ -179,12 +227,6 @@ export function AssetTransferFormDialog({
     }))
   }, [sites])
 
-  const toggleEquipment = (item: string, checked: boolean) => {
-    setSelectedEquipment((prev) =>
-      checked ? (prev.includes(item) ? prev : [...prev, item]) : prev.filter((i) => i !== item)
-    )
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -212,14 +254,23 @@ export function AssetTransferFormDialog({
       toast.error('Holder baru dan lokasi tujuan tidak boleh sama persis dengan saat ini.')
       return
     }
+    if (!submitterSig) {
+      toast.error('Tanda tangan pemohon wajib dibubuhkan sebelum mengirimkan pengajuan.')
+      return
+    }
 
     try {
       setIsSubmitting(true)
 
+      const checklistArray = equipmentText
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+
       const payload: AssetTransferInput = {
         assetId: Number(assetId),
-        equipmentChecklist: selectedEquipment,
-        equipmentOtherNote: otherEquipmentNote.trim() || null,
+        equipmentChecklist: checklistArray.length > 0 ? checklistArray : (equipmentText.trim() ? [equipmentText.trim()] : []),
+        equipmentOtherNote: equipmentText.trim() || null,
         assetPhotos: photoUrl
           ? [{ fileName: 'foto-kondisi-aset.jpg', fileUrl: photoUrl }]
           : [],
@@ -230,6 +281,7 @@ export function AssetTransferFormDialog({
         currentHolderManagerId: currentHolderManagerId ? Number(currentHolderManagerId) : null,
         newHolderManagerId: newHolderManagerId ? Number(newHolderManagerId) : null,
         notes: notes.trim() || null,
+        applicantSignatureUrl: submitterSig,
       }
 
       const res = await createAssetTransfer(payload)
@@ -259,7 +311,7 @@ export function AssetTransferFormDialog({
       isSubmitting={isSubmitting}
       submitLabel="Kirim Pengajuan Transfer"
       cancelLabel="Batal"
-      maxWidth="xl"
+      maxWidth="5xl"
     >
       <div className="space-y-6 py-1">
         {/* SECTION 1: PILIH MASTER ASET */}
@@ -311,49 +363,26 @@ export function AssetTransferFormDialog({
           )}
         </div>
 
-        {/* SECTION 2: KELENGKAPAN ASET (CHECKBOXES) */}
-        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-xs space-y-4">
+        {/* SECTION 2: KELENGKAPAN ASET (INPUT MANUAL) */}
+        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-xs space-y-3">
           <div className="flex items-center gap-2 pb-2 border-b border-border/50">
             <ShieldCheck className="size-4 text-primary" />
             <h4 className="text-sm font-semibold text-foreground">2. Kelengkapan Aset</h4>
-            <span className="text-xs text-muted-foreground ml-auto">Centang item yang disertakan</span>
+            <span className="text-xs text-muted-foreground ml-auto">Ketik manual kelengkapan</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
-            {EQUIPMENT_CHECKBOX_OPTIONS.map((item) => {
-              const isChecked = selectedEquipment.includes(item)
-              return (
-                <label
-                  key={item}
-                  htmlFor={`equip-${item}`}
-                  className={`flex items-center space-x-2.5 rounded-md border p-2.5 cursor-pointer transition-colors text-xs select-none ${
-                    isChecked
-                      ? 'border-primary/60 bg-primary/5 text-foreground font-medium'
-                      : 'border-border/60 hover:bg-muted/40 text-muted-foreground'
-                  }`}
-                >
-                  <Checkbox
-                    id={`equip-${item}`}
-                    checked={isChecked}
-                    onCheckedChange={(checked) => toggleEquipment(item, Boolean(checked))}
-                  />
-                  <span className="cursor-pointer text-xs leading-none">
-                    {item}
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-
-          {selectedEquipment.includes('Other') && (
-            <HeroFormField label="Keterangan Kelengkapan Lainnya (Other)">
-              <HeroInput
-                value={otherEquipmentNote}
-                onChange={(e) => setOtherEquipmentNote(e.target.value)}
-                placeholder="Sebutkan kelengkapan lain yang disertakan..."
-              />
-            </HeroFormField>
-          )}
+          <HeroFormField
+            label="Daftar Kelengkapan Aset"
+            required
+            helperText="Ketikkan kelengkapan aset yang disertakan dalam mutasi (contoh: Unit Laptop, Charger Original 65W, Tas, Mouse Wireless, Kabel Power)"
+          >
+            <HeroTextarea
+              value={equipmentText}
+              onChange={(e) => setEquipmentText(e.target.value)}
+              placeholder="Contoh: Unit Laptop, Charger Original 65W, Tas Jinak, Mouse Wireless..."
+              rows={3}
+            />
+          </HeroFormField>
         </div>
 
         {/* SECTION 3: FOTO KONDISI ASET */}
@@ -492,6 +521,143 @@ export function AssetTransferFormDialog({
               showCount
             />
           </HeroFormField>
+        </div>
+
+        {/* SECTION 6: TANDA TANGAN PEMOHON / PENGAJU */}
+        <div className="rounded-lg border border-border/70 bg-card p-4 shadow-xs space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="space-y-0.5">
+              <label className="text-sm font-semibold text-foreground flex items-center gap-1">
+                6. Tanda Tangan Pemohon / Pengaju <span className="text-rose-500">*</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Tanda tangan digital Anda akan tertera pada formulir resmi dan Berita Acara Transfer Aset.
+              </p>
+            </div>
+            <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg border border-border/60">
+              {profileSig && (
+                <Button
+                  type="button"
+                  variant={sigMode === 'profile' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => {
+                    setSigMode('profile')
+                    setSubmitterSig(profileSig)
+                  }}
+                  className="h-7 text-xs px-2.5 gap-1"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Profil
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant={sigMode === 'draw' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  setSigMode('draw')
+                  setSubmitterSig(null)
+                }}
+                className="h-7 text-xs px-2.5 gap-1"
+              >
+                <PenTool className="h-3.5 w-3.5" />
+                Coret
+              </Button>
+              <Button
+                type="button"
+                variant={sigMode === 'upload' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  setSigMode('upload')
+                  setSubmitterSig(uploadedSigUrl)
+                }}
+                className="h-7 text-xs px-2.5 gap-1"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </Button>
+            </div>
+          </div>
+
+          <input
+            ref={signatureFileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={handleSignatureImageUpload}
+          />
+
+          {sigMode === 'profile' && profileSig && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 dark:bg-emerald-950/20 dark:border-emerald-800 p-4 flex flex-col items-center justify-center min-h-[120px] max-w-md relative">
+              <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                <CheckCircle2 className="h-3 w-3" />
+                Terdaftar di Profil
+              </span>
+              <img
+                src={profileSig}
+                alt="Tanda Tangan Pemohon"
+                className="max-h-24 object-contain my-1"
+              />
+              <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mt-1">
+                Tanda Tangan Terverifikasi
+              </p>
+            </div>
+          )}
+
+          {sigMode === 'draw' && (
+            <div className="max-w-md space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Goreskan tanda tangan Anda pada area putih di bawah ini:
+              </p>
+              <SignaturePad
+                onDataUrlChange={(dataUrl) => setSubmitterSig(dataUrl)}
+                onSaveToProfile={(dataUrl) => {
+                  setProfileSig(dataUrl)
+                  setSigMode('profile')
+                  setSubmitterSig(dataUrl)
+                }}
+                height={130}
+              />
+            </div>
+          )}
+
+          {sigMode === 'upload' && (
+            <div className="max-w-md space-y-2">
+              {uploadedSigUrl ? (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 dark:bg-indigo-950/20 dark:border-indigo-800 p-4 flex flex-col items-center justify-center min-h-[120px] relative">
+                  <img
+                    src={uploadedSigUrl}
+                    alt="Unggahan Tanda Tangan"
+                    className="max-h-24 object-contain my-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => signatureFileInputRef.current?.click()}
+                    className="h-7 text-xs mt-2"
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-1" /> Ganti Gambar
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => signatureFileInputRef.current?.click()}
+                  className="border-2 border-dashed border-border/80 hover:border-primary/60 bg-muted/30 hover:bg-muted/50 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all text-center min-h-[120px]"
+                >
+                  <div className="p-2 bg-primary/10 rounded-full text-primary mb-2">
+                    <Upload className="h-5 w-5" />
+                  </div>
+                  <p className="text-xs font-semibold text-foreground">
+                    Klik untuk unggah gambar tanda tangan
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Format PNG, JPG, atau WebP (Maksimal 5MB)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </HeroFormDialog>

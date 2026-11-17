@@ -97,6 +97,39 @@ function formatRupiah(amount: number | string | null | undefined): string {
   }).format(num)
 }
 
+function splitTextIntoTwoLines(text: string, maxW: number, font: any, size: number): [string, string | null] {
+  if (!text) return ['', null]
+  const clean = text.trim()
+  const singleW = font.widthOfTextAtSize(clean, size)
+  if (singleW <= maxW || !clean.includes(' ')) {
+    return [clean, null]
+  }
+
+  const words = clean.split(/\s+/).filter(Boolean)
+  if (words.length <= 1) {
+    return [clean, null]
+  }
+
+  let bestSplit = Math.ceil(words.length / 2)
+  let minDiff = Infinity
+
+  for (let i = 1; i < words.length; i++) {
+    const l1 = words.slice(0, i).join(' ')
+    const l2 = words.slice(i).join(' ')
+    const w1 = font.widthOfTextAtSize(l1, size)
+    const w2 = font.widthOfTextAtSize(l2, size)
+    const diff = Math.abs(w1 - w2)
+    if (diff < minDiff) {
+      minDiff = diff
+      bestSplit = i
+    }
+  }
+
+  const line1 = words.slice(0, bestSplit).join(' ')
+  const line2 = words.slice(bestSplit).join(' ')
+  return [line1, line2]
+}
+
 export async function generateCerPdf(data: CerPdfData): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create()
   // Work Order Reference: A4 Landscape (841.89 x 595.28 pt)
@@ -396,18 +429,46 @@ export async function generateCerPdf(data: CerPdfData): Promise<Uint8Array> {
       date: formatIndoDate(data.createdAt),
       note: null,
     },
-    ...data.approvals.map((app) => {
+    ...data.approvals
+      .filter((app) => {
+        const lbl = (app.label || '').toLowerCase()
+        const job = (app.jobTitle || '').toLowerCase()
+        const note = (app.decisionNote || '').toLowerCase()
+        const name = (app.approverName || '').toLowerCase()
+        const isTagging =
+          lbl.includes('tagging') ||
+          lbl.includes('nomor aset') ||
+          lbl.includes('kelompok aset') ||
+          job.includes('tagging') ||
+          note.includes('tagging') ||
+          note.includes('nomor aset') ||
+          name.includes('syamsul bahri')
+        return !isTagging
+      })
+      .map((app) => {
       let header = 'DISETUJUI OLEH'
-      if ((app.label || '').toLowerCase().includes('bima') || (app.label || '').toLowerCase().includes('acknowledge')) {
+      const lbl = (app.label || '').toLowerCase()
+      if (lbl.includes('bima') || lbl.includes('acknowledge')) {
         header = 'DIKETAHUI OLEH'
-      } else if ((app.label || '').toLowerCase().includes('finance') || (app.label || '').toLowerCase().includes('checked')) {
+      } else if (lbl.includes('finance') || lbl.includes('checked')) {
         header = 'DIPERIKSA OLEH'
+      }
+
+      let cleanJobTitle = (app.jobTitle || '').trim()
+      if (!cleanJobTitle || cleanJobTitle.toLowerCase().includes('verifikator tambahan') || cleanJobTitle.toLowerCase() === 'approver') {
+        if (lbl.includes('budget') || lbl.includes('controller') || lbl.includes('validator')) {
+          cleanJobTitle = 'Budget Controller'
+        } else if (lbl.includes('bima') || lbl.includes('it validation')) {
+          cleanJobTitle = 'BIMA Supervisor'
+        } else {
+          cleanJobTitle = app.label || 'Approver'
+        }
       }
 
       return {
         header,
-        name: app.approverName || 'Approver',
-        jobTitle: app.jobTitle || app.label,
+        name: (app.approverName || 'Approver').replace(/\s*\(BIMA Supervisor\)/gi, ''),
+        jobTitle: cleanJobTitle,
         sigUrl: app.signatureUrl || null,
         isApproved: app.status === 'Approved' || app.status === 'approved',
         date: app.reviewedAt ? formatIndoDateTime(app.reviewedAt) : 'Pending',
@@ -419,8 +480,8 @@ export async function generateCerPdf(data: CerPdfData): Promise<Uint8Array> {
   const numCols = sigColumns.length
   const sigBoxW = contentW / numCols
   const sigHeaderH = 16
-  const sigCanvasH = 50
-  const sigInfoH = 34
+  const sigCanvasH = 44
+  const sigInfoH = 44
   const totalSigH = sigHeaderH + sigCanvasH + sigInfoH
 
   for (let i = 0; i < numCols; i++) {
@@ -500,33 +561,82 @@ export async function generateCerPdf(data: CerPdfData): Promise<Uint8Array> {
       borderWidth: 1,
     })
 
-    const nameText = `( ${col.name} )`
-    const nameSize = col.name.length > 22 ? 5.5 : 6.5
-    const nameW = fontBold.widthOfTextAtSize(nameText, nameSize)
-    page.drawText(nameText, {
-      x: boxX + (sigBoxW - nameW) / 2,
-      y: curY - sigHeaderH - sigCanvasH - 11,
-      size: nameSize,
-      font: fontBold,
-      color: textDark,
-    })
+    const boxTopY = curY - sigHeaderH - sigCanvasH
+    const maxTextW = sigBoxW - 8
+    const nameSize = col.name.length > 24 ? 5.2 : 5.8
+    const [namePart1, namePart2] = splitTextIntoTwoLines(col.name, maxTextW - 10, fontBold, nameSize)
+
+    let titleStartY = boxTopY - 18.5
+    if (namePart2) {
+      const line1 = `( ${namePart1}`
+      const line2 = `${namePart2} )`
+      const w1 = fontBold.widthOfTextAtSize(line1, nameSize)
+      const w2 = fontBold.widthOfTextAtSize(line2, nameSize)
+      page.drawText(line1, {
+        x: boxX + (sigBoxW - w1) / 2,
+        y: boxTopY - 8.5,
+        size: nameSize,
+        font: fontBold,
+        color: textDark,
+      })
+      page.drawText(line2, {
+        x: boxX + (sigBoxW - w2) / 2,
+        y: boxTopY - 15.5,
+        size: nameSize,
+        font: fontBold,
+        color: textDark,
+      })
+      titleStartY = boxTopY - 22.5
+    } else {
+      const nameText = `( ${col.name} )`
+      const nameW = fontBold.widthOfTextAtSize(nameText, nameSize)
+      page.drawText(nameText, {
+        x: boxX + (sigBoxW - nameW) / 2,
+        y: boxTopY - 10,
+        size: nameSize,
+        font: fontBold,
+        color: textDark,
+      })
+      titleStartY = boxTopY - 18.5
+    }
 
     const titleText = col.jobTitle || 'Approver'
-    const titleSize = titleText.length > 25 ? 4.8 : 5.5
-    const titleW = fontRegular.widthOfTextAtSize(titleText, titleSize)
-    page.drawText(titleText, {
-      x: boxX + (sigBoxW - titleW) / 2,
-      y: curY - sigHeaderH - sigCanvasH - 20,
-      size: titleSize,
-      font: fontRegular,
-      color: textGray,
-    })
+    const titleSize = titleText.length > 25 ? 4.5 : 4.9
+    const [titlePart1, titlePart2] = splitTextIntoTwoLines(titleText, maxTextW, fontRegular, titleSize)
 
-    const dateW = fontRegular.widthOfTextAtSize(col.date, 5.2)
+    if (titlePart2) {
+      const w1 = fontRegular.widthOfTextAtSize(titlePart1, titleSize)
+      const w2 = fontRegular.widthOfTextAtSize(titlePart2, titleSize)
+      page.drawText(titlePart1, {
+        x: boxX + (sigBoxW - w1) / 2,
+        y: titleStartY,
+        size: titleSize,
+        font: fontRegular,
+        color: textGray,
+      })
+      page.drawText(titlePart2, {
+        x: boxX + (sigBoxW - w2) / 2,
+        y: titleStartY - 6.5,
+        size: titleSize,
+        font: fontRegular,
+        color: textGray,
+      })
+    } else {
+      const titleW = fontRegular.widthOfTextAtSize(titlePart1, titleSize)
+      page.drawText(titlePart1, {
+        x: boxX + (sigBoxW - titleW) / 2,
+        y: titleStartY - 1.5,
+        size: titleSize,
+        font: fontRegular,
+        color: textGray,
+      })
+    }
+
+    const dateW = fontRegular.widthOfTextAtSize(col.date, 4.8)
     page.drawText(col.date, {
       x: boxX + (sigBoxW - dateW) / 2,
-      y: curY - sigHeaderH - sigCanvasH - 28,
-      size: 5.2,
+      y: boxTopY - 37.5,
+      size: 4.8,
       font: fontRegular,
       color: textGray,
     })

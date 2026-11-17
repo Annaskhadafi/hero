@@ -103,6 +103,7 @@ async function resolveTargetRecipients(originalRecipients: string | string[] | u
 export interface SendCerSubmittedEmailParams {
   approverEmail: string
   approverName: string
+  approverJobTitle?: string | null
   cerNumber: string
   subject: string
   applicantName: string
@@ -133,8 +134,9 @@ export interface SendCerSubmittedEmailParams {
 }
 
 export function buildCerSubmittedEmailHtml(params: SendCerSubmittedEmailParams, approvalLink: string): string {
+  const effectiveJobTitle = params.approverJobTitle || params.approvalStep
   const isDirectorStep =
-    Boolean(params.approvalStep && params.approvalStep.toLowerCase().includes('director')) ||
+    Boolean(effectiveJobTitle && effectiveJobTitle.toLowerCase().includes('director')) ||
     Boolean(params.approverName && params.approverName.toLowerCase().includes('director'))
   const hasBoardSecretaryCc =
     isDirectorStep ||
@@ -195,7 +197,7 @@ export function buildCerSubmittedEmailHtml(params: SendCerSubmittedEmailParams, 
                   ${params.subject}
                 </h2>
                 <div style="font-size:12px;color:#64748b">
-                  Tahap Persetujuan: <strong style="color:#2563eb">${params.approvalStep}</strong>
+                  Job Title: <strong style="color:#2563eb">${effectiveJobTitle}</strong>
                   ${hasBoardSecretaryCc ? ` &bull; <strong style="color:#4338ca">CC &amp; Co-Approval: Freshya Ochtovita (Board Secretary)</strong>` : ''}
                 </div>
               </div>
@@ -293,6 +295,203 @@ export function buildCerSubmittedEmailHtml(params: SendCerSubmittedEmailParams, 
 </div>`
 }
 
+export interface SendCerRevisionRequestedEmailParams {
+  applicantEmail: string
+  applicantName: string
+  applicantSn?: string | null
+  cerNumber: string
+  subject: string
+  revertedByName: string
+  revertedByJobTitle?: string | null
+  revertNote: string
+  cerId: number
+  departmentName?: string | null
+  siteName?: string | null
+  assetCategory?: string | null
+  purchaseType?: string | null
+  vendorName?: string | null
+  totalEstimatedPrice?: number | string | null
+  items?: Array<{
+    description: string
+    qty: number
+    pricePerUnit: number | string
+    totalPrice: number | string
+    allocation?: string | null
+    holderName?: string | null
+  }>
+}
+
+export function buildCerRevisionRequestedEmailHtml(
+  params: SendCerRevisionRequestedEmailParams,
+  editLink: string
+): string {
+  const effectiveReverter = params.revertedByJobTitle
+    ? `${params.revertedByName} (${params.revertedByJobTitle})`
+    : params.revertedByName
+
+  const renderedItemRows =
+    params.items && params.items.length > 0
+      ? params.items
+          .map(
+            (it, idx) => `
+        <tr style="border-bottom:1px solid #f1f5f9;${idx % 2 === 1 ? 'background:#fcfcfc;' : ''}">
+          <td style="padding:8px 10px;text-align:center;color:#64748b">${idx + 1}</td>
+          <td style="padding:8px 10px;font-weight:600;color:#0f172a">${it.description}</td>
+          <td style="padding:8px 10px;text-align:center;color:#334155">${it.qty}</td>
+          <td style="padding:8px 10px;text-align:right;color:#334155">Rp ${formatRupiah(it.pricePerUnit)}</td>
+          <td style="padding:8px 10px;text-align:right;font-weight:700;color:#0f172a">Rp ${formatRupiah(it.totalPrice)}</td>
+          <td style="padding:8px 10px;font-size:10px;color:#475569">
+            ${it.allocation ? `<span style="display:inline-block;padding:2px 5px;background:#ecfdf5;color:#065f46;border-radius:3px;font-weight:600">${it.allocation}</span>` : '-'}
+            ${it.holderName ? `<div style="margin-top:2px;color:#1e40af">&bull; ${it.holderName}</div>` : ''}
+          </td>
+        </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="6" style="padding:14px;text-align:center;color:#94a3b8">Tidak ada rincian item.</td></tr>`
+
+  return `
+<div style="margin:0;padding:0;background:#e5e7eb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#e5e7eb;padding:24px 12px">
+    <tr>
+      <td align="center">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:680px;border-collapse:separate;border-spacing:0;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.1);border:1px solid #cbd5e1">
+          <!-- Header Banner -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#020617 0%,#0f172a 60%,#78350f 100%);padding:22px 28px">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td>
+                    <p style="margin:0;color:#fde68a;font-size:11px;letter-spacing:.25em;text-transform:uppercase;font-weight:700">PT CHITRA PARATAMA</p>
+                    <h1 style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-.02em">Formulir Pengadaan Aset (CER)</h1>
+                  </td>
+                  <td align="right" style="vertical-align:middle">
+                    <span style="display:inline-block;border:1px solid rgba(245,158,11,.35);border-radius:6px;padding:6px 12px;color:#fef3c7;background:rgba(245,158,11,.15);font-size:11px;font-weight:700">Permintaan Revisi</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding:24px 28px">
+              <!-- Judul Form & Dokumen Info -->
+              <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #e2e8f0">
+                <span style="display:inline-block;padding:3px 8px;border-radius:4px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;margin-bottom:6px">
+                  ${params.cerNumber} &bull; Perlu Revisi
+                </span>
+                <h2 style="margin:0 0 6px;color:#0f172a;font-size:18px;line-height:1.35;font-weight:800">
+                  ${params.subject}
+                </h2>
+                <div style="font-size:12px;color:#64748b">
+                  Dikembalikan oleh: <strong style="color:#b45309">${effectiveReverter}</strong>
+                </div>
+              </div>
+
+              <!-- Revert Reason Callout Box (Prominent) -->
+              <div style="margin-bottom:22px;background:#fffbeb;border-left:4px solid #d97706;border-radius:8px;padding:14px 18px;border-top:1px solid #fde68a;border-right:1px solid #fde68a;border-bottom:1px solid #fde68a">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#92400e;margin-bottom:6px;letter-spacing:.05em">
+                  ⚠️ Catatan Revisi / Instruksi Perbaikan dari Approver:
+                </div>
+                <div style="font-size:13px;line-height:1.6;color:#78350f;font-weight:600;font-style:italic">
+                  &ldquo;${params.revertNote}&rdquo;
+                </div>
+                <div style="margin-top:8px;font-size:11px;color:#b45309">
+                  Oleh: <strong>${params.revertedByName}</strong> ${params.revertedByJobTitle ? `&bull; ${params.revertedByJobTitle}` : ''}
+                </div>
+              </div>
+
+              <!-- Metadata Grid -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="font-size:12px;color:#334155;margin-bottom:20px;background:#f8fafc;border-radius:8px;padding:12px 16px;border:1px solid #e2e8f0">
+                <tr>
+                  <td style="padding:6px 0;width:140px;color:#64748b;font-weight:600">Pemohon</td>
+                  <td style="padding:6px 0;font-weight:700;color:#0f172a">: ${params.applicantName} ${params.applicantSn ? `(${params.applicantSn})` : ''}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Departemen / Site</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.departmentName || '-'} &bull; ${params.siteName || '-'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Kategori / Jenis</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.assetCategory || 'IT Device'} &bull; ${params.purchaseType || 'Baru'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Pemasok / Vendor</td>
+                  <td style="padding:6px 0;color:#0f172a">: ${params.vendorName || '-'}</td>
+                </tr>
+                ${
+                  params.totalEstimatedPrice
+                    ? `
+                <tr>
+                  <td style="padding:6px 0;color:#64748b;font-weight:600">Estimasi Total Nilai</td>
+                  <td style="padding:6px 0;font-weight:700;color:#059669">: Rp ${formatRupiah(params.totalEstimatedPrice)}</td>
+                </tr>`
+                    : ''
+                }
+              </table>
+
+              <!-- Rincian Unit Barang (CapEx Items) jika ada -->
+              ${
+                params.items && params.items.length > 0
+                  ? `
+              <div style="margin-bottom:20px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:8px">Rincian Unit Barang Saat Ini:</div>
+                <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;font-size:11px;width:100%;border:1px solid #e2e8f0">
+                  <thead>
+                    <tr style="background:#0f172a;color:#ffffff;text-align:left">
+                      <th style="padding:8px 10px;width:30px;text-align:center">No</th>
+                      <th style="padding:8px 10px">Deskripsi Barang</th>
+                      <th style="padding:8px 10px;text-align:center;width:40px">Qty</th>
+                      <th style="padding:8px 10px;text-align:right;width:100px">Harga Satuan</th>
+                      <th style="padding:8px 10px;text-align:right;width:110px">Total Harga</th>
+                      <th style="padding:8px 10px">Alokasi &amp; Holder</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${renderedItemRows}
+                  </tbody>
+                  ${
+                    params.totalEstimatedPrice
+                      ? `
+                  <tfoot>
+                    <tr style="background:#f8fafc;font-weight:700;border-top:2px solid #cbd5e1">
+                      <td colspan="4" style="padding:10px;text-align:right;font-size:12px;color:#0f172a">TOTAL ESTIMASI BIAYA:</td>
+                      <td style="padding:10px;text-align:right;font-size:13px;color:#059669;font-weight:800">Rp ${formatRupiah(params.totalEstimatedPrice)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>`
+                      : ''
+                  }
+                </table>
+              </div>`
+                  : ''
+              }
+
+              <!-- Action Button & CTA -->
+              <div style="text-align:center;margin:28px 0 16px">
+                <a href="${editLink}" style="display:inline-block;background:#d97706;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:13px;font-weight:700;box-shadow:0 4px 10px rgba(217,119,6,0.25)">
+                  Perbaiki &amp; Revisi Formulir CER &rarr;
+                </a>
+              </div>
+              <p style="text-align:center;margin:0 0 16px;font-size:11px;color:#64748b">
+                Tautan langsung: <a href="${editLink}" style="color:#d97706;word-break:break-all">${editLink}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8fafc;padding:16px 28px;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;text-align:center">
+              Email ini dikirim secara otomatis oleh Sistem HERO PT Chitra Paratama. Mohon tidak membalas langsung email ini.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>`
+}
+
 /**
  * 1. Notifikasi Permohonan CER Baru Membutuhkan Approval
  */
@@ -301,8 +500,9 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
   const approvalLink = params.approvalUrl || `${baseUrl}/dashboard/approval`
   const target = await resolveTargetRecipients(params.approverEmail)
 
+  const effectiveJobTitle = params.approverJobTitle || params.approvalStep
   const isDirectorStep =
-    Boolean(params.approvalStep && params.approvalStep.toLowerCase().includes('director')) ||
+    Boolean(effectiveJobTitle && effectiveJobTitle.toLowerCase().includes('director')) ||
     Boolean(params.approverName && params.approverName.toLowerCase().includes('director'))
 
   // If Director step, ensure Freshya Ochtovita (Board Secretary) is CC'ed
@@ -318,7 +518,7 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
     }
   }
 
-  const cleanSubject = `${target.note}[CER Approval] ${params.cerNumber} - ${params.subject} (${params.approvalStep})`
+  const cleanSubject = `${target.note}[CER Approval] ${params.cerNumber} - ${params.subject} (${effectiveJobTitle})`
   const emailHtml = buildCerSubmittedEmailHtml({ ...params, cc: resolvedCc }, approvalLink)
 
   // Send Workflow Email with Full HTML Content
@@ -343,12 +543,13 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
       budgetCode: params.budgetCode || '',
       budgetName: params.budgetName || '',
       totalEstimatedPrice: formatRupiah(params.totalEstimatedPrice),
-      approvalStep: params.approvalStep,
+      approvalStep: effectiveJobTitle,
+      approverJobTitle: effectiveJobTitle,
       approvalLink,
     },
     fallbackSubject: cleanSubject,
     fallbackHtml: emailHtml,
-    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) oleh ${params.applicantName} membutuhkan persetujuan Anda pada tahap ${params.approvalStep}. Total: Rp ${formatRupiah(params.totalEstimatedPrice)}. Buka link: ${approvalLink}`,
+    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) oleh ${params.applicantName} membutuhkan persetujuan Anda (${effectiveJobTitle}). Total: Rp ${formatRupiah(params.totalEstimatedPrice)}. Buka link: ${approvalLink}`,
   })
 
   // Bell Notification to primary approver
@@ -357,7 +558,7 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
     eventType: 'cer.approval_needed',
     category: 'approval_requests',
     title: `Persetujuan CER: ${params.cerNumber}`,
-    body: `Permohonan CER "${params.subject}" dari ${params.applicantName} memerlukan persetujuan Anda (${params.approvalStep}).`,
+    body: `Permohonan CER "${params.subject}" dari ${params.applicantName} memerlukan persetujuan Anda (${effectiveJobTitle}).`,
     url: approvalLink,
   })
 
@@ -377,18 +578,13 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
 /**
  * 2. Notifikasi Pengajuan CER Perlu Revisi (Reverted) ke Pemohon
  */
-export async function sendCerRevisionRequestedEmail(params: {
-  applicantEmail: string
-  applicantName: string
-  cerNumber: string
-  subject: string
-  revertedByName: string
-  revertNote: string
-  cerId: number
-}) {
+export async function sendCerRevisionRequestedEmail(
+  params: SendCerRevisionRequestedEmailParams
+) {
   const baseUrl = getPublicAppUrl()
   const editLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}&action=edit`
   const target = await resolveTargetRecipients(params.applicantEmail)
+  const emailHtml = buildCerRevisionRequestedEmailHtml(params, editLink)
 
   await sendWorkflowEmail({
     to: target.to,
@@ -398,16 +594,27 @@ export async function sendCerRevisionRequestedEmail(params: {
       cerNumber: params.cerNumber,
       subject: params.subject,
       applicantName: params.applicantName,
+      applicantSn: params.applicantSn || '',
+      departmentName: params.departmentName || '',
+      siteName: params.siteName || '',
+      totalEstimatedPrice: formatRupiah(params.totalEstimatedPrice),
       revertedByName: params.revertedByName,
+      revertedByJobTitle: params.revertedByJobTitle || '',
       revertNote: params.revertNote,
       editLink,
     },
     fallbackSubject: `${target.note}[CER Revisi] ${params.cerNumber} - ${params.subject}`,
-    fallbackText: `Permohonan CER ${params.cerNumber} dikembalikan untuk revisi oleh ${params.revertedByName} dengan catatan: "${params.revertNote}". Silakan perbarui: ${editLink}`,
+    fallbackHtml: emailHtml,
+    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) dikembalikan untuk revisi oleh ${params.revertedByName} (${params.revertedByJobTitle || 'Approver'}) dengan catatan: "${params.revertNote}". Silakan perbarui: ${editLink}`,
   })
 
+  // Ensure BOTH applicant and any override recipient receive in-app Notification Center / Header Bell
+  const bellRecipients = Array.from(
+    new Set([params.applicantEmail, CER_TESTING_RECIPIENT_OVERRIDE].filter(Boolean))
+  )
+
   await notifyWorkflowBellRecipients({
-    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
+    recipientEmails: bellRecipients,
     eventType: 'cer.revision_needed',
     category: 'approval_requests',
     title: `Revisi CER: ${params.cerNumber}`,
@@ -477,16 +684,24 @@ export async function sendCerFullApprovedEmail(params: {
   const viewLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}`
 
   // Sesuai requirement resmi:
-  // To: Abdul Rajab & Sofyan Darmawan (Procurement)
-  // CC: Aulia Riski Walidina, Evo Dwi (Finance), dan Pemohon CER
-  const primaryRecipients = [
-    'abdul.rajab@chitraparatama.co.id',
+  // Kirim ke Pemohon CER & Tim Procurement:
+  // - Sofyan Darmawan (sofyan.darmawan@chitraparatama.co.id)
+  // - Nico Saputra (nico.saputra@chitraparatama.co.id)
+  // - Abdul Rajab (abdul.rajab@chitraparatama.co.id)
+  // CC: Evo Dwi (Finance) & Aulia Riski Walidina
+  const procurementEmails = [
     'sofyan.darmawan@chitraparatama.co.id',
+    'nico.saputra@chitraparatama.co.id',
+    'abdul.rajab@chitraparatama.co.id',
   ]
-  const ccEmails = [
-    'aulia.walidina@chitraparatama.co.id',
-    'evo.yulianti@chitraparatama.co.id',
+  const primaryRecipients = [
     params.applicantEmail,
+    ...procurementEmails,
+  ].filter(Boolean)
+
+  const ccEmails = [
+    'evo.yulianti@chitraparatama.co.id',
+    'aulia.walidina@chitraparatama.co.id',
   ].filter(Boolean)
 
   const target = await resolveTargetRecipients(primaryRecipients)
@@ -516,16 +731,25 @@ export async function sendCerFullApprovedEmail(params: {
       viewLink,
     },
     fallbackSubject: `${target.note}[CER Full Approved] ${params.cerNumber} - ${params.subject} (Dokumen Terbit)`,
-    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) telah disetujui penuh (Full Approved). Dokumen terlampir. Tautan: ${viewLink}`,
+    fallbackText: `Permohonan CER ${params.cerNumber} (${params.subject}) telah disetujui penuh (Full Approved) dan nomor aset telah diregistrasi oleh Finance. Dokumen terlampir. Tautan: ${viewLink}`,
     attachments: attachments.length > 0 ? attachments : undefined,
   })
 
+  // Sinkronkan ke Notification Center HERO (Bell):
+  // Notifikasi in-app untuk pemohon dan tim procurement (Sofyan, Nico, Rajab)
+  const bellRecipients = [
+    params.applicantEmail,
+    'sofyan.darmawan@chitraparatama.co.id',
+    'nico.saputra@chitraparatama.co.id',
+    'abdul.rajab@chitraparatama.co.id',
+  ].filter(Boolean)
+
   await notifyWorkflowBellRecipients({
-    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
+    recipientEmails: bellRecipients,
     eventType: 'cer.full_approved',
     category: 'approval_requests',
     title: `CER Full Approved: ${params.cerNumber}`,
-    body: `Permohonan CER "${params.subject}" telah disetujui penuh oleh Direksi. Dokumen resmi telah terbit.`,
+    body: `Permohonan CER "${params.subject}" telah disetujui penuh & diregistrasi oleh Finance. Dokumen resmi telah terbit.`,
     url: viewLink,
   })
 }

@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { describe, it, expect } from 'vitest';
 
 describe('Marital Status Request Workflow Integration', () => {
   it('registers marital status schema and exports canonical constants', () => {

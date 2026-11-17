@@ -3,16 +3,24 @@
 import { db } from '@/db'
 import { assetTransfers, type AssetTransferRow } from '@/db/schema/asset-transfer'
 import { centralServiceAssets, centralServiceAssetHistories } from '@/db/schema/central-service'
-import { employees, sites, approvals } from '@/db/schema/hero'
+import { employees, sites, approvals, masterDepartments } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessContext, isSuperAdminRole } from '@/lib/hero-access'
+import { isSuperAdminUser } from '@/lib/role-utils'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
-import { and, desc, eq, ilike, or, sql, asc } from 'drizzle-orm'
+import { and, desc, eq, ilike, or, sql, asc, inArray, gte, lte } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { generateAssetTransferPdf } from '@/lib/asset-transfer-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { assetTransferInputSchema, type AssetTransferInput } from './schema'
 import { sendAssetRevisionRequestedEmail, sendAssetResubmittedEmail } from '@/lib/asset-approval-email'
+import {
+  sendAssetTransferSubmittedEmail,
+  sendAssetTransferFullApprovedEmail,
+  sendAssetTransferRejectedEmail,
+} from '@/lib/asset-transfer-email'
+import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { getPublicAppUrl } from '@/lib/auth-config'
 
 /**
  * Fetch Asset Transfer list with filter and KPI stats
@@ -20,6 +28,8 @@ import { sendAssetRevisionRequestedEmail, sendAssetResubmittedEmail } from '@/li
 export async function getAssetTransfers(params?: {
   search?: string
   status?: string
+  startDate?: string | Date
+  endDate?: string | Date
   page?: number
   pageSize?: number
 }) {
@@ -30,7 +40,16 @@ export async function getAssetTransfers(params?: {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
 
     const search = params?.search?.trim() || ''
     const statusFilter = params?.status?.trim() || ''
@@ -56,6 +75,22 @@ export async function getAssetTransfers(params?: {
 
     if (statusFilter && statusFilter !== 'all') {
       conditions.push(eq(assetTransfers.status, statusFilter))
+    }
+
+    if (params?.startDate) {
+      const start = new Date(params.startDate)
+      if (!isNaN(start.getTime())) {
+        start.setHours(0, 0, 0, 0)
+        conditions.push(gte(assetTransfers.createdAt, start))
+      }
+    }
+
+    if (params?.endDate) {
+      const end = new Date(params.endDate)
+      if (!isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999)
+        conditions.push(lte(assetTransfers.createdAt, end))
+      }
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined
@@ -89,6 +124,7 @@ export async function getAssetTransfers(params?: {
           currentApproverEmployeeId: assetTransfers.currentApproverEmployeeId,
           createdById: assetTransfers.createdById,
           applicantEmployeeId: assetTransfers.applicantEmployeeId,
+          applicantSignatureUrl: assetTransfers.applicantSignatureUrl,
           pdfUrl: assetTransfers.pdfUrl,
           createdAt: assetTransfers.createdAt,
           submittedAt: assetTransfers.submittedAt,
@@ -114,11 +150,35 @@ export async function getAssetTransfers(params?: {
         .from(assetTransfers),
     ])
 
+    const transferIds = items.map((i) => i.id)
+    const pendingApprovals = transferIds.length > 0
+      ? await db
+          .select({
+            id: approvals.id,
+            assetTransferId: approvals.assetTransferId,
+            level: approvals.level,
+            approverEmployeeId: approvals.approverEmployeeId,
+            approverName: approvals.approverName,
+            status: approvals.status,
+          })
+          .from(approvals)
+          .where(
+            and(
+              inArray(approvals.assetTransferId, transferIds),
+              eq(approvals.status, 'Pending')
+            )
+          )
+      : []
+
     const mappedItems = items.map((item) => {
+      const pendingStep = pendingApprovals.find((a) => a.assetTransferId === item.id)
       const isPendingOrInReview = ['pending', 'in_review', 'draft'].includes(item.status)
       const canApprove = Boolean(
         isPendingOrInReview &&
-          (isSuperAdmin || (empContext?.employeeId && item.currentApproverEmployeeId === empContext.employeeId))
+          (isSuperAdmin ||
+            (empContext?.employeeId &&
+              (item.currentApproverEmployeeId === empContext.employeeId ||
+                pendingStep?.approverEmployeeId === empContext.employeeId)))
       )
       const canCancel = Boolean(
         isPendingOrInReview &&
@@ -135,6 +195,7 @@ export async function getAssetTransfers(params?: {
       )
       return {
         ...item,
+        currentApprovalId: pendingStep?.id || null,
         canApprove,
         canCancel,
         canEditRevision,
@@ -261,6 +322,16 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
     }
     const input = parsed.data
 
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+
     // 1. Fetch Asset snapshot
     const [asset] = await db
       .select()
@@ -328,72 +399,126 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
     }
     const transferNumber = `${prefix}${String(nextSeq).padStart(4, '0')}`
 
-    // 5. Resolve 3-Step Approval Chain:
-    // Step 1: Atasan Langsung Current Holder (Pelepasan aset)
-    // Step 2: New Holder (Penerima konfirmasi serah terima fisik)
-    // Step 3: Atasan Langsung New Holder (Penerimaan ke unit kerja)
+    // 5. Resolve 4-Step Approval Chain:
+    // Step 1: Pemegang Saat Ini (Pelepasan Aset)
+    // Step 2: Atasan Langsung Current Holder (Persetujuan Pelepasan Aset)
+    // Step 3: New Holder (Penerima Konfirmasi Serah Terima Fisik)
+    // Step 4: Atasan Langsung New Holder (Penerimaan ke Unit Kerja)
 
-    // Resolve Step 1 Approver:
-    let step1ApproverId = input.currentHolderManagerId || currentHolder.directManagerId || null
-    let step1ApproverName = 'Atasan Langsung Current Holder'
-    if (step1ApproverId) {
-      const [mgr1] = await db
-        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+    const isApplicantCurrentHolder = Boolean(
+      (currentEmp?.id && currentEmp.id === currentHolder.id) ||
+      (currentHolder.email && session.user.email && currentHolder.email.toLowerCase() === session.user.email.toLowerCase())
+    )
+
+    // Step 1: Pemegang Saat Ini (Current Holder)
+    const step1ApproverId = currentHolder.id
+    const step1ApproverName = currentHolder.name
+    const step1ApproverEmail = currentHolder.email || null
+    const step1Status = isApplicantCurrentHolder ? 'Approved' : 'Pending'
+    const step1ReviewedAt = isApplicantCurrentHolder ? now : null
+    const step1Sig = isApplicantCurrentHolder ? input.applicantSignatureUrl : null
+
+    // Step 2: Atasan Langsung Current Holder
+    let step2ApproverId = input.currentHolderManagerId || currentHolder.directManagerId || null
+    let step2ApproverName = 'Atasan Langsung Current Holder'
+    let step2ApproverEmail = currentHolder.email || null
+    let step2ApproverJobTitle = 'Atasan Langsung Current Holder'
+    if (step2ApproverId) {
+      const [mgr2] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
         .from(employees)
-        .where(eq(employees.id, step1ApproverId))
+        .where(eq(employees.id, step2ApproverId))
         .limit(1)
-      if (mgr1) {
-        step1ApproverName = mgr1.name
+      if (mgr2) {
+        step2ApproverName = mgr2.name
+        step2ApproverEmail = mgr2.email || null
+        step2ApproverJobTitle = mgr2.jobTitle || 'Atasan Langsung Current Holder'
       }
     } else {
-      step1ApproverId = currentHolder.id
-      step1ApproverName = currentHolder.name
+      step2ApproverId = currentHolder.id
+      step2ApproverName = currentHolder.name
+      step2ApproverEmail = currentHolder.email || null
     }
+    const step2Status = isApplicantCurrentHolder ? 'Pending' : 'Draft'
 
-    // Step 2 Approver: New Holder (Penerima)
-    const step2ApproverId = newHolder.id
-    const step2ApproverName = newHolder.name
+    // Step 3: Pemegang Baru (New Holder)
+    const step3ApproverId = newHolder.id
+    const step3ApproverName = newHolder.name
+    const step3ApproverEmail = newHolder.email || null
+    const step3Status = 'Draft'
 
-    // Resolve Step 3 Approver: Atasan Langsung New Holder
-    let step3ApproverId = input.newHolderManagerId || newHolder.directManagerId || null
-    let step3ApproverName = 'Atasan Langsung New Holder'
-    if (step3ApproverId) {
-      const [mgr3] = await db
-        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle })
+    // Step 4: Atasan Langsung New Holder
+    let step4ApproverId = input.newHolderManagerId || newHolder.directManagerId || null
+    let step4ApproverName = 'Atasan Langsung New Holder'
+    let step4ApproverEmail = newHolder.email || null
+    let step4ApproverJobTitle = 'Atasan Langsung New Holder'
+    if (step4ApproverId) {
+      const [mgr4] = await db
+        .select({ id: employees.id, name: employees.name, jobTitle: employees.jobTitle, email: employees.email })
         .from(employees)
-        .where(eq(employees.id, step3ApproverId))
+        .where(eq(employees.id, step4ApproverId))
         .limit(1)
-      if (mgr3) {
-        step3ApproverName = mgr3.name
+      if (mgr4) {
+        step4ApproverName = mgr4.name
+        step4ApproverEmail = mgr4.email || null
+        step4ApproverJobTitle = mgr4.jobTitle || 'Atasan Langsung New Holder'
       }
     } else {
-      step3ApproverId = newHolder.id
-      step3ApproverName = newHolder.name
+      step4ApproverId = newHolder.id
+      step4ApproverName = newHolder.name
+      step4ApproverEmail = newHolder.email || null
     }
+    const step4Status = 'Draft'
 
     const approvalChain = [
       {
         level: 1,
-        title: 'Step 1: Atasan Langsung Pemegang Lama (Pelepasan Aset)',
+        title: 'Step 1: Pemegang Saat Ini (Pelepasan Aset)',
         approverName: step1ApproverName,
         approverEmployeeId: step1ApproverId,
-        status: 'Pending',
+        approverEmail: step1ApproverEmail,
+        status: step1Status,
+        reviewedAt: step1ReviewedAt,
+        signatureUrl: step1Sig,
       },
       {
         level: 2,
-        title: 'Step 2: Pemegang Baru (Konfirmasi Serah Terima Fisik)',
+        title: 'Step 2: Atasan Langsung Pemegang Lama (Pelepasan Aset)',
         approverName: step2ApproverName,
         approverEmployeeId: step2ApproverId,
-        status: 'Draft',
+        approverEmail: step2ApproverEmail,
+        status: step2Status,
+        reviewedAt: null,
+        signatureUrl: null,
       },
       {
         level: 3,
-        title: 'Step 3: Atasan Langsung Pemegang Baru (Penerimaan Aset)',
+        title: 'Step 3: Pemegang Baru (Konfirmasi Serah Terima Fisik)',
         approverName: step3ApproverName,
         approverEmployeeId: step3ApproverId,
-        status: 'Draft',
+        approverEmail: step3ApproverEmail,
+        status: step3Status,
+        reviewedAt: null,
+        signatureUrl: null,
+      },
+      {
+        level: 4,
+        title: 'Step 4: Atasan Langsung Pemegang Baru (Penerimaan Aset)',
+        approverName: step4ApproverName,
+        approverEmployeeId: step4ApproverId,
+        approverEmail: step4ApproverEmail,
+        status: step4Status,
+        reviewedAt: null,
+        signatureUrl: null,
       },
     ]
+
+    const initialStepOrder = isApplicantCurrentHolder ? 2 : 1
+    const initialApproverTitle = isApplicantCurrentHolder
+      ? 'Atasan Langsung Pemegang Lama'
+      : 'Pemegang Saat Ini (Pelepasan Aset)'
+    const initialApproverName = isApplicantCurrentHolder ? step2ApproverName : step1ApproverName
+    const initialApproverId = isApplicantCurrentHolder ? step2ApproverId : step1ApproverId
 
     // 6. Insert Asset Transfer Record
     const [newTransfer] = await db
@@ -417,25 +542,29 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
         targetLocationName: targetSite.name,
         notes: input.notes || null,
         status: 'pending',
-        currentStepOrder: 1,
-        currentApproverTitle: 'Atasan Langsung Current Holder',
-        currentApproverName: step1ApproverName,
-        currentApproverEmployeeId: step1ApproverId,
+        currentStepOrder: initialStepOrder,
+        currentApproverTitle: initialApproverTitle,
+        currentApproverName: initialApproverName,
+        currentApproverEmployeeId: initialApproverId,
         createdById: session.user.id,
-        applicantEmployeeId: currentHolder.id,
+        applicantEmployeeId: currentEmp?.id || currentHolder.id,
+        applicantSignatureUrl: input.applicantSignatureUrl,
         submittedAt: now,
       })
       .returning()
 
-    // 7. Insert 3 steps into hero_approvals for central inbox integration
+    // 7. Insert 4 steps into hero_approvals for central inbox integration
     for (const step of approvalChain) {
       await db.insert(approvals).values({
         assetTransferId: newTransfer.id,
         level: step.level,
         approverName: step.approverName,
         approverEmployeeId: step.approverEmployeeId,
+        approverEmail: step.approverEmail,
         status: step.status,
         submittedAt: now,
+        reviewedAt: step.reviewedAt,
+        signatureUrl: step.signatureUrl,
         activityType: 'asset_transfer',
         requestNumber: transferNumber,
         activityTitle: `Transfer Aset: ${asset.description} (${asset.assetNumber || '-'})`,
@@ -443,6 +572,64 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
         decisionNote: step.title,
         resolutionSource: 'matrix',
       })
+    }
+
+    // 8. Notify Active Approver via CER-style Email and HERO Notification Center
+    const notifyApproverId = initialApproverId
+    if (notifyApproverId) {
+      try {
+        const [activeApproverEmp] = await db
+          .select({ email: employees.email, name: employees.name, jobTitle: employees.jobTitle })
+          .from(employees)
+          .where(eq(employees.id, notifyApproverId))
+          .limit(1)
+
+        if (activeApproverEmp?.email) {
+          const appUrl = getPublicAppUrl()
+          const equipmentText =
+            input.equipmentOtherNote ||
+            (Array.isArray(input.equipmentChecklist) && input.equipmentChecklist.length > 0
+              ? input.equipmentChecklist.join(', ')
+              : 'Unit Lengkap beserta perlengkapan standar')
+
+          // Send CER-style Email notification
+          await sendAssetTransferSubmittedEmail({
+            approverEmail: activeApproverEmp.email,
+            approverName: activeApproverEmp.name || initialApproverName,
+            approverJobTitle: activeApproverEmp.jobTitle || initialApproverTitle,
+            transferNumber,
+            assetName: asset.description,
+            assetNumber: asset.assetNumber || '',
+            serialNumber: asset.serialNumber || '',
+            currentHolderName: currentHolder.name,
+            currentHolderJobTitle: currentHolder.jobTitle || null,
+            currentLocationName: currentSite.name,
+            newHolderName: newHolder.name,
+            newHolderJobTitle: newHolder.jobTitle || null,
+            targetLocationName: targetSite.name,
+            equipmentText,
+            notes: input.notes || null,
+            applicantName: currentEmp?.name || currentHolder.name,
+            applicantSn: currentEmp?.employeeSn || currentHolder.employeeSn || null,
+            applicantJobTitle: currentEmp?.jobTitle || currentHolder.jobTitle || null,
+            approvalStepTitle: initialApproverTitle,
+            approvalStepLevel: initialStepOrder,
+            approvalUrl: `${appUrl}/dashboard/approval`,
+          })
+
+          // Send in-app Bell Notification
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [activeApproverEmp.email],
+            eventType: 'asset_transfer.approval_requested',
+            category: 'approval_requests',
+            title: `Persetujuan Transfer Aset: ${transferNumber}`,
+            body: `Permohonan transfer aset "${asset.description}" (${currentHolder.name} -> ${newHolder.name}) menunggu persetujuan Anda.`,
+            url: '/dashboard/approval',
+          })
+        }
+      } catch (notifErr) {
+        console.error('[createAssetTransfer] Notification error:', notifErr)
+      }
     }
 
     revalidatePath('/dashboard/assets/transfer')
@@ -470,7 +657,16 @@ export async function getAssetTransferDetail(id: number) {
   try {
     const session = await getServerSession()
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
 
     const [transfer] = await db
       .select()
@@ -557,7 +753,16 @@ export async function approveAssetTransfer(
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
 
     const [transfer] = await db
       .select()
@@ -634,53 +839,149 @@ export async function approveAssetTransfer(
           status: 'in_review',
         })
         .where(eq(assetTransfers.id, id))
+
+      // Notify next approver via CER-style Email and HERO Notification Center
+      if (next.approverEmployeeId) {
+        try {
+          const [nextEmp] = await db
+            .select({ email: employees.email, name: employees.name, jobTitle: employees.jobTitle })
+            .from(employees)
+            .where(eq(employees.id, next.approverEmployeeId))
+            .limit(1)
+
+          if (nextEmp?.email) {
+            const appUrl = getPublicAppUrl()
+            await sendAssetTransferSubmittedEmail({
+              approverEmail: nextEmp.email,
+              approverName: nextEmp.name || next.approverName,
+              approverJobTitle: nextEmp.jobTitle || next.decisionNote,
+              transferNumber: transfer.transferNumber,
+              assetName: transfer.assetName,
+              assetNumber: transfer.assetNumber || '',
+              serialNumber: transfer.serialNumber || '',
+              currentHolderName: transfer.currentHolderName,
+              currentLocationName: transfer.currentLocationName,
+              newHolderName: transfer.newHolderName,
+              targetLocationName: transfer.targetLocationName,
+              equipmentText:
+                transfer.equipmentOtherNote ||
+                (Array.isArray(transfer.equipmentChecklist) && transfer.equipmentChecklist.length > 0
+                  ? transfer.equipmentChecklist.join(', ')
+                  : 'Unit Lengkap beserta perlengkapan standar'),
+              notes: transfer.notes || null,
+              applicantName: transfer.currentHolderName,
+              approvalStepTitle: next.decisionNote || `Tahap ${next.level}`,
+              approvalStepLevel: next.level,
+              approvalUrl: `${appUrl}/dashboard/approval`,
+            })
+
+            await notifyWorkflowBellRecipients({
+              recipientEmails: [nextEmp.email],
+              eventType: 'asset_transfer.approval_requested',
+              category: 'approval_requests',
+              title: `Persetujuan Transfer Aset: ${transfer.transferNumber}`,
+              body: `Pengajuan transfer aset "${transfer.assetName}" telah disetujui di tahap sebelumnya dan siap Anda tinjau.`,
+              url: '/dashboard/approval',
+            })
+          }
+        } catch (notifErr) {
+          console.error('[approveAssetTransfer] Step notification error:', notifErr)
+        }
+      }
     } else {
-      // Final Approved (Step 3)! Generate Official PDF Document
+      // Final Approved (Step 4)! Generate Official PDF Document
       let pdfUrl: string | null = null
       try {
-        const [applicant] = await db
-          .select({
-            name: employees.name,
-            jobTitle: employees.jobTitle,
-            department: masterDepartments.name,
-            section: employees.section,
-          })
-          .from(employees)
-          .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-          .where(eq(employees.id, transfer.applicantEmployeeId || 0))
-          .limit(1)
+        const [applicant, holderEmp, newHolderEmp] = await Promise.all([
+          db
+            .select({
+              name: employees.name,
+              jobTitle: employees.jobTitle,
+              department: masterDepartments.name,
+              section: employees.section,
+            })
+            .from(employees)
+            .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+            .where(eq(employees.id, transfer.applicantEmployeeId || 0))
+            .limit(1)
+            .then((r) => r[0] || null),
+          db
+            .select({ jobTitle: employees.jobTitle })
+            .from(employees)
+            .where(eq(employees.id, transfer.currentHolderEmployeeId))
+            .limit(1)
+            .then((r) => r[0] || null),
+          db
+            .select({ jobTitle: employees.jobTitle })
+            .from(employees)
+            .where(eq(employees.id, transfer.newHolderEmployeeId))
+            .limit(1)
+            .then((r) => r[0] || null),
+        ])
 
         const allApprovals = await db
-          .select()
+          .select({
+            id: approvals.id,
+            level: approvals.level,
+            label: approvals.decisionNote,
+            approverName: approvals.approverName,
+            status: approvals.status,
+            signedAt: approvals.reviewedAt,
+            signatureUrl: approvals.signatureUrl,
+            jobTitle: employees.jobTitle,
+          })
           .from(approvals)
+          .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))
           .where(eq(approvals.assetTransferId, id))
           .orderBy(asc(approvals.level))
 
         const pdfApprovers = allApprovals.map((s) => ({
           level: s.level,
-          label: s.decisionNote || `Tahap ${s.level}`,
+          label: s.label || `Tahap ${s.level}`,
           approverName: s.approverName,
+          approverJobTitle: s.jobTitle || null,
           status: s.status,
-          signedAt: s.reviewedAt,
+          signedAt: s.signedAt,
           signatureUrl: s.signatureUrl,
         }))
+
+        const completenessText =
+          transfer.equipmentOtherNote ||
+          (Array.isArray(transfer.equipmentChecklist) && transfer.equipmentChecklist.length > 0
+            ? transfer.equipmentChecklist.join(', ')
+            : 'Unit Lengkap beserta perlengkapan standar')
+
+        const parsedPhotos: Array<{ fileName: string; fileUrl: string }> = (() => {
+          try {
+            const arr = JSON.parse(transfer.assetPhotos || '[]')
+            return Array.isArray(arr) ? arr : []
+          } catch {
+            return []
+          }
+        })()
 
         const pdfBytes = await generateAssetTransferPdf({
           transferNumber: transfer.transferNumber,
           requestDate: transfer.requestDate,
           applicantName: applicant?.name || transfer.applicantName || 'Pemohon',
           applicantJobTitle: applicant?.jobTitle,
+          applicantSignatureUrl: transfer.applicantSignatureUrl,
           departmentName: applicant?.department || transfer.currentLocationName,
           sectionName: applicant?.section,
           assetName: transfer.assetName,
           assetNumber: transfer.assetNumber,
           serialNumber: transfer.serialNumber,
+          equipmentText: completenessText,
           currentHolderName: transfer.currentHolderName,
           currentLocationName: transfer.currentLocationName,
           targetHolderName: transfer.newHolderName,
           targetLocationName: transfer.targetLocationName,
-          reason: transfer.reason,
+          currentHolderJobTitle: holderEmp?.jobTitle || 'Pemegang Asal',
+          newHolderJobTitle: newHolderEmp?.jobTitle || 'Pemegang Baru',
+          reason: transfer.notes || transfer.reason || 'Mutasi dan pemindahan penugasan operasional aset',
           notes: transfer.notes,
+          assetPhotos: parsedPhotos,
+          photoUrl: parsedPhotos[0]?.fileUrl || null,
           approvers: pdfApprovers,
         })
 
@@ -721,6 +1022,90 @@ export async function approveAssetTransfer(
           changeRemark: `Mutasi resmi disetujui via Transfer Aset No. ${transfer.transferNumber}`,
         })
       }
+
+      // Notify applicant & holders via CER-style Email (with PDF Attachment) & HERO Notification Center
+      try {
+        const [appEmp, holderEmp, newHolderEmp] = await Promise.all([
+          transfer.applicantEmployeeId
+            ? db
+                .select({ email: employees.email, name: employees.name })
+                .from(employees)
+                .where(eq(employees.id, transfer.applicantEmployeeId))
+                .limit(1)
+                .then((r) => r[0] || null)
+            : null,
+          transfer.currentHolderEmployeeId
+            ? db
+                .select({ email: employees.email, name: employees.name })
+                .from(employees)
+                .where(eq(employees.id, transfer.currentHolderEmployeeId))
+                .limit(1)
+                .then((r) => r[0] || null)
+            : null,
+          transfer.newHolderEmployeeId
+            ? db
+                .select({ email: employees.email, name: employees.name })
+                .from(employees)
+                .where(eq(employees.id, transfer.newHolderEmployeeId))
+                .limit(1)
+                .then((r) => r[0] || null)
+            : null,
+        ])
+
+        const applicantEmail = appEmp?.email || holderEmp?.email || session.user.email
+        if (applicantEmail) {
+          await sendAssetTransferFullApprovedEmail({
+            applicantEmail,
+            applicantName: appEmp?.name || applicant?.name || transfer.applicantName || 'Pemohon',
+            currentHolderEmail: holderEmp?.email,
+            currentHolderName: transfer.currentHolderName,
+            newHolderEmail: newHolderEmp?.email,
+            newHolderName: transfer.newHolderName,
+            transferNumber: transfer.transferNumber,
+            assetName: transfer.assetName,
+            assetNumber: transfer.assetNumber || '',
+            serialNumber: transfer.serialNumber || '',
+            currentLocationName: transfer.currentLocationName,
+            targetLocationName: transfer.targetLocationName,
+            equipmentText: completenessText,
+            notes: transfer.notes || null,
+            pdfBuffer: pdfBytes ? Buffer.from(pdfBytes) : undefined,
+            pdfUrl: pdfUrl || undefined,
+            transferId: id,
+          })
+        }
+
+        const empIdsToNotify = Array.from(
+          new Set(
+            [
+              transfer.applicantEmployeeId,
+              transfer.currentHolderEmployeeId,
+              transfer.newHolderEmployeeId,
+            ].filter(Boolean)
+          )
+        )
+
+        if (empIdsToNotify.length > 0) {
+          const empRows = await db
+            .select({ email: employees.email })
+            .from(employees)
+            .where(inArray(employees.id, empIdsToNotify as number[]))
+
+          const emails = empRows.map((e) => e.email).filter(Boolean)
+          if (emails.length > 0) {
+            await notifyWorkflowBellRecipients({
+              recipientEmails: emails,
+              eventType: 'asset_transfer.approved',
+              category: 'info',
+              title: `Transfer Aset Disetujui Penuh: ${transfer.transferNumber}`,
+              body: `Mutasi aset "${transfer.assetName}" ke ${transfer.newHolderName} telah disetujui penuh. Berita Acara resmi telah terbit.`,
+              url: '/dashboard/assets/transfer',
+            })
+          }
+        }
+      } catch (notifErr) {
+        console.error('[approveAssetTransfer] Final notification error:', notifErr)
+      }
     }
 
     revalidatePath('/dashboard/assets/transfer')
@@ -749,7 +1134,16 @@ export async function rejectAssetTransfer(id: number, reason: string) {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
 
     const [transfer] = await db
       .select()
@@ -799,6 +1193,52 @@ export async function rejectAssetTransfer(id: number, reason: string) {
     revalidatePath('/dashboard/assets/transfer')
     revalidatePath('/dashboard/approval')
 
+    // Notify applicant & current holder via CER-style Email & HERO Notification Center
+    try {
+      const [appEmp] = transfer.applicantEmployeeId
+        ? await db
+            .select({ email: employees.email, name: employees.name })
+            .from(employees)
+            .where(eq(employees.id, transfer.applicantEmployeeId))
+            .limit(1)
+        : [null]
+
+      if (appEmp?.email) {
+        await sendAssetTransferRejectedEmail({
+          applicantEmail: appEmp.email,
+          applicantName: appEmp.name || 'Pemohon',
+          transferNumber: transfer.transferNumber,
+          assetName: transfer.assetName,
+          rejectedByName: currentEmp?.name || session.user.name || 'Approver',
+          rejectionReason: reason.trim(),
+        })
+      }
+
+      const empIdsToNotify = Array.from(
+        new Set([transfer.applicantEmployeeId, transfer.currentHolderEmployeeId].filter(Boolean))
+      )
+      if (empIdsToNotify.length > 0) {
+        const empRows = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(inArray(employees.id, empIdsToNotify as number[]))
+
+        const emails = empRows.map((e) => e.email).filter(Boolean)
+        if (emails.length > 0) {
+          await notifyWorkflowBellRecipients({
+            recipientEmails: emails,
+            eventType: 'asset_transfer.rejected',
+            category: 'approval_requests',
+            title: `Transfer Aset Ditolak: ${transfer.transferNumber}`,
+            body: `Pengajuan transfer aset "${transfer.assetName}" ditolak: "${reason.trim()}".`,
+            url: '/dashboard/assets/transfer',
+          })
+        }
+      }
+    } catch (notifErr) {
+      console.error('[rejectAssetTransfer] Notification error:', notifErr)
+    }
+
     return { success: true, message: 'Transfer aset ditolak.' }
   } catch (error: any) {
     console.error('[rejectAssetTransfer] Error:', error)
@@ -817,7 +1257,16 @@ export async function cancelAssetTransfer(id: number) {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
 
     const [transfer] = await db
       .select()
@@ -854,6 +1303,30 @@ export async function cancelAssetTransfer(id: number) {
 
     revalidatePath('/dashboard/assets/transfer')
     revalidatePath('/dashboard/approval')
+
+    // Notify applicant via HERO Notification Center
+    try {
+      if (transfer.applicantEmployeeId) {
+        const [appEmp] = await db
+          .select({ email: employees.email })
+          .from(employees)
+          .where(eq(employees.id, transfer.applicantEmployeeId))
+          .limit(1)
+
+        if (appEmp?.email) {
+          await notifyWorkflowBellRecipients({
+            recipientEmails: [appEmp.email],
+            eventType: 'asset_transfer.cancelled',
+            category: 'info',
+            title: `Transfer Aset Dibatalkan: ${transfer.transferNumber}`,
+            body: `Pengajuan transfer aset "${transfer.assetName}" (${transfer.transferNumber}) telah dibatalkan.`,
+            url: '/dashboard/assets/transfer',
+          })
+        }
+      }
+    } catch (notifErr) {
+      console.error('[cancelAssetTransfer] Notification error:', notifErr)
+    }
 
     return {
       success: true,
@@ -893,7 +1366,16 @@ export async function revertAssetTransferAction(id: number, revertReason: string
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
     const isCurrentApprover = Boolean(
       empContext?.employeeId && transfer.currentApproverEmployeeId === empContext.employeeId
     )
@@ -979,6 +1461,8 @@ export async function revertAssetTransferAction(id: number, revertReason: string
   }
 }
 
+export const revertAssetTransfer = revertAssetTransferAction
+
 /**
  * Resubmit Asset Transfer (Kirim Ulang Revisi oleh Pemohon -> Langsung Kembali ke Last Approver)
  */
@@ -1006,7 +1490,16 @@ export async function resubmitAssetTransferAction(input: {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    let currentEmp: any = null
+    if (session.user.email) {
+      const [emp] = await db
+        .select()
+        .from(employees)
+        .where(eq(employees.email, session.user.email))
+        .limit(1)
+      currentEmp = emp || null
+    }
+    const isSuperAdmin = isSuperAdminUser(currentEmp, session.user)
     const isCreator = Boolean(
       (empContext?.employeeId && transfer.applicantEmployeeId === empContext.employeeId) ||
       (empContext?.employeeId && transfer.currentHolderEmployeeId === empContext.employeeId) ||

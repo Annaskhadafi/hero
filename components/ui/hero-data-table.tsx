@@ -467,29 +467,34 @@ export function HeroDataTable<T extends Record<string, any>>({
             />
           )}
 
-          {/* Export Excel Button */}
-          <Button
-            type="button"
-            variant="outline"
-            size="dense"
-            onClick={handleExportExcel}
-            className="h-9 gap-1.5 font-medium"
-          >
-            <FileSpreadsheet className="text-emerald-600 size-3.5" />
-            Excel
-          </Button>
+          {/* Export Buttons (Excel & PDF) */}
+          {enableExport && (
+            <>
+              {/* Export Excel Button */}
+              <Button
+                type="button"
+                variant="outline"
+                size="dense"
+                onClick={handleExportExcel}
+                className="h-9 gap-1.5 font-medium"
+              >
+                <FileSpreadsheet className="text-emerald-600 size-3.5" />
+                Excel
+              </Button>
 
-          {/* Export PDF Button */}
-          <Button
-            type="button"
-            variant="outline"
-            size="dense"
-            onClick={() => setShowPdfModal(true)}
-            className="h-9 gap-1.5 font-medium"
-          >
-            <FileText className="text-rose-600 size-3.5" />
-            PDF
-          </Button>
+              {/* Export PDF Button */}
+              <Button
+                type="button"
+                variant="outline"
+                size="dense"
+                onClick={() => setShowPdfModal(true)}
+                className="h-9 gap-1.5 font-medium"
+              >
+                <FileText className="text-rose-600 size-3.5" />
+                PDF
+              </Button>
+            </>
+          )}
 
           {/* Custom Header Actions (e.g. Tambah Data) */}
           {headerActions}

@@ -10,7 +10,7 @@ import { approveCerStepAction, rejectCerStepAction, revertCerStepAction } from '
 import { approveAssetBorrow, rejectAssetBorrow, revertAssetBorrowAction } from '@/app/dashboard/assets/borrow/actions'
 import { approveAssetTransfer, rejectAssetTransfer, revertAssetTransferAction } from '@/app/dashboard/assets/transfer/actions'
 import { approveAssetDisposal, rejectAssetDisposal, revertAssetDisposalAction } from '@/app/dashboard/assets/disposal/actions'
-import { eq, asc } from 'drizzle-orm'
+import { eq, asc, isNotNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 export async function approveAssetManagementItemAction({
@@ -33,7 +33,7 @@ export async function approveAssetManagementItemAction({
     } else if (subType === 'ASSET_BORROW') {
       res = await approveAssetBorrow(targetId, decisionNote, signatureUrl)
     } else if (subType === 'ASSET_TRANSFER') {
-      res = await approveAssetTransfer(targetId, decisionNote, signatureUrl)
+      res = await approveAssetTransfer(targetId, decisionNote, undefined, signatureUrl)
     } else if (subType === 'ASSET_DISPOSAL') {
       res = await approveAssetDisposal(targetId, decisionNote, signatureUrl)
     } else {
@@ -141,7 +141,6 @@ export async function getAssetManagementItemDetailAction({
           purchaseType: cerRequests.purchaseType,
           budgetSource: cerRequests.budgetSource,
           dateRequired: cerRequests.dateRequired,
-          submittedAt: cerRequests.submittedAt,
           approvedAt: cerRequests.approvedAt,
           applicantName: employees.name,
           applicantSn: employees.employeeSn,
@@ -151,15 +150,13 @@ export async function getAssetManagementItemDetailAction({
           siteName: sites.name,
           assetCategory: cerRequests.assetCategory,
           purchasePurpose: cerRequests.purchasePurpose,
-          purpose: cerRequests.purpose,
           vendorName: cerRequests.vendorName,
           totalEstimatedPrice: cerRequests.totalEstimatedPrice,
-          totalBudget: cerRequests.totalBudget,
           budgetCode: cerCapexBudgets.budgetCode,
           budgetName: cerCapexBudgets.budgetName,
           kelompokAset: cerRequests.kelompokAset,
           status: cerRequests.status,
-          submitterSignatureUrl: cerRequests.submitterSignatureUrl,
+          applicantSignatureUrl: cerRequests.applicantSignatureUrl,
           pdfUrl: cerRequests.pdfUrl,
           createdAt: cerRequests.createdAt,
         })
@@ -187,7 +184,6 @@ export async function getAssetManagementItemDetailAction({
           status: approvals.status,
           approverName: approvals.approverName,
           jobTitle: employees.jobTitle,
-          approverRole: approvals.approverRole,
           decisionNote: approvals.decisionNote,
           formName: approvals.formName,
           signatureUrl: approvals.signatureUrl,
@@ -200,11 +196,31 @@ export async function getAssetManagementItemDetailAction({
 
       const lastReviewed = approvalRows.filter((a) => a.reviewedAt).sort((a, b) => (new Date(b.reviewedAt!).getTime() - new Date(a.reviewedAt!).getTime()))[0]
 
+      // Fetch all previously inputted custom asset categories from database
+      const fromRequests = await db
+        .selectDistinct({ val: cerRequests.kelompokAset })
+        .from(cerRequests)
+        .where(isNotNull(cerRequests.kelompokAset))
+
+      const fromItems = await db
+        .selectDistinct({ val: cerItems.assetGroup })
+        .from(cerItems)
+        .where(isNotNull(cerItems.assetGroup))
+
+      const existingCategories = Array.from(
+        new Set(
+          [...fromRequests.map((r) => r.val), ...fromItems.map((i) => i.val)]
+            .map((s) => (s || '').trim())
+            .filter((s) => s.length > 0)
+        )
+      ).sort((a, b) => a.localeCompare(b, 'id'))
+
       return {
         success: true,
         subType: 'CER' as const,
         currentLevel: resolvedCurrentLevel,
-        pdfUrl: cer.pdfUrl,
+        pdfUrl: cer.pdfUrl || `/api/assets/cer/${cer.id}/pdf`,
+        existingCategories,
         summary: {
           documentNumber: cer.cerNumber,
           title: cer.subject,
@@ -212,7 +228,7 @@ export async function getAssetManagementItemDetailAction({
           siteName: cer.siteName || '-',
           requesterName: cer.applicantName || '-',
           requesterJobTitle: cer.applicantJobTitle || 'Pemohon',
-          totalAmount: cer.totalEstimatedPrice ? Number(cer.totalEstimatedPrice) : cer.totalBudget ? Number(cer.totalBudget) : 0,
+          totalAmount: cer.totalEstimatedPrice ? Number(cer.totalEstimatedPrice) : 0,
           budgetCode: cer.budgetCode || null,
           budgetName: cer.budgetName || null,
           lastNote: lastReviewed?.decisionNote || null,
@@ -226,7 +242,7 @@ export async function getAssetManagementItemDetailAction({
           budgetCode: cer.budgetCode,
           budgetName: cer.budgetName,
           dateRequired: cer.dateRequired,
-          submittedAt: cer.submittedAt || cer.createdAt,
+          submittedAt: cer.createdAt,
           approvedAt: cer.approvedAt,
           applicantName: cer.applicantName || '-',
           applicantSn: cer.applicantSn,
@@ -235,12 +251,12 @@ export async function getAssetManagementItemDetailAction({
           sectionName: cer.sectionName,
           siteName: cer.siteName,
           assetCategory: cer.assetCategory,
-          purchasePurpose: cer.purchasePurpose || cer.purpose,
+          purchasePurpose: cer.purchasePurpose,
           vendorName: cer.vendorName,
-          totalEstimatedPrice: cer.totalEstimatedPrice || cer.totalBudget || '0',
+          totalEstimatedPrice: cer.totalEstimatedPrice || '0',
           kelompokAset: cer.kelompokAset,
           status: cer.status,
-          submitterSignatureUrl: cer.submitterSignatureUrl,
+          submitterSignatureUrl: cer.applicantSignatureUrl || null,
           items: items.map((it) => ({
             id: it.id,
             itemDescription: it.description,
@@ -253,16 +269,22 @@ export async function getAssetManagementItemDetailAction({
               it.holderName ? `Holder: ${it.holderName}` : null,
             ].filter(Boolean).join(' • ') || undefined,
           })),
-          approvals: approvalRows.map((a) => ({
-            level: a.level,
-            title: a.formName || a.decisionNote || `Tahap ${a.level}`,
-            approverName: a.approverName,
-            jobTitle: a.jobTitle || a.approverRole || 'Approver',
-            status: a.status.toLowerCase(),
-            reviewedAt: a.reviewedAt,
-            signatureUrl: a.signatureUrl,
-            decisionNote: a.decisionNote,
-          })),
+          approvals: approvalRows.map((a) => {
+            let resolvedJobTitle = a.jobTitle || a.formName || 'Approver'
+            if (resolvedJobTitle.toLowerCase().includes('verifikator tambahan')) {
+              resolvedJobTitle = 'Approver'
+            }
+            return {
+              level: a.level,
+              title: a.formName || a.decisionNote || `Tahap ${a.level}`,
+              approverName: a.approverName,
+              jobTitle: resolvedJobTitle,
+              status: a.status.toLowerCase(),
+              reviewedAt: a.reviewedAt,
+              signatureUrl: a.signatureUrl,
+              decisionNote: a.decisionNote,
+            }
+          }),
         },
       }
     }
@@ -304,7 +326,6 @@ export async function getAssetManagementItemDetailAction({
           status: approvals.status,
           approverName: approvals.approverName,
           jobTitle: employees.jobTitle,
-          approverRole: approvals.approverRole,
           decisionNote: approvals.decisionNote,
           signatureUrl: approvals.signatureUrl,
           reviewedAt: approvals.reviewedAt,
@@ -353,7 +374,7 @@ export async function getAssetManagementItemDetailAction({
             level: a.level,
             title: a.decisionNote || 'Persetujuan Pemegang Aset',
             approverName: a.approverName,
-            jobTitle: a.jobTitle || a.approverRole || 'Pemegang Aset',
+            jobTitle: a.jobTitle || a.decisionNote || 'Pemegang Aset',
             status: a.status.toLowerCase(),
             reviewedAt: a.reviewedAt,
             signatureUrl: a.signatureUrl,
@@ -374,13 +395,17 @@ export async function getAssetManagementItemDetailAction({
           assetName: assetTransfers.assetName,
           assetNumber: assetTransfers.assetNumber,
           serialNumber: assetTransfers.serialNumber,
+          currentHolderEmployeeId: assetTransfers.currentHolderEmployeeId,
           currentHolderName: assetTransfers.currentHolderName,
           currentLocationName: assetTransfers.currentLocationName,
+          newHolderEmployeeId: assetTransfers.newHolderEmployeeId,
           newHolderName: assetTransfers.newHolderName,
           targetLocationName: assetTransfers.targetLocationName,
           equipmentChecklist: assetTransfers.equipmentChecklist,
           equipmentOtherNote: assetTransfers.equipmentOtherNote,
           notes: assetTransfers.notes,
+          assetPhotos: assetTransfers.assetPhotos,
+          applicantSignatureUrl: assetTransfers.applicantSignatureUrl,
           pdfUrl: assetTransfers.pdfUrl,
           createdAt: assetTransfers.createdAt,
         })
@@ -390,22 +415,44 @@ export async function getAssetManagementItemDetailAction({
 
       if (!transfer) return { success: false, message: 'Transfer aset tidak ditemukan.' }
 
-      const approvalRows = await db
-        .select({
-          id: approvals.id,
-          level: approvals.level,
-          status: approvals.status,
-          approverName: approvals.approverName,
-          jobTitle: employees.jobTitle,
-          approverRole: approvals.approverRole,
-          decisionNote: approvals.decisionNote,
-          signatureUrl: approvals.signatureUrl,
-          reviewedAt: approvals.reviewedAt,
-        })
-        .from(approvals)
-        .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))
-        .where(eq(approvals.assetTransferId, targetId))
-        .orderBy(asc(approvals.level))
+      const assetPhotosArray: Array<{ fileName: string; fileUrl: string }> = (() => {
+        try {
+          const parsed = JSON.parse(transfer.assetPhotos || '[]')
+          return Array.isArray(parsed) ? parsed : []
+        } catch {
+          return []
+        }
+      })()
+
+      const [holderEmp, newHolderEmp, approvalRows] = await Promise.all([
+        db
+          .select({ jobTitle: employees.jobTitle, employeeSn: employees.employeeSn })
+          .from(employees)
+          .where(eq(employees.id, transfer.currentHolderEmployeeId))
+          .limit(1)
+          .then((res) => res[0] || null),
+        db
+          .select({ jobTitle: employees.jobTitle, employeeSn: employees.employeeSn })
+          .from(employees)
+          .where(eq(employees.id, transfer.newHolderEmployeeId))
+          .limit(1)
+          .then((res) => res[0] || null),
+        db
+          .select({
+            id: approvals.id,
+            level: approvals.level,
+            status: approvals.status,
+            approverName: approvals.approverName,
+            jobTitle: employees.jobTitle,
+            decisionNote: approvals.decisionNote,
+            signatureUrl: approvals.signatureUrl,
+            reviewedAt: approvals.reviewedAt,
+          })
+          .from(approvals)
+          .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))
+          .where(eq(approvals.assetTransferId, targetId))
+          .orderBy(asc(approvals.level)),
+      ])
 
       const lastReviewed = approvalRows.filter((a) => a.reviewedAt).sort((a, b) => (new Date(b.reviewedAt!).getTime() - new Date(a.reviewedAt!).getTime()))[0]
 
@@ -413,14 +460,14 @@ export async function getAssetManagementItemDetailAction({
         success: true,
         subType: 'ASSET_TRANSFER' as const,
         currentLevel: resolvedCurrentLevel,
-        pdfUrl: transfer.pdfUrl,
+        pdfUrl: transfer.pdfUrl || `/api/assets/transfer/${transfer.id}/pdf`,
         summary: {
           documentNumber: transfer.transferNumber,
           title: `Transfer: ${transfer.assetName}`,
           categoryLabel: 'Mutasi / Transfer Aset',
           siteName: `${transfer.currentLocationName || '-'} -> ${transfer.targetLocationName || '-'}`,
           requesterName: transfer.currentHolderName,
-          requesterJobTitle: 'Pemegang Aset',
+          requesterJobTitle: holderEmp?.jobTitle || 'Pemegang Aset',
           totalAmount: 0,
           lastNote: lastReviewed?.decisionNote || null,
         },
@@ -433,19 +480,22 @@ export async function getAssetManagementItemDetailAction({
           assetNumber: transfer.assetNumber,
           serialNumber: transfer.serialNumber,
           currentHolderName: transfer.currentHolderName,
-          currentHolderJobTitle: 'Pemegang Aset Lama',
+          currentHolderJobTitle: holderEmp?.jobTitle || 'Pemegang Aset Lama',
           currentLocationName: transfer.currentLocationName,
           newHolderName: transfer.newHolderName,
-          newHolderJobTitle: 'Pemegang Aset Baru',
+          newHolderJobTitle: newHolderEmp?.jobTitle || 'Pemegang Aset Baru',
           targetLocationName: transfer.targetLocationName,
           equipmentChecklist: transfer.equipmentChecklist,
           equipmentOtherNote: transfer.equipmentOtherNote,
           notes: transfer.notes,
+          assetPhotos: assetPhotosArray,
+          applicantSignatureUrl: transfer.applicantSignatureUrl,
+          submitterSignatureUrl: transfer.applicantSignatureUrl,
           approvals: approvalRows.map((a) => ({
             level: a.level,
             title: a.decisionNote || `Tahap ${a.level}`,
             approverName: a.approverName,
-            jobTitle: a.jobTitle || a.approverRole || `Approver Step ${a.level}`,
+            jobTitle: a.jobTitle || a.decisionNote || `Approver Step ${a.level}`,
             status: a.status.toLowerCase(),
             reviewedAt: a.reviewedAt,
             signatureUrl: a.signatureUrl,
@@ -475,7 +525,6 @@ export async function getAssetManagementItemDetailAction({
           attachments: assetDisposals.attachments,
           submittedAt: assetDisposals.submittedAt,
           approvedAt: assetDisposals.approvedAt,
-          pdfUrl: assetDisposals.pdfUrl,
           createdAt: assetDisposals.createdAt,
         })
         .from(assetDisposals)
@@ -493,7 +542,6 @@ export async function getAssetManagementItemDetailAction({
           status: approvals.status,
           approverName: approvals.approverName,
           jobTitle: employees.jobTitle,
-          approverRole: approvals.approverRole,
           decisionNote: approvals.decisionNote,
           signatureUrl: approvals.signatureUrl,
           reviewedAt: approvals.reviewedAt,
@@ -509,7 +557,7 @@ export async function getAssetManagementItemDetailAction({
         success: true,
         subType: 'ASSET_DISPOSAL' as const,
         currentLevel: resolvedCurrentLevel,
-        pdfUrl: disposal.pdfUrl,
+        pdfUrl: `/api/assets/disposal/${disposal.id}/pdf`,
         summary: {
           documentNumber: disposal.disposalNumber,
           title: `Disposal: ${disposal.assetName}`,
@@ -541,7 +589,7 @@ export async function getAssetManagementItemDetailAction({
             level: a.level,
             title: a.decisionNote || `Tahap ${a.level}`,
             approverName: a.approverName,
-            jobTitle: a.jobTitle || a.approverRole || 'Approver',
+            jobTitle: a.jobTitle || a.decisionNote || 'Approver',
             status: a.status.toLowerCase(),
             reviewedAt: a.reviewedAt,
             signatureUrl: a.signatureUrl,

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, isNotNull, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, ne, notInArray, or, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { repairFormWo } from '@/db/schema/form-wo'
 import {
@@ -62,6 +62,7 @@ import { ensureHeroSeedData } from '@/lib/hero-admin'
 import { resolveUploadUrl } from '@/lib/s3-storage'
 import { user as authUser } from '@/db/schema/auth'
 import { isSuperAdminRole } from '@/lib/hero-access'
+import { isSuperAdminUser } from '@/lib/role-utils'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 
 type ApprovalRecordRow = {
@@ -3507,7 +3508,7 @@ export async function getAssetManagementInboxItems(
     const employeeEmailNorm = normalizeMatchValue(currentEmployee?.email)
     const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
-    const isUserSuperAdmin = currentEmployee?.role && isSuperAdminRole(currentEmployee.role)
+    const isUserSuperAdmin = Boolean((currentEmployee?.role && isSuperAdminRole(currentEmployee.role)) || isSuperAdminUser(currentEmployee, null))
 
     const pendingApprovals = await db
       .select({
@@ -3527,7 +3528,7 @@ export async function getAssetManagementInboxItems(
       .from(approvals)
       .where(
         and(
-          eq(approvals.status, 'pending'),
+          or(eq(approvals.status, 'pending'), eq(approvals.status, 'Pending'), ilike(approvals.status, 'pending')),
           or(
             isNotNull(approvals.cerRequestId),
             isNotNull(approvals.assetBorrowId),
@@ -3560,7 +3561,20 @@ export async function getAssetManagementInboxItems(
 
       const boardSecretaryCoApprove = isBoardSecretary && isDirectorApproval
 
-      return Boolean(emailMatches || empMatches || nameMatches || boardSecretaryCoApprove)
+      // Evo Dwi (id: 1006) has co-access to Asset Tagging / Syamsul Bahri (id: 990)
+      const isEvoDwi =
+        currentEmployee?.id === 1006 ||
+        Boolean(employeeEmailNorm && employeeEmailNorm.includes('evo')) ||
+        Boolean(normalizedEmail && normalizedEmail.includes('evo'))
+
+      const isAssetTaggingStep =
+        Boolean(appr.decisionNote && (appr.decisionNote.toLowerCase().includes('tagging') || appr.decisionNote.toLowerCase().includes('nomor aset'))) ||
+        appr.approverEmployeeId === 990 ||
+        Boolean(appr.approverName && appr.approverName.toLowerCase().includes('syamsul'))
+
+      const evoDwiCoAccess = isEvoDwi && isAssetTaggingStep
+
+      return Boolean(emailMatches || empMatches || nameMatches || boardSecretaryCoApprove || evoDwiCoAccess)
     })
 
     if (userApprovals.length === 0) return []
@@ -3571,7 +3585,26 @@ export async function getAssetManagementInboxItems(
     const disposalIds = userApprovals.map((a) => a.assetDisposalId).filter((id): id is number => id != null)
 
     const [cerRows, borrowRows, transferRows, disposalRows] = await Promise.all([
-      cerIds.length > 0 ? db.select().from(cerRequests).where(inArray(cerRequests.id, cerIds)) : [],
+      cerIds.length > 0
+        ? db
+            .select({
+              id: cerRequests.id,
+              cerNumber: cerRequests.cerNumber,
+              subject: cerRequests.subject,
+              purchasePurpose: cerRequests.purchasePurpose,
+              applicantName: employees.name,
+              departmentName: masterDepartments.name,
+              siteName: sites.name,
+              assetCategory: cerRequests.assetCategory,
+              totalEstimatedPrice: cerRequests.totalEstimatedPrice,
+              createdAt: cerRequests.createdAt,
+            })
+            .from(cerRequests)
+            .leftJoin(employees, eq(cerRequests.applicantEmployeeId, employees.id))
+            .leftJoin(masterDepartments, eq(cerRequests.departmentId, masterDepartments.id))
+            .leftJoin(sites, eq(cerRequests.siteId, sites.id))
+            .where(inArray(cerRequests.id, cerIds))
+        : [],
       borrowIds.length > 0 ? db.select().from(assetBorrows).where(inArray(assetBorrows.id, borrowIds)) : [],
       transferIds.length > 0 ? db.select().from(assetTransfers).where(inArray(assetTransfers.id, transferIds)) : [],
       disposalIds.length > 0 ? db.select().from(assetDisposals).where(inArray(assetDisposals.id, disposalIds)) : [],
@@ -3596,8 +3629,8 @@ export async function getAssetManagementInboxItems(
           subType: 'CER',
           subTypeLabel: 'CER (Capex)',
           documentNumber: c.cerNumber,
-          title: `CER: ${c.purpose || 'Pengadaan Aset'}`,
-          employeeName: c.applicantName,
+          title: `CER: ${c.purchasePurpose || c.subject || 'Pengadaan Aset'}`,
+          employeeName: c.applicantName || '-',
           department: c.departmentName || '-',
           siteName: c.siteName || '-',
           stepLabel: `Tahap ${appr.level}: ${appr.decisionNote || appr.approverName}`,
@@ -3607,18 +3640,18 @@ export async function getAssetManagementInboxItems(
           dueAt: new Date(new Date(c.createdAt).getTime() + 3 * 24 * 60 * 60 * 1000),
           submittedAt: c.createdAt,
           url: '/dashboard/assets/cer',
-          totalAmount: c.totalBudget ? Number(c.totalBudget) : undefined,
+          totalAmount: c.totalEstimatedPrice ? Number(c.totalEstimatedPrice) : undefined,
           rawAssetItem: {
             documentNumber: c.cerNumber,
-            requesterName: c.applicantName,
-            assetName: c.purpose,
+            requesterName: c.applicantName || '-',
+            assetName: c.purchasePurpose || c.subject || '-',
             categoryLabel: 'Capital Expenditure Request (CER)',
             details: [
               { label: 'Nomor CER', value: c.cerNumber },
               { label: 'Kategori Aset', value: c.assetCategory || '-' },
-              { label: 'Departemen', value: c.department || '-' },
-              { label: 'Tujuan Pengadaan', value: c.purpose || '-' },
-              { label: 'Total Anggaran', value: c.totalBudget ? `Rp ${Number(c.totalBudget).toLocaleString('id-ID')}` : '-' },
+              { label: 'Departemen', value: c.departmentName || '-' },
+              { label: 'Tujuan Pengadaan', value: c.purchasePurpose || '-' },
+              { label: 'Total Anggaran', value: c.totalEstimatedPrice ? `Rp ${Number(c.totalEstimatedPrice).toLocaleString('id-ID')}` : '-' },
             ],
           },
         })
@@ -3635,8 +3668,8 @@ export async function getAssetManagementInboxItems(
           documentNumber: b.borrowNumber,
           title: `Pinjam: ${b.assetName} (${b.purpose})`,
           employeeName: b.borrowerName,
-          department: b.borrowerDepartment || '-',
-          siteName: b.branch || '-',
+          department: '-',
+          siteName: '-',
           stepLabel: `Persetujuan Pemegang: ${b.holderName}`,
           approverName: appr.approverName,
           approverRole: appr.decisionNote,
@@ -3671,9 +3704,9 @@ export async function getAssetManagementInboxItems(
           subTypeLabel: 'Mutasi Aset',
           documentNumber: t.transferNumber,
           title: `Transfer: ${t.assetName}`,
-          employeeName: t.applicantName,
-          department: t.departmentName || '-',
-          siteName: `${t.sourceLocationSiteName || '-'} -> ${t.targetLocationSiteName || '-'}`,
+          employeeName: t.currentHolderName,
+          department: '-',
+          siteName: `${t.currentLocationName || '-'} -> ${t.targetLocationName || '-'}`,
           stepLabel: `Tahap ${appr.level}: ${appr.decisionNote || appr.approverName}`,
           approverName: appr.approverName,
           approverRole: appr.decisionNote,
@@ -3683,17 +3716,17 @@ export async function getAssetManagementInboxItems(
           url: '/dashboard/assets/transfer',
           rawAssetItem: {
             documentNumber: t.transferNumber,
-            requesterName: t.applicantName,
+            requesterName: t.currentHolderName,
             assetName: t.assetName,
             categoryLabel: 'Mutasi / Transfer Aset',
             details: [
               { label: 'No. Transfer', value: t.transferNumber },
               { label: 'Nama Aset', value: t.assetName },
               { label: 'No. Aset', value: t.assetNumber || '-' },
-              { label: 'Lokasi Asal', value: t.sourceLocationSiteName || '-' },
-              { label: 'Lokasi Tujuan', value: t.targetLocationSiteName || '-' },
-              { label: 'Pemegang Baru', value: t.targetHolderName || '-' },
-              { label: 'Alasan Transfer', value: t.transferReason || '-' },
+              { label: 'Lokasi Asal', value: t.currentLocationName || '-' },
+              { label: 'Lokasi Tujuan', value: t.targetLocationName || '-' },
+              { label: 'Pemegang Baru', value: t.newHolderName || '-' },
+              { label: 'Catatan', value: t.notes || '-' },
             ],
           },
         })
@@ -3764,7 +3797,7 @@ export async function approveAssetManagementItemAction({
     } else if (subType === 'ASSET_BORROW') {
       return await approveAssetBorrow(targetId, decisionNote, signatureUrl)
     } else if (subType === 'ASSET_TRANSFER') {
-      return await approveAssetTransfer(targetId, decisionNote, signatureUrl)
+      return await approveAssetTransfer(targetId, decisionNote, undefined, signatureUrl)
     } else if (subType === 'ASSET_DISPOSAL') {
       return await approveAssetDisposal(targetId, decisionNote, signatureUrl)
     }

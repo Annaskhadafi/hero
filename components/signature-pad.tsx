@@ -23,6 +23,7 @@ export interface SignaturePadProps {
   defaultDataUrl?: string | null
   hideProfileSignature?: boolean
   allowSaveToProfile?: boolean
+  onSaveToProfile?: (dataUrl: string) => void
   label?: string
   description?: string
   className?: string
@@ -111,6 +112,7 @@ export function SignaturePad({
   defaultDataUrl = null,
   hideProfileSignature = false,
   allowSaveToProfile = true,
+  onSaveToProfile,
   label,
   description,
   className,
@@ -444,6 +446,7 @@ export function SignaturePad({
       if (res.success) {
         setProfileSig(currentDataUrl)
         setIsUsingProfileSig(true)
+        onSaveToProfile?.(currentDataUrl)
         toast.success('Tanda tangan berhasil didaftarkan ke profil HERO Anda!')
       } else {
         toast.error(res.error || 'Gagal menyimpan tanda tangan ke profil.')

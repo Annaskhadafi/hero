@@ -32,7 +32,6 @@ export async function GET(
       .select({
         id: cerRequests.id,
         cerNumber: cerRequests.cerNumber,
-        bastNumber: cerRequests.bastNumber,
         subject: cerRequests.subject,
         assetCategory: cerRequests.assetCategory,
         vendorName: cerRequests.vendorName,
@@ -42,6 +41,7 @@ export async function GET(
         bastPdfUrl: cerRequests.bastPdfUrl,
         receiverSignatureUrl: cerRequests.receiverSignatureUrl,
         receiverNotes: cerRequests.receiverNotes,
+        goodsPhotoUrl: cerRequests.goodsPhotoUrl,
         receivedAt: cerRequests.receivedAt,
         createdAt: cerRequests.createdAt,
         applicantEmployeeId: cerRequests.applicantEmployeeId,
@@ -68,7 +68,7 @@ export async function GET(
     const userRole = ((session.user as any)?.role || '').toLowerCase()
     const isSuperAdmin = isSuperAdminRole((session.user as any)?.role) || userRole.includes('admin') || userRole.includes('director') || userRole.includes('finance')
     const isApplicant =
-      (cer.applicantEmployeeId && session.user.employeeId === cer.applicantEmployeeId) ||
+      (cer.applicantEmployeeId && (session.user as any).employeeId === cer.applicantEmployeeId) ||
       (cer.createdById && session.user.id === cer.createdById) ||
       (session.user.name && cer.applicantName && session.user.name.toLowerCase() === cer.applicantName.toLowerCase())
 
@@ -86,7 +86,7 @@ export async function GET(
       .where(eq(cerItems.cerRequestId, cerId))
       .orderBy(asc(cerItems.id))
 
-    const bastNumber = cer.bastNumber || `BAST-${cer.cerNumber.replace(/^CER\//, '')}`
+    const bastNumber = `BAST-${cer.cerNumber.replace(/^CER\//, '')}`
 
     const pdfBuffer = await generateCerBastPdf({
       cerNumber: cer.cerNumber,
@@ -108,13 +108,17 @@ export async function GET(
       dateRequired: cer.dateRequired || undefined,
       receivedAt: cer.receivedAt || undefined,
       receiverNotes: cer.receiverNotes || undefined,
+      notes: cer.receiverNotes || undefined,
       receiverSignatureUrl: cer.receiverSignatureUrl || undefined,
+      goodsPhotoUrl: cer.goodsPhotoUrl || undefined,
       items: items.map((it) => ({
         description: it.description,
-        qty: it.qty,
+        quantity: it.qty,
         assetNumber: it.assetNumber || undefined,
+        kelompokAset: cer.kelompokAset || undefined,
         pricePerUnit: it.pricePerUnit,
         totalPrice: it.totalPrice,
+        notes: cer.receiverNotes || undefined,
       })),
     })
 

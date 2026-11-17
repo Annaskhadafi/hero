@@ -1949,25 +1949,12 @@ function CreateOrEditWoDialog({
                       <SignaturePad
                         onSignatureChange={setSignatureFile}
                         onDataUrlChange={setSubmitterSignatureUrl}
+                        onSaveToProfile={(url) => {
+                          setProfileSig(url)
+                          setIsUsingProfileSig(true)
+                        }}
                       />
                     </div>
-                    {submitterSignatureUrl && !isUsingProfileSig && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSaveToProfile}
-                        disabled={isSavingProfileSig}
-                        className="h-7 w-full border-indigo-200 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
-                      >
-                        {isSavingProfileSig ? (
-                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                        ) : (
-                          <Save className="mr-1.5 h-3 w-3" />
-                        )}
-                        Simpan TTD Ini ke Profil HERO Saya
-                      </Button>
-                    )}
                   </div>
                 )}
               </div>
