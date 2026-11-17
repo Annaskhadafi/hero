@@ -15,8 +15,10 @@ export type PdfSignatureNames = {
   customSigners?: PdfSigner[]
   logoUrl?: string
   useExternalOnly?: boolean
+  externalSignatureCount?: 2 | 3 | 4 | number
   omitExternal?: boolean
   includeExternal?: boolean
+  isPjo?: boolean
 }
 
 export async function embedCustomLogo(
@@ -73,16 +75,32 @@ export function drawPdfSignatures(
 ) {
   let labels: [string, string][] = []
 
+  const normalizeSigner = (val: string): string => {
+    const trimmed = (val || '').trim()
+    if (
+      trimmed.toLowerCase().startsWith('plant. spv department') &&
+      trimmed.toLowerCase().includes('kpc')
+    ) {
+      return 'Leader WS.KPC'
+    }
+    return trimmed
+  }
+
   if (names.useExternalOnly) {
+    const rawCustomer =
+      names.externalApprovedBy?.trim() ||
+      names.approvedBy?.trim() ||
+      'Plant. Suptend Department CK-MHU'
+    const customerSigner = normalizeSigner(rawCustomer)
     labels = [
       ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || '-'],
-      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
+      ['Approved by:', customerSigner],
     ]
   } else {
     labels = [
       ['Dibuat oleh :', names.preparedBy || '-'],
       ['Approved by:', names.pjoLeader || '-'],
-      ['Approved by:', names.approvedBy || '-'],
+      ['Approved by:', normalizeSigner(names.approvedBy || '-')],
       ['Diketahui oleh:', names.hrName || ''],
     ]
 
@@ -91,12 +109,12 @@ export function drawPdfSignatures(
         labels.push(['Dibuat oleh (Eksternal):', names.externalPreparedBy.trim()])
       }
       if (names.externalApprovedBy?.trim()) {
-        labels.push(['Approved by (SPV Eksternal):', names.externalApprovedBy.trim()])
+        labels.push(['Approved by (SPV Eksternal):', normalizeSigner(names.externalApprovedBy.trim())])
       }
       if (names.customSigners && names.customSigners.length > 0) {
         names.customSigners
           .filter((s) => s.label.trim() && s.name.trim())
-          .forEach((s) => labels.push([s.label.trim(), s.name.trim()]))
+          .forEach((s) => labels.push([s.label.trim(), normalizeSigner(s.name.trim())]))
       }
     }
   }

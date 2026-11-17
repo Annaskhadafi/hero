@@ -249,16 +249,19 @@ export async function POST(request: NextRequest) {
 
     if (targetAuthUserId) {
       const [foundUser] = await db
-        .select({ email: user.email })
+        .select({ id: user.id, email: user.email, emailVerified: user.emailVerified })
         .from(user)
         .where(eq(user.id, targetAuthUserId))
         .limit(1);
       if (foundUser) {
         targetUserEmail = foundUser.email;
+        if (!foundUser.emailVerified) {
+          await db.update(user).set({ emailVerified: true }).where(eq(user.id, foundUser.id));
+        }
       }
     } else if (matchedEmployee.email) {
       const [foundUser] = await db
-        .select({ id: user.id, email: user.email })
+        .select({ id: user.id, email: user.email, emailVerified: user.emailVerified })
         .from(user)
         .where(eq(user.email, matchedEmployee.email.toLowerCase().trim()))
         .limit(1);
@@ -270,6 +273,9 @@ export async function POST(request: NextRequest) {
           .update(employees)
           .set({ authUserId: foundUser.id })
           .where(eq(employees.id, matchedEmployee.id));
+        if (!foundUser.emailVerified) {
+          await db.update(user).set({ emailVerified: true }).where(eq(user.id, foundUser.id));
+        }
       }
     }
 
@@ -283,14 +289,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Generate a temporary magic link login token
+    // 5. Generate a temporary magic link login token compatible with Better-Auth
     const magicToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes validity
 
     await db.insert(verification).values({
       id: crypto.randomBytes(16).toString("hex"),
-      identifier: magicToken,
-      value: JSON.stringify({ email: targetUserEmail.toLowerCase().trim(), name: matchedEmployee.name }),
+      identifier: `magic-link:${magicToken}`,
+      value: JSON.stringify({
+        type: "magic-link",
+        email: targetUserEmail.toLowerCase().trim(),
+        name: matchedEmployee.name,
+      }),
       expiresAt: expiresAt,
       createdAt: new Date(),
       updatedAt: new Date(),

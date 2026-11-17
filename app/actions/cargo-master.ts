@@ -1,22 +1,36 @@
-﻿"use server";
+"use server";
 
 import { db } from "@/db";
 import { cargoMasterLocations, cargoMasterGoods, cargoMasterRecipients, cargoMasterSites } from "@/db/schema/hero";
 import { eq, ilike, or, desc, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+let cargoMasterTablesEnsured = false;
+let cargoMasterTablesPromise: Promise<void> | null = null;
+
 async function ensureCargoMasterTables() {
-  await db.execute(sql`
-    create table if not exists hero_cargo_master_sites (
-      id serial primary key,
-      site_name text not null unique,
-      location text not null default '',
-      notes text not null default '',
-      is_active boolean not null default true,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    )
-  `);
+  if (cargoMasterTablesEnsured) return;
+  if (cargoMasterTablesPromise) return cargoMasterTablesPromise;
+
+  cargoMasterTablesPromise = (async () => {
+    await db.execute(sql`
+      create table if not exists hero_cargo_master_sites (
+        id serial primary key,
+        site_name text not null unique,
+        location text not null default '',
+        notes text not null default '',
+        is_active boolean not null default true,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
+    cargoMasterTablesEnsured = true;
+  })().catch((err) => {
+    cargoMasterTablesPromise = null;
+    throw err;
+  });
+
+  return cargoMasterTablesPromise;
 }
 
 export type MasterLocationRecord = {

@@ -1,5 +1,19 @@
 import { cache } from 'react'
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, ne, notInArray, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import Fuse from 'fuse.js'
 import { db } from '@/db'
@@ -107,7 +121,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'maestro-menu-v2-cer-budget'
+const HERO_GOVERNANCE_SEED_VERSION = 'central-service-apd-request-cer-v2'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -191,7 +205,12 @@ export async function getSecurityUserReferenceData() {
         departmentId: masterSections.departmentId,
       })
       .from(masterSections)
-      .where(and(eq(masterSections.isActive, true), notInArray(masterSections.code, OBSOLETE_SECTION_CODES)))
+      .where(
+        and(
+          eq(masterSections.isActive, true),
+          notInArray(masterSections.code, OBSOLETE_SECTION_CODES)
+        )
+      )
       .orderBy(asc(masterSections.name)),
     db
       .select({
@@ -200,7 +219,12 @@ export async function getSecurityUserReferenceData() {
         name: masterDepartments.name,
       })
       .from(masterDepartments)
-      .where(and(eq(masterDepartments.isActive, true), notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES)))
+      .where(
+        and(
+          eq(masterDepartments.isActive, true),
+          notInArray(masterDepartments.code, OBSOLETE_DEPARTMENT_CODES)
+        )
+      )
       .orderBy(asc(masterDepartments.name)),
     Promise.all([
       db
@@ -506,6 +530,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'trending-down',
     resource: 'marketing_slow_moving',
     sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Marketing',
+    title: 'Twibbon Studio',
+    url: '/dashboard/twibbon',
+    iconName: 'sparkles',
+    resource: 'marketing_twibbon',
+    sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
   },
@@ -992,15 +1027,15 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   // HRGA
-  // HRGA - Data & Akses Karyawan
+  // HRGA - HR Operations & Administration (Group 1)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'User Management',
-    url: '/dashboard/security/users',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Data Karyawan',
+    url: '/dashboard/hc/employee',
     iconName: 'users',
-    resource: 'security_users',
+    resource: 'hc_employee',
     sortOrder: 1,
     isVisible: true,
     openInNewTab: false,
@@ -1008,11 +1043,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Data Karyawan',
-    url: '/dashboard/hc/employee',
-    iconName: 'users',
-    resource: 'hc_employee',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Attendance',
+    url: '/dashboard/scheduling-timesheet/attendance',
+    iconName: 'checklist',
+    resource: 'hrga_attendance',
     sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
@@ -1020,11 +1055,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Org Structure V2',
-    url: '/dashboard/hc/org-chart-v2',
-    iconName: 'list-details',
-    resource: 'hc_org_chart_v2',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Sakit & Terlambat',
+    url: '/dashboard/hc/permission',
+    iconName: 'shield-alert',
+    resource: 'hc_attendance_permission',
     sortOrder: 3,
     isVisible: true,
     openInNewTab: false,
@@ -1032,8 +1067,8 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Contract Review',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Employee Contract Review',
     url: '/dashboard/hc/contract-review',
     iconName: 'file-signature',
     resource: 'hc_contract_review',
@@ -1044,11 +1079,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Compensation & Benefit',
-    url: '/dashboard/hc/compensation',
-    iconName: 'banknote',
-    resource: 'hc_compensation_benefit',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Composition Manpower',
+    url: '/dashboard/central-service?tab=composition',
+    iconName: 'users',
+    resource: 'hc_manpower_composition',
     sortOrder: 5,
     isVisible: true,
     openInNewTab: false,
@@ -1056,73 +1091,49 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'HC Overview',
-    url: '/dashboard/hc',
-    iconName: 'users',
-    resource: 'hc_safety',
-    sortOrder: 6,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Data & Akses Karyawan',
-    title: 'Labour Turn Over',
-    url: '/dashboard/hc/turnover',
-    iconName: 'trending-up',
-    resource: 'hc_labour_turnover',
-    sortOrder: 7,
-    isVisible: true,
-    openInNewTab: false,
-  },
-
-  // HRGA - Layanan & Personalia
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Pengaduan',
-    url: '/dashboard/curhat',
-    iconName: 'users',
-    resource: 'hr_counseling_user',
-    sortOrder: 6,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Dashboard Pengaduan HR',
-    url: '/dashboard/hr-counseling',
-    iconName: 'users',
-    resource: 'hr_counseling_admin',
-    sortOrder: 7,
-    isVisible: true,
-    openInNewTab: false,
-  },
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Surat',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Online Letter',
     url: '/dashboard/hc/surat',
     iconName: 'file-word',
     resource: 'hc_surat',
+    sortOrder: 6,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Marrital Change Status',
+    url: '/dashboard/central-service/marital-status',
+    iconName: 'heart',
+    resource: 'central_service_marital_status',
+    sortOrder: 7,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'HR Operations & Administration',
+    title: 'Labour Turn over',
+    url: '/dashboard/hc/turnover',
+    iconName: 'trending-up',
+    resource: 'hc_labour_turnover',
     sortOrder: 8,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Recruitment & Selection
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Izin Sakit & Terlambat',
-    url: '/dashboard/hc/permission',
-    iconName: 'shield-alert',
-    resource: 'hc_attendance_permission',
+    groupLabel: 'Recruitment & Selection',
+    title: 'Request For Recruitment',
+    url: '/dashboard/hc/rfr',
+    iconName: 'file-text',
+    resource: 'hc_recruitment',
     sortOrder: 9,
     isVisible: true,
     openInNewTab: false,
@@ -1130,11 +1141,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Perubahan Rute',
-    url: '/dashboard/hc/flight-route-change',
-    iconName: 'plane-takeoff',
-    resource: 'hc_flight_route_change',
+    groupLabel: 'Recruitment & Selection',
+    title: 'Recruitment',
+    url: '/dashboard/hc/recruitment',
+    iconName: 'users',
+    resource: 'hc_recruitment',
     sortOrder: 10,
     isVisible: true,
     openInNewTab: false,
@@ -1142,23 +1153,25 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Disciplinary',
-    url: '/dashboard/hc/disciplinary',
-    iconName: 'shield-alert',
-    resource: 'hc_disciplinary',
+    groupLabel: 'Recruitment & Selection',
+    title: 'Online Test',
+    url: '/dashboard/hc/recruitment/tests',
+    iconName: 'file-text',
+    resource: 'hc_recruitment_tests',
     sortOrder: 11,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Compensation & Benefit
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'MCU Wellness',
-    url: '/dashboard/hc/mcu-wellness',
-    iconName: 'heart-pulse',
-    resource: 'hc_mcu_wellness',
+    groupLabel: 'Compensation & Benefit',
+    title: 'Payroll',
+    url: '/dashboard/scheduling-timesheet/payroll',
+    iconName: 'credit-card',
+    resource: 'hrga_payroll',
     sortOrder: 12,
     isVisible: true,
     openInNewTab: false,
@@ -1166,49 +1179,39 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Layanan & Personalia',
-    title: 'Kerjasama',
-    url: '/dashboard/hc/kerjasama',
-    iconName: 'handshake',
-    resource: 'hc_kerjasama',
-    sortOrder: 12.5,
-    isVisible: true,
-    openInNewTab: false,
-  },
-
-  // HRGA - General Affairs (GA)
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'Pergantian Status Pernikahan',
-    url: '/dashboard/central-service/marital-status',
-    iconName: 'heart',
-    resource: 'central_service_marital_status',
+    groupLabel: 'Compensation & Benefit',
+    title: 'Allowance',
+    url: '/dashboard/hc/compensation',
+    iconName: 'banknote',
+    resource: 'hc_compensation_benefit',
     sortOrder: 13,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Industrial Relation (Group 4)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'Request Barang / APD',
-    url: '/dashboard/apd',
-    iconName: 'shield',
-    resource: 'apd-request',
+    groupLabel: 'Industrial Relation',
+    title: 'Corporate Partnership',
+    url: '/dashboard/hc/kerjasama',
+    iconName: 'handshake',
+    resource: 'hc_kerjasama',
     sortOrder: 14,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Learning Development (Group 5)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'Re-Fueling LV',
-    url: '/dashboard/central-service/refueling',
-    iconName: 'truck',
-    resource: 'central_service_refueling',
+    groupLabel: 'Learning Development',
+    title: 'List Sertifikasi',
+    url: '/dashboard/training-records?tab=sio',
+    iconName: 'award',
+    resource: 'hrga_training_records',
     sortOrder: 15,
     isVisible: true,
     openInNewTab: false,
@@ -1216,37 +1219,25 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'General Affairs (GA)',
-    title: 'House Rental',
-    url: '/dashboard/ga/house-rental',
-    iconName: 'home',
-    resource: 'ga_house_rental',
-    sortOrder: 15.5,
-    isVisible: true,
-    openInNewTab: false,
-  },
-
-  // HRGA - Rekrutmen
-  {
-    menuArea: 'main',
-    section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Request For Recruitment',
-    url: '/dashboard/hc/rfr',
-    iconName: 'file-text',
-    resource: 'hc_recruitment',
+    groupLabel: 'Learning Development',
+    title: 'List Training',
+    url: '/dashboard/training-records',
+    iconName: 'book-open',
+    resource: 'hrga_list_training',
     sortOrder: 16,
     isVisible: true,
     openInNewTab: false,
   },
+
+  // HRGA - Wellbeing & Engagement (Group 6)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Recruitment',
-    url: '/dashboard/hc/recruitment',
-    iconName: 'users',
-    resource: 'hc_recruitment',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'MCU',
+    url: '/dashboard/hc/mcu-wellness',
+    iconName: 'heart-pulse',
+    resource: 'hc_mcu_wellness',
     sortOrder: 17,
     isVisible: true,
     openInNewTab: false,
@@ -1254,11 +1245,11 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Online Tests',
-    url: '/dashboard/hc/recruitment/tests',
-    iconName: 'file-text',
-    resource: 'hc_recruitment_tests',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'Hero Point',
+    url: '/dashboard/leaderboard',
+    iconName: 'award',
+    resource: 'hrga_hero_point',
     sortOrder: 18,
     isVisible: true,
     openInNewTab: false,
@@ -1266,38 +1257,88 @@ const RAW_SIDEBAR_MENU_SEEDS = [
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Rekrutmen',
-    title: 'Wawancara',
-    url: '/dashboard/hc/recruitment/wawancara',
-    iconName: 'user-check',
-    resource: 'hc_recruitment',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'List Kegiatan Olahraga',
+    url: '/dashboard/hc/olahraga',
+    iconName: 'activity',
+    resource: 'hc_sports',
     sortOrder: 19,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'Wellbeing & Engagement',
+    title: 'Pengaduan',
+    url: '/dashboard/curhat',
+    iconName: 'message-square',
+    resource: 'hr_counseling_user',
+    sortOrder: 20,
     isVisible: true,
     openInNewTab: false,
   },
 
-  // HRGA - Kinerja & KPI
+  // HRGA - Performance Management (Group 7)
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Kinerja & KPI',
-    title: 'Performance',
+    groupLabel: 'Performance Management',
+    title: 'Employee Performance',
     url: '/dashboard/hc/performance',
     iconName: 'trending-up',
     resource: 'hc_performance',
-    sortOrder: 19,
+    sortOrder: 21,
     isVisible: true,
     openInNewTab: false,
   },
   {
     menuArea: 'main',
     section: 'HRGA',
-    groupLabel: 'Kinerja & KPI',
+    groupLabel: 'Performance Management',
     title: 'Leader Performance',
     url: '/dashboard/hc/leader-performance',
-    iconName: 'users',
+    iconName: 'award',
     resource: 'hc_leader_performance',
-    sortOrder: 20,
+    sortOrder: 22,
+    isVisible: true,
+    openInNewTab: false,
+  },
+
+  // HRGA - General Affair (Group 8)
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affair',
+    title: 'Vehicle Management',
+    url: '/dashboard/ga/vehicles',
+    iconName: 'truck',
+    resource: 'ga-vehicles',
+    sortOrder: 23,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affair',
+    title: 'ATK',
+    url: '/dashboard/ga/atk',
+    iconName: 'pencil',
+    resource: 'ga-atk',
+    sortOrder: 24,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'HRGA',
+    groupLabel: 'General Affair',
+    title: 'Rental House',
+    url: '/dashboard/ga/house-rental',
+    iconName: 'home',
+    resource: 'ga_house_rental',
+    sortOrder: 25,
     isVisible: true,
     openInNewTab: false,
   },
@@ -1472,7 +1513,7 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     menuArea: 'main',
     section: 'HSE',
     groupLabel: 'Safety Management',
-    title: 'OSM List',
+    title: 'ON SPOT MONITORING',
     url: '/dashboard/hse/osm',
     iconName: 'checklist',
     resource: 'hse_osm',
@@ -1601,6 +1642,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     isVisible: true,
     openInNewTab: false,
   },
+  {
+    menuArea: 'main',
+    section: 'HSE',
+    groupLabel: 'Safety Tools & Compliance',
+    title: 'Road Hazard Live AI',
+    url: '/dashboard/hse/road-hazard',
+    iconName: 'video',
+    resource: 'hse_road_hazard',
+    sortOrder: 13,
+    isVisible: true,
+    openInNewTab: false,
+  },
   // Quality & CPI
   {
     menuArea: 'main',
@@ -1648,6 +1701,18 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     iconName: 'trending-up',
     resource: 'cs-forecast',
     sortOrder: 1,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
+    menuArea: 'main',
+    section: 'Central Service',
+    groupLabel: 'Management',
+    title: 'Request Barang',
+    url: '/dashboard/apd',
+    iconName: 'shield',
+    resource: 'apd-request',
+    sortOrder: 2,
     isVisible: true,
     openInNewTab: false,
   },
@@ -2021,6 +2086,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   {
+    menuArea: 'main',
+    section: 'Pengaturan',
+    title: 'User Management',
+    url: '/dashboard/security/users',
+    iconName: 'users',
+    resource: 'security_users',
+    sortOrder: 2,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
     menuArea: 'secondary',
     section: 'Pengaturan',
     title: 'Quick Action Admin',
@@ -2103,7 +2179,9 @@ const SIDEBAR_MENU_SEEDS = RAW_SIDEBAR_MENU_SEEDS.filter((item, index, menuItems
   const firstResourceIndex = menuItems.findIndex(
     (candidate) => candidate.resource === item.resource
   )
-  const firstMatchIndex = menuItems.findIndex((candidate) => candidate.url === item.url && candidate.section === item.section)
+  const firstMatchIndex = menuItems.findIndex(
+    (candidate) => candidate.url === item.url && candidate.section === item.section
+  )
 
   return firstResourceIndex === index && firstMatchIndex === index
 }).map((item) => ({ ...item, menuArea: item.menuArea ?? 'main', section: item.section ?? 'Menu' }))
@@ -2413,7 +2491,7 @@ const RAW_EMAIL_TEMPLATE_SEEDS = [
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{userName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Gunakan tautan berikut untuk masuk ke akun HERO Anda. Tautan ini bersifat rahasia dan hanya dapat digunakan sekali.</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{magicLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Masuk ke HERO</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Jika Anda tidak merasa meminta tautan ini, abaikan email ini.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2447,7 +2525,7 @@ Jika Anda tidak merasa meminta tautan ini, abaikan email ini.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah permohonan baru memerlukan persetujuan Anda.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Permohonan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor Request</td><td style="padding:4px 0;color:#1f2937;font-size:13px">#{{requestId}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan masuk ke dashboard approval untuk meninjau dan mengambil tindakan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2480,7 +2558,7 @@ Silakan masuk ke dashboard approval untuk meninjau dan mengambil tindakan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Permohonan berikut mendekati batas waktu SLA dan memerlukan tindakan segera.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Permohonan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor Request</td><td style="padding:4px 0;color:#1f2937;font-size:13px">#{{requestId}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap segera melakukan review sebelum batas waktu berakhir.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2512,7 +2590,7 @@ Harap segera melakukan review sebelum batas waktu berakhir.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Terdapat pengajuan izin yang menunggu persetujuan HR.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Izin</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permissionType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{requestDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard untuk menyetujui atau menolak pengajuan ini.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2547,7 +2625,7 @@ Silakan login ke dashboard untuk menyetujui atau menolak pengajuan ini.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Laporan harian berikut telah siap untuk dikirim.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Laporan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{siteName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reportDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan review laporan sebelum didistribusikan ke pihak terkait.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2582,7 +2660,7 @@ Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
 <p style="color:#0f172a;font-size:15px;font-weight:700;margin:0 0 12px">Yth. Bapak/Ibu Management, Team Central Service, & Team Sales,</p>
 <p style="color:#334155;font-size:14px;line-height:1.6;margin:0 0 14px">Berikut kami sampaikan laporan <strong>CS Forecast Daily Report</strong> untuk periode <strong>{{periodLabel}}</strong> per tanggal <strong>{{reportDate}}</strong> dengan rincian kinerja terlampir.</p>
 <div style="background:#eff6ff;border-left:4px solid #2563eb;padding:12px 16px;margin:0 0 18px;border-radius:0 6px 6px 0">
-<p style="color:#1e40af;font-size:13px;line-height:1.6;margin:0;font-weight:700">📢 Himbauan Tindak Lanjut Team Sales:</p>
+<p style="color:#1e40af;font-size:13px;line-height:1.6;margin:0;font-weight:700">ðŸ“¢ Himbauan Tindak Lanjut Team Sales:</p>
 <p style="color:#1e3a8a;font-size:13px;line-height:1.6;margin:4px 0 0">Mohon bantuan bagi <strong>Team Sales / Account Executive</strong> untuk dapat mem-follow up customer-customer yang terdaftar pada dokumen pending & carry over di bawah ini guna percepatan proses penerbitan PO / Invoice dan pencapaian target revenue.</p>
 </div>
 <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin:0 0 20px">
@@ -2603,7 +2681,7 @@ Silakan review laporan sebelum didistribusikan ke pihak terkait.`,
 </ul>
 <p style="margin:24px 0 20px;text-align:center"><a href="{{reportUrl}}" style="display:inline-block;background:#0052cc;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;box-shadow:0 2px 4px rgba(0,0,0,0.1)">Buka Dashboard Daily Report</a></p>
 <p style="color:#64748b;font-size:13px;line-height:1.6;margin:20px 0 0;padding-top:16px;border-top:1px solid #e2e8f0">Demikian laporan ini kami sampaikan. Atas perhatian dan kerja samanya, kami ucapkan terima kasih.<br><br>Hormat kami,<br><strong style="color:#0f172a">Team Central Service - HERO System</strong></p>
-<table cellpadding="0" cellspacing="0" width="100%" style="margin-top:20px;border-top:1px solid #f1f5f9;padding-top:12px"><tr><td><p style="color:#94a3b8;font-size:11px;margin:0">© 2026 PT Chitra Paratama · HERO Application</p><p style="color:#94a3b8;font-size:10px;margin:3px 0 0">Email notifikasi ini dikirimkan secara otomatis oleh jadwal sistem.</p></td></tr></table>
+<table cellpadding="0" cellspacing="0" width="100%" style="margin-top:20px;border-top:1px solid #f1f5f9;padding-top:12px"><tr><td><p style="color:#94a3b8;font-size:11px;margin:0">Â© 2026 PT Chitra Paratama Â· HERO Application</p><p style="color:#94a3b8;font-size:10px;margin:3px 0 0">Email notifikasi ini dikirimkan secara otomatis oleh jadwal sistem.</p></td></tr></table>
 </div>
 </div>`,
     textContent: `Yth. Bapak/Ibu Management, Team Central Service, & Team Sales,
@@ -2652,7 +2730,7 @@ Team Central Service - HERO System`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{userName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Akun HERO Anda telah berhasil dibuat. Silakan selesaikan proses aktivasi melalui tautan di bawah ini.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Aktivasi Akun</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{invitationLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Terima Undangan</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Setelah menerima undangan, verifikasi alamat email Anda melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{verificationLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Verifikasi Email</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Tautan undangan ini bersifat sementara. Segera selesaikan proses aktivasi Anda.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2691,7 +2769,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Selamat! Data Anda telah terdaftar di sistem HERO. Silakan lengkapi proses onboarding melalui tautan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Onboarding Karyawan</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Form Onboarding</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pastikan dokumen identitas dan data rekening sudah siap sebelum mengisi formulir.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2728,7 +2806,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Seorang karyawan telah mengirimkan pengajuan cuti baru.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan Cuti</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Cuti</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaveTypeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Selesai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{endDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Total Hari</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{totalDays}} hari</td></tr></table><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Alasan</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">{{reason}}</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard untuk memproses pengajuan ini.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2768,7 +2846,7 @@ Silakan login ke dashboard untuk memproses pengajuan ini.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pengajuan cuti {{leaveTypeName}} Anda telah <strong>{{decisionLabel}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan Cuti</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Cuti</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaveTypeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Selesai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{endDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Diproses Oleh</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approverName}}</td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2807,7 +2885,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pengajuan {{permissionType}} Anda telah <strong>{{decisionLabel}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Pengajuan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jenis Izin</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permissionType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{requestDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Catatan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approverNote}}</td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2845,7 +2923,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Anda mendapatkan penugasan lembur (overtime) sebagai berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Penugasan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor SPL</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{splNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{workDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jam Mulai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{plannedStart}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jam Selesai</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{plannedEnd}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -2877,7 +2955,7 @@ Harap hadir tepat waktu sesuai jadwal yang telah ditentukan.`,
     htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
 <div style="background:linear-gradient(135deg,#0f172a,#0d9488);padding:24px;border-radius:10px 10px 0 0">
   <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
-  <p style="color:#ccfbf1;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Daily Activity Hub • Sequential Approval</p>
+  <p style="color:#ccfbf1;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Daily Activity Hub â€¢ Sequential Approval</p>
 </div>
 <div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
   <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
@@ -2927,7 +3005,7 @@ PT Chitra Paratama`,
     htmlContent: `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:20px">
 <div style="background:linear-gradient(135deg,#0f172a,#2563eb);padding:24px;border-radius:10px 10px 0 0">
   <h1 style="color:#ffffff;font-size:20px;margin:0;font-weight:700">PT CHITRA PARATAMA</h1>
-  <p style="color:#93c5fd;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Surat Perintah Lembur (SPL) • Sequential Approval</p>
+  <p style="color:#93c5fd;font-size:12px;margin:4px 0 0;text-transform:uppercase;letter-spacing:1px">Surat Perintah Lembur (SPL) â€¢ Sequential Approval</p>
 </div>
 <div style="background:#ffffff;padding:28px 24px;border-radius:0 0 10px 10px;border:1px solid #e2e8f0;border-top:0">
   <p style="color:#1e293b;font-size:14px;line-height:1.6;margin:0 0 16px">Yth. <strong>{{approverName}}</strong>,</p>
@@ -2985,7 +3063,7 @@ PT Chitra Paratama`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{employeeName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">{{intro}}</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Status Offboarding</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Ringkasan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{detailsSummary}}</td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3022,7 +3100,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Terima kasih atas ketertarikan Anda untuk bergabung dengan PT Chitra Paratama. Lamaran Anda untuk posisi <strong>{{jobTitle}}</strong> telah kami terima dengan baik.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Lamaran</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Sumber</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{source}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Waktu Submit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{submittedAt}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Tim Human Capital akan meninjau lamaran Anda dan akan menghubungi Anda jika memenuhi kualifikasi yang dibutuhkan.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3062,7 +3140,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Berdasarkan hasil seleksi berkas, Anda memenuhi kualifikasi untuk mengikuti tahap interview.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Interview</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Waktu</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{time}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tipe</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{interviewType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi / Link</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pewawancara</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{interviewer}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Durasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{duration}} menit</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap konfirmasi kehadiran Anda sebelum jadwal interview dimulai.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3106,7 +3184,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Anda diundang untuk mengikuti tes online sebagai bagian dari proses seleksi untuk posisi <strong>{{jobTitle}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Detail Tes Online</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Jadwal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}} {{time}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Keterangan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Masa Aktif</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{duration}} hari</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Akses tes online melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{testLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Mulai Tes Online</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pastikan koneksi internet Anda stabil sebelum memulai tes.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3149,7 +3227,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Data onboarding Anda telah siap. Silakan lengkapi data diri melalui tautan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Onboarding Karyawan</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Lengkapi Data Onboarding</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Pastikan seluruh dokumen yang diperlukan telah disiapkan sebelum mengisi formulir.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3186,7 +3264,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Kepada Yth. {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dengan ini kami sampaikan <strong>Surat Penawaran Kerja (Offering Letter)</strong> untuk posisi <strong>{{jobTitle}}</strong> di {{companyName}}.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Penawaran</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Perusahaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{companyName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen surat penawaran kerja terlampir pada email ini. Silakan ditinjau dan ditandatangani sebelum batas waktu yang tertera.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3225,7 +3303,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah dokumen Job Safety Analysis (JSA) baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi JSA</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor JSA</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jsaNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobDescription}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tim</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{teamMembers}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau dan memproses dokumen JSA.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3261,7 +3339,7 @@ Silakan login ke dashboard HSE untuk meninjau dan memproses dokumen JSA.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Job Safety Analysis (JSA) berikut telah diperbarui.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi JSA</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor JSA</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jsaNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobDescription}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk melihat perubahan terbaru.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3296,7 +3374,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan terbaru.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah register HIRADC baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi HIRADC</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Departemen</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{department}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau register HIRADC.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3332,7 +3410,7 @@ Silakan login ke dashboard HSE untuk meninjau register HIRADC.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Register HIRADC berikut telah diperbarui.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi HIRADC</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Departemen</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{department}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk melihat perubahan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3368,7 +3446,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah dokumen Permit To Work (PTW) baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi PTW</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor PTW</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{projectName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tipe</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permitType}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau dokumen PTW.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3405,7 +3483,7 @@ Silakan login ke dashboard HSE untuk meninjau dokumen PTW.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Permit To Work (PTW) berikut telah diperbarui.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi PTW</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nomor PTW</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{permitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pekerjaan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{projectName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Risk Level</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{riskLevel}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk melihat perubahan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3441,7 +3519,7 @@ Silakan login ke dashboard HSE untuk melihat perubahan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah observasi HSE baru telah dilaporkan.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Observasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{siteName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Pelapor</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reporterName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk menindaklanjuti observasi ini.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3479,7 +3557,7 @@ Silakan login ke dashboard HSE untuk menindaklanjuti observasi ini.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status observasi HSE berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Observasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3514,7 +3592,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah insiden HSE baru telah dilaporkan.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tipe</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{type}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Impact</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{impact}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Unit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{unitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk menindaklanjuti insiden ini.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3551,7 +3629,7 @@ Silakan login ke dashboard HSE untuk menindaklanjuti insiden ini.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status insiden HSE berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Unit</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{unitNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3586,7 +3664,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah laporan insiden HSE baru telah dicatat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Laporan Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Investigasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{investigationStatus}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau laporan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3623,7 +3701,7 @@ Silakan login ke dashboard HSE untuk meninjau laporan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status laporan insiden HSE berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Laporan Insiden</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Sebelumnya</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{previousStatus}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Baru</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{investigationStatus}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3660,7 +3738,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah safety inspection baru telah dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Inspeksi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{inspectionDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk meninjau inspeksi.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3698,7 +3776,7 @@ Silakan login ke dashboard HSE untuk meninjau inspeksi.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status safety inspection berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Inspeksi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Judul</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{title}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Sebelumnya</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{previousStatus}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Baru</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3735,7 +3813,7 @@ Silakan login ke dashboard HSE untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah formulir safety induction baru telah disubmit.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Induction</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{fullName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Instansi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{companyOrigin}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Telepon</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{phoneNumber}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tujuan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{purpose}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HSE untuk memproses induction.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3771,7 +3849,7 @@ Silakan login ke dashboard HSE untuk memproses induction.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Aset HSE berikut mendekati masa kedaluwarsa dan memerlukan perhatian segera.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Aset</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Aset</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{itemName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{category}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Lokasi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{location}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Beli</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{purchaseDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Masa Berlaku</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{validityMonths}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Expired</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{expirationDate}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">PIC</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{picName}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku habis.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3810,7 +3888,7 @@ Segera lakukan tindakan perpanjangan atau penggantian aset sebelum masa berlaku 
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Seorang karyawan baru telah berhasil didaftarkan ke dalam sistem HERO.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Karyawan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Employee ID</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeId}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Email</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeEmail}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Akun</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{accountStatus}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk memverifikasi data.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3846,7 +3924,7 @@ Silakan login ke dashboard HC untuk memverifikasi data.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Data karyawan berikut telah diperbarui di dalam sistem HERO.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Karyawan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Employee ID</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeId}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Email</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeEmail}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status Akun</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{accountStatus}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk melihat perubahan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3882,7 +3960,7 @@ Silakan login ke dashboard HC untuk melihat perubahan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah tindakan disipliner baru telah dicatat untuk karyawan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Disipliner</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{categoryName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Severity</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{severity}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Level SP</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{spLevel}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">No. Surat</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{letterNumber}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3920,7 +3998,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Status tindakan disipliner untuk karyawan berikut telah berubah.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Disipliner</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kategori</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{categoryName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Level SP</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{spLevel}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3956,7 +4034,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Sebuah performance review baru telah dibuat untuk karyawan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Performance Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{cycleName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk mengisi review.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -3992,7 +4070,7 @@ Silakan login ke dashboard HC untuk mengisi review.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Performance review untuk karyawan berikut telah disubmit oleh reviewer.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Performance Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{cycleName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk meninjau hasil review.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4028,7 +4106,7 @@ Silakan login ke dashboard HC untuk meninjau hasil review.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Performance review untuk karyawan berikut telah di-acknowledge oleh karyawan terkait.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Performance Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{cycleName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{status}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Rating</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{overallRating}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk melihat hasil akhir.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4079,7 +4157,7 @@ Silakan login ke dashboard HC untuk melihat hasil akhir.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Evaluasi Leader Performance untuk pimpinan berikut telah disubmit.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Evaluasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Leader</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaderName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{period}}</td></tr><tr><td style="padding:4px 0;color:#1f2937;font-size:13px;width:120px;vertical-align:top">Skor Rata-rata</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{overallScore}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk meninjau hasil lengkap evaluasi pimpinan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4115,7 +4193,7 @@ Silakan login ke dashboard HC untuk meninjau hasil lengkap evaluasi pimpinan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Evaluasi Leader Performance untuk pimpinan berikut telah selesai ditinjau oleh HC / Admin.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Evaluasi</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Leader</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{leaderName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Reviewer</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{reviewerName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Periode</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{period}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Status</td><td style="padding:4px 0;color:#1f2937;font-size:13px">Reviewed</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan login ke dashboard HC untuk detail lebih lanjut.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4151,7 +4229,7 @@ Silakan login ke dashboard HC untuk detail lebih lanjut.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Selamat! Anda dinyatakan <strong>lulus seleksi</strong> dan diterima untuk bergabung sebagai <strong>{{jobTitle}}</strong> di PT Chitra Paratama.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Penerimaan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai Kerja</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan lengkapi proses onboarding melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingUrl}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Lengkapi Onboarding</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Kami tunggu kontribusi terbaik Anda di PT Chitra Paratama!</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4193,7 +4271,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Selamat datang di PT Chitra Paratama! Kami sangat senang menyambut Anda sebagai bagian dari keluarga besar perusahaan kami.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Mulai Kerja</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal Mulai Kerja</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{startDate}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Silakan lengkapi administrasi onboarding melalui tautan berikut:</p><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{onboardingUrl}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Lengkapi Administrasi</a></td></tr></table><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4233,7 +4311,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">{{messageBodyHtml}}</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4266,7 +4344,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Kepada Yth. Admin {{clinicName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Mohon bantuannya untuk melaksanakan Medical Check Up (MCU) bagi calon karyawan berikut.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Data Calon Karyawan</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{candidateName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal MCU</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Paket MCU</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{paket}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Biaya MCU akan ditagihkan ke PT Chitra Paratama sesuai dengan perjanjian kerja sama yang telah disepakati.</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Atas perhatian dan bantuannya, kami ucapkan terima kasih.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4305,7 +4383,7 @@ Atas perhatian dan bantuannya, kami ucapkan terima kasih.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Halo {{candidateName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Anda dijadwalkan untuk mengikuti Medical Check Up (MCU) sebagai bagian dari proses seleksi untuk posisi <strong>{{jobTitle}}</strong>.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Jadwal MCU</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Posisi</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{jobTitle}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Klinik</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{clinicName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tanggal</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{date}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Paket</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{paket}}</td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap datang tepat waktu dan membawa identitas diri yang berlaku.</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:12px 0 0">Salam,<br><strong style="color:#374151">Tim Human Capital</strong></p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4347,7 +4425,7 @@ Tim Human Capital`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Yth. {{recipientName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Berikut adalah pengingat untuk dokumen Contract Review yang masih perlu ditindaklanjuti.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Contract Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Section</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSection}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSite}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Kontrak Berakhir</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{contractEndDate}}</td></tr></table><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{reviewLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Review</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Segera lakukan review sebelum masa kontrak berakhir.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4388,7 +4466,7 @@ Segera lakukan review sebelum masa kontrak berakhir.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Yth. {{approverName}},</p><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Contract Review berikut membutuhkan persetujuan Anda.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Contract Review</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Section</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSection}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Site</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSite}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Tahap</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{approvalStep}}</td></tr></table><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{approvalLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Approval</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap segera memberikan keputusan persetujuan Anda.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4422,7 +4500,7 @@ Harap segera memberikan keputusan persetujuan Anda.`,
 <div style="background:linear-gradient(135deg,#b91c1c,#ef4444);padding:18px 24px;border-radius:8px 8px 0 0">
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td><h1 style="color:#fff;font-size:20px;margin:0;font-weight:700;letter-spacing:1px">HERO</h1>
-<p style="color:#fecaca;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital • Revisi Dokumen</p></td>
+<p style="color:#fecaca;font-size:11px;margin:2px 0 0;text-transform:uppercase;letter-spacing:2px">Human Capital â€¢ Revisi Dokumen</p></td>
 <td align="right"><span style="color:#fca5a5;font-size:22px">&#9888;</span></td>
 </tr></table>
 </div>
@@ -4445,7 +4523,7 @@ Harap segera memberikan keputusan persetujuan Anda.`,
 <p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Harap segera memeriksa dan menindaklanjuti revisi yang diperlukan.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4489,7 +4567,7 @@ Harap segera memeriksa dan menindaklanjuti revisi yang diperlukan.`,
 <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;border-top:0"><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Dokumen Contract Review untuk uji coba telah berhasil dibuat.</p><p style="color:#374151;font-size:13px;font-weight:600;margin:16px 0 4px;padding-bottom:4px;border-bottom:1px solid #f3f4f6">Informasi Tes</p><table cellpadding="0" cellspacing="0"><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">Nama Karyawan</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeName}}</td></tr><tr><td style="padding:4px 0;color:#6b7280;font-size:13px;width:120px;vertical-align:top">SN</td><td style="padding:4px 0;color:#1f2937;font-size:13px">{{employeeSn}}</td></tr></table><table cellpadding="0" cellspacing="0" style="margin:16px 0"><tr><td style="background:#2563eb;border-radius:6px;padding:10px 20px"><a href="{{reviewLink}}" style="color:#fff;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">Buka Form Review</a></td></tr></table><p style="color:#1f2937;font-size:14px;line-height:1.6;margin:0 0 8px">Email ini adalah notifikasi uji coba (test) untuk memvalidasi workflow Contract Review.</p>
 <table cellpadding="0" cellspacing="0" width="100%"><tr>
 <td style="padding-top:20px;border-top:1px solid #e5e7eb">
-<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">© 2026 PT Chitra Paratama</p>
+<p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.5">Â© 2026 PT Chitra Paratama</p>
 <p style="color:#9ca3af;font-size:10px;margin:4px 0 0">Email ini dikirim secara otomatis. Harap tidak membalas langsung.</p>
 </td>
 </tr></table>
@@ -4684,6 +4762,8 @@ const HSE_MANAGED_RESOURCES = new Set([
   'hse_incident_report',
   'hse_tire_inspection',
   'hse_road_condition_analysis',
+  'hse_road_hazard',
+  'central_service_master_apd',
 ])
 
 const WELLNESS_MANAGED_RESOURCES = new Set(['hc_mcu_wellness'])
@@ -4752,7 +4832,12 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
   }
 
   // Daily Activity & Utilities monitoring: khusus untuk PJO, Head Section, Head Department, keatas
-  if (resource === 'daily_activity' || resource === 'utilities' || resource === 'tire_scrap' || resource === 'tire_check') {
+  if (
+    resource === 'daily_activity' ||
+    resource === 'utilities' ||
+    resource === 'tire_scrap' ||
+    resource === 'tire_check'
+  ) {
     const isLeadership = [
       'Super Admin',
       'Manager',
@@ -4785,6 +4870,18 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     }
   }
 
+  // Twibbon Studio: viewable by all employees; admin roles can manage all templates
+  if (resource === 'marketing_twibbon') {
+    const isAdminRole = isSuperAdminRole(roleName)
+    return {
+      canView: true,
+      canEdit: isAdminRole,
+      canDelete: isAdminRole,
+      canSelectAll: isAdminRole,
+      dataScope: 'global' as const,
+    }
+  }
+
   // Approval Monitor: Dedicated to Super Admin by default
   if (resource === 'approval_monitor') {
     const isSuperAdmin = roleName === 'Super Admin'
@@ -4802,6 +4899,9 @@ function getDefaultMenuPermission(roleName: string, resource: string) {
     [
       'attendance',
       'scheduling_timesheet_attendance',
+      'hrga_attendance',
+      'scheduling_timesheet_payroll',
+      'hrga_payroll',
       'tire_service',
       'overtime_requests',
 'approval_inbox',
@@ -5800,9 +5900,7 @@ export async function ensureHeroGovernanceSeedData() {
       })
       .where(eq(navbarMenuItems.resource, 'central_service_master_apd'))
 
-    await db
-      .delete(navbarMenuItems)
-      .where(eq(navbarMenuItems.section, 'GOBPI'))
+    await db.delete(navbarMenuItems).where(eq(navbarMenuItems.section, 'GOBPI'))
 
     await db
       .update(navbarMenuItems)
@@ -5813,12 +5911,7 @@ export async function ensureHeroGovernanceSeedData() {
         sortOrder: 0,
         isVisible: true,
       })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'central_service'),
-          eq(navbarMenuItems.url, '/dashboard/central-service')
-        )
-      )
+      .where(eq(navbarMenuItems.resource, 'central_service'))
 
     await db
       .update(navbarMenuItems)
@@ -5830,12 +5923,7 @@ export async function ensureHeroGovernanceSeedData() {
         sortOrder: 6,
         isVisible: true,
       })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'),
-          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/attendance')
-        )
-      )
+      .where(eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'))
 
     const attMenuItems = await db
       .select()
@@ -5843,7 +5931,7 @@ export async function ensureHeroGovernanceSeedData() {
       .where(
         or(
           eq(navbarMenuItems.resource, 'scheduling_timesheet_attendance'),
-          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/attendance')
+          eq(navbarMenuItems.resource, 'hrga_attendance')
         )
       )
 
@@ -5862,16 +5950,17 @@ export async function ensureHeroGovernanceSeedData() {
       .where(
         or(
           eq(navbarMenuItems.resource, 'central_service'),
-          eq(navbarMenuItems.url, '/dashboard/central-service')
+          eq(navbarMenuItems.resource, 'hc_manpower_composition')
         )
       )
 
     if (csMenuItems.length > 0) {
-      const csMenuId = csMenuItems[0].id
-      await db
-        .update(roleMenuPermissions)
-        .set({ canView: true, canEdit: true })
-        .where(eq(roleMenuPermissions.menuItemId, csMenuId))
+      for (const csItem of csMenuItems) {
+        await db
+          .update(roleMenuPermissions)
+          .set({ canView: true, canEdit: true })
+          .where(eq(roleMenuPermissions.menuItemId, csItem.id))
+      }
     }
 
     await db
@@ -5911,36 +6000,22 @@ export async function ensureHeroGovernanceSeedData() {
       }
     }
 
-    // HRGA - Data & Akses Karyawan
+    // HRGA - HR Operations & Administration (Group 1 per spec)
     await db
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
-        menuArea: 'main',
-        sortOrder: 1,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'security_users'),
-          eq(navbarMenuItems.url, '/dashboard/security/users')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
+        groupLabel: 'HR Operations & Administration',
         title: 'Data Karyawan',
-        sortOrder: 2,
+        url: '/dashboard/hc/employee',
+        sortOrder: 1,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'hc_employee'),
-          eq(navbarMenuItems.url, '/dashboard/hc/employee')
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/employee'))
         )
       )
 
@@ -5948,105 +6023,31 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
+        groupLabel: 'HR Operations & Administration',
+        title: 'Attendance',
+        url: '/dashboard/scheduling-timesheet/attendance',
+        iconName: 'checklist',
+        sortOrder: 2,
+        menuArea: 'main',
+        isVisible: true,
+      })
+      .where(eq(navbarMenuItems.resource, 'hrga_attendance'))
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'HR Operations & Administration',
+        title: 'Sakit & Terlambat',
+        url: '/dashboard/hc/permission',
         sortOrder: 3,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_org_chart_v2'),
-          eq(navbarMenuItems.url, '/dashboard/hc/org-chart-v2')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
-        sortOrder: 4,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_contract_review'),
-          eq(navbarMenuItems.url, '/dashboard/hc/contract-review')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Data & Akses Karyawan',
-        sortOrder: 5,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_safety'),
-          eq(navbarMenuItems.url, '/dashboard/hc')
-        )
-      )
-
-    // HRGA - Layanan & Personalia
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 6,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hr_counseling_user'),
-          eq(navbarMenuItems.url, '/dashboard/curhat')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 7,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hr_counseling_admin'),
-          eq(navbarMenuItems.url, '/dashboard/hr-counseling')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 8,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_surat'),
-          eq(navbarMenuItems.url, '/dashboard/hc/surat')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 9,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'hc_attendance_permission'),
-          eq(navbarMenuItems.url, '/dashboard/hc/permission')
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/permission'))
         )
       )
 
@@ -6054,14 +6055,17 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 10,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Employee Contract Review',
+        url: '/dashboard/hc/contract-review',
+        sortOrder: 4,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
-          eq(navbarMenuItems.resource, 'hc_flight_route_change'),
-          eq(navbarMenuItems.url, '/dashboard/hc/flight-route-change')
+          eq(navbarMenuItems.resource, 'hc_contract_review'),
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/contract-review'))
         )
       )
 
@@ -6069,14 +6073,31 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 11,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Composition Manpower',
+        url: '/dashboard/central-service?tab=composition',
+        iconName: 'users',
+        sortOrder: 5,
+        menuArea: 'main',
+        isVisible: true,
+      })
+      .where(eq(navbarMenuItems.resource, 'hc_manpower_composition'))
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'HR Operations & Administration',
+        title: 'Online Letter',
+        url: '/dashboard/hc/surat',
+        sortOrder: 6,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
-          eq(navbarMenuItems.resource, 'hc_disciplinary'),
-          eq(navbarMenuItems.url, '/dashboard/hc/disciplinary')
+          eq(navbarMenuItems.resource, 'hc_surat'),
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/surat'))
         )
       )
 
@@ -6084,30 +6105,18 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Layanan & Personalia',
-        sortOrder: 12,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_mcu_wellness'),
-          eq(navbarMenuItems.url, '/dashboard/hc/mcu-wellness')
-        )
-      )
-
-    // HRGA - General Affairs (GA)
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'General Affairs (GA)',
-        sortOrder: 13,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Marrital Change Status',
+        url: '/dashboard/central-service/marital-status',
+        sortOrder: 7,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'central_service_marital_status'),
-          eq(navbarMenuItems.url, '/dashboard/central-service/marital-status')
+          eq(navbarMenuItems.url, '/dashboard/central-service/marital-status'),
+          eq(navbarMenuItems.url, '/dashboard/ht/marital-status')
         )
       )
 
@@ -6115,60 +6124,46 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'General Affairs (GA)',
-        title: 'Request Barang / APD',
-        sortOrder: 14,
+        groupLabel: 'HR Operations & Administration',
+        title: 'Labour Turn over',
+        url: '/dashboard/hc/turnover',
+        sortOrder: 8,
+        menuArea: 'main',
         isVisible: true,
       })
       .where(
         or(
-          eq(navbarMenuItems.resource, 'apd-request'),
-          eq(navbarMenuItems.url, '/dashboard/apd')
+          eq(navbarMenuItems.resource, 'hc_labour_turnover'),
+          and(eq(navbarMenuItems.section, 'HRGA'), eq(navbarMenuItems.url, '/dashboard/hc/turnover'))
         )
+      )
+
+    // HRGA - Recruitment & Selection
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Recruitment & Selection',
+        title: 'Request For Recruitment',
+        sortOrder: 9,
+        isVisible: true,
+      })
+      .where(
+        or(eq(navbarMenuItems.resource, 'hc_rfr'), eq(navbarMenuItems.url, '/dashboard/hc/rfr'))
       )
 
     await db
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'General Affairs (GA)',
-        sortOrder: 15,
+        groupLabel: 'Recruitment & Selection',
+        title: 'Recruitment',
+        sortOrder: 10,
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'central_service_refueling'),
-          eq(navbarMenuItems.url, '/dashboard/central-service/refueling')
-        )
-      )
-
-    // HRGA - Rekrutmen
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Rekrutmen',
-        sortOrder: 16,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_rfr'),
-          eq(navbarMenuItems.url, '/dashboard/hc/rfr')
-        )
-      )
-
-    await db
-      .update(navbarMenuItems)
-      .set({
-        section: 'HRGA',
-        groupLabel: 'Rekrutmen',
-        sortOrder: 17,
-        isVisible: true,
-      })
-      .where(
-        or(
-          eq(navbarMenuItems.resource, 'hc_recruitment'),
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
           eq(navbarMenuItems.url, '/dashboard/hc/recruitment')
         )
       )
@@ -6177,8 +6172,9 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Rekrutmen',
-        sortOrder: 18,
+        groupLabel: 'Recruitment & Selection',
+        title: 'Online Test',
+        sortOrder: 11,
         isVisible: true,
       })
       .where(
@@ -6188,13 +6184,175 @@ export async function ensureHeroGovernanceSeedData() {
         )
       )
 
-    // HRGA - Kinerja & KPI
     await db
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Kinerja & KPI',
+        groupLabel: 'Recruitment & Selection',
+        title: 'Wawancara',
+        sortOrder: 98,
+        isVisible: false,
+      })
+      .where(
+        eq(navbarMenuItems.url, '/dashboard/hc/recruitment/wawancara')
+      )
+
+    // HRGA - Compensation & Benefit
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Compensation & Benefit',
+        title: 'Payroll',
+        sortOrder: 12,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/scheduling-timesheet/payroll')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Compensation & Benefit',
+        title: 'Allowance',
+        sortOrder: 13,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/hc/compensation')
+        )
+      )
+
+    // HRGA - Industrial Relation (Group 4)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Industrial Relation',
+        title: 'Corporate Partnership',
+        sortOrder: 14,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hc_kerjasama'),
+          eq(navbarMenuItems.url, '/dashboard/hc/kerjasama')
+        )
+      )
+
+    // HRGA - Learning Development (Group 5)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Learning Development',
+        title: 'List Sertifikasi',
+        sortOrder: 15,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/training-records?tab=sio')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Learning Development',
+        title: 'List Training',
+        sortOrder: 16,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/training-records')
+        )
+      )
+
+    // HRGA - Wellbeing & Engagement (Group 6)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'MCU',
+        sortOrder: 17,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hc_mcu_wellness'),
+          eq(navbarMenuItems.url, '/dashboard/hc/mcu-wellness')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'Hero Point',
+        sortOrder: 18,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          eq(navbarMenuItems.url, '/dashboard/leaderboard')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'List Kegiatan Olahraga',
         sortOrder: 19,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hc_sports'),
+          eq(navbarMenuItems.url, '/dashboard/hc/olahraga')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Wellbeing & Engagement',
+        title: 'Pengaduan',
+        sortOrder: 20,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'hr_counseling_user'),
+          eq(navbarMenuItems.url, '/dashboard/curhat')
+        )
+      )
+
+    // HRGA - Performance Management (Group 7)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'Performance Management',
+        title: 'Employee Performance',
+        sortOrder: 21,
         isVisible: true,
       })
       .where(
@@ -6208,14 +6366,146 @@ export async function ensureHeroGovernanceSeedData() {
       .update(navbarMenuItems)
       .set({
         section: 'HRGA',
-        groupLabel: 'Kinerja & KPI',
-        sortOrder: 20,
+        groupLabel: 'Performance Management',
+        title: 'Leader Performance',
+        sortOrder: 22,
         isVisible: true,
       })
       .where(
         or(
           eq(navbarMenuItems.resource, 'hc_leader_performance'),
           eq(navbarMenuItems.url, '/dashboard/hc/leader-performance')
+        )
+      )
+
+    // HRGA - General Affair (Group 8)
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'General Affair',
+        title: 'Vehicle Management',
+        sortOrder: 23,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'ga-vehicles'),
+          eq(navbarMenuItems.url, '/dashboard/ga/vehicles')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'General Affair',
+        title: 'ATK',
+        sortOrder: 24,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'ga-atk'),
+          eq(navbarMenuItems.url, '/dashboard/ga/atk')
+        )
+      )
+
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'HRGA',
+        groupLabel: 'General Affair',
+        title: 'Rental House',
+        sortOrder: 25,
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'ga_house_rental'),
+          eq(navbarMenuItems.url, '/dashboard/ga/house-rental')
+        )
+      )
+
+    // Ensure User Management is in Pengaturan
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Pengaturan',
+        groupLabel: null,
+        title: 'User Management',
+        menuArea: 'main',
+        sortOrder: 2,
+        isVisible: true,
+      })
+      .where(
+        and(
+          eq(navbarMenuItems.resource, 'security_users'),
+          eq(navbarMenuItems.url, '/dashboard/security/users')
+        )
+      )
+
+    // Ensure Re-Fueling LV is in Central Service
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Central Service',
+        groupLabel: 'Logistik & Fleet',
+        title: 'Re-Fueling LV',
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'central_service_refueling'),
+          eq(navbarMenuItems.url, '/dashboard/central-service/refueling')
+        )
+      )
+
+    // Ensure Request Barang (/dashboard/apd) lives in Central Service -> Management
+    await db
+      .update(navbarMenuItems)
+      .set({
+        section: 'Central Service',
+        groupLabel: 'Management',
+        title: 'Request Barang',
+        url: '/dashboard/apd',
+        iconName: 'shield',
+        resource: 'apd-request',
+        sortOrder: 2,
+        menuArea: 'main',
+        isVisible: true,
+      })
+      .where(
+        or(
+          eq(navbarMenuItems.resource, 'apd-request'),
+          eq(navbarMenuItems.url, '/dashboard/apd')
+        )
+      )
+
+    // Purge obsolete HRGA legacy navbar items that are not in the 8 official groups
+    const obsoleteHrgaResources = [
+      'hc_org_chart_v2',
+      'hc_safety',
+      'hr_counseling_admin',
+      'hc_flight_route_change',
+      'hc_disciplinary',
+    ]
+    await db
+      .delete(navbarMenuItems)
+      .where(
+        and(
+          eq(navbarMenuItems.section, 'HRGA'),
+          or(
+            inArray(navbarMenuItems.resource, obsoleteHrgaResources),
+            inArray(navbarMenuItems.groupLabel, [
+              'Data & Akses Karyawan',
+              'Layanan & Personalia',
+              'General Affairs (GA)',
+              'Kinerja & KPI',
+              'General Affairs',
+              'Employee Relations & Industrial Relations',
+            ])
+          )
         )
       )
 
@@ -6229,9 +6519,12 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'point_setting'),
-          eq(navbarMenuItems.url, '/dashboard/leaderboard')
+        and(
+          eq(navbarMenuItems.section, 'Poin & Hadiah'),
+          or(
+            eq(navbarMenuItems.resource, 'point_setting'),
+            eq(navbarMenuItems.url, '/dashboard/leaderboard')
+          )
         )
       )
 
@@ -6335,9 +6628,12 @@ export async function ensureHeroGovernanceSeedData() {
         isVisible: true,
       })
       .where(
-        or(
-          eq(navbarMenuItems.resource, 'training_records'),
-          eq(navbarMenuItems.url, '/dashboard/training-records')
+        and(
+          eq(navbarMenuItems.section, 'ChitraLearning & Training'),
+          or(
+            eq(navbarMenuItems.resource, 'training_records'),
+            eq(navbarMenuItems.url, '/dashboard/training-records')
+          )
         )
       )
 
@@ -6346,7 +6642,7 @@ export async function ensureHeroGovernanceSeedData() {
       .set({
         section: 'HSE',
         groupLabel: 'Safety Management',
-        title: 'OSM List',
+        title: 'ON SPOT MONITORING',
         url: '/dashboard/hse/osm',
         resource: 'hse_osm',
         iconName: 'checklist',
@@ -6365,25 +6661,26 @@ export async function ensureHeroGovernanceSeedData() {
       .from(navbarMenuItems)
       .orderBy(navbarMenuItems.sortOrder, navbarMenuItems.id)
 
-    const preferredSeedByUrl = new Map<string, (typeof SIDEBAR_MENU_SEEDS)[number]>(
-      SIDEBAR_MENU_SEEDS.map((item) => [item.url, item])
+    const preferredSeedByPageKey = new Map<string, (typeof SIDEBAR_MENU_SEEDS)[number]>(
+      SIDEBAR_MENU_SEEDS.map((item) => [`${item.section || 'default'}:${item.url}`, item])
     )
-    const menuGroupsByUrl = currentMenuItems.reduce<Map<string, typeof currentMenuItems>>(
+    const menuGroupsByPage = currentMenuItems.reduce<Map<string, typeof currentMenuItems>>(
       (accumulator, item) => {
-        const currentItems = accumulator.get(item.url) ?? []
+        const pageKey = `${item.section || 'default'}:${item.url}`
+        const currentItems = accumulator.get(pageKey) ?? []
         currentItems.push(item)
-        accumulator.set(item.url, currentItems)
+        accumulator.set(pageKey, currentItems)
         return accumulator
       },
       new Map()
     )
 
-    for (const [url, groupedItems] of menuGroupsByUrl) {
+    for (const [pageKey, groupedItems] of menuGroupsByPage) {
       if (groupedItems.length <= 1) {
         continue
       }
 
-      const preferredSeed = preferredSeedByUrl.get(url)
+      const preferredSeed = preferredSeedByPageKey.get(pageKey)
       const keepItem = preferredSeed
         ? (groupedItems.find((item) => item.resource === preferredSeed.resource) ?? groupedItems[0])
         : groupedItems[0]
@@ -6603,9 +6900,7 @@ export async function syncMenuPermissionsMatrix(): Promise<{
   ])
 
   const existingRoleMenuPairs = new Set(
-    existingRoleMenuPermissions.map(
-      (permission) => `${permission.roleId}:${permission.menuItemId}`
-    )
+    existingRoleMenuPermissions.map((permission) => `${permission.roleId}:${permission.menuItemId}`)
   )
 
   const missingRoleMenuPermissions = rolesForMenu.flatMap((role) =>
@@ -7009,7 +7304,14 @@ export async function getPointsAnalyticsPageData() {
 
   const siteMap = new Map<
     string,
-    { siteId: number | null; siteName: string; employees: number; totalPoints: number; periodPoints: number; penalties: number }
+    {
+      siteId: number | null
+      siteName: string
+      employees: number
+      totalPoints: number
+      periodPoints: number
+      penalties: number
+    }
   >()
   for (const employee of leaderboard) {
     const sName = employee.siteName || 'Head Office / Non-Site'
@@ -7028,7 +7330,7 @@ export async function getPointsAnalyticsPageData() {
     siteMap.set(sName, current)
   }
   const sitePerformance = [...siteMap.values()]
-    .map(s => ({
+    .map((s) => ({
       ...s,
       averagePoints: s.employees > 0 ? Math.round(s.totalPoints / s.employees) : 0,
     }))
@@ -7079,7 +7381,7 @@ export async function getPointsAnalyticsPageData() {
         id: `penalty-${event.id}`,
         employeeName: event.employeeName,
         action: 'Penalty',
-        detail: `${event.penaltyCode}${event.description ? ` — ${event.description}` : ''}`,
+        detail: `${event.penaltyCode}${event.description ? ` â€” ${event.description}` : ''}`,
         points: -event.pointsDeducted,
         createdAt: event.createdAt,
       })),
@@ -7189,6 +7491,7 @@ export async function getHsePageData() {
     masterSites,
     incidentReports,
     monthlyManHours,
+    activeEmployees,
   ] = await Promise.all([
     db
       .select({
@@ -7259,13 +7562,68 @@ export async function getHsePageData() {
     db.select().from(safetyIncidentReports).orderBy(desc(safetyIncidentReports.incidentDate)),
 
     db.select().from(safetyMonthlyManHours).orderBy(desc(safetyMonthlyManHours.month)),
+
+    db
+      .select({
+        id: employees.id,
+        siteId: employees.siteId,
+        workLocation: employees.workLocation,
+        jobTitle: employees.jobTitle,
+        section: employees.section,
+        siteName: sites.name,
+      })
+      .from(employees)
+      .leftJoin(sites, eq(sites.id, employees.siteId))
+      .where(eq(employees.isActive, true)),
   ])
+
+  const employeeCountsByLocation: Record<string, number> = {}
+  const serviceCountsByLocation: Record<string, number> = {}
+  const repairCountsByLocation: Record<string, number> = {}
+
+  for (const emp of activeEmployees) {
+    const rawLoc = emp.workLocation || emp.siteName || ''
+    if (!rawLoc) continue
+    const norm = rawLoc.trim().toUpperCase()
+
+    employeeCountsByLocation[norm] = (employeeCountsByLocation[norm] || 0) + 1
+
+    const jt = (emp.jobTitle || '').toLowerCase()
+    const sec = (emp.section || '').toLowerCase()
+    const isService = jt.includes('serviceman') || jt.includes('service') || sec.includes('service')
+    const isRepair =
+      jt.includes('repairman') ||
+      jt.includes('repair') ||
+      sec.includes('repair') ||
+      sec.includes('retread')
+
+    if (isService) {
+      serviceCountsByLocation[norm] = (serviceCountsByLocation[norm] || 0) + 1
+    }
+    if (isRepair) {
+      repairCountsByLocation[norm] = (repairCountsByLocation[norm] || 0) + 1
+    }
+  }
+
+  const enrichedMasterSites = masterSites.map((site) => {
+    const normName = (site.name || '').trim().toUpperCase()
+    const normLoc = (site.location || '').trim().toUpperCase()
+    const totalMp = employeeCountsByLocation[normName] ?? employeeCountsByLocation[normLoc] ?? 0
+    const serviceMp = serviceCountsByLocation[normName] ?? serviceCountsByLocation[normLoc] ?? 0
+    const repairMp = repairCountsByLocation[normName] ?? repairCountsByLocation[normLoc] ?? 0
+    return {
+      ...site,
+      totalManpower: totalMp,
+      manpowerService: serviceMp,
+      manpowerRepair: repairMp,
+    }
+  })
 
   return {
     observations,
     incidents,
     siteMonthlySummaries,
-    masterSites,
+    masterSites: enrichedMasterSites,
     incidentReports,
     monthlyManHours,
   }
@@ -7554,8 +7912,13 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
   )
   const authSession = await getServerSession()
   const now = new Date()
-  const fromDate = new Date(now.getFullYear(), now.getMonth() - 4, 1)
-  const toDate = new Date(now.getFullYear(), now.getMonth() + 3, 1)
+  const isAttendanceResource = resource === 'scheduling_timesheet_attendance'
+  const isSetupResource = resource === 'scheduling_timesheet_setup'
+  const isFieldBreakResource = resource === 'scheduling_timesheet_field_break'
+  const pastMonths = isAttendanceResource ? 1 : 4
+  const futureMonths = isAttendanceResource ? 1 : 3
+  const fromDate = new Date(now.getFullYear(), now.getMonth() - pastMonths, 1)
+  const toDate = new Date(now.getFullYear(), now.getMonth() + futureMonths, 1)
   const fromPeriodStr = `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, '0')}`
   const toPeriodStr = `${toDate.getFullYear()}-${String(toDate.getMonth() + 1).padStart(2, '0')}`
 
@@ -7586,6 +7949,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         employeeSn: employees.employeeSn,
         manpower: employees.manpower,
         levelName: employees.levelName,
+        employeeStatusType: employees.employeeStatusType,
         pointOfHire: employees.pointOfHire,
         workLocation: employees.workLocation,
         role: employees.role,
@@ -7627,91 +7991,107 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         console.error('[getSchedulingTimesheetOptions:sites] Query failed:', err)
         return []
       }),
-    db
-      .select()
-      .from(timesheetSchedulingPlans)
-      .where(
-        and(
-          gte(timesheetSchedulingPlans.period, fromPeriodStr),
-          lte(timesheetSchedulingPlans.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlans] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        id: timesheetSchedulingPlansV2.id,
-        siteId: timesheetSchedulingPlansV2.siteId,
-        period: timesheetSchedulingPlansV2.period,
-        status: timesheetSchedulingPlansV2.status,
-        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
-        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
-        createdByUserId: timesheetSchedulingPlansV2.createdByUserId,
-        updatedByUserId: timesheetSchedulingPlansV2.updatedByUserId,
-        creatorName: employees.name,
-        activatedAt: timesheetSchedulingPlansV2.activatedAt,
-        createdAt: timesheetSchedulingPlansV2.createdAt,
-        updatedAt: timesheetSchedulingPlansV2.updatedAt,
-      })
-      .from(timesheetSchedulingPlansV2)
-      .leftJoin(employees, eq(timesheetSchedulingPlansV2.createdByUserId, employees.authUserId))
-      .where(
-        and(
-          gte(timesheetSchedulingPlansV2.period, fromPeriodStr),
-          lte(timesheetSchedulingPlansV2.period, toPeriodStr)
-        )
-      )
-      .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:', err)
-        return []
-      }),
-    db
-      .select()
-      .from(timesheetFieldBreakPlans)
-      .where(
-        and(
-          gte(timesheetFieldBreakPlans.period, fromPeriodStr),
-          lte(timesheetFieldBreakPlans.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetFieldBreakPlans] Query failed:', err)
-        return []
-      }),
-    db
-      .select()
-      .from(attendanceRecords)
-      .where(
-        and(
-          gte(attendanceRecords.eventTime, fromDate),
-          lte(attendanceRecords.eventTime, toDate)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:attendanceRecords] Query failed:', err)
-        return []
-      }),
-    db
-      .select()
-      .from(timesheetAttendanceRealOverrides)
-      .where(
-        and(
-          gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
-          lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:', err)
-        return []
-      }),
+    isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetSchedulingPlans)
+          .where(
+            and(
+              gte(timesheetSchedulingPlans.period, fromPeriodStr),
+              lte(timesheetSchedulingPlans.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:timesheetSchedulingPlans] Query failed:', err)
+            return []
+          }),
+    isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: timesheetSchedulingPlansV2.id,
+            siteId: timesheetSchedulingPlansV2.siteId,
+            period: timesheetSchedulingPlansV2.period,
+            status: timesheetSchedulingPlansV2.status,
+            draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+            activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+            createdByUserId: timesheetSchedulingPlansV2.createdByUserId,
+            updatedByUserId: timesheetSchedulingPlansV2.updatedByUserId,
+            creatorName: employees.name,
+            activatedAt: timesheetSchedulingPlansV2.activatedAt,
+            createdAt: timesheetSchedulingPlansV2.createdAt,
+            updatedAt: timesheetSchedulingPlansV2.updatedAt,
+          })
+          .from(timesheetSchedulingPlansV2)
+          .leftJoin(employees, eq(timesheetSchedulingPlansV2.createdByUserId, employees.authUserId))
+          .where(
+            and(
+              gte(timesheetSchedulingPlansV2.period, fromPeriodStr),
+              lte(timesheetSchedulingPlansV2.period, toPeriodStr)
+            )
+          )
+          .orderBy(desc(timesheetSchedulingPlansV2.updatedAt))
+          .catch((err) => {
+            console.error(
+              '[getSchedulingTimesheetOptions:timesheetSchedulingPlansV2] Query failed:',
+              err
+            )
+            return []
+          }),
+    isAttendanceResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetFieldBreakPlans)
+          .where(
+            and(
+              gte(timesheetFieldBreakPlans.period, fromPeriodStr),
+              lte(timesheetFieldBreakPlans.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:timesheetFieldBreakPlans] Query failed:', err)
+            return []
+          }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(attendanceRecords)
+          .where(
+            and(gte(attendanceRecords.eventTime, fromDate), lte(attendanceRecords.eventTime, toDate))
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:attendanceRecords] Query failed:', err)
+            return []
+          }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetAttendanceRealOverrides)
+          .where(
+            and(
+              gte(timesheetAttendanceRealOverrides.period, fromPeriodStr),
+              lte(timesheetAttendanceRealOverrides.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error(
+              '[getSchedulingTimesheetOptions:timesheetAttendanceRealOverrides] Query failed:',
+              err
+            )
+            return []
+          }),
     db
       .select()
       .from(timesheetSchedulingConfigs)
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingConfigs] Query failed:', err)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetSchedulingConfigs] Query failed:',
+          err
+        )
         return []
       }),
     db
@@ -7724,68 +8104,64 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         )
       )
       .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetSchedulingStatuses] Query failed:', err)
-        return []
-      }),
-    db
-      .select()
-      .from(timesheetAttendanceImportPreviews)
-      .where(
-        and(
-          gte(timesheetAttendanceImportPreviews.period, fromPeriodStr),
-          lte(timesheetAttendanceImportPreviews.period, toPeriodStr)
+        console.error(
+          '[getSchedulingTimesheetOptions:timesheetSchedulingStatuses] Query failed:',
+          err
         )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:', err)
         return []
       }),
-    db
-      .select({
-        id: activities.id,
-        employeeId: activities.employeeId,
-        activityCode: activities.activityCode,
-        title: activities.title,
-        startTime: activities.startTime,
-        endTime: activities.endTime,
-        status: activities.status,
-      })
-      .from(activities)
-      .where(
-        and(
-          gte(activities.startTime, fromDate),
-          lte(activities.startTime, toDate)
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:activities] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        employeeId: trainingRecords.employeeId,
-        trainingName: trainingRecords.trainingName,
-        status: trainingRecords.status,
-      })
-      .from(trainingRecords)
-      .where(inArray(sql`lower(${trainingRecords.status})`, ['valid', 'active', 'aktif']))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:trainingRecords] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        employeeId: sioCertifications.employeeId,
-        certName: sioCertifications.certName,
-        certType: sioCertifications.certType,
-        status: sioCertifications.status,
-      })
-      .from(sioCertifications)
-      .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:sioCertifications] Query failed:', err)
-        return []
-      }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(timesheetAttendanceImportPreviews)
+          .where(
+            and(
+              gte(timesheetAttendanceImportPreviews.period, fromPeriodStr),
+              lte(timesheetAttendanceImportPreviews.period, toPeriodStr)
+            )
+          )
+          .catch((err) => {
+            console.error(
+              '[getSchedulingTimesheetOptions:timesheetAttendanceImportPreviews] Query failed:',
+              err
+            )
+            return []
+          }),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: activities.id,
+            employeeId: activities.employeeId,
+            activityCode: activities.activityCode,
+            title: activities.title,
+            startTime: activities.startTime,
+            endTime: activities.endTime,
+            status: activities.status,
+          })
+          .from(activities)
+          .where(and(gte(activities.startTime, fromDate), lte(activities.startTime, toDate)))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:activities] Query failed:', err)
+            return []
+          }),
+    Promise.resolve([] as Array<{ employeeId: number; trainingName: string; status: string }>),
+    isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            employeeId: sioCertifications.employeeId,
+            certName: sioCertifications.certName,
+            certType: sioCertifications.certType,
+            status: sioCertifications.status,
+          })
+          .from(sioCertifications)
+          .where(inArray(sql`lower(${sioCertifications.status})`, ['valid', 'active', 'aktif']))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:sioCertifications] Query failed:', err)
+            return []
+          }),
     db
       .select({
         id: masterSections.id,
@@ -7803,93 +8179,104 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         console.error('[getSchedulingTimesheetOptions:masterSections] Query failed:', err)
         return []
       }),
-    db
-      .select({
-        id: approvalMatrices.id,
-        name: approvalMatrices.name,
-        siteId: approvalMatrices.siteId,
-        departmentId: approvalMatrices.departmentId,
-        departmentName: masterDepartments.name,
-        sectionId: approvalMatrices.sectionId,
-        sectionName: masterSections.name,
-      })
-      .from(approvalMatrices)
-      .leftJoin(masterDepartments, eq(approvalMatrices.departmentId, masterDepartments.id))
-      .leftJoin(masterSections, eq(approvalMatrices.sectionId, masterSections.id))
-      .where(
-        and(
-          eq(approvalMatrices.isActive, true),
-          eq(approvalMatrices.transactionType, 'overtime_request'),
-          isNotNull(approvalMatrices.sectionId)
-        )
-      )
-      .orderBy(asc(masterDepartments.name), asc(masterSections.name), asc(approvalMatrices.name))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:approvalMatrices] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        matrixId: approvalMatrixSteps.matrixId,
-        stepOrder: approvalMatrixSteps.stepOrder,
-        nodeEmployeeId: orgChartNodes.employeeId,
-        assignmentEmployeeId: orgNodeAssignments.employeeId,
-      })
-      .from(approvalMatrixSteps)
-      .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
-      .leftJoin(
-        orgNodeAssignments,
-        and(
-          eq(orgNodeAssignments.nodeId, orgChartNodes.id),
-          eq(orgNodeAssignments.assignmentType, 'primary'),
-          eq(orgNodeAssignments.isActive, true)
-        )
-      )
-      .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder))
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:approvalMatrixSteps] Query failed:', err)
-        return []
-      }),
-    db
-      .select({
-        id: overtimeCommandLetters.id,
-        splNumber: overtimeCommandLetters.splNumber,
-        title: overtimeCommandLetters.title,
-        siteId: overtimeCommandLetters.siteId,
-        employeeId: overtimeCommandLetterParticipants.employeeId,
-        workDate: overtimeCommandLetters.workDate,
-        plannedStartAt: overtimeCommandLetters.plannedStartAt,
-        plannedEndAt: overtimeCommandLetters.plannedEndAt,
-        status: overtimeCommandLetters.status,
-        category: overtimeCommandLetterParticipants.category,
-        overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
-        evidenceStatus: overtimeCommandLetterParticipants.evidenceStatus,
-        payrollPeriod: overtimeCommandLetterParticipants.payrollPeriod,
-      })
-      .from(overtimeCommandLetters)
-      .innerJoin(
-        overtimeCommandLetterParticipants,
-        eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
-      )
-      .where(
-        and(
-          inArray(sql`lower(${overtimeCommandLetters.status})`, ['approved', 'closed', 'submitted', 'pending']),
-          or(
+    isSetupResource
+      ? db
+          .select({
+            id: approvalMatrices.id,
+            name: approvalMatrices.name,
+            siteId: approvalMatrices.siteId,
+            departmentId: approvalMatrices.departmentId,
+            departmentName: masterDepartments.name,
+            sectionId: approvalMatrices.sectionId,
+            sectionName: masterSections.name,
+          })
+          .from(approvalMatrices)
+          .leftJoin(masterDepartments, eq(approvalMatrices.departmentId, masterDepartments.id))
+          .leftJoin(masterSections, eq(approvalMatrices.sectionId, masterSections.id))
+          .where(
             and(
-              gte(overtimeCommandLetters.workDate, fromDate),
-              lte(overtimeCommandLetters.workDate, toDate)
-            ),
-            and(
-              gte(overtimeCommandLetters.plannedStartAt, fromDate),
-              lte(overtimeCommandLetters.plannedStartAt, toDate)
+              eq(approvalMatrices.isActive, true),
+              eq(approvalMatrices.transactionType, 'overtime_request'),
+              isNotNull(approvalMatrices.sectionId)
             )
           )
-        )
-      )
-      .catch((err) => {
-        console.error('[getSchedulingTimesheetOptions:overtimeCommandLetters] Query failed:', err)
-        return []
-      }),
+          .orderBy(asc(masterDepartments.name), asc(masterSections.name), asc(approvalMatrices.name))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:approvalMatrices] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    isSetupResource
+      ? db
+          .select({
+            matrixId: approvalMatrixSteps.matrixId,
+            stepOrder: approvalMatrixSteps.stepOrder,
+            nodeEmployeeId: orgChartNodes.employeeId,
+            assignmentEmployeeId: orgNodeAssignments.employeeId,
+          })
+          .from(approvalMatrixSteps)
+          .leftJoin(orgChartNodes, eq(approvalMatrixSteps.nodeId, orgChartNodes.id))
+          .leftJoin(
+            orgNodeAssignments,
+            and(
+              eq(orgNodeAssignments.nodeId, orgChartNodes.id),
+              eq(orgNodeAssignments.assignmentType, 'primary'),
+              eq(orgNodeAssignments.isActive, true)
+            )
+          )
+          .orderBy(asc(approvalMatrixSteps.matrixId), asc(approvalMatrixSteps.stepOrder))
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:approvalMatrixSteps] Query failed:', err)
+            return []
+          })
+      : Promise.resolve([]),
+    isFieldBreakResource || isSetupResource
+      ? Promise.resolve([])
+      : db
+          .select({
+            id: overtimeCommandLetters.id,
+            splNumber: overtimeCommandLetters.splNumber,
+            title: overtimeCommandLetters.title,
+            siteId: overtimeCommandLetters.siteId,
+            employeeId: overtimeCommandLetterParticipants.employeeId,
+            workDate: overtimeCommandLetters.workDate,
+            plannedStartAt: overtimeCommandLetters.plannedStartAt,
+            plannedEndAt: overtimeCommandLetters.plannedEndAt,
+            status: overtimeCommandLetters.status,
+            category: overtimeCommandLetterParticipants.category,
+            overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
+            evidenceStatus: overtimeCommandLetterParticipants.evidenceStatus,
+            payrollPeriod: overtimeCommandLetterParticipants.payrollPeriod,
+          })
+          .from(overtimeCommandLetters)
+          .innerJoin(
+            overtimeCommandLetterParticipants,
+            eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, overtimeCommandLetters.id)
+          )
+          .where(
+            and(
+              inArray(sql`lower(${overtimeCommandLetters.status})`, [
+                'approved',
+                'closed',
+                'submitted',
+                'pending',
+              ]),
+              or(
+                and(
+                  gte(overtimeCommandLetters.workDate, fromDate),
+                  lte(overtimeCommandLetters.workDate, toDate)
+                ),
+                and(
+                  gte(overtimeCommandLetters.plannedStartAt, fromDate),
+                  lte(overtimeCommandLetters.plannedStartAt, toDate)
+                )
+              )
+            )
+          )
+          .catch((err) => {
+            console.error('[getSchedulingTimesheetOptions:overtimeCommandLetters] Query failed:', err)
+            return []
+          }),
   ])
 
   const kimperMap = new Map<number, { isLV: boolean; isTH: boolean; sioNames: string[] }>()
@@ -7911,32 +8298,31 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
     'vibro',
     'roller',
   ]
+  const thRegex = /\b(forklift|loader|tyrehandler|tyre handler|heavy|excavator|dozer|grader|crane|buldozer|bulldozer|compactor|vibro|roller)\b/i
   const thFuse = new Fuse(
     thKeywords.map((k) => ({ keyword: k })),
     {
       keys: ['keyword'],
-      threshold: 0.4,
+      threshold: 0.35,
     }
   )
 
   // We can also use simple regex for LV since it's short, or a strict match
   const isLV = (name: string) => /\b(lv|light vehicle|sim a|sim b)\b/i.test(name)
 
-  const allRecords = [
-    ...sioCertificationsRows.map((r) => {
-      let combinedName = r.certName || ''
-      if (
-        r.certType &&
-        r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()
-      ) {
-        combinedName = combinedName ? `${combinedName} ${r.certType}` : r.certType
-      }
-      return {
-        employeeId: r.employeeId,
-        name: combinedName.trim(),
-      }
-    }),
-  ]
+  const allRecords = sioCertificationsRows.map((r) => {
+    let combinedName = r.certName || ''
+    if (
+      r.certType &&
+      r.certType.trim().toLowerCase() !== (r.certName || '').trim().toLowerCase()
+    ) {
+      combinedName = combinedName ? `${combinedName} ${r.certType}` : r.certType
+    }
+    return {
+      employeeId: r.employeeId,
+      name: combinedName.trim(),
+    }
+  })
 
   for (const record of allRecords) {
     const name = record.name.toLowerCase()
@@ -7951,25 +8337,24 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
       state.isLV = true
     }
 
-    // Also check TH using Fuse
-    const words = name.split(/[\s,/-]+/)
-    const thFuse = new Fuse(
-      thKeywords.map((kw) => ({ kw })),
-      { keys: ['kw'], threshold: 0.3 }
-    )
-
-    let matchedTH = false
-    for (const w of words) {
-      if (thFuse.search(w).length > 0) {
-        matchedTH = true
-        break
+    // Check TH fast with regex and exact keyword check first
+    let matchedTH = thRegex.test(name)
+    if (!matchedTH) {
+      for (const kw of thKeywords) {
+        if (name.includes(kw)) {
+          matchedTH = true
+          break
+        }
       }
     }
-    // Check exact matches just in case the phrase has spaces like 'tyre handler'
-    for (const kw of thKeywords) {
-      if (name.includes(kw)) {
-        matchedTH = true
-        break
+    // Fallback to pre-built thFuse (never recreate Fuse in loop)
+    if (!matchedTH) {
+      const words = name.split(/[\s,/-]+/)
+      for (const w of words) {
+        if (w.length >= 3 && thFuse.search(w).length > 0) {
+          matchedTH = true
+          break
+        }
       }
     }
 
@@ -7980,7 +8365,7 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
     kimperMap.set(record.employeeId, state)
   }
 
-  // Use the dedicated access context helper — not employeeRows.find() — because
+  // Use the dedicated access context helper â€” not employeeRows.find() â€” because
   // employeeRows only contains employees from queried sites and may not include
   // the logged-in user (especially for a user whose site is unrepresented in data).
   const currentEmployeeCtx = await getCurrentEmployeeAccessContext()
@@ -8073,7 +8458,10 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
     })
   }
 
-  const approvalSections = [...activeSectionSites.values()].flatMap((scope) =>
+  const approvalSections =
+    approvalSectionRows.length === 0
+      ? []
+      : [...activeSectionSites.values()].flatMap((scope) =>
     masterSectionRows
       .filter(
         (section) => section.id === scope.sectionId && section.departmentId === scope.departmentId
@@ -8135,10 +8523,13 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
         email: employee.email ?? '',
         employeeSn: employee.employeeSn ?? '',
         manpower: employee.manpower,
+        levelName: employee.levelName ?? null,
+        employeeStatusType: employee.employeeStatusType ?? null,
         pointOfHire: employee.pointOfHire,
         workLocation: employee.workLocation,
         siteLocation: employee.siteLocation,
         role: employee.jobTitle || employee.role || '',
+        jobTitle: employee.jobTitle ?? null,
         departmentId: employee.departmentId,
         sectionId: employee.sectionId,
         department: employee.department ?? null,
@@ -8216,13 +8607,12 @@ export async function getSchedulingTimesheetOptions(resource = 'scheduling_times
           ? override.source
           : 'manual',
         overtimeHours: override.overtimeHours ?? null,
+        validationFlags: (Array.isArray(override.validationFlags) ? (override.validationFlags as string[]) : []) as string[],
         updatedAt: override.updatedAt.toISOString(),
       })),
     approvedSplWindows: approvedSplRows
       .filter(
-        (row) =>
-          row.employeeId != null &&
-          canSeeSchedulingEmployee(row.employeeId, row.siteId)
+        (row) => row.employeeId != null && canSeeSchedulingEmployee(row.employeeId, row.siteId)
       )
       .map((row) => ({
         id: row.id,
@@ -8316,6 +8706,7 @@ async function getSchedulingTimesheetBaseOptions() {
         name: employees.name,
         email: employees.email,
         employeeSn: employees.employeeSn,
+        employeeStatusType: employees.employeeStatusType,
         role: employees.role,
         jobTitle: employees.jobTitle,
         department: employees.department,
@@ -8485,15 +8876,18 @@ function serializeAttendanceOverride(
 }
 
 export async function getSchedulingTimesheetOverviewOptions() {
-  return getSchedulingTimesheetOptions()
+  const options = await getSchedulingTimesheetOptions()
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetSetupOptions() {
-  return getSchedulingTimesheetOptions('scheduling_timesheet_setup')
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet_setup')
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetScheduleOptions() {
-  return getSchedulingTimesheetOptions('scheduling_timesheet')
+  const options = await getSchedulingTimesheetOptions('scheduling_timesheet')
+  return { ...options, savedPlans: options.activeSavedPlans }
 }
 
 export async function getSchedulingTimesheetScheduleV2Options() {
@@ -8758,7 +9152,9 @@ export async function recordEmployeeLocationTransfer(params: {
   return inserted
 }
 
-export async function getEmployeeLocationTransfersData(): Promise<EmployeeLocationTransferRecord[]> {
+export async function getEmployeeLocationTransfersData(): Promise<
+  EmployeeLocationTransferRecord[]
+> {
   const fromSites = alias(sites, 'fromSites')
   const toSites = alias(sites, 'toSites')
 
@@ -8944,7 +9340,9 @@ export async function getApdNotificationConfigData() {
         "updated_at" timestamp DEFAULT now() NOT NULL
       )
     `)
-    await db.execute(sql`
+    await db
+      .execute(
+        sql`
       ALTER TABLE "hero_apd_notification_config"
       ADD COLUMN IF NOT EXISTS "service_cc_email" text DEFAULT '' NOT NULL,
       ADD COLUMN IF NOT EXISTS "repair_cc_email" text DEFAULT '' NOT NULL,
@@ -8952,7 +9350,9 @@ export async function getApdNotificationConfigData() {
       ADD COLUMN IF NOT EXISTS "service_reminder_email" text DEFAULT '' NOT NULL,
       ADD COLUMN IF NOT EXISTS "repair_reminder_email" text DEFAULT '' NOT NULL,
       ADD COLUMN IF NOT EXISTS "te_reminder_email" text DEFAULT '' NOT NULL
-    `).catch(() => null)
+    `
+      )
+      .catch(() => null)
   } catch {
     // DDL bypass
   }
@@ -9043,7 +9443,6 @@ export async function getMaritalStatusNotificationConfigData() {
     }
   )
 }
-
 
 export async function getMaterialToolsNotificationConfigData() {
   try {
@@ -9190,8 +9589,7 @@ export async function getAttendanceNotificationConfigData() {
     .limit(1)
 
   const seed = {
-    ccEmails:
-      'adila.arizona@chitraparatama.co.id, kesuma.bagaskara@chitraparatama.co.id',
+    ccEmails: 'adila.arizona@chitraparatama.co.id, kesuma.bagaskara@chitraparatama.co.id',
     headSectionMvcEmail: 'apriyanto.lastam@chitraparatama.co.id',
     headSectionRepairEmail: 'ary.maulana@chitraparatama.co.id',
     headSectionTeEmail: 'abian.husain@chitraparatama.co.id',
@@ -9204,10 +9602,7 @@ export async function getAttendanceNotificationConfigData() {
 
   if (!config) {
     try {
-      const [inserted] = await db
-        .insert(attendanceNotificationConfig)
-        .values(seed)
-        .returning()
+      const [inserted] = await db.insert(attendanceNotificationConfig).values(seed).returning()
       return inserted ?? { id: 0, ...seed }
     } catch {
       return { id: 0, ...seed }
@@ -9218,7 +9613,7 @@ export async function getAttendanceNotificationConfigData() {
 }
 
 export async function getActiveEmployeesForSelect() {
-  // User Management (hero_employees) — only rows with usable email
+  // User Management (hero_employees) â€” only rows with usable email
   const rows = await db
     .select({
       id: employees.id,
@@ -9458,7 +9853,12 @@ export const getSidebarDataForUser = cache(async function getSidebarDataForUser(
 
       const visibleItems = dedupeMenuItemsByPage(
         permittedMenuItems
-          .filter((item) => item.isVisible && (item.resource !== 'security_quick_actions' || superAdmin) && (superAdmin || item.canView))
+          .filter(
+            (item) =>
+              item.isVisible &&
+              (item.resource !== 'security_quick_actions' || superAdmin) &&
+              (superAdmin || item.canView)
+          )
           .map((item) => ({
             ...item,
             url: item.isIframe ? `/dashboard/iframe/${item.id}` : item.url,

@@ -22,25 +22,32 @@ import { getServerSession } from '@/lib/auth-session'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { sendPushNotification } from '@/lib/push-notifications'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl, isLocalAppOrigin } from '@/lib/auth-config'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
 import { getHumanCapitalConfiguredRecipients } from '@/lib/human-capital-email'
 import { getContractReviewSettings, autoAdvanceDraftReviewIfReady } from './contract-review'
 
 async function getBaseUrl(): Promise<string> {
-  let baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!baseUrl) {
-    try {
-      const headersList = await headers()
-      const host = headersList.get('host')
-      const protocol = headersList.get('x-forwarded-proto') || 'http'
-      if (host) {
-        baseUrl = `${protocol}://${host}`
-      }
-    } catch {
-      // outside request context fallback
-    }
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (envUrl && !isLocalAppOrigin(envUrl)) {
+    return envUrl.replace(/\/+$/, '')
   }
-  return baseUrl || 'http://localhost:3000'
+
+  try {
+    const headersList = await headers()
+    const host = headersList.get('x-forwarded-host')?.split(',')[0]?.trim() || headersList.get('host')
+    const protocol = headersList.get('x-forwarded-proto') || 'https'
+    if (host) {
+      const candidate = `${protocol}://${host}`
+      if (!isLocalAppOrigin(candidate)) {
+        return candidate
+      }
+    }
+  } catch {
+    // outside request context fallback
+  }
+
+  return getEmailAppUrl()
 }
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {

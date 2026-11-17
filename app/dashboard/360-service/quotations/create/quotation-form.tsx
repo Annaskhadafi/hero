@@ -31,7 +31,7 @@ import * as z from "zod"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/ui/searchable-select"
-import { GripVertical, Save, X } from "lucide-react"
+import { GripVertical, Save, X, FileSignature } from "lucide-react"
 import { HistoryCombobox } from "@/components/ui/history-combobox"
 import { calculateStartMonthProrateFactor } from "@/lib/service360-quotation-prorate"
 import { calculateQuotationTotal } from "@/lib/service360-quotation-total"
@@ -42,6 +42,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { HeroSearchableSelect } from "@/components/templates"
 
 const itemSchema = z.object({
@@ -95,6 +103,7 @@ const quotationSchema = z.object({
   hideBackupPrice: z.boolean().optional(),
   hideBackupDate: z.boolean().optional(),
   hideMonthColumn: z.boolean().optional(),
+  isFlatPrice: z.boolean().optional(),
   discountType: z.enum(['percent', 'fixed']).nullable().optional(),
   discountValue: z.number().min(0).optional(),
   showDays: z.boolean().optional(),
@@ -103,6 +112,14 @@ const quotationSchema = z.object({
   notes: z.string().optional(),
   includeBast: z.boolean().optional(),
   includeRoster: z.boolean().optional(),
+  showCustomApproval: z.boolean().optional(),
+  customApprovalPosition: z.enum(["middle", "right"]).optional(),
+  customApprovals: z.array(z.object({
+    label: z.string().optional(),
+    name: z.string().optional(),
+    position: z.string().optional(),
+    company: z.string().optional(),
+  })).optional(),
   items: z.array(itemSchema).min(1, "At least one item is required")
 }).refine(data => {
   if (data.customerId === "manual" && !data.manualCustomerName) {
@@ -241,6 +258,7 @@ const router = useRouter()
       hideBackupPrice: initialData?.hideBackupPrice ?? false,
       hideBackupDate: initialData?.hideBackupDate ?? false,
       hideMonthColumn: initialData?.hideMonthColumn ?? false,
+      isFlatPrice: initialData?.isFlatPrice ?? false,
       discountType: initialData?.discountType ?? null,
       discountValue: initialData?.discountValue ? Number(initialData.discountValue) : 0,
       showDays: initialData?.showDays ?? true,
@@ -259,6 +277,11 @@ const router = useRouter()
       customIntro: initialData?.customIntro || "",
       includeBast: initialData?.includeBast ?? false,
       includeRoster: initialData?.includeRoster ?? false,
+      showCustomApproval: initialData?.showCustomApproval ?? false,
+      customApprovalPosition: initialData?.customApprovalPosition || "middle",
+      customApprovals: (initialData?.customApprovals && initialData.customApprovals.length > 0)
+        ? initialData.customApprovals
+        : [{ label: "APPROVED BY", name: "", position: "Supervisor GL Plant", company: "" }],
       items: initialData?.items?.map((i: any, idx: number) => {
         const parsedPrimary = parseMonthPeriod(i.quotationItem.monthPeriod || "");
         const parsedBackup = parseMonthPeriod(i.quotationItem.backupMonthPeriod || "");
@@ -308,6 +331,7 @@ const router = useRouter()
   const hideBackupPrice = watch("hideBackupPrice")
   const hideBackupDate = watch("hideBackupDate")
   const hideMonthColumn = watch("hideMonthColumn")
+  const isFlatPrice = watch("isFlatPrice") ?? false
   const discountType = watch("discountType")
   const discountValue = watch("discountValue") || 0
   const showDays = watch("showDays")
@@ -318,6 +342,14 @@ const router = useRouter()
   const showQty = watch("showQty")
   const includeBast = watch("includeBast")
   const includeRoster = watch("includeRoster")
+  const showCustomApproval = watch("showCustomApproval")
+  const customApprovalPosition = watch("customApprovalPosition") || "middle"
+  const customApprovals = watch("customApprovals") || []
+  const customApprovalsCount = customApprovals.length >= 2 ? 2 : 1
+  const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false)
+
+  const selectedCustomerObj = customers.find((c) => c.id.toString() === selectedCustomerId)
+  const customerCompanyName = selectedCustomerObj?.customerName || manualCustomerName || ""
   const attn = watch("attn") || ""
   const cc = watch("cc") || ""
   const fromName = watch("fromName") || ""
@@ -550,6 +582,9 @@ const router = useRouter()
   };
 
   const getPrimaryProrate = (item: SelectedItem) => {
+    if (isFlatPrice) {
+      return item.price * item.quantity
+    }
     if (isProrateEligible(item.category)) {
       const hasPeriod = Boolean(
         (item.startDate && item.endDate) ||
@@ -573,6 +608,9 @@ const router = useRouter()
   }
 
   const getBackupProrate = (item: SelectedItem) => {
+    if (isFlatPrice) {
+      return item.isBackup ? (item.backupPrice || 0) * item.quantity : 0
+    }
     if (isProrateEligible(item.category) && item.isBackup) {
       return calculateStartMonthProrateFactor(item.backupStartDate, item.backupEndDate, item.startDate || item.backupStartDate)
         * (item.backupPrice || 0) * item.quantity
@@ -994,6 +1032,16 @@ const router = useRouter()
                     <Switch checked={hideMonthColumn} onCheckedChange={(v) => setValue("hideMonthColumn", v)} />
                     <label className="text-xs leading-tight">Hide Month<br/>Column<br/>(PDF)</label>
                   </div>
+                  <div className="flex items-center gap-2 px-2 py-1 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-lg border border-emerald-200/60 dark:border-emerald-800/40">
+                    <Switch 
+                      id="switch-flat-price"
+                      checked={isFlatPrice} 
+                      onCheckedChange={(v) => setValue("isFlatPrice", v)} 
+                    />
+                    <label htmlFor="switch-flat-price" className="text-xs leading-tight font-bold text-emerald-800 dark:text-emerald-300 cursor-pointer">
+                      Flat<br/>Price
+                    </label>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Switch checked={showDays} onCheckedChange={(v) => setValue("showDays", v)} />
                     <label className="text-xs leading-tight">Show<br/>Hari<br/>(PDF)</label>
@@ -1006,9 +1054,274 @@ const router = useRouter()
                     <Switch checked={includeRoster} onCheckedChange={(v) => setValue("includeRoster", v)} />
                     <label className="text-xs leading-tight text-primary font-bold">Include<br/>Roster</label>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="switch-custom-approval"
+                      checked={showCustomApproval}
+                      onCheckedChange={(v) => {
+                        setValue("showCustomApproval", v)
+                        if (v) {
+                          const curApprovals = watch("customApprovals") || []
+                          if (curApprovals.length === 0) {
+                            setValue("customApprovals", [
+                              { label: "APPROVED BY", name: "", position: "Supervisor GL Plant", company: customerCompanyName }
+                            ])
+                          }
+                          setIsApprovalDialogOpen(true)
+                        }
+                      }}
+                    />
+                    <div className="flex flex-col">
+                      <label htmlFor="switch-custom-approval" className="text-xs leading-tight text-primary font-bold cursor-pointer">
+                        Custom TTD<br/>Approval
+                      </label>
+                      {showCustomApproval && (
+                        <button
+                          type="button"
+                          onClick={() => setIsApprovalDialogOpen(true)}
+                          className="text-[10px] text-teal-600 hover:text-teal-700 underline font-semibold text-left whitespace-nowrap"
+                        >
+                          Atur ({customApprovalPosition === 'right' ? 'Paling Kanan' : 'Tengah'}, {customApprovalsCount} TTD)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {showCustomApproval && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsApprovalDialogOpen(true)}
+                      className="h-8 px-2.5 text-xs font-semibold gap-1.5 text-teal-700 dark:text-teal-400 border-teal-300 dark:border-teal-700 bg-teal-50/70 dark:bg-teal-950/40 hover:bg-teal-100 shadow-2xs"
+                    >
+                      <FileSignature className="w-3.5 h-3.5 text-teal-600" />
+                      Atur TTD ({customApprovalPosition === 'right' ? 'Paling Kanan' : 'Tengah'})
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
+
+            {/* Minimalist Popup Dialog for Custom Approvals */}
+            <Dialog open={isApprovalDialogOpen} onOpenChange={setIsApprovalDialogOpen}>
+              <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+                    <FileSignature className="w-5 h-5 text-teal-600" />
+                    Pengaturan TTD Persetujuan Tambahan
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground">
+                    Atur posisi dan data tanda tangan persetujuan pihak customer. Sisi paling kiri tetap Prepared By (Sales).
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  {/* Posisi TTD Tambahan */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1.5">
+                      Posisi Tanda Tangan Tambahan
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div
+                        onClick={() => setValue("customApprovalPosition", "middle")}
+                        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                          customApprovalPosition === "middle"
+                            ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 ring-1 ring-teal-500"
+                            : "border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Tengah (Di Antara)</span>
+                          {customApprovalPosition === "middle" && (
+                            <span className="text-[10px] bg-teal-600 text-white font-semibold px-1.5 py-0.5 rounded">Aktif</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-tight">
+                          Di antara Sales dan Customer
+                        </p>
+                        <div className="mt-2 text-[10px] font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-1.5 rounded text-center">
+                          [Sales] → <span className="font-bold text-teal-600">[TTD Tambahan]</span> → [Customer]
+                        </div>
+                      </div>
+
+                      <div
+                        onClick={() => setValue("customApprovalPosition", "right")}
+                        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                          customApprovalPosition === "right"
+                            ? "border-teal-500 bg-teal-50/60 dark:bg-teal-950/40 ring-1 ring-teal-500"
+                            : "border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-white dark:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Paling Kanan</span>
+                          {customApprovalPosition === "right" && (
+                            <span className="text-[10px] bg-teal-600 text-white font-semibold px-1.5 py-0.5 rounded">Aktif</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-tight">
+                          Setelah kolom Customer
+                        </p>
+                        <div className="mt-2 text-[10px] font-mono text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-1.5 rounded text-center">
+                          [Sales] → [Customer] → <span className="font-bold text-teal-600">[TTD Tambahan]</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Jumlah Approval */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        Jumlah Tanda Tangan Tambahan
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          type="button"
+                          variant={customApprovalsCount === 1 ? "default" : "outline"}
+                          size="sm"
+                          className="h-7 text-xs font-semibold px-2.5"
+                          onClick={() => {
+                            const current = watch("customApprovals") || []
+                            setValue("customApprovals", [
+                              current[0] || { label: "APPROVED BY", name: "", position: "Supervisor GL Plant", company: customerCompanyName }
+                            ])
+                          }}
+                        >
+                          1 Approval
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={customApprovalsCount >= 2 ? "default" : "outline"}
+                          size="sm"
+                          className="h-7 text-xs font-semibold px-2.5"
+                          onClick={() => {
+                            const current = watch("customApprovals") || []
+                            setValue("customApprovals", [
+                              current[0] || { label: "APPROVED BY", name: "", position: "Supervisor GL Plant", company: customerCompanyName },
+                              current[1] || { label: "APPROVED BY", name: "", position: "Procurement", company: customerCompanyName },
+                            ])
+                          }}
+                        >
+                          2 Approval
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Field Rincian Approval 1 */}
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2.5">
+                    <div className="flex items-center justify-between border-b pb-1.5">
+                      <span className="text-xs font-bold text-teal-700 dark:text-teal-400">
+                        Approval 1 {customApprovalsCount >= 2 ? "(Pertama)" : ""}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">e.g. Supervisor GL Plant</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Label Approval</label>
+                        <Input
+                          value={watch("customApprovals.0.label") || ""}
+                          onChange={(e) => setValue("customApprovals.0.label", e.target.value)}
+                          placeholder="e.g. APPROVED BY"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Nama Lengkap</label>
+                        <Input
+                          value={watch("customApprovals.0.name") || ""}
+                          onChange={(e) => setValue("customApprovals.0.name", e.target.value)}
+                          placeholder="e.g. Adit Prasetyo"
+                          className="h-8 text-xs font-medium"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Jabatan / Role</label>
+                        <Input
+                          value={watch("customApprovals.0.position") || ""}
+                          onChange={(e) => setValue("customApprovals.0.position", e.target.value)}
+                          placeholder="e.g. Supervisor GL Plant / Plant Group Leader"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Perusahaan</label>
+                        <Input
+                          value={watch("customApprovals.0.company") || ""}
+                          onChange={(e) => setValue("customApprovals.0.company", e.target.value)}
+                          placeholder={customerCompanyName || "e.g. PT Antareja Mahada Makmur"}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Field Rincian Approval 2 (if 2 approvals active) */}
+                  {customApprovalsCount >= 2 && (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2.5">
+                      <div className="flex items-center justify-between border-b pb-1.5">
+                        <span className="text-xs font-bold text-teal-700 dark:text-teal-400">
+                          Approval 2 (Kedua)
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">e.g. Procurement / Site Lead</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Label Approval</label>
+                          <Input
+                            value={watch("customApprovals.1.label") || ""}
+                            onChange={(e) => setValue("customApprovals.1.label", e.target.value)}
+                            placeholder="e.g. APPROVED BY"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Nama Lengkap</label>
+                          <Input
+                            value={watch("customApprovals.1.name") || ""}
+                            onChange={(e) => setValue("customApprovals.1.name", e.target.value)}
+                            placeholder="e.g. Nama Procurement"
+                            className="h-8 text-xs font-medium"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Jabatan / Role</label>
+                          <Input
+                            value={watch("customApprovals.1.position") || ""}
+                            onChange={(e) => setValue("customApprovals.1.position", e.target.value)}
+                            placeholder="e.g. Procurement Specialist"
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">Perusahaan</label>
+                          <Input
+                            value={watch("customApprovals.1.company") || ""}
+                            onChange={(e) => setValue("customApprovals.1.company", e.target.value)}
+                            placeholder={customerCompanyName || "e.g. PT Antareja Mahada Makmur"}
+                            className="h-8 text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button
+                    type="button"
+                    onClick={() => setIsApprovalDialogOpen(false)}
+                    className="h-9 font-semibold"
+                  >
+                    Simpan & Selesai
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <div className="lg:col-span-2">
               <label className="text-sm font-medium block mb-1.5">Project Name (for intro text)</label>

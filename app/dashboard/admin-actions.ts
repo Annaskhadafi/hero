@@ -87,7 +87,7 @@ async function notifyDailyReportDelivery(input: {
   })
 }
 
-import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, isNotNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import {
@@ -253,7 +253,8 @@ async function requireSchedulingTimesheetAccess(
   if (!access.canView || !allowed) {
     if (resource !== 'scheduling_timesheet') {
       const parentAccess = await getCurrentMenuPermission('scheduling_timesheet')
-      const parentAllowed = permission === 'finalize' ? parentAccess.canDelete : parentAccess.canEdit
+      const parentAllowed =
+        permission === 'finalize' ? parentAccess.canDelete : parentAccess.canEdit
       if (parentAccess.canView && parentAllowed) {
         return parentAccess
       }
@@ -484,6 +485,7 @@ const scheduleCodeSchema = z.enum([
   'OFF',
   'FB',
   'ST',
+  'AL',
   'Libur',
   'Sakit',
   'Emergency',
@@ -584,7 +586,7 @@ export async function saveSchedulingTimesheetPlanAction(
   return { ok: true }
 }
 
-const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB', 'ST'])
+const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB', 'ST', 'AL'])
 const scheduleV2RowSchema = z.object({
   employeeId: z.number().int().positive(),
   schedule: z.array(scheduleV2CodeSchema),
@@ -606,6 +608,16 @@ const updateScheduleV2CellSchema = scheduleV2KeySchema.extend({
   employeeId: z.number().int().positive(),
   day: z.number().int().positive(),
   code: scheduleV2CodeSchema,
+})
+
+const updateScheduleV2BatchCellsSchema = scheduleV2KeySchema.extend({
+  cells: z.array(
+    z.object({
+      employeeId: z.number().int().positive(),
+      day: z.number().int().positive(),
+      code: scheduleV2CodeSchema,
+    })
+  ),
 })
 
 async function getActiveScheduleEmployees(siteId: number) {
@@ -659,10 +671,7 @@ async function normalizeScheduleV2DraftRows(siteId: number, period: string, rows
       .from(employees)
       .where(inArray(employees.id, extraIds))
   }
-  const validEmployeeIds = new Set([
-    ...activeIds,
-    ...extraEmployees.map((e) => e.id),
-  ])
+  const validEmployeeIds = new Set([...activeIds, ...extraEmployees.map((e) => e.id)])
 
   const dayCount = getScheduleV2DayCount(period)
   const result: ScheduleV2Row[] = []
@@ -698,7 +707,7 @@ async function normalizeScheduleV2DraftRows(siteId: number, period: string, rows
   return result
 }
 
-async function syncScheduleV2EmployeeSiteAcrossPlans(
+export async function syncScheduleV2EmployeeSiteAcrossPlans(
   employeeId: number,
   sourceSiteId: number | null,
   targetSiteId: number
@@ -755,8 +764,26 @@ async function syncScheduleV2EmployeeSiteAcrossPlans(
       .where(eq(timesheetSchedulingPlansV2.siteId, sourceSiteId))
 
     for (const plan of sourcePlans) {
-      // Keep roster history intact for current and past periods; only remove from future periods!
-      if (plan.period <= currentPeriodStr) continue
+      // Keep roster history intact for past periods.
+      if (plan.period < currentPeriodStr) continue
+
+      // For current period, keep in source site ONLY IF employee has actual attendance in source site this month.
+      if (plan.period === currentPeriodStr) {
+        const attendanceInSource = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.siteId, sourceSiteId),
+              eq(attendanceRecords.employeeId, employeeId),
+              sql`to_char(${attendanceRecords.eventTime}, 'YYYY-MM') = ${plan.period}`
+            )
+          )
+        if ((attendanceInSource[0]?.count ?? 0) > 0) {
+          continue
+        }
+      }
+
       const remove = (rows: ScheduleV2Row[]) => rows.filter((row) => row.employeeId !== employeeId)
       await tx
         .update(timesheetSchedulingPlansV2)
@@ -766,6 +793,43 @@ async function syncScheduleV2EmployeeSiteAcrossPlans(
           updatedAt: new Date(),
         })
         .where(eq(timesheetSchedulingPlansV2.id, plan.id))
+    }
+
+    // Also remove from legacy V1 plans if any
+    const sourceV1Plans = await tx
+      .select({
+        id: timesheetSchedulingPlans.id,
+        period: timesheetSchedulingPlans.period,
+        draftSchedule: timesheetSchedulingPlans.draftSchedule,
+        fixedSchedule: timesheetSchedulingPlans.fixedSchedule,
+      })
+      .from(timesheetSchedulingPlans)
+      .where(eq(timesheetSchedulingPlans.siteId, sourceSiteId))
+
+    for (const plan of sourceV1Plans) {
+      if (plan.period < currentPeriodStr) continue
+      if (plan.period === currentPeriodStr) {
+        const attendanceInSource = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.siteId, sourceSiteId),
+              eq(attendanceRecords.employeeId, employeeId),
+              sql`to_char(${attendanceRecords.eventTime}, 'YYYY-MM') = ${plan.period}`
+            )
+          )
+        if ((attendanceInSource[0]?.count ?? 0) > 0) continue
+      }
+      const removeV1 = (rows: any[]) => (rows ?? []).filter((row: any) => row.employeeId !== employeeId)
+      await tx
+        .update(timesheetSchedulingPlans)
+        .set({
+          draftSchedule: removeV1(plan.draftSchedule as any[]),
+          fixedSchedule: removeV1(plan.fixedSchedule as any[]),
+          updatedAt: new Date(),
+        })
+        .where(eq(timesheetSchedulingPlans.id, plan.id))
     }
   })
 }
@@ -993,13 +1057,27 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
   const actorUserId = await getCurrentActorUserId(actorEmail)
   const now = new Date()
   const updated = await db.transaction(async (tx) => {
+    const [existingPlan] = await tx
+      .select({ status: timesheetSchedulingPlansV2.status })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .limit(1)
+
+    const isAlreadyActive = existingPlan?.status === 'active'
+
     const [updatedPlan] = await tx
       .insert(timesheetSchedulingPlansV2)
       .values({
         siteId: payload.siteId,
         period: payload.period,
-        status: 'draft',
+        status: isAlreadyActive ? 'active' : 'draft',
         draftSchedule: draftRows,
+        activeSchedule: isAlreadyActive ? draftRows : [],
         createdByUserId: actorUserId,
         updatedByUserId: actorUserId,
         createdAt: now,
@@ -1009,6 +1087,7 @@ export async function saveSchedulingTimesheetPlanV2DraftAction(
         target: [timesheetSchedulingPlansV2.siteId, timesheetSchedulingPlansV2.period],
         set: {
           draftSchedule: draftRows,
+          ...(isAlreadyActive ? { activeSchedule: draftRows } : {}),
           updatedByUserId: actorUserId,
           updatedAt: now,
         },
@@ -1078,10 +1157,16 @@ export async function updateSchedulingTimesheetPlanV2CellAction(
             }
           : row
       )
-    const draftSchedule = updateRows((plan.draftSchedule ?? []) as ScheduleV2Row[])
-    const activeSchedule = updateRows((plan.activeSchedule ?? []) as ScheduleV2Row[])
+    let draftSchedule = updateRows((plan.draftSchedule ?? []) as ScheduleV2Row[])
+    let activeSchedule = updateRows((plan.activeSchedule ?? []) as ScheduleV2Row[])
+    const dayCount = getScheduleV2DayCount(payload.period)
     if (!draftSchedule.some((row) => row.employeeId === payload.employeeId)) {
-      throw new Error('Employee tidak ditemukan pada roster periode ini.')
+      const newSchedule = Array(dayCount).fill('')
+      newSchedule[payload.day - 1] = payload.code
+      draftSchedule = [...draftSchedule, { employeeId: payload.employeeId, schedule: newSchedule }]
+      if (plan.status === 'active') {
+        activeSchedule = [...activeSchedule, { employeeId: payload.employeeId, schedule: [...newSchedule] }]
+      }
     }
     await tx
       .update(timesheetSchedulingPlansV2)
@@ -1108,6 +1193,98 @@ export async function updateSchedulingTimesheetPlanV2CellAction(
   })
   revalidateSchedulingV2Paths()
   return { ok: true, updatedAt: now.toISOString() }
+}
+
+export async function updateSchedulingTimesheetPlanV2BatchCellsAction(
+  input: z.infer<typeof updateScheduleV2BatchCellsSchema>
+) {
+  const payload = updateScheduleV2BatchCellsSchema.parse(input)
+  await assertSchedulingSiteScope(payload.siteId, 'edit', 'scheduling_timesheet_schedule_v2')
+  await ensureSchedulingTimesheetTables()
+  await assertSchedulingPeriodOpen(payload.siteId, payload.period)
+  const actorEmail = await getCurrentActorEmail()
+  const actorUserId = await getCurrentActorUserId(actorEmail)
+  const now = new Date()
+
+  if (!payload.cells.length) return { ok: true, updatedCount: 0 }
+
+  await db.transaction(async (tx) => {
+    const [plan] = await tx
+      .select({
+        status: timesheetSchedulingPlansV2.status,
+        draftSchedule: timesheetSchedulingPlansV2.draftSchedule,
+        activeSchedule: timesheetSchedulingPlansV2.activeSchedule,
+      })
+      .from(timesheetSchedulingPlansV2)
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+      .limit(1)
+    if (!plan) throw new Error('Schedule V2 tidak ditemukan.')
+
+    const dayCount = getScheduleV2DayCount(payload.period)
+    let draftSchedule = [...((plan.draftSchedule ?? []) as ScheduleV2Row[])]
+    let activeSchedule = [...((plan.activeSchedule ?? []) as ScheduleV2Row[])]
+
+    const updatesByEmp = new Map<number, Map<number, string>>()
+    for (const cell of payload.cells) {
+      if (cell.day > dayCount) continue
+      if (!updatesByEmp.has(cell.employeeId)) updatesByEmp.set(cell.employeeId, new Map())
+      updatesByEmp.get(cell.employeeId)!.set(cell.day, cell.code)
+    }
+
+    for (const [empId, dayMap] of updatesByEmp.entries()) {
+      let draftRow = draftSchedule.find((r) => r.employeeId === empId)
+      if (!draftRow) {
+        draftRow = { employeeId: empId, schedule: Array(dayCount).fill('') }
+        draftSchedule.push(draftRow)
+      }
+      let activeRow = activeSchedule.find((r) => r.employeeId === empId)
+      if (!activeRow && plan.status === 'active') {
+        activeRow = { employeeId: empId, schedule: Array(dayCount).fill('') }
+        activeSchedule.push(activeRow)
+      }
+
+      const nextDraftSched = [...draftRow.schedule]
+      const nextActiveSched = activeRow ? [...activeRow.schedule] : null
+
+      for (const [day, code] of dayMap.entries()) {
+        nextDraftSched[day - 1] = code as any
+        if (nextActiveSched) nextActiveSched[day - 1] = code as any
+      }
+
+      draftRow.schedule = nextDraftSched
+      if (activeRow && nextActiveSched) activeRow.schedule = nextActiveSched
+    }
+
+    await tx
+      .update(timesheetSchedulingPlansV2)
+      .set({
+        draftSchedule,
+        ...(plan.status === 'active' ? { activeSchedule } : {}),
+        updatedByUserId: actorUserId,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(timesheetSchedulingPlansV2.siteId, payload.siteId),
+          eq(timesheetSchedulingPlansV2.period, payload.period)
+        )
+      )
+  })
+
+  await logAuditEvent({
+    actorEmail,
+    action: 'timesheet.schedule_v2_cell_updated',
+    entityType: 'timesheet_scheduling_v2',
+    entityLabel: `${payload.siteId}:${payload.period}:${payload.cells.length}_cells`,
+    description: `Batch updated ${payload.cells.length} roster cells in Schedule V2.`,
+  })
+  revalidateSchedulingV2Paths()
+  return { ok: true, updatedCount: payload.cells.length, updatedAt: now.toISOString() }
 }
 
 const scheduleV2EmployeeAssignmentSchema = scheduleV2KeySchema.extend({
@@ -1708,9 +1885,21 @@ const saveAttendanceRealOverridesSchema = z.object({
       employeeId: z.coerce.number().int().positive(),
       day: z.coerce.number().int().min(1).max(31),
       status: attendanceRealStatusSchema,
-      clockIn: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
-      clockOut: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
-      note: z.string().nullish().transform((v) => v?.trim() ?? '').default(''),
+      clockIn: z
+        .string()
+        .nullish()
+        .transform((v) => v?.trim() ?? '')
+        .default(''),
+      clockOut: z
+        .string()
+        .nullish()
+        .transform((v) => v?.trim() ?? '')
+        .default(''),
+      note: z
+        .string()
+        .nullish()
+        .transform((v) => v?.trim() ?? '')
+        .default(''),
       source: z.enum(['manual', 'excel', 'attendance']).default('manual'),
       overtimeHours: z.coerce.number().nullable().optional(),
     })
@@ -1849,6 +2038,92 @@ export async function saveAttendanceRealOverridesAction(
         target: [timesheetSchedulingStatuses.siteId, timesheetSchedulingStatuses.period],
         set: { attendanceStatus: 'saved', lastSavedAt: now, savedByUserId, updatedAt: now },
       })
+
+    // Synchronize attendance overtime to existing SPLs for matching employees & dates (optimized batch)
+    const overtimeOverrides = validOverrides.filter(
+      (ov) => ov.overtimeHours != null && Number(ov.overtimeHours) > 0 && ov.employeeId && ov.day
+    )
+
+    if (overtimeOverrides.length > 0) {
+      const targetEmpIds = [...new Set(overtimeOverrides.map((o) => o.employeeId))]
+      const partSplRows = await tx
+        .select({
+          splId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+          employeeId: overtimeCommandLetterParticipants.employeeId,
+        })
+        .from(overtimeCommandLetterParticipants)
+        .where(inArray(overtimeCommandLetterParticipants.employeeId, targetEmpIds))
+
+      const partSplMap = new Map<number, Set<number>>()
+      for (const p of partSplRows) {
+        if (!partSplMap.has(p.employeeId)) partSplMap.set(p.employeeId, new Set())
+        partSplMap.get(p.employeeId)!.add(p.splId)
+      }
+
+      const allPartSplIds = [...new Set(partSplRows.map((p) => p.splId))]
+      const monthStart = new Date(`${payload.period}-01T00:00:00.000Z`)
+      const monthEnd = new Date(`${payload.period}-31T23:59:59.999Z`)
+
+      const splConditions = [
+        gte(overtimeCommandLetters.workDate, monthStart),
+        lte(overtimeCommandLetters.workDate, monthEnd),
+      ]
+      if (allPartSplIds.length > 0) {
+        splConditions.push(
+          or(
+            inArray(overtimeCommandLetters.requestedByEmployeeId, targetEmpIds),
+            inArray(overtimeCommandLetters.id, allPartSplIds)
+          )!
+        )
+      } else {
+        splConditions.push(inArray(overtimeCommandLetters.requestedByEmployeeId, targetEmpIds))
+      }
+
+      const matchingSpls = await tx
+        .select({
+          id: overtimeCommandLetters.id,
+          requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
+          plannedStartAt: overtimeCommandLetters.plannedStartAt,
+          workDate: overtimeCommandLetters.workDate,
+        })
+        .from(overtimeCommandLetters)
+        .where(and(...splConditions))
+
+      for (const ov of overtimeOverrides) {
+        const dateStr = `${payload.period}-${String(ov.day).padStart(2, '0')}`
+        const startDayTime = new Date(`${dateStr}T00:00:00.000Z`).getTime()
+        const endDayTime = new Date(`${dateStr}T23:59:59.999Z`).getTime()
+        const otHours = Number(ov.overtimeHours)
+        const empSplIds = partSplMap.get(ov.employeeId)
+
+        const matched = matchingSpls.filter((spl) => {
+          const splTime = spl.workDate ? new Date(spl.workDate).getTime() : 0
+          if (splTime < startDayTime || splTime > endDayTime) return false
+          return spl.requestedByEmployeeId === ov.employeeId || empSplIds?.has(spl.id)
+        })
+
+        for (const spl of matched) {
+          const start = spl.plannedStartAt
+            ? new Date(spl.plannedStartAt)
+            : new Date(`${dateStr}T17:00:00.000Z`)
+          const newEnd = new Date(start.getTime() + Math.round(otHours * 60) * 60 * 1000)
+          await tx
+            .update(overtimeCommandLetters)
+            .set({ plannedEndAt: newEnd, updatedAt: now })
+            .where(eq(overtimeCommandLetters.id, spl.id))
+
+          await tx
+            .update(overtimeCommandLetterParticipants)
+            .set({ overtimeCreditMinutes: Math.round(otHours * 60), updatedAt: now })
+            .where(
+              and(
+                eq(overtimeCommandLetterParticipants.overtimeCommandLetterId, spl.id),
+                eq(overtimeCommandLetterParticipants.employeeId, ov.employeeId)
+              )
+            )
+        }
+      }
+    }
   })
 
   await logAuditEvent({
@@ -1941,7 +2216,7 @@ async function getSchedulingPeriodReadiness(siteId: number, period: string) {
           or(
             and(
               eq(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
-              inArray(timesheetPayrollSnapshotItems.scheduleCode, ['OFF', 'FB'])
+              inArray(timesheetPayrollSnapshotItems.scheduleCode, ['OFF', 'FB', 'AL'])
             ),
             and(
               eq(timesheetPayrollSnapshotItems.attendanceStatus, 'present'),
@@ -2182,6 +2457,10 @@ const updateAttendanceImportPreviewMatchSchema = z.object({
 const attendanceImportHistorySchema = z.object({
   siteId: z.number().int().positive(),
   period: z.string().regex(/^\d{4}-\d{2}$/),
+})
+const attendanceSourceDataSchema = attendanceImportHistorySchema.superRefine(({ period }, ctx) => {
+  const month = Number(period.slice(5, 7))
+  if (month < 1 || month > 12) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid month' })
 })
 const saveAttendanceEmployeeAliasSchema = z.object({
   siteId: z.number().int().positive(),
@@ -2627,6 +2906,95 @@ export async function getAttendanceImportHistoryAction(
     .limit(10)
 }
 
+/** Read-only source logs for the selected site and month. */
+export async function getAttendanceSourceDataAction(
+  input: z.infer<typeof attendanceSourceDataSchema>
+) {
+  const payload = attendanceSourceDataSchema.parse(input)
+  const access = await getCurrentMenuPermission('scheduling_timesheet_attendance')
+  const effectiveAccess = access
+  if (!effectiveAccess.canView) throw new Error('Unauthorized scheduling timesheet access')
+
+  const context = await getCurrentEmployeeAccessContext()
+  const global = hasGlobalDataAccess(effectiveAccess)
+  if (!global && effectiveAccess.dataScope === 'own' && !context?.employeeId) {
+    throw new Error('Unauthorized scheduling timesheet access')
+  }
+  const accessibleSiteIds = global ? null : context?.siteId != null ? [context.siteId] : []
+  if (accessibleSiteIds && !accessibleSiteIds.includes(payload.siteId)) {
+    throw new Error('Attendance site is outside your data scope')
+  }
+
+  const [year, month] = payload.period.split('-').map(Number)
+  const start = new Date(Date.UTC(year, month - 1, 1))
+  const end = new Date(Date.UTC(year, month, 1))
+  // Include adjacent dates so night-shift punches crossing month boundaries remain visible.
+  start.setUTCDate(start.getUTCDate() - 1)
+  end.setUTCDate(end.getUTCDate() + 1)
+  const employeeScope =
+    !global && effectiveAccess.dataScope === 'own' && context?.employeeId
+      ? eq(attendanceRecords.employeeId, context.employeeId)
+      : undefined
+
+  const [records, overrides] = await Promise.all([
+    db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          eq(attendanceRecords.siteId, payload.siteId),
+          gte(attendanceRecords.eventTime, start),
+          lt(attendanceRecords.eventTime, end),
+          employeeScope
+        )
+      )
+      .orderBy(asc(attendanceRecords.eventTime)),
+    db
+      .select()
+      .from(timesheetAttendanceRealOverrides)
+      .where(
+        and(
+          eq(timesheetAttendanceRealOverrides.siteId, payload.siteId),
+          eq(timesheetAttendanceRealOverrides.period, payload.period),
+          employeeScope
+            ? eq(timesheetAttendanceRealOverrides.employeeId, context!.employeeId)
+            : undefined
+        )
+      )
+      .orderBy(asc(timesheetAttendanceRealOverrides.employeeId), asc(timesheetAttendanceRealOverrides.day)),
+  ])
+
+  return {
+    records: records.map((record) => ({
+      employeeId: record.employeeId,
+      siteId: record.siteId,
+      eventType: record.eventType,
+      eventTime: record.eventTime.toISOString(),
+      status: record.status,
+      locationNote: record.locationNote,
+      photoUrl: record.photoUrl,
+      latitude: record.latitude,
+      longitude: record.longitude,
+    })),
+    overrides: overrides.map((override) => ({
+      siteId: override.siteId,
+      period: override.period,
+      employeeId: override.employeeId,
+      day: override.day,
+      status: override.status,
+      clockIn: override.clockIn,
+      clockOut: override.clockOut,
+      note: override.note,
+      source: override.source,
+      overtimeHours: override.overtimeHours ?? null,
+      validationFlags: Array.isArray(override.validationFlags)
+        ? (override.validationFlags as string[])
+        : [],
+      updatedAt: override.updatedAt.toISOString(),
+    })),
+  }
+}
+
 export async function saveAttendanceEmployeeAliasAction(
   input: z.infer<typeof saveAttendanceEmployeeAliasSchema>
 ) {
@@ -2832,13 +3200,11 @@ export async function clearAttendanceRealOverridesAction(
   return { ok: true }
 }
 
-const overtimeClockTimeSchema = z
-  .string()
-  .transform((v) => {
-    const clean = v.trim().slice(0, 5)
-    if (!clean || clean === '--:--') return ''
-    return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : ''
-  })
+const overtimeClockTimeSchema = z.string().transform((v) => {
+  const clean = v.trim().slice(0, 5)
+  if (!clean || clean === '--:--') return ''
+  return /^([0-1]?\d|2[0-3]):[0-5]\d$/.test(clean) ? clean.padStart(5, '0') : ''
+})
 
 const overtimeIntervalSchema = z.object({
   start: overtimeClockTimeSchema,
@@ -2854,6 +3220,7 @@ const siteOvertimeConfigSchema = z
     z.object({
       enabled: z.boolean(),
       mode: z.enum(['template', 'realtime']).optional().default('template'),
+      requireSpl: z.boolean().optional().default(false),
       splPolicy: z.object({
         enabled: z.boolean(),
         allowBreak: z.boolean(),
@@ -2884,10 +3251,14 @@ const employeeBenefitRuleSchema = z.object({
   specialAllowancePeriod: z.enum(['daily', 'monthly']).default('daily'),
   specialAllowanceAmount: z.coerce.number().min(0).max(1_000_000_000).default(0),
 })
-const schedulingClockTimeSchema = z
-  .string()
-  .regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
-  .transform((v) => v.padStart(5, '0'))
+const schedulingClockTimeSchema = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z
+    .string()
+    .regex(/^([0-1]?\d|2[0-3]):[0-5]\d$/, 'Jam masuk wajib memakai format HH:mm')
+    .transform((v) => v.padStart(5, '0'))
+    .optional()
+)
 const schedulingFieldBreakConfigSchema = z
   .object({
     dayShiftClockIn: schedulingClockTimeSchema.optional(),
@@ -2928,6 +3299,8 @@ const saveSchedulingConfigSchema = z.object({
   mealsType: z.string().max(60),
   overtimeType: z.string().max(60),
   timezone: z.string().max(20).optional().default('WITA'),
+  requiresOnlineOvertimeSummary: z.boolean().optional().default(false),
+  overtimeSummaryCutoffDay: z.number().int().min(1).max(31).optional().default(25),
   fieldBreakConfig: schedulingFieldBreakConfigSchema.optional().nullable(),
   allowanceVariables: z.array(z.unknown()).default([]),
   overtimeVariables: z.array(z.unknown()).default([]),
@@ -2938,10 +3311,22 @@ const saveSchedulingConfigSchema = z.object({
       z.object({
         sectionId: z.number().int().positive(),
         departmentId: z.number().int().positive(),
-        matrixId: z.number().int().positive().nullable(),
-        pjoLeaderId: z.number().int().positive().nullable(),
-        sectionHeadId: z.number().int().positive().nullable(),
-        departmentHeadId: z.number().int().positive().nullable(),
+        matrixId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
+        pjoLeaderId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
+        sectionHeadId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
+        departmentHeadId: z.preprocess(
+          (v) => (v != null && Number(v) > 0 ? Number(v) : null),
+          z.number().int().positive().nullable().optional()
+        ),
       })
     )
     .default([]),
@@ -3015,9 +3400,16 @@ export async function saveSchedulingConfigAction(
 
     const sanitizedApprovalSections = validApprovalSections.map((row) => ({
       ...row,
-      pjoLeaderId: row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
-      sectionHeadId: row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId) ? row.sectionHeadId : null,
-      departmentHeadId: row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId) ? row.departmentHeadId : null,
+      pjoLeaderId:
+        row.pjoLeaderId != null && validApproverSet.has(row.pjoLeaderId) ? row.pjoLeaderId : null,
+      sectionHeadId:
+        row.sectionHeadId != null && validApproverSet.has(row.sectionHeadId)
+          ? row.sectionHeadId
+          : null,
+      departmentHeadId:
+        row.departmentHeadId != null && validApproverSet.has(row.departmentHeadId)
+          ? row.departmentHeadId
+          : null,
     }))
 
     await db.transaction(async (tx) => {
@@ -3031,6 +3423,8 @@ export async function saveSchedulingConfigAction(
           mealsType: payload.mealsType,
           overtimeType: payload.overtimeType,
           timezone: resolvedTimezone,
+          requiresOnlineOvertimeSummary: payload.requiresOnlineOvertimeSummary ?? false,
+          overtimeSummaryCutoffDay: payload.overtimeSummaryCutoffDay ?? 25,
           fieldBreakConfig: payload.fieldBreakConfig,
           allowanceVariables: payload.allowanceVariables,
           overtimeVariables: payload.overtimeVariables,
@@ -3048,6 +3442,8 @@ export async function saveSchedulingConfigAction(
             mealsType: payload.mealsType,
             overtimeType: payload.overtimeType,
             timezone: resolvedTimezone,
+            requiresOnlineOvertimeSummary: payload.requiresOnlineOvertimeSummary ?? false,
+            overtimeSummaryCutoffDay: payload.overtimeSummaryCutoffDay ?? 25,
             fieldBreakConfig: payload.fieldBreakConfig,
             allowanceVariables: payload.allowanceVariables,
             overtimeVariables: payload.overtimeVariables,
@@ -3131,7 +3527,12 @@ export async function saveSchedulingConfigAction(
             : (existingOvertimeMatrix?.id ?? null)
         const roles = [
           { key: 'pjo', label: 'PJO Leader', stepOrder: 1, employeeId: row.pjoLeaderId },
-          { key: 'section-head', label: 'Section Head', stepOrder: 2, employeeId: row.sectionHeadId },
+          {
+            key: 'section-head',
+            label: 'Section Head',
+            stepOrder: 2,
+            employeeId: row.sectionHeadId,
+          },
           { key: 'dept-head', label: 'Dept Head', stepOrder: 3, employeeId: row.departmentHeadId },
         ] as const
         if (roles.every((role) => role.employeeId == null)) {
@@ -3221,8 +3622,9 @@ export async function saveSchedulingConfigAction(
           const existingMatrixId =
             config.transactionType === 'overtime_request'
               ? overtimeMatrixId
-              : (existingMatrices.find((matrix) => matrix.transactionType === config.transactionType)
-                  ?.id ?? null)
+              : (existingMatrices.find(
+                  (matrix) => matrix.transactionType === config.transactionType
+                )?.id ?? null)
           const matrixValues = {
             name: config.name,
             structureId: activeStructureId,
@@ -3253,7 +3655,9 @@ export async function saveSchedulingConfigAction(
                   .returning({ id: approvalMatrices.id })
               )[0].id
 
-          await tx.delete(approvalMatrixSteps).where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
+          await tx
+            .delete(approvalMatrixSteps)
+            .where(eq(approvalMatrixSteps.matrixId, savedMatrixId))
           if (activeNodes.length > 0) {
             await tx.insert(approvalMatrixSteps).values(
               activeNodes.map((node) => ({
@@ -4705,9 +5109,11 @@ async function applyApprovalDecision(params: {
     (approval as any).formName?.toLowerCase().includes('status pernikahan') ||
     (approval as any).activityTitle?.toLowerCase().includes('status pernikahan')
   ) {
-    const { approveMaritalStatusStepAction, rejectMaritalStatusStepAction, revertMaritalStatusStepAction } = await import(
-      '@/app/dashboard/central-service/marital-status/actions'
-    )
+    const {
+      approveMaritalStatusStepAction,
+      rejectMaritalStatusStepAction,
+      revertMaritalStatusStepAction,
+    } = await import('@/app/dashboard/central-service/marital-status/actions')
     const { maritalStatusRequests } = await import('@/db/schema/marital-status')
 
     const [appRow] = await db
@@ -4752,7 +5158,12 @@ async function applyApprovalDecision(params: {
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal menyetujui permohonan status pernikahan.')
         }
-      } else if ((params.decision as string) === 'reverted' || (params.decision as string) === 'revert' || (params.decision as string) === 'needs_revision' || (params.decision as string) === 'needs_correction') {
+      } else if (
+        (params.decision as string) === 'reverted' ||
+        (params.decision as string) === 'revert' ||
+        (params.decision as string) === 'needs_revision' ||
+        (params.decision as string) === 'needs_correction'
+      ) {
         const res = await revertMaritalStatusStepAction(reqId, params.approvalId, params.note)
         if (res && !res.success) {
           throw new Error(res.error || 'Gagal mengembalikan permohonan status pernikahan.')
@@ -4767,7 +5178,77 @@ async function applyApprovalDecision(params: {
     }
   }
 
+  // Flight Route Change approval handling
+  if (
+    approval.rawActivityType === 'flight_route_change' ||
+    approval.rawActivityType === 'flight-route-change' ||
+    approval.rawActivityType === 'Permohonan Perubahan Rute Penerbangan' ||
+    (approval as any).flightRouteRequestId != null ||
+    (approval as any).formName?.toLowerCase().includes('perubahan rute') ||
+    (approval as any).activityTitle?.toLowerCase().includes('perubahan rute')
+  ) {
+    const {
+      approveFlightRouteChangeAction,
+      rejectFlightRouteChangeAction,
+      revertFlightRouteChangeAction,
+    } = await import('@/app/actions/flight-route-change')
+    const { hcFlightRouteChangeRequests } = await import('@/db/schema/hero')
 
+    const [appRow] = await db
+      .select({
+        id: approvals.id,
+        flightRouteRequestId: approvals.flightRouteRequestId,
+        level: approvals.level,
+        requestNumber: approvals.requestNumber,
+      })
+      .from(approvals)
+      .where(eq(approvals.id, params.approvalId))
+      .limit(1)
+
+    let reqId = appRow?.flightRouteRequestId || null
+
+    if (!reqId && appRow?.requestNumber) {
+      const [byNum] = await db
+        .select({ id: hcFlightRouteChangeRequests.id })
+        .from(hcFlightRouteChangeRequests)
+        .where(eq(hcFlightRouteChangeRequests.requestNumber, appRow.requestNumber))
+        .limit(1)
+      if (byNum) reqId = byNum.id
+    }
+
+    if (reqId) {
+      const stepOrder = appRow?.level || 2
+      if (params.decision === 'approved') {
+        const res = await approveFlightRouteChangeAction({
+          requestId: reqId,
+          stepOrder,
+          remarks: params.note,
+          signatureDataUrl: resolvedSignatureUrl || undefined,
+        })
+        if (!res.ok) throw new Error(res.error || 'Gagal menyetujui permohonan perubahan rute.')
+      } else if (
+        (params.decision as string) === 'reverted' ||
+        (params.decision as string) === 'revert' ||
+        (params.decision as string) === 'needs_revision' ||
+        (params.decision as string) === 'needs_correction'
+      ) {
+        const res = await revertFlightRouteChangeAction({
+          requestId: reqId,
+          stepOrder,
+          remarks: params.note,
+        })
+        if (!res.ok) throw new Error(res.error || 'Gagal mengembalikan permohonan perubahan rute.')
+      } else {
+        const res = await rejectFlightRouteChangeAction({
+          requestId: reqId,
+          stepOrder,
+          remarks: params.note,
+        })
+        if (!res.ok) throw new Error(res.error || 'Gagal menolak permohonan perubahan rute.')
+      }
+      return true
+    }
+  }
 
   // Summary APD approval handling
   if (
@@ -5298,9 +5779,6 @@ async function applyApprovalDecision(params: {
         trimmedNote
       )
 
-      // approveSummaryStep already updated hero_approvals with signatureUrl
-      // No overwrite needed — it would erase the signature
-
       // Bell notification to summary generator
       const summaryDetails = await getSummaryDetails(summaryId)
       if (summaryDetails) {
@@ -5316,53 +5794,35 @@ async function applyApprovalDecision(params: {
             category: 'approval_requests',
             title: `Summary Tahap Disetujui`,
             body: `Summary ${summaryDetails.summaryNumber} telah disetujui pada tahap ${approval.level === 1 ? 'Section Head' : 'Department Head'}.`,
-            url: '/dashboard/summary',
+            url: `/dashboard/summary?preview=${summaryId}`,
             tagPrefix: 'summary',
           }).catch(console.error)
         }
       }
-
-      // Note: approveSummaryStep already handles notification bell and centralized email dispatch
-      // based on hero_apd_summary_notification_config when allApproved is true.
+    } else if (params.decision === 'needs_correction') {
+      const { returnSummaryForRevision } = await import('@/lib/summary-engine')
+      await returnSummaryForRevision(
+        summaryId,
+        approval.level,
+        actor.employeeId,
+        trimmedNote,
+        actorName
+      )
     } else {
-      // Rejected or needs correction
-      await db
-        .update(approvals)
-        .set({
-          status: params.decision === 'rejected' ? 'rejected' : 'needs_correction',
-          reviewedAt: now,
-          decisionNote: trimmedNote || '',
-        })
-        .where(eq(approvals.id, approval.approvalId))
-
-      await db
-        .update(apdSummaries)
-        .set({
-          status: params.decision === 'rejected' ? 'rejected' : 'pending',
-        })
-        .where(eq(apdSummaries.id, summaryId))
-
-      // Notify requester
-      const summaryDetails = await getSummaryDetails(summaryId)
-      if (summaryDetails) {
-        const generatorEmail = await db
-          .select({ email: employees.email })
-          .from(employees)
-          .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
-          .limit(1)
-        if (generatorEmail[0]?.email) {
-          notifyWorkflowBellRecipients({
-            recipientEmails: [generatorEmail[0].email],
-            eventType: 'summary_rejected',
-            category: 'approval_requests',
-            title: `Summary Ditolak`,
-            body: `Summary ${summaryDetails.summaryNumber} telah ditolak oleh ${actorName}.`,
-            url: '/dashboard/summary',
-            tagPrefix: 'summary',
-          }).catch(console.error)
-        }
-      }
+      const { rejectSummary } = await import('@/lib/summary-engine')
+      await rejectSummary(
+        summaryId,
+        approval.level,
+        actor.employeeId,
+        trimmedNote,
+        actorName
+      )
     }
+
+    revalidatePath('/dashboard/summary')
+    revalidatePath('/dashboard/approval')
+    revalidatePath(`/dashboard/summary?preview=${summaryId}`)
+    revalidatePath('/mobile/summary')
     return true
   }
 
@@ -5470,7 +5930,10 @@ async function applyApprovalDecision(params: {
                   .map((e) => e.trim())
                   .filter(Boolean)
               const list = Array.from(
-                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                new Set([
+                  ...parseEmails(matConfig.ccEmails),
+                  ...parseEmails(matConfig.recipientEmails),
+                ])
               )
               if (list.length > 0) materialToolsCc = list
             }
@@ -5553,7 +6016,10 @@ async function applyApprovalDecision(params: {
 
             const dynamicCc = matConfig.isActive
               ? Array.from(
-                  new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                  new Set([
+                    ...parseEmails(matConfig.ccEmails),
+                    ...parseEmails(matConfig.recipientEmails),
+                  ])
                 )
               : []
 
@@ -5599,7 +6065,11 @@ async function applyApprovalDecision(params: {
               const streamCc: string[] = []
               if (reqSec.includes('repair') || reqSec.includes('retread')) {
                 streamCc.push(...parseEmails(apdConfig.repairCcEmail))
-              } else if (reqSec.includes('te') || reqSec.includes('technical') || reqSec.includes('engineer')) {
+              } else if (
+                reqSec.includes('te') ||
+                reqSec.includes('technical') ||
+                reqSec.includes('engineer')
+              ) {
                 streamCc.push(...parseEmails(apdConfig.teCcEmail))
               } else if (reqSec.includes('service') || reqSec.includes('mvc')) {
                 streamCc.push(...parseEmails(apdConfig.serviceCcEmail))
@@ -5676,7 +6146,10 @@ async function applyApprovalDecision(params: {
                   .map((e) => e.trim())
                   .filter(Boolean)
               const list = Array.from(
-                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                new Set([
+                  ...parseEmails(matConfig.ccEmails),
+                  ...parseEmails(matConfig.recipientEmails),
+                ])
               )
               if (list.length > 0) ccEmails = list
             }
@@ -5733,7 +6206,10 @@ async function applyApprovalDecision(params: {
                   .map((e) => e.trim())
                   .filter(Boolean)
               const list = Array.from(
-                new Set([...parseEmails(matConfig.ccEmails), ...parseEmails(matConfig.recipientEmails)])
+                new Set([
+                  ...parseEmails(matConfig.ccEmails),
+                  ...parseEmails(matConfig.recipientEmails),
+                ])
               )
               if (list.length > 0) ccEmails = list
             }
@@ -7994,7 +8470,12 @@ export async function manageSecurityUserAction(
       locationChangeReason: formData.get('locationChangeReason'),
     })
 
-    if (['reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(payload.intent) && !isSuperAdminRole(await getCurrentEmployeeAccessRole())) {
+    if (
+      ['reset-face', 'ban-user', 'activate-user', 'change-site', 'send-magic-link'].includes(
+        payload.intent
+      ) &&
+      !isSuperAdminRole(await getCurrentEmployeeAccessRole())
+    ) {
       throw new Error('Quick Action hanya tersedia untuk role Super Admin.')
     }
 
@@ -8481,7 +8962,7 @@ export async function manageSecurityUserAction(
           pointOfHire,
           contractDurationStart,
           contractDurationEnd,
-          permanentDate: payload.permanentDate || null,
+          permanentDate: (payload.permanentDate && !payload.permanentDate.startsWith('0001') && !payload.permanentDate.startsWith('1970') && !payload.permanentDate.startsWith('0000')) ? payload.permanentDate : null,
           workLocation: selectedSite?.location || payload.workLocation || '',
           phoneNumber: payload.phoneNumber || '',
           email,
@@ -8720,16 +9201,18 @@ export async function manageSecurityUserAction(
       if (!isSuperAdmin && !isSelf) {
         return {
           status: 'error',
-          message: 'Hanya Super Admin yang diizinkan mereset password pengguna lain. Anda hanya dapat mengganti password akun Anda sendiri.',
+          message:
+            'Hanya Super Admin yang diizinkan mereset password pengguna lain. Anda hanya dapat mengganti password akun Anda sendiri.',
         }
       }
 
       const defaultPass = buildDefaultCredentialPassword(employee.employeeSn)
-      const fallbackDefaultPass = defaultPass.length >= 8 ? defaultPass : `Chitra#${employee.employeeSn || '12345'}`
+      const fallbackDefaultPass =
+        defaultPass.length >= 8 ? defaultPass : `Chitra#${employee.employeeSn || '12345'}`
       const newPassword =
         formData.get('useDefaultPassword') === 'true'
           ? fallbackDefaultPass
-          : payload.newPassword ?? ''
+          : (payload.newPassword ?? '')
 
       if (newPassword.length < 8) {
         return {
@@ -8782,7 +9265,10 @@ export async function manageSecurityUserAction(
       const [site] = await db.select().from(sites).where(eq(sites.id, payload.siteId)).limit(1)
       if (!site) return { status: 'error', message: 'Lokasi site tidak valid.' }
 
-      await db.update(employees).set({ siteId: site.id, workLocation: site.name }).where(eq(employees.id, employee.id))
+      await db
+        .update(employees)
+        .set({ siteId: site.id, workLocation: site.name })
+        .where(eq(employees.id, employee.id))
       if (employee.siteId !== site.id) {
         const changeReason =
           (formData.get('locationChangeReason') as string)?.trim() ||
@@ -8812,7 +9298,10 @@ export async function manageSecurityUserAction(
         severity: 'info',
       })
       revalidateAdminSurfaces()
-      return { status: 'success', message: `Lokasi ${employee.name} berhasil diubah ke ${site.name}.` }
+      return {
+        status: 'success',
+        message: `Lokasi ${employee.name} berhasil diubah ke ${site.name}.`,
+      }
     }
 
     if (payload.intent === 'reset-face') {
@@ -9964,8 +10453,18 @@ export async function importTrainingRecordsAction(
         const d = parseOptionalOperationalDate(completedDate)
         if (d) {
           const MONTH_NAMES = [
-            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+            'Januari',
+            'Februari',
+            'Maret',
+            'April',
+            'Mei',
+            'Juni',
+            'Juli',
+            'Agustus',
+            'September',
+            'Oktober',
+            'November',
+            'Desember',
           ]
           completedMonth = MONTH_NAMES[d.getMonth()] ?? null
         }

@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import Fuse from 'fuse.js'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Activity,
   AlertTriangle,
@@ -16,10 +17,13 @@ import {
   Clock,
   Clock3,
   Download,
+  ExternalLink,
   Eye,
   FileSpreadsheet,
   FileText,
   History,
+  Layers,
+  Loader2,
   Pencil,
   RefreshCw,
   RotateCcw,
@@ -31,6 +35,9 @@ import {
   Trash2,
   Undo2,
   Users,
+  Building2,
+  CalendarRange,
+  ArrowRight,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,7 +45,7 @@ import type { PdfSignatureNames } from '@/lib/timesheet/pdf-signatures'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
@@ -61,7 +68,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { HeroSearchableSelect } from '@/components/templates'
+import { HeroDataTable, HeroSearchableSelect, HeroSwitch } from '@/components/templates'
 import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   Select,
@@ -78,6 +85,7 @@ import {
   deleteSchedulingTimesheetPlanAction,
   discardAttendanceImportPreviewAction,
   getAttendanceImportHistoryAction,
+  getAttendanceSourceDataAction,
   getIndonesiaHolidaysAction,
   reopenSchedulingPeriodAction,
   rollbackAttendanceImportPreviewAction,
@@ -86,6 +94,7 @@ import {
   saveSchedulingConfigAction,
   saveSchedulingTimesheetPlanAction,
   updateSchedulingTimesheetPlanV2CellAction,
+  updateSchedulingTimesheetPlanV2BatchCellsAction,
   saveTimesheetFieldBreakPlansAction,
   saveTimesheetPayrollSnapshotAction,
   submitSchedulingPeriodForReviewAction,
@@ -119,7 +128,19 @@ import {
   type TimesheetExportTab,
   type TimesheetEmployeeExportRow,
   type TimesheetDayData,
+  type ExportAttendanceDateHeader,
 } from '@/lib/timesheet/export-attendance-excel'
+import {
+  buildCkCutoffDateRange,
+  formatCkCutoffLabel,
+  formatCkCutoffFullRange,
+  buildCustomDateRange,
+  formatCustomDateRangeLabel,
+  formatCustomDateRangeFull,
+  formatPeriodLabel,
+  getPreviousPeriod,
+  type CkCutoffDateItem,
+} from '@/lib/timesheet/cutoff-utils'
 import {
   Table,
   TableBody,
@@ -130,9 +151,11 @@ import {
 } from '@/components/ui/table'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
+import { generateElementAsPdfBlob } from '@/lib/pdf-download'
 import {
   INDONESIA_TIMEZONES,
   IndonesiaTimezoneCode,
+  getTimezoneDateParts,
   inferTimezoneFromLocation,
   normalizeIndonesiaTimezone,
 } from '@/lib/indonesia-timezone'
@@ -185,6 +208,7 @@ import {
   resolveConfiguredShiftClockIn,
   resolveSiteAttendanceClockConfig,
   updatePunctualityInNote,
+  isNightShiftScheduleCode,
   type SiteAttendanceClockConfig,
 } from '@/lib/timesheet/attendance-punctuality'
 import { selectAttendancePunches } from '@/lib/timesheet/attendance-selection'
@@ -212,6 +236,7 @@ type EmployeeOption = {
   siteLocation?: string | null
   siteId: number | null
   locationName?: string | null
+  employeeStatusType?: string | null
 }
 
 type SiteOption = {
@@ -292,8 +317,11 @@ type EmployeeScheduleProfile = {
   isLokal?: boolean
 }
 
+export type SummaryView = 'ovt' | 'ovt_spl' | 'msa' | 'meals' | 'lokasi'
+
 export type AttendancePdfDocType =
   | 'overtime_summary'
+  | 'ovt_spl_summary'
   | 'msa_summary'
   | 'mls_summary'
   | 'tu_summary'
@@ -313,38 +341,44 @@ export const ATTENDANCE_PDF_OPTIONS: Array<{
     description: 'Tabel Rekapitulasi Overtime seluruh karyawan',
   },
   {
-    id: 'msa_summary',
+    id: 'ovt_spl_summary',
     number: 2,
+    label: 'OVERTIME SPL SUMMARY',
+    description: 'Tabel Rekapitulasi Overtime SPL (Surat Perintah Lembur) harian',
+  },
+  {
+    id: 'msa_summary',
+    number: 3,
     label: 'MSA summary',
     description: 'Tabel Rekapitulasi Meal & Site Allowance (MSA)',
   },
   {
     id: 'mls_summary',
-    number: 3,
+    number: 4,
     label: 'MLS summary',
     description: 'Tabel Rekapitulasi Meals Allowance (MLS)',
   },
   {
     id: 'tu_summary',
-    number: 4,
+    number: 5,
     label: 'TU summary',
     description: 'Tabel Rekapitulasi Tunjangan Khusus / Lokasi (TU)',
   },
   {
     id: 'overtime_record',
-    number: 5,
+    number: 6,
     label: 'OVERTIME RECORD',
     description: 'Summary Overtime Record per orang (Lembar rincian lembur karyawan)',
   },
   {
     id: 'payable_site_allowance',
-    number: 6,
+    number: 7,
     label: 'payable site allowance',
     description: 'Lembar rincian tunjangan site per karyawan',
   },
 ]
 
-type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'Libur' | 'Sakit' | 'Emergency'
+type ScheduleCode = 'IN' | 'DS' | 'NS' | 'OFF' | 'FB' | 'ST' | 'AL' | 'Libur' | 'Sakit' | 'Emergency'
 type SiteScheduleType = 'shift' | 'office' | 'hybrid'
 type SiteRosterType = '5:2' | '6:1' | '13:1' | 'vale'
 type DefaultShiftType = 'day-shift' | 'night-shift'
@@ -354,6 +388,22 @@ type SiteOvertimeType = 'five-hour' | 'roster' | 'none'
 
 const scheduleTypeLabel = (value: string) => (value === 'office' ? 'Non Shift' : value)
 
+export function rosterTypeLabel(value?: string | null) {
+  if (!value) return '-'
+  if (value === '5:2') return 'Roster 5 : 2'
+  if (value === '6:1') return 'Roster 6 : 1'
+  if (value === '13:1') return 'Roster 13 : 1'
+  if (value === 'vale') return 'Roster 5 : 2 (Vale)'
+  return `Roster ${value}`
+}
+
+export const ROSTER_TYPE_OPTIONS = [
+  { value: '5:2', label: 'Roster 5 : 2' },
+  { value: '6:1', label: 'Roster 6 : 1' },
+  { value: '13:1', label: 'Roster 13 : 1' },
+  { value: 'vale', label: 'Roster 5 : 2 (Vale)' },
+]
+
 type SiteSchedulingConfig = {
   scheduleType: SiteScheduleType
   rosterType: SiteRosterType
@@ -362,6 +412,8 @@ type SiteSchedulingConfig = {
   msaType: SiteMsaType
   mealsType: SiteMealsType
   overtimeType: SiteOvertimeType
+  requiresOnlineOvertimeSummary?: boolean
+  overtimeSummaryCutoffDay?: number
   timezone: IndonesiaTimezoneCode
   defaultShiftType: DefaultShiftType
   defaultClockIn: string
@@ -442,6 +494,8 @@ type ManualAttendanceCell = {
   overtimeHours?: number | null
   scheduledClockIn?: string | null
   shiftCode?: string | null
+  isCrossDay?: boolean
+  validationFlags?: string[]
 }
 
 type SavedAttendanceOverride = {
@@ -455,6 +509,8 @@ type SavedAttendanceOverride = {
   note: string
   source?: string
   overtimeHours?: number | string | null
+  validationFlags?: string[]
+  isCrossDay?: boolean
   updatedAt: string
 }
 
@@ -494,6 +550,17 @@ type PdfConfigSigner = {
   employeeId?: number | null
 }
 
+export type SummaryDocTypeKey = 'ot' | 'spl' | 'msa' | 'meals' | 'lokasi'
+
+export type SummarySignaturesConfig = {
+  preparedBy?: string
+  pjoLeader?: string
+  approvedBy?: string
+  hrName?: string
+  externalPreparedBy?: string
+  externalApprovedBy?: string
+}
+
 type PdfConfig = {
   preparedBy: string
   pjoLeader: string
@@ -502,8 +569,10 @@ type PdfConfig = {
   hrName: string
   externalPreparedBy?: string
   externalApprovedBy?: string
+  externalSignatureCount?: 2 | 3 | 4
   customSigners: PdfConfigSigner[]
   logoUrl: string
+  summarySignatures?: Partial<Record<SummaryDocTypeKey, SummarySignaturesConfig>>
 }
 
 type BackupAssignment = {
@@ -525,7 +594,14 @@ type FieldBreakDraft = {
   notes?: string
 }
 
+type ApprovalApproverDraft = {
+  pjoLeaderId: number | null
+  sectionHeadId: number | null
+  departmentHeadId: number | null
+}
+
 const sectionOptions = ['Service Operation', 'Repair Retread', 'Crew Office']
+const defaultSectionOptions = ['Service Operation', 'Repair Retread', 'Crew Office']
 const employmentPositionLabels = [
   'permanent',
   'contract',
@@ -561,6 +637,61 @@ const rosterSectionStyles: Record<
   },
 }
 
+function getRosterSectionStyle(section: string) {
+  if (rosterSectionStyles[section]) return rosterSectionStyles[section]
+  const lower = section.toLowerCase()
+  if (lower.includes('repair') || lower.includes('retread')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-emerald-50 text-emerald-900',
+      day: 'bg-emerald-50/60 text-emerald-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  if (lower.includes('service') || lower.includes('servis')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-sky-50 text-sky-900',
+      day: 'bg-sky-50/60 text-sky-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  if (lower.includes('tech') || lower.includes('teknis')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-indigo-50 text-indigo-900',
+      day: 'bg-indigo-50/60 text-indigo-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  if (lower.includes('hse') || lower.includes('safety') || lower.includes('k3')) {
+    return {
+      title: `Roster ${section}`,
+      head: 'bg-teal-50 text-teal-900',
+      day: 'bg-teal-50/60 text-teal-900',
+      total: 'bg-surface-container-low text-foreground',
+    }
+  }
+  return {
+    title: `Roster ${section}`,
+    head: 'bg-slate-50 text-slate-900',
+    day: 'bg-slate-50/60 text-slate-900',
+    total: 'bg-surface-container-low text-foreground',
+  }
+}
+
+function getEmployeeExactSection(employee?: {
+  section?: string | null
+  department?: string | null
+  role?: string | null
+}): string {
+  const sec = (employee?.section || '').trim()
+  if (sec) return sec
+  const dept = (employee?.department || '').trim()
+  if (dept) return dept
+  return 'Office / Lainnya'
+}
+
 const codeCycle: ScheduleCode[] = [
   'IN',
   'DS',
@@ -568,6 +699,7 @@ const codeCycle: ScheduleCode[] = [
   'OFF',
   'FB',
   'ST',
+  'AL',
   'Libur',
   'Sakit',
   'Emergency',
@@ -580,6 +712,8 @@ const defaultSiteConfig: SiteSchedulingConfig = {
   msaType: 'staff-nonstaff',
   mealsType: 'workday',
   overtimeType: 'five-hour',
+  requiresOnlineOvertimeSummary: false,
+  overtimeSummaryCutoffDay: 25,
   timezone: 'WITA',
   defaultShiftType: 'day-shift',
   defaultClockIn: '07:00',
@@ -624,8 +758,16 @@ const defaultSiteConfig: SiteSchedulingConfig = {
     hrName: '',
     externalPreparedBy: '',
     externalApprovedBy: '',
+    externalSignatureCount: 2,
     customSigners: [],
     logoUrl: '',
+    summarySignatures: {
+      ot: { preparedBy: "Muhammad As'ar Fauzan" },
+      spl: { preparedBy: "Muhammad As'ar Fauzan" },
+      msa: { preparedBy: "Muhammad As'ar Fauzan" },
+      meals: { preparedBy: "Muhammad As'ar Fauzan" },
+      lokasi: { preparedBy: "Muhammad As'ar Fauzan" },
+    },
   },
 }
 
@@ -726,20 +868,86 @@ function normalizePdfConfig(
   const headEmp = site?.headEmployeeId
     ? (employees.find((e) => e.id === site.headEmployeeId)?.name ?? '')
     : ''
-  const defaultApprovedBy = site ? `Plant. SPV Department (${site.name})` : ''
+  const isKpcSite = Boolean(
+    (site?.name && /kpc/i.test(site.name)) ||
+    (siteId && String(siteId) === '215')
+  )
+  const defaultApprovedBy = isKpcSite
+    ? 'Leader WS.KPC'
+    : site
+      ? `Plant. SPV Department (${site.name})`
+      : ''
   const customSigners = Array.isArray(cfg.customSigners)
     ? (cfg.customSigners as PdfConfigSigner[])
     : []
+  const rawSummaries = ((cfg.summarySignatures ?? {}) as Record<string, unknown>) || {}
+  const parseSummaryCfg = (subRaw: unknown): SummarySignaturesConfig => {
+    if (!subRaw || typeof subRaw !== 'object') return {}
+    const s = subRaw as Record<string, unknown>
+    let summaryAppr = typeof s.approvedBy === 'string' ? s.approvedBy : undefined
+    if (
+      isKpcSite &&
+      summaryAppr &&
+      (summaryAppr.toLowerCase().startsWith('plant. spv department') ||
+        summaryAppr.toLowerCase().includes('sangatta kpc'))
+    ) {
+      summaryAppr = 'Leader WS.KPC'
+    }
+    return {
+      preparedBy: typeof s.preparedBy === 'string' ? s.preparedBy : undefined,
+      pjoLeader: typeof s.pjoLeader === 'string' ? s.pjoLeader : undefined,
+      approvedBy: summaryAppr,
+      hrName: typeof s.hrName === 'string' ? s.hrName : undefined,
+      externalPreparedBy: typeof s.externalPreparedBy === 'string' ? s.externalPreparedBy : undefined,
+      externalApprovedBy: typeof s.externalApprovedBy === 'string' ? s.externalApprovedBy : undefined,
+    }
+  }
+
+  const summarySignatures: Partial<Record<SummaryDocTypeKey, SummarySignaturesConfig>> = {
+    ot: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.ot),
+    },
+    spl: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.spl),
+    },
+    msa: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.msa),
+    },
+    meals: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.meals),
+    },
+    lokasi: {
+      preparedBy: "Muhammad As'ar Fauzan",
+      ...parseSummaryCfg(rawSummaries.lokasi),
+    },
+  }
+
+  let normalizedApprovedBy = (cfg.approvedBy as string) || ''
+  if (
+    isKpcSite &&
+    (!normalizedApprovedBy ||
+      normalizedApprovedBy.toLowerCase().startsWith('plant. spv department') ||
+      normalizedApprovedBy.toLowerCase().includes('sangatta kpc'))
+  ) {
+    normalizedApprovedBy = 'Leader WS.KPC'
+  }
+
   return {
-    preparedBy: (cfg.preparedBy as string) || currentEmployeeName,
-    pjoLeader: (cfg.pjoLeader as string) || headEmp,
+    preparedBy: (cfg.preparedBy as string) || '',
+    pjoLeader: (cfg.pjoLeader as string) || headEmp || '',
     pjoLeaderCk: (cfg.pjoLeaderCk as string) || '',
-    approvedBy: (cfg.approvedBy as string) || defaultApprovedBy,
+    approvedBy: normalizedApprovedBy,
     hrName: (cfg.hrName as string) || '',
     externalPreparedBy: (cfg.externalPreparedBy as string) || '',
     externalApprovedBy: (cfg.externalApprovedBy as string) || '',
+    externalSignatureCount: (Number(cfg.externalSignatureCount) as 2 | 3 | 4) || 2,
     customSigners,
     logoUrl: (cfg.logoUrl as string) || '',
+    summarySignatures,
   }
 }
 
@@ -798,6 +1006,8 @@ function buildSiteSchedulingConfig(
             ? 'field-break'
             : 'workday') as SiteMealsType,
         overtimeType: savedConfig.overtimeType as SiteOvertimeType,
+        requiresOnlineOvertimeSummary: Boolean(savedConfig.requiresOnlineOvertimeSummary ?? false),
+        overtimeSummaryCutoffDay: Number(savedConfig.overtimeSummaryCutoffDay ?? 25) || 25,
         timezone: siteTimezone as IndonesiaTimezoneCode,
         defaultShiftType:
           (fieldBreakConfig.defaultShiftType as DefaultShiftType | undefined) ?? 'day-shift',
@@ -1003,11 +1213,23 @@ function normalizeLocation(value: string) {
 function isStaffRole(
   role?: string | null,
   jobTitle?: string | null,
-  levelName?: string | null
+  levelName?: string | null,
+  employeeStatusType?: string | null
 ): boolean {
+  if (employeeStatusType) {
+    const st = employeeStatusType.trim().toLowerCase()
+    if (st.includes('non staff') || st.includes('non-staff') || st.includes('nonstaff')) {
+      return false
+    }
+    if (st.includes('staff') && !st.includes('non')) {
+      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim())) {
+        return true
+      }
+    }
+  }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
-    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
+    if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff') || lvl.includes('rookie')) {
       return false
     }
     if (
@@ -1032,28 +1254,16 @@ function isStaffRole(
   }
   const combined = `${role ?? ''} ${jobTitle ?? ''}`.toLowerCase().trim()
   if (!combined) return false
-  // Explicit "non staff" or "non-staff" = non-staff
   if (combined.includes('non staff') || combined.includes('non-staff') || combined.includes('nonstaff')) return false
-  // Explicit field operational positions that are strictly non-staff
   if (/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim()) && !combined.includes('leader') && !combined.includes('spv')) {
     return false
   }
-  // Explicit "staff" without "non" = staff
   if (combined.includes('staff')) return true
-  // Managerial, leadership, engineering, specialist, analytical, administrative = staff
-  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing|operation/i.test(combined)) {
     return true
   }
-  // Default: non-staff
   return false
 }
-
-type ApprovalApproverDraft = {
-  pjoLeaderId: number | null
-  sectionHeadId: number | null
-  departmentHeadId: number | null
-}
-
 function approvalEmployeeOptions(
   candidates: EmployeeOption[],
   currentId: number | null,
@@ -1065,21 +1275,13 @@ function approvalEmployeeOptions(
 }
 
 function normalizeRosterSection(value?: string | null) {
-  const normalized = normalizeLocation(value ?? '')
-  if (normalized.includes('repair') || normalized.includes('retread')) return 'Repair Retread'
-  if (normalized.includes('technical')) return 'Crew Office'
-  if (normalized.includes('tyreman') || normalized.includes('tyre')) return 'Service Operation'
-  if (
-    normalized.includes('serviceoperation') ||
-    normalized.includes('serviceman') ||
-    normalized.includes('servicemvc') ||
-    normalized.includes('serviceoperationmvc') ||
-    normalized.includes('serviceoperationother') ||
-    normalized.includes('serviceoperationothers')
-  )
-    return 'Service Operation'
-
-  return 'Crew Office'
+  if (!value) return 'Office / Lainnya'
+  const trimmed = value.trim()
+  if (!trimmed) return 'Office / Lainnya'
+  const lower = trimmed.toLowerCase()
+  if (lower === 'repairman') return 'Repair Retread'
+  if (lower === 'tyreman' || lower === 'serviceman') return 'Service Operation'
+  return trimmed
 }
 
 function isEmploymentPositionLabel(value?: string | null) {
@@ -1194,6 +1396,7 @@ function codeClass(code: ScheduleCode) {
   if (code === 'OFF') return 'bg-rose-100 text-rose-700 hover:bg-rose-200'
   if (code === 'FB') return 'bg-amber-100 text-amber-900 hover:bg-amber-200'
   if (code === 'ST') return 'bg-purple-100 text-purple-900 hover:bg-purple-200'
+  if (code === 'AL') return 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
   if (code === 'Libur') return 'bg-slate-100 text-slate-700'
   if (code === 'Sakit') return 'bg-fuchsia-100 text-fuchsia-800 hover:bg-fuchsia-200'
   return 'bg-pink-100 text-pink-800 hover:bg-pink-200'
@@ -1214,13 +1417,15 @@ function weekdayLabel(period: string, day: number) {
 function rosterSectionLabel(section: string) {
   if (section === 'Service Operation') return 'Roster Serviceman'
   if (section === 'Repair Retread') return 'Crew Repair'
-  return 'Crew Office'
+  if (section === 'Crew Office') return 'Crew Office'
+  return section
 }
 
 function payrollSectionLabel(section: string) {
   if (section === 'Service Operation') return 'Serviceman Crew'
   if (section === 'Repair Retread') return 'Repairman Crew'
-  return 'Office Crew'
+  if (section === 'Crew Office') return 'Office Crew'
+  return section
 }
 
 function calculateOvertimeFromVariables(
@@ -1327,14 +1532,24 @@ function attendanceKey(employeeId: number, day: number) {
   return `${employeeId}-${day}`
 }
 
-function attendanceCellClass(status: AttendanceCellStatus) {
-  if (status === 'present') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-200'
+function attendanceCellClass(
+  status: AttendanceCellStatus,
+  scheduleCode?: string,
+  isNightShift?: boolean
+) {
+  if (scheduleCode === 'AL') return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 font-bold'
+  if (status === 'present') {
+    if (isNightShift) {
+      return 'bg-indigo-600 text-white ring-1 ring-indigo-700 hover:bg-indigo-700 shadow-sm'
+    }
+    return 'bg-emerald-100 text-emerald-950 ring-1 ring-emerald-300 hover:bg-emerald-200 shadow-sm'
+  }
   if (status === 'sick') return 'bg-amber-100 text-amber-950 ring-1 ring-amber-200'
   if (status === 'leave') return 'bg-sky-100 text-sky-950 ring-1 ring-sky-200'
   if (status === 'absent') return 'bg-rose-100 text-rose-950 ring-1 ring-rose-200'
   if (status === 'off') return 'bg-slate-200 text-slate-700 ring-1 ring-slate-300'
   if (status === 'standby') return 'bg-violet-100 text-violet-950 ring-1 ring-violet-200'
-  if (status === 'field_break') return 'bg-purple-100 text-purple-950 ring-1 ring-purple-200'
+  if (status === 'field_break') return 'bg-purple-100 text-purple-950 ring-1 ring-purple-200 font-bold'
   return 'bg-slate-50 text-slate-400 ring-1 ring-slate-200'
 }
 
@@ -1650,6 +1865,9 @@ export function SchedulingTimesheetWorkspace({
   currentEmployeeName = 'User Management',
   canEdit = true,
   canDelete = true,
+  initialSiteId,
+  initialPeriod,
+  initialAttendanceWorkspaceOpen,
 }: {
   mode?: SchedulingTimesheetMode
   employees: EmployeeOption[]
@@ -1714,13 +1932,53 @@ export function SchedulingTimesheetWorkspace({
   }>
   canEdit?: boolean
   canDelete?: boolean
+  initialSiteId?: string
+  initialPeriod?: string
+  initialAttendanceWorkspaceOpen?: boolean
 }) {
   const router = useRouter()
-  const [period, setPeriod] = useState(currentMonthPeriod)
+  const [period, setPeriod] = useState(initialPeriod || currentMonthPeriod)
   const userDefaultSiteId = useMemo(() => {
+    if (initialSiteId) return String(initialSiteId)
     return String(currentEmployeeSiteId ?? sites[0]?.id ?? 'all')
-  }, [currentEmployeeSiteId, sites])
+  }, [initialSiteId, currentEmployeeSiteId, sites])
   const [siteId, setSiteId] = useState(userDefaultSiteId)
+  const [showAttendanceSource, setShowAttendanceSource] = useState(false)
+  const [sourceData, setSourceData] = useState<{ key: string; records: AttendanceRealRecord[]; overrides: { employeeId: number; day: number; source: string; status: string; clockIn: string; clockOut: string }[] } | null>(null)
+  const [sourceError, setSourceError] = useState('')
+  useEffect(() => {
+    if (!showAttendanceSource || siteId === 'all') return
+    let active = true
+    const key = `${siteId}:${period}`
+    setSourceData(null)
+    setSourceError('')
+    getAttendanceSourceDataAction({ siteId: Number(siteId), period })
+      .then((data) => { if (active) setSourceData({ key, ...data }) })
+      .catch((error) => { if (active) setSourceError(error instanceof Error ? error.message : 'Gagal memuat data sumber') })
+    return () => { active = false }
+  }, [showAttendanceSource, siteId, period])
+
+  const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(
+    initialAttendanceWorkspaceOpen ?? false
+  )
+
+  useEffect(() => {
+    if (initialSiteId && initialSiteId !== siteId) {
+      setSiteId(initialSiteId)
+    }
+  }, [initialSiteId])
+
+  useEffect(() => {
+    if (initialPeriod && initialPeriod !== period) {
+      setPeriod(initialPeriod)
+    }
+  }, [initialPeriod])
+
+  useEffect(() => {
+    if (typeof initialAttendanceWorkspaceOpen === 'boolean') {
+      setAttendanceWorkspaceOpen(initialAttendanceWorkspaceOpen)
+    }
+  }, [initialAttendanceWorkspaceOpen])
   const [roster, setRoster] = useState('5:2')
   const [selectedCell, setSelectedCell] = useState<{ employeeId: number; day: number } | null>(null)
   const [selectedPermanentCell, setSelectedPermanentCell] = useState<{
@@ -1729,6 +1987,7 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const [rosterDialogOpen, setRosterDialogOpen] = useState(false)
   const [siteConfigDialogOpen, setSiteConfigDialogOpen] = useState(false)
+  const [activePdfSummaryTab, setActivePdfSummaryTab] = useState<'default' | SummaryDocTypeKey>('default')
   const [openScheduleHistorySiteId, setOpenScheduleHistorySiteId] = useState<number | null>(null)
   const [deletedSchedulePlanKeys, setDeletedSchedulePlanKeys] = useState<string[]>([])
   const [deleteScheduleHistoryTarget, setDeleteScheduleHistoryTarget] = useState<{
@@ -1813,27 +2072,36 @@ export function SchedulingTimesheetWorkspace({
     day: number
   } | null>(null)
   const [multiSelectAttendance, setMultiSelectAttendance] = useState(false)
+  const [isBulkEditAttendanceOpen, setIsBulkEditAttendanceOpen] = useState(false)
+  const [bulkRosterEditCode, setBulkRosterEditCode] = useState<ScheduleCode | ''>('')
+  const [bulkAttendanceStatus, setBulkAttendanceStatus] = useState<AttendanceCellStatus>('off')
+  const [bulkClockIn, setBulkClockIn] = useState('')
+  const [bulkClockOut, setBulkClockOut] = useState('')
+  const [bulkNote, setBulkNote] = useState('')
+  const [bulkOvertimeHours, setBulkOvertimeHours] = useState('')
   const [attendanceView, setAttendanceView] = useState<
-    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt'
+    'attendance' | 'msa' | 'lokasi' | 'meals' | 'ovt' | 'ovt_spl'
   >('attendance')
   const [attendanceSearch, setAttendanceSearch] = useState('')
   const [attendanceGridExportMode, setAttendanceGridExportMode] = useState<
     'attendance' | 'checkin-checkout' | 'work-hours'
   >('attendance')
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<
-    'all' | 'present' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
+    'all' | 'present' | 'present_pagi' | 'present_malam' | 'sick' | 'leave' | 'absent' | 'off' | 'gb'
   >('all')
   const [importHistoryOpen, setImportHistoryOpen] = useState(false)
   const [overtimePdfOpen, setOvertimePdfOpen] = useState(false)
   const [selectedOvertimeEmployeeIds, setSelectedOvertimeEmployeeIds] = useState<number[]>([])
   const [includeTotalOvertime, setIncludeTotalOvertime] = useState<boolean>(true)
-  const [pdfIncludeRepair, setPdfIncludeRepair] = useState<boolean>(true)
-  const [pdfIncludeServices, setPdfIncludeServices] = useState<boolean>(true)
-  const [pdfIncludeTechnical, setPdfIncludeTechnical] = useState<boolean>(true)
-  const [pdfIncludeHse, setPdfIncludeHse] = useState<boolean>(true)
+  const [selectedSectionNames, setSelectedSectionNames] = useState<string[] | null>(null)
+  const [sectionPickerOpen, setSectionPickerOpen] = useState<boolean>(false)
+  const [sectionSearchQuery, setSectionSearchQuery] = useState<string>('')
   const [pdfUseExternalSignatures, setPdfUseExternalSignatures] = useState<boolean>(false)
+  const [pdfExternalSignatureCount, setPdfExternalSignatureCount] = useState<2 | 3 | 4>(2)
+
   const [selectedPdfDocTypes, setSelectedPdfDocTypes] = useState<AttendancePdfDocType[]>([
     'overtime_summary',
+    'ovt_spl_summary',
     'msa_summary',
     'mls_summary',
     'tu_summary',
@@ -1841,7 +2109,16 @@ export function SchedulingTimesheetWorkspace({
     'payable_site_allowance',
   ])
   const [pdfDocTypesPickerOpen, setPdfDocTypesPickerOpen] = useState(false)
+  const [isPreviewingSitePdf, setIsPreviewingSitePdf] = useState(false)
+  const [isDownloadingSitePdf, setIsDownloadingSitePdf] = useState(false)
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null)
+  const lastPdfUrlRef = useRef<string | null>(null)
+  const [summaryGridPdfModalOpen, setSummaryGridPdfModalOpen] = useState(false)
+  const [summaryGridSiteId, setSummaryGridSiteId] = useState<string>(siteId)
+  const [summaryGridType, setSummaryGridType] = useState<SummaryView>('ovt_spl')
+  const [summaryGridSelectAllEmployees, setSummaryGridSelectAllEmployees] = useState(true)
+  const [summaryGridSelectedEmployeeIds, setSummaryGridSelectedEmployeeIds] = useState<number[]>([])
+  const [summaryGridEmployeeSearch, setSummaryGridEmployeeSearch] = useState('')
   const [selectedAttendanceKeys, setSelectedAttendanceKeys] = useState<string[]>([])
   const [attendanceImportPreview, setAttendanceImportPreview] = useState<{
     previewId: number
@@ -1878,9 +2155,41 @@ export function SchedulingTimesheetWorkspace({
   }, [activities])
 
   const [showConflictsOnly, setShowConflictsOnly] = useState(false)
+  const [showVariancesOnly, setShowVariancesOnly] = useState(false)
+  const overtimeVariancesDismissKey = `ot-variances-dismissed:${siteId}:${period}`
+  const [overtimeVariancesDismissed, setOvertimeVariancesDismissedState] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isDismissed =
+        sessionStorage.getItem(`ot-variances-dismissed:${siteId}:${period}`) === 'true'
+      setOvertimeVariancesDismissedState(isDismissed)
+    }
+  }, [siteId, period])
+
+  function setOvertimeVariancesDismissed(value: boolean) {
+    setOvertimeVariancesDismissedState(value)
+    if (typeof window !== 'undefined') {
+      if (value) {
+        sessionStorage.setItem(overtimeVariancesDismissKey, 'true')
+      } else {
+        sessionStorage.removeItem(overtimeVariancesDismissKey)
+      }
+    }
+  }
+
   const [attendanceSavedAt, setAttendanceSavedAt] = useState<string | null>(null)
   const [isAttendanceDirty, setIsAttendanceDirty] = useState(false)
   const [isSavingAttendance, startSavingAttendance] = useTransition()
+
+  // Cut-off Tagihan Khusus Customer CK (16 - 15) vs Standar Kalender (1 - Akhir Bulan) vs Rentang Tanggal Kustom
+  const [attendanceExportCutoff, setAttendanceExportCutoff] = useState<'calendar' | 'ck_16_15'>('calendar')
+  const [exportConfigDialogOpen, setExportConfigDialogOpen] = useState(false)
+  const [exportDialogCutoff, setExportDialogCutoff] = useState<'ck_16_15' | 'calendar' | 'custom'>('ck_16_15')
+  const [exportDialogActiveTab, setExportDialogActiveTab] = useState<string>('all_5_tabs')
+  const [customExportStartDate, setCustomExportStartDate] = useState<string>('')
+  const [customExportEndDate, setCustomExportEndDate] = useState<string>('')
+  const [isDownloadingCustomExcel, setIsDownloadingCustomExcel] = useState(false)
 
   const [draftOvertimeHours, setDraftOvertimeHours] = useState<string>('')
   const [dialogAttendanceDraft, setDialogAttendanceDraft] = useState<{
@@ -1930,7 +2239,6 @@ export function SchedulingTimesheetWorkspace({
   const [discardImportDialogOpen, setDiscardImportDialogOpen] = useState(false)
   const [overwriteImportDialogOpen, setOverwriteImportDialogOpen] = useState(false)
   const [clearExcelImportDialogOpen, setClearExcelImportDialogOpen] = useState(false)
-  const [attendanceWorkspaceOpen, setAttendanceWorkspaceOpen] = useState(false)
   const [payrollWorkspaceOpen, setPayrollWorkspaceOpen] = useState(false)
   const [payrollDetailTab, setPayrollDetailTab] = useState<'allowance' | 'overtime' | 'time'>(
     'allowance'
@@ -1946,6 +2254,21 @@ export function SchedulingTimesheetWorkspace({
   } | null>(null)
   const conflictsDismissKey = `conflicts-dismissed:${siteId}:${period}`
   const [conflictsDismissed, setConflictsDismissedState] = useState(false)
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const qSite = searchParams?.get('siteId')
+    const qPeriod = searchParams?.get('period')
+    if (qSite) {
+      setSiteId(qSite)
+      if (qPeriod) setPeriod(qPeriod)
+      if (mode === 'attendance') {
+        setAttendanceWorkspaceOpen(true)
+      } else if (mode === 'payroll') {
+        setPayrollWorkspaceOpen(true)
+      }
+    }
+  }, [searchParams, mode])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1997,6 +2320,13 @@ export function SchedulingTimesheetWorkspace({
   const siteConfig = useMemo(() => {
     return resolveCurrentSiteConfig(siteId)
   }, [resolveCurrentSiteConfig, siteId])
+  useEffect(() => {
+    if (siteConfig?.pdfConfig?.externalSignatureCount) {
+      setPdfExternalSignatureCount(
+        (Number(siteConfig.pdfConfig.externalSignatureCount) as 2 | 3 | 4) || 2
+      )
+    }
+  }, [siteConfig?.pdfConfig?.externalSignatureCount])
 
   const getEmployeeSiteConfig = useCallback(
     (empSiteId: number | null | undefined): SiteSchedulingConfig => {
@@ -2140,7 +2470,18 @@ export function SchedulingTimesheetWorkspace({
     const defaultManager = matchedSection?.departmentHeadName || ''
     const siteHeadName =
       employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
-    const approvedByName = cfg.approvedBy || defaultManager || siteHeadName || ''
+    const isKpcSite = Boolean(
+      (site?.name && /kpc/i.test(site.name)) ||
+      (site?.id && String(site.id) === '215')
+    )
+    let approvedByName = cfg.approvedBy || (isKpcSite ? 'Leader WS.KPC' : defaultManager || siteHeadName || '')
+    if (
+      isKpcSite &&
+      (approvedByName.toLowerCase().startsWith('plant. spv department') ||
+        approvedByName.toLowerCase().includes('sangatta kpc'))
+    ) {
+      approvedByName = 'Leader WS.KPC'
+    }
 
     // HR: cari employee dengan role/department HR di site yang sama
     const hrKeywords = ['hr', 'hrd', 'human resource', 'human capital']
@@ -2163,6 +2504,7 @@ export function SchedulingTimesheetWorkspace({
       hrName: cfg.hrName || defaultHr,
       externalPreparedBy: cfg.externalPreparedBy,
       externalApprovedBy: cfg.externalApprovedBy,
+      externalSignatureCount: cfg.externalSignatureCount,
       customSigners: cfg.customSigners,
       logoUrl: cfg.logoUrl,
     }
@@ -2334,6 +2676,9 @@ export function SchedulingTimesheetWorkspace({
     setSiteId(String(nextSiteId))
     setPeriod(nextPeriod)
     setAttendanceWorkspaceOpen(true)
+    if (mode === 'attendance') {
+      router.push(`/dashboard/scheduling-timesheet/attendance/${nextSiteId}?period=${nextPeriod}`)
+    }
   }
 
   function openPayrollWorkspace(nextSiteId: number, nextPeriod: string) {
@@ -2365,7 +2710,11 @@ export function SchedulingTimesheetWorkspace({
           overrides: [],
         })
         setAttendanceCreateOpen(false)
-        openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+        if (mode === 'attendance') {
+          router.push(`/dashboard/scheduling-timesheet/attendance/${numericSiteId}?period=${attendanceCreatePeriod}`)
+        } else {
+          openAttendanceWorkspace(numericSiteId, attendanceCreatePeriod)
+        }
         router.refresh()
         toast.success('Attendance dibuat. Schedule dapat dilengkapi nanti.')
       } catch (error) {
@@ -2391,8 +2740,18 @@ export function SchedulingTimesheetWorkspace({
         toast.success(
           target.recreate ? 'Attendance dikosongkan. Silakan isi ulang.' : 'Attendance dihapus.'
         )
-        if (target.recreate) openAttendanceWorkspace(target.siteId, target.period)
-        else setAttendanceWorkspaceOpen(false)
+        if (target.recreate) {
+          if (mode === 'attendance') {
+            router.push(`/dashboard/scheduling-timesheet/attendance/${target.siteId}?period=${target.period}`)
+          } else {
+            openAttendanceWorkspace(target.siteId, target.period)
+          }
+        } else {
+          setAttendanceWorkspaceOpen(false)
+          if (mode === 'attendance') {
+            router.push('/dashboard/scheduling-timesheet/attendance')
+          }
+        }
         router.refresh()
       } catch (error) {
         toast.error('Gagal menghapus attendance', {
@@ -2406,15 +2765,60 @@ export function SchedulingTimesheetWorkspace({
   // raw-punch heuristic below, which only knows each punch's calendar date.
   const attendanceOverrideByCell = useMemo(() => {
     const map = new Map<string, SavedAttendanceOverride>()
+    const employeeIds = new Set<number>()
+
     for (const override of attendanceOverrides) {
       if (
         override.period === period &&
-        override.source === 'attendance' &&
+        (override.source === 'attendance' || override.source === 'manual') &&
         (siteId === 'all' || String(override.siteId) === siteId)
       ) {
-        map.set(attendanceKey(override.employeeId, override.day), override)
+        map.set(attendanceKey(override.employeeId, override.day), { ...override })
+        employeeIds.add(override.employeeId)
       }
     }
+
+    const daysInCurrentPeriod = daysInMonth(period)
+
+    // Cross-day reconciliation for overrides:
+    // 1) Mark any existing overnight checkout (clockOut < clockIn or flag) as isCrossDay = true.
+    // 2) If Day d has check-in but no check-out, and Day d+1 has check-out with no check-in (orphan checkout):
+    //    Attribute Day d+1's check-out to Day d, mark Day d as isCrossDay = true,
+    //    and remove the consumed override on Day d+1 so Day d+1 follows its normal roster schedule.
+    for (const empId of employeeIds) {
+      for (let d = 1; d <= daysInCurrentPeriod; d++) {
+        const curKey = attendanceKey(empId, d)
+        const curOverride = map.get(curKey)
+
+        if (curOverride) {
+          if (
+            (curOverride.clockIn && curOverride.clockOut && curOverride.clockOut < curOverride.clockIn) ||
+            curOverride.validationFlags?.includes('cross-day-checkout')
+          ) {
+            curOverride.isCrossDay = true
+          }
+
+          if (curOverride.clockIn && !curOverride.clockOut && d < daysInCurrentPeriod) {
+            const nextKey = attendanceKey(empId, d + 1)
+            const nextOverride = map.get(nextKey)
+
+            if (nextOverride && !nextOverride.clockIn && nextOverride.clockOut) {
+              curOverride.clockOut = nextOverride.clockOut
+              curOverride.isCrossDay = true
+              if (nextOverride.note && !curOverride.note) {
+                curOverride.note = nextOverride.note
+              }
+              const flags = new Set(curOverride.validationFlags || [])
+              flags.delete('missing-check-out')
+              flags.add('cross-day-checkout')
+              curOverride.validationFlags = Array.from(flags)
+              map.delete(nextKey)
+            }
+          }
+        }
+      }
+    }
+
     return map
   }, [attendanceOverrides, period, siteId])
 
@@ -2487,11 +2891,15 @@ export function SchedulingTimesheetWorkspace({
     )
     setIsAttendanceDirty(false)
     setSelectedAttendanceKeys([])
-    // Reset conflict dismissed state for new site/period
+    // Reset conflict and variance dismissed state for new site/period
     const dismissKey = `conflicts-dismissed:${siteId}:${period}`
     const isDismissed =
       typeof window !== 'undefined' && sessionStorage.getItem(dismissKey) === 'true'
     setConflictsDismissedState(isDismissed)
+    const otDismissKey = `ot-variances-dismissed:${siteId}:${period}`
+    const isOtDismissed =
+      typeof window !== 'undefined' && sessionStorage.getItem(otDismissKey) === 'true'
+    setOvertimeVariancesDismissedState(isOtDismissed)
     void refreshAttendanceImportHistory()
   }, [attendanceOverrides, employees, period, siteId])
 
@@ -2606,14 +3014,37 @@ export function SchedulingTimesheetWorkspace({
     }
 
     const filtered = employees.filter((employee) => {
+      const isDirectMember = String(employee.siteId) === siteId
+      const hasSiteAttendance = siteAttendanceEmployeeIds.has(employee.id)
+      const isScheduled = scheduledEmployeeIds.has(employee.id)
+      const isUnassignedMatchingLocation = !employee.siteId && employee.locationName && employee.locationName === selectedSiteExtracted
+
+      // In attendance or payroll view:
+      // If the employee belongs to another site (e.g. mutated/transferred to another site),
+      // they MUST only appear if they actually have attendance records or overrides in this site for this period!
+      // They should NOT appear as ghost rows from old/stale schedules.
+      if (mode === 'attendance' || mode === 'payroll') {
+        if (hasSiteAttendance) return true
+        if (isDirectMember) return true
+        if (isUnassignedMatchingLocation) return true
+        return false
+      }
+
+      // In schedule or other modes:
+      // If employee already belongs to another site and has no attendance in this site for this period,
+      // do not pull them in from stale saved plan schedules.
+      if (employee.siteId && String(employee.siteId) !== siteId && !hasSiteAttendance) {
+        return false
+      }
+
       // 1. Employee belongs directly to this site
-      if (String(employee.siteId) === siteId) return true
+      if (isDirectMember) return true
       // 2. Included in this site's saved/scheduled plan roster
-      if (scheduledEmployeeIds.has(employee.id)) return true
+      if (isScheduled) return true
       // 3. Has attendance records or overrides in this site for the selected period
-      if (siteAttendanceEmployeeIds.has(employee.id)) return true
+      if (hasSiteAttendance) return true
       // 4. Fallback matching site location name ONLY for unassigned employees without siteId
-      if (!employee.siteId && employee.locationName && employee.locationName === selectedSiteExtracted) return true
+      if (isUnassignedMatchingLocation) return true
       return false
     })
 
@@ -2717,7 +3148,7 @@ export function SchedulingTimesheetWorkspace({
 
           // In schedule builder draft mode, generate roster pattern according to site's configured rosterType
           const scheduleType = siteConfig.scheduleType || siteScheduleTypes[siteId] || 'office'
-          const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+          const isStaff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
           const effectiveRosterType =
             scheduleType === 'hybrid'
               ? isStaff
@@ -2760,7 +3191,7 @@ export function SchedulingTimesheetWorkspace({
         const msaDays = schedule.filter((code) => isMsaEligibleDay(code)).length
         const fieldBreakDays = schedule.filter((code) => code === 'FB').length
         const totalHours = schedule.reduce((sum, code) => sum + hoursFromCode(code), 0)
-        const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+        const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
         const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
         const empRate = getAllowanceRateForEmployee(employee)
         const benefitRule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
@@ -2847,6 +3278,28 @@ export function SchedulingTimesheetWorkspace({
     ]
   )
 
+  const siteSectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const row of rows) {
+      const sec = getEmployeeExactSection(row.employee)
+      counts[sec] = (counts[sec] ?? 0) + 1
+    }
+    return counts
+  }, [rows])
+
+  const availableSiteSections = useMemo(() => {
+    return Object.entries(siteSectionCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  }, [siteSectionCounts])
+
+  const siteRosterSectionOptions = useMemo(() => {
+    if (availableSiteSections.length > 0) {
+      return availableSiteSections.map((s) => s.name)
+    }
+    return defaultSectionOptions
+  }, [availableSiteSections])
+
   const attendanceByCell = useMemo(() => {
     const map = new Map<
       string,
@@ -2861,18 +3314,127 @@ export function SchedulingTimesheetWorkspace({
 
     // Group records by cell key first
     const grouped = new Map<string, AttendanceRealRecord[]>()
-    for (const record of attendanceRecords) {
+    for (const record of (showAttendanceSource ? sourceData?.records ?? [] : attendanceRecords)) {
       if (siteId !== 'all' && record.siteId != null && String(record.siteId) !== siteId) {
         continue
       }
       const dateStr = getLocalDateStr(record.eventTime, effectiveTz)
-      if (!dateStr || !dateStr.startsWith(period)) continue
-      const day = dayFromDate(dateStr, period)
-      if (!day) continue
+      if (!dateStr) continue
+      const day = showAttendanceSource
+        ? Math.round((Date.parse(`${dateStr}T00:00:00Z`) - Date.parse(`${period}-01T00:00:00Z`)) / 86400000) + 1
+        : dayFromDate(dateStr, period)
+      if (day == null || (!showAttendanceSource && !day) || day < 0 || day > daysInMonth(period) + 1) continue
       const key = attendanceKey(record.employeeId, day)
       const list = grouped.get(key) ?? []
       list.push(record)
       grouped.set(key, list)
+    }
+
+    // Cross-day reconciliation for night shifts:
+    // If day d-1 was a night shift (schedule is NS or had evening check-in),
+    // and day d has early morning check-out (< 12:00 local time),
+    // attribute that check-out to day d-1 and remove it from day d.
+    const employeeIds = new Set<number>()
+    for (const record of (showAttendanceSource ? sourceData?.records ?? [] : attendanceRecords)) {
+      if (siteId === 'all' || record.siteId == null || String(record.siteId) === siteId) {
+        employeeIds.add(record.employeeId)
+      }
+    }
+    const daysInCurrentPeriod = daysInMonth(period)
+
+    for (const empId of employeeIds) {
+      const empRow = rows.find((r) => r.employee.id === empId)
+      for (let d = showAttendanceSource ? 1 : 2; d <= daysInCurrentPeriod + (showAttendanceSource ? 1 : 0); d++) {
+        const curKey = attendanceKey(empId, d)
+        const curRecords = grouped.get(curKey)
+        if (!curRecords || curRecords.length === 0) continue
+
+        const prevKey = attendanceKey(empId, d - 1)
+        const prevRecords = grouped.get(prevKey) || []
+        const prevScheduleCode = empRow?.schedule[d - 2]
+        const prevIsScheduledNight = isNightShiftScheduleCode(prevScheduleCode)
+
+        const prevHasNightPunch = prevRecords.some((r) => {
+          const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
+          const isCheckIn =
+            r.eventType === 'checked-in' ||
+            (!r.eventType.toLowerCase().includes('out') &&
+              !r.eventType.toLowerCase().includes('pulang') &&
+              !r.eventType.toLowerCase().includes('checkout'))
+          return isCheckIn && (h >= 15 || h < 5)
+        })
+
+        const prevHasOpenCheckIn =
+          prevRecords.some((r) => {
+            const isCheckIn =
+              r.eventType === 'checked-in' ||
+              (!r.eventType.toLowerCase().includes('out') &&
+                !r.eventType.toLowerCase().includes('pulang') &&
+                !r.eventType.toLowerCase().includes('checkout'))
+            return isCheckIn
+          }) &&
+          !prevRecords.some((r) => {
+            return (
+              r.eventType.toLowerCase().includes('out') ||
+              r.eventType.toLowerCase().includes('pulang') ||
+              r.eventType.toLowerCase().includes('checkout')
+            )
+          })
+
+        const isYesterdayNightShift = showAttendanceSource
+          ? prevHasNightPunch || prevHasOpenCheckIn
+          : prevIsScheduledNight || prevHasNightPunch || prevHasOpenCheckIn
+
+        if (isYesterdayNightShift) {
+          const curCheckIns = curRecords.filter((r) => {
+            return (
+              r.eventType === 'checked-in' ||
+              (!r.eventType.toLowerCase().includes('out') &&
+                !r.eventType.toLowerCase().includes('pulang') &&
+                !r.eventType.toLowerCase().includes('checkout'))
+            )
+          })
+          const hasCurCheckIn = curCheckIns.length > 0
+
+          const morningCheckouts = curRecords.filter((r) => {
+            const isOut =
+              r.eventType.toLowerCase().includes('out') ||
+              r.eventType.toLowerCase().includes('pulang') ||
+              r.eventType.toLowerCase().includes('checkout')
+            if (!isOut) return false
+            const h = getTimezoneDateParts(new Date(r.eventTime), effectiveTz).hours
+            return h < 12 || !hasCurCheckIn
+          })
+
+          if (morningCheckouts.length > 0) {
+            morningCheckouts.sort((a, b) => a.eventTime.localeCompare(b.eventTime))
+            const morningCheckout = morningCheckouts[morningCheckouts.length - 1]
+
+            const prevHasCheckout = prevRecords.some((r) => {
+              return (
+                r.eventType.toLowerCase().includes('out') ||
+                r.eventType.toLowerCase().includes('pulang') ||
+                r.eventType.toLowerCase().includes('checkout')
+              )
+            })
+
+            if (!prevHasCheckout) {
+              prevRecords.push(morningCheckout)
+              grouped.set(prevKey, prevRecords)
+            }
+
+            const remainingCurRecords = showAttendanceSource && prevHasCheckout
+              ? curRecords
+              : curRecords.filter((r) => !morningCheckouts.includes(r))
+
+            if (remainingCurRecords.length > 0) {
+              grouped.set(curKey, remainingCurRecords)
+            } else {
+              grouped.delete(curKey)
+            }
+          }
+        }
+      }
     }
 
     for (const [key, records] of grouped.entries()) {
@@ -2907,6 +3469,8 @@ export function SchedulingTimesheetWorkspace({
     return map
   }, [
     attendanceRecords,
+    showAttendanceSource,
+    sourceData,
     employees,
     period,
     site,
@@ -2927,8 +3491,12 @@ export function SchedulingTimesheetWorkspace({
     const sectionRows = tableRows.filter((row) => row.rosterSection === section)
     if (sectionRows.length === 0) return null
 
-    const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
-    const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+    const styles = getRosterSectionStyle(section)
+    const showOperatorTotals =
+      section.toLowerCase().includes('service') ||
+      section.toLowerCase().includes('repair') ||
+      section === 'Service Operation' ||
+      section === 'Repair Retread'
     const sectionTotals = days.map((day, index) => ({
       day,
       ds: sectionRows.filter((row) => row.schedule[index] === 'DS').length,
@@ -3595,7 +4163,12 @@ export function SchedulingTimesheetWorkspace({
   function saveRosterEditFromAttendance(code: ScheduleCode) {
     if (!guardOpenPeriod('Edit roster')) return
     if (!selectedAttendanceCell) return
-    const numericSiteId = Number(siteId)
+    const empObj = employees.find((e) => e.id === selectedAttendanceCell.employeeId)
+    const numericSiteId = Number(
+      siteId !== 'all' && Number(siteId) > 0
+        ? siteId
+        : selectedAttendanceEmployee?.siteId || empObj?.siteId || 0
+    )
     if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
     const { employeeId, day } = selectedAttendanceCell
     const nextRows = rows.map((row) =>
@@ -3871,7 +4444,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   async function saveSiteConfig() {
-    if (!guardOpenPeriod('Save site settings')) return
     if (siteId === 'all') return
     const targetConfig = siteConfigs[siteId] ?? resolveCurrentSiteConfig(siteId)
     const { dbConfig, fieldBreakConfig, pdfConfig } = serializeSiteConfig(targetConfig)
@@ -3897,10 +4469,10 @@ export function SchedulingTimesheetWorkspace({
             return {
               sectionId,
               departmentId,
-              matrixId: row.matrixId ? Number(row.matrixId) : null,
-              pjoLeaderId: pjoId ? Number(pjoId) : null,
-              sectionHeadId: secHeadId ? Number(secHeadId) : null,
-              departmentHeadId: deptHeadId ? Number(deptHeadId) : null,
+              matrixId: row.matrixId && Number(row.matrixId) > 0 ? Number(row.matrixId) : null,
+              pjoLeaderId: pjoId && Number(pjoId) > 0 ? Number(pjoId) : null,
+              sectionHeadId: secHeadId && Number(secHeadId) > 0 ? Number(secHeadId) : null,
+              departmentHeadId: deptHeadId && Number(deptHeadId) > 0 ? Number(deptHeadId) : null,
             }
           })
           .filter((item): item is NonNullable<typeof item> => item != null),
@@ -3926,7 +4498,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateOvertimeEnabled(enabled: boolean) {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -3941,7 +4512,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateOvertimeMode(mode: 'template' | 'realtime') {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -3954,6 +4524,21 @@ export function SchedulingTimesheetWorkspace({
       }
     })
   }
+
+  function updateRequireSpl(requireSpl: boolean) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          overtimeConfig: { ...currentConfig.overtimeConfig, requireSpl },
+        },
+      }
+    })
+  }
+
 
   function updateApprovalApprover(
     rowId: string,
@@ -4040,7 +4625,6 @@ export function SchedulingTimesheetWorkspace({
     key: Key,
     value: SiteSchedulingConfig[Key]
   ) {
-    if (!guardOpenPeriod('Edit site settings')) return
     if (siteId === 'all') return
 
     setSiteConfigs((current) => {
@@ -4061,7 +4645,6 @@ export function SchedulingTimesheetWorkspace({
     category: keyof EmployeeBenefitConfig,
     patch: Partial<EmployeeBenefitRule>
   ) {
-    if (!guardOpenPeriod('Edit employee benefit settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4079,7 +4662,6 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function updateQuotationBillingRule(key: keyof QuotationBillingStatusConfig, checked: boolean) {
-    if (!guardOpenPeriod('Edit quotation billing settings')) return
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4127,7 +4709,7 @@ export function SchedulingTimesheetWorkspace({
     setAllowanceVariables((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
-  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[]) {
+  function updatePdfConfig(key: keyof PdfConfig, value: string | PdfConfigSigner[] | string[] | number) {
     if (siteId === 'all') return
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
@@ -4139,6 +4721,89 @@ export function SchedulingTimesheetWorkspace({
         },
       }
     })
+  }
+
+  function updateSummaryPdfConfig(
+    docKey: SummaryDocTypeKey,
+    fieldKey: keyof SummarySignaturesConfig,
+    value: string
+  ) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const prevSummaries = currentConfig.pdfConfig.summarySignatures ?? {}
+      const prevDoc = prevSummaries[docKey] ?? {}
+      const nextSummaries = {
+        ...prevSummaries,
+        [docKey]: {
+          ...prevDoc,
+          [fieldKey]: value,
+        },
+      }
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: {
+            ...currentConfig.pdfConfig,
+            summarySignatures: nextSummaries,
+          },
+        },
+      }
+    })
+  }
+
+  function copyDefaultSignaturesToSummary(docKey: SummaryDocTypeKey) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const prevSummaries = currentConfig.pdfConfig.summarySignatures ?? {}
+      const nextSummaries = {
+        ...prevSummaries,
+        [docKey]: {
+          preparedBy: currentConfig.pdfConfig.preparedBy,
+          pjoLeader: currentConfig.pdfConfig.pjoLeader,
+          approvedBy: currentConfig.pdfConfig.approvedBy,
+          hrName: currentConfig.pdfConfig.hrName,
+          externalPreparedBy: currentConfig.pdfConfig.externalPreparedBy,
+          externalApprovedBy: currentConfig.pdfConfig.externalApprovedBy,
+        },
+      }
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: {
+            ...currentConfig.pdfConfig,
+            summarySignatures: nextSummaries,
+          },
+        },
+      }
+    })
+    toast.success('Tanda tangan default disalin ke ringkasan dokumen.')
+  }
+
+  function resetSummarySignaturesToDefault(docKey: SummaryDocTypeKey) {
+    if (siteId === 'all') return
+    setSiteConfigs((current) => {
+      const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const prevSummaries = currentConfig.pdfConfig.summarySignatures ?? {}
+      const nextSummaries = {
+        ...prevSummaries,
+        [docKey]: {},
+      }
+      return {
+        ...current,
+        [siteId]: {
+          ...currentConfig,
+          pdfConfig: {
+            ...currentConfig.pdfConfig,
+            summarySignatures: nextSummaries,
+          },
+        },
+      }
+    })
+    toast.info('Tanda tangan di-reset untuk mengikuti konfigurasi Default.')
   }
 
   function addCustomSigner() {
@@ -4180,7 +4845,7 @@ export function SchedulingTimesheetWorkspace({
     reader.readAsDataURL(file)
   }
 
-  function applySignaturePreset(presetKey: 'repair' | 'services' | 'technical' | 'hse') {
+  function applySignaturePreset(presetKey: string) {
     if (siteId === 'all') return
 
     const siteName = (site?.name || '').trim().toUpperCase()
@@ -4223,40 +4888,59 @@ export function SchedulingTimesheetWorkspace({
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
 
+    const keyLower = presetKey.toLowerCase()
+    const sectionApproval = siteApprovalSections.find((s) => {
+      const sName = (s.sectionName || '').toLowerCase()
+      return keyLower && (sName.includes(keyLower) || keyLower.includes(sName))
+    })
+
     setSiteConfigs((current) => {
       const currentConfig = resolveCurrentSiteConfig(siteId, current)
+      const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
       let newPdfConfig = { ...currentConfig.pdfConfig }
 
-      if (presetKey === 'repair') {
+      if (keyLower === 'repair' || keyLower.includes('repair') || keyLower.includes('retread')) {
         newPdfConfig = {
           ...newPdfConfig,
           preparedBy: arjun,
-          pjoLeader: ary,
-          approvedBy: romy,
+          pjoLeader: sectionApproval?.pjoLeaderName || ary,
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
-      } else if (presetKey === 'services') {
+      } else if (keyLower === 'services' || keyLower.includes('service') || keyLower.includes('servis')) {
         newPdfConfig = {
           ...newPdfConfig,
           preparedBy: fauzan,
-          pjoLeader: isCkSite ? apriyanto : junaidi,
-          approvedBy: romy,
+          pjoLeader: sectionApproval?.pjoLeaderName || (isCkSite ? apriyanto : junaidi),
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
-      } else if (presetKey === 'technical') {
+      } else if (keyLower === 'technical' || keyLower.includes('tech') || keyLower.includes('teknis')) {
         newPdfConfig = {
           ...newPdfConfig,
-          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || '',
-          pjoLeader: abian,
-          approvedBy: romy,
+          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || abian,
+          pjoLeader: sectionApproval?.pjoLeaderName || abian,
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
-      } else if (presetKey === 'hse') {
+      } else if (keyLower === 'hse' || keyLower.includes('hse') || keyLower.includes('safety')) {
         newPdfConfig = {
           ...newPdfConfig,
           preparedBy: fathurrahman,
-          pjoLeader: andiSafari,
-          approvedBy: rendra,
+          pjoLeader: sectionApproval?.pjoLeaderName || andiSafari,
+          approvedBy: sectionApproval?.departmentHeadName || rendra,
+          hrName: kesuma,
+        }
+      } else {
+        newPdfConfig = {
+          ...newPdfConfig,
+          preparedBy: currentConfig.pdfConfig.preparedBy || currentEmployeeName || '',
+          pjoLeader:
+            sectionApproval?.pjoLeaderName ||
+            sectionApproval?.sectionHeadName ||
+            siteHeadName ||
+            (isCkSite ? apriyanto : junaidi),
+          approvedBy: sectionApproval?.departmentHeadName || romy,
           hrName: kesuma,
         }
       }
@@ -4270,13 +4954,7 @@ export function SchedulingTimesheetWorkspace({
       }
     })
 
-    const presetLabels: Record<string, string> = {
-      repair: 'Repair TTD',
-      services: 'Services TTD',
-      technical: 'Technical TTD',
-      hse: 'HSE TTD',
-    }
-    toast.success(`Preset ${presetLabels[presetKey]} berhasil diterapkan!`)
+    toast.success(`Preset TTD ${presetKey === 'default' ? 'Default Site' : presetKey} berhasil diterapkan!`)
   }
 
   function saveAllowanceVariables() {
@@ -4478,13 +5156,17 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function rosterExportRows(tableRows = rows) {
-    return sectionOptions.flatMap((section) => {
+    return siteRosterSectionOptions.flatMap((section) => {
       const sectionRows = tableRows.filter((row) => row.rosterSection === section)
       if (sectionRows.length === 0) return []
 
-      const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
+      const styles = getRosterSectionStyle(section)
       const totals = rosterSectionTotals(sectionRows)
-      const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+      const showOperatorTotals =
+        section.toLowerCase().includes('service') ||
+        section.toLowerCase().includes('repair') ||
+        section === 'Service Operation' ||
+        section === 'Repair Retread'
       const rowsBySection: Array<Array<string | number>> = [
         [styles.title, '', '', '', '', period, ...days.map(() => ''), ''],
         ...sectionRows.map((row) => [
@@ -4576,14 +5258,18 @@ export function SchedulingTimesheetWorkspace({
     const dayHeaders = days
       .map((day) => `<th><div>${weekdayLabel(period, day)}</div><div>${day}</div></th>`)
       .join('')
-    const rosterTables = sectionOptions
+    const rosterTables = siteRosterSectionOptions
       .map((section) => {
         const sectionRows = tableRows.filter((row) => row.rosterSection === section)
         if (sectionRows.length === 0) return ''
 
-        const styles = rosterSectionStyles[section] ?? rosterSectionStyles['Crew Office']
+        const styles = getRosterSectionStyle(section)
         const totals = rosterSectionTotals(sectionRows)
-        const showOperatorTotals = section === 'Service Operation' || section === 'Repair Retread'
+        const showOperatorTotals =
+          section.toLowerCase().includes('service') ||
+          section.toLowerCase().includes('repair') ||
+          section === 'Service Operation' ||
+          section === 'Repair Retread'
         const bodyRows = sectionRows
           .map(
             (row) => `
@@ -4716,13 +5402,34 @@ export function SchedulingTimesheetWorkspace({
     printable.document.close()
   }
 
-  async function exportAttendanceGrid(customMode?: 'attendance' | 'checkin-checkout' | 'work-hours') {
+  async function exportAttendanceGrid(
+    customMode?: 'attendance' | 'checkin-checkout' | 'work-hours',
+    cutoffModeOverride?: 'calendar' | 'ck_16_15',
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     const activeMode = customMode ?? attendanceGridExportMode
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effectiveCutoff = cutoffModeOverride ?? attendanceExportCutoff
+    const isCkCutoff = !isCustom && effectiveCutoff === 'ck_16_15'
+    const dateHeaders = isCustom
+      ? customDateHeaders
+      : isCkCutoff
+      ? buildCkCutoffDateRange(period, holidays)
+      : undefined
+    const cutoffLabel = isCustom
+      ? customCutoffLabel
+      : isCkCutoff
+      ? formatCkCutoffLabel(period)
+      : undefined
+
     try {
       await exportAttendanceGridToExcel({
         siteName: site?.name ?? 'Semua Site',
         period,
-        days,
+        days: isCkCutoff && dateHeaders ? dateHeaders.map((dh) => dh.day) : days,
+        dateHeaders,
+        cutoffLabel,
         mode: activeMode,
         rows: displayedAttendanceRows.map((row) => ({
           employee: {
@@ -4733,7 +5440,18 @@ export function SchedulingTimesheetWorkspace({
             section: row.employee.section,
             department: row.employee.department,
           },
-          getAttendanceCell: (day: number) => getAttendanceCell(row.employee.id, day),
+          getAttendanceCell: (day: number, dateItem?: ExportAttendanceDateHeader) => {
+            if (dateItem && dateItem.period && dateItem.period !== period) {
+              return resolveCrossPeriodAttendanceCell(
+                row.employee.id,
+                dateItem.period,
+                day,
+                undefined,
+                row.employee
+              )
+            }
+            return getAttendanceCell(row.employee.id, day)
+          },
           totalHours: row.totalHours,
         })),
         weekdayLabel: (p, d) => weekdayLabel(p, d),
@@ -4745,7 +5463,10 @@ export function SchedulingTimesheetWorkspace({
         'checkin-checkout': 'Jam Masuk & Pulang',
         'work-hours': 'Durasi Jam Kerja',
       }
-      toast.success(`Export Excel Visual Grid (${modeLabelMap[activeMode] || activeMode}) berhasil diunduh!`)
+      const cutoffSuffix = isCkCutoff ? ` (${cutoffLabel})` : ''
+      toast.success(
+        `Export Excel Visual Grid (${modeLabelMap[activeMode] || activeMode}${cutoffSuffix}) berhasil diunduh!`
+      )
     } catch (err) {
       toast.error('Gagal mengekspor Excel Attendance: ' + (err instanceof Error ? err.message : String(err)))
     }
@@ -4893,24 +5614,41 @@ export function SchedulingTimesheetWorkspace({
   function getAttendanceCell(
     employeeId: number,
     day: number,
-    scheduleCode?: string
+    scheduleCode?: string,
+    employeeObj?: EmployeeOption
   ): ManualAttendanceCell {
     const key = attendanceKey(employeeId, day)
     const manual = manualAttendance[key]
     const authoritativeAttendance = attendanceOverrideByCell.get(key)
     const real = attendanceByCell.get(key)
+    const rowObj = rows.find((r) => r.employee.id === employeeId)
     const rowCode =
-      scheduleCode ?? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 1]
+      scheduleCode ?? rowObj?.schedule[day - 1]
 
-    const empObj = employees.find((e) => e.id === employeeId)
+    const empObj =
+      employeeObj ??
+      rowObj?.employee ??
+      employees.find((e) => e.id === employeeId)
     const empSiteId =
       empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
-    const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName)
+    const isStaff = isStaffRole(empObj?.role, empObj?.jobTitle, empObj?.levelName, empObj?.employeeStatusType)
+
+    // Defensive check: if the recorded face attendance note already determined
+    // that this was a staff schedule (e.g. "masuk 08:00" or "jadwal 08:00"),
+    // preserve that staff status so punctuality evaluation never regresses.
+    const rawSavedNote = authoritativeAttendance?.note || real?.clockIn?.locationNote || real?.records?.[0]?.locationNote || ''
+    const noteSuggestsStaff = Boolean(
+      rawSavedNote &&
+        (rawSavedNote.includes('08:00') ||
+          rawSavedNote.includes('jadwal 08:00') ||
+          rawSavedNote.includes('masuk 08:00'))
+    )
+    const effectiveIsStaff = isStaff || noteSuggestsStaff
 
     let cellClockConfig = effectiveSiteClockConfig
     if (empSiteId != null) {
       const empSiteConfig = getEmployeeSiteConfig(empSiteId)
-      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && isStaff)
+      const isHybridStaff = Boolean(empSiteConfig.scheduleType === 'hybrid' && effectiveIsStaff)
       cellClockConfig = {
         dayShiftClockIn:
           isHybridStaff && empSiteConfig.staffDayShiftClockIn
@@ -4933,7 +5671,7 @@ export function SchedulingTimesheetWorkspace({
 
     if (!manual && !authoritativeAttendance && !real) {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig, isStaff)
+      const configuredClockIn = resolveConfiguredShiftClockIn(rowCode, cellClockConfig, effectiveIsStaff)
       if (
         rosterStatus === 'off' ||
         rosterStatus === 'field_break' ||
@@ -4994,25 +5732,62 @@ export function SchedulingTimesheetWorkspace({
         'Face/location attendance'
 
     let effectiveStatus = rawStatus
+    const isOffSchedule = ['OFF', 'Libur', 'FB', 'Sakit', 'AL'].includes(rowCode || '')
+    const prevDaySchedule = day > 1 ? rows.find((r) => r.employee.id === employeeId)?.schedule[day - 2] : null
+    const prevIsNight = isNightShiftScheduleCode(prevDaySchedule)
+    const prevCell = day > 1 ? attendanceOverrideByCell.get(attendanceKey(employeeId, day - 1)) : null
+    const prevHasNightIn = prevCell?.clockIn && prevCell.clockIn >= '15:00'
+
+    // If day is scheduled as OFF, has no check-in, and only has an early morning checkout (< 12:00)
+    // that belongs to yesterday's night shift: do NOT treat as present!
+    const isOrphanNightCheckoutOnDayOff =
+      !isManual &&
+      isOffSchedule &&
+      !clockIn &&
+      clockOut &&
+      (clockOut < '12:00' || prevCell?.clockOut === clockOut || prevIsNight || prevHasNightIn)
+
     if (isManual) {
       // Manual status explicitly set by admin/user MUST take precedence
       effectiveStatus = normalizeAttendanceStatus(effectiveOverride.status)
+    } else if (isOrphanNightCheckoutOnDayOff) {
+      effectiveStatus = normalizeAttendanceStatus(rowCode)
     } else if (clockIn || real?.clockIn || (real?.records && real.records.length > 0)) {
       if (effectiveStatus === 'empty' || effectiveStatus === 'off') {
         effectiveStatus = 'present'
       }
     } else if (!effectiveStatus || effectiveStatus === 'empty') {
       const rosterStatus = normalizeAttendanceStatus(rowCode)
-      if (rosterStatus === 'off') {
-        effectiveStatus = clockIn ? 'present' : 'off'
+      if (
+        rosterStatus === 'off' ||
+        rosterStatus === 'field_break' ||
+        rosterStatus === 'leave' ||
+        rosterStatus === 'standby'
+      ) {
+        effectiveStatus = clockIn ? 'present' : rosterStatus
       }
     }
+
+    // Jika tidak ada absensi fisik (clock-in / clock-out) dan tidak ada override manual,
+    // maka status kehadiran wajib mengikuti jadwal roster yang diset (FB, AL/Cuti, OFF, ST)
+    if (!isManual && !clockIn && (!clockOut || isOrphanNightCheckoutOnDayOff)) {
+      const rosterStatus = normalizeAttendanceStatus(rowCode)
+      if (
+        rosterStatus === 'field_break' ||
+        rosterStatus === 'leave' ||
+        rosterStatus === 'off' ||
+        rosterStatus === 'standby'
+      ) {
+        effectiveStatus = rosterStatus
+      }
+    }
+    const finalClockOut = isOrphanNightCheckoutOnDayOff ? '' : clockOut
 
     const punctuality = evaluateAttendanceGridPunctuality({
       clockIn,
       scheduleCode: rowCode,
       siteConfig: cellClockConfig,
-      isStaff,
+      isStaff: effectiveIsStaff,
     })
 
     const isLatePending = effectiveStatus === 'present' && punctuality.isLate
@@ -5029,11 +5804,20 @@ export function SchedulingTimesheetWorkspace({
           : Number(effectiveOverride.overtimeHours)
         : undefined
 
+    const isCrossDay = Boolean(
+      effectiveStatus === 'present' &&
+        clockIn &&
+        finalClockOut &&
+        (effectiveOverride?.isCrossDay ||
+          finalClockOut < clockIn ||
+          effectiveOverride?.validationFlags?.includes('cross-day-checkout'))
+    )
+
     return {
       ...(overrideOvertimeHours !== undefined ? { overtimeHours: overrideOvertimeHours } : {}),
       status: effectiveStatus,
       clockIn,
-      clockOut,
+      clockOut: finalClockOut,
       note,
       source: !effectiveOverride
         ? 'attendance'
@@ -5046,7 +5830,119 @@ export function SchedulingTimesheetWorkspace({
       isLatePending,
       scheduledClockIn: punctuality.scheduledClockIn,
       shiftCode: punctuality.shiftCode,
+      isCrossDay,
     }
+  }
+
+  function resolveCrossPeriodAttendanceCell(
+    employeeId: number,
+    targetPeriod: string,
+    day: number,
+    fallbackScheduleCode?: string,
+    employeeObj?: EmployeeOption
+  ): ManualAttendanceCell {
+    if (targetPeriod === period) {
+      return getAttendanceCell(employeeId, day, fallbackScheduleCode, employeeObj)
+    }
+
+    const rowObj = rows.find((r) => r.employee.id === employeeId)
+    const empObj = employeeObj ?? rowObj?.employee ?? employees.find((e) => e.id === employeeId)
+    const empSiteId = empObj?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const effectiveTz = empSiteConfig.timezone || 'WITA'
+
+    const targetDateStr = `${targetPeriod}-${String(day).padStart(2, '0')}`
+
+    // Check attendanceOverrideByCell or attendanceOverrides for targetPeriod
+    const overrideMatch = attendanceOverrides.find(
+      (o) =>
+        o.employeeId === employeeId &&
+        o.period === targetPeriod &&
+        o.day === day &&
+        (siteId === 'all' || String(o.siteId) === siteId)
+    )
+
+    if (overrideMatch) {
+      return {
+        status: normalizeAttendanceStatus(overrideMatch.status) || 'empty',
+        clockIn: overrideMatch.clockIn || undefined,
+        clockOut: overrideMatch.clockOut || undefined,
+        note: overrideMatch.note || undefined,
+        source: overrideMatch.source as any,
+        overtimeHours: overrideMatch.overtimeHours ?? undefined,
+      }
+    }
+
+    // Check attendanceRecords from DB
+    const recs = attendanceRecords.filter(
+      (r) =>
+        r.employeeId === employeeId &&
+        (siteId === 'all' || String(r.siteId) === siteId) &&
+        getLocalDateStr(r.eventTime, effectiveTz) === targetDateStr
+    )
+
+    if (recs.length > 0) {
+      let earliestIn: string | undefined
+      let latestOut: string | undefined
+      for (const r of recs) {
+        const parts = getTimezoneDateParts(new Date(r.eventTime), effectiveTz)
+        const timeStr = `${String(parts.hours).padStart(2, '0')}:${String(parts.minutes).padStart(2, '0')}`
+        const isOut = r.eventType.toLowerCase().includes('out')
+        if (isOut) {
+          if (!latestOut || timeStr > latestOut) latestOut = timeStr
+        } else {
+          if (!earliestIn || timeStr < earliestIn) earliestIn = timeStr
+        }
+      }
+      return {
+        status: 'present',
+        clockIn: earliestIn,
+        clockOut: latestOut,
+        source: 'attendance',
+      }
+    }
+
+    // Resolve schedule from savedPlans for targetPeriod
+    const targetPlan = savedPlans.find(
+      (p) =>
+        p.period === targetPeriod &&
+        (String(p.siteId) === siteId ||
+          p.fixedSchedule?.some((item) => item.employeeId === employeeId) ||
+          p.draftSchedule?.some((item) => item.employeeId === employeeId))
+    )
+    const planSched = (
+      targetPlan?.fixedSchedule?.length ? targetPlan.fixedSchedule : targetPlan?.draftSchedule
+    )?.find((item) => item.employeeId === employeeId)?.schedule
+    const targetCode = planSched?.[day - 1] || fallbackScheduleCode || ''
+    const rosterStatus = normalizeAttendanceStatus(targetCode)
+
+    return {
+      status: rosterStatus || 'empty',
+      source: 'schedule',
+    }
+  }
+
+  function resolveCrossPeriodScheduleCode(
+    employeeId: number,
+    targetPeriod: string,
+    day: number,
+    defaultCode = 'IN'
+  ): string {
+    if (targetPeriod === period) {
+      const row = rows.find((r) => r.employee.id === employeeId)
+      return (row?.schedule?.[day - 1] as string) || defaultCode
+    }
+    const targetPlan = (savedPlans || []).find(
+      (p) =>
+        p.period === targetPeriod &&
+        (String(p.siteId) === siteId ||
+          p.fixedSchedule?.some((it) => it.employeeId === employeeId) ||
+          p.draftSchedule?.some((it) => it.employeeId === employeeId))
+    )
+    const planSched = (
+      targetPlan?.fixedSchedule?.length ? targetPlan.fixedSchedule : targetPlan?.draftSchedule
+    )?.find((it) => it.employeeId === employeeId)?.schedule
+    return planSched?.[day - 1] || defaultCode
   }
 
   function updateAttendanceCell(
@@ -5099,17 +5995,192 @@ export function SchedulingTimesheetWorkspace({
     )
   }
 
+  function selectAllWeekends() {
+    const daysCount = daysInMonth(period)
+    const weekendKeys: string[] = []
+    const [year, month] = period.split('-').map(Number)
+    for (let day = 1; day <= daysCount; day++) {
+      const date = new Date(year, month - 1, day)
+      const dayOfWeek = date.getDay()
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
+        for (const empRow of displayedAttendanceRows) {
+          weekendKeys.push(attendanceKey(empRow.employee.id, day))
+        }
+      }
+    }
+    setSelectedAttendanceKeys(weekendKeys)
+    setMultiSelectAttendance(true)
+    toast.info(`${weekendKeys.length} sel akhir pekan (Sabtu & Minggu) dipilih.`)
+  }
+
   function applyBulkAttendance(patch: Partial<ManualAttendanceCell>) {
     if (!guardOpenPeriod('Bulk edit attendance')) return
-    setManualAttendance((current) => {
-      const next = { ...current }
-      for (const key of selectedAttendanceKeys) {
-        const [employeeId, day] = key.split('-').map(Number)
-        next[key] = { ...getAttendanceCell(employeeId, day), source: 'manual', ...patch }
+    if (selectedAttendanceKeys.length === 0) {
+      toast.error('Pilih setidaknya 1 sel attendance terlebih dahulu.')
+      return
+    }
+    const numericSiteId = Number(
+      siteId !== 'all' && Number(siteId) > 0 ? siteId : (sites[0]?.id || 126)
+    )
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+
+    const nextManual = { ...manualAttendance }
+    const overridesToSave: any[] = []
+
+    for (const key of selectedAttendanceKeys) {
+      const [employeeId, day] = key.split('-').map(Number)
+      const existing = getAttendanceCell(employeeId, day)
+      const isNonPresent = patch.status && patch.status !== 'present'
+      const updated: ManualAttendanceCell = {
+        ...existing,
+        source: 'manual',
+        ...patch,
+        ...(isNonPresent ? { clockIn: '', clockOut: '', overtimeHours: null } : {}),
       }
-      return next
+      nextManual[key] = updated
+      overridesToSave.push({
+        employeeId,
+        day,
+        status: updated.status,
+        clockIn: updated.clockIn || '',
+        clockOut: updated.clockOut || '',
+        note: updated.note || '',
+        source: 'manual',
+        overtimeHours: updated.overtimeHours ?? null,
+      })
+    }
+
+    setManualAttendance(nextManual)
+    setIsAttendanceDirty(false)
+    const count = overridesToSave.length
+    clearAttendanceSelection()
+
+    startSavingAttendance(async () => {
+      try {
+        const result = await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period,
+          overrides: overridesToSave,
+        })
+        if (result.ok) {
+          toast.success(`${count} sel attendance berhasil disimpan ke database.`)
+          router.refresh()
+        } else {
+          toast.error('Gagal menyimpan bulk attendance.')
+        }
+      } catch (err) {
+        toast.error('Gagal menyimpan bulk attendance ke database.')
+      }
     })
-    setIsAttendanceDirty(true)
+  }
+
+  async function onSaveBulkAttendance() {
+    if (!guardOpenPeriod('Bulk edit attendance')) return
+    if (selectedAttendanceKeys.length === 0) {
+      toast.error('Pilih setidaknya 1 sel untuk di-edit.')
+      return
+    }
+    const numericSiteId = Number(
+      siteId !== 'all' && Number(siteId) > 0 ? siteId : (sites[0]?.id || 126)
+    )
+    if (!Number.isFinite(numericSiteId) || numericSiteId <= 0 || isFinalized) return
+
+    // 1. Update Roster if selected
+    if (bulkRosterEditCode) {
+      const sanitizedCode = (['IN', 'Libur', 'Sakit', 'Emergency'].includes(bulkRosterEditCode)
+        ? ''
+        : bulkRosterEditCode) as '' | 'OFF' | 'NS' | 'DS' | 'ST' | 'FB' | 'AL'
+      const rosterCells = selectedAttendanceKeys.map((key) => {
+        const [empId, day] = key.split('-').map(Number)
+        return { employeeId: empId, day, code: sanitizedCode }
+      })
+      try {
+        if (savedPlan?.sourceVersion === 'v2') {
+          await updateSchedulingTimesheetPlanV2BatchCellsAction({
+            siteId: numericSiteId,
+            period,
+            cells: rosterCells,
+          })
+        }
+        setOverrides((curr) => {
+          const next = { ...curr }
+          for (const c of rosterCells) {
+            next[`${c.employeeId}-${c.day}`] = bulkRosterEditCode as ScheduleCode
+          }
+          return next
+        })
+      } catch (err) {
+        console.error('[Bulk Roster Edit Error]', err)
+      }
+    }
+
+    // 2. Prepare attendance cells
+    const isNonPresent = bulkAttendanceStatus !== 'present'
+    const finalClockIn = isNonPresent ? '' : bulkClockIn
+    const finalClockOut = isNonPresent ? '' : bulkClockOut
+    const finalOt = isNonPresent
+      ? null
+      : bulkOvertimeHours !== ''
+        ? Number(bulkOvertimeHours)
+        : null
+
+    const nextManual = { ...manualAttendance }
+    const overridesToSave: any[] = []
+
+    for (const key of selectedAttendanceKeys) {
+      const [employeeId, day] = key.split('-').map(Number)
+      const existing = getAttendanceCell(employeeId, day)
+      const updated: ManualAttendanceCell = {
+        ...existing,
+        status: bulkAttendanceStatus,
+        clockIn: finalClockIn,
+        clockOut: finalClockOut,
+        note:
+          bulkNote !== ''
+            ? bulkNote
+            : isNonPresent
+              ? `${bulkAttendanceStatus.toUpperCase()}`
+              : existing?.note || 'Manual edit',
+        overtimeHours: finalOt,
+        source: 'manual',
+      }
+      nextManual[key] = updated
+      overridesToSave.push({
+        employeeId,
+        day,
+        status: updated.status,
+        clockIn: updated.clockIn || '',
+        clockOut: updated.clockOut || '',
+        note: updated.note || '',
+        source: 'manual',
+        overtimeHours: finalOt,
+      })
+    }
+
+    setManualAttendance(nextManual)
+    setIsAttendanceDirty(false)
+    setIsBulkEditAttendanceOpen(false)
+    const count = overridesToSave.length
+    clearAttendanceSelection()
+
+    // 3. Save to database directly
+    startSavingAttendance(async () => {
+      try {
+        const result = await saveAttendanceRealOverridesAction({
+          siteId: numericSiteId,
+          period,
+          overrides: overridesToSave,
+        })
+        if (result.ok) {
+          toast.success(`Berhasil menyimpan perubahan untuk ${count} sel ke database.`)
+          router.refresh()
+        } else {
+          toast.error('Gagal menyimpan perubahan ke database.')
+        }
+      } catch (err) {
+        toast.error('Error saat menyimpan ke database.')
+      }
+    })
   }
 
   function clearAttendanceSelection() {
@@ -5618,14 +6689,14 @@ export function SchedulingTimesheetWorkspace({
   const attendanceConflicts =
     mode === 'attendance'
       ? rows.flatMap((row) => {
-          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           return row.schedule
             .map((code, index) => {
               const day = index + 1
               const cell = getAttendanceCell(row.employee.id, day)
               // Non-staff are allowed to attend on OFF/Libur days (5:2 roster / overtime)
               const isDisallowedConflict = staff
-                ? ['OFF', 'FB', 'Sakit', 'Libur'].includes(code)
+                ? ['OFF', 'FB', 'AL', 'Sakit', 'Libur'].includes(code)
                 : ['Sakit'].includes(code)
               return cell.status === 'present' && isDisallowedConflict
                 ? {
@@ -5684,55 +6755,10 @@ export function SchedulingTimesheetWorkspace({
           attendanceConflicts.map((conflict) => attendanceKey(conflict.employeeId, conflict.day))
         )
       : new Set<string>()
-  const displayedAttendanceRows = useMemo(() => {
-    let list =
-      mode === 'attendance' && showConflictsOnly
-        ? rows.filter((row) =>
-            days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
-          )
-        : rows
-
-    if (attendanceSearch.trim()) {
-      const q = attendanceSearch.trim().toLowerCase()
-      list = list.filter(
-        (r) =>
-          r.employee.name.toLowerCase().includes(q) ||
-          (r.employee.section || '').toLowerCase().includes(q) ||
-          (r.employee.department || '').toLowerCase().includes(q)
-      )
-    }
-
-    if (attendanceStatusFilter !== 'all') {
-      list = list.filter((r) => {
-        const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
-        if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
-        if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
-        if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
-        if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
-        if (attendanceStatusFilter === 'off') return cells.some((c) => c.status === 'off')
-        if (attendanceStatusFilter === 'gb')
-          return (
-            cells.some((c) => c.status === 'field_break') ||
-            r.schedule.some((code) => String(code) === 'GB' || String(code) === 'FB')
-          )
-        return true
-      })
-    }
-
-    return list
-  }, [
-    mode,
-    showConflictsOnly,
-    rows,
-    conflictKeySet,
-    days,
-    attendanceSearch,
-    attendanceStatusFilter,
-    getAttendanceCell,
-  ])
 
   useEffect(() => {
     setSelectedOvertimeEmployeeIds([])
+    setSelectedSectionNames(null)
   }, [period, siteId])
 
   function toggleOvertimeEmployee(employeeId: number) {
@@ -5796,31 +6822,133 @@ export function SchedulingTimesheetWorkspace({
     role?: string | null
     department?: string | null
   }): 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya' {
-    const s = (employee?.section || employee?.role || employee?.department || '').toLowerCase()
-    if (s.includes('hse') || s.includes('safety') || s.includes('k3') || s.includes('lingkungan'))
+    const role = (employee?.role || '').toLowerCase()
+    const section = (employee?.section || '').toLowerCase()
+    const department = (employee?.department || '').toLowerCase()
+
+    // 1. HSE / Safety
+    if (
+      section.includes('hse') ||
+      section.includes('safety') ||
+      section.includes('k3') ||
+      section.includes('lingkungan') ||
+      role.includes('hse') ||
+      role.includes('safety') ||
+      role.includes('k3')
+    ) {
       return 'HSE'
-    if (s.includes('repair') || s.includes('retread')) return 'Repair'
-    if (s.includes('service') || s.includes('servis')) return 'Services'
-    if (s.includes('tech') || s.includes('teknis')) return 'Technical'
+    }
+
+    // 2. Technical: Technical Engineer, Technical Leader, Technical Operation, Tyre Specialist
+    // (Exclude Information Technology / IT / Database)
+    const isIT =
+      section.includes('information technology') ||
+      role.includes('information technology') ||
+      role === 'it support' ||
+      role === 'it coordinator' ||
+      role === 'it supervisor' ||
+      section.includes('database') ||
+      role.includes('database')
+
+    if (!isIT) {
+      if (
+        role.includes('technical') ||
+        role.includes('teknis') ||
+        role.includes('tyre specialist') ||
+        section.includes('technical operation') ||
+        section === 'technical' ||
+        section.startsWith('technical ')
+      ) {
+        return 'Technical'
+      }
+    }
+
+    // 3. Repair / Retread: Repairman, SPV Repair & Retread, Repair / Retread Operation
+    if (
+      role.includes('repair') ||
+      role.includes('retread') ||
+      section.includes('repair') ||
+      section.includes('retread')
+    ) {
+      return 'Repair'
+    }
+
+    // 4. Services: Serviceman, Service Operation, Head of Service, PJO, etc.
+    if (
+      role.includes('serviceman') ||
+      role.includes('head of service') ||
+      role.includes('service supervisor') ||
+      role.includes('service coordinator') ||
+      role.includes('pjo') ||
+      section.includes('service operation') ||
+      section.includes('service ops') ||
+      (section.includes('service') && section !== 'central services') ||
+      (role.includes('service') &&
+        !role.includes('central services manager') &&
+        !role.includes('customer service'))
+    ) {
+      return 'Services'
+    }
+
     return 'Lainnya'
   }
 
-  const availableSiteSectionCategories = useMemo(() => {
-    const cats = new Set<'Repair' | 'Services' | 'Technical' | 'HSE'>()
-    for (const row of rows) {
-      const cat = getEmployeeSectionCategory(row.employee)
-      if (cat === 'Repair' || cat === 'Services' || cat === 'Technical' || cat === 'HSE') {
-        cats.add(cat)
-      }
+  const activeSelectedSections = useMemo(() => {
+    if (selectedSectionNames !== null) {
+      return selectedSectionNames
     }
-    return cats
-  }, [rows])
+    return availableSiteSections.map((s) => s.name)
+  }, [selectedSectionNames, availableSiteSections])
+
+  function toggleSection(sectionName: string, active: boolean) {
+    setSelectedSectionNames((current) => {
+      const list = current ?? availableSiteSections.map((s) => s.name)
+      if (active) {
+        return list.includes(sectionName) ? list : [...list, sectionName]
+      } else {
+        return list.filter((s) => s !== sectionName)
+      }
+    })
+  }
+
+  const filteredSiteSections = useMemo(() => {
+    if (!sectionSearchQuery.trim()) return availableSiteSections
+    const q = sectionSearchQuery.toLowerCase()
+    return availableSiteSections.filter((s) => s.name.toLowerCase().includes(q))
+  }, [availableSiteSections, sectionSearchQuery])
+
+  const hasAnySectionActive = activeSelectedSections.length > 0
+
+  const activeSectionsLabel = useMemo(() => {
+    if (activeSelectedSections.length === availableSiteSections.length) {
+      return 'Semua Section'
+    }
+    if (activeSelectedSections.length === 0) {
+      return 'Tanpa Section'
+    }
+    if (activeSelectedSections.length <= 3) {
+      return activeSelectedSections.join(', ')
+    }
+    return `${activeSelectedSections.slice(0, 2).join(', ')} +${activeSelectedSections.length - 2}`
+  }, [activeSelectedSections, availableSiteSections])
+
+  function isEmployeeSectionIncluded(emp?: {
+    section?: string | null
+    role?: string | null
+    department?: string | null
+  }) {
+    if (availableSiteSections.length <= 1) return true
+    const sec = getEmployeeExactSection(emp)
+    return activeSelectedSections.includes(sec)
+  }
 
   function getSectionSignatures(
     sectionName?: string | null,
     employee?: EmployeeOption,
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
+    const empSiteCfg = employee?.siteId != null ? getEmployeeSiteConfig(employee.siteId) : siteConfig
+    const cfg = empSiteCfg?.pdfConfig ?? siteConfig.pdfConfig
     const baseSignatures = customSignatures ?? pdfSignatures
     const normSection = (
       sectionName ||
@@ -5868,16 +6996,28 @@ export function SchedulingTimesheetWorkspace({
       employees.find((e) => e.name.toLowerCase().includes('rendra rachman'))?.name ??
       'Rendra Rachman'
 
-    const cfg = siteConfig.pdfConfig
+    const isKpcSite = Boolean(
+      (site?.name && /kpc/i.test(site.name)) ||
+      (siteId && String(siteId) === '215') ||
+      (employee?.siteId && String(employee.siteId) === '215')
+    )
 
     const isPlaceholderApprovedBy = (val?: string) =>
       !val || val.trim().toLowerCase().startsWith('plant. spv department')
 
     const cfgPreparedBy = cfg.preparedBy?.trim() || ''
     const cfgPjo = cfg.pjoLeader?.trim() || ''
-    const cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy)
+    let cfgApprovedBy = !isPlaceholderApprovedBy(cfg.approvedBy)
       ? cfg.approvedBy?.trim() || ''
       : ''
+    if (
+      isKpcSite &&
+      (!cfgApprovedBy ||
+        cfg.approvedBy?.toLowerCase().startsWith('plant. spv department') ||
+        cfg.approvedBy?.toLowerCase().includes('sangatta kpc'))
+    ) {
+      cfgApprovedBy = 'Leader WS.KPC'
+    }
     const cfgHr = cfg.hrName?.trim() || ''
 
     const sectionApproval = siteApprovalSections.find((s) => {
@@ -5887,104 +7027,71 @@ export function SchedulingTimesheetWorkspace({
     const sectionPjo = sectionApproval?.pjoLeaderName?.trim() || ''
     const sectionApprovedBy = sectionApproval?.departmentHeadName?.trim() || ''
 
-    const isKnownServicePjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('junaidi') || v.includes('apriyanto')
-    }
-
-    const isKnownRepairPjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('ary maulana') || v.includes('ary')
-    }
-
-    const isKnownHsePjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('andi safari')
-    }
-
-    const isKnownTechPjo = (val?: string) => {
-      if (!val) return false
-      const v = val.trim().toLowerCase()
-      return v.includes('abian')
-    }
-
+    // Section-based default fallbacks only when site-wide pdfConfig field is not filled:
+    let defaultSectionPjo = ''
     if (
       normSection.includes('hse') ||
       normSection.includes('safety') ||
       normSection.includes('k3') ||
       normSection.includes('lingkungan')
     ) {
-      const hsePjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) ? cfgPjo : '') ||
-        andiSafari
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fathurrahman,
-        pjoLeader: hsePjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || rendra,
-        hrName: cfgHr || kesuma,
-      }
+      defaultSectionPjo = andiSafari
+    } else if (normSection.includes('repair') || normSection.includes('retread')) {
+      defaultSectionPjo = ary
+    } else if (normSection.includes('service') || normSection.includes('servis')) {
+      defaultSectionPjo = isCkSite ? apriyanto : junaidi
+    } else if (normSection.includes('tech') || normSection.includes('teknis')) {
+      defaultSectionPjo = abian
+    } else {
+      defaultSectionPjo = isCkSite ? apriyanto : junaidi
     }
 
-    if (normSection.includes('repair') || normSection.includes('retread')) {
-      const repairPjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
-          ? cfgPjo
-          : '') ||
-        ary
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || arjun,
-        pjoLeader: repairPjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
-        hrName: cfgHr || kesuma,
-      }
-    }
+    const defaultSectionPreparedBy = normSection.includes('hse')
+      ? fathurrahman
+      : normSection.includes('repair')
+        ? arjun
+        : fauzan
+    const defaultSectionApprovedBy = normSection.includes('hse') ? rendra : romy
+    const siteHeadName = employees.find((employee) => employee.id === site?.headEmployeeId)?.name || ''
 
-    if (normSection.includes('service') || normSection.includes('servis')) {
-      const defaultPjo = isCkSite ? apriyanto : junaidi
-      const servicePjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo) && !isKnownTechPjo(cfgPjo)
-          ? cfgPjo
-          : '') ||
-        defaultPjo
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy || fauzan,
-        pjoLeader: servicePjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
-        hrName: cfgHr || kesuma,
-      }
-    }
+    const isSingleEmployeeRecord = Boolean(employee)
+    const effectivePreparedBy =
+      (isSingleEmployeeRecord ? employee?.name : null) ||
+      cfgPreparedBy ||
+      (normSection.includes('repair')
+        ? arjun
+        : normSection.includes('hse')
+          ? fathurrahman
+          : defaultSectionPreparedBy) ||
+      baseSignatures.preparedBy
 
-    if (normSection.includes('tech') || normSection.includes('teknis')) {
-      const techPjo =
-        sectionPjo ||
-        (cfgPjo && !isKnownServicePjo(cfgPjo) && !isKnownRepairPjo(cfgPjo) && !isKnownHsePjo(cfgPjo)
-          ? cfgPjo
-          : '') ||
-        abian
-      return {
-        ...baseSignatures,
-        preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-        pjoLeader: techPjo,
-        approvedBy: cfgApprovedBy || sectionApprovedBy || romy,
-        hrName: cfgHr || kesuma,
-      }
-    }
+    const effectivePjo =
+      (normSection && (sectionPjo || defaultSectionPjo)) ||
+      cfgPjo ||
+      sectionPjo ||
+      siteHeadName ||
+      baseSignatures.pjoLeader ||
+      defaultSectionPjo
+
+    const effectiveApprovedBy =
+      (isKpcSite ? (cfgApprovedBy || 'Leader WS.KPC') : (normSection.includes('hse') ? rendra : cfgApprovedBy)) ||
+      sectionApprovedBy ||
+      (isKpcSite ? 'Leader WS.KPC' : baseSignatures.approvedBy) ||
+      defaultSectionApprovedBy
+
+    const effectiveHr = cfgHr || baseSignatures.hrName || kesuma
 
     return {
       ...baseSignatures,
-      preparedBy: employee?.name || cfgPreparedBy || baseSignatures.preparedBy,
-      pjoLeader: cfgPjo || sectionPjo || baseSignatures.pjoLeader,
-      approvedBy: cfgApprovedBy || sectionApprovedBy || baseSignatures.approvedBy,
-      hrName: cfgHr || baseSignatures.hrName,
+      preparedBy: effectivePreparedBy,
+      pjoLeader: effectivePjo,
+      approvedBy: effectiveApprovedBy,
+      hrName: effectiveHr,
+      externalPreparedBy: cfg.externalPreparedBy || baseSignatures.externalPreparedBy,
+      externalApprovedBy: cfg.externalApprovedBy || baseSignatures.externalApprovedBy,
+      externalSignatureCount: cfg.externalSignatureCount || baseSignatures.externalSignatureCount || 2,
+      customSigners: cfg.customSigners || baseSignatures.customSigners,
+      logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
     }
   }
 
@@ -5998,19 +7105,22 @@ export function SchedulingTimesheetWorkspace({
     }>,
     customSignatures?: typeof pdfSignatures
   ): typeof pdfSignatures {
-    const counts = { Repair: 0, Services: 0, Technical: 0, HSE: 0 }
+    const counts: Record<'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya', number> = {
+      Repair: 0,
+      Services: 0,
+      Technical: 0,
+      HSE: 0,
+      Lainnya: 0,
+    }
     for (const emp of employeesList) {
       const cat = getEmployeeSectionCategory(emp)
-      if (cat === 'Repair') counts.Repair++
-      else if (cat === 'Services') counts.Services++
-      else if (cat === 'Technical') counts.Technical++
-      else if (cat === 'HSE') counts.HSE++
+      counts[cat]++
     }
 
-    let majorityCategory: 'Repair' | 'Services' | 'Technical' | 'HSE' = 'Services'
+    let majorityCategory: 'Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya' = 'Services'
     let maxCount = -1
     for (const [cat, count] of Object.entries(counts) as Array<
-      ['Repair' | 'Services' | 'Technical' | 'HSE', number]
+      ['Repair' | 'Services' | 'Technical' | 'HSE' | 'Lainnya', number]
     >) {
       if (count > maxCount) {
         maxCount = count
@@ -6028,17 +7138,78 @@ export function SchedulingTimesheetWorkspace({
     )
   }
 
-  function getSummaryPdfSignatures(baseSignatures: typeof pdfSignatures): PdfSignatureNames {
+  function normalizeSummaryDocKey(view?: string): SummaryDocTypeKey | null {
+    if (!view) return null
+    const v = view.toLowerCase().trim()
+    if (v === 'ovt' || v === 'ot' || v === 'overtime' || v === 'overtime_summary') return 'ot'
+    if (v === 'ovt_spl' || v === 'spl' || v === 'overtime_spl' || v === 'ovt_spl_summary') return 'spl'
+    if (v === 'msa' || v === 'msa_summary') return 'msa'
+    if (v === 'meals' || v === 'mls' || v === 'mls_summary') return 'meals'
+    if (v === 'tu' || v === 'lokasi' || v === 'tu_summary') return 'lokasi'
+    return null
+  }
+
+  function getSummaryPdfSignatures(
+    baseSignatures: typeof pdfSignatures,
+    view?: string
+  ): PdfSignatureNames {
     const cfg = siteConfig.pdfConfig
+    const docKey = normalizeSummaryDocKey(view)
+    const summaryOverride = docKey ? cfg.summarySignatures?.[docKey] : undefined
+
+    const defaultPrep = docKey
+      ? "Muhammad As'ar Fauzan"
+      : baseSignatures.preparedBy || cfg.preparedBy || ''
+    const resolvedPreparedBy = summaryOverride?.preparedBy?.trim() || defaultPrep
+    const resolvedPjo =
+      summaryOverride?.pjoLeader?.trim() || baseSignatures.pjoLeader || cfg.pjoLeader || ''
+    const isKpcSite = Boolean(
+      (site?.name && /kpc/i.test(site.name)) ||
+      (siteId && Number(siteId) === 215)
+    )
+    let resolvedApprovedBy =
+      summaryOverride?.approvedBy?.trim() || baseSignatures.approvedBy || cfg.approvedBy || ''
+    if (
+      isKpcSite &&
+      (!resolvedApprovedBy ||
+        resolvedApprovedBy.toLowerCase().startsWith('plant. spv department') ||
+        resolvedApprovedBy.toLowerCase().includes('sangatta kpc'))
+    ) {
+      resolvedApprovedBy = 'Leader WS.KPC'
+    }
+    const resolvedHr =
+      summaryOverride?.hrName?.trim() || baseSignatures.hrName || cfg.hrName || ''
+    const isMhuSite = Boolean(
+      (site?.name && /mhu/i.test(site.name)) ||
+      cfg.project === 'CK MHU' ||
+      (siteId && Number(siteId) === 128)
+    )
+    const defaultCustomer = isKpcSite
+      ? 'Leader WS.KPC'
+      : isMhuSite
+        ? 'Plant. Suptend Department CK-MHU'
+        : 'Customer / SPV Eksternal'
+    const resolvedExtPreparedBy =
+      summaryOverride?.externalPreparedBy?.trim() ||
+      cfg.externalPreparedBy ||
+      baseSignatures.externalPreparedBy ||
+      ''
+    let resolvedExtApprovedBy =
+      summaryOverride?.externalApprovedBy?.trim() ||
+      cfg.externalApprovedBy ||
+      baseSignatures.externalApprovedBy ||
+      defaultCustomer
+    if (
+      isKpcSite &&
+      (resolvedExtApprovedBy.toLowerCase().startsWith('plant. spv department') ||
+        resolvedExtApprovedBy.toLowerCase().includes('sangatta kpc'))
+    ) {
+      resolvedExtApprovedBy = 'Leader WS.KPC'
+    }
+
     if (pdfUseExternalSignatures) {
-      const extPrep =
-        cfg.externalPreparedBy?.trim() ||
-        baseSignatures.externalPreparedBy?.trim() ||
-        baseSignatures.preparedBy
-      const extAppr =
-        cfg.externalApprovedBy?.trim() ||
-        baseSignatures.externalApprovedBy?.trim() ||
-        baseSignatures.approvedBy
+      const extPrep = resolvedExtPreparedBy || resolvedPreparedBy
+      const extAppr = resolvedExtApprovedBy || defaultCustomer
       return {
         ...baseSignatures,
         preparedBy: extPrep,
@@ -6048,6 +7219,7 @@ export function SchedulingTimesheetWorkspace({
         pjoLeader: '',
         hrName: '',
         useExternalOnly: true,
+        externalSignatureCount: 2,
         omitExternal: false,
         logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
         customSigners: cfg.customSigners || baseSignatures.customSigners,
@@ -6055,6 +7227,13 @@ export function SchedulingTimesheetWorkspace({
     }
     return {
       ...baseSignatures,
+      preparedBy: resolvedPreparedBy,
+      pjoLeader: resolvedPjo,
+      approvedBy: resolvedApprovedBy,
+      hrName: resolvedHr,
+      externalPreparedBy: resolvedExtPreparedBy,
+      externalApprovedBy: resolvedExtApprovedBy,
+      externalSignatureCount: cfg.externalSignatureCount || pdfExternalSignatureCount || 2,
       logoUrl: cfg.logoUrl || baseSignatures.logoUrl,
       customSigners: cfg.customSigners || baseSignatures.customSigners,
       useExternalOnly: false,
@@ -6062,32 +7241,144 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function buildEmployeeOvertimePdf(employee: EmployeeOption, showTotalOvertime = true) {
+  async function buildEmployeeOvertimePdf(
+    employee: EmployeeOption,
+    showTotalOvertime = true,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
+  ) {
     const { generateOvertimeRecordPdf, buildAttendanceDayData } =
       await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     const employeeSchedule = employeeRow?.schedule ?? []
-    const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName)
+    const staff = isStaffRole(employee.role, employee.jobTitle, employee.levelName, employee.employeeStatusType)
     const empSiteConfig = getEmployeeSiteConfig(employee.siteId)
+
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
+    const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
+
     const dayData = buildAttendanceDayData({
       period,
       dayCount,
-      getCell: (day) => getAttendanceCell(employee.id, day),
-      getScheduleCode: (day) => employeeSchedule[day - 1] ?? 'IN',
+      dateItems: customDateHeaders?.map((dh) => ({
+        period: dh.period,
+        day: dh.day,
+        dateStr: dh.dateStr,
+        displayHeader: dh.displayHeader,
+        isHoliday: dh.isHoliday,
+      })),
+      getCell: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          const schedCode = resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+          return resolveCrossPeriodAttendanceCell(employee.id, targetPeriod, day, schedCode, employee)
+        }
+        return getAttendanceCell(employee.id, day)
+      },
+      getScheduleCode: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          return resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+        }
+        return employeeSchedule[day - 1] ?? 'IN'
+      },
       holidays,
-      getOvertime: (day) => {
-        const cell = getAttendanceCell(employee.id, day)
-        return calculateDayOvertime(
-          employeeSchedule,
-          day,
+      getOvertime: (day, targetPeriod) => {
+        const itemPeriod = targetPeriod || period
+        const scheduleCode = itemPeriod !== period
+          ? resolveCrossPeriodScheduleCode(employee.id, itemPeriod, day, 'IN')
+          : (employeeSchedule[day - 1] ?? 'IN')
+        const cell = itemPeriod !== period
+          ? resolveCrossPeriodAttendanceCell(employee.id, itemPeriod, day, scheduleCode, employee)
+          : getAttendanceCell(employee.id, day, scheduleCode)
+        const isMhuSite = Boolean(
+          (site?.name && /mhu/i.test(site.name)) ||
+          empSiteConfig.project === 'CK MHU' ||
+          employee.siteId === 128
+        )
+        const isOffDay =
+          cell.status === 'off' ||
+          scheduleCode === 'OFF' ||
+          scheduleCode === 'FB' ||
+          scheduleCode === 'Libur' ||
+          cell.workingTimeFrom === 'OFF'
+        if (isOffDay) {
+          return {
+            totalHours: 0,
+            intervals: [],
+            totalMinutes: 0,
+            autoMinutes: 0,
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'None',
+            splNumbers: [],
+            workingIntervals: [],
+          }
+        }
+
+        // Khusus CK-MHU (MP): Seluruh hari hadir otomatis 11 jam lembur merata (From 05.00 To 18.00)
+        if (
+          isMhuSite &&
+          !isOffDay &&
+          cell.status !== 'leave' &&
+          cell.status !== 'sick' &&
+          cell.status !== 'absent'
+        ) {
+          const finalMhuOt = 11
+          return {
+            totalHours: finalMhuOt,
+            intervals: [{ start: '05.00', end: '18.00', hours: finalMhuOt, type: 'continuous' }],
+            totalMinutes: Math.round(finalMhuOt * 60),
+            autoMinutes: Math.round(finalMhuOt * 60),
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Policy' as const,
+            splNumbers: [],
+            workingIntervals: [{ start: '06.00', end: '18.00', hours: 12 }],
+          }
+        }
+
+        const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+        const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
+        if (manualVal !== null) {
+          const finalVal = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal))
+          return {
+            totalHours: finalVal,
+            intervals: [],
+            totalMinutes: Math.round(finalVal * 60),
+            autoMinutes: Math.round(finalVal * 60),
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Legacy' as const,
+            splNumbers: [],
+            workingIntervals: [],
+          }
+        }
+
+        const effectiveSchedule = itemPeriod === period ? employeeSchedule : [scheduleCode]
+        const res = calculateDayOvertime(
+          effectiveSchedule,
+          itemPeriod === period ? day : 1,
           cell.clockIn,
           cell.clockOut,
           staff,
-          employee.id
+          employee.id,
+          true,
+          false,
+          true
         )
+        return {
+          ...res,
+          totalHours: mandatoryOvertimeHours(res),
+        }
       },
     }).map((day) => {
-      const cell = getAttendanceCell(employee.id, day.day)
+      const itemPeriod = day.period || period
+      const isCurrentPeriod = itemPeriod === period
+      const cell = isCurrentPeriod
+        ? getAttendanceCell(employee.id, day.day)
+        : resolveCrossPeriodAttendanceCell(employee.id, itemPeriod, day.day, day.scheduleCode, employee)
       const inM = cell.clockIn ? minutesFromTime(cell.clockIn) : null
       const outM = cell.clockOut ? minutesFromTime(cell.clockOut) : null
       const isNightShift =
@@ -6095,8 +7386,8 @@ export function SchedulingTimesheetWorkspace({
         (inM != null && outM != null && (outM < inM || inM >= 15 * 60))
       const shiftKey = isNightShift ? 'nightShift' : 'dayShift'
       const dayKey = classifyOvertimePolicyDay({
-        schedule: employeeSchedule,
-        dayIndex: day.day - 1,
+        schedule: isCurrentPeriod ? employeeSchedule : [day.scheduleCode],
+        dayIndex: isCurrentPeriod ? day.day - 1 : 0,
         isHoliday: day.isHoliday,
         rosterType: empSiteConfig.rosterType,
       })
@@ -6148,13 +7439,14 @@ export function SchedulingTimesheetWorkspace({
       const hasManualClockIn = Boolean(day.clockIn && day.clockIn.trim() !== '')
       const hasManualClockOut = Boolean(day.clockOut && day.clockOut.trim() !== '')
       const hasRealAttendance = hasManualClockIn || hasManualClockOut || day.status === 'present'
+      const hasOvertimeHours = Boolean(day.overtime?.totalHours && day.overtime.totalHours > 0)
       const isOffDay =
-        day.status === 'off' ||
+        (day.status === 'off' ||
         day.scheduleCode === 'OFF' ||
         day.scheduleCode === 'FB' ||
-        day.scheduleCode === 'Libur'
+        day.scheduleCode === 'Libur') && !hasOvertimeHours
 
-      const dateStr = `${period}-${String(day.day).padStart(2, '0')}`
+      const dateStr = day.dateStr || `${period}-${String(day.day).padStart(2, '0')}`
       const empSpls = (approvedSplByEmployee.get(employee.id) ?? []).filter((w) => {
         if (w.workDate) {
           const wStr = typeof w.workDate === 'string' ? w.workDate.slice(0, 10) : new Date(w.workDate).toISOString().slice(0, 10)
@@ -6178,57 +7470,82 @@ export function SchedulingTimesheetWorkspace({
 
       return {
         ...day,
-        splNumber: splNumbers.join(', '),
-        splTitle: splTitles.join('; '),
-        splDetails,
+        splNumber: isOffDay ? '' : splNumbers.join(', '),
+        splTitle: isOffDay ? '' : splTitles.join('; '),
+        splDetails: isOffDay ? [] : splDetails,
         workingTimeFrom:
-          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
-            ? ''
-            : (day.clockIn || defaultWorkFrom),
+          isOffDay
+            ? 'OFF'
+            : (day.isHoliday && !hasRealAttendance && !hasOvertimeHours) || (isOffsiteOrAbsent && !hasRealAttendance && !hasOvertimeHours)
+              ? ''
+              : (day.clockIn || defaultWorkFrom || (hasOvertimeHours ? '07.00' : '')),
         workingTimeTo:
-          day.isHoliday || (isOffsiteOrAbsent && !hasRealAttendance)
+          isOffDay
             ? ''
-            : (day.clockOut || defaultWorkTo),
+            : (day.isHoliday && !hasRealAttendance && !hasOvertimeHours) || (isOffsiteOrAbsent && !hasRealAttendance && !hasOvertimeHours)
+              ? ''
+              : (day.clockOut || defaultWorkTo || (hasOvertimeHours ? '18.00' : '')),
         configuredOvertimeIntervals:
-          (isOffsiteOrAbsent && !hasRealAttendance) || (isOffDay && !hasRealAttendance)
+          isOffDay
             ? []
             : (configuredIntervals as OvertimeInterval[]),
       }
     })
     const secSigs = getSectionSignatures(employee.section, employee)
+    const personalSigs = {
+      ...getSummaryPdfSignatures(secSigs),
+      preparedBy: employee.name,
+      externalPreparedBy: employee.name,
+    }
     return generateOvertimeRecordPdf({
       documentTitle: 'OVERTIME RECORD',
       period,
+      periodLabelOverride: effPeriodLabel,
+      cutoffLabel: effCutoffLabel,
       employeeId: employee.id,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+      signatures: personalSigs,
       days: dayData,
       isNonStaff: !staff,
       showTotalOvertime,
+      overtimeMode: empSiteConfig.overtimeConfig.mode ?? 'template',
     })
   }
 
   async function buildEmployeeAllowanceRecordPdf(
     employee: EmployeeOption,
-    view: 'msa' | 'meals' | 'lokasi'
+    view: 'msa' | 'meals' | 'lokasi',
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
   ) {
     const { generateEmployeeAllowanceRecordPdf } =
       await import('@/lib/timesheet/generate-attendance-pdf')
-    const dayData = await buildEmployeeAllowanceDayData(employee)
+    const dayData = await buildEmployeeAllowanceDayData(employee, customDateHeaders)
     const secSigs = getSectionSignatures(employee.section, employee)
+    const personalSigs = {
+      ...getSummaryPdfSignatures(secSigs),
+      preparedBy: employee.name,
+      externalPreparedBy: employee.name,
+    }
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
+    const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
     return generateEmployeeAllowanceRecordPdf({
       view,
       period,
+      periodLabelOverride: effPeriodLabel,
+      cutoffLabel: effCutoffLabel,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+      signatures: personalSigs,
       days: dayData,
     })
   }
@@ -6272,26 +7589,21 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  type SummaryView = 'ovt' | 'msa' | 'meals' | 'lokasi'
-
   function currentSummaryView(): SummaryView {
-    return attendanceView === 'attendance' ? 'ovt' : attendanceView
+    return attendanceView === 'attendance' ? 'ovt' : (attendanceView as SummaryView)
   }
 
-  function buildSummaryRows(view: SummaryView, employeeIds?: number[]) {
+  function buildSummaryRows(
+    view: SummaryView,
+    employeeIds?: number[],
+    customDateHeaders?: CkCutoffDateItem[]
+  ) {
     let sourceRows = rows
     if (employeeIds) {
       const idSet = new Set(employeeIds)
       sourceRows = rows.filter((row) => idSet.has(row.employee.id))
-    } else if (availableSiteSectionCategories.size > 1) {
-      sourceRows = rows.filter((row) => {
-        const cat = getEmployeeSectionCategory(row.employee)
-        if (cat === 'Repair' && !pdfIncludeRepair) return false
-        if (cat === 'Services' && !pdfIncludeServices) return false
-        if (cat === 'Technical' && !pdfIncludeTechnical) return false
-        if (cat === 'HSE' && !pdfIncludeHse) return false
-        return true
-      })
+    } else if (availableSiteSections.length > 1) {
+      sourceRows = rows.filter((row) => isEmployeeSectionIncluded(row.employee))
     }
     const grouped = new Map<string, Map<string, typeof rows>>()
     for (const row of sourceRows) {
@@ -6314,21 +7626,38 @@ export function SchedulingTimesheetWorkspace({
       remark: string
     }> = []
     let no = 1
+
+    const effectiveDateItems = customDateHeaders && customDateHeaders.length > 0
+      ? customDateHeaders
+      : days.map((d) => ({
+          period,
+          day: d,
+          dateStr: `${period}-${String(d).padStart(2, '0')}`,
+          isHoliday: Boolean(holidaysByDay.get(d)),
+        }))
+
     for (const [dept, sections] of grouped) {
       for (const [section, sectionRows] of sections) {
         for (const row of sectionRows) {
-          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           // Nilai tiap hari — samakan persis dengan tabel di layar
-          const dailyValues = days.map((day) => {
-            const code = row.schedule[day - 1] as string
-            const cell = getAttendanceCell(row.employee.id, day, code)
-            const allowance = getAllowanceAmounts(row, day)
+          const dailyValues = effectiveDateItems.map((item) => {
+            const itemPeriod = item.period || period
+            const isCurrentPeriod = itemPeriod === period
+            const code = isCurrentPeriod
+              ? (row.schedule[item.day - 1] as string)
+              : resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, item.day, 'IN')
+            const cell = isCurrentPeriod
+              ? getAttendanceCell(row.employee.id, item.day, code)
+              : resolveCrossPeriodAttendanceCell(row.employee.id, itemPeriod, item.day, code, row.employee)
+            const allowance = getCrossPeriodAllowanceAmounts(row, item.day, itemPeriod, item.isHoliday)
+
             const isFieldBreakDay =
               code === 'FB' ||
               cell.status === 'field_break' ||
-              (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+              (isCurrentPeriod && (fieldBreakDaysByEmployee.get(row.employee.id)?.has(item.day) ?? false))
             const isRosterOff = code === 'OFF' || code === 'Libur'
-            const isHolidayDay = Boolean(holidaysByDay.get(day))
+            const isHolidayDay = Boolean(item.isHoliday)
             const isAbsent =
               cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
             const isEmptyWorkDay =
@@ -6344,7 +7673,18 @@ export function SchedulingTimesheetWorkspace({
                     : '-'
 
             if (view === 'ovt') {
+              const otInfo = isCurrentPeriod
+                ? calculateTotalDayOvertime(row.schedule, item.day, cell, row.employee.id, staff)
+                : calculateTotalDayOvertime([code], 1, cell, row.employee.id, staff)
+              return otInfo.displayValue
+            }
+            if (view === 'ovt_spl') {
               if (staff) return '-'
+              const splHours = getApprovedSplHoursForDate(
+                row.employee.id,
+                item.dateStr || `${itemPeriod}-${String(item.day).padStart(2, '0')}`
+              )
+              if (splHours > 0) return String(roundOvertimeHours(splHours))
               if (cell.status !== 'present') {
                 if (isFieldBreakDay || cell.status === 'field_break' || code === 'FB') return 'FB'
                 if (cell.status === 'standby' || code === 'ST') return 'ST'
@@ -6354,29 +7694,7 @@ export function SchedulingTimesheetWorkspace({
                 if (cell.status === 'leave' || code === 'Izin') return 'Izin'
                 if (cell.status === 'absent') return 'Alpha'
                 if (code && code !== 'IN' && code !== 'DS' && code !== 'NS') return code
-                return ''
               }
-              // Prioritize manually saved overtime hours (from attendance override)
-              if (
-                cell.overtimeHours !== undefined &&
-                cell.overtimeHours !== null &&
-                cell.overtimeHours > 0
-              ) {
-                return String(roundOvertimeHours(cell.overtimeHours as number))
-              }
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              )
-              if (overtime.totalHours > 0) return String(overtime.totalHours)
-              if (overtime.unauthorizedMinutes > 0) return 'SPL'
-              if (code === 'ST') return 'ST'
-              if (code === 'GD') return 'GD'
-              if (code === 'FB' || isFieldBreakDay) return 'FB'
               return ''
             }
             if (view === 'msa') {
@@ -6398,33 +7716,36 @@ export function SchedulingTimesheetWorkspace({
           })
           // Total — samakan dengan kolom Total di layar
           let total = 0
-          for (const day of days) {
-            const cell = getAttendanceCell(row.employee.id, day)
-            const code = row.schedule[day - 1] as string
-            const allowance = getAllowanceAmounts(row, day)
+          for (const item of effectiveDateItems) {
+            const itemPeriod = item.period || period
+            const isCurrentPeriod = itemPeriod === period
+            const code = isCurrentPeriod
+              ? (row.schedule[item.day - 1] as string)
+              : resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, item.day, 'IN')
+            const cell = isCurrentPeriod
+              ? getAttendanceCell(row.employee.id, item.day)
+              : resolveCrossPeriodAttendanceCell(row.employee.id, itemPeriod, item.day, code, row.employee)
+            const allowance = getCrossPeriodAllowanceAmounts(row, item.day, itemPeriod, item.isHoliday)
             if (view === 'lokasi') {
               total += allowance.specialAllowanceAmount
               continue
             }
-            const isFbPeriod = code === 'FB' || cell.status === 'field_break'
-            if (isFbPeriod && (view === 'msa' || view === 'meals')) continue
-            if (view === 'ovt' && cell.status !== 'present') continue
+            const isFbPeriod = code === 'FB' || code === 'AL' || cell.status === 'field_break'
+            if (isFbPeriod && (view === 'msa' || view === 'meals' || view === 'lokasi')) continue
             if (view === 'msa') total += allowance.msaAmount
             else if (view === 'meals') total += allowance.mealsAmount
-            else if (!staff) {
-              // Prioritize manually saved overtime hours
-              if (cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-                total += Number(cell.overtimeHours)
-              } else {
-                total += calculateDayOvertime(
-                  row.schedule,
-                  day,
-                  cell.clockIn,
-                  cell.clockOut,
-                  staff,
-                  row.employee.id
-                ).totalHours
+            else if (view === 'ovt_spl') {
+              if (!staff) {
+                total += getApprovedSplHoursForDate(
+                  row.employee.id,
+                  item.dateStr || `${itemPeriod}-${String(item.day).padStart(2, '0')}`
+                )
               }
+            } else if (!staff) {
+              const otInfo = isCurrentPeriod
+                ? calculateTotalDayOvertime(row.schedule, item.day, cell, row.employee.id, staff)
+                : calculateTotalDayOvertime([code], 1, cell, row.employee.id, staff)
+              total += otInfo.totalOvertime
             }
           }
           const siteNameClean = extractSiteNameLocal(site?.name)
@@ -6444,7 +7765,7 @@ export function SchedulingTimesheetWorkspace({
             department: dept,
             section,
             dailyValues,
-            total: view === 'ovt' ? String(roundOvertimeHours(total)) : String(total),
+            total: view === 'ovt' || view === 'ovt_spl' ? String(roundOvertimeHours(total)) : String(total),
             remark: 'NORMAL',
           })
           no++
@@ -6457,55 +7778,81 @@ export function SchedulingTimesheetWorkspace({
   async function buildSummaryPdf(
     view: SummaryView,
     employeeIds?: number[],
-    customSignatures?: typeof pdfSignatures
+    customSignatures?: typeof pdfSignatures,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
   ) {
     const { generateSummaryTablePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
-    const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures)
+    const finalSignatures = getSummaryPdfSignatures(customSignatures ?? pdfSignatures, view)
+    const effectiveDayCount = customDateHeaders && customDateHeaders.length > 0
+      ? customDateHeaders.length
+      : dayCount
     return generateSummaryTablePdf({
-      view: view === 'ovt' ? 'ot' : view,
+      view: view === 'ovt' ? 'ot' : view === 'ovt_spl' ? 'spl' : view,
       period,
+      periodLabelOverride,
+      cutoffLabel: customCutoffLabel,
+      customDateHeaders: customDateHeaders?.map((d) => ({
+        day: d.day,
+        dateStr: d.dateStr,
+        displayHeader: d.displayHeader,
+        isWeekend: d.isWeekend,
+        isHoliday: d.isHoliday,
+      })),
       siteName: site?.name || '',
       project: rate.project,
-      dayCount,
-      rows: buildSummaryRows(view, employeeIds),
+      dayCount: effectiveDayCount,
+      rows: buildSummaryRows(view, employeeIds, customDateHeaders),
       signatures: finalSignatures,
       holidays,
     })
   }
 
-  async function downloadSummaryPdf(view: SummaryView) {
+  async function downloadSummaryPdf(
+    view: SummaryView,
+    customEmpIds?: number[],
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     try {
-      if (
-        availableSiteSectionCategories.size > 1 &&
-        !pdfIncludeRepair &&
-        !pdfIncludeServices &&
-        !pdfIncludeTechnical &&
-        !pdfIncludeHse
-      ) {
+      if (availableSiteSections.length > 1 && !hasAnySectionActive) {
         toast.error('Pilih minimal satu section yang tersedia.')
         return
       }
 
       const allEmps = rows.map((r) => r.employee)
-      const selectedEmps = allEmps.filter((emp) => {
-        const cat = getEmployeeSectionCategory(emp)
-        if (availableSiteSectionCategories.size > 1) {
-          if (cat === 'Repair' && !pdfIncludeRepair) return false
-          if (cat === 'Services' && !pdfIncludeServices) return false
-          if (cat === 'Technical' && !pdfIncludeTechnical) return false
-          if (cat === 'HSE' && !pdfIncludeHse) return false
-        }
-        return true
-      })
+      let selectedEmps = allEmps
+      if (customEmpIds && customEmpIds.length > 0) {
+        const idSet = new Set(customEmpIds)
+        selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
+      } else if (availableSiteSections.length > 1) {
+        selectedEmps = allEmps.filter((emp) => isEmployeeSectionIncluded(emp))
+      }
 
       if (selectedEmps.length === 0) {
         toast.error('Tidak ada baris karyawan di site ini yang cocok dengan section yang dipilih.')
         return
       }
 
+      const effectiveDateHeaders = customDateHeaders ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? buildCkCutoffDateRange(period, holidays)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+          : undefined
+      )
+      const effectiveCutoffLabel = customCutoffLabel ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? formatCkCutoffLabel(period)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+          : undefined
+      )
+
       const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
       const empIds = selectedEmps.map((e) => e.id)
-      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
 
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
@@ -6513,17 +7860,21 @@ export function SchedulingTimesheetWorkspace({
       a.href = url
       const sitePart = (site?.name || 'Semua Site').replace(/\s+/g, '_')
       const label =
-        view === 'ovt' ? 'Overtime' : view === 'msa' ? 'MSA' : view === 'meals' ? 'MLS' : 'TU'
-      const activeSections = [
-        pdfIncludeRepair ? 'Repair' : '',
-        pdfIncludeServices ? 'Services' : '',
-        pdfIncludeTechnical ? 'Technical' : '',
-        pdfIncludeHse ? 'HSE' : '',
-      ]
-        .filter(Boolean)
-        .join('_')
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'ovt_spl'
+            ? 'Overtime_SPL'
+            : view === 'msa'
+              ? 'MSA'
+              : view === 'meals'
+                ? 'MLS'
+                : view === 'attendance'
+                  ? 'Attendance'
+                  : 'TU'
+      const activeSections = activeSectionsLabel.replace(/[\s\/]+/g, '_')
       const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
-      a.download = `${label}_Summary_${sitePart}_${period}${extSuffix}_${activeSections || 'all'}.pdf`
+      const cutoffSuffix = effectiveCutoffLabel ? `_${effectiveCutoffLabel.replace(/[\s–-]+/g, '_')}` : ''
+      a.download = `${label}_Summary_${sitePart}_${period}${cutoffSuffix}${extSuffix}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -6537,10 +7888,79 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
+  async function previewSummaryPdf(
+    view: SummaryView,
+    customEmpIds?: number[],
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
+    try {
+      if (availableSiteSections.length > 1 && !hasAnySectionActive) {
+        toast.error('Pilih minimal satu section yang tersedia.')
+        return
+      }
+
+      const allEmps = rows.map((r) => r.employee)
+      let selectedEmps = allEmps
+      if (customEmpIds && customEmpIds.length > 0) {
+        const idSet = new Set(customEmpIds)
+        selectedEmps = allEmps.filter((emp) => idSet.has(emp.id))
+      } else if (availableSiteSections.length > 1) {
+        selectedEmps = allEmps.filter((emp) => isEmployeeSectionIncluded(emp))
+      }
+
+      if (selectedEmps.length === 0) {
+        toast.error('Tidak ada karyawan di site ini yang cocok.')
+        return
+      }
+
+      const effectiveDateHeaders = customDateHeaders ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? buildCkCutoffDateRange(period, holidays)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+          : undefined
+      )
+      const effectiveCutoffLabel = customCutoffLabel ?? (
+        attendanceExportCutoff === 'ck_16_15'
+          ? formatCkCutoffLabel(period)
+          : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+          ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+          : undefined
+      )
+
+      const majoritySignatures = getMajoritySectionSignatures(selectedEmps)
+      const empIds = selectedEmps.map((e) => e.id)
+      const pdf = await buildSummaryPdf(view, empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
+      const label =
+        view === 'ovt'
+          ? 'Overtime'
+          : view === 'ovt_spl'
+            ? 'Overtime SPL'
+            : view === 'msa'
+              ? 'MSA'
+              : view === 'meals'
+                ? 'MLS'
+                : view === 'attendance'
+                  ? 'Attendance'
+                  : 'TU'
+      const cutoffPart = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
+      openPdfPreview(pdf, `${label} Summary Grid – ${site?.name || ''} – ${period}${cutoffPart}`)
+    } catch (error) {
+      console.error('[Preview Summary PDF Error]', error)
+      toast.error('Gagal menampilkan preview PDF', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
   async function previewEmployeeOvertimePdf(employee: EmployeeOption) {
     try {
-      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
-      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}`)
+      const isCk = attendanceExportCutoff === 'ck_16_15'
+      const customDateHeaders = isCk ? buildCkCutoffDateRange(period, holidays) : undefined
+      const cutoffLabel = isCk ? formatCkCutoffLabel(period) : undefined
+      const pdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, customDateHeaders, cutoffLabel)
+      openPdfPreview(pdf, `OT Record • ${employee.name} • ${period}${cutoffLabel ? ` (${cutoffLabel})` : ''}`)
     } catch (error) {
       console.error('[Preview PDF OT Error]', error)
       toast.error('Preview PDF Overtime gagal', {
@@ -6549,7 +7969,11 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function bulkDownloadOvertimePdf(showTotalOvertime: boolean) {
+  async function bulkDownloadOvertimePdf(
+    showTotalOvertime: boolean,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     if (selectedPdfDocTypes.length === 0) {
       toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
       return
@@ -6562,32 +7986,37 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Pilih minimal satu karyawan untuk download PDF.')
       return
     }
-    if (
-      availableSiteSectionCategories.size > 1 &&
-      !pdfIncludeRepair &&
-      !pdfIncludeServices &&
-      !pdfIncludeTechnical &&
-      !pdfIncludeHse
-    ) {
+    if (availableSiteSections.length > 1 && !hasAnySectionActive) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
 
-    const filteredSelected = selected.filter((emp) => {
-      const cat = getEmployeeSectionCategory(emp)
-      if (availableSiteSectionCategories.size > 1) {
-        if (cat === 'Repair' && !pdfIncludeRepair) return false
-        if (cat === 'Services' && !pdfIncludeServices) return false
-        if (cat === 'Technical' && !pdfIncludeTechnical) return false
-        if (cat === 'HSE' && !pdfIncludeHse) return false
-      }
-      return true
-    })
+    const filteredSelected = selected.filter((emp) => isEmployeeSectionIncluded(emp))
 
     if (filteredSelected.length === 0) {
       toast.error('Tidak ada karyawan yang cocok dengan section yang dipilih.')
       return
     }
+
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
+    const toastId = 'bulk-pdf-download'
+    setIsDownloadingSitePdf(true)
+    toast.loading('Menyiapkan download PDF... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
 
     try {
       const { PDFDocument } = await import('pdf-lib')
@@ -6598,50 +8027,71 @@ export function SchedulingTimesheetWorkspace({
 
       // 1. OVERTIME SUMMARY
       if (selectedPdfDocTypes.includes('overtime_summary')) {
-        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
+        toast.loading('Menyiapkan Overtime Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 2. MSA summary
+      // 2. OVERTIME SPL SUMMARY
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        toast.loading('Menyiapkan Overtime SPL Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      // 3. MSA summary
       if (selectedPdfDocTypes.includes('msa_summary')) {
-        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        toast.loading('Menyiapkan MSA Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 3. MLS summary
+      // 4. MLS summary
       if (selectedPdfDocTypes.includes('mls_summary')) {
-        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        toast.loading('Menyiapkan MLS Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 4. TU summary
+      // 5. TU summary
       if (selectedPdfDocTypes.includes('tu_summary')) {
-        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        toast.loading('Menyiapkan TU Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
-      // 5. Overtime Record & 6. Payable Site Allowance per employee
+      // 6. Overtime Record & 7. Payable Site Allowance per employee
       const shouldIncludeOvertimeRecord = selectedPdfDocTypes.includes('overtime_record')
       const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
 
       if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
-        for (const employee of filteredSelected) {
+        for (let i = 0; i < filteredSelected.length; i++) {
+          const employee = filteredSelected[i]
+          if (i % 2 === 0 || i === filteredSelected.length - 1) {
+            toast.loading(
+              `Memproses lembar PDF (${i + 1}/${filteredSelected.length}: ${employee.name})...`,
+              { id: toastId }
+            )
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
           if (shouldIncludeOvertimeRecord) {
-            const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime)
+            const otPdf = await buildEmployeeOvertimePdf(employee, showTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
             const otSource = await PDFDocument.load(otPdf)
             const pages = await merged.copyPages(otSource, otSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
           }
           if (shouldIncludeSiteAllowance) {
-            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowancePdf = await buildEmployeeAllowancePdf(employee, effectiveDateHeaders, effectiveCutoffLabel)
             const allowanceSource = await PDFDocument.load(allowancePdf)
             const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
@@ -6650,22 +8100,16 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (merged.getPageCount() === 0) {
-        toast.error('Tidak ada halaman PDF yang dihasilkan.')
+        toast.error('Tidak ada halaman PDF yang dihasilkan.', { id: toastId })
         return
       }
 
-      const activeSections = [
-        pdfIncludeRepair ? 'Repair' : '',
-        pdfIncludeServices ? 'Services' : '',
-        pdfIncludeTechnical ? 'Technical' : '',
-        pdfIncludeHse ? 'HSE' : '',
-      ]
-        .filter(Boolean)
-        .join('_')
+      const activeSections = activeSelectedSections.slice(0, 3).join('_')
 
       const selectedDocLabels = selectedPdfDocTypes
         .map((t) => {
           if (t === 'overtime_summary') return 'OT-Summary'
+          if (t === 'ovt_spl_summary') return 'SPL-Summary'
           if (t === 'msa_summary') return 'MSA-Summary'
           if (t === 'mls_summary') return 'MLS-Summary'
           if (t === 'tu_summary') return 'TU-Summary'
@@ -6675,39 +8119,73 @@ export function SchedulingTimesheetWorkspace({
         })
         .join('_')
 
+      toast.loading('Mengunduh berkas PDF gabungan...', { id: toastId })
       const blob = new Blob([new Uint8Array(await merged.save())], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       const extSuffix = pdfUseExternalSignatures ? '_Eksternal' : ''
-      a.download = `Export_PDF_${period}_${selectedDocLabels || 'Selected'}${extSuffix}_${activeSections || 'all'}.pdf`
+      const cutoffSuffix = effectiveCutoffLabel ? `_${effectiveCutoffLabel.replace(/[\s–-]+/g, '_')}` : ''
+      a.download = `Export_PDF_${period}_${selectedDocLabels || 'Selected'}${cutoffSuffix}${extSuffix}_${activeSections || 'all'}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(url)
+        } catch {
+          // ignore
+        }
+      }, 60000)
       toast.success(
-        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`
+        `PDF berhasil di-download (${selectedPdfDocTypes.length} jenis dokumen, ${filteredSelected.length} karyawan).`,
+        { id: toastId }
       )
     } catch (error) {
       console.error('[Bulk PDF Download Error]', error)
       toast.error('Bulk download PDF Overtime gagal', {
+        id: toastId,
         description: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      setIsDownloadingSitePdf(false)
     }
   }
 
-  async function buildEmployeeAllowanceDayData(employee: EmployeeOption) {
+  async function buildEmployeeAllowanceDayData(
+    employee: EmployeeOption,
+    customDateHeaders?: CkCutoffDateItem[]
+  ) {
     const { buildAttendanceDayData } = await import('@/lib/timesheet/generate-attendance-pdf')
     const employeeRow = rows.find((row) => row.employee.id === employee.id)
     if (!employeeRow) throw new Error('Data schedule karyawan tidak ditemukan.')
     return buildAttendanceDayData({
       period,
       dayCount,
-      getCell: (day) => getAttendanceCell(employee.id, day),
-      getScheduleCode: (day) => employeeRow.schedule[day - 1] as string,
+      dateItems: customDateHeaders?.map((dh) => ({
+        period: dh.period,
+        day: dh.day,
+        dateStr: dh.dateStr,
+        displayHeader: dh.displayHeader,
+        isHoliday: dh.isHoliday,
+      })),
+      getCell: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          const schedCode = resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+          return resolveCrossPeriodAttendanceCell(employee.id, targetPeriod, day, schedCode, employee)
+        }
+        return getAttendanceCell(employee.id, day)
+      },
+      getScheduleCode: (day, targetPeriod) => {
+        if (targetPeriod && targetPeriod !== period) {
+          return resolveCrossPeriodScheduleCode(employee.id, targetPeriod, day, 'IN')
+        }
+        return employeeRow.schedule[day - 1] as string
+      },
       holidays,
     }).map((day) => {
-      const allowance = getAllowanceAmounts(employeeRow, day.day)
+      const itemPeriod = day.period || period
+      const allowance = getCrossPeriodAllowanceAmounts(employeeRow, day.day, itemPeriod, day.isHoliday)
       return {
         ...day,
         msaAmount: allowance.msaAmount,
@@ -6720,18 +8198,28 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  async function buildEmployeeAllowancePdf(employee: EmployeeOption) {
+  async function buildEmployeeAllowancePdf(
+    employee: EmployeeOption,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string,
+    periodLabelOverride?: string
+  ) {
     const { generateSiteAllowancePdf } = await import('@/lib/timesheet/generate-attendance-pdf')
-    const dayData = await buildEmployeeAllowanceDayData(employee)
+    const dayData = await buildEmployeeAllowanceDayData(employee, customDateHeaders)
     const secSigs = getSectionSignatures(employee.section, employee)
+    const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+    const effCutoffLabel = customCutoffLabel || (isCustom ? 'Kustom' : undefined)
+    const effPeriodLabel = periodLabelOverride || (effCutoffLabel ? `${formatPeriodLabel(period)} (${effCutoffLabel})` : undefined)
     return generateSiteAllowancePdf({
       period,
+      periodLabelOverride: effPeriodLabel,
+      cutoffLabel: effCutoffLabel,
       employeeName: employee.name,
       employeeSn: employee.employeeSn || '',
       department: employee.department || '',
       section: employee.section || '',
       siteName: site?.name || '',
-      signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+      signatures: getSummaryPdfSignatures(secSigs),
       days: dayData,
     })
   }
@@ -6797,7 +8285,7 @@ export function SchedulingTimesheetWorkspace({
         department: employee.department || '',
         section: employee.section || '',
         siteName: site?.name || '',
-        signatures: getSummaryPdfSignatures({ ...secSigs, preparedBy: employee.name }),
+        signatures: getSummaryPdfSignatures(secSigs),
         activities: monthActivities,
       })
       const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
@@ -6819,15 +8307,59 @@ export function SchedulingTimesheetWorkspace({
   }
 
   function openPdfPreview(pdf: Uint8Array, title: string) {
-    if (pdfPreview) {
-      URL.revokeObjectURL(pdfPreview.url)
+    if (lastPdfUrlRef.current) {
+      const oldUrl = lastPdfUrlRef.current
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(oldUrl)
+        } catch {
+          // ignore
+        }
+      }, 60000)
     }
     const blob = new Blob([new Uint8Array(pdf)], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
+    lastPdfUrlRef.current = url
     setPdfPreview({ url, title })
   }
 
-  async function previewAllSiteOvertimePdf() {
+  async function previewSplDocument(documentId: number, splNumber: string) {
+    const toastId = `spl-preview-${documentId}`
+    toast.loading('Menyiapkan preview SPL…', { id: toastId })
+    try {
+      const response = await fetch(`/dashboard/scheduling-timesheet/attendance/spl/${documentId}`)
+      if (!response.ok) throw new Error('Dokumen SPL tidak dapat dibuka dengan hak akses ini.')
+      const html = await response.text()
+      const article = new DOMParser().parseFromString(html, 'text/html').querySelector('article')
+      if (!article) throw new Error('Isi dokumen SPL tidak ditemukan.')
+      const page = document.createElement('div')
+      page.className = 'bg-white p-8'
+      page.style.width = '794px'
+      page.style.position = 'fixed'
+      page.style.left = '-9999px'
+      page.style.top = '0'
+      page.style.zIndex = '-1'
+      page.append(article.cloneNode(true))
+      document.body.append(page)
+      try {
+        const blob = await generateElementAsPdfBlob(page, { orientation: 'portrait' })
+        openPdfPreview(new Uint8Array(await blob.arrayBuffer()), `SPL ${splNumber}`)
+      } finally {
+        page.remove()
+      }
+      toast.success('Preview SPL siap.', { id: toastId })
+    } catch (error) {
+      toast.error('Preview SPL gagal dibuka.', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function previewAllSiteOvertimePdf(
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     if (selectedPdfDocTypes.length === 0) {
       toast.error('Pilih minimal satu jenis dokumen PDF pada dropdown pilihan.')
       return
@@ -6838,32 +8370,37 @@ export function SchedulingTimesheetWorkspace({
       toast.error('Tidak ada karyawan untuk site ini.')
       return
     }
-    if (
-      availableSiteSectionCategories.size > 1 &&
-      !pdfIncludeRepair &&
-      !pdfIncludeServices &&
-      !pdfIncludeTechnical &&
-      !pdfIncludeHse
-    ) {
+    if (availableSiteSections.length > 1 && !hasAnySectionActive) {
       toast.error('Pilih minimal satu section yang tersedia.')
       return
     }
 
-    const filteredEmployees = allEmployees.filter((emp) => {
-      const cat = getEmployeeSectionCategory(emp)
-      if (availableSiteSectionCategories.size > 1) {
-        if (cat === 'Repair' && !pdfIncludeRepair) return false
-        if (cat === 'Services' && !pdfIncludeServices) return false
-        if (cat === 'Technical' && !pdfIncludeTechnical) return false
-        if (cat === 'HSE' && !pdfIncludeHse) return false
-      }
-      return true
-    })
+    const filteredEmployees = allEmployees.filter((emp) => isEmployeeSectionIncluded(emp))
 
     if (filteredEmployees.length === 0) {
       toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
       return
     }
+
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
+    const toastId = 'preview-site-pdf'
+    setIsPreviewingSitePdf(true)
+    toast.loading('Menyiapkan Preview PDF... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
 
     try {
       const { PDFDocument } = await import('pdf-lib')
@@ -6873,28 +8410,40 @@ export function SchedulingTimesheetWorkspace({
       const empIds = filteredEmployees.map((e) => e.id)
 
       if (selectedPdfDocTypes.includes('overtime_summary')) {
-        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures)
+        toast.loading('Memproses Overtime Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('ovt', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
+        const summarySource = await PDFDocument.load(summaryPdf)
+        const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (selectedPdfDocTypes.includes('ovt_spl_summary')) {
+        toast.loading('Memproses Overtime SPL Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('ovt_spl', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
       if (selectedPdfDocTypes.includes('msa_summary')) {
-        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures)
+        toast.loading('Memproses MSA Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('msa', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
       if (selectedPdfDocTypes.includes('mls_summary')) {
-        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures)
+        toast.loading('Memproses MLS Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('meals', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
       }
 
       if (selectedPdfDocTypes.includes('tu_summary')) {
-        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures)
+        toast.loading('Memproses TU Summary...', { id: toastId })
+        const summaryPdf = await buildSummaryPdf('lokasi', empIds, majoritySignatures, effectiveDateHeaders, effectiveCutoffLabel)
         const summarySource = await PDFDocument.load(summaryPdf)
         const pages = await merged.copyPages(summarySource, summarySource.getPageIndices())
         pages.forEach((page) => merged.addPage(page))
@@ -6904,15 +8453,23 @@ export function SchedulingTimesheetWorkspace({
       const shouldIncludeSiteAllowance = selectedPdfDocTypes.includes('payable_site_allowance')
 
       if (shouldIncludeOvertimeRecord || shouldIncludeSiteAllowance) {
-        for (const employee of filteredEmployees) {
+        for (let i = 0; i < filteredEmployees.length; i++) {
+          const employee = filteredEmployees[i]
+          if (i % 2 === 0 || i === filteredEmployees.length - 1) {
+            toast.loading(
+              `Memproses lembar PDF (${i + 1}/${filteredEmployees.length}: ${employee.name})...`,
+              { id: toastId }
+            )
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
           if (shouldIncludeOvertimeRecord) {
-            const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime)
+            const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
             const otSource = await PDFDocument.load(otPdf)
             const pages = await merged.copyPages(otSource, otSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
           }
           if (shouldIncludeSiteAllowance) {
-            const allowancePdf = await buildEmployeeAllowancePdf(employee)
+            const allowancePdf = await buildEmployeeAllowancePdf(employee, effectiveDateHeaders, effectiveCutoffLabel)
             const allowanceSource = await PDFDocument.load(allowancePdf)
             const pages = await merged.copyPages(allowanceSource, allowanceSource.getPageIndices())
             pages.forEach((page) => merged.addPage(page))
@@ -6921,28 +8478,180 @@ export function SchedulingTimesheetWorkspace({
       }
 
       if (merged.getPageCount() === 0) {
-        toast.error('Tidak ada halaman PDF yang dipilih untuk di-preview.')
+        toast.error('Tidak ada halaman PDF yang dipilih untuk di-preview.', { id: toastId })
         return
       }
 
-      const activeSections = [
-        pdfIncludeRepair ? 'Repair' : '',
-        pdfIncludeServices ? 'Services' : '',
-        pdfIncludeTechnical ? 'Technical' : '',
-        pdfIncludeHse ? 'HSE' : '',
-      ]
-        .filter(Boolean)
-        .join(', ')
+      const activeSections = activeSectionsLabel
+      toast.loading('Menyimpan dokumen preview...', { id: toastId })
+      const mergedBytes = await merged.save()
 
+      const cutoffSuffix = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
       openPdfPreview(
-        await merged.save(),
-        `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period}${pdfUseExternalSignatures ? ' (Eksternal)' : ''} (${activeSections || 'Semua'})`
+        mergedBytes,
+        `Preview PDF (${selectedPdfDocTypes.length} Dokumen) • ${site?.name ?? 'Site'} • ${period}${cutoffSuffix}${pdfUseExternalSignatures ? ' (Eksternal)' : ''} (${activeSections || 'Semua'})`
       )
+      toast.success('Preview PDF siap ditampilkan.', { id: toastId })
     } catch (error) {
       console.error('[Preview PDF Site Error]', error)
       toast.error('Preview PDF site gagal', {
+        id: toastId,
         description: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      setIsPreviewingSitePdf(false)
+    }
+  }
+
+  async function previewOvertimeRecordOnlyPdf(
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
+    const allEmployees = rows.map((row) => row.employee)
+    if (allEmployees.length === 0) {
+      toast.error('Tidak ada karyawan untuk site ini.')
+      return
+    }
+    const filteredEmployees = availableSiteSections.length > 1
+      ? allEmployees.filter((emp) => isEmployeeSectionIncluded(emp))
+      : allEmployees
+
+    if (filteredEmployees.length === 0) {
+      toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
+      return
+    }
+
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
+    const toastId = 'preview-ot-record-pdf'
+    setIsPreviewingSitePdf(true)
+    toast.loading('Menyiapkan Preview Overtime Record... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const merged = await PDFDocument.create()
+
+      for (let i = 0; i < filteredEmployees.length; i++) {
+        const employee = filteredEmployees[i]
+        const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
+        const otSource = await PDFDocument.load(otPdf)
+        const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada lembar Overtime Record yang dihasilkan.', { id: toastId })
+        return
+      }
+
+      const mergedBytes = await merged.save()
+      const cutoffSuffix = effectiveCutoffLabel ? ` (${effectiveCutoffLabel})` : ''
+      openPdfPreview(
+        mergedBytes,
+        `Overtime Record • ${site?.name ?? 'Site'} • ${period}${cutoffSuffix} (${filteredEmployees.length} Karyawan)`
+      )
+      toast.success('Preview Overtime Record siap ditampilkan.', { id: toastId })
+    } catch (error) {
+      console.error('[Preview Overtime Record Error]', error)
+      toast.error('Gagal menampilkan preview Overtime Record', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setIsPreviewingSitePdf(false)
+    }
+  }
+
+  async function downloadOvertimeRecordOnlyPdf(
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
+    const allEmployees = rows.map((row) => row.employee)
+    if (allEmployees.length === 0) {
+      toast.error('Tidak ada karyawan untuk site ini.')
+      return
+    }
+    const filteredEmployees = availableSiteSections.length > 1
+      ? allEmployees.filter((emp) => isEmployeeSectionIncluded(emp))
+      : allEmployees
+
+    if (filteredEmployees.length === 0) {
+      toast.error('Tidak ada karyawan di site ini yang cocok dengan section yang dipilih.')
+      return
+    }
+
+    const effectiveDateHeaders = customDateHeaders ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? buildCkCutoffDateRange(period, holidays)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+        : undefined
+    )
+    const effectiveCutoffLabel = customCutoffLabel ?? (
+      attendanceExportCutoff === 'ck_16_15'
+        ? formatCkCutoffLabel(period)
+        : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate && customExportStartDate <= customExportEndDate
+        ? formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+        : undefined
+    )
+
+    const toastId = 'download-ot-record-pdf'
+    setIsDownloadingSitePdf(true)
+    toast.loading('Menyiapkan download Overtime Record... Mohon tunggu', { id: toastId })
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    try {
+      const { PDFDocument } = await import('pdf-lib')
+      const merged = await PDFDocument.create()
+
+      for (let i = 0; i < filteredEmployees.length; i++) {
+        const employee = filteredEmployees[i]
+        const otPdf = await buildEmployeeOvertimePdf(employee, includeTotalOvertime, effectiveDateHeaders, effectiveCutoffLabel)
+        const otSource = await PDFDocument.load(otPdf)
+        const pages = await merged.copyPages(otSource, otSource.getPageIndices())
+        pages.forEach((page) => merged.addPage(page))
+      }
+
+      if (merged.getPageCount() === 0) {
+        toast.error('Tidak ada lembar Overtime Record yang dihasilkan.', { id: toastId })
+        return
+      }
+
+      const mergedBytes = await merged.save()
+      const cutoffPart = effectiveCutoffLabel ? `-${effectiveCutoffLabel.replace(/[\s\(\)\/]/g, '_')}` : ''
+      const safeSite = (site?.name || 'site').replace(/[^a-zA-Z0-9_-]/g, '_')
+      const blob = new Blob([new Uint8Array(mergedBytes)], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Overtime_Record_${safeSite}_${period}${cutoffPart}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success(`Overtime Record berhasil diunduh (${filteredEmployees.length} karyawan).`, { id: toastId })
+    } catch (error) {
+      console.error('[Download Overtime Record Error]', error)
+      toast.error('Gagal mengunduh Overtime Record', {
+        id: toastId,
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setIsDownloadingSitePdf(false)
     }
   }
 
@@ -6969,7 +8678,7 @@ export function SchedulingTimesheetWorkspace({
       { Status: 'Izin', Keterangan: 'Cell biru.' },
       { Status: 'Alpha', Keterangan: 'Cell rose.' },
       { Status: 'ST', Keterangan: 'Standby.' },
-      { Status: 'GB', Keterangan: 'Field Break.' },
+      { Status: 'FB', Keterangan: 'Field Break.' },
       { Status: '-', Keterangan: 'Kosong / belum ada data.' },
     ]
     const XLSX = await import('xlsx')
@@ -7090,13 +8799,12 @@ export function SchedulingTimesheetWorkspace({
   const approvedSplByEmployee = useMemo(() => {
     const result = new Map<number, ApprovedSplWindow[]>()
     for (const window of approvedSplWindows) {
-      if (String(window.siteId) !== siteId) continue
       const employeeWindows = result.get(window.employeeId) ?? []
       employeeWindows.push(window)
       result.set(window.employeeId, employeeWindows)
     }
     return result
-  }, [approvedSplWindows, siteId])
+  }, [approvedSplWindows])
 
   function calculateLegacyOvertime(
     schedule: ScheduleCode[],
@@ -7119,6 +8827,9 @@ export function SchedulingTimesheetWorkspace({
         item.dayType === dayType &&
         item.totalHours === totalHours
     )
+    if (dayType === 'off') {
+      return roundOvertimeHours(configured?.overtimeHours ?? totalHours)
+    }
     return roundOvertimeHours(configured?.overtimeHours ?? Math.max(0, totalHours - 8))
   }
 
@@ -7129,19 +8840,18 @@ export function SchedulingTimesheetWorkspace({
     clockOut: string,
     staff: boolean,
     employeeId: number,
-    ignoreOverride = false
+    ignoreOverride = false,
+    approvedSplOnly = false,
+    excludeSpl = false
   ): OvertimeCalculationResult {
-    if (!ignoreOverride) {
-      const key = attendanceKey(employeeId, day)
-      const cell = manualAttendance[key]
-      if (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) {
-        return legacyOvertimeResult(cell.overtimeHours)
-      }
-    }
-
     const empSiteId =
       employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
     const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const isMhuSite = Boolean(
+      (site?.name && /mhu/i.test(site.name)) ||
+      empSiteConfig.project === 'CK MHU' ||
+      empSiteId === 128
+    )
 
     if (staff || empSiteConfig.overtimeType === 'none') {
       return legacyOvertimeResult(0)
@@ -7153,7 +8863,8 @@ export function SchedulingTimesheetWorkspace({
       shiftCode === 'OFF' ||
       shiftCode === 'FB' ||
       shiftCode === 'Libur' ||
-      cellStatus === 'off'
+      cellStatus === 'off' ||
+      cell.workingTimeFrom === 'OFF'
     const isNonWork =
       isOff ||
       cellStatus === 'sick' ||
@@ -7163,8 +8874,40 @@ export function SchedulingTimesheetWorkspace({
       cellStatus === 'standby' ||
       cellStatus === 'empty'
     const isHol = isHoliday(period, day, holidays)
+    if (isOff) {
+      if (!ignoreOverride) {
+        const key = attendanceKey(employeeId, day)
+        const manualCell = manualAttendance[key]
+        if (manualCell && manualCell.overtimeHours !== undefined && manualCell.overtimeHours !== null) {
+          return legacyOvertimeResult(Number(manualCell.overtimeHours))
+        }
+        const override = attendanceOverrideByCell.get(key)
+        if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
+          return legacyOvertimeResult(Number(override.overtimeHours))
+        }
+      }
+      return legacyOvertimeResult(0)
+    }
+
     if (!clockIn && !clockOut && isNonWork) {
       return legacyOvertimeResult(0)
+    }
+
+    // Khusus CK-MHU (MP): Seluruh hari kerja hadir otomatis 11 jam lembur merata (kecuali OFF / tidak masuk kerja)
+    if (isMhuSite && !isNonWork) {
+      return legacyOvertimeResult(11)
+    }
+
+    if (!ignoreOverride) {
+      const key = attendanceKey(employeeId, day)
+      const manualCell = manualAttendance[key]
+      if (manualCell && manualCell.overtimeHours !== undefined && manualCell.overtimeHours !== null) {
+        return legacyOvertimeResult(Number(manualCell.overtimeHours))
+      }
+      const override = attendanceOverrideByCell.get(key)
+      if (override && override.overtimeHours !== undefined && override.overtimeHours !== null) {
+        return legacyOvertimeResult(Number(override.overtimeHours))
+      }
     }
     const defaultIn =
       shiftCode === 'NS' ? empSiteConfig.nightShiftClockIn : empSiteConfig.dayShiftClockIn
@@ -7194,6 +8937,11 @@ export function SchedulingTimesheetWorkspace({
       ...empSiteConfig.overtimeConfig,
       enabled: true,
     }
+    const splList = excludeSpl
+      ? []
+      : (approvedSplByEmployee.get(employeeId) ?? []).filter(
+          (window) => !approvedSplOnly || window.status.toLowerCase() === 'approved'
+        )
     const calculated = calculateOvertime({
       config: activeConfig,
       dayKey,
@@ -7201,7 +8949,7 @@ export function SchedulingTimesheetWorkspace({
       workDate: `${period}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
-      splWindows: approvedSplByEmployee.get(employeeId) ?? [],
+      splWindows: splList,
       legacyHours: calculateLegacyOvertime(
         schedule,
         day,
@@ -7212,6 +8960,442 @@ export function SchedulingTimesheetWorkspace({
     })
     return { ...calculated, totalHours: roundOvertimeHours(calculated.totalHours) }
   }
+
+  function mandatoryOvertimeHours(result: OvertimeCalculationResult) {
+    return roundOvertimeHours(result.autoMinutes / 60)
+  }
+
+  function overtimeHoursBySource(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
+    const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
+    const result = calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
+    const mandatoryHours = result.source === 'Legacy' ? result.totalHours : result.autoMinutes / 60
+    const splHours = result.splMinutes / 60
+    return { mandatoryHours, splHours, totalHours: mandatoryHours + splHours }
+  }
+
+  function splOvertimeForDay(schedule: ScheduleCode[], day: number, employeeId: number, staff: boolean) {
+    const cell = getAttendanceCell(employeeId, day, schedule[day - 1])
+    if (cell.status !== 'present' || !cell.clockIn || !cell.clockOut) return null
+    return calculateDayOvertime(schedule, day, cell.clockIn, cell.clockOut, staff, employeeId, true, true)
+  }
+
+  function approvedSplDocumentsForDate(employeeId: number, dateStr: string) {
+    return (approvedSplByEmployee.get(employeeId) ?? []).filter((spl) => {
+      const status = (spl.status || '').toLowerCase()
+      if (status !== 'approved' && status !== 'closed') return false
+      const dateValue = spl.workDate || spl.plannedStartAt
+      if (!dateValue) return false
+      const splDate = new Date(dateValue)
+      if (Number.isNaN(splDate.getTime())) return false
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Makassar', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(splDate) === dateStr
+    })
+  }
+
+  function approvedSplDocumentsForDay(employeeId: number, day: number) {
+    const workDate = `${period}-${String(day).padStart(2, '0')}`
+    return approvedSplDocumentsForDate(employeeId, workDate)
+  }
+
+  function getApprovedSplHoursForDate(employeeId: number, dateStr: string): number {
+    const docs = approvedSplDocumentsForDate(employeeId, dateStr)
+    if (docs.length === 0) return 0
+
+    const intervals: Array<{ start: number; end: number }> = []
+    let fallbackHours = 0
+
+    for (const spl of docs) {
+      if (!spl.plannedStartAt || !spl.plannedEndAt) {
+        if (spl.overtimeCreditMinutes && spl.overtimeCreditMinutes > 0) {
+          fallbackHours += spl.overtimeCreditMinutes / 60
+        }
+        continue
+      }
+      const start = new Date(spl.plannedStartAt)
+      const end = new Date(spl.plannedEndAt)
+      let startMin = start.getUTCHours() * 60 + start.getUTCMinutes()
+      let endMin = end.getUTCHours() * 60 + end.getUTCMinutes()
+      if (endMin <= startMin) endMin += 1440
+      intervals.push({ start: startMin, end: endMin })
+    }
+
+    if (intervals.length === 0) return roundOvertimeHours(fallbackHours)
+
+    intervals.sort((a, b) => a.start - b.start)
+    const merged: Array<{ start: number; end: number }> = []
+    for (const cur of intervals) {
+      const prev = merged[merged.length - 1]
+      if (!prev) {
+        merged.push({ ...cur })
+      } else if (cur.start <= prev.end) {
+        prev.end = Math.max(prev.end, cur.end)
+      } else {
+        merged.push({ ...cur })
+      }
+    }
+
+    let totalMin = 0
+    for (const item of merged) totalMin += (item.end - item.start)
+    let span = Math.round((totalMin / 60) * 10) / 10
+    if (span >= 12) span = 11
+    return roundOvertimeHours(span)
+  }
+
+  function getApprovedSplHoursForDay(employeeId: number, day: number): number {
+    const workDate = `${period}-${String(day).padStart(2, '0')}`
+    return getApprovedSplHoursForDate(employeeId, workDate)
+  }
+
+  function calculateTotalDayOvertime(
+    schedule: ScheduleCode[],
+    day: number,
+    cell: ManualAttendanceCell,
+    employeeId: number,
+    staff: boolean
+  ): {
+    lemburWajib: number
+    lemburSpl: number
+    totalOvertime: number
+    displayValue: string
+  } {
+    if (staff) {
+      return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: '-' }
+    }
+
+    const scheduleCode = (schedule[day - 1] as string) || 'IN'
+    const isFieldBreakDay =
+      scheduleCode === 'FB' ||
+      cell.status === 'field_break' ||
+      (fieldBreakDaysByEmployee.get(employeeId)?.has(day) ?? false)
+    const isRosterOff =
+      scheduleCode === 'OFF' ||
+      scheduleCode === 'Libur' ||
+      cell.status === 'off' ||
+      cell.workingTimeFrom === 'OFF'
+    const isHolidayDay = Boolean(holidaysByDay.get(day))
+    // Catatan instruksi atasan & Mas Ojan:
+    // Overtime Summary TIDAK terinput / di-OFF-kan dari akumulasi lembur SPL otomatis.
+    // Overtime Summary hanya menampilkan Lembur Wajib standar.
+    // Jika user menginput manual lembur di tabel/modal, angka manual tersebut langsung dipakai.
+
+    const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+    const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+
+    // Input lembur manual dari tabel / modal cell adalah prioritas mutlak yang wajib masuk ke PDF dan tampilan:
+    if (manualVal !== null) {
+      const finalManualOt = manualVal === 0 ? 0 : Math.min(14, roundOvertimeHours(manualVal))
+      const manualDisplay =
+        finalManualOt > 0
+          ? String(roundOvertimeHours(finalManualOt))
+          : isFieldBreakDay
+            ? 'FB'
+            : isRosterOff || cell.status === 'off'
+              ? 'OFF'
+              : cell.status === 'sick' || scheduleCode === 'Sakit'
+                ? 'Sakit'
+                : cell.status === 'leave' || scheduleCode === 'Izin'
+                  ? 'Izin'
+                  : cell.status === 'absent'
+                    ? 'Alpha'
+                    : ''
+      return {
+        lemburWajib: finalManualOt,
+        lemburSpl: 0,
+        totalOvertime: finalManualOt,
+        displayValue: manualDisplay,
+      }
+    }
+
+    // Non-working & Off days strictly follow Overtime Record:
+    // On OFF, Field Break, Sakit, Izin, Alpha: Overtime is 0 (displaying their respective status code), matching Overtime Record.
+    if (isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB') {
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'FB',
+      }
+    }
+    if (cell.status === 'standby' || scheduleCode === 'ST') {
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'ST',
+      }
+    }
+    if (scheduleCode === 'GD') {
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'GD',
+      }
+    }
+    if (cell.status === 'sick' || scheduleCode === 'Sakit') {
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'Sakit',
+      }
+    }
+    if (cell.status === 'leave' || scheduleCode === 'Izin') {
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'Izin',
+      }
+    }
+    if (cell.status === 'absent') {
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'Alpha',
+      }
+    }
+    if (isRosterOff || cell.status === 'off') {
+      // Pada hari libur roster (OFF):
+      // Mengikuti Overtime Record: Total lembur adalah 0 dan ditampilkan 'OFF'.
+      return {
+        lemburWajib: 0,
+        lemburSpl: 0,
+        totalOvertime: 0,
+        displayValue: 'OFF',
+      }
+    }
+
+    if (cell.status !== 'present') {
+      if (scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS') {
+        return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: scheduleCode }
+      }
+      return { lemburWajib: 0, lemburSpl: 0, totalOvertime: 0, displayValue: '' }
+    }
+
+    // Work day (present / DS / NS):
+    // Lembur wajib default mengikuti konfigurasi overtime policy masing-masing site (misal: MHU/KIM 5j/7j, MIFA 4j/6j).
+    // EXCLUDE SPL: Overtime Summary di-OFF-kan dari akumulasi SPL otomatis sesuai instruksi Mas Ojan & atasan,
+    // hanya menampilkan Lembur Wajib standar atau input manual jika ada.
+    const overtime = calculateDayOvertime(
+      schedule,
+      day,
+      cell.clockIn,
+      cell.clockOut,
+      staff,
+      employeeId,
+      true, // ignoreOverride = true
+      false, // approvedSplOnly = false
+      true // excludeSpl = true
+    )
+    const autoWajib = mandatoryOvertimeHours(overtime)
+
+    // Standard lembur wajib jika autoWajib belum terdefinisi dari clock-in/out:
+    // Cek durasi interval template policy site jika ada, atau fallback sesuai dayKey (hariKe6 = 6h, hari biasa = 4h)
+    const empSiteId =
+      employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
+    const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+    const isMhuSite = Boolean(
+      (site?.name && /mhu/i.test(site.name)) ||
+      empSiteConfig.project === 'CK MHU' ||
+      empSiteId === 128
+    )
+
+    // Khusus CK-MHU: Seluruh hari kerja otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk kerja)
+    if (isMhuSite) {
+      const mhuOt = 11
+      return {
+        lemburWajib: mhuOt,
+        lemburSpl: 0,
+        totalOvertime: mhuOt,
+        displayValue: String(mhuOt),
+      }
+    }
+    const dayKey = classifyOvertimePolicyDay({
+      schedule,
+      dayIndex: day - 1,
+      isHoliday: isHoliday(period, day, holidays),
+      rosterType: empSiteConfig.rosterType,
+    })
+    const shiftKey: OvertimeShiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+    const configuredIntervals = empSiteConfig.overtimeConfig[dayKey]?.[shiftKey] ?? []
+    let templateWajib = 0
+    for (const item of configuredIntervals) {
+      const sM = minutesFromTime(item.start)
+      const eM = minutesFromTime(item.end)
+      if (sM != null && eM != null) {
+        let diff = eM - sM
+        if (diff < 0) diff += 1440
+        templateWajib += diff / 60
+      }
+    }
+
+    const fallbackWajib = dayKey === 'hariKe6' ? 6 : 4
+    const standardWajib = templateWajib > 0 ? roundOvertimeHours(templateWajib) : fallbackWajib
+    const lemburWajib = autoWajib > 0 ? autoWajib : standardWajib
+
+    const totalOvertime = lemburWajib
+    const displayValue = totalOvertime > 0 ? String(roundOvertimeHours(totalOvertime)) : ''
+    return { lemburWajib, lemburSpl: 0, totalOvertime, displayValue }
+  }
+
+  const overtimeVariances = useMemo(() => {
+    if (mode !== 'attendance') return []
+    const results: Array<{
+      employeeId: number
+      employeeName: string
+      day: number
+      scheduleCode: string
+      actualHours: number
+      expectedHours: number
+      reason: string
+    }> = []
+
+    for (const row of rows) {
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
+      if (staff) continue
+
+      const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+      if (empSiteConfig.overtimeType === 'none') continue
+
+      for (let dayIndex = 0; dayIndex < row.schedule.length; dayIndex++) {
+        const day = dayIndex + 1
+        const scheduleCode = (row.schedule[dayIndex] as string) || 'IN'
+        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        const otInfo = calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+
+        if (otInfo.totalOvertime <= 0) continue
+
+        const isOffDay = scheduleCode === 'OFF' || scheduleCode === 'FB' || scheduleCode === 'Libur' || cell.status === 'off'
+        const isHol = isHoliday(period, day, holidays)
+        const dayKey = classifyOvertimePolicyDay({
+          schedule: row.schedule,
+          dayIndex,
+          isHoliday: isHol,
+          rosterType: empSiteConfig.rosterType,
+        })
+        const shiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
+        const configuredIntervals = empSiteConfig.overtimeConfig?.[dayKey]?.[shiftKey] ?? []
+        const baseExpectedMinutes = configuredIntervals.reduce((sum, item) => {
+          const s = minutesFromTime(item.start)
+          const e = minutesFromTime(item.end)
+          if (s != null && e != null) {
+            return sum + (e >= s ? e - s : e + 1440 - s)
+          }
+          return sum
+        }, 0)
+        const standardHours = baseExpectedMinutes > 0
+          ? baseExpectedMinutes / 60
+          : (dayKey === 'hariLibur' || dayKey === 'hariKe6' || dayKey === 'hariKe7' ? 8 : 4)
+
+        const isHoursDeviated = Math.abs(otInfo.totalOvertime - standardHours) > 0.1
+        if (isHoursDeviated || isOffDay) {
+          let reason = ''
+          if (isOffDay) {
+            reason = `Lembur ${otInfo.totalOvertime}j di jadwal ${scheduleCode} (template standar: ${standardHours}j)`
+          } else if (otInfo.totalOvertime > standardHours) {
+            reason = `Lembur ${otInfo.totalOvertime}j melebihi template standar ${standardHours}j`
+          } else {
+            reason = `Lembur ${otInfo.totalOvertime}j berbeda dari template standar ${standardHours}j`
+          }
+
+          results.push({
+            employeeId: row.employee.id,
+            employeeName: row.employee.name,
+            day,
+            scheduleCode,
+            actualHours: otInfo.totalOvertime,
+            expectedHours: standardHours,
+            reason,
+          })
+        }
+      }
+    }
+    return results
+  }, [mode, rows, period, holidays, manualAttendance, attendanceOverrideByCell, getEmployeeSiteConfig])
+
+  const overtimeVarianceKeySet = useMemo(() => {
+    return new Set(overtimeVariances.map((v) => attendanceKey(v.employeeId, v.day)))
+  }, [overtimeVariances])
+
+  const displayedAttendanceRows = useMemo(() => {
+    let list = rows
+    if (mode === 'attendance') {
+      if (attendanceView === 'ovt' && showVariancesOnly) {
+        list = list.filter((row) =>
+          days.some((day) => overtimeVarianceKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      } else if (showConflictsOnly) {
+        list = list.filter((row) =>
+          days.some((day) => conflictKeySet.has(attendanceKey(row.employee.id, day)))
+        )
+      }
+    }
+
+    if (attendanceSearch.trim()) {
+      const q = attendanceSearch.trim().toLowerCase()
+      list = list.filter(
+        (r) =>
+          r.employee.name.toLowerCase().includes(q) ||
+          (r.employee.section || '').toLowerCase().includes(q) ||
+          (r.employee.department || '').toLowerCase().includes(q)
+      )
+    }
+
+    if (attendanceStatusFilter !== 'all') {
+      list = list.filter((r) => {
+        const cells = days.map((day) => getAttendanceCell(r.employee.id, day))
+        if (attendanceStatusFilter === 'present') return cells.some((c) => c.status === 'present')
+        if (attendanceStatusFilter === 'present_pagi') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return !isNight
+          })
+        }
+        if (attendanceStatusFilter === 'present_malam') {
+          return cells.some((c, idx) => {
+            if (c.status !== 'present') return false
+            const sched = r.schedule[idx] as string
+            const inferred = c.clockIn ? inferShiftFromClockInTime(c.clockIn, effectiveSiteClockConfig) : null
+            const isNight = inferred?.shiftCode === 'night' || (!inferred && (isNightShiftScheduleCode(sched) || isNightShiftScheduleCode(c.shiftCode)))
+            return isNight
+          })
+        }
+        if (attendanceStatusFilter === 'sick') return cells.some((c) => c.status === 'sick')
+        if (attendanceStatusFilter === 'leave') return cells.some((c) => c.status === 'leave')
+        if (attendanceStatusFilter === 'absent') return cells.some((c) => c.status === 'absent')
+        if (attendanceStatusFilter === 'off') return cells.some((c) => c.status === 'off')
+        if (attendanceStatusFilter === 'gb')
+          return (
+            cells.some((c) => c.status === 'field_break') ||
+            r.schedule.some((code) => String(code) === 'GB' || String(code) === 'FB')
+          )
+        return true
+      })
+    }
+
+    return list
+  }, [
+    mode,
+    showConflictsOnly,
+    showVariancesOnly,
+    attendanceView,
+    rows,
+    conflictKeySet,
+    overtimeVarianceKeySet,
+    days,
+    attendanceSearch,
+    attendanceStatusFilter,
+    getAttendanceCell,
+    effectiveSiteClockConfig,
+  ])
+
+
 
   function getAllowanceEligibility(row: (typeof rows)[number], day: number) {
     const scheduleCode = row.schedule[day - 1] as string
@@ -7267,7 +9451,7 @@ export function SchedulingTimesheetWorkspace({
 
   function getAllowanceAmounts(row: (typeof rows)[number], day: number) {
     const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
-    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
     const rule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
       manpower: row.employee.manpower,
       pointOfHire: row.employee.pointOfHire,
@@ -7305,10 +9489,88 @@ export function SchedulingTimesheetWorkspace({
     return { ...eligibility, rule, msaAmount, mealsAmount, specialAllowanceAmount, empSiteConfig, empRate }
   }
 
+  function getCrossPeriodAllowanceAmounts(
+    row: (typeof rows)[number],
+    day: number,
+    itemPeriod: string,
+    isHolidayDay = false
+  ) {
+    if (itemPeriod === period) {
+      return getAllowanceAmounts(row, day)
+    }
+    const scheduleCode = resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, day, 'IN')
+    const cell = resolveCrossPeriodAttendanceCell(row.employee.id, itemPeriod, day, scheduleCode, row.employee)
+    const isFieldBreakDay = scheduleCode === 'FB' || cell.status === 'field_break'
+    const attendanceStatus = cell.status
+
+    let eligibleMsa = false
+    let eligibleMeals = false
+
+    if (!isFieldBreakDay) {
+      if (
+        attendanceStatus === 'empty' ||
+        attendanceStatus === 'leave' ||
+        attendanceStatus === 'absent'
+      ) {
+        eligibleMsa = false
+        eligibleMeals = false
+      } else {
+        const upperCode = String(scheduleCode ?? '').trim().toUpperCase()
+        if (
+          attendanceStatus === 'present' ||
+          attendanceStatus === 'sick' ||
+          upperCode === 'SAKIT' ||
+          upperCode === 'S' ||
+          upperCode === 'SD' ||
+          upperCode === 'ST'
+        ) {
+          eligibleMsa = true
+          eligibleMeals = true
+        } else {
+          eligibleMsa = isMsaEligibleDay(scheduleCode, isFieldBreakDay)
+          eligibleMeals = isMealsEligibleScheduleCode(scheduleCode, isFieldBreakDay)
+        }
+      }
+    }
+
+    const empSiteConfig = getEmployeeSiteConfig(row.employee.siteId)
+    const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
+    const rule = getEmployeeBenefitRule(empSiteConfig.employeeBenefitConfig, {
+      manpower: row.employee.manpower,
+      pointOfHire: row.employee.pointOfHire,
+      workLocations: [
+        row.employee.workLocation,
+        row.employee.siteLocation,
+        row.employee.locationName,
+      ],
+    })
+    const empRate = getAllowanceRateForEmployee(row.employee)
+    const msaAmount =
+      !rule.msa || !eligibleMsa || empSiteConfig.msaType === 'none'
+        ? 0
+        : empSiteConfig.msaType === 'same-all'
+          ? empRate.msaNonStaff
+          : staff
+            ? empRate.msaStaff
+            : empRate.msaNonStaff
+    const mealsAmount =
+      empSiteConfig.mealsType === 'none' || !rule.meals || !eligibleMeals
+        ? 0
+        : staff
+          ? empRate.mealsStaff
+          : empRate.mealsNonStaff
+    const specialAllowanceAmount = getSpecialAllowanceAmount(
+      rule,
+      eligibleMsa,
+      false
+    )
+    return { eligibleMsa, eligibleMeals, rule, msaAmount, mealsAmount, specialAllowanceAmount, empSiteConfig, empRate }
+  }
+
   const payrollRows =
     mode === 'payroll'
       ? rows.map((row) => {
-          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
           let msaDays = 0
           let mealsDays = 0
           let msa = 0
@@ -7367,12 +9629,14 @@ export function SchedulingTimesheetWorkspace({
       : []
   const groupedPayrollRows = [...payrollRows].sort(
     (left, right) =>
-      sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
+      siteRosterSectionOptions.indexOf(left.rosterSection) -
+        siteRosterSectionOptions.indexOf(right.rosterSection) ||
       left.employee.name.localeCompare(right.employee.name)
   )
   const groupedAttendanceOvertimeRows = [...attendanceOvertimeRows].sort(
     (left, right) =>
-      sectionOptions.indexOf(left.rosterSection) - sectionOptions.indexOf(right.rosterSection) ||
+      siteRosterSectionOptions.indexOf(left.rosterSection) -
+        siteRosterSectionOptions.indexOf(right.rosterSection) ||
       left.employee.name.localeCompare(right.employee.name)
   )
 
@@ -7397,7 +9661,7 @@ export function SchedulingTimesheetWorkspace({
                     day,
                     cell.clockIn,
                     cell.clockOut,
-                    isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName),
+                    isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType),
                     row.employee.id
                   ).totalHours
                 : 0
@@ -7431,7 +9695,7 @@ export function SchedulingTimesheetWorkspace({
     let totalTlk = 0
     let totalOvertimeHours = 0
     const items = payrollRows.flatMap((row) => {
-      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
       return days.map((day) => {
         const cell = getAttendanceCell(row.employee.id, day)
         const scheduleCode = row.schedule[day - 1] as string
@@ -7509,10 +9773,15 @@ export function SchedulingTimesheetWorkspace({
     })
   }
 
-  function buildTimesheetExportRows(targetTab: TimesheetExportTab): TimesheetEmployeeExportRow[] {
+  function buildTimesheetExportRows(
+    targetTab: TimesheetExportTab,
+    customDateItems?: CkCutoffDateItem[]
+  ): TimesheetEmployeeExportRow[] {
     const sourceRows = displayedAttendanceRows.length > 0 ? displayedAttendanceRows : rows
+    const isCustomDateRange = Boolean(customDateItems && customDateItems.length > 0)
+
     return sourceRows.map((row) => {
-      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+      const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
       const daysData: TimesheetDayData[] = []
       let attPresent = 0
       let attOff = 0
@@ -7522,19 +9791,62 @@ export function SchedulingTimesheetWorkspace({
       let attTotalHours = 0
       let allowanceTotal = 0
       let overtimeTotal = 0
+      let overtimeSplTotal = 0
+      let overtimePayrollEquivalentTotal = 0
       let payrollOvertimeTotal = 0
+      let payrollMandatoryTotal = 0
+      let payrollSplTotal = 0
       let payrollWorkDaysPresent = 0
       let payrollOffDaysPresent = 0
 
-      for (const day of days) {
-        const scheduleCode = row.schedule[day - 1] as string
-        const cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+      const iterItems = isCustomDateRange
+        ? customDateItems!
+        : days.map((d) => ({
+            day: d,
+            period,
+            isHoliday: Boolean(holidaysByDay.get(d)),
+            isWeekend: isWeekend(period, d),
+          }))
+
+      for (const item of iterItems) {
+        const day = item.day
+        const itemPeriod = item.period || period
+        const isCurrentPeriod = itemPeriod === period
+
+        let scheduleCode = ''
+        let cell: ManualAttendanceCell
+
+        if (isCurrentPeriod) {
+          scheduleCode = (row.schedule[day - 1] as string) || ''
+          cell = getAttendanceCell(row.employee.id, day, scheduleCode)
+        } else {
+          // Resolve for cross-period (e.g. previous month 16..30)
+          const targetPlan = savedPlans.find(
+            (p) =>
+              p.period === itemPeriod &&
+              (String(p.siteId) === siteId ||
+                p.fixedSchedule?.some((it) => it.employeeId === row.employee.id) ||
+                p.draftSchedule?.some((it) => it.employeeId === row.employee.id))
+          )
+          const planSched = (
+            targetPlan?.fixedSchedule?.length ? targetPlan.fixedSchedule : targetPlan?.draftSchedule
+          )?.find((it) => it.employeeId === row.employee.id)?.schedule
+          scheduleCode = planSched?.[day - 1] || ''
+          cell = resolveCrossPeriodAttendanceCell(
+            row.employee.id,
+            itemPeriod,
+            day,
+            scheduleCode,
+            row.employee
+          )
+        }
+
         const isFieldBreakDay =
           scheduleCode === 'FB' ||
           cell.status === 'field_break' ||
-          (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false)
+          (isCurrentPeriod && (fieldBreakDaysByEmployee.get(row.employee.id)?.has(day) ?? false))
         const isRosterOff = scheduleCode === 'OFF' || scheduleCode === 'Libur'
-        const isHolidayDay = Boolean(holidaysByDay.get(day))
+        const isHolidayDay = Boolean(item.isHoliday)
         const isWorkDay = !isRosterOff
         const isAbsent =
           cell.status === 'leave' || cell.status === 'sick' || cell.status === 'absent'
@@ -7550,7 +9862,15 @@ export function SchedulingTimesheetWorkspace({
                 ? 'Alpha'
                 : '-'
 
-        const allowance = getAllowanceAmounts(row, day)
+        const allowance = isCurrentPeriod
+          ? getAllowanceAmounts(row, day)
+          : {
+              rule: { msa: false, meals: false, specialAllowance: false },
+              msaAmount: 0,
+              mealsAmount: 0,
+              specialAllowanceAmount: 0,
+              empSiteConfig: getEmployeeSiteConfig(row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))),
+            }
 
         if (targetTab === 'attendance') {
           let cellHours = 0
@@ -7704,30 +10024,17 @@ export function SchedulingTimesheetWorkspace({
               cellType = 'other'
             }
           } else {
-            if (
-              cell.overtimeHours !== undefined &&
-              cell.overtimeHours !== null &&
-              cell.overtimeHours > 0
-            ) {
-              numericVal = roundOvertimeHours(cell.overtimeHours as number)
-              displayVal = numericVal
-              cellType = 'ot'
-            } else {
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              )
-              if (overtime.totalHours > 0) {
-                numericVal = overtime.totalHours
-                displayVal = overtime.totalHours
+              const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
+              const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
+              const splHours = roundOvertimeHours(buckets.splHours)
+              const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+              const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+              const effectiveMandatory = manualVal !== null ? manualVal : mandatoryHours
+
+              if (effectiveMandatory > 0) {
+                numericVal = effectiveMandatory
+                displayVal = numericVal
                 cellType = 'ot'
-              } else if (overtime.unauthorizedMinutes > 0) {
-                displayVal = 'SPL'
-                cellType = 'spl'
               } else if (scheduleCode === 'ST') {
                 displayVal = 'ST'
                 cellType = 'st'
@@ -7741,7 +10048,18 @@ export function SchedulingTimesheetWorkspace({
                 displayVal = '-'
                 cellType = 'dash'
               }
-            }
+              overtimeSplTotal += splHours
+              const empSiteId = row.employee.siteId ?? (siteId === 'all' ? null : Number(siteId))
+              const empSiteConfig = getEmployeeSiteConfig(empSiteId)
+              const dayAttendanceType = classifyPayrollAttendanceDay(
+                row.schedule, period, day - 1, empSiteConfig.rosterType, holidays
+              )
+              const totalHoursForDay = manualVal !== null ? manualVal : buckets.totalHours
+              if (totalHoursForDay > 0) {
+                overtimePayrollEquivalentTotal += roundOvertimeHours(
+                  calculatePayrollOvertimeValue(empSiteConfig.rosterType, dayAttendanceType, totalHoursForDay, overtimeVariables)
+                )
+              }
             overtimeTotal += numericVal
           }
 
@@ -7807,32 +10125,22 @@ export function SchedulingTimesheetWorkspace({
               payrollOffDaysPresent++
             }
 
-            let rawOtHours = 0
-            if (
-              cell.overtimeHours !== undefined &&
-              cell.overtimeHours !== null &&
-              cell.overtimeHours > 0
-            ) {
-              rawOtHours = roundOvertimeHours(cell.overtimeHours as number)
-            } else {
-              const overtime = calculateDayOvertime(
-                row.schedule,
-                day,
-                cell.clockIn,
-                cell.clockOut,
-                staff,
-                row.employee.id
-              )
-              if (overtime.totalHours > 0) {
-                rawOtHours = overtime.totalHours
-              }
-            }
+            const buckets = overtimeHoursBySource(row.schedule, day, row.employee.id, staff)
+            const mandatoryHours = roundOvertimeHours(buckets.mandatoryHours)
+            const splHours = roundOvertimeHours(buckets.splHours)
+            const hasManualOverride = cell.overtimeHours !== undefined && cell.overtimeHours !== null
+            const manualVal = hasManualOverride ? Number(cell.overtimeHours) : null
+            const effectiveMandatory = manualVal !== null ? manualVal : mandatoryHours
+            const totalHoursForDay = manualVal !== null ? manualVal : buckets.totalHours
 
-            if (rawOtHours > 0) {
+            payrollMandatoryTotal += effectiveMandatory
+            payrollSplTotal += splHours
+
+            if (totalHoursForDay > 0) {
               const calculatedVal = calculatePayrollOvertimeValue(
                 empRosterType,
                 dayAttendanceType,
-                rawOtHours,
+                totalHoursForDay,
                 overtimeVariables
               )
               numericVal = roundOvertimeHours(calculatedVal)
@@ -7870,8 +10178,15 @@ export function SchedulingTimesheetWorkspace({
         },
         allowanceTotal,
         overtimeTotal: roundOvertimeHours(overtimeTotal),
+        overtimeSplitSummary: {
+          mandatoryHours: roundOvertimeHours(overtimeTotal),
+          splHours: roundOvertimeHours(overtimeSplTotal),
+          payrollEquivalentHours: roundOvertimeHours(overtimePayrollEquivalentTotal),
+        },
         payrollOvertimeSummary: {
           totalOvertimeCalculated: roundOvertimeHours(payrollOvertimeTotal),
+          mandatoryHours: roundOvertimeHours(payrollMandatoryTotal),
+          splHours: roundOvertimeHours(payrollSplTotal),
           workDaysPresent: payrollWorkDaysPresent,
           offDaysPresent: payrollOffDaysPresent,
         },
@@ -7898,9 +10213,14 @@ export function SchedulingTimesheetWorkspace({
     }
   }
 
-  async function exportTimesheetTab(tab: TimesheetExportTab) {
+  async function exportTimesheetTab(
+    tab: TimesheetExportTab,
+    customDateHeaders?: CkCutoffDateItem[],
+    customCutoffLabel?: string
+  ) {
     try {
-      const tabRows = buildTimesheetExportRows(tab)
+      const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
+      const tabRows = buildTimesheetExportRows(tab, customDateHeaders)
       if (tabRows.length === 0) {
         toast.error('Tidak ada data karyawan untuk diekspor.')
         return
@@ -7923,27 +10243,37 @@ export function SchedulingTimesheetWorkspace({
         rateText = `Rate: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} · Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`
       }
 
+      const cleanSite = (site?.name ?? 'Semua Site').replace(/\s+/g, '_')
+      const cutoffSuffix = customCutoffLabel ? `_${customCutoffLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}` : ''
+      const customFileName = isCustom
+        ? `Rekap_${tab}_${cleanSite}${cutoffSuffix}.xlsx`
+        : undefined
+
       await exportTimesheetWorkspaceTabToExcel({
         tab,
         siteName: site?.name ?? 'Semua Site',
         period,
-        days,
+        days: isCustom ? customDateHeaders!.map((dh) => dh.day) : days,
+        dateHeaders: customDateHeaders,
         rows: tabRows,
         weekdayLabel: (p, d) => weekdayLabel(p, d),
         holidaysByDay,
         info: {
           rateText,
           project: rate.project,
+          cutoffLabel: customCutoffLabel,
         },
+        customFileName,
       })
-      toast.success(`Export Excel ${attendanceTabLabel(tab)} berhasil diunduh!`)
+      toast.success(`Export Excel ${attendanceTabLabel(tab)}${customCutoffLabel ? ` (${customCutoffLabel})` : ''} berhasil diunduh!`)
     } catch (err) {
       toast.error('Gagal mengekspor Excel: ' + (err instanceof Error ? err.message : String(err)))
     }
   }
 
-  async function exportAllTimesheetTabs() {
+  async function exportAllTimesheetTabs(customDateHeaders?: CkCutoffDateItem[], customCutoffLabel?: string) {
     try {
+      const isCustom = Boolean(customDateHeaders && customDateHeaders.length > 0)
       const allTabs: TimesheetExportTab[] = ['attendance', 'lokasi', 'msa', 'meals', 'ovt']
       const tabsData = allTabs.map((t) => {
         let rateText: string | undefined = undefined
@@ -7965,25 +10295,159 @@ export function SchedulingTimesheetWorkspace({
 
         return {
           tab: t,
-          rows: buildTimesheetExportRows(t),
+          rows: buildTimesheetExportRows(t, customDateHeaders),
           info: {
             rateText,
             project: rate.project,
+            cutoffLabel: customCutoffLabel,
           },
         }
       })
 
+      const cleanSite = (site?.name ?? 'Semua Site').replace(/\s+/g, '_')
+      const cutoffSuffix = customCutoffLabel ? `_${customCutoffLabel.replace(/[^a-zA-Z0-9_-]/g, '_')}` : ''
+      const customFileName = isCustom
+        ? `Rekap_Timesheet_5_Tab_${cleanSite}${cutoffSuffix}.xlsx`
+        : undefined
+
       await exportTimesheetWorkspaceAllTabsToExcel({
         siteName: site?.name ?? 'Semua Site',
         period,
-        days,
+        days: isCustom ? customDateHeaders!.map((dh) => dh.day) : days,
+        dateHeaders: customDateHeaders,
+        cutoffLabel: customCutoffLabel,
+        customFileName,
         tabs: tabsData,
         weekdayLabel: (p, d) => weekdayLabel(p, d),
         holidaysByDay,
       })
-      toast.success('Export Excel 5 Tab Lengkap berhasil diunduh!')
+      toast.success(`Export Excel 5 Tab Lengkap${customCutoffLabel ? ` (${customCutoffLabel})` : ''} berhasil diunduh!`)
     } catch (err) {
       toast.error('Gagal mengekspor Excel 5 Tab: ' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  async function handleDownloadCustomDateExcel() {
+    if (!customExportStartDate || !customExportEndDate) {
+      toast.error('Silakan tentukan tanggal mulai dan tanggal selesai terlebih dahulu.')
+      return
+    }
+    if (customExportStartDate > customExportEndDate) {
+      toast.error('Tanggal mulai tidak boleh lebih besar dari tanggal selesai.')
+      return
+    }
+
+    setIsDownloadingCustomExcel(true)
+    try {
+      const customDateHeaders = buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+      if (customDateHeaders.length === 0) {
+        toast.error('Rentang tanggal tidak valid.')
+        return
+      }
+
+      const cutoffLabel = formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+
+      if (exportDialogActiveTab === 'all_5_tabs') {
+        await exportAllTimesheetTabs(customDateHeaders, cutoffLabel)
+      } else if (exportDialogActiveTab === 'checkin-checkout' || exportDialogActiveTab === 'work-hours') {
+        await exportAttendanceGrid(exportDialogActiveTab as 'checkin-checkout' | 'work-hours', undefined, customDateHeaders, cutoffLabel)
+      } else if (exportDialogActiveTab === 'attendance') {
+        await exportTimesheetTab('attendance', customDateHeaders, cutoffLabel)
+      } else if (
+        exportDialogActiveTab === 'lokasi' ||
+        exportDialogActiveTab === 'msa' ||
+        exportDialogActiveTab === 'meals' ||
+        exportDialogActiveTab === 'ovt' ||
+        exportDialogActiveTab === 'ovt_summary' ||
+        exportDialogActiveTab === 'ovt_record'
+      ) {
+        const targetTab: TimesheetExportTab =
+          exportDialogActiveTab === 'ovt_summary' || exportDialogActiveTab === 'ovt_record'
+            ? 'ovt'
+            : (exportDialogActiveTab as TimesheetExportTab)
+        await exportTimesheetTab(targetTab, customDateHeaders, cutoffLabel)
+      } else {
+        await exportAttendanceGrid('attendance', undefined, customDateHeaders, cutoffLabel)
+      }
+
+      setExportConfigDialogOpen(false)
+    } catch (err) {
+      toast.error('Gagal mengunduh Excel: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setIsDownloadingCustomExcel(false)
+    }
+  }
+
+  async function handleDownloadCustomDatePdf(isPreview = false) {
+    if (!customExportStartDate || !customExportEndDate) {
+      toast.error('Silakan tentukan tanggal mulai dan tanggal selesai terlebih dahulu.')
+      return
+    }
+    if (customExportStartDate > customExportEndDate) {
+      toast.error('Tanggal mulai tidak boleh lebih besar dari tanggal selesai.')
+      return
+    }
+
+    const customDateHeaders = buildCustomDateRange(customExportStartDate, customExportEndDate, holidays)
+    if (customDateHeaders.length === 0) {
+      toast.error('Rentang tanggal tidak valid.')
+      return
+    }
+
+    const cutoffLabel = formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)
+
+    if (exportDialogActiveTab === 'ovt_summary') {
+      if (isPreview) {
+        await previewSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('ovt', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'ovt' || exportDialogActiveTab === 'ovt_record') {
+      if (isPreview) {
+        await previewOvertimeRecordOnlyPdf(customDateHeaders, cutoffLabel)
+      } else {
+        await downloadOvertimeRecordOnlyPdf(customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'ovt_spl') {
+      if (isPreview) {
+        await previewSummaryPdf('ovt_spl', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('ovt_spl', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'attendance') {
+      if (isPreview) {
+        await previewSummaryPdf('attendance', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('attendance', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'msa') {
+      if (isPreview) {
+        await previewSummaryPdf('msa', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('msa', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'meals') {
+      if (isPreview) {
+        await previewSummaryPdf('meals', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('meals', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else if (exportDialogActiveTab === 'lokasi') {
+      if (isPreview) {
+        await previewSummaryPdf('lokasi', undefined, customDateHeaders, cutoffLabel)
+      } else {
+        await downloadSummaryPdf('lokasi', undefined, customDateHeaders, cutoffLabel)
+      }
+    } else {
+      if (isPreview) {
+        await previewAllSiteOvertimePdf(customDateHeaders, cutoffLabel)
+      } else {
+        await bulkDownloadOvertimePdf(includeTotalOvertime, customDateHeaders, cutoffLabel)
+      }
+    }
+
+    if (!isPreview) {
+      setExportConfigDialogOpen(false)
     }
   }
 
@@ -8106,12 +10570,7 @@ export function SchedulingTimesheetWorkspace({
                 <NativeSelect
                   value={siteConfig.rosterType}
                   onValueChange={(value) => updateSiteConfig('rosterType', value as SiteRosterType)}
-                  options={[
-                    { value: '5:2', label: 'Roster 5 : 2' },
-                    { value: '6:1', label: 'Roster 6 : 1' },
-                    { value: '13:1', label: 'Roster 13 : 1' },
-                    { value: 'vale', label: 'Vale Sorowako' },
-                  ]}
+                  options={ROSTER_TYPE_OPTIONS}
                 />
               </div>
             ) : null}
@@ -8180,7 +10639,7 @@ export function SchedulingTimesheetWorkspace({
                         <td className="px-4 py-3 font-semibold">{row.site.name}</td>
                         <td className="px-4 py-3">{row.employeeCount}</td>
                         <td className="px-4 py-3">{scheduleTypeLabel(row.scheduleType)}</td>
-                        <td className="px-4 py-3">{row.rosterType}</td>
+                        <td className="px-4 py-3">{rosterTypeLabel(row.rosterType)}</td>
                         <td className="px-4 py-3">
                           <Badge variant={row.rosterConfigured ? 'default' : 'secondary'}>
                             {row.rosterConfigured ? 'Sudah setting' : 'Belum setting'}
@@ -8773,7 +11232,7 @@ export function SchedulingTimesheetWorkspace({
                   {canEdit && (
                     <Button
                       size="sm"
-                      disabled={siteId === 'all' || isFinalized || isSavingSiteConfig}
+                      disabled={siteId === 'all' || (mode !== 'setup' && isFinalized) || isSavingSiteConfig}
                       onClick={() => void saveSiteConfig()}
                     >
                       {isSavingSiteConfig ? (
@@ -8828,12 +11287,7 @@ export function SchedulingTimesheetWorkspace({
                           onValueChange={(value) =>
                             updateSiteConfig('rosterTypeStaff', value as SiteRosterType)
                           }
-                          options={[
-                            { value: '5:2', label: 'Roster 5 : 2' },
-                            { value: '6:1', label: 'Roster 6 : 1' },
-                            { value: '13:1', label: 'Roster 13 : 1' },
-                            { value: 'vale', label: 'Vale Sorowako' },
-                          ]}
+                          options={ROSTER_TYPE_OPTIONS}
                         />
                       </div>
                       <div className="space-y-1.5">
@@ -8854,12 +11308,7 @@ export function SchedulingTimesheetWorkspace({
                             updateSiteConfig('rosterTypeNonStaff', value as SiteRosterType)
                             updateSiteConfig('rosterType', value as SiteRosterType)
                           }}
-                          options={[
-                            { value: '6:1', label: 'Roster 6 : 1' },
-                            { value: '5:2', label: 'Roster 5 : 2' },
-                            { value: '13:1', label: 'Roster 13 : 1' },
-                            { value: 'vale', label: 'Vale Sorowako' },
-                          ]}
+                          options={ROSTER_TYPE_OPTIONS}
                         />
                       </div>
                     </>
@@ -8873,12 +11322,7 @@ export function SchedulingTimesheetWorkspace({
                         onValueChange={(value) =>
                           updateSiteConfig('rosterType', value as SiteRosterType)
                         }
-                        options={[
-                          { value: '5:2', label: 'Roster 5 : 2' },
-                          { value: '6:1', label: 'Roster 6 : 1' },
-                          { value: '13:1', label: 'Roster 13 : 1' },
-                          { value: 'vale', label: 'Vale Sorowako' },
-                        ]}
+                        options={ROSTER_TYPE_OPTIONS}
                       />
                     </div>
                   )}
@@ -8911,6 +11355,50 @@ export function SchedulingTimesheetWorkspace({
                         { value: 'none', label: 'Tidak dihitung' },
                       ]}
                     />
+                  </div>
+                </div>
+
+                <div className="border-border/30 border-t px-4 py-4">
+                  <div className="rounded-xl border border-border/60 bg-surface-container-low/50 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <Label className="text-foreground text-xs font-bold tracking-tight">
+                          Wajib Approval Online Summary SPL
+                        </Label>
+                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                          Aktifkan agar rekap SPL bulanan di site ini diproses melalui approval bertingkat online (PJO &rarr; Leader) dan otomatis terkirim saat cut-off.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={Boolean(siteConfig.requiresOnlineOvertimeSummary)}
+                        onCheckedChange={(checked) =>
+                          updateSiteConfig('requiresOnlineOvertimeSummary', checked)
+                        }
+                      />
+                    </div>
+                    {siteConfig.requiresOnlineOvertimeSummary && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-border/40 text-xs">
+                        <Label className="text-muted-foreground text-[11px] font-semibold whitespace-nowrap">
+                          Tanggal Cut-off Bulanan:
+                        </Label>
+                        <div className="w-20">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={31}
+                            value={siteConfig.overtimeSummaryCutoffDay ?? 25}
+                            onChange={(e) =>
+                              updateSiteConfig(
+                                'overtimeSummaryCutoffDay',
+                                Math.max(1, Math.min(31, Number(e.target.value) || 25))
+                              )
+                            }
+                            className="h-8 text-center font-bold text-xs"
+                          />
+                        </div>
+                        <span className="text-muted-foreground text-[11px]">setiap bulannya (default: tgl 25)</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="border-border/30 border-t px-4 py-4">
@@ -9518,6 +12006,26 @@ export function SchedulingTimesheetWorkspace({
                         ? '✓ Mengikuti Template: Overtime wajib sesuai konfigurasi template (misal 4 jam) otomatis diakui tanpa perlukan SPL. Hanya jika lembur MELEBIHI jam wajib baru memerlukan SPL.'
                         : '✓ Realtime: Memperhitungkan jam aktual clock in/out dan seluruh jam di luar shift normal memerlukan persetujuan SPL.'}
                     </p>
+                    <div className="mt-3.5 border-t border-border/40 pt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">Wajib SPL untuk Lembur di Luar Shift / Hari OFF</p>
+                        <p className="text-muted-foreground mt-0.5 text-[11px]">
+                          {siteConfig.overtimeConfig.requireSpl
+                            ? "Wajib SPL: Jam lembur di luar sesi wajib atau di hari OFF memerlukan dokumen SPL approved agar terhitung."
+                            : "Tidak Wajib SPL: Jam kerja aktual otomatis dihitung sebagai lembur tanpa memerlukan dokumen SPL."}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {siteConfig.overtimeConfig.requireSpl ? "Wajib SPL" : "Bebas (Data Aktual)"}
+                        </span>
+                        <Switch
+                          aria-label="Wajib SPL untuk Lembur"
+                          checked={Boolean(siteConfig.overtimeConfig.requireSpl)}
+                          onCheckedChange={updateRequireSpl}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="border-border/40 bg-background mb-4 rounded-xl border p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -9810,283 +12318,600 @@ export function SchedulingTimesheetWorkspace({
                         Konfigurasi PDF &amp; Tanda Tangan
                       </p>
                       <p className="text-muted-foreground text-xs">
-                        Daftar penandatangan dan logo customer muncul di PDF Overtime Record &amp;
-                        Site Allowance.
+                        Atur alur tanda tangan terpusat atau pisahkan khusus per jenis dokumen PDF summary.
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider whitespace-nowrap uppercase">
-                        Preset TTD:
-                      </Label>
-                      <Select
-                        onValueChange={(val) => {
-                          if (
-                            val === 'repair' ||
-                            val === 'services' ||
-                            val === 'technical' ||
-                            val === 'hse'
-                          ) {
-                            applySignaturePreset(val)
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="border-border/70 h-8.5 min-w-[190px] border bg-white px-3 text-xs font-medium shadow-none">
-                          <SelectValue placeholder="Pilih Preset TTD..." />
-                        </SelectTrigger>
-                        <SelectContent className="z-50 bg-white shadow-md">
-                          <SelectItem value="repair" className="cursor-pointer text-xs font-medium">
-                            Repair TTD
-                          </SelectItem>
-                          <SelectItem
-                            value="services"
-                            className="cursor-pointer text-xs font-medium"
-                          >
-                            Services TTD
-                          </SelectItem>
-                          <SelectItem
-                            value="technical"
-                            className="cursor-pointer text-xs font-medium"
-                          >
-                            Technical TTD
-                          </SelectItem>
-                          <SelectItem value="hse" className="cursor-pointer text-xs font-medium">
-                            HSE TTD
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {activePdfSummaryTab === 'default' && (
+                      <div className="flex items-center gap-2">
+                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-wider whitespace-nowrap uppercase">
+                          Preset TTD:
+                        </Label>
+                        <Select
+                          onValueChange={(val) => {
+                            if (val) {
+                              applySignaturePreset(val)
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="border-border/70 h-8.5 min-w-[210px] border bg-white px-3 text-xs font-medium shadow-none">
+                            <SelectValue placeholder="Pilih Preset TTD Site / Section..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-50 bg-white shadow-md max-h-64 overflow-y-auto">
+                            <SelectItem value="default" className="cursor-pointer text-xs font-semibold text-blue-700">
+                              Preset Default Site ({site?.name || 'Site'})
+                            </SelectItem>
+                            {availableSiteSections.map((sec) => (
+                              <SelectItem
+                                key={sec.name}
+                                value={sec.name}
+                                className="cursor-pointer text-xs font-medium"
+                              >
+                                TTD Section: {sec.name} ({sec.count})
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="repair" className="cursor-pointer text-xs font-medium">
+                              Preset Umum: Repair TTD
+                            </SelectItem>
+                            <SelectItem
+                              value="services"
+                              className="cursor-pointer text-xs font-medium"
+                            >
+                              Preset Umum: Services TTD
+                            </SelectItem>
+                            <SelectItem
+                              value="technical"
+                              className="cursor-pointer text-xs font-medium"
+                            >
+                              Preset Umum: Technical TTD
+                            </SelectItem>
+                            <SelectItem value="hse" className="cursor-pointer text-xs font-medium">
+                              Preset Umum: HSE TTD
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
-                  {/* Alur Tanda Tangan Internal */}
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
-                        Internal
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        Alur Penandatangan Internal (PT Chitra Paratama)
-                      </span>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Dibuat oleh
-                        </Label>
-                        <SearchableSelect
-                          label="Dibuat oleh"
-                          value={siteConfig.pdfConfig.preparedBy}
-                          onValueChange={(v) => updatePdfConfig('preparedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder={currentEmployeeName || 'Pilih atau ketik pembuat...'}
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Approved by
-                        </Label>
-                        <SearchableSelect
-                          label="Approved by"
-                          value={siteConfig.pdfConfig.pjoLeader}
-                          onValueChange={(v) => updatePdfConfig('pjoLeader', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau cari Approved by..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Approved by
-                        </Label>
-                        <SearchableSelect
-                          label="Approved by"
-                          value={siteConfig.pdfConfig.approvedBy}
-                          onValueChange={(v) => updatePdfConfig('approvedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder={`Plant. SPV Department (${site?.name || 'Site'})`}
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          Diketahui oleh
-                        </Label>
-                        <SearchableSelect
-                          label="Diketahui oleh"
-                          value={siteConfig.pdfConfig.hrName}
-                          onValueChange={(v) => updatePdfConfig('hrName', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau ketik nama HR..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
+
+                  {/* 5 Summary Documents + Default Tabs */}
+                  <div className="mb-4 space-y-2">
+                    <Label className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                      Pilih Dokumen PDF untuk Mengatur Tanda Tangan:
+                    </Label>
+                    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-lg border border-slate-200/80">
+                      {[
+                        { id: 'default' as const, label: 'Default / Umum' },
+                        { id: 'ot' as const, label: '1. OVERTIME SUMMARY' },
+                        { id: 'spl' as const, label: '2. OVERTIME SPL SUMMARY' },
+                        { id: 'msa' as const, label: '3. MSA summary' },
+                        { id: 'meals' as const, label: '4. MLS summary' },
+                        { id: 'lokasi' as const, label: '5. TU summary' },
+                      ].map((tab) => {
+                        const isSelected = activePdfSummaryTab === tab.id
+                        const hasCustom =
+                          tab.id !== 'default' &&
+                          Boolean(
+                            siteConfig.pdfConfig.summarySignatures?.[tab.id]?.preparedBy ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.pjoLeader ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.approvedBy ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.hrName ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.externalPreparedBy ||
+                              siteConfig.pdfConfig.summarySignatures?.[tab.id]?.externalApprovedBy
+                          )
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActivePdfSummaryTab(tab.id)}
+                            className={cn(
+                              'px-2.5 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer',
+                              isSelected
+                                ? 'bg-white text-indigo-700 shadow-xs font-bold border border-slate-200/90'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                            )}
+                          >
+                            <span>{tab.label}</span>
+                            {hasCustom ? (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                                title="Tanda tangan kustom aktif"
+                              />
+                            ) : null}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 
-                  {/* Alur Tanda Tangan Eksternal */}
-                  <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
-                        Eksternal
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        Alur Penandatangan Eksternal (Customer / Pihak Luar)
-                      </span>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          1. Dibuat oleh
-                        </Label>
-                        <SearchableSelect
-                          label="Dibuat oleh"
-                          value={siteConfig.pdfConfig.externalPreparedBy || ''}
-                          onValueChange={(v) => updatePdfConfig('externalPreparedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau ketik nama pembuat eksternal..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
-                          <span>2. Approved by</span>
-                          <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
-                            (nama spv)
+                  {activePdfSummaryTab !== 'default' ? (
+                    <div className="space-y-4 rounded-xl border border-indigo-100 bg-indigo-50/30 p-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center rounded-md border border-indigo-200 bg-indigo-100/70 px-2 py-0.5 text-[10px] font-bold text-indigo-800 uppercase">
+                            Khusus Dokumen
                           </span>
-                        </Label>
-                        <SearchableSelect
-                          label="Approved by (Nama SPV)"
-                          value={siteConfig.pdfConfig.externalApprovedBy || ''}
-                          onValueChange={(v) => updatePdfConfig('externalApprovedBy', v)}
-                          options={employees.map((e) => ({
-                            value: e.name,
-                            label: e.role ? `${e.name} (${e.role})` : e.name,
-                          }))}
-                          placeholder="Pilih atau ketik nama SPV Customer..."
-                          allowCustom={true}
-                          widthClassName="w-full"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-foreground text-xs font-semibold">
-                        Penandatangan Tambahan
-                      </p>
-                      <Button size="sm" variant="outline" onClick={addCustomSigner}>
-                        + Tambah TTD
-                      </Button>
-                    </div>
-                    {siteConfig.pdfConfig.customSigners.length > 0 ? (
-                      <div className="overflow-auto">
-                        <table className="w-full min-w-[500px] text-sm">
-                          <thead>
-                            <tr className="bg-surface-container-low text-muted-foreground text-left text-[10px] tracking-[0.12em] uppercase">
-                              <th className="px-3 py-2 font-medium">Label</th>
-                              <th className="px-3 py-2 font-medium">Nama</th>
-                              <th className="w-20 px-3 py-2 font-medium">Aksi</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {siteConfig.pdfConfig.customSigners.map((s, i) => (
-                              <tr
-                                key={`pdfsig-${i}`}
-                                className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
-                              >
-                                <td className="px-3 py-2">
-                                  <Input
-                                    value={s.label}
-                                    onChange={(e) => updateCustomSigner(i, 'label', e.target.value)}
-                                    placeholder="Misal: Mengetahui"
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <SearchableSelect
-                                    label="Penandatangan"
-                                    value={s.name}
-                                    onValueChange={(v) => updateCustomSigner(i, 'name', v)}
-                                    options={employees.map((e) => ({
-                                      value: e.name,
-                                      label: e.role ? `${e.name} (${e.role})` : e.name,
-                                    }))}
-                                    placeholder="Pilih atau ketik nama..."
-                                    allowCustom={true}
-                                    widthClassName="w-full"
-                                  />
-                                </td>
-                                <td className="px-3 py-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => removeCustomSigner(i)}
-                                  >
-                                    <X className="size-3.5" />
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="mt-4">
-                    <p className="text-foreground mb-2 text-xs font-semibold">Logo Customer</p>
-                    <p className="text-muted-foreground mb-3 text-xs">
-                      Upload logo customer. Muncul di pojok kanan PDF. Format PNG/JPG, maks 2MB.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-4">
-                      <label className="bg-surface-container-low hover:bg-surface-container-high flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
-                        <Upload className="size-4" /> Pilih Logo
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/jpg"
-                          className="hidden"
-                          onChange={handleLogoUpload}
-                        />
-                      </label>
-                      {siteConfig.pdfConfig.logoUrl ? (
-                        <div className="relative inline-flex">
-                          <img
-                            src={siteConfig.pdfConfig.logoUrl}
-                            alt="Customer Logo"
-                            className="h-14 w-auto rounded-lg border object-contain"
-                          />
-                          <button
-                            type="button"
-                            className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-rose-600 text-white hover:bg-rose-700"
-                            onClick={() => updatePdfConfig('logoUrl', '')}
-                          >
-                            <X className="size-3" />
-                          </button>
+                          <span className="text-xs font-semibold text-slate-800">
+                            {activePdfSummaryTab === 'ot' && '1. OVERTIME SUMMARY'}
+                            {activePdfSummaryTab === 'spl' && '2. OVERTIME SPL SUMMARY'}
+                            {activePdfSummaryTab === 'msa' && '3. MSA summary (Meal & Site Allowance)'}
+                            {activePdfSummaryTab === 'meals' && '4. MLS summary (Meals Allowance)'}
+                            {activePdfSummaryTab === 'lokasi' && '5. TU summary (Tunjangan Khusus / Lokasi)'}
+                          </span>
                         </div>
-                      ) : null}
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px] bg-white border-slate-200"
+                            onClick={() => copyDefaultSignaturesToSummary(activePdfSummaryTab)}
+                          >
+                            Salin dari Default
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px] bg-white border-slate-200 text-slate-600"
+                            onClick={() => resetSummarySignaturesToDefault(activePdfSummaryTab)}
+                          >
+                            Reset ke Default
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Internal Signatures for this summary */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
+                            Internal
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">
+                            Alur Penandatangan Internal untuk Ringkasan Ini
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Dibuat oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.preparedBy ??
+                                "Muhammad As'ar Fauzan"
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'preparedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.preparedBy ||
+                                "Muhammad As'ar Fauzan"
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by 1
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by 1"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.pjoLeader ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'pjoLeader', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.pjoLeader
+                                  ? `Default: ${siteConfig.pdfConfig.pjoLeader}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by 2
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by 2"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.approvedBy ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'approvedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.approvedBy
+                                  ? `Default: ${siteConfig.pdfConfig.approvedBy}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Diketahui oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Diketahui oleh"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]?.hrName ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'hrName', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.hrName
+                                  ? `Default: ${siteConfig.pdfConfig.hrName}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Eksternal Signatures for this summary */}
+                      <div className="border-border/40 mt-3 space-y-2 border-t pt-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                            Eksternal
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">
+                            Alur Penandatangan Eksternal untuk Ringkasan Ini
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              1. Dibuat oleh (Eksternal)
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]
+                                  ?.externalPreparedBy ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'externalPreparedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.externalPreparedBy
+                                  ? `Default: ${siteConfig.pdfConfig.externalPreparedBy}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              <span>2. Approved by (Eksternal)</span>
+                              <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
+                                (nama spv)
+                              </span>
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by (Nama SPV)"
+                              value={
+                                siteConfig.pdfConfig.summarySignatures?.[activePdfSummaryTab]
+                                  ?.externalApprovedBy ?? ''
+                              }
+                              onValueChange={(v) =>
+                                updateSummaryPdfConfig(activePdfSummaryTab, 'externalApprovedBy', v)
+                              }
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                siteConfig.pdfConfig.externalApprovedBy
+                                  ? `Default: ${siteConfig.pdfConfig.externalApprovedBy}`
+                                  : 'Mengikuti Default...'
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      {/* Alur Tanda Tangan Internal */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase">
+                            Internal
+                          </span>
+                          <span className="text-xs font-semibold text-slate-700">
+                            Alur Penandatangan Internal (PT Chitra Paratama)
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Dibuat oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={siteConfig.pdfConfig.preparedBy}
+                              onValueChange={(v) => updatePdfConfig('preparedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={currentEmployeeName || 'Pilih atau ketik pembuat...'}
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by"
+                              value={siteConfig.pdfConfig.pjoLeader}
+                              onValueChange={(v) => updatePdfConfig('pjoLeader', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau cari Approved by..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Approved by
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by"
+                              value={siteConfig.pdfConfig.approvedBy}
+                              onValueChange={(v) => updatePdfConfig('approvedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder={
+                                site?.name && /kpc/i.test(site.name)
+                                  ? 'Leader WS.KPC'
+                                  : `Plant. SPV Department (${site?.name || 'Site'})`
+                              }
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              Diketahui oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Diketahui oleh"
+                              value={siteConfig.pdfConfig.hrName}
+                              onValueChange={(v) => updatePdfConfig('hrName', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau ketik nama HR..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Alur Tanda Tangan Eksternal */}
+                      <div className="border-border/40 mt-4 space-y-2 border-t pt-3.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 uppercase">
+                              Eksternal
+                            </span>
+                            <span className="text-xs font-semibold text-slate-700">
+                              Alur Penandatangan Eksternal (Customer / Pihak Luar)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] text-muted-foreground mr-1">Default:</span>
+                            {([2, 3, 4] as const).map((cnt) => {
+                              const isActive =
+                                (siteConfig.pdfConfig.externalSignatureCount ?? 2) === cnt
+                              return (
+                                <button
+                                  key={cnt}
+                                  type="button"
+                                  onClick={() => {
+                                    updatePdfConfig('externalSignatureCount', cnt)
+                                    setPdfExternalSignatureCount(cnt)
+                                  }}
+                                  className={cn(
+                                    'h-6 px-2 text-[11px] font-semibold rounded transition-colors cursor-pointer border',
+                                    isActive
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                                  )}
+                                  title={`Set default ${cnt} tanda tangan untuk eksternal`}
+                                >
+                                  {cnt} TTD
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              1. Dibuat oleh
+                            </Label>
+                            <SearchableSelect
+                              label="Dibuat oleh"
+                              value={siteConfig.pdfConfig.externalPreparedBy || ''}
+                              onValueChange={(v) => updatePdfConfig('externalPreparedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau ketik nama pembuat eksternal..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-muted-foreground flex items-center justify-between text-[11px] font-semibold tracking-[0.14em] uppercase">
+                              <span>2. Approved by</span>
+                              <span className="text-muted-foreground text-[10px] font-normal lowercase italic">
+                                (nama spv)
+                              </span>
+                            </Label>
+                            <SearchableSelect
+                              label="Approved by (Nama SPV)"
+                              value={siteConfig.pdfConfig.externalApprovedBy || ''}
+                              onValueChange={(v) => updatePdfConfig('externalApprovedBy', v)}
+                              options={employees.map((e) => ({
+                                value: e.name,
+                                label: e.role ? `${e.name} (${e.role})` : e.name,
+                              }))}
+                              placeholder="Pilih atau ketik nama SPV Customer..."
+                              allowCustom={true}
+                              widthClassName="w-full"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <p className="text-foreground text-xs font-semibold">
+                            Penandatangan Tambahan
+                          </p>
+                          <Button size="sm" variant="outline" onClick={addCustomSigner}>
+                            + Tambah TTD
+                          </Button>
+                        </div>
+                        {siteConfig.pdfConfig.customSigners.length > 0 ? (
+                          <div className="overflow-auto">
+                            <table className="w-full min-w-[500px] text-sm">
+                              <thead>
+                                <tr className="bg-surface-container-low text-muted-foreground text-left text-[10px] tracking-[0.12em] uppercase">
+                                  <th className="px-3 py-2 font-medium">Label</th>
+                                  <th className="px-3 py-2 font-medium">Nama</th>
+                                  <th className="w-20 px-3 py-2 font-medium">Aksi</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {siteConfig.pdfConfig.customSigners.map((s, i) => (
+                                  <tr
+                                    key={`pdfsig-${i}`}
+                                    className="border-border/30 hover:bg-surface-container-low/40 border-b transition"
+                                  >
+                                    <td className="px-3 py-2">
+                                      <Input
+                                        value={s.label}
+                                        onChange={(e) =>
+                                          updateCustomSigner(i, 'label', e.target.value)
+                                        }
+                                        placeholder="Misal: Mengetahui"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <SearchableSelect
+                                        label="Penandatangan"
+                                        value={s.name}
+                                        onValueChange={(v) => updateCustomSigner(i, 'name', v)}
+                                        options={employees.map((e) => ({
+                                          value: e.name,
+                                          label: e.role ? `${e.name} (${e.role})` : e.name,
+                                        }))}
+                                        placeholder="Pilih atau ketik nama..."
+                                        allowCustom={true}
+                                        widthClassName="w-full"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => removeCustomSigner(i)}
+                                      >
+                                        <X className="size-3.5" />
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mt-4">
+                        <p className="text-foreground mb-2 text-xs font-semibold">Logo Customer</p>
+                        <p className="text-muted-foreground mb-3 text-xs">
+                          Upload logo customer. Muncul di pojok kanan PDF. Format PNG/JPG, maks 2MB.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <label className="bg-surface-container-low hover:bg-surface-container-high flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition">
+                            <Upload className="size-4" /> Pilih Logo
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/jpg"
+                              className="hidden"
+                              onChange={handleLogoUpload}
+                            />
+                          </label>
+                          {siteConfig.pdfConfig.logoUrl ? (
+                            <div className="relative inline-flex">
+                              <img
+                                src={siteConfig.pdfConfig.logoUrl}
+                                alt="Customer Logo"
+                                className="h-14 w-auto rounded-lg border object-contain"
+                              />
+                              <button
+                                type="button"
+                                className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-rose-600 text-white hover:bg-rose-700"
+                                onClick={() => updatePdfConfig('logoUrl', '')}
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
+                  )}
                   <div className="border-border/40 mt-5 flex items-center justify-end gap-3 border-t pt-3">
                     <Button
                       size="sm"
-                      disabled={siteId === 'all' || isFinalized || isSavingSiteConfig}
+                      disabled={siteId === 'all' || (mode !== 'setup' && isFinalized) || isSavingSiteConfig}
                       onClick={() => void saveSiteConfig()}
                       className="gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                     >
@@ -10180,7 +13005,7 @@ export function SchedulingTimesheetWorkspace({
                         <td className="px-4 py-3">{row.site.location || '-'}</td>
                         <td className="px-4 py-3">{row.employeeCount}</td>
                         <td className="px-4 py-3">{scheduleTypeLabel(row.scheduleType)}</td>
-                        <td className="px-4 py-3">{row.rosterType}</td>
+                        <td className="px-4 py-3">{rosterTypeLabel(row.rosterType)}</td>
                         <td className="px-4 py-3">
                           <Badge variant={row.hasConfig ? 'default' : 'secondary'}>
                             {row.hasConfig
@@ -10379,7 +13204,7 @@ export function SchedulingTimesheetWorkspace({
                               { value: '5:2', label: '5 : 2' },
                               { value: '6:1', label: '6 : 1' },
                               { value: '13:1', label: '13 : 1' },
-                              { value: 'vale', label: 'Vale Sorowako' },
+                              { value: 'vale', label: '5 : 2 (Vale)' },
                             ]}
                           />
                         </td>
@@ -10583,7 +13408,7 @@ export function SchedulingTimesheetWorkspace({
                 </Card>
               ) : null}
               <div className="space-y-5">
-                {sectionOptions.map((section) =>
+                {siteRosterSectionOptions.map((section) =>
                   renderRosterTable(rows, section, 'draft', cycleCell)
                 )}
               </div>
@@ -10636,7 +13461,7 @@ export function SchedulingTimesheetWorkspace({
                 </Card>
               ) : null}
               <div className="space-y-5">
-                {sectionOptions.map((section) =>
+                {siteRosterSectionOptions.map((section) =>
                   renderRosterTable(permanentRows, section, 'fixed', cyclePermanentCell)
                 )}
               </div>
@@ -10648,7 +13473,41 @@ export function SchedulingTimesheetWorkspace({
       {mode === 'attendance' ? (
         attendanceWorkspaceOpen ? (
           <section className="space-y-4">
-            {selectedAttendancePlan || siteId !== 'all' ? (
+            {selectedAttendancePlan || siteId !== 'all' ? showAttendanceSource ? (
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-white p-4">
+                  <HeroSwitch label="Lihat Data Sumber" checked={showAttendanceSource} onCheckedChange={setShowAttendanceSource} />
+                  <HeroSearchableSelect placeholder="Pilih site" options={sites.map((item) => ({ value: String(item.id), label: item.name }))} value={siteId} onChange={setSiteId} width="w-48" disabled={isAttendanceDirty} />
+                  <Input type="month" aria-label="Pilih bulan" value={period} onChange={(e) => setPeriod(e.target.value)} className="h-9 w-[150px]" disabled={isAttendanceDirty} />
+                  <Button variant="ghost" className="h-9" disabled={isAttendanceDirty} onClick={() => { setShowAttendanceSource(false); setAttendanceWorkspaceOpen(false); if (mode === 'attendance') router.push('/dashboard/scheduling-timesheet/attendance') }}>Kembali ke list</Button>
+                </div>
+                <p className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">Mode hanya baca. Data sumber berasal dari log attendance saat ini atau impor Excel yang masih tersimpan; nilainya dapat berbeda dari kondisi tepat sebelum edit manual. Riwayat impor yang tidak dapat dibuktikan tidak ditampilkan.</p>
+                {isAttendanceDirty ? <p className="text-sm text-amber-700">Simpan perubahan attendance sebelum mengganti site atau bulan.</p> : null}
+                {sourceError ? <p role="alert" className="text-sm text-red-700">Gagal memuat data sumber: {sourceError}</p> : null}
+                <HeroDataTable
+                  title={`Data sumber attendance - ${site?.name ?? ''} - ${period}`}
+                  data={sourceData?.key === `${siteId}:${period}` ? rows.map((row) => ({ id: row.employee.id, name: row.employee.name })) : []}
+                  columns={[
+                    { key: 'name', header: 'Karyawan', sortable: true },
+                    ...days.map((day) => ({ key: `day-${day}`, header: String(day), render: (item: { id: number }) => {
+                      const cell = attendanceByCell.get(attendanceKey(item.id, day))
+                      const override = sourceData?.overrides.find((entry) => entry.employeeId === item.id && entry.day === day)
+                      if (!cell && override?.source === 'excel') return <span title="Impor Excel yang saat ini tersimpan">{override.status === 'present' ? `${override.clockIn || '--:--'}–${override.clockOut || '--:--'}` : attendanceStatusLabel(normalizeAttendanceStatus(override.status))}<br />Excel</span>
+                      if (!cell) return <span title={override ? 'Data sumber tidak tersedia' : 'Tidak ada log attendance'}>{override ? 'Data sumber tidak tersedia' : '—'}</span>
+                      const clockIn = timeFromIso(cell.clockIn?.eventTime, effectiveSiteClockConfig.timezone)
+                      const clockOut = timeFromIso(cell.clockOut?.eventTime, effectiveSiteClockConfig.timezone)
+                      const crossDay = cell.clockIn && cell.clockOut && getLocalDateStr(cell.clockIn.eventTime, effectiveSiteClockConfig.timezone) !== getLocalDateStr(cell.clockOut.eventTime, effectiveSiteClockConfig.timezone)
+                      return <span title="Log attendance">{clockIn || '--:--'}–{clockOut || '--:--'}{crossDay ? ' (+1)' : ''}<br />Attendance</span>
+                    } }))
+                  ]}
+                  searchKeys={['name']}
+                  showSelection={false}
+                  enableExport={false}
+                  loading={!sourceError && sourceData?.key !== `${siteId}:${period}`}
+                  emptyMessage="Tidak ada karyawan untuk site ini."
+                />
+              </section>
+            ) : (
               <section className="space-y-4">
                 {/* 1. Header & Actions Bar */}
                 <Card className="surface-module-card border-border/60 overflow-hidden rounded-2xl border bg-white p-0 shadow-xs">
@@ -10687,23 +13546,42 @@ export function SchedulingTimesheetWorkspace({
                             label: item.name,
                           }))}
                           value={siteId}
-                          onChange={(val) => setSiteId(val)}
+                          onChange={(val) => {
+                            setSiteId(val)
+                            if (mode === 'attendance') {
+                              router.push(`/dashboard/scheduling-timesheet/attendance/${val}?period=${period}`)
+                            }
+                          }}
                           width="w-48"
                         />
                         <Input
                           type="month"
                           aria-label="Pilih bulan"
                           value={period}
-                          onChange={(e) => setPeriod(e.target.value)}
+                          onChange={(e) => {
+                            const nextPeriod = e.target.value
+                            setPeriod(nextPeriod)
+                            if (mode === 'attendance' && siteId && siteId !== 'all') {
+                              const url = new URL(window.location.href)
+                              url.searchParams.set('period', nextPeriod)
+                              window.history.replaceState(null, '', url.toString())
+                            }
+                          }}
                           className="h-9 w-[150px] bg-white text-xs font-semibold"
                         />
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      <HeroSwitch label="Lihat Data Sumber" checked={showAttendanceSource} onCheckedChange={setShowAttendanceSource} />
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setAttendanceWorkspaceOpen(false)}
+                        onClick={() => {
+                          setAttendanceWorkspaceOpen(false)
+                          if (mode === 'attendance') {
+                            router.push('/dashboard/scheduling-timesheet/attendance')
+                          }
+                        }}
                         className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium"
                       >
                         <ChevronLeft className="mr-1 size-4" /> Kembali ke list
@@ -10810,6 +13688,7 @@ export function SchedulingTimesheetWorkspace({
                           : ''}
                       </Button>
                       <Button
+                        id="btn-preview-export-pdf"
                         size="sm"
                         variant="outline"
                         onClick={() => setOvertimePdfOpen((v) => !v)}
@@ -10824,6 +13703,45 @@ export function SchedulingTimesheetWorkspace({
                           ? `(${selectedOvertimeEmployeeIds.length})`
                           : ''}
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSummaryGridSiteId(siteId)
+                          setSummaryGridType(
+                            attendanceView === 'attendance'
+                              ? 'ovt_spl'
+                              : (attendanceView as SummaryView)
+                          )
+                          setSummaryGridSelectAllEmployees(
+                            selectedOvertimeEmployeeIds.length === 0
+                          )
+                          setSummaryGridSelectedEmployeeIds(
+                            selectedOvertimeEmployeeIds
+                          )
+                          setSummaryGridPdfModalOpen(true)
+                        }}
+                        className="h-8.5 rounded-lg border-blue-200 bg-blue-50/70 text-xs font-semibold text-blue-700 hover:bg-blue-100 hover:text-blue-800 shadow-2xs gap-1.5"
+                        title="Buka dialog Cetak & Download PDF Summary Grid per Site dan Karyawan terpilih (SPL, OT, MSA, MLS, TU)"
+                      >
+                        <FileText className="size-3.5 text-blue-600" />
+                        <span>PDF Summary Grid</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const prev = getPreviousPeriod(period)
+                          setCustomExportStartDate((prevDate) => prevDate || `${prev}-16`)
+                          setCustomExportEndDate((prevDate) => prevDate || `${period}-15`)
+                          setExportConfigDialogOpen(true)
+                        }}
+                        className="h-8.5 rounded-lg border-emerald-300 bg-emerald-50/80 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:text-emerald-900 shadow-2xs gap-1.5"
+                        title="Buka dialog ekspor Excel dengan opsi pilihan tanggal & cut-off khusus (misal 16 Sept - 15 Okt, 17 Sept - 16 Nov, dsb)"
+                      >
+                        <CalendarRange className="size-3.5 text-emerald-600" />
+                        <span>Cut-Off & Rentang Tanggal</span>
+                      </Button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -10837,7 +13755,33 @@ export function SchedulingTimesheetWorkspace({
                             <ChevronDown className="size-3 text-slate-400" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-72">
+                        <DropdownMenuContent align="end" className="w-80">
+                          <DropdownMenuLabel className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
+                            <span>Cut-Off & Rentang Tanggal</span>
+                            <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 h-4">Fleksibel</Badge>
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              const prev = getPreviousPeriod(period)
+                              setCustomExportStartDate((prevDate) => prevDate || `${prev}-16`)
+                              setCustomExportEndDate((prevDate) => prevDate || `${period}-15`)
+                              setExportConfigDialogOpen(true)
+                            }}
+                            className="cursor-pointer gap-2 py-2.5 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/90 rounded-md text-emerald-950 font-semibold mb-1"
+                          >
+                            <CalendarRange className="size-4.5 text-emerald-600 shrink-0" />
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-xs text-emerald-950">
+                                Pilihan Cut-Off & Tanggal Kustom...
+                              </span>
+                              <span className="text-[10px] text-emerald-700 font-normal">
+                                Tentukan tanggal & bulan bebas (mis. 16–15, 17–16)
+                              </span>
+                            </div>
+                          </DropdownMenuItem>
+
+                          <DropdownMenuSeparator />
+
                           <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                             Export Excel Tab (.xlsx)
                           </DropdownMenuLabel>
@@ -10944,6 +13888,30 @@ export function SchedulingTimesheetWorkspace({
                           <DropdownMenuLabel className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                             Dokumen & Ringkasan
                           </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSummaryGridSiteId(siteId)
+                              setSummaryGridType(
+                                attendanceView === 'attendance'
+                                  ? 'ovt_spl'
+                                  : (attendanceView as SummaryView)
+                              )
+                              setSummaryGridSelectAllEmployees(
+                                selectedOvertimeEmployeeIds.length === 0
+                              )
+                              setSummaryGridSelectedEmployeeIds(
+                                selectedOvertimeEmployeeIds
+                              )
+                              setSummaryGridPdfModalOpen(true)
+                            }}
+                            className="cursor-pointer gap-2 py-2 bg-blue-50/50 hover:bg-blue-100/70"
+                          >
+                            <FileText className="size-4 text-blue-600 shrink-0" />
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-xs text-blue-900">PDF Summary Grid (Pilih Site & Karyawan)</span>
+                              <span className="text-[10px] text-blue-600/80">Format Landscape A4 Resmi lengkap tanggal 1–31</span>
+                            </div>
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => {
                               const columns = [
@@ -11057,73 +14025,231 @@ export function SchedulingTimesheetWorkspace({
                             Sertakan Kolom Total Overtime
                           </label>
                         </div>
-                        {availableSiteSectionCategories.size > 1 && (
-                          <>
-                            {availableSiteSectionCategories.has('Repair') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-repair-pdf"
-                                  checked={pdfIncludeRepair}
-                                  onCheckedChange={setPdfIncludeRepair}
-                                />
-                                <label
-                                  htmlFor="toggle-repair-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Repair / Retread"
+                        {availableSiteSections.length > 1 && (
+                          <div className="flex flex-col gap-2 w-full pt-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-700">
+                                  Filter Section ({activeSelectedSections.length}/{availableSiteSections.length} aktif):
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 px-2 text-[11px] font-medium text-blue-700 border-blue-200 hover:bg-blue-50"
+                                  onClick={() => setSelectedSectionNames(availableSiteSections.map((s) => s.name))}
                                 >
-                                  Repair
-                                </label>
-                              </div>
-                            )}
-                            {availableSiteSectionCategories.has('Services') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-services-pdf"
-                                  checked={pdfIncludeServices}
-                                  onCheckedChange={setPdfIncludeServices}
-                                />
-                                <label
-                                  htmlFor="toggle-services-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Services"
+                                  Pilih Semua
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-[11px] font-medium text-slate-500 hover:text-slate-800"
+                                  onClick={() => setSelectedSectionNames([])}
                                 >
-                                  Services
-                                </label>
+                                  Nonaktifkan Semua
+                                </Button>
                               </div>
-                            )}
-                            {availableSiteSectionCategories.has('Technical') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-technical-pdf"
-                                  checked={pdfIncludeTechnical}
-                                  onCheckedChange={setPdfIncludeTechnical}
-                                />
-                                <label
-                                  htmlFor="toggle-technical-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan Technical"
-                                >
-                                  Technical
-                                </label>
+                              <div className="flex items-center gap-2">
+                                {availableSiteSections.length > 6 && (
+                                  <div className="w-48">
+                                    <Input
+                                      placeholder="Cari section..."
+                                      value={sectionSearchQuery}
+                                      onChange={(e) => setSectionSearchQuery(e.target.value)}
+                                      className="h-7 text-xs bg-white"
+                                    />
+                                  </div>
+                                )}
+                                <Popover open={sectionPickerOpen} onOpenChange={setSectionPickerOpen}>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      id="btn-section-filter-popover"
+                                      size="sm"
+                                      variant="outline"
+                                      className={cn(
+                                        'border-border/70 h-7 rounded-lg bg-white px-2 text-xs font-semibold text-slate-800 shadow-2xs hover:bg-slate-50',
+                                        activeSelectedSections.length < availableSiteSections.length &&
+                                          'border-blue-500 bg-blue-50/60 text-blue-700'
+                                      )}
+                                      title="Pilih dan filter semua section karyawan untuk PDF"
+                                    >
+                                      <Layers className="mr-1.5 size-3 text-blue-600" />
+                                      {activeSelectedSections.length === availableSiteSections.length
+                                        ? `Menu Section (${availableSiteSections.length})`
+                                        : `Section (${activeSelectedSections.length}/${availableSiteSections.length})`}
+                                      <ChevronDown className="ml-1 size-3 text-slate-400" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent
+                                    className="w-88 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+                                    align="end"
+                                  >
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                      <div>
+                                        <p className="text-xs font-bold text-slate-800">
+                                          Filter Section Karyawan
+                                        </p>
+                                        <p className="text-[10px] text-slate-500">
+                                          {activeSelectedSections.length} dari {availableSiteSections.length} section aktif
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setSelectedSectionNames(availableSiteSections.map((s) => s.name))
+                                          }
+                                          className="text-[10px] font-semibold text-blue-600 hover:underline cursor-pointer"
+                                        >
+                                          Semua
+                                        </button>
+                                        <span className="text-[10px] text-slate-300">|</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const ops = availableSiteSections
+                                              .filter((s) => {
+                                                const low = s.name.toLowerCase()
+                                                return (
+                                                  low.includes('service') ||
+                                                  low.includes('repair') ||
+                                                  low.includes('retread') ||
+                                                  low.includes('technical') ||
+                                                  low.includes('hse') ||
+                                                  low.includes('safety')
+                                                )
+                                              })
+                                              .map((s) => s.name)
+                                            setSelectedSectionNames(ops)
+                                          }}
+                                          className="text-[10px] font-semibold text-indigo-600 hover:underline cursor-pointer"
+                                          title="Pilih section operasional"
+                                        >
+                                          Operasional
+                                        </button>
+                                        <span className="text-[10px] text-slate-300">|</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedSectionNames([])}
+                                          className="text-[10px] font-semibold text-slate-500 hover:text-red-600 hover:underline cursor-pointer"
+                                        >
+                                          Reset
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div className="my-2">
+                                      <Input
+                                        placeholder="Cari nama section..."
+                                        value={sectionSearchQuery}
+                                        onChange={(e) => setSectionSearchQuery(e.target.value)}
+                                        className="h-8 text-xs bg-slate-50/50"
+                                      />
+                                    </div>
+
+                                    <div className="max-h-64 overflow-y-auto space-y-1 pr-1">
+                                      {filteredSiteSections.map((sec) => {
+                                        const isChecked = activeSelectedSections.includes(sec.name)
+                                        return (
+                                          <label
+                                            key={sec.name}
+                                            className={cn(
+                                              'flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-colors select-none',
+                                              isChecked
+                                                ? 'bg-blue-50/60 text-slate-900 font-medium'
+                                                : 'text-slate-600 hover:bg-slate-50'
+                                            )}
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <Switch
+                                                checked={isChecked}
+                                                onCheckedChange={(checked) =>
+                                                  toggleSection(sec.name, checked)
+                                                }
+                                              />
+                                              <span className="truncate text-xs" title={sec.name}>
+                                                {sec.name}
+                                              </span>
+                                            </div>
+                                            <Badge
+                                              variant="secondary"
+                                              className="text-[10px] font-mono shrink-0 ml-2"
+                                            >
+                                              {sec.count}
+                                            </Badge>
+                                          </label>
+                                        )
+                                      })}
+                                      {filteredSiteSections.length === 0 && (
+                                        <p className="py-3 text-center text-xs text-slate-400">
+                                          Tidak ada section yang cocok.
+                                        </p>
+                                      )}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               </div>
-                            )}
-                            {availableSiteSectionCategories.has('HSE') && (
-                              <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
-                                <Switch
-                                  id="toggle-hse-pdf"
-                                  checked={pdfIncludeHse}
-                                  onCheckedChange={setPdfIncludeHse}
-                                />
-                                <label
-                                  htmlFor="toggle-hse-pdf"
-                                  className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                                  title="Sertakan karyawan HSE / Safety"
-                                >
-                                  HSE
-                                </label>
-                              </div>
-                            )}
-                          </>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 max-h-48 overflow-y-auto p-2 rounded-lg border border-slate-200/80 bg-slate-50/60">
+                              {(() => {
+                                const usedAliasMap = new Set<string>()
+                                const listToRender = sectionSearchQuery.trim()
+                                  ? availableSiteSections.filter((s) => s.name.toLowerCase().includes(sectionSearchQuery.toLowerCase()))
+                                  : availableSiteSections
+
+                                return listToRender.map((sec) => {
+                                  const isChecked = activeSelectedSections.includes(sec.name)
+                                  const secLower = sec.name.toLowerCase()
+                                  const secSlug = sec.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+                                  let aliasId = `toggle-sec-${secSlug}`
+                                  if (secLower.includes('repair') && !usedAliasMap.has('toggle-repair-pdf')) {
+                                    aliasId = 'toggle-repair-pdf'
+                                    usedAliasMap.add('toggle-repair-pdf')
+                                  } else if (secLower.includes('service') && !usedAliasMap.has('toggle-services-pdf')) {
+                                    aliasId = 'toggle-services-pdf'
+                                    usedAliasMap.add('toggle-services-pdf')
+                                  } else if (secLower.includes('tech') && !usedAliasMap.has('toggle-technical-pdf')) {
+                                    aliasId = 'toggle-technical-pdf'
+                                    usedAliasMap.add('toggle-technical-pdf')
+                                  } else if (secLower.includes('hse') && !usedAliasMap.has('toggle-hse-pdf')) {
+                                    aliasId = 'toggle-hse-pdf'
+                                    usedAliasMap.add('toggle-hse-pdf')
+                                  }
+
+                                  return (
+                                    <div
+                                      key={sec.name}
+                                      className={cn(
+                                        'border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs transition-colors',
+                                        isChecked
+                                          ? 'border-blue-300 ring-1 ring-blue-100 bg-blue-50/20'
+                                          : 'border-slate-200 bg-slate-50/70 opacity-60'
+                                      )}
+                                    >
+                                      <Switch
+                                        id={aliasId}
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => toggleSection(sec.name, checked)}
+                                      />
+                                      <label
+                                        htmlFor={aliasId}
+                                        className="cursor-pointer text-xs font-medium text-slate-700 select-none whitespace-nowrap"
+                                        title={`Sertakan karyawan section ${sec.name}`}
+                                      >
+                                        {sec.name}{' '}
+                                        <span className="text-[10px] text-muted-foreground font-normal">
+                                          ({sec.count})
+                                        </span>
+                                      </label>
+                                    </div>
+                                  )
+                                })
+                              })()}
+                            </div>
+                          </div>
                         )}
 
                         <div className="border-border/70 flex items-center gap-2 rounded-lg border bg-white px-2.5 py-1 text-xs shadow-2xs">
@@ -11135,11 +14261,84 @@ export function SchedulingTimesheetWorkspace({
                           <label
                             htmlFor="toggle-external-pdf-bulk"
                             className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                            title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada 4 dokumen summary"
+                            title="Gunakan alur tanda tangan eksternal pada dokumen Overtime Record & Summary"
                           >
                             Eksternal
                           </label>
+                          {pdfUseExternalSignatures && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  id="btn-external-signature-count-bulk"
+                                  className="flex items-center gap-1 border-l border-slate-200 pl-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer select-none"
+                                  title="Pilih jumlah tanda tangan / approval eksternal"
+                                >
+                                  <span>{pdfExternalSignatureCount} Approval</span>
+                                  <ChevronDown className="size-3 opacity-60" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48 text-xs">
+                                <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                  Format Approval Eksternal
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(2)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 2 && 'font-bold text-primary')}
+                                >
+                                  <span>2 Approval (Dibuat & Approved)</span>
+                                  {pdfExternalSignatureCount === 2 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(3)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 3 && 'font-bold text-primary')}
+                                >
+                                  <span>3 Approval (+ TTD Tambahan)</span>
+                                  {pdfExternalSignatureCount === 3 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setPdfExternalSignatureCount(4)}
+                                  className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 4 && 'font-bold text-primary')}
+                                >
+                                  <span>4 Approval (Lengkap 4 Kolom)</span>
+                                  {pdfExternalSignatureCount === 4 && <Check className="size-3.5 text-primary" />}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
+
+                        {/* Selector Cut-Off & Rentang Tanggal untuk PDF */}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const prev = getPreviousPeriod(period)
+                            setCustomExportStartDate((prevDate) => prevDate || `${prev}-16`)
+                            setCustomExportEndDate((prevDate) => prevDate || `${period}-15`)
+                            setExportConfigDialogOpen(true)
+                          }}
+                          className={cn(
+                            'border-border/70 h-8 rounded-lg px-2.5 text-xs font-semibold shadow-2xs hover:bg-slate-50 gap-1.5 transition-colors',
+                            attendanceExportCutoff === 'ck_16_15'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                              : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate
+                              ? 'border-blue-300 bg-blue-50 text-blue-800'
+                              : 'bg-white text-slate-700'
+                          )}
+                          title="Atur rentang cut-off tanggal untuk dokumen PDF & Excel (1-Akhir vs 16-15 CK vs Kustom)"
+                        >
+                          <CalendarRange className={cn('size-3.5', attendanceExportCutoff === 'ck_16_15' ? 'text-emerald-600' : 'text-slate-500')} />
+                          <span>
+                            {attendanceExportCutoff === 'ck_16_15'
+                              ? 'Cut-off: 16–15 (CK)'
+                              : exportDialogCutoff === 'custom' && customExportStartDate && customExportEndDate
+                              ? `Rentang: ${formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)}`
+                              : 'Cut-off: 1–Akhir'}
+                          </span>
+                        </Button>
 
                         {/* Multi-select Dropdown Pilihan Dokumen PDF */}
                         <Popover
@@ -11240,27 +14439,39 @@ export function SchedulingTimesheetWorkspace({
                           size="sm"
                           variant="outline"
                           disabled={
+                            isPreviewingSitePdf ||
                             rows.length === 0 ||
                             siteId === 'all' ||
-                            selectedPdfDocTypes.length === 0
+                            selectedPdfDocTypes.length === 0 ||
+                            (availableSiteSections.length > 1 && !hasAnySectionActive)
                           }
                           onClick={() => void previewAllSiteOvertimePdf()}
                           className="h-8 rounded-lg text-xs"
                           title={
                             selectedPdfDocTypes.length === 0
                               ? 'Pilih minimal satu jenis dokumen PDF'
-                              : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
+                              : availableSiteSections.length > 1 && !hasAnySectionActive
+                                ? 'Pilih minimal satu section karyawan'
+                                : `Preview PDF (${selectedPdfDocTypes.length} dokumen) untuk semua karyawan site ${site?.name ?? ''}`
                           }
                         >
-                          <Eye className="mr-1.5 size-3.5" /> Preview PDF (
-                          {selectedPdfDocTypes.length})
+                          {isPreviewingSitePdf ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin text-indigo-600" />
+                          ) : (
+                            <Eye className="mr-1.5 size-3.5" />
+                          )}
+                          {isPreviewingSitePdf
+                            ? 'Menyiapkan...'
+                            : `Preview PDF (${selectedPdfDocTypes.length})`}
                         </Button>
                         <Button
                           size="sm"
                           variant="default"
                           disabled={
-                            selectedOvertimeEmployeeIds.length === 0 ||
-                            selectedPdfDocTypes.length === 0
+                            isDownloadingSitePdf ||
+                            (selectedOvertimeEmployeeIds.length === 0 && rows.length === 0) ||
+                            selectedPdfDocTypes.length === 0 ||
+                            (availableSiteSections.length > 1 && !hasAnySectionActive)
                           }
                           onClick={() => void bulkDownloadOvertimePdf(includeTotalOvertime)}
                           className="h-8 rounded-lg bg-indigo-600 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
@@ -11272,9 +14483,14 @@ export function SchedulingTimesheetWorkspace({
                                 : `Download PDF (${selectedPdfDocTypes.length} jenis dokumen, ${selectedOvertimeEmployeeIds.length} karyawan)`
                           }
                         >
-                          <Download className="mr-1.5 size-3.5" /> Download PDF Terpilih{' '}
-                          {selectedOvertimeEmployeeIds.length > 0
-                            ? `(${selectedOvertimeEmployeeIds.length})`
+                          {isDownloadingSitePdf ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <Download className="mr-1.5 size-3.5" />
+                          )}
+                          {isDownloadingSitePdf ? 'Mengunduh...' : 'Download PDF Terpilih'}
+                          {!isDownloadingSitePdf && selectedOvertimeEmployeeIds.length > 0
+                            ? ` (${selectedOvertimeEmployeeIds.length})`
                             : ''}
                         </Button>
                       </div>
@@ -11492,6 +14708,45 @@ export function SchedulingTimesheetWorkspace({
                   </Card>
                 ) : null}
 
+                {/* Overtime & Roster Config Variances Alert Banner */}
+                {attendanceView === 'ovt' && overtimeVariances.length > 0 && !overtimeVariancesDismissed ? (
+                  <Card className="surface-module-card overflow-hidden rounded-xl border border-amber-300 bg-white p-0 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-200 text-amber-900">
+                          <AlertTriangle className="size-4" />
+                        </span>
+                        <div>
+                          <p className="font-semibold text-amber-900">
+                            {overtimeVariances.length} Peringatan Variansi Overtime & Roster Config
+                          </p>
+                          <p className="text-xs text-amber-700">
+                            Terdapat jam lembur yang berbeda dari template config standar (misal: lembur riil &gt; 8 jam atau pecahan di hari libur/biasa). Data riil site tetap dipertahankan — silakan tim Services meninjau dan melakukan penyesuaian jika diperlukan.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowVariancesOnly((val) => !val)}
+                          className="h-8 rounded-lg border-amber-300 bg-white text-xs font-medium text-amber-900 hover:bg-amber-100"
+                        >
+                          {showVariancesOnly ? 'Tampilkan semua karyawan' : `Hanya yang variansi (${overtimeVariances.length})`}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setOvertimeVariancesDismissed(true)}
+                          className="h-8 text-xs text-amber-800 hover:bg-amber-100/60"
+                        >
+                          Tutup
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                ) : null}
+
                 {/* 4. KPI Stat Summary Cards Row */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   {[
@@ -11584,19 +14839,22 @@ export function SchedulingTimesheetWorkspace({
                         { key: 'msa', label: 'MSA' },
                         { key: 'meals', label: 'Meals' },
                         { key: 'ovt', label: 'Overtime' },
+                        { key: 'ovt_spl', label: 'Overtime SPL' },
                       ].map((tab) => (
-                        <button
+                        <Button
                           key={tab.key}
+                          type="button"
+                          variant="ghost"
                           onClick={() => setAttendanceView(tab.key as any)}
                           className={cn(
-                            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
+                            'h-9 rounded-lg px-3 text-xs font-semibold transition-all',
                             attendanceView === tab.key
                               ? 'bg-white text-slate-900 shadow-xs'
                               : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
                           )}
                         >
                           {tab.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
 
@@ -11626,12 +14884,14 @@ export function SchedulingTimesheetWorkspace({
                         </span>
                         {[
                           { key: 'all', label: 'Semua' },
-                          { key: 'present', label: 'Masuk' },
+                          { key: 'present', label: 'Semua Masuk' },
+                          { key: 'present_pagi', label: 'Masuk Pagi' },
+                          { key: 'present_malam', label: 'Masuk Malam' },
                           { key: 'sick', label: 'Sakit' },
                           { key: 'leave', label: 'Izin' },
                           { key: 'absent', label: 'Alpha' },
                           { key: 'off', label: 'OFF' },
-                          { key: 'gb', label: 'GB (Field Break)' },
+                          { key: 'fb', label: 'FB (Field Break)' },
                         ].map((f) => (
                           <button
                             key={f.key}
@@ -11656,11 +14916,27 @@ export function SchedulingTimesheetWorkspace({
                   enabled={multiSelectAttendance}
                   selectedCount={selectedAttendanceKeys.length}
                   onToggle={() => setMultiSelectAttendance((value) => !value)}
+                  onOpenBulkEditModal={() => {
+                    if (selectedAttendanceKeys.length === 0) {
+                      toast.error('Pilih setidaknya 1 sel untuk di-edit.')
+                      return
+                    }
+                    setIsBulkEditAttendanceOpen(true)
+                  }}
+                  onSelectAllWeekends={selectAllWeekends}
                   onSetPresent={() =>
                     applyBulkAttendance({
                       status: 'present',
                       clockIn: '08:00',
                       clockOut: '17:00',
+                    })
+                  }
+                  onSetOff={() =>
+                    applyBulkAttendance({
+                      status: 'off',
+                      clockIn: '',
+                      clockOut: '',
+                      note: 'OFF (Roster 5:2)',
                     })
                   }
                   onSetSick={() =>
@@ -11688,17 +14964,43 @@ export function SchedulingTimesheetWorkspace({
                   ) : null}
                   {/* View title & Actions Bar (All 5 Tabs) */}
                   <div className="border-border/40 bg-surface-container-low flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5">
-                    <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
-                      {attendanceView === 'attendance' &&
-                        `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
-                      {attendanceView === 'msa' &&
-                        `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
-                      {attendanceView === 'lokasi' &&
-                        `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
-                      {attendanceView === 'meals' &&
-                        `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
-                      {attendanceView === 'ovt' && 'OVERTIME SUMMARY'} {period} · {rate.project}
-                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-foreground text-xs font-bold tracking-[0.14em] uppercase">
+                        {attendanceView === 'attendance' &&
+                          `REKAPITULASI KEHADIRAN (ATTENDANCE GRID) — ${period} · ${site?.name || 'Semua Site'} (${displayedAttendanceRows.length} Karyawan)`}
+                        {attendanceView === 'msa' &&
+                          `MSA SUMMARY — Rate: Staff Rp ${rate.msaStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.msaNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'lokasi' &&
+                          `TUNJANGAN KHUSUS — Lokal: ${siteConfig.employeeBenefitConfig.local.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.local.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.local.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'} | Non Lokal: ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowance ? `Rp ${siteConfig.employeeBenefitConfig.nonLocal.specialAllowanceAmount.toLocaleString('id-ID')}/${siteConfig.employeeBenefitConfig.nonLocal.specialAllowancePeriod === 'monthly' ? 'bulan' : 'hari'}` : 'Tidak aktif'}`}
+                        {attendanceView === 'meals' &&
+                          `MEALS SUMMARY — Rate Setup Meals: Staff Rp ${rate.mealsStaff.toLocaleString('id-ID')} / Non-Staff Rp ${rate.mealsNonStaff.toLocaleString('id-ID')}`}
+                        {attendanceView === 'ovt' && 'OVERTIME WAJIB SUMMARY'}
+                        {attendanceView === 'ovt_spl' && 'OVERTIME SPL SUMMARY'} {period} · {rate.project}
+                      </p>
+                      {attendanceView === 'attendance' && (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="text-slate-500 font-semibold text-[10.5px]">Indikator:</span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-950 ring-1 ring-emerald-300">
+                            <span className="size-2 rounded-full bg-emerald-600" /> Masuk Pagi
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-2xs">
+                            <span className="size-2 rounded-full bg-indigo-200" /> Masuk Malam
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-950 ring-1 ring-red-400">
+                            <span className="size-2 rounded-full bg-red-600" /> Terlambat
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-950 ring-1 ring-orange-400">
+                            <span className="size-2 rounded-full bg-orange-600" /> Beda Roster
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-950 ring-1 ring-purple-300">
+                            <span className="size-2 rounded-full bg-purple-600" /> Field Break
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700 ring-1 ring-slate-300">
+                            <span className="size-2 rounded-full bg-slate-500" /> OFF
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       {attendanceView !== 'attendance' ? (
                         <>
@@ -11711,25 +15013,78 @@ export function SchedulingTimesheetWorkspace({
                             <label
                               htmlFor="toggle-external-pdf-summary"
                               className="cursor-pointer text-xs font-medium text-slate-700 select-none"
-                              title="Gunakan 2 tanda tangan alur eksternal (Dibuat oleh & Approved by) pada dokumen summary"
+                              title="Gunakan alur tanda tangan eksternal pada dokumen summary"
                             >
                               Eksternal
                             </label>
+                            {pdfUseExternalSignatures && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    type="button"
+                                    id="btn-external-signature-count-summary"
+                                    className="flex items-center gap-1 border-l border-slate-200 pl-2 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer select-none"
+                                    title="Pilih jumlah tanda tangan / approval eksternal"
+                                  >
+                                    <span>{pdfExternalSignatureCount} Approval</span>
+                                    <ChevronDown className="size-3 opacity-60" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                  <DropdownMenuLabel className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                                    Format Approval Eksternal
+                                  </DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(2)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 2 && 'font-bold text-primary')}
+                                  >
+                                    <span>2 Approval (Dibuat & Approved)</span>
+                                    {pdfExternalSignatureCount === 2 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(3)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 3 && 'font-bold text-primary')}
+                                  >
+                                    <span>3 Approval (+ TTD Tambahan)</span>
+                                    {pdfExternalSignatureCount === 3 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setPdfExternalSignatureCount(4)}
+                                    className={cn('cursor-pointer flex items-center justify-between', pdfExternalSignatureCount === 4 && 'font-bold text-primary')}
+                                  >
+                                    <span>4 Approval (Lengkap 4 Kolom)</span>
+                                    {pdfExternalSignatureCount === 4 && <Check className="size-3.5 text-primary" />}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                           <Button
                             size="sm"
                             variant="outline"
                             disabled={rows.length === 0 || siteId === 'all'}
-                            onClick={() => void downloadSummaryPdf(attendanceView)}
-                            title="Download PDF Summary sesuai tabel di halaman ini"
+                            onClick={() => void previewSummaryPdf(attendanceView as SummaryView)}
+                            title="Preview PDF Summary Grid sesuai tabel di halaman ini"
+                            className="h-8 rounded-lg text-xs"
                           >
-                            <Download className="mr-2 size-4" /> Download PDF
+                            <Eye className="mr-1.5 size-3.5 text-slate-500" /> Preview PDF
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={rows.length === 0 || siteId === 'all'}
+                            onClick={() => void downloadSummaryPdf(attendanceView as SummaryView)}
+                            title="Download PDF Summary Grid sesuai tabel di halaman ini"
+                            className="h-8 rounded-lg text-xs font-semibold text-slate-800"
+                          >
+                            <Download className="mr-1.5 size-3.5 text-slate-600" /> Download PDF
                           </Button>
                         </>
                       ) : null}
 
                       {/* Export Excel Button with Dropdown for Current Tab or All 5 Tabs */}
-                      <DropdownMenu>
+                      {attendanceView !== 'ovt_spl' && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
                             size="sm"
@@ -11792,7 +15147,7 @@ export function SchedulingTimesheetWorkspace({
                             </div>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
                   </div>
                   <div className="max-w-full overflow-x-auto overflow-y-visible">
@@ -11932,6 +15287,7 @@ export function SchedulingTimesheetWorkspace({
                                             </div>
                                             {/* PDF Action Buttons (Visible and easy to click) */}
                                             <div className="flex items-center gap-1 border-t border-slate-100 pt-0.5 text-[10px]">
+                                              {attendanceView !== 'ovt' && attendanceView !== 'ovt_spl' && <>
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title="Preview record PDF karyawan sesuai view ini"
@@ -11962,6 +15318,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'TU'
                                                       : 'OT'}
                                               </button>
+                                              </>}
                                               <button
                                                 className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700 transition-colors hover:bg-slate-200"
                                                 title="Generate Benefit PDF (MSA, Meals, Tunjangan Khusus)"
@@ -11988,7 +15345,8 @@ export function SchedulingTimesheetWorkspace({
                                           const cell = getAttendanceCell(
                                             row.employee.id,
                                             day,
-                                            scheduleCode
+                                            scheduleCode,
+                                            row.employee
                                           )
                                           const holiday = holidaysByDay.get(day)
                                           const holidayName = holiday?.localName ?? holiday?.name
@@ -11998,7 +15356,43 @@ export function SchedulingTimesheetWorkspace({
                                             scheduleCode === 'FB' ||
                                             scheduleCode === 'Libur' ||
                                             scheduleCode === 'Sakit'
-                                          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+                                          const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
+
+                                          if (attendanceView === 'ovt_spl') {
+                                            const documents = approvedSplDocumentsForDay(row.employee.id, day)
+                                            const splHours = getApprovedSplHoursForDay(row.employee.id, day)
+                                            return (
+                                              <td key={day} className="w-[52px] min-w-[52px] border-x border-b border-slate-200/80 bg-white px-0.5 py-1.5 text-center text-[10px]">
+                                                {documents.length === 1 ? (
+                                                  <Button
+                                                    variant="ghost"
+                                                    className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50"
+                                                    aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}
+                                                    title={`${documents[0].splNumber} · ${documents[0].title}`}
+                                                    onClick={() => void previewSplDocument(documents[0].id, documents[0].splNumber)}
+                                                  >
+                                                    {splHours || ''}
+                                                  </Button>
+                                                ) : documents.length > 1 ? (
+                                                  <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                      <Button variant="ghost" className="h-9 w-full px-1 text-xs font-semibold tabular-nums text-blue-700 hover:bg-blue-50" aria-label={`Lihat SPL ${row.employee.name} tanggal ${day}, ${period}`}>
+                                                        {splHours || ''}
+                                                      </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="start">
+                                                      <DropdownMenuLabel>Dokumen SPL</DropdownMenuLabel>
+                                                      {documents.map((spl) => (
+                                                        <DropdownMenuItem key={spl.id} onSelect={() => void previewSplDocument(spl.id, spl.splNumber)}>
+                                                            {spl.splNumber || `SPL ${spl.id}`} {spl.title ? `· ${spl.title}` : ''}
+                                                        </DropdownMenuItem>
+                                                      ))}
+                                                    </DropdownMenuContent>
+                                                  </DropdownMenu>
+                                                ) : null}
+                                              </td>
+                                            )
+                                          }
 
                                           // MSA/Meals/OVT view
                                           if (attendanceView !== 'attendance') {
@@ -12109,91 +15503,61 @@ export function SchedulingTimesheetWorkspace({
                                                       : 'bg-slate-50 text-muted-foreground'
                                               }
                                              } else if (attendanceView === 'ovt') {
-                                               // Overtime hanya untuk Non Staff
-                                               if (staff) {
-                                                 cellValue = '-'
-                                                 cellBg = 'bg-slate-50 text-muted-foreground'
-                                               } else if (cell.status !== 'present') {
-                                                 const isFb = isFieldBreakDay || cell.status === 'field_break' || scheduleCode === 'FB'
-                                                 const isSt = cell.status === 'standby' || scheduleCode === 'ST'
-                                                 const isGd = scheduleCode === 'GD'
-                                                 const isRosterOffDay = isOff || cell.status === 'off' || scheduleCode === 'OFF'
+                                               const otInfo = calculateTotalDayOvertime(
+                                                 row.schedule,
+                                                 day,
+                                                 cell,
+                                                 row.employee.id,
+                                                 staff
+                                               )
+                                               cellValue = otInfo.displayValue
+                                               const isVariance = overtimeVarianceKeySet.has(
+                                                 attendanceKey(row.employee.id, day)
+                                               )
+                                               const varianceItem = isVariance
+                                                 ? overtimeVariances.find(
+                                                     (v) =>
+                                                       v.employeeId === row.employee.id &&
+                                                       v.day === day
+                                                   )
+                                                 : null
 
-                                                 if (isFb) {
-                                                   cellValue = 'FB'
-                                                   cellBg = 'bg-amber-50 text-amber-800'
-                                                 } else if (isSt) {
-                                                   cellValue = 'ST'
-                                                   cellBg = 'bg-blue-50 text-blue-800'
-                                                 } else if (isGd) {
-                                                   cellValue = 'GD'
-                                                   cellBg = 'bg-purple-50 text-purple-800'
-                                                 } else if (isRosterOffDay) {
-                                                   cellValue = 'OFF'
-                                                   cellBg = 'bg-rose-50 text-rose-700'
-                                                 } else if (cell.status === 'sick' || scheduleCode === 'Sakit') {
-                                                   cellValue = 'Sakit'
-                                                   cellBg = 'bg-rose-50 text-rose-700'
-                                                 } else if (cell.status === 'leave' || scheduleCode === 'Izin') {
-                                                   cellValue = 'Izin'
-                                                   cellBg = 'bg-blue-50 text-blue-700'
-                                                 } else if (cell.status === 'absent') {
-                                                   cellValue = 'Alpha'
-                                                   cellBg = 'bg-rose-100 text-rose-900'
-                                                 } else {
-                                                   cellValue = scheduleCode && scheduleCode !== 'IN' && scheduleCode !== 'DS' && scheduleCode !== 'NS' ? scheduleCode : ''
-                                                   cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
-                                                 }
+                                               if (staff) {
+                                                 cellBg = 'bg-slate-50 text-muted-foreground'
+                                               } else if (isVariance) {
+                                                 cellBg = 'bg-amber-100 text-amber-950 font-bold ring-1 ring-inset ring-amber-400'
+                                               } else if (otInfo.totalOvertime > 0) {
+                                                 cellBg = 'bg-white text-foreground font-semibold'
+                                               } else if (cellValue === 'OFF') {
+                                                 cellBg = 'bg-rose-50 text-rose-700'
+                                               } else if (cellValue === 'FB') {
+                                                 cellBg = 'bg-amber-50 text-amber-800'
+                                               } else if (cellValue === 'ST') {
+                                                 cellBg = 'bg-blue-50 text-blue-800'
+                                               } else if (cellValue === 'GD') {
+                                                 cellBg = 'bg-purple-50 text-purple-800'
+                                               } else if (cellValue === 'Sakit' || cellValue === 'Alpha') {
+                                                 cellBg = 'bg-rose-50 text-rose-700'
+                                               } else if (cellValue === 'Izin') {
+                                                 cellBg = 'bg-blue-50 text-blue-700'
                                                } else {
-                                                 const overtime = calculateDayOvertime(
-                                                   row.schedule,
-                                                   day,
-                                                   cell.clockIn,
-                                                   cell.clockOut,
-                                                   staff,
-                                                   row.employee.id
-                                                 )
-                                                 if (overtime.totalHours > 0) {
-                                                   cellValue = overtime.totalHours
-                                                   cellBg = 'bg-white text-foreground font-semibold'
-                                                 } else if (overtime.unauthorizedMinutes > 0) {
-                                                   cellValue = 'SPL'
-                                                   cellBg = 'bg-orange-100 text-orange-900 font-semibold'
-                                                 } else if (scheduleCode === 'ST') {
-                                                   cellValue = 'ST'
-                                                   cellBg = 'bg-blue-50 text-blue-800'
-                                                 } else if (scheduleCode === 'GD') {
-                                                   cellValue = 'GD'
-                                                   cellBg = 'bg-purple-50 text-purple-800'
-                                                 } else if (scheduleCode === 'FB' || isFieldBreakDay) {
-                                                   cellValue = 'FB'
-                                                   cellBg = 'bg-amber-50 text-amber-800'
-                                                 } else {
-                                                   cellValue = ''
-                                                   cellBg = ''
-                                                 }
-                                                overtimeMeta =
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? `${overtime.source === 'None' ? '' : `${overtime.source} · `}Perlu SPL`
-                                                    : overtime.source === 'Auto + SPL'
-                                                      ? 'Auto+SPL'
-                                                      : overtime.source === 'None'
-                                                        ? ''
-                                                        : overtime.source
-                                                cellTitle = [
-                                                  `${scheduleCode} · ${cell.status}`,
-                                                  `Sumber: ${overtime.source}`,
-                                                  overtime.splNumbers.length
-                                                    ? `SPL: ${overtime.splNumbers.join(', ')}`
-                                                    : '',
-                                                  overtime.unauthorizedMinutes > 0
-                                                    ? `Perlu SPL: ${overtime.unauthorizedMinutes / 60} jam`
-                                                    : '',
-                                                ]
-                                                  .filter(Boolean)
-                                                  .join(' · ')
-                                              }
-                                            }
+                                                 cellBg = isHolidayDay ? 'bg-amber-50 text-amber-700' : ''
+                                               }
+
+                                                cellTitle = staff
+                                                  ? 'Staff (Tidak ada lembur)'
+                                                  : [
+                                                      varianceItem ? `⚠️ ${varianceItem.reason}` : '',
+                                                      `${scheduleCode} · ${cell.status}`,
+                                                      otInfo.lemburSpl > 0
+                                                        ? `Wajib: ${otInfo.lemburWajib}j + SPL: ${otInfo.lemburSpl}j (Total: ${otInfo.totalOvertime}j)`
+                                                        : otInfo.lemburWajib > 0
+                                                          ? `Overtime wajib: ${otInfo.lemburWajib}j`
+                                                          : '',
+                                                    ]
+                                                      .filter(Boolean)
+                                                      .join(' · ')
+                                               }
 
                                             return (
                                               <td
@@ -12257,6 +15621,17 @@ export function SchedulingTimesheetWorkspace({
                                             : `Beda Roster · Seharusnya ${expectedShiftCode}`
                                           const scheduledClockIn =
                                             row.schedule[day - 1]?.split('-')[0]?.trim() || ''
+                                          const isNightShift =
+                                            inferredShift?.shiftCode === 'night' ||
+                                            (!inferredShift &&
+                                              (isNightShiftScheduleCode(scheduleCode) ||
+                                                isNightShiftScheduleCode(cell.shiftCode)))
+                                          const isNightPresentCell =
+                                            cell.status === 'present' &&
+                                            isNightShift &&
+                                            !cell.isLatePending &&
+                                            !isRosterMismatch &&
+                                            !isHolidayDay
                                           return (
                                             <td
                                               key={day}
@@ -12276,7 +15651,7 @@ export function SchedulingTimesheetWorkspace({
                                                       ? 'bg-orange-100 text-orange-950 shadow-sm ring-2 ring-orange-400 hover:bg-orange-200'
                                                       : isHolidayDay
                                                         ? attendanceHolidayCellClass
-                                                        : attendanceCellClass(cell.status)
+                                                        : attendanceCellClass(cell.status, scheduleCode, isNightShift)
                                                 } ${isSelected ? 'outline outline-2 outline-offset-2 outline-slate-900' : ''} ${isConflict ? 'ring-2 ring-orange-400' : ''}`}
                                                 onClick={() =>
                                                   multiSelectAttendance
@@ -12291,12 +15666,14 @@ export function SchedulingTimesheetWorkspace({
                                                 }
                                                 title={
                                                   cell.isLatePending
-                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
+                                                    ? `Terlambat ${cell.lateMinutes ? `${cell.lateMinutes} menit ` : ''}(Masuk ${isNightShift ? 'Malam' : 'Pagi'}: ${cell.clockIn || '--:--'}, Jadwal: ${cell.scheduledClockIn || scheduledClockIn || '--:--'})`
                                                     : isConflict
                                                       ? rosterMismatchLabel
                                                       : holidayName ||
                                                         cell.note ||
-                                                        attendanceStatusLabel(cell.status)
+                                                        (cell.status === 'present'
+                                                          ? `Masuk ${isNightShift ? 'Malam (Night Shift)' : 'Pagi (Day Shift)'}`
+                                                          : attendanceStatusLabel(cell.status))
                                                 }
                                               >
                                                 {isConflict ? (
@@ -12319,23 +15696,69 @@ export function SchedulingTimesheetWorkspace({
                                                     <span className="block text-[9.5px] font-extrabold tracking-tight text-red-700">
                                                       Terlambat
                                                     </span>
-                                                    {cell.lateMinutes ? (
-                                                      <span className="mt-0.5 block text-[8px] font-bold text-red-600">
-                                                        +{cell.lateMinutes}m
+                                                    <span className="flex items-center gap-0.5">
+                                                      {cell.lateMinutes ? (
+                                                        <span className="block text-[8px] font-bold text-red-600">
+                                                          +{cell.lateMinutes}m
+                                                        </span>
+                                                      ) : null}
+                                                      <span className="block text-[7.5px] font-bold uppercase text-red-800">
+                                                        ({isNightShift ? 'NS' : 'DS'})
+                                                      </span>
+                                                    </span>
+                                                  </span>
+                                                ) : cell.status === 'present' ? (
+                                                  <span className="block leading-tight">
+                                                    <span
+                                                      className={`block text-[10px] font-bold ${
+                                                        isNightPresentCell ? 'text-white' : 'text-emerald-950'
+                                                      }`}
+                                                    >
+                                                      Masuk
+                                                    </span>
+                                                    <span
+                                                      className={`block text-[7.5px] font-black uppercase tracking-wider ${
+                                                        isNightPresentCell ? 'text-indigo-200' : 'text-emerald-700'
+                                                      }`}
+                                                    >
+                                                      {isNightShift ? 'Malam' : 'Pagi'}
+                                                    </span>
+                                                  </span>
+                                                ) : (
+                                                  <span>
+                                                    {scheduleCode === 'AL' && (!cell.clockIn && !cell.clockOut)
+                                                      ? 'AL'
+                                                      : cell.status === 'field_break'
+                                                        ? 'FB'
+                                                        : attendanceStatusLabel(cell.status)}
+                                                  </span>
+                                                )}
+                                                {cell.clockIn || cell.clockOut ? (
+                                                  <span
+                                                    className={`mt-1 block font-mono text-[9.5px] leading-tight ${
+                                                      isNightPresentCell
+                                                        ? 'text-indigo-100 font-semibold'
+                                                        : 'text-slate-800'
+                                                    }`}
+                                                  >
+                                                    {cell.clockIn || '--:--'}-
+                                                    {cell.clockOut || '--:--'}
+                                                    {cell.isCrossDay ? (
+                                                      <span
+                                                        className={`ml-0.5 inline-block text-[8px] font-bold ${
+                                                          isNightPresentCell
+                                                            ? 'text-amber-300'
+                                                            : 'text-amber-600'
+                                                        } cursor-help`}
+                                                        title="Checkout di hari berikutnya (H+1)"
+                                                      >
+                                                        (+1)
                                                       </span>
                                                     ) : null}
                                                   </span>
-                                                ) : (
-                                                  <span>{attendanceStatusLabel(cell.status)}</span>
-                                                )}
-                                                {cell.clockIn || cell.clockOut ? (
-                                                  <span className="mt-1 block font-mono text-[9.5px] text-slate-800">
-                                                    {cell.clockIn || '--:--'}-
-                                                    {cell.clockOut || '--:--'}
-                                                  </span>
                                                 ) : null}
                                                 {cell.status !== 'empty' && cell.source ? (
-                                                  <span className="absolute right-1 bottom-1">
+                                                  <span className={`absolute right-1 bottom-1 ${isNightPresentCell ? 'rounded-full bg-white/20 p-0.5' : ''}`}>
                                                     <AttendanceSourceIndicator
                                                       source={cell.source}
                                                       timestamp={
@@ -12374,7 +15797,7 @@ export function SchedulingTimesheetWorkspace({
                                         {/* Total column for MSA/Meals/OVT views */}
                                         {attendanceView !== 'attendance'
                                           ? (() => {
-                                              const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName)
+                                              const staff = isStaffRole(row.employee.role, row.employee.jobTitle, row.employee.levelName, row.employee.employeeStatusType)
                                               let total = 0
                                               for (const day of days) {
                                                 const cell = getAttendanceCell(row.employee.id, day)
@@ -12405,35 +15828,35 @@ export function SchedulingTimesheetWorkspace({
                                                 )
                                                   continue
 
-                                                // Skip if no allowance (izin/sakit/alpha/empty workday)
-                                                // OVT: only count present days
-                                                if (
-                                                  attendanceView === 'ovt' &&
-                                                  cell.status !== 'present'
-                                                )
-                                                  continue
                                                 if (attendanceView === 'msa') {
+                                                  if (isFbPeriod) continue
                                                   total += allowance.msaAmount
                                                 } else if (attendanceView === 'meals') {
+                                                  if (isFbPeriod) continue
                                                   total += allowance.mealsAmount
-                                                } else {
-                                                  // OVT only for non-staff
+                                                } else if (attendanceView === 'ovt_spl') {
                                                   if (!staff) {
-                                                    total += calculateDayOvertime(
+                                                    total += getApprovedSplHoursForDay(row.employee.id, day)
+                                                  }
+                                                } else if (attendanceView === 'ovt') {
+                                                  if (!staff) {
+                                                    const otInfo = calculateTotalDayOvertime(
                                                       row.schedule,
                                                       day,
-                                                      cell.clockIn,
-                                                      cell.clockOut,
-                                                      staff,
-                                                      row.employee.id
-                                                    ).totalHours
+                                                      cell,
+                                                      row.employee.id,
+                                                      staff
+                                                    )
+                                                    total += otInfo.totalOvertime
                                                   }
                                                 }
                                               }
                                               return (
                                                 <td className="text-foreground w-[80px] min-w-[80px] px-2 py-2 text-right text-[11px] font-bold">
-                                                  {attendanceView === 'ovt'
-                                                    ? roundOvertimeHours(total)
+                                                  {attendanceView === 'ovt_spl'
+                                                    ? (roundOvertimeHours(total) || '')
+                                                    : attendanceView === 'ovt'
+                                                      ? roundOvertimeHours(total)
                                                     : `Rp ${total.toLocaleString('id-ID')}`}
                                                 </td>
                                               )
@@ -12547,7 +15970,13 @@ export function SchedulingTimesheetWorkspace({
                       onClick={() => openAttendanceWorkspace(plan.siteId, plan.period)}
                     >
                       <TableCell className="text-primary px-4 py-3 font-semibold hover:underline">
-                        {historySite?.name ?? `Site ${plan.siteId}`}
+                        <Link
+                          href={`/dashboard/scheduling-timesheet/attendance/${plan.siteId}?period=${plan.period}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:underline"
+                        >
+                          {historySite?.name ?? `Site ${plan.siteId}`}
+                        </Link>
                       </TableCell>
                       <TableCell
                         className="px-4 py-3 font-medium tabular-nums"
@@ -12578,28 +16007,34 @@ export function SchedulingTimesheetWorkspace({
                       <TableCell className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-2">
                           <Button
+                            asChild
+                            id={`btn-open-attendance-${plan.siteId}-${plan.period}`}
                             size="icon"
                             variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openAttendanceWorkspace(plan.siteId, plan.period)
-                            }}
                             aria-label="Lihat attendance"
                             title="Lihat attendance"
                           >
-                            <Eye className="size-4" />
+                            <Link
+                              href={`/dashboard/scheduling-timesheet/attendance/${plan.siteId}?period=${plan.period}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Eye className="size-4" />
+                            </Link>
                           </Button>
                           <Button
+                            asChild
+                            id={`btn-edit-attendance-${plan.siteId}-${plan.period}`}
                             size="icon"
                             variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openAttendanceWorkspace(plan.siteId, plan.period)
-                            }}
                             aria-label="Edit attendance"
                             title="Edit attendance"
                           >
-                            <Pencil className="size-4" />
+                            <Link
+                              href={`/dashboard/scheduling-timesheet/attendance/${plan.siteId}?period=${plan.period}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Pencil className="size-4" />
+                            </Link>
                           </Button>
                           <Button
                             size="icon"
@@ -13409,7 +16844,7 @@ export function SchedulingTimesheetWorkspace({
                     (dialogRosterCode === 'NS' && dialogActualShiftCode === 'DS'))
                 const dialogNeedsShiftCheck =
                   dialogIsShiftMismatch || (selectedAttendanceValue.lateMinutes ?? 0) > 60
-                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role, selectedAttendanceEmployee?.jobTitle, selectedAttendanceEmployee?.levelName)
+                const isStaffForDialog = isStaffRole(selectedAttendanceEmployee?.role, selectedAttendanceEmployee?.jobTitle, selectedAttendanceEmployee?.levelName, selectedAttendanceEmployee?.employeeStatusType)
                 const defaultOtCalculation = calculateDayOvertime(
                   employeeScheduleForDialog,
                   selectedAttendanceCell.day,
@@ -13482,6 +16917,9 @@ export function SchedulingTimesheetWorkspace({
                       ? siteId
                       : selectedAttendanceEmployee?.siteId || empObj?.siteId || 0
                   )
+                  if (rosterEditCode && rosterEditCode !== dialogRosterCode) {
+                    saveRosterEditFromAttendance(rosterEditCode)
+                  }
                   if (!Number.isFinite(numericSiteId) || numericSiteId <= 0) {
                     toast.error('Pilih site terlebih dahulu untuk menyimpan attendance.')
                     return
@@ -13509,7 +16947,6 @@ export function SchedulingTimesheetWorkspace({
                         ],
                       })
                       if (result.ok) {
-                        router.refresh()
                         toast.success('Attendance saved ke database.')
                       } else {
                         toast.error('Save attendance failed', {
@@ -13581,7 +17018,7 @@ export function SchedulingTimesheetWorkspace({
                           disabled={isFinalized || isSavingSchedule}
                           className="h-9 w-[150px] bg-white"
                           options={(savedPlan?.sourceVersion === 'v2'
-                            ? ['', 'OFF', 'DS', 'NS', 'FB', 'ST']
+                            ? ['', 'OFF', 'DS', 'NS', 'FB', 'ST', 'AL']
                             : codeCycle
                           ).map((code) => ({
                             value: code,
@@ -13620,7 +17057,7 @@ export function SchedulingTimesheetWorkspace({
                             { value: 'present', label: 'Masuk' },
                             { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
                             { value: 'standby', label: 'Standby (ST)' },
-                            { value: 'field_break', label: 'Field Break (GB)' },
+                            { value: 'field_break', label: 'Field Break (FB)' },
                             { value: 'sick', label: 'Sakit' },
                             { value: 'leave', label: 'Izin' },
                             { value: 'absent', label: 'Alpha' },
@@ -13730,6 +17167,221 @@ export function SchedulingTimesheetWorkspace({
         </DialogContent>
       </Dialog>
 
+      {/* ── Dialog Bulk Edit Attendance Real (Pop-up Sesuai Permintaan User) ── */}
+      <Dialog
+        open={isBulkEditAttendanceOpen}
+        onOpenChange={(open) => !open && setIsBulkEditAttendanceOpen(false)}
+      >
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Edit Attendance Real — Bulk ({selectedAttendanceKeys.length} Sel Terpilih)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="bg-surface-container-low text-muted-foreground flex flex-wrap items-center justify-between gap-2 rounded-2xl p-3 text-sm">
+              <div>
+                Terpilih:{' '}
+                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                  {selectedAttendanceKeys.length} Sel
+                </span>{' '}
+                • Periode: <span className="font-semibold text-slate-900">{period}</span> • Site:{' '}
+                <span className="font-semibold text-slate-900">{site?.name || 'Semua Site'}</span>
+              </div>
+              <span className="inline-flex items-center rounded-md bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
+                Bulk Action Mode
+              </span>
+            </div>
+
+            {/* EDIT ROSTER SECTION */}
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-orange-200 bg-orange-50/70 p-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold tracking-wide text-orange-950 uppercase">
+                  Edit Roster ({selectedAttendanceKeys.length} Sel Terpilih)
+                </Label>
+                <p className="text-xs text-orange-900/75">
+                  Perubahan ini langsung mengubah roster aktif untuk karyawan dan tanggal terpilih.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <NativeSelect
+                  value={bulkRosterEditCode}
+                  onValueChange={(value) => setBulkRosterEditCode(value as ScheduleCode)}
+                  disabled={isFinalized || isSavingSchedule}
+                  className="h-9 w-[180px] bg-white text-xs font-medium"
+                  options={[
+                    { value: '', label: 'Jangan Ubah Roster' },
+                    { value: 'OFF', label: 'OFF (Libur)' },
+                    { value: 'DS', label: 'DS (Day Shift)' },
+                    { value: 'NS', label: 'NS (Night Shift)' },
+                    { value: 'FB', label: 'FB (Field Break)' },
+                    { value: 'ST', label: 'ST (Standby)' },
+                    { value: 'AL', label: 'AL (Annual Leave)' },
+                  ]}
+                />
+              </div>
+            </div>
+
+            {/* STATUS, JAM MASUK, JAM PULANG */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <NativeSelect
+                  value={bulkAttendanceStatus}
+                  onValueChange={(value) => {
+                    const nextStatus = value as AttendanceCellStatus
+                    setBulkAttendanceStatus(nextStatus)
+                    if (nextStatus !== 'present') {
+                      setBulkClockIn('')
+                      setBulkClockOut('')
+                    } else {
+                      if (!bulkClockIn) setBulkClockIn('08:00')
+                      if (!bulkClockOut) setBulkClockOut('17:00')
+                    }
+                  }}
+                  options={[
+                    { value: 'present', label: 'Masuk' },
+                    { value: 'off', label: 'OFF (tetap dapat tunjangan)' },
+                    { value: 'standby', label: 'Standby (ST)' },
+                    { value: 'field_break', label: 'Field Break (FB)' },
+                    { value: 'sick', label: 'Sakit' },
+                    { value: 'leave', label: 'Izin' },
+                    { value: 'absent', label: 'Alpha' },
+                    { value: 'empty', label: '-' },
+                  ]}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Jam Masuk</Label>
+                <Input
+                  type="time"
+                  value={bulkClockIn}
+                  onChange={(e) => {
+                    setBulkClockIn(e.target.value)
+                    if (e.target.value && bulkAttendanceStatus !== 'present') {
+                      setBulkAttendanceStatus('present')
+                    }
+                  }}
+                  disabled={bulkAttendanceStatus !== 'present'}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Jam Pulang</Label>
+                <Input
+                  type="time"
+                  value={bulkClockOut}
+                  onChange={(e) => {
+                    setBulkClockOut(e.target.value)
+                    if (e.target.value && bulkAttendanceStatus !== 'present') {
+                      setBulkAttendanceStatus('present')
+                    }
+                  }}
+                  disabled={bulkAttendanceStatus !== 'present'}
+                />
+              </div>
+            </div>
+
+            {/* PRESET JAM BUTTONS */}
+            {bulkAttendanceStatus === 'present' && (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="text-[11px] font-medium">Preset jam:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('08:00')
+                    setBulkClockOut('17:00')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-100"
+                >
+                  08:00 - 17:00 (Office)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('07:00')
+                    setBulkClockOut('18:00')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-100"
+                >
+                  07:00 - 18:00 (10 Jam)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('20:00')
+                    setBulkClockOut('05:00')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-100"
+                >
+                  20:00 - 05:00 (Night)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkClockIn('')
+                    setBulkClockOut('')
+                  }}
+                  className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-rose-600 hover:bg-slate-100"
+                >
+                  Kosongkan Jam
+                </button>
+              </div>
+            )}
+
+            {/* CATATAN */}
+            <div className="space-y-2">
+              <Label>Catatan</Label>
+              <Input
+                value={bulkNote}
+                onChange={(e) => setBulkNote(e.target.value)}
+                placeholder="Contoh: Sesuai roster 5:2 / lembur operasional / izin"
+              />
+            </div>
+
+            {/* TOTAL OVERTIME & ACTIONS */}
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center space-x-2">
+                <Label
+                  htmlFor="bulk-overtime-override"
+                  className="text-muted-foreground text-xs font-semibold tracking-wider uppercase"
+                >
+                  Total Overtime:
+                </Label>
+                <Input
+                  id="bulk-overtime-override"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="24"
+                  className="h-9 w-24"
+                  value={bulkOvertimeHours}
+                  onChange={(e) => setBulkOvertimeHours(e.target.value)}
+                  placeholder="Auto"
+                />
+                <span className="text-muted-foreground text-[11px] italic">
+                  (Kosongkan untuk otomatis)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsBulkEditAttendanceOpen(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={onSaveBulkAttendance}
+                  disabled={isSavingAttendance || isSavingSchedule}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white font-semibold"
+                >
+                  {isSavingAttendance || isSavingSchedule ? 'Menyimpan...' : 'Simpan'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={selectedEmployeeId !== null}
         onOpenChange={(open) => !open && setSelectedEmployeeId(null)}
@@ -13749,7 +17401,7 @@ export function SchedulingTimesheetWorkspace({
                 <NativeSelect
                   value={profileSection}
                   onValueChange={handleProfileSectionChange}
-                  options={sectionOptions.map((section) => ({
+                  options={siteRosterSectionOptions.map((section) => ({
                     value: section,
                     label: rosterSectionLabel(section),
                   }))}
@@ -13942,43 +17594,132 @@ export function SchedulingTimesheetWorkspace({
       <Dialog
         open={Boolean(pdfPreview)}
         onOpenChange={(open) => {
-          if (!open && pdfPreview) {
-            URL.revokeObjectURL(pdfPreview.url)
+          if (!open) {
+            if (pdfPreview?.url) {
+              const closingUrl = pdfPreview.url
+              setTimeout(() => {
+                try {
+                  URL.revokeObjectURL(closingUrl)
+                } catch {
+                  // ignore
+                }
+              }, 60000)
+            }
             setPdfPreview(null)
           }
         }}
       >
-        <DialogContent className="max-w-[96vw] gap-0 overflow-hidden bg-white p-0">
-          <DialogHeader className="flex flex-row items-center justify-between border-b p-4">
-            <DialogTitle className="truncate pr-4 text-sm font-black text-[#082033]">
-              {pdfPreview?.title ?? 'Preview PDF'}
-            </DialogTitle>
+        <DialogContent className="max-w-[96vw] gap-0 overflow-hidden bg-white p-0 shadow-2xl sm:max-w-[94vw]">
+          <DialogHeader className="flex flex-row items-center justify-between border-b px-4 py-3 bg-slate-50/70">
+            <div className="flex items-center gap-2 min-w-0 pr-4">
+              <FileText className="size-4 shrink-0 text-indigo-600" />
+              <DialogTitle className="truncate text-sm font-bold text-slate-800">
+                {pdfPreview?.title ?? 'Preview PDF'}
+              </DialogTitle>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {pdfPreview ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs font-semibold"
+                    onClick={() => {
+                      if (pdfPreview?.url) {
+                        window.open(pdfPreview.url, '_blank')
+                      }
+                    }}
+                    title="Buka dokumen di tab baru browser"
+                  >
+                    <ExternalLink className="mr-1.5 size-3.5 text-slate-600" /> Buka di Tab Baru
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-8 bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700"
+                    asChild
+                  >
+                    <a
+                      href={pdfPreview.url}
+                      download={`${(pdfPreview.title || 'document').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`}
+                    >
+                      <Download className="mr-1.5 size-3.5" /> Download PDF
+                    </a>
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </DialogHeader>
-          <div className="h-[calc(100vh-140px)] min-h-[70vh] bg-[#f5f7fb]">
+          <div className="relative h-[calc(100vh-140px)] min-h-[70vh] w-full bg-[#525659]">
             {pdfPreview ? (
-              <iframe src={pdfPreview.url} title={pdfPreview.title} className="h-full w-full" />
+              <object
+                data={pdfPreview.url}
+                type="application/pdf"
+                className="h-full w-full"
+              >
+                <iframe
+                  src={pdfPreview.url}
+                  title={pdfPreview.title}
+                  className="h-full w-full border-0 bg-white"
+                >
+                  <div className="flex h-full flex-col items-center justify-center p-8 text-center text-slate-600 bg-white">
+                    <FileText className="mb-3 size-12 text-slate-400" />
+                    <p className="font-semibold text-slate-800">
+                      Preview PDF tidak dapat ditampilkan langsung di browser ini.
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Silakan gunakan tombol di bawah untuk membuka dokumen di tab baru atau mengunduh dokumen.
+                    </p>
+                    <div className="mt-4 flex gap-2">
+                      <Button size="sm" onClick={() => window.open(pdfPreview.url, '_blank')}>
+                        <ExternalLink className="mr-1.5 size-4" /> Buka di Tab Baru
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <a href={pdfPreview.url} download>
+                          <Download className="mr-1.5 size-4" /> Download PDF
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </iframe>
+              </object>
             ) : null}
           </div>
-          <div className="flex items-center justify-end gap-2 border-t p-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (pdfPreview) {
-                  URL.revokeObjectURL(pdfPreview.url)
+          <div className="flex items-center justify-between border-t bg-slate-50/50 px-4 py-2.5">
+            <span className="text-[11px] text-slate-500">
+              Tips: Jika tampilan dokumen tidak muncul di browser Anda, klik tombol &quot;Buka di Tab Baru&quot; di atas.
+            </span>
+            <div className="flex items-center gap-2">
+              {pdfPreview ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => window.open(pdfPreview.url, '_blank')}
+                >
+                  <ExternalLink className="mr-1.5 size-3.5" /> Buka di Tab Baru
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  if (pdfPreview?.url) {
+                    const closingUrl = pdfPreview.url
+                    setTimeout(() => {
+                      try {
+                        URL.revokeObjectURL(closingUrl)
+                      } catch {
+                        // ignore
+                      }
+                    }, 60000)
+                  }
                   setPdfPreview(null)
-                }
-              }}
-            >
-              <X className="mr-1.5 size-3.5" /> Tutup
-            </Button>
-            {pdfPreview ? (
-              <Button size="sm" asChild>
-                <a href={pdfPreview.url} download>
-                  <Download className="mr-1.5 size-3.5" /> Download PDF
-                </a>
+                }}
+              >
+                <X className="mr-1.5 size-3.5" /> Tutup
               </Button>
-            ) : null}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -14128,6 +17869,679 @@ export function SchedulingTimesheetWorkspace({
               >
                 Reopen
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Export PDF Summary Grid (Pilih Site & Karyawan) */}
+      <Dialog
+        open={summaryGridPdfModalOpen}
+        onOpenChange={setSummaryGridPdfModalOpen}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <FileText className="size-5 text-blue-600" />
+              <span>Export PDF Summary Grid (Landscape A4)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Pilih Site, Jenis Dokumen Grid, dan Karyawan untuk mengunduh rekapitulasi matriks harian (tanggal 1–31) lengkap dengan approval resmi.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* 1. Pilih Site & Periode */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Pilih Site Lokasi</label>
+                <HeroSearchableSelect
+                  options={sites.map((s) => ({ value: String(s.id), label: s.name }))}
+                  value={summaryGridSiteId}
+                  onChange={(val) => {
+                    setSummaryGridSiteId(val)
+                    setSiteId(val)
+                    setSummaryGridSelectedEmployeeIds([])
+                    setSummaryGridSelectAllEmployees(true)
+                  }}
+                  placeholder="Pilih Site..."
+                  className="w-full h-9 bg-white text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700">Periode Aktif</label>
+                <div className="h-9 px-3 flex items-center rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-800">
+                  {period} ({rate.project || 'Project Standard'})
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Pilih Tipe Summary Grid */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Jenis Dokumen Summary Grid</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { key: 'ovt_spl', label: 'Overtime SPL', desc: 'Surat Perintah Lembur harian' },
+                  { key: 'ovt', label: 'Overtime Reguler', desc: 'Rekapitulasi lembur harian' },
+                  { key: 'msa', label: 'MSA Summary', desc: 'Meal & Site Allowance' },
+                  { key: 'meals', label: 'MLS Summary', desc: 'Uang makan harian' },
+                  { key: 'lokasi', label: 'TU Summary', desc: 'Tunjangan khusus / lokasi' },
+                ].map((item) => {
+                  const isActive = summaryGridType === item.key
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setSummaryGridType(item.key as SummaryView)}
+                      className={cn(
+                        'flex flex-col items-start p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none',
+                        isActive
+                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20 text-blue-900'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      )}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-bold text-xs">{item.label}</span>
+                        {isActive && <Check className="size-3.5 text-blue-600 shrink-0" />}
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{item.desc}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 3. Pilih Karyawan */}
+            <div className="space-y-2.5 p-3 rounded-xl border border-slate-200 bg-white shadow-2xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Pilihan Karyawan</p>
+                  <p className="text-[11px] text-slate-500">
+                    {summaryGridSelectAllEmployees
+                      ? `Semua karyawan di site ini (${rows.length} orang)`
+                      : `${summaryGridSelectedEmployeeIds.length} dari ${rows.length} karyawan dipilih`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSummaryGridSelectAllEmployees(true)
+                      setSummaryGridSelectedEmployeeIds([])
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer select-none',
+                      summaryGridSelectAllEmployees
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    )}
+                  >
+                    Semua Karyawan ({rows.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryGridSelectAllEmployees(false)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer select-none',
+                      !summaryGridSelectAllEmployees
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    )}
+                  >
+                    Pilih Tertentu {summaryGridSelectedEmployeeIds.length > 0 ? `(${summaryGridSelectedEmployeeIds.length})` : ''}
+                  </button>
+                </div>
+              </div>
+
+              {!summaryGridSelectAllEmployees && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="size-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Cari nama karyawan, NIK / SN, divisi..."
+                        value={summaryGridEmployeeSearch}
+                        onChange={(e) => setSummaryGridEmployeeSearch(e.target.value)}
+                        className="w-full h-8 pl-8 pr-3 text-xs rounded-lg border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSummaryGridSelectedEmployeeIds(rows.map((r) => r.employee.id))}
+                      className="text-xs text-blue-600 font-semibold hover:underline shrink-0 cursor-pointer"
+                    >
+                      Pilih Semua
+                    </button>
+                    <span className="text-slate-300">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSummaryGridSelectedEmployeeIds([])}
+                      className="text-xs text-slate-500 font-semibold hover:text-rose-600 hover:underline shrink-0 cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  </div>
+
+                  <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/30 p-1">
+                    {rows
+                      .map((r) => r.employee)
+                      .filter((emp) => {
+                        if (!summaryGridEmployeeSearch.trim()) return true
+                        const q = summaryGridEmployeeSearch.toLowerCase().trim()
+                        return (
+                          emp.name.toLowerCase().includes(q) ||
+                          (emp.employeeSn && emp.employeeSn.toLowerCase().includes(q)) ||
+                          (emp.department && emp.department.toLowerCase().includes(q)) ||
+                          (emp.section && emp.section.toLowerCase().includes(q))
+                        )
+                      })
+                      .map((emp) => {
+                        const isChecked = summaryGridSelectedEmployeeIds.includes(emp.id)
+                        return (
+                          <label
+                            key={emp.id}
+                            className={cn(
+                              'flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs select-none',
+                              isChecked ? 'bg-blue-50/70 text-blue-950 font-medium' : 'hover:bg-slate-100/70 text-slate-700'
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSummaryGridSelectedEmployeeIds((prev) => [...prev, emp.id])
+                                } else {
+                                  setSummaryGridSelectedEmployeeIds((prev) => prev.filter((id) => id !== emp.id))
+                                }
+                              }}
+                              className="size-4 rounded accent-blue-600 cursor-pointer shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-slate-900 leading-tight">
+                                {emp.name}{' '}
+                                <span className="font-normal text-slate-500">
+                                  ({emp.employeeSn || '-'})
+                                </span>
+                              </p>
+                              <p className="truncate text-[10px] text-slate-500">
+                                {emp.department || 'Tanpa Dept'} • {emp.section || emp.role || 'Umum'}
+                              </p>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    {rows.length === 0 && (
+                      <p className="p-4 text-center text-xs text-slate-500">
+                        Tidak ada karyawan di site ini.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Opsi Tanda Tangan Approval */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-white">
+              <div>
+                <p className="text-xs font-semibold text-slate-800">Format Approval & Tanda Tangan</p>
+                <p className="text-[11px] text-slate-500">
+                  {pdfUseExternalSignatures
+                    ? 'Format Approval Eksternal (2 Kolom: Manpower vs Customer Plant. Suptend Department CK-MHU)'
+                    : 'Format Standar Internal HERO'}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="toggle-modal-external-pdf"
+                    checked={pdfUseExternalSignatures}
+                    onCheckedChange={(val) => {
+                      setPdfUseExternalSignatures(val)
+                      if (val) setPdfExternalSignatureCount(2)
+                    }}
+                  />
+                  <label htmlFor="toggle-modal-external-pdf" className="text-xs font-medium text-slate-700 cursor-pointer select-none">
+                    Eksternal (2 Kolom Tanda Tangan)
+                  </label>
+                </div>
+                {pdfUseExternalSignatures && (
+                  <div className="flex items-center gap-1 border-l border-slate-200 pl-3">
+                    {([2, 3, 4] as const).map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setPdfExternalSignatureCount(cnt)}
+                        className={cn(
+                          'px-2 py-0.5 text-xs font-semibold rounded cursor-pointer select-none',
+                          pdfExternalSignatureCount === cnt
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        )}
+                      >
+                        {cnt} Kolom
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSummaryGridPdfModalOpen(false)}
+              className="h-9 px-4 text-xs"
+            >
+              Tutup
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  rows.length === 0 ||
+                  (!summaryGridSelectAllEmployees && summaryGridSelectedEmployeeIds.length === 0)
+                }
+                onClick={() =>
+                  void previewSummaryPdf(
+                    summaryGridType,
+                    summaryGridSelectAllEmployees ? undefined : summaryGridSelectedEmployeeIds
+                  )
+                }
+                className="h-9 px-4 text-xs"
+              >
+                <Eye className="mr-1.5 size-3.5 text-slate-500" />
+                Preview PDF Grid
+              </Button>
+              <Button
+                variant="default"
+                size="sm"
+                disabled={
+                  rows.length === 0 ||
+                  (!summaryGridSelectAllEmployees && summaryGridSelectedEmployeeIds.length === 0)
+                }
+                onClick={() =>
+                  void downloadSummaryPdf(
+                    summaryGridType,
+                    summaryGridSelectAllEmployees ? undefined : summaryGridSelectedEmployeeIds
+                  )
+                }
+                className="h-9 px-4 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+              >
+                <Download className="mr-1.5 size-3.5" />
+                Download PDF Grid
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Konfigurasi Ekspor & Cut-Off Tagihan (Excel & PDF) */}
+      <Dialog open={exportConfigDialogOpen} onOpenChange={setExportConfigDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <CalendarRange className="size-5 text-emerald-600" />
+              <span>Ekspor Excel & PDF Rentang Tanggal / Cut-Off Tagihan</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Tentukan rentang tanggal mulai dan tanggal selesai kustom (misal untuk tagihan customer CK 16 Sept – 15 Okt, 17 Sept – 16 Nov, atau periode kustom lainnya). Berlaku untuk unduhan berkas Excel maupun berkas PDF resmi.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* 1. Preset Cepat */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-700">
+                1. Pilihan Cepat (Preset Periode)
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {/* Preset CK 16-15 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExportDialogCutoff('ck_16_15')
+                    const prev = getPreviousPeriod(period)
+                    setCustomExportStartDate(`${prev}-16`)
+                    setCustomExportEndDate(`${period}-15`)
+                  }}
+                  className={cn(
+                    'flex flex-col text-left p-2.5 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'ck_16_15'
+                      ? 'border-emerald-600 bg-emerald-50/90 ring-2 ring-emerald-500/20 text-emerald-950 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs text-emerald-900">
+                      Cust CK (16 – 15)
+                    </span>
+                    <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0">
+                      Preset
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] font-medium text-emerald-700">
+                    {formatCkCutoffFullRange(period)}
+                  </span>
+                  <span className="text-[10px] text-emerald-600/80 mt-1">
+                    16 bln lalu s/d 15 bln aktif
+                  </span>
+                </button>
+
+                {/* Preset Standar Kalender */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExportDialogCutoff('calendar')
+                    const lastD = days[days.length - 1] || 31
+                    setCustomExportStartDate(`${period}-01`)
+                    setCustomExportEndDate(`${period}-${String(lastD).padStart(2, '0')}`)
+                  }}
+                  className={cn(
+                    'flex flex-col text-left p-2.5 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'calendar'
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20 text-slate-900 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs">Standar Kalender</span>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                      1 – Akhir
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    1 s/d {days[days.length - 1] || 31} {period}
+                  </span>
+                  <span className="text-[10px] text-slate-400 mt-1">
+                    Format bulanan normal
+                  </span>
+                </button>
+
+                {/* Preset Kustom */}
+                <button
+                  type="button"
+                  onClick={() => setExportDialogCutoff('custom')}
+                  className={cn(
+                    'flex flex-col text-left p-2.5 rounded-xl border transition-all text-xs',
+                    exportDialogCutoff === 'custom'
+                      ? 'border-blue-600 bg-blue-50/90 ring-2 ring-blue-500/20 text-blue-950 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  )}
+                >
+                  <div className="flex items-center justify-between w-full mb-1">
+                    <span className="font-semibold text-xs text-blue-900">
+                      Kustom Bebas
+                    </span>
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-blue-300 text-blue-700">
+                      Manual
+                    </Badge>
+                  </div>
+                  <span className="text-[11px] font-medium text-blue-700">
+                    Bebas Pilih Tanggal
+                  </span>
+                  <span className="text-[10px] text-blue-600/80 mt-1">
+                    Atur tanggal mulai & selesai
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Form Pemilihan Tanggal Mulai & Tanggal Selesai */}
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <Label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <CalendarDays className="size-3.5 text-slate-500" />
+                <span>2. Rentang Tanggal Ekspor (Mulai s/d Selesai)</span>
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-slate-600">
+                    Tanggal Mulai (Dari):
+                  </label>
+                  <Input
+                    type="date"
+                    value={customExportStartDate}
+                    onChange={(e) => {
+                      setCustomExportStartDate(e.target.value)
+                      setExportDialogCutoff('custom')
+                    }}
+                    className="h-9 bg-white text-xs border-slate-300"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-slate-600">
+                    Tanggal Selesai (Sampai):
+                  </label>
+                  <Input
+                    type="date"
+                    value={customExportEndDate}
+                    onChange={(e) => {
+                      setCustomExportEndDate(e.target.value)
+                      setExportDialogCutoff('custom')
+                    }}
+                    className="h-9 bg-white text-xs border-slate-300"
+                  />
+                </div>
+              </div>
+
+              {/* Real-time feedback summary */}
+              {customExportStartDate && customExportEndDate ? (
+                customExportStartDate <= customExportEndDate ? (
+                  <div className="mt-2 rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-950 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      <span className="font-semibold text-emerald-900">
+                        {formatCustomDateRangeFull(customExportStartDate, customExportEndDate)}
+                      </span>
+                    </div>
+                    <Badge className="bg-emerald-600 text-white text-[10px] px-2 py-0.5 font-semibold">
+                      {buildCustomDateRange(customExportStartDate, customExportEndDate, holidays).length} Hari
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="mt-2 rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-900 flex items-center gap-2">
+                    <AlertTriangle className="size-4 text-rose-600 shrink-0" />
+                    <span className="font-medium">Tanggal mulai tidak boleh melebihi tanggal selesai!</span>
+                  </div>
+                )
+              ) : null}
+            </div>
+
+            {/* 3. Pilihan Format Dokumen / Tab (Excel & PDF) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-700">
+                  3. Pilihan Format Dokumen / Lembar Kerja (Excel & PDF)
+                </Label>
+                <span className="text-[10px] text-slate-500">
+                  Pilih format lembar untuk unduhan Excel atau PDF
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  {
+                    id: 'all_5_tabs',
+                    label: 'Semua Tab Sekaligus (Bulk)',
+                    desc: 'Excel 5 sheet lengkap / Bulk PDF semua dokumen',
+                    icon: FileSpreadsheet,
+                    featured: true,
+                  },
+                  {
+                    id: 'ovt_summary',
+                    label: 'Overtime Summary',
+                    desc: 'Rekapitulasi lembur bulanan matriks (Excel & PDF)',
+                    icon: Clock3,
+                  },
+                  {
+                    id: 'ovt',
+                    label: 'Overtime Record',
+                    desc: 'Lembar lembur resmi per karyawan (PDF)',
+                    icon: FileText,
+                  },
+                  {
+                    id: 'ovt_spl',
+                    label: 'Overtime SPL Summary',
+                    desc: 'Surat Perintah Lembur harian (Excel & PDF)',
+                    icon: FileText,
+                  },
+                  {
+                    id: 'attendance',
+                    label: 'Attendance Grid',
+                    desc: 'Matriks visual kehadiran & jam kerja harian (Excel & PDF)',
+                    icon: CalendarRange,
+                  },
+                  {
+                    id: 'msa',
+                    label: 'MSA Summary Grid',
+                    desc: 'Meal & Site Allowance (Excel & PDF)',
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    id: 'meals',
+                    label: 'MLS Summary Grid',
+                    desc: 'Uang makan harian (Excel & PDF)',
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    id: 'lokasi',
+                    label: 'TU Summary Grid',
+                    desc: 'Tunjangan khusus / lokasi (Excel & PDF)',
+                    icon: FileSpreadsheet,
+                  },
+                  {
+                    id: 'checkin-checkout',
+                    label: 'Jam Masuk & Pulang',
+                    desc: 'Grid Clock In & Out harian (Excel)',
+                    icon: Clock,
+                  },
+                ].map((item) => {
+                  const Icon = item.icon
+                  const isSelected = exportDialogActiveTab === item.id
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setExportDialogActiveTab(item.id)}
+                      className={cn(
+                        'flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-colors cursor-pointer',
+                        isSelected
+                          ? 'border-emerald-600 bg-emerald-50/70 ring-1 ring-emerald-500/30 text-emerald-950 font-medium'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
+                      )}
+                    >
+                      <Icon className={cn('size-4 shrink-0', isSelected ? 'text-emerald-600' : 'text-slate-500')} />
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-xs truncate">{item.label}</span>
+                          {item.featured && (
+                            <Badge className="bg-emerald-600 text-white text-[8px] px-1 py-0 h-3.5">
+                              Rekomendasi
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted-foreground truncate">{item.desc}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExportConfigDialogOpen(false)}
+                className="h-9 px-3 text-xs"
+              >
+                Batal
+              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (exportDialogCutoff === 'ck_16_15') {
+                      setAttendanceExportCutoff('ck_16_15')
+                      toast.success('Cut-Off Customer CK (16–15) diaktifkan untuk halaman & toolbar.')
+                    } else if (exportDialogCutoff === 'calendar') {
+                      setAttendanceExportCutoff('calendar')
+                      toast.success('Standar Kalender (1–Akhir) diaktifkan untuk halaman & toolbar.')
+                    } else {
+                      setAttendanceExportCutoff('ck_16_15')
+                      toast.success(`Rentang tanggal kustom (${formatCustomDateRangeLabel(customExportStartDate, customExportEndDate)}) diterapkan.`)
+                    }
+                    setExportConfigDialogOpen(false)
+                  }}
+                  className="h-9 px-3 text-xs text-slate-700 border-slate-300"
+                  title="Terapkan cut-off ini agar tombol di halaman utama otomatis menggunakan rentang ini"
+                >
+                  <Check className="mr-1.5 size-3.5 text-slate-500" />
+                  Terapkan ke Toolbar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    isPreviewingSitePdf ||
+                    !customExportStartDate ||
+                    !customExportEndDate ||
+                    customExportStartDate > customExportEndDate
+                  }
+                  onClick={() => handleDownloadCustomDatePdf(true)}
+                  className="h-9 px-3 text-xs font-semibold text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100"
+                  title="Pratinjau dokumen PDF dengan rentang cut-off tanggal yang dipilih"
+                >
+                  <Eye className="mr-1.5 size-3.5 text-indigo-600" />
+                  Preview PDF
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    isDownloadingSitePdf ||
+                    !customExportStartDate ||
+                    !customExportEndDate ||
+                    customExportStartDate > customExportEndDate
+                  }
+                  onClick={() => handleDownloadCustomDatePdf(false)}
+                  className="h-9 px-3 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm"
+                  title="Unduh dokumen PDF resmi dengan rentang cut-off tanggal yang dipilih"
+                >
+                  <FileText className="mr-1.5 size-3.5" />
+                  Unduh PDF
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={
+                    isDownloadingCustomExcel ||
+                    !customExportStartDate ||
+                    !customExportEndDate ||
+                    customExportStartDate > customExportEndDate
+                  }
+                  onClick={handleDownloadCustomDateExcel}
+                  className="h-9 px-3.5 text-xs font-semibold text-white shadow-sm bg-emerald-600 hover:bg-emerald-700"
+                  title="Unduh spreadsheet Excel dengan rentang cut-off tanggal yang dipilih"
+                >
+                  {isDownloadingCustomExcel ? (
+                    <>
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      Menyiapkan...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-1.5 size-3.5" />
+                      Unduh Excel
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

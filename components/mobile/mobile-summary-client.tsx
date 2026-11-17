@@ -10,6 +10,7 @@ import {
   Clock,
   Download,
   Eye,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -25,6 +26,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { generateSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import { printSummaryInPlace } from '@/lib/summary-print';
 import { SummaryGeneratorModal } from '@/components/summary/summary-generator-modal';
 import type { SectionWithSummary } from '@/components/summary/summary-list';
 
@@ -36,44 +38,16 @@ interface MobileSummaryClientProps {
 export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileSummaryClientProps) {
   const router = useRouter();
   const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
+  const [editModalSection, setEditModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
-  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'approved'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'revisi' | 'pending' | 'approved'>('all');
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handlePrintInPlace = (summaryId: number) => {
     setPrintingId(summaryId);
-    const existing = document.getElementById('summary-print-iframe');
-    if (existing) {
-      existing.remove();
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'summary-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-    iframe.src = `/print/summary/${summaryId}`;
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (err) {
-          console.error('Failed to print iframe:', err);
-        } finally {
-          setPrintingId(null);
-        }
-      }, 500);
-    };
-
-    document.body.appendChild(iframe);
+    printSummaryInPlace(summaryId, () => setPrintingId(null));
   };
 
   const handleDeleteDraft = async (summaryId: number) => {
@@ -183,18 +157,32 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
             Draft
           </span>
         );
+      case 'pending':
       case 'pending_approval':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-            <Clock className="size-3" />
-            Review Dept Head
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+            <Clock className="size-3 text-blue-600" />
+            Menunggu Review
+          </span>
+        );
+      case 'revisi':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+            <Clock className="size-3 text-amber-600" />
+            Perlu Revisi
           </span>
         );
       case 'approved':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <CheckCircle2 className="size-3" />
+            <CheckCircle2 className="size-3 text-emerald-600" />
             Disetujui
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 text-rose-800 border border-rose-200">
+            Ditolak
           </span>
         );
       default:
@@ -302,6 +290,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
             { key: 'all', label: 'Semua Status' },
             { key: 'uncreated', label: 'Siap Generate' },
             { key: 'draft', label: 'Draft' },
+            { key: 'revisi', label: 'Perlu Revisi' },
             { key: 'pending', label: 'Review' },
             { key: 'approved', label: 'Approved' },
           ].map((st) => (
@@ -413,6 +402,19 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
                         </Button>
                       )}
 
+                      {/* Edit button for draft or revisi status */}
+                      {section.summaryId && (section.summaryStatus === 'revisi' || section.summaryStatus === 'draft') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditModalSection(section)}
+                          className="h-8 px-2.5 text-xs border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 active:scale-95 font-semibold"
+                        >
+                          <FilePenLine className="mr-1 size-3" />
+                          Edit
+                        </Button>
+                      )}
+
                       {/* Delete Draft button */}
                       {section.summaryId && section.summaryStatus === 'draft' && (
                         <Button
@@ -457,7 +459,7 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
         )}
       </section>
 
-      {/* Summary Generator Modal */}
+      {/* Summary Generator Modal (Create) */}
       {generatorModalSection && (
         <SummaryGeneratorModal
           isOpen={Boolean(generatorModalSection)}
@@ -465,6 +467,22 @@ export function MobileSummaryClient({ sections, currentEmployeeId = 0 }: MobileS
           section={generatorModalSection}
           currentEmployeeId={currentEmployeeId}
           onSuccess={(summaryId) => {
+            router.push(`/mobile/summary?preview=${summaryId}`);
+          }}
+        />
+      )}
+
+      {/* Summary Generator Modal (Edit Draft / Revisi) */}
+      {editModalSection && (
+        <SummaryGeneratorModal
+          isOpen={Boolean(editModalSection)}
+          onClose={() => setEditModalSection(null)}
+          section={editModalSection}
+          currentEmployeeId={currentEmployeeId}
+          editSummaryId={editModalSection.summaryId!}
+          editSectionId={editModalSection.id}
+          onSuccess={(summaryId) => {
+            setEditModalSection(null);
             router.push(`/mobile/summary?preview=${summaryId}`);
           }}
         />

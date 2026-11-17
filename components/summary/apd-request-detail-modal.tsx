@@ -23,11 +23,11 @@ export function ApdRequestDetailModal({ isOpen, onClose, requestId, isSummary = 
 
   if (!isOpen || !requestId) return null;
 
-  const printUrl = isSummary ? `/print/summary/${requestId}` : `/print/apd/${requestId}`;
+  const printUrl = isSummary ? `/print/summary/${requestId}?embed=1&from=approval` : `/print/apd/${requestId}?embed=1`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent showCloseButton={false} className="max-w-5xl w-[95vw] h-[92vh] max-h-[92vh] p-0 overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 flex flex-col shadow-2xl">
+      <DialogContent showCloseButton={false} className="max-w-7xl w-[98vw] h-[94vh] max-h-[94vh] p-0 overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 flex flex-col shadow-2xl">
         {/* Modal Header */}
         <div className="px-5 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
@@ -36,10 +36,12 @@ export function ApdRequestDetailModal({ isOpen, onClose, requestId, isSummary = 
             </div>
             <div>
               <DialogTitle className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                Dokumen Resmi Permintaan APD
+                {isSummary ? "Dokumen Resmi Summary Permintaan APD (Gabungan Site)" : "Dokumen Resmi Permintaan APD"}
               </DialogTitle>
               <DialogDescription className="text-[11px] text-slate-400">
-                Formulir resmi Alat Pelindung Diri (APD) & lampiran foto bukti fisik
+                {isSummary
+                  ? "Rekapitulasi resmi pengajuan APD gabungan site untuk persetujuan manajemen"
+                  : "Formulir resmi Alat Pelindung Diri (APD) & lampiran foto bukti fisik"}
               </DialogDescription>
             </div>
           </div>
@@ -71,7 +73,9 @@ export function ApdRequestDetailModal({ isOpen, onClose, requestId, isSummary = 
           {iframeLoading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-10 gap-2">
               <Loader2 className="size-8 animate-spin text-blue-500" />
-              <p className="text-xs text-slate-300 font-medium">Memuat formulir resmi APD...</p>
+              <p className="text-xs text-slate-300 font-medium">
+                {isSummary ? "Memuat dokumen resmi Summary Permintaan APD..." : "Memuat formulir resmi APD..."}
+              </p>
             </div>
           )}
           <iframe

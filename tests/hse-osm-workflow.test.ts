@@ -4,10 +4,13 @@ import { db } from "../db";
 import {
   createHseOsmFinding,
   createHseOsmSession,
+  deleteHseOsmFinding,
   deleteHseOsmSession,
   getHseOsmDashboardData,
   getHseOsmSessionById,
   submitHseOsmAction,
+  submitHseOsmSession,
+  updateHseOsmFindingPhotos,
   verifyHseOsmFinding,
 } from "../app/actions/hse-osm";
 import { resolveUploadUrl } from "../lib/resolve-upload-url";
@@ -162,12 +165,86 @@ test("HSE OSM Workflow: Session & Finding Lifecycle Integration", async (t) => {
     assert.ok(stdRes.data?.actionTaken?.includes("Standard / Close"), "Action taken must reflect standard condition");
   });
 
-  await t.test("9. Clean up test records", async () => {
+  await t.test("9. Submit OSM Session to lock it (SUBMITTED)", async () => {
+    assert.ok(createdSessionId, "Created session ID must exist");
+    const submitRes = await submitHseOsmSession(createdSessionId);
+    assert.equal(submitRes.success, true);
+    assert.equal(submitRes.data?.status, "SUBMITTED");
+  });
+
+  await t.test("10. Submit corrective action on SUBMITTED session succeeds", async () => {
+    assert.ok(createdSessionId, "Created session ID must exist");
+    const detailRes = await getHseOsmSessionById(createdSessionId);
+    // Finding 2 is OPEN
+    const openFinding = detailRes.data?.findings.find((f: any) => f.status === "OPEN");
+    assert.ok(openFinding, "Open finding must exist");
+
+    const actionRes = await submitHseOsmAction(openFinding.id, {
+      actionTaken: "Telah dilakukan tindakan perbaikan dengan memasang APD lengkap di lapangan",
+      actionPhotoUrls: ["/api/uploads/hse-osm/action-proof.jpg"],
+    });
+
+    assert.equal(actionRes.success, true, "Corrective action on SUBMITTED session must succeed");
+    assert.equal(actionRes.data?.status, "PROCESSED");
+  });
+
+  await t.test("11. Re-submit corrective action on REJECTED finding succeeds", async () => {
+    assert.ok(createdSessionId, "Created session ID must exist");
+    const detailRes = await getHseOsmSessionById(createdSessionId);
+    const processedFinding = detailRes.data?.findings.find((f: any) => f.status === "PROCESSED");
+    assert.ok(processedFinding, "Processed finding must exist");
+
+    // Reject it first
+    const rejectRes = await verifyHseOsmFinding(processedFinding.id, {
+      status: "REJECTED",
+      rejectionReason: "Foto perbaikan kurang jelas, tolong foto ulang dari jarak dekat",
+    });
+    assert.equal(rejectRes.success, true);
+    assert.equal(rejectRes.data?.status, "REJECTED");
+
+    // Resubmit action
+    const resubmitRes = await submitHseOsmAction(processedFinding.id, {
+      actionTaken: "Foto telah diperbarui dengan jarak dekat sesuai standar",
+      actionPhotoUrls: ["/api/uploads/hse-osm/action-proof-revised.jpg"],
+    });
+    assert.equal(resubmitRes.success, true, "Re-submitting action on REJECTED finding must succeed");
+    assert.equal(resubmitRes.data?.status, "PROCESSED");
+    assert.equal(resubmitRes.data?.rejectionReason, "");
+  });
+
+  await t.test("12. Updating finding original photos on SUBMITTED session is blocked", async () => {
+    assert.ok(createdSessionId, "Created session ID must exist");
+    const detailRes = await getHseOsmSessionById(createdSessionId);
+    const finding = detailRes.data?.findings[0];
+    assert.ok(finding, "Finding must exist");
+
+    const updatePhotosRes = await updateHseOsmFindingPhotos(finding.id, ["/api/uploads/hse-osm/tampered.jpg"]);
+    assert.equal(updatePhotosRes.success, false);
+    assert.equal(
+      updatePhotosRes.error,
+      "Laporan OSM telah disubmit dan terkunci. Foto temuan tidak dapat diubah lagi."
+    );
+  });
+
+  await t.test("13. Deleting finding on SUBMITTED session is blocked", async () => {
+    assert.ok(createdSessionId, "Created session ID must exist");
+    const detailRes = await getHseOsmSessionById(createdSessionId);
+    const finding = detailRes.data?.findings[0];
+    assert.ok(finding, "Finding must exist");
+
+    const deleteRes = await deleteHseOsmFinding(finding.id);
+    assert.equal(deleteRes.success, false);
+    assert.equal(
+      deleteRes.error,
+      "Laporan OSM telah disubmit dan terkunci. Temuan tidak dapat dihapus."
+    );
+  });
+
+  await t.test("14. Clean up test records", async () => {
     if (createdSessionId) {
-      await deleteHseOsmSession(createdSessionId);
-      // Verify soft deletion
-      const checkRes = await getHseOsmSessionById(createdSessionId);
-      assert.equal(checkRes.success, false, "Soft deleted session should not be found");
+      // Direct db cleanup since deleteHseOsmSession is blocked on SUBMITTED
+      await db.delete(heroHseOsmFindings).where(eq(heroHseOsmFindings.sessionId, createdSessionId));
+      await db.delete(heroHseOsmSessions).where(eq(heroHseOsmSessions.id, createdSessionId));
     }
   });
 });

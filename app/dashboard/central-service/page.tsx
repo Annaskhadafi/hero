@@ -1,7 +1,7 @@
 'use client'
 
-import { useActionState, useEffect, useMemo, useState, useTransition, Fragment } from 'react'
-import { useRouter } from 'next/navigation'
+import { useActionState, useEffect, useMemo, useState, useTransition, Fragment, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   CheckCircle,
   AlertCircle,
@@ -310,8 +310,10 @@ function FilterChip({ children, onRemove }: { children: React.ReactNode; onRemov
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function CentralServicePage() {
+function CentralServicePageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get('tab')
   const [isRefreshing, startRefreshTransition] = useTransition()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -355,7 +357,26 @@ export default function CentralServicePage() {
   const [totalCount, setTotalCount] = useState(0)
   const [pageSize, setPageSize] = useState(50)
 
-  const [activeTab, setActiveTab] = useState<'employees' | 'composition'>('employees')
+  const [activeTab, setActiveTab] = useState<'employees' | 'composition'>(() => {
+    return tabParam === 'composition' ? 'composition' : 'employees'
+  })
+
+  useEffect(() => {
+    if (tabParam === 'composition') {
+      setActiveTab('composition')
+    } else if (tabParam === 'employees') {
+      setActiveTab('employees')
+    }
+  }, [tabParam])
+
+  const handleTabChange = (nextTab: 'employees' | 'composition') => {
+    setActiveTab(nextTab)
+    if (nextTab === 'composition') {
+      router.replace('/dashboard/central-service?tab=composition', { scroll: false })
+    } else {
+      router.replace('/dashboard/central-service', { scroll: false })
+    }
+  }
   const [compositionData, setCompositionData] = useState<ManpowerSiteComposition[]>([])
   const [loadingComposition, setLoadingComposition] = useState(false)
   const [expandedCompositionSites, setExpandedCompositionSites] = useState<Set<string>>(new Set())
@@ -858,7 +879,7 @@ export default function CentralServicePage() {
       <div className="my-5 flex gap-2 border-b border-slate-100 pb-3">
         <Button
           variant={activeTab === 'employees' ? 'default' : 'ghost'}
-          onClick={() => setActiveTab('employees')}
+          onClick={() => handleTabChange('employees')}
           className={cn(
             'h-10 rounded-xl px-4 text-sm font-semibold transition-all',
             activeTab === 'employees'
@@ -871,7 +892,7 @@ export default function CentralServicePage() {
         </Button>
         <Button
           variant={activeTab === 'composition' ? 'default' : 'ghost'}
-          onClick={() => setActiveTab('composition')}
+          onClick={() => handleTabChange('composition')}
           className={cn(
             'h-10 rounded-xl px-4 text-sm font-semibold transition-all',
             activeTab === 'composition'
@@ -2085,5 +2106,13 @@ export default function CentralServicePage() {
         </DialogContent>
       </Dialog>
     </AdminPageShell>
+  )
+}
+
+export default function CentralServicePage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Memuat Central Service...</div>}>
+      <CentralServicePageContent />
+    </Suspense>
   )
 }

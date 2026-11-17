@@ -8,7 +8,7 @@ import {
   navbarMenuItems,
 } from '@/db/schema/hero'
 import { user as authUser } from '@/db/schema/auth'
-import { ensureHeroGovernanceSeedData, withDbRetry } from '@/lib/hero-admin'
+import { withDbRetry } from '@/lib/hero-admin'
 
 export type MobileResourcePermission = {
   canView: boolean
@@ -25,8 +25,6 @@ export const getUserMobilePermissions = cache(async function getUserMobilePermis
 ): Promise<MobilePermissionsMap> {
   try {
     return await withDbRetry(async () => {
-      await ensureHeroGovernanceSeedData()
-
       const normalizedEmail = (email || '').trim().toLowerCase()
       if (!normalizedEmail) {
         return {}
@@ -84,6 +82,7 @@ export const getUserMobilePermissions = cache(async function getUserMobilePermis
             'tire_service',
             'overtime_requests',
             'approval_inbox',
+            'hc_attendance_permission',
           ].includes(p.resource)
 
           permissionsMap[p.resource] = {

@@ -345,13 +345,26 @@ function getContractStatus(emp: {
   accountStatus?: string;
   employeeStatusType?: string | null;
 }): ContractStatus {
+  const rawPerm = emp.permanentDate ? String(emp.permanentDate).trim() : ''
+  const hasValidPermanentDate =
+    Boolean(rawPerm) &&
+    !rawPerm.startsWith('0001') &&
+    !rawPerm.startsWith('1970') &&
+    !rawPerm.startsWith('0000')
+
+  const isExplicitContract = Boolean(
+    emp.employeeStatusType?.toLowerCase().includes('kontrak') ||
+    emp.accountStatus?.toLowerCase() === 'contract' ||
+    emp.accountStatus?.toLowerCase() === 'kontrak'
+  )
+
   const isPermanent =
-    Boolean(emp.permanentDate) ||
-    emp.accountStatus?.toLowerCase() === "permanent" ||
-    emp.accountStatus?.toLowerCase() === "permanen" ||
-    (Boolean(emp.employeeStatusType) &&
-      emp.employeeStatusType!.toLowerCase().includes("permanen") &&
-      !emp.employeeStatusType!.toLowerCase().includes("kontrak"));
+    !isExplicitContract &&
+    (hasValidPermanentDate ||
+      emp.accountStatus?.toLowerCase() === "permanent" ||
+      emp.accountStatus?.toLowerCase() === "permanen" ||
+      (Boolean(emp.employeeStatusType) &&
+        emp.employeeStatusType!.toLowerCase().includes("permanen")));
 
   if (isPermanent) {
     return { label: "Permanen", type: "ACTIVE" };

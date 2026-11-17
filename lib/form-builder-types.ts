@@ -102,6 +102,12 @@ export interface FormSettings {
   requireDepartment?: boolean // Departemen / Divisi
   identityTitle?: string
   identitySubtitle?: string
+  identityLabel?: string // e.g. "Nama Lengkap" / "Nama Responden"
+  identityPlaceholder?: string
+  emailLabel?: string // e.g. "Alamat Email" / "Email Responden"
+  emailPlaceholder?: string
+  phoneLabel?: string // e.g. "Nomor WhatsApp / HP"
+  phonePlaceholder?: string
   companyLabel?: string // e.g. "Nama Customer / Perusahaan"
   siteLabel?: string // e.g. "Nama Site / Lokasi Kerja"
   departmentLabel?: string // e.g. "Departemen / Divisi"

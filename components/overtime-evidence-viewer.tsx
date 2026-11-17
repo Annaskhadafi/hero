@@ -143,7 +143,7 @@ export function OvertimeEvidenceViewer({
   return (
     <div className={cn(
       "bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50/70 via-slate-50 to-white text-slate-800 antialiased",
-      isModal ? "w-full pb-10" : "min-h-screen pb-16"
+      isModal ? "w-full h-full flex flex-col overflow-y-auto pb-10" : "min-h-screen pb-16"
     )}>
       {/* ── TOP HEADER / BRAND BAR ── */}
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-md transition-all shadow-2xs">
@@ -365,10 +365,11 @@ export function OvertimeEvidenceViewer({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {data.evidencePhotos.map((photo, pIdx) => {
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={photo.id}
                       onClick={() => openLightbox(photo)}
-                      className="group cursor-pointer rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs hover:shadow-md transition-all hover:border-blue-300 flex flex-col"
+                      className="group cursor-pointer rounded-2xl border border-slate-200/90 bg-white overflow-hidden shadow-xs hover:shadow-md transition-all hover:border-blue-300 flex flex-col text-left w-full"
                     >
                       {/* Photo Thumbnail */}
                       <div className="relative aspect-4/3 bg-slate-100 overflow-hidden flex items-center justify-center">
@@ -432,7 +433,7 @@ export function OvertimeEvidenceViewer({
                           )}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   )
                 })}
               </div>
@@ -628,7 +629,10 @@ export function OvertimeEvidenceViewer({
 
       {/* ── INTERACTIVE LIGHTBOX DIALOG ── */}
       <Dialog open={Boolean(selectedPhoto)} onOpenChange={(open) => !open && closeLightbox()}>
-        <DialogContent className="max-w-4xl max-h-[95vh] p-0 overflow-hidden bg-slate-950/95 border-slate-800 text-white shadow-2xl flex flex-col rounded-2xl">
+        <DialogContent
+          overlayClassName="z-[200]"
+          className="max-w-4xl max-h-[95vh] p-0 overflow-hidden bg-slate-950/95 border-slate-800 text-white shadow-2xl flex flex-col rounded-2xl z-[210]"
+        >
           {/* Header Lightbox */}
           <div className="p-4 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
             <div className="min-w-0 flex-1 pr-4">

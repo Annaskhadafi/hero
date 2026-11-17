@@ -1,4 +1,19 @@
 export const SAFETY_SHOES_COL = 'Safety Shoes';
+export const SAFETY_SHOES_SIZE_COL = 'Safety Shoes Size';
+export const SAFETY_SHOES_MASA_PAKAI_COL = 'Safety Shoes Masa Pakai';
+
+export const SAFETY_SHOES_MASA_PAKAI_PRESETS = [
+  '6 Bulan',
+  '8 Bulan',
+  '10 Bulan',
+  '1 Tahun',
+  '1 Tahun 2 Bulan',
+  '1 Tahun 4 Bulan',
+  '1 Tahun 6 Bulan',
+  '1 Tahun 8 Bulan',
+  '2 Tahun',
+  '2 Tahun Lebih',
+] as const;
 
 export const QTY_ONLY_COLUMNS = [
   'Safety Glasses',
@@ -19,6 +34,8 @@ export const QTY_ONLY_COLUMNS = [
   'Apron',
   'Face Shield Helmet',
   'Sunbrim Helmet',
+  'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kleenguard G40 (Vale)',
 ];
 
 export const APD_ITEM_COLUMNS = [...QTY_ONLY_COLUMNS, SAFETY_SHOES_COL];
@@ -48,6 +65,23 @@ export function buildDynamicApdColumns(masterItems?: Array<{ name: string; isQty
   return { qtyOnlyCols, allCols };
 }
 
+/**
+ * Formats APD item names for compact, high-contrast, non-overflowing table headers in print/PDF.
+ * Replaces excessively long multi-word names with clean, standard abbreviations while maintaining 100% clarity.
+ */
+export function formatApdItemColHeader(name: string): string {
+  if (!name) return '';
+  return name
+    .replace(/^Sarung Tangan Kleenguard.*$/i, 'S. Tangan Kleenguard')
+    .replace(/^Sarung Tangan Kulit.*$/i, 'S. Tangan Kulit')
+    .replace(/^Sarung Tangan Ansel.*$/i, 'S. Tangan Ansell')
+    .replace(/^Sarung Tangan Dotting.*$/i, 'S. Tangan Dotting')
+    .replace(/^Cotton Filter Respirator.*$/i, 'Cotton Filter Resp.')
+    .replace(/^Tudung Kepala \/ Kupluk.*$/i, 'Tudung Kupluk')
+    .replace(/^Helmet \+ Face Shield.*$/i, 'Helmet Face Shield')
+    .replace(/^Jaket & Kacamata Welder.*$/i, 'Jaket Welder');
+}
+
 export type PendingSummaryRequestItem = {
   id: number;
   itemType: string;
@@ -75,8 +109,26 @@ export type ManualSummaryEntry = {
   departmentName?: string | null;
   items: ManualSummaryItem[];
   safetyShoesSize?: string;
+  safetyShoesMasaPakai?: string;
   remarks?: string;
 };
+
+export type SelectedSummaryRequestOption = {
+  requestId: number;
+  remarks?: string;
+  safetyShoesSize?: string;
+  safetyShoesMasaPakai?: string;
+  selectedItemIds?: number[];
+};
+
+export function filterSelectedRequestItems<T extends { id: number }>(
+  items: T[],
+  selectedItemIds?: number[]
+): T[] {
+  if (selectedItemIds === undefined) return items;
+  const allowed = new Set(selectedItemIds);
+  return items.filter((item) => allowed.has(item.id));
+}
 
 export type PendingSummaryRequest = {
   requestId: number;
@@ -92,7 +144,10 @@ export type PendingSummaryRequest = {
   departmentName: string | null;
   items: PendingSummaryRequestItem[];
   safetyShoesSize: string;
+  safetyShoesMasaPakai?: string;
   suggestedRemarks: string;
+  preselectedItemIds?: number[];
+  isIncludedInEditedSummary?: boolean;
 };
 
 /**

@@ -18,6 +18,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { revalidatePath } from 'next/cache'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl } from '@/lib/auth-config'
 import crypto from 'crypto'
 
 function safeRevalidatePath(path: string) {
@@ -56,7 +57,10 @@ async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
   }
 }
 
+let trainingRequestSchemaEnsured = false
+
 export async function ensureTrainingRequestSchema() {
+  if (trainingRequestSchemaEnsured) return
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS hero_training_requests (
@@ -118,6 +122,7 @@ export async function ensureTrainingRequestSchema() {
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `)
+    trainingRequestSchemaEnsured = true
   } catch (err) {
     console.warn('[ensureTrainingRequestSchema] schema check error:', err)
   }
@@ -370,7 +375,7 @@ export async function createTrainingRequest(input: CreateTrainingRequestInput) {
       // SMTP Email Notification
       const smtpSettings = await getSmtpSettings()
       if (smtpSettings) {
-        const baseUrl = process.env.BETTER_AUTH_URL || 'https://hero.chitraparatama.com'
+        const baseUrl = getEmailAppUrl()
         const link = `${baseUrl}/dashboard/training/pengajuan?id=${createdRequest.id}`
         await sendEmailViaSmtp(smtpSettings, {
           to: activeStep.approverEmail,
@@ -740,7 +745,7 @@ export async function approveTrainingRequestStep(
 
         const smtpSettings = await getSmtpSettings()
         if (smtpSettings) {
-          const baseUrl = process.env.BETTER_AUTH_URL || 'https://hero.chitraparatama.com'
+          const baseUrl = getEmailAppUrl()
           const link = `${baseUrl}/dashboard/training/pengajuan?id=${request.id}`
           await sendEmailViaSmtp(smtpSettings, {
             to: request.requesterEmail,
@@ -798,7 +803,7 @@ export async function approveTrainingRequestStep(
 
         const smtpSettings = await getSmtpSettings()
         if (smtpSettings) {
-          const baseUrl = process.env.BETTER_AUTH_URL || 'https://hero.chitraparatama.com'
+          const baseUrl = getEmailAppUrl()
           const link = `${baseUrl}/dashboard/training/pengajuan?id=${request.id}`
           await sendEmailViaSmtp(smtpSettings, {
             to: nextApproval.approverEmail,
@@ -1011,5 +1016,55 @@ export async function deleteTrainingRequest(requestId: number) {
   } catch (err: any) {
     console.error('[deleteTrainingRequest] Error:', err)
     return { success: false, error: err?.message || 'Gagal menghapus pengajuan training.' }
+  }
+}
+
+export async function updateTrainingRequestAttachment(input: {
+  requestId: number
+  attachmentUrl: string | null
+  attachmentName?: string | null
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, error: 'Unauthorized: Sesi login tidak ditemukan.' }
+    }
+
+    const [request] = await db
+      .select()
+      .from(trainingRequests)
+      .where(eq(trainingRequests.id, input.requestId))
+      .limit(1)
+
+    if (!request) {
+      return { success: false, error: 'Pengajuan training tidak ditemukan.' }
+    }
+
+    const finalUrl = input.attachmentUrl?.trim() ? input.attachmentUrl.trim() : null
+    const finalName = finalUrl ? (input.attachmentName?.trim() || 'Berkas Penawaran Training') : null
+
+    await db
+      .update(trainingRequests)
+      .set({
+        attachmentUrl: finalUrl,
+        attachmentName: finalName,
+        updatedAt: new Date(),
+      })
+      .where(eq(trainingRequests.id, input.requestId))
+
+    safeRevalidatePath('/dashboard/training/pengajuan')
+    safeRevalidatePath('/mobile/training/pengajuan')
+    safeRevalidatePath('/dashboard/approval')
+    safeRevalidatePath('/mobile/approval')
+
+    return {
+      success: true,
+      message: finalUrl ? 'Berkas penawaran berhasil diperbarui.' : 'Berkas penawaran berhasil dihapus.',
+      attachmentUrl: finalUrl,
+      attachmentName: finalName,
+    }
+  } catch (err: any) {
+    console.error('[updateTrainingRequestAttachment] Error:', err)
+    return { success: false, error: err?.message || 'Gagal memperbarui berkas penawaran.' }
   }
 }

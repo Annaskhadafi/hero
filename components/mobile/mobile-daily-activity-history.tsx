@@ -4,8 +4,10 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
+  Clock,
   Clock3,
   Copy,
+  ExternalLink,
   FileCheck2,
   FileText,
   Pencil,
@@ -35,6 +37,15 @@ export type MobileDarHistoryItem = {
   pointsNet: number
   durationLabel: string
   itemCount?: number
+  employeeId?: number | null
+  employeeSn?: string | null
+  jobTitle?: string | null
+  department?: string | null
+  siteId?: number | null
+  siteName?: string | null
+  splId?: number | null
+  splNumber?: string | null
+  splStatus?: string | null
   employeeName?: string | null
   isAuthor?: boolean
   isApprover?: boolean
@@ -46,6 +57,8 @@ export type MobileDarHistoryItem = {
   items?: Array<{
     id: number
     snapshotLabel: string | null
+    snapshotGroupName?: string | null
+    snapshotPayload?: unknown
     unitNumber: string | null
     remark: string | null
     actualPoints: number | null
@@ -110,10 +123,14 @@ export function MobileDailyActivityHistory({
   activities,
   onOpenReview,
   onCloneActivity,
+  onCreateSpl,
+  optimisticSplBySessionId,
 }: {
   activities: MobileDarHistoryItem[]
   onOpenReview?: (sessionId: number) => void
   onCloneActivity?: (sessionId: number) => void
+  onCreateSpl?: (activity: MobileDarHistoryItem) => void
+  optimisticSplBySessionId?: Record<number, { splNumber: string; splId: number }>
 }) {
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -212,6 +229,10 @@ export function MobileDailyActivityHistory({
         const st = (activity.status || '').toLowerCase()
         const isDraft = st === 'draft'
         const isRevisable = ['returned', 'reverted', 'needs_revision'].includes(st)
+        const isRejected = st === 'rejected'
+        const optimisticSpl = optimisticSplBySessionId?.[sessionId]
+        const effectiveSplNumber = optimisticSpl?.splNumber || activity.splNumber || null
+        const effectiveSplStatus = optimisticSpl ? 'Submitted' : activity.splStatus || null
 
         return (
           <details
@@ -227,6 +248,11 @@ export function MobileDailyActivityHistory({
                   <Badge className={`text-[10px] px-2 py-0.5 ${badgeClass(activity.status)}`}>
                     {statusLabel(activity.status)}
                   </Badge>
+                  {effectiveSplNumber && (
+                    <Badge className="border-0 bg-blue-100 text-blue-800 text-[9px] font-mono font-bold px-1.5 py-0.5">
+                      {effectiveSplNumber}
+                    </Badge>
+                  )}
                   {activity.isApprover ? (
                     <Badge className="border-0 bg-blue-100 text-blue-900 text-[9px] font-bold px-1.5 py-0.5">
                       Penandatangan
@@ -379,6 +405,40 @@ export function MobileDailyActivityHistory({
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {effectiveSplNumber && (
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                            SPL Terbit ({effectiveSplStatus || 'Submitted'})
+                          </p>
+                          <p className="font-mono font-bold text-blue-700 text-xs truncate">
+                            {effectiveSplNumber}
+                          </p>
+                        </div>
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-lg border-blue-200 bg-white px-2.5 text-[11px] font-bold text-blue-700 hover:bg-blue-50 shrink-0"
+                        >
+                          <Link href={`/mobile/overtime?tab=history&splNumber=${encodeURIComponent(effectiveSplNumber)}`}>
+                            <ExternalLink className="size-3.5 mr-1" />
+                            Lihat SPL
+                          </Link>
+                        </Button>
+                      </div>
+                    )}
+                    {!isRejected && onCreateSpl && (
+                      <Button
+                        type="button"
+                        data-testid={`mobile-buat-spl-${sessionId}`}
+                        onClick={() => onCreateSpl(activity)}
+                        className="w-full h-11 rounded-2xl bg-[#0753e7] hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Clock className="size-4" />
+                        <span>{effectiveSplNumber ? 'BUAT SPL TAMBAHAN' : 'BUAT SPL LEMBUR'}</span>
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       onClick={() => onCloneActivity?.(sessionId)}

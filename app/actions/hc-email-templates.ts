@@ -15,7 +15,10 @@ export type HcEmailTemplateData = {
   isActive?: boolean;
 };
 
+let hcEmailTemplatesTableEnsured = false;
+
 async function ensureHcEmailTemplatesTable() {
+  if (hcEmailTemplatesTableEnsured) return;
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS hero_hc_email_templates (
@@ -43,6 +46,7 @@ async function ensureHcEmailTemplatesTable() {
   } catch {
     // ignore
   }
+  hcEmailTemplatesTableEnsured = true;
 }
 
 export async function getHcEmailTemplates() {

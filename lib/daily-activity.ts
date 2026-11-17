@@ -38,6 +38,7 @@ import {
 import { ensureHeroGovernanceSeedData } from '@/lib/hero-admin'
 import { getMenuPermissionForRole } from '@/lib/hero-access'
 import { resolveUploadUrl } from '@/lib/s3-storage'
+import { canEmployeeSeeSplChecklist } from '@/lib/daily-activity-spl-visibility'
 
 let dailyActivitySeedPromise: Promise<void> | null = null
 
@@ -526,6 +527,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
       splNumber: overtimeCommandLetters.splNumber,
       title: overtimeCommandLetters.title,
       status: overtimeCommandLetters.status,
+      requestedByEmployeeId: overtimeCommandLetters.requestedByEmployeeId,
       workDate: overtimeCommandLetters.workDate,
       plannedStartAt: overtimeCommandLetters.plannedStartAt,
       plannedEndAt: overtimeCommandLetters.plannedEndAt,
@@ -555,7 +557,7 @@ async function getActiveOvertimeCommandLetterForEmployee(
   }
 
   const splIds = splRows.map((row) => row.id)
-  const [itemRows, employeeSessionRows] = await Promise.all([
+  const [itemRows, participantRows, employeeSessionRows] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetterItems.id,
@@ -591,6 +593,13 @@ async function getActiveOvertimeCommandLetterForEmployee(
       ),
     db
       .select({
+        overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
+        employeeId: overtimeCommandLetterParticipants.employeeId,
+      })
+      .from(overtimeCommandLetterParticipants)
+      .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, splIds)),
+    db
+      .select({
         overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
         status: dailyActivitySessions.status,
       })
@@ -614,23 +623,38 @@ async function getActiveOvertimeCommandLetterForEmployee(
     list.push(item)
     itemsBySplId.set(item.overtimeCommandLetterId, list)
   }
+  const participantsBySplId = new Map<number, number[]>()
+  for (const participant of participantRows) {
+    const list = participantsBySplId.get(participant.overtimeCommandLetterId) ?? []
+    list.push(participant.employeeId)
+    participantsBySplId.set(participant.overtimeCommandLetterId, list)
+  }
 
   const selectedDocument =
     splRows
       .map((row) => {
         const items = itemsBySplId.get(row.id) ?? []
-        const hasExplicitAssignments = items.some((item) => item.assignedEmployeeId != null)
-        const matchesLegacyScope =
-          (row.sectionId == null || row.sectionId === employee.sectionId) &&
-          (row.positionId == null || row.positionId === employee.positionId)
-        const relevantItems = hasExplicitAssignments
-          ? items.filter((item) => item.assignedEmployeeId === employee.id)
-          : matchesLegacyScope
-            ? items
-            : []
+        const assignedEmployeeIds = items
+          .map((item) => item.assignedEmployeeId)
+          .filter((id): id is number => id != null)
+        const canSeeChecklist = canEmployeeSeeSplChecklist({
+          employeeId: employee.id,
+          requestedByEmployeeId: row.requestedByEmployeeId,
+          sectionId: row.sectionId,
+          positionId: row.positionId,
+          employeeSectionId: employee.sectionId,
+          employeePositionId: employee.positionId,
+          participantEmployeeIds: participantsBySplId.get(row.id) ?? [],
+          itemAssignedEmployeeIds: assignedEmployeeIds,
+        })
+        const relevantItems = canSeeChecklist
+          ? assignedEmployeeIds.length > 0
+            ? items.filter((item) => item.assignedEmployeeId === employee.id)
+            : items
+          : []
         const score =
           (relevantItems.length > 0 ? 20 : 0) +
-          (hasExplicitAssignments ? 12 : 0) +
+          (assignedEmployeeIds.length > 0 ? 12 : 0) +
           (row.status === 'approved' ? 4 : row.status === 'submitted' ? 3 : 1) +
           (row.sectionId != null ? 2 : 0) +
           (row.positionId != null ? 1 : 0)
@@ -2434,10 +2458,21 @@ export async function getDailyActivityEmployeeData(
           approvedAt: dailyActivitySessions.approvedAt,
           createdAt: dailyActivitySessions.createdAt,
           employeeId: dailyActivitySessions.employeeId,
+          siteId: dailyActivitySessions.siteId,
+          overtimeCommandLetterId: dailyActivitySessions.overtimeCommandLetterId,
+          splNumber: overtimeCommandLetters.splNumber,
+          splStatus: overtimeCommandLetters.status,
           employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+          employeeJobTitle: employees.jobTitle,
+          employeeDepartment: employees.department,
         })
         .from(dailyActivitySessions)
         .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+        .leftJoin(
+          overtimeCommandLetters,
+          eq(dailyActivitySessions.overtimeCommandLetterId, overtimeCommandLetters.id)
+        )
         .where(and(sessionScopePredicate, isNull(dailyActivitySessions.deletedAt)))
         .orderBy(desc(dailyActivitySessions.createdAt), desc(dailyActivitySessions.id))
         .limit(maxRowsLimit),
@@ -2543,6 +2578,7 @@ export async function getDailyActivityEmployeeData(
             sessionId: dailyActivitySessionItems.sessionId,
             snapshotLabel: dailyActivitySessionItems.snapshotLabel,
             snapshotGroupName: dailyActivitySessionItems.snapshotGroupName,
+            snapshotPayload: dailyActivitySessionItems.snapshotPayload,
             unitNumber: dailyActivitySessionItems.unitNumber,
             remark: dailyActivitySessionItems.remark,
             actualPoints: dailyActivitySessionItems.actualPoints,
@@ -2699,6 +2735,15 @@ export async function getDailyActivityEmployeeData(
       approvals,
       pendingApproverName: pendingApp?.approverName ?? (s.status === 'submitted' ? 'Approver L1' : null),
       authorEmployeeId: s.employeeId,
+      employeeId: s.employeeId,
+      employeeSn: s.employeeSn || employee.employeeSn || '',
+      jobTitle: s.employeeJobTitle || employee.jobTitle || '',
+      department: s.employeeDepartment || employee.department || '',
+      siteId: s.siteId ?? employee.siteId ?? null,
+      siteName: site?.name ?? null,
+      splId: s.overtimeCommandLetterId ?? null,
+      splNumber: s.splNumber ?? null,
+      splStatus: s.splStatus ?? null,
       employeeName: s.employeeName || 'Karyawan',
       representedByName: isMember ? (s.employeeName || 'Rekan Tim') : null,
       isAuthor: s.employeeId === employee.id,
@@ -3039,7 +3084,7 @@ export async function getDailyActivityTeamBoardData(email?: string | null) {
         )
       )
       .orderBy(desc(overtimeCommandLetters.workDate), desc(overtimeCommandLetters.id))
-      .limit(100),
+      .limit(2500),
     db
       .select({
         id: overtimeCommandLetterItems.id,

@@ -26,6 +26,7 @@ import {
   type IncidentReportItem,
 } from '@/components/safety-dashboard/site-oshe-performance-dialog'
 import { ManageSiteCoordinatesDialog } from '@/components/safety-dashboard/manage-site-coordinates-dialog'
+import { matchesSiteName, toYearMonthString } from '@/lib/safety-dashboard/site-name-matcher'
 
 const MONTH_NAMES = [
   'Januari',
@@ -48,12 +49,16 @@ type MasterSiteItem = {
   location?: string | null
   geoLatitude?: string | null
   geoLongitude?: string | null
+  totalManpower?: number
+  manpowerService?: number
+  manpowerRepair?: number
 }
 
 type MonthlyManHoursItem = {
   workLocation: string
   month: Date | string
   safetyManHours: string | number
+  employeeCount?: number
 }
 
 type HseSiteMapCardProps = {
@@ -71,11 +76,30 @@ export function HseSiteMapCard({
   monthlyManHours = [],
   canEdit = true,
 }: HseSiteMapCardProps) {
-  // Default month: bulan ini (YYYY-MM)
+  // Default month: backdate 1 bulan sebelumnya (September jika bulan berjalan Oktober)
+  // karena Safe Man Hours diinput setelah tutup buku bulan bersangkutan di menu Safety Data Management.
   const [selectedMonth, setSelectedMonth] = React.useState<string>(() => {
+    // 1. Cek apakah ada data di monthlyManHours dengan jam kerja > 0
+    if (monthlyManHours && monthlyManHours.length > 0) {
+      const monthsWithData = monthlyManHours
+        .filter((m) => {
+          const hours = parseFloat(String(m.safetyManHours || 0).replace(/,/g, ''))
+          return hours > 0
+        })
+        .map((m) => toYearMonthString(m.month))
+        .filter(Boolean)
+        .sort()
+
+      if (monthsWithData.length > 0) {
+        return monthsWithData[monthsWithData.length - 1]
+      }
+    }
+
+    // 2. Default: H-1 bulan berjalan (backdate 1 bulan sebelumnya)
     const now = new Date()
-    const y = now.getFullYear()
-    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const y = prev.getFullYear()
+    const m = String(prev.getMonth() + 1).padStart(2, '0')
     return `${y}-${m}`
   })
 
@@ -96,17 +120,64 @@ export function HseSiteMapCard({
     return masterSites.map((site) => {
       const summary = siteMonthlySummaries.find((s) => {
         if (s.siteId !== site.id) return false
-        const sMonth = s.month ? String(s.month).substring(0, 7) : ''
+        const sMonth = toYearMonthString(s.month)
         return sMonth === selectedMonth
       })
 
-      // Jika belum ada di hero_safety_site_monthly_summary, cari dari monthlyManHours
-      const manHoursFallback = monthlyManHours.find((mh) => {
-        const mhMonth = mh.month ? String(mh.month).substring(0, 7) : ''
-        return mh.workLocation === site.name && mhMonth === selectedMonth
+      // Cari data Safe Man Hours dari Monthly Man Hours di menu Safety Data Management
+      const matchingMhList = monthlyManHours.filter((mh) => {
+        const mhMonth = toYearMonthString(mh.month)
+        if (mhMonth !== selectedMonth) return false
+        return matchesSiteName(mh.workLocation, site.name, site.location)
       })
 
-      const finalSafetyManHours = summary?.safetyManHours ?? manHoursFallback?.safetyManHours ?? '0'
+      let totalMhFromMgmt = 0
+      let hasMhRecord = false
+      let matchedEmpCount = 0
+
+      for (const mh of matchingMhList) {
+        const val = parseFloat(String(mh.safetyManHours || 0).replace(/,/g, ''))
+        if (Number.isFinite(val)) {
+          totalMhFromMgmt += val
+          hasMhRecord = true
+        }
+        if (mh.employeeCount && mh.employeeCount > matchedEmpCount) {
+          matchedEmpCount = mh.employeeCount
+        }
+      }
+
+      // Prioritas 1: Ambil dari Monthly Man Hours di menu Safety Data Management (sinkronisasi langsung)
+      // Prioritas 2: Fallback ke siteMonthlySummaries
+      const finalSafetyManHours = hasMhRecord
+        ? String(totalMhFromMgmt)
+        : summary?.safetyManHours != null && String(summary.safetyManHours).trim() !== '' && String(summary.safetyManHours) !== '0'
+        ? String(summary.safetyManHours)
+        : '0'
+
+      const totalMp = site.totalManpower ?? summary?.totalManpower ?? (matchedEmpCount > 0 ? matchedEmpCount : 0)
+      const serviceMp = site.manpowerService ?? 0
+      const repairMp = site.manpowerRepair ?? 0
+
+      // Total incidents dari safety data management (monthly summary + incident reports)
+      const sumIncidents = summary
+        ? (summary.fatality || 0) +
+          (summary.majorInjury || 0) +
+          (summary.propertyDamage || 0) +
+          (summary.nearmiss || 0) +
+          (summary.environmental || 0) +
+          (summary.firstAid || 0) +
+          (summary.medicalTreatment || 0)
+        : 0
+
+      const matchingReports = incidentReports.filter((inc) => {
+        if (!inc.incidentDate) return false
+        if (toYearMonthString(inc.incidentDate) !== selectedMonth) return false
+        const loc = (inc.location || '').toLowerCase()
+        const sName = site.name.toLowerCase()
+        return loc.includes(sName) || sName.includes(loc)
+      })
+
+      const finalTotalIncidents = Math.max(sumIncidents, matchingReports.length)
 
       return {
         id: site.id,
@@ -114,12 +185,20 @@ export function HseSiteMapCard({
         location: site.location,
         geoLatitude: site.geoLatitude,
         geoLongitude: site.geoLongitude,
+        totalManpower: totalMp,
+        manpowerService: serviceMp,
+        manpowerRepair: repairMp,
+        totalIncidents: finalTotalIncidents,
         summary: summary
           ? {
               ...summary,
               safetyManHours: finalSafetyManHours,
+              totalManpower: totalMp,
+              manpowerService: serviceMp,
+              manpowerRepair: repairMp,
+              totalIncidents: finalTotalIncidents,
             }
-          : finalSafetyManHours !== '0'
+          : finalSafetyManHours !== '0' || totalMp > 0 || finalTotalIncidents > 0
           ? {
               nearmiss: 0,
               propertyDamage: 0,
@@ -129,17 +208,20 @@ export function HseSiteMapCard({
               majorInjury: 0,
               fatality: 0,
               safetyManHours: finalSafetyManHours,
-              totalManpower: 0,
+              totalManpower: totalMp,
+              manpowerService: serviceMp,
+              manpowerRepair: repairMp,
+              totalIncidents: finalTotalIncidents,
               sickEmployeesCount: 0,
               lostDaysCount: 0,
               sickLettersCount: 0,
               occupationalDiseasesCount: 0,
-              incidentNotes: 'Data estimasi presensi man hours',
+              incidentNotes: 'Data presensi & K3',
             }
           : null,
       } as SiteMapData
     })
-  }, [masterSites, siteMonthlySummaries, monthlyManHours, selectedMonth])
+  }, [masterSites, siteMonthlySummaries, monthlyManHours, selectedMonth, incidentReports])
 
   // Filter site berdasarkan query pencarian
   const filteredSites = React.useMemo(() => {
@@ -162,13 +244,19 @@ export function HseSiteMapCard({
 
     combinedSiteData.forEach((s) => {
       const sm = s.summary
+      const sTotalMp = s.totalManpower ?? sm?.totalManpower ?? 0
+      totalManpower += sTotalMp
+
       if (!sm) {
-        zero++
+        if ((s.totalIncidents ?? 0) > 0) {
+          warning++
+        } else {
+          zero++
+        }
         return
       }
 
       totalManHours += parseFloat(String(sm.safetyManHours || 0)) || 0
-      totalManpower += sm.totalManpower || 0
 
       if (sm.fatality > 0 || sm.majorInjury > 0) {
         danger++
@@ -177,7 +265,8 @@ export function HseSiteMapCard({
         sm.firstAid > 0 ||
         sm.medicalTreatment > 0 ||
         sm.nearmiss > 0 ||
-        sm.environmental > 0
+        sm.environmental > 0 ||
+        (s.totalIncidents ?? 0) > 0
       ) {
         warning++
       } else {
@@ -301,6 +390,7 @@ export function HseSiteMapCard({
         selectedMonth={selectedMonth}
         allSiteSummaries={siteMonthlySummaries as SiteMonthlySummaryItem[]}
         incidentReports={incidentReports as IncidentReportItem[]}
+        monthlyManHours={monthlyManHours}
       />
 
       {/* Modal Dialog Kelola Koordinat Site */}

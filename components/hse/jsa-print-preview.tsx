@@ -1,9 +1,17 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
-import { Printer } from 'lucide-react'
-
+import {
+  Check,
+  Clock,
+  PenTool,
+  Printer,
+  RectangleHorizontal,
+  RectangleVertical,
+  RotateCcw,
+  XCircle,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,287 +19,283 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-
+import {
+  HeroConfirmDialog,
+  HeroFormDialog,
+  HeroFormField,
+  HeroTextarea,
+} from '@/components/templates'
+import { JsaDocumentSheet, type JsaDocumentData } from './jsa-document-sheet'
+import { JsaApprovalDialog } from './jsa-approval-dialog'
+import {
+  quickApproveJsaAction,
+  quickRejectJsaAction,
+  revertJsaAction,
+} from '@/app/dashboard/hse/jsa/actions'
 
 interface JsaPrintPreviewProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  data: any
+  data: JsaDocumentData | null | undefined
+  onApproved?: () => void
 }
 
-export function JsaPrintPreview({ open, onOpenChange, data }: JsaPrintPreviewProps) {
+export function JsaPrintPreview({ open, onOpenChange, data, onApproved }: JsaPrintPreviewProps) {
+  const [orientation, setOrientation] = React.useState<'portrait' | 'landscape'>('portrait')
+  const [approvalOpen, setApprovalOpen] = React.useState(false)
+  const [isApproving, setIsApproving] = React.useState(false)
+  const [rejectOpen, setRejectOpen] = React.useState(false)
+  const [rejectReason, setRejectReason] = React.useState('')
+  const [isRejecting, setIsRejecting] = React.useState(false)
+  const [revertOpen, setRevertOpen] = React.useState(false)
+  const [isReverting, setIsReverting] = React.useState(false)
   const printRef = React.useRef<HTMLDivElement>(null)
 
   const handlePrint = () => {
-    window.open(`/print/jsa/${data.id}`, '_blank')
+    if (data?.id) {
+      window.open(`/print/jsa/${data.id}?orientation=${orientation}`, '_blank')
+    }
+  }
+
+  const handleQuickApprove = async () => {
+    if (!data?.id) return
+    setIsApproving(true)
+    try {
+      const res = await quickApproveJsaAction(data.id)
+      if (res.success) {
+        toast.success(res.message || 'JSA berhasil disetujui dengan TTD online!')
+        onApproved?.()
+        onOpenChange(false)
+      } else {
+        toast.error(res.error || 'Gagal menyetujui JSA')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem')
+    } finally {
+      setIsApproving(false)
+    }
+  }
+
+  const handleConfirmReject = async () => {
+    if (!data?.id) return
+    if (!rejectReason.trim()) {
+      toast.error('Mohon isi catatan alasan penolakan/revisi')
+      return
+    }
+    setIsRejecting(true)
+    try {
+      const res = await quickRejectJsaAction(data.id, rejectReason.trim())
+      if (res.success) {
+        toast.success(res.message || 'JSA berhasil ditolak dengan catatan')
+        setRejectOpen(false)
+        setRejectReason('')
+        onApproved?.()
+        onOpenChange(false)
+      } else {
+        toast.error(res.error || 'Gagal menolak JSA')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan')
+    } finally {
+      setIsRejecting(false)
+    }
+  }
+
+  const handleConfirmRevert = async () => {
+    if (!data?.id) return
+    setIsReverting(true)
+    try {
+      const res = await revertJsaAction(data.id)
+      if (res.success) {
+        toast.success(res.message || 'Status JSA berhasil dikembalikan ke Pending')
+        setRevertOpen(false)
+        onApproved?.()
+        onOpenChange(false)
+      } else {
+        toast.error(res.error || 'Gagal merevert JSA')
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan')
+    } finally {
+      setIsReverting(false)
+    }
   }
 
   if (!data) return null
 
-  const { steps = [] } = data
-  const signatures = data.signatures || {}
-  const creatorName = signatures.creatorName || data.teamMembers?.split(',')[0]?.trim() || 'Operator'
-
-  const getCheckmark = (condition: boolean) => (condition ? '✓' : '')
+  const isApproved = data.status === 'approved' || Boolean(data.signatures?.verifierUrl)
+  const isRejected = data.status === 'rejected'
+  const isPending = !isApproved && !isRejected
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl h-[90vh] flex flex-col gap-0 p-0 overflow-hidden bg-slate-100">
-        <DialogHeader className="px-6 py-4 border-b bg-white flex flex-row items-center justify-between">
-          <DialogTitle>Preview Dokumen JSA</DialogTitle>
-          <Button onClick={handlePrint} className="gap-2">
-            <Printer className="w-4 h-4" />
-            Cetak PDF
-          </Button>
+      <DialogContent
+        className={`flex flex-col gap-0 p-0 overflow-hidden bg-slate-100 transition-all duration-200 ${
+          orientation === 'landscape'
+            ? 'max-w-[96vw] w-[1320px] h-[94vh]'
+            : 'max-w-5xl h-[92vh]'
+        }`}
+      >
+        <DialogHeader className="px-6 py-3.5 border-b bg-white flex flex-row items-center justify-between gap-4">
+          <div>
+            <DialogTitle className="text-base font-bold text-slate-900">Preview Dokumen JSA</DialogTitle>
+            <p className="text-xs text-slate-500 font-mono mt-0.5">{data.jsaNumber || 'Dokumen JSA'}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Orientation Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setOrientation('portrait')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  orientation === 'portrait'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Format Tegak (Portrait A4)"
+              >
+                <RectangleVertical className="w-3.5 h-3.5" />
+                <span>Portrait</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrientation('landscape')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  orientation === 'landscape'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Format Mendatar (Landscape A4)"
+              >
+                <RectangleHorizontal className="w-3.5 h-3.5" />
+                <span>Landscape</span>
+              </button>
+            </div>
+
+            {/* Approval Online Buttons (Kayak SPL & Daily Activity) */}
+            {isPending && (
+              <>
+                <Button
+                  type="button"
+                  onClick={handleQuickApprove}
+                  disabled={isApproving}
+                  className="gap-1.5 h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs cursor-pointer shadow-xs"
+                >
+                  {isApproving ? <Clock className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span>Approve (Auto TTD)</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRejectOpen(true)}
+                  disabled={isApproving}
+                  className="gap-1.5 h-9 border-rose-200 text-rose-700 hover:bg-rose-50 font-semibold text-xs cursor-pointer"
+                >
+                  <XCircle className="w-4 h-4 text-rose-600" />
+                  <span>Reject</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setApprovalOpen(true)}
+                  className="gap-1.5 h-9 text-xs text-slate-600 cursor-pointer"
+                  title="Opsi untuk gambar tanda tangan manual di canvas"
+                >
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>TTD Manual</span>
+                </Button>
+              </>
+            )}
+
+            {(isApproved || isRejected) && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRevertOpen(true)}
+                className="gap-1.5 h-9 border-amber-200 text-amber-700 hover:bg-amber-50 font-semibold text-xs cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+                <span>Revert ke Pending</span>
+              </Button>
+            )}
+
+            <Button onClick={handlePrint} className="gap-2 h-9 cursor-pointer">
+              <Printer className="w-4 h-4" />
+              Cetak PDF
+            </Button>
+          </div>
         </DialogHeader>
         
-        <div className="flex-1 overflow-y-auto p-8 print:p-0 print:overflow-visible print:bg-white">
-          <style dangerouslySetInnerHTML={{__html: `
-            @media print {
-              body * {
-                visibility: hidden;
-              }
-              #jsa-print-section, #jsa-print-section * {
-                visibility: visible;
-              }
-              #jsa-print-section {
-                position: absolute;
-                left: 0;
-                top: 0;
-                margin: 0;
-                padding: 0;
-                width: 100%;
-              }
-              @page {
-                size: A4;
-                margin: 10mm;
-              }
-            }
-          `}} />
-          {/* A4 Paper Container */}
-          <div 
-            id="jsa-print-section"
-            ref={printRef}
-            className="pdf-wrapper bg-white shadow-xl print:shadow-none w-[210mm] min-h-[297mm] h-max p-8 text-[10pt] font-sans mx-auto"
-            style={{ fontFamily: 'Arial, sans-serif' }}
-          >
-            {/* Header / Logo */}
-            <div className="flex justify-between items-center mb-6">
-              <div className="w-1/3">
-                <Image src="/cp_logo-removebg-preview.png" alt="Logo" width={180} height={60} className="object-contain" />
-              </div>
-              <div className="w-2/3 text-center">
-                <h1 className="text-2xl font-bold tracking-wider">JOB SAFETY ANALYSIS (JSA)</h1>
-              </div>
-            </div>
-
-            {/* Info Grid */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <table className="w-full border-collapse border border-black">
-                <tbody>
-                  <tr>
-                    <td className="border border-black p-1 font-semibold w-1/3">Dibuat oleh</td>
-                    <td className="border border-black p-1">{creatorName}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black p-1 font-semibold">Tanggal</td>
-                    <td className="border border-black p-1">{data.createdAt ? new Date(data.createdAt).toLocaleDateString() : ''}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black p-1 font-semibold">No. JSA</td>
-                    <td className="border border-black p-1">{data.jsaNumber}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <table className="w-full border-collapse border border-black h-full">
-                <tbody>
-                  <tr>
-                    <td className="border border-black p-1 font-semibold w-1/3">Penjelasan Pekerjaan</td>
-                    <td className="border border-black p-1" colSpan={2}>{data.jobDescription}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black p-1 font-semibold">No. Peralatan (Bagian dari Plant)</td>
-                    <td className="border border-black p-1" colSpan={2}>{data.equipmentNumber}</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black p-1 font-semibold bg-gray-100 text-center" colSpan={2}>Anggota Team JSA</td>
-                    <td className="border border-black p-1">{data.teamMembers}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Checkboxes Row */}
-            <div className="flex flex-row justify-between gap-2 mb-6 text-[9pt]">
-              {/* Box 1: Peralatan */}
-              <div className="border border-black p-2 flex-1">
-                <div className="text-center font-semibold border-b border-black pb-1 mb-2">Peralatan Yang dipergunakan</div>
-                <table className="w-full">
-                  <tbody>
-                    {['Hand Tool Only', 'Dioperasikan dgn Batere/listrik', 'Power Tool', 'Oxy Set', 'Pengelasan', 'Pemotongan/Penggerindaan', 'Pisau/alat tajam', 'Gunting Pencabut', 'Forklift Truck man Cage', 'Scafolding', 'Tangga', 'Tangga Portable', 'Forklift', 'Crane', 'Genset Portable', 'Pompa Portable', 'Air Bertekanan', 'Lain-Lain'].map(item => (
-                      <tr key={item}>
-                        <td className="py-0.5">{item}</td>
-                        <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.equipmentUsed?.includes(item))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Box 2: Keperluan & Permit */}
-              <div className="flex-1 flex flex-col gap-2">
-                <div className="border border-black p-2 flex-1">
-                  <div className="text-center font-semibold border-b border-black pb-1 mb-2">Keperluan</div>
-                  <table className="w-full">
-                    <tbody>
-                      {['Jumlah Pekerja', 'Pemutusan Listrik', 'Pemutusan Instrument', 'Bypass trip/alarm sistem', 'Modifikasi'].map(item => (
-                        <tr key={item}>
-                          <td className="py-0.5">{item}</td>
-                          <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.requirements?.includes(item))}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border border-black p-2 flex-1">
-                  <div className="text-center font-semibold border-b border-black pb-1 mb-2 bg-gray-200">Permit</div>
-                  <table className="w-full">
-                    <tbody>
-                      {['Permit Hot Work', 'Permit Cold Work', 'Permit Confined Space', 'Permit Excavation', 'Permit electrical/machanical', 'Lain-lainnya'].map(item => (
-                        <tr key={item}>
-                          <td className="py-0.5">{item}</td>
-                          <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.permits?.includes(item))}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Box 3: PPE & Resiko */}
-              <div className="flex-1 flex flex-col gap-2">
-                <div className="border border-black p-2 flex-1">
-                  <div className="text-center font-semibold border-b border-black pb-1 mb-2">Keperluan PPE</div>
-                  <table className="w-full">
-                    <tbody>
-                      {['Sarung Tangan', 'Goggle', 'Pelindung Muka', 'Proteksi Pendengaran', 'Masker', 'Safety Harness', 'PPE Pengelasan', 'Alat Bantu Pernafasan', 'Jas PVC', 'Sepatu Karet', 'Helm', 'Lainnya'].map(item => (
-                        <tr key={item}>
-                          <td className="py-0.5">{item}</td>
-                          <td className="border border-black w-6 text-center text-xs font-bold py-0.5">{getCheckmark(data.ppeRequirements?.includes(item))}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border border-transparent p-2">
-                  <div className="text-center font-semibold pb-1 mb-2">Tingkat Resiko</div>
-                  <table className="w-full">
-                    <tbody>
-                      <tr>
-                        <td className="py-0.5">Resiko Tinggi</td>
-                        <td className="font-bold w-6 text-right py-0.5">{data.riskLevel === 'H' ? '✓' : ''} H</td>
-                      </tr>
-                      <tr>
-                        <td className="py-0.5">Resiko Menengah</td>
-                        <td className="font-bold w-6 text-right py-0.5">{data.riskLevel === 'M' ? '✓' : ''} M</td>
-                      </tr>
-                      <tr>
-                        <td className="py-0.5">Resiko Rendah</td>
-                        <td className="font-bold w-6 text-right py-0.5">{data.riskLevel === 'L' ? '✓' : ''} L</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* Steps Table */}
-            <table className="w-full border-collapse border border-black text-[9pt] mb-8">
-              <thead>
-                <tr className="bg-gray-300 text-center">
-                  <th className="border border-black p-2 w-8">No</th>
-                  <th className="border border-black p-2">Urutan Pekerjaan</th>
-                  <th className="border border-black p-2">Bahaya</th>
-                  <th className="border border-black p-2">Konsekuensi dari Bahaya</th>
-                  <th className="border border-black p-2">Kontrol/Pencegahan</th>
-                  <th className="border border-black p-2 w-20">Tingkat Resiko Akhir</th>
-                  <th className="border border-black p-2 w-24">Pelaksana</th>
-                </tr>
-              </thead>
-              <tbody>
-                {steps.length > 0 ? (
-                  steps.map((step: any, index: number) => (
-                    <tr key={index}>
-                      <td className="border border-black p-2 text-center align-top">{index + 1}</td>
-                      <td className="border border-black p-2 align-top">{step.workStep}</td>
-                      <td className="border border-black p-2 align-top">{step.hazard}</td>
-                      <td className="border border-black p-2 align-top">{step.consequence}</td>
-                      <td className="border border-black p-2 align-top">{step.control}</td>
-                      <td className="border border-black p-2 text-center align-top font-bold">{step.residualRisk}</td>
-                      <td className="border border-black p-2 text-center align-top">{step.pic}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="border border-black p-2 text-center italic text-gray-500">Tidak ada urutan pekerjaan</td>
-                  </tr>
-                )}
-                {/* Empty rows to fill space if needed */}
-                {Array.from({ length: Math.max(0, 10 - steps.length) }).map((_, i) => (
-                  <tr key={`empty-${i}`}>
-                    <td className="border border-black p-4"></td>
-                    <td className="border border-black p-4"></td>
-                    <td className="border border-black p-4"></td>
-                    <td className="border border-black p-4"></td>
-                    <td className="border border-black p-4"></td>
-                    <td className="border border-black p-4"></td>
-                    <td className="border border-black p-4"></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Signatures */}
-            <div className="flex justify-between items-start gap-8">
-              <div className="border border-black p-4 w-1/2">
-                <p className="mb-4">Saya Telah membaca. Mengerti dan setuju dengan ketentuan dalam JSA ini</p>
-                <div className="flex justify-between font-semibold mb-8">
-                  <span>Orang yang melaksanakan pekerjaan</span>
-                  <span>Tanggal</span>
-                </div>
-                <div className="flex items-center gap-4 mb-2">
-                  <span className="w-4">1.</span>
-                  <div className="flex-1 flex flex-col items-center">
-                    {signatures.executorUrl ? (
-                      <div className="h-16 w-32 relative">
-                        <img src={signatures.executorUrl} alt="Signature" className="object-contain w-full h-full" />
-                      </div>
-                    ) : (
-                      <div className="h-16 border-b border-dotted border-black w-full" />
-                    )}
-                    <p className="mt-1 text-center text-[9pt] font-semibold">{creatorName}</p>
-                  </div>
-                  <span className="w-24 border-b border-dotted border-black h-8 leading-8 text-center">{signatures.executorDate ? new Date(signatures.executorDate).toLocaleDateString() : ''}</span>
-                </div>
-              </div>
-              <div className="border border-black p-4 w-1/2 min-h-[160px]">
-                <p className="font-semibold underline mb-8">Verifikasi ( Departement HSE )</p>
-                <div className="mt-16">
-                  <p className="mb-1">Nama : {signatures.verifierName || '_________________________'}</p>
-                  <p>Tanggal : {signatures.verifierDate ? new Date(signatures.verifierDate).toLocaleDateString() : '_________________________'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer Form Code */}
-            <div className="text-right text-gray-500 text-[8pt] mt-8">
-              F.HSE.SFT-014.01|1
-            </div>
-
+        <div className="flex-1 overflow-y-auto p-6 flex justify-center bg-slate-100">
+          <div id="jsa-print-section" ref={printRef}>
+            <JsaDocumentSheet data={data} orientation={orientation} />
           </div>
         </div>
       </DialogContent>
+
+      <JsaApprovalDialog
+        open={approvalOpen}
+        onOpenChange={setApprovalOpen}
+        jsa={data}
+        onSuccess={() => {
+          onApproved?.()
+          onOpenChange(false)
+        }}
+      />
+
+      {/* REJECT DIALOG */}
+      <HeroFormDialog
+        open={rejectOpen}
+        onOpenChange={(op) => {
+          if (!op) {
+            setRejectOpen(false)
+            setRejectReason('')
+          }
+        }}
+        title={`Tolak / Minta Revisi JSA: ${data.jsaNumber || ''}`}
+        description="Berikan catatan perbaikan mengenai aspek keselamatan kerja yang perlu disesuaikan sebelum dokumen dapat disahkan."
+        submitLabel="Tolak & Kirim Catatan"
+        cancelLabel="Batal"
+        isSubmitting={isRejecting}
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleConfirmReject()
+        }}
+      >
+        <div className="space-y-4">
+          <HeroFormField
+            label="Catatan Perbaikan / Dimana Salahnya"
+            required
+            info="Jelaskan secara spesifik langkah atau potensi bahaya mana yang belum sesuai."
+          >
+            <HeroTextarea
+              rows={4}
+              placeholder="Contoh: Pada langkah 3 mohon tambahkan proteksi helm dan sarung tangan..."
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              autoFocus
+            />
+          </HeroFormField>
+        </div>
+      </HeroFormDialog>
+
+      {/* REVERT DIALOG */}
+      <HeroConfirmDialog
+        open={revertOpen}
+        onOpenChange={(op) => {
+          if (!op) setRevertOpen(false)
+        }}
+        title={`Revert Status JSA: ${data.jsaNumber || ''}`}
+        description="Apakah Anda yakin ingin mengembalikan status dokumen JSA ini ke 'Pending'? Tanda tangan verifikator atau catatan penolakan akan dibersihkan."
+        confirmLabel="Ya, Revert ke Pending"
+        cancelLabel="Batal"
+        tone="warning"
+        isProcessing={isReverting}
+        onConfirm={handleConfirmRevert}
+      />
     </Dialog>
   )
 }

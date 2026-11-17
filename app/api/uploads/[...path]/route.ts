@@ -1,72 +1,79 @@
-import { NextResponse } from "next/server"
-import { getS3ObjectForProxy, isS3UploadConfigured } from "@/lib/s3-storage"
-import { getServerSession } from "@/lib/auth-session"
-import { join } from "path"
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs"
-import { createHash } from "crypto"
-import sharp from "sharp"
+import { NextResponse } from 'next/server'
+import {
+  getS3ObjectForProxy,
+  getS3ObjectMetadataForProxy,
+  isS3UploadConfigured,
+} from '@/lib/s3-storage'
+import { getServerSession } from '@/lib/auth-session'
+import sharp from 'sharp'
 
-export const dynamic = "force-dynamic"
+export const dynamic = 'force-dynamic'
 export const revalidate = 0
-export const runtime = "nodejs"
+export const runtime = 'nodejs'
 
 const ALLOWED_UPLOAD_PREFIXES = new Set([
-  "attendance-photos",
-  "activity-photos",
-  "curhat",
-  "curhat-attachments",
-  "profile-photos",
-  "upload",
-  "uploads",
-  "mcu-wellness-results",
-  "mcu-referral-letters",
-  "mcu-results",
-  "offering-letters",
-  "lms-materials",
-  "lms-covers",
-  "chitralearning",
-  "sop-win-requests",
-  "sop-win",
-  "emergency-reports",
-  "safety",
-  "face-attendance",
-  "face-attendance-v2",
-  "contract-review-attachment",
-  "public-career-cv",
-  "cer",
-  "cer-bast",
-  "cer-attachments",
-  "hse-osm",
-  "reward-store",
-  "training-requests",
-  "marital-status",
-  "hrga-kerjasama",
-  "ga-house-rental",
-  "asset-transfer",
-  "asset-borrow",
-  "asset-disposal",
-  "asset-disposals",
+  'attendance-photos',
+  'activity-photos',
+  'curhat',
+  'curhat-attachments',
+  'profile-photos',
+  'upload',
+  'uploads',
+  'mcu-wellness-results',
+  'mcu-referral-letters',
+  'mcu-results',
+  'offering-letters',
+  'lms-materials',
+  'lms-covers',
+  'chitralearning',
+  'sop-win-requests',
+  'sop-win',
+  'emergency-reports',
+  'safety',
+  'face-attendance',
+  'face-attendance-v2',
+  'contract-review-attachment',
+  'public-career-cv',
+  'cer',
+  'cer-bast',
+  'cer-attachments',
+  'asset-transfer',
+  'asset-borrow',
+  'asset-disposal',
+  'asset-disposals',
+  'hse-osm',
+  'reward-store',
+  'training-requests',
+  'marital-status',
+  'hrga-kerjasama',
+  'ga-house-rental',
+  'rfr',
+  'road-hazard',
+  'twibbon-templates',
+  'troubleshooting-attachments',
+  'troubleshooting',
+  'service-desk',
 ])
 
 function getContentType(fileName: string) {
   const lower = fileName.toLowerCase()
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg"
-  if (lower.endsWith(".png")) return "image/png"
-  if (lower.endsWith(".webp")) return "image/webp"
-  if (lower.endsWith(".gif")) return "image/gif"
-  if (lower.endsWith(".pdf")) return "application/pdf"
-  if (lower.endsWith(".doc")) return "application/msword"
-  if (lower.endsWith(".docx"))
-    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  if (lower.endsWith(".xls")) return "application/vnd.ms-excel"
-  if (lower.endsWith(".xlsx"))
-    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  return "application/octet-stream"
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.pdf')) return 'application/pdf'
+  if (lower.endsWith('.doc')) return 'application/msword'
+  if (lower.endsWith('.docx'))
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  if (lower.endsWith('.xls')) return 'application/vnd.ms-excel'
+  if (lower.endsWith('.xlsx'))
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  return 'application/octet-stream'
 }
 
 function isValidPathSegment(segment: string) {
-  if (!segment || segment === "." || segment === "..") return false
-  if (segment.includes("\\") || segment.includes("/") || segment.includes("..")) return false
+  if (!segment || segment === '.' || segment === '..') return false
+  if (segment.includes('\\') || segment.includes('/') || segment.includes('..')) return false
   if (/[\u0000-\u001f\u007f]/.test(segment)) return false
   if (/^[a-zA-Z]:$/.test(segment)) return false
   return true
@@ -74,25 +81,23 @@ function isValidPathSegment(segment: string) {
 
 function isAllowedUploadPath(path: string[]) {
   if (!path.every(isValidPathSegment)) return false
-  if (path.length === 1) return true;
+  if (path.length === 1) return true
   return ALLOWED_UPLOAD_PREFIXES.has(path[0])
 }
 
 async function prepareResponseBuffer(
   buffer: Buffer,
   fileName: string,
-  targetWidth?: number | null,
-  cachedThumbPath?: string,
-  cacheDir?: string
+  targetWidth?: number | null
 ): Promise<{ data: Buffer; contentType: string; isThumbnail?: boolean }> {
   const lower = fileName.toLowerCase()
-  const isHeic = lower.endsWith(".heic") || lower.endsWith(".heif")
+  const isHeic = lower.endsWith('.heic') || lower.endsWith('.heif')
   const isRasterImage = /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lower)
 
   if (isHeic) {
     try {
       // @ts-ignore
-      const { default: heicDecode } = await import("heic-decode")
+      const { default: heicDecode } = await import('heic-decode')
       const { width, height, data } = await heicDecode({ buffer })
       let pipeline = sharp(Buffer.from(data), {
         raw: { width, height, channels: 4 },
@@ -106,16 +111,9 @@ async function prepareResponseBuffer(
         .jpeg({ quality: targetWidth ? 82 : 85, mozjpeg: true })
         .toBuffer()
 
-      if (targetWidth && cachedThumbPath && cacheDir) {
-        try {
-          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
-          writeFileSync(cachedThumbPath, converted)
-        } catch {}
-      }
-
-      return { data: converted, contentType: "image/jpeg", isThumbnail: !!targetWidth }
+      return { data: converted, contentType: 'image/jpeg', isThumbnail: !!targetWidth }
     } catch (e) {
-      console.warn("HEIC auto-conversion failed in uploads proxy:", e)
+      console.warn('HEIC auto-conversion failed in uploads proxy:', e)
     }
   }
 
@@ -127,16 +125,12 @@ async function prepareResponseBuffer(
         .jpeg({ quality: 82, mozjpeg: true })
         .toBuffer()
 
-      if (cachedThumbPath && cacheDir) {
-        try {
-          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true })
-          writeFileSync(cachedThumbPath, resized)
-        } catch {}
-      }
-
-      return { data: resized, contentType: "image/jpeg", isThumbnail: true }
+      return { data: resized, contentType: 'image/jpeg', isThumbnail: true }
     } catch (resizeErr) {
-      console.warn("Image thumbnail resize failed in uploads proxy, falling back to original:", resizeErr)
+      console.warn(
+        'Image thumbnail resize failed in uploads proxy, falling back to original:',
+        resizeErr
+      )
     }
   }
 
@@ -150,312 +144,196 @@ function createStreamingResponse(
   isThumbnail: boolean | undefined,
   request: Request
 ): NextResponse {
-  const isSafeInline = contentType.startsWith("image/") || contentType === "application/pdf";
-  const rangeHeader = request.headers.get("range");
+  const isSafeInline = contentType.startsWith('image/') || contentType === 'application/pdf'
+  const rangeHeader = request.headers.get('range')
 
-  if (rangeHeader && rangeHeader.startsWith("bytes=")) {
-    const parts = rangeHeader.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileBuffer.length - 1;
+  if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+    const parts = rangeHeader.replace(/bytes=/, '').split('-')
+    const start = parseInt(parts[0], 10)
+    const end = parts[1] ? parseInt(parts[1], 10) : fileBuffer.length - 1
 
     if (!isNaN(start) && start < fileBuffer.length) {
-      const safeEnd = Math.min(isNaN(end) ? fileBuffer.length - 1 : end, fileBuffer.length - 1);
-      const chunk = fileBuffer.subarray(start, safeEnd + 1);
+      const safeEnd = Math.min(isNaN(end) ? fileBuffer.length - 1 : end, fileBuffer.length - 1)
+      const chunk = fileBuffer.subarray(start, safeEnd + 1)
 
-      const headers = new Headers();
-      headers.set("Content-Type", contentType);
-      headers.set("Accept-Ranges", "bytes");
-      headers.set("Content-Range", `bytes ${start}-${safeEnd}/${fileBuffer.length}`);
-      headers.set("Content-Length", chunk.length.toString());
-      headers.set("Cache-Control", isThumbnail ? "public, max-age=31536000, immutable" : "public, max-age=86400, stale-while-revalidate=604800");
-      headers.set("X-Content-Type-Options", "nosniff");
-      headers.set("Content-Disposition", `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`);
+      const headers = new Headers()
+      headers.set('Content-Type', contentType)
+      headers.set('Content-Range', `bytes ${start}-${safeEnd}/${fileBuffer.length}`)
+      headers.set('Content-Length', chunk.length.toString())
+      headers.set('Accept-Ranges', 'bytes')
+      headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+      headers.set('X-Content-Type-Options', 'nosniff')
+      headers.set(
+        'Content-Disposition',
+        `${isSafeInline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileName)}"`
+      )
 
-      return new NextResponse(new Uint8Array(chunk), {
+      return new NextResponse(chunk, {
         status: 206,
         headers,
-      });
+      })
     }
   }
 
-  const headers = new Headers();
-  headers.set("Content-Type", contentType);
-  headers.set("Accept-Ranges", "bytes");
-  headers.set("Content-Length", fileBuffer.length.toString());
-  headers.set("Cache-Control", isThumbnail ? "public, max-age=31536000, immutable" : "public, max-age=86400, stale-while-revalidate=604800");
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Content-Disposition", `${isSafeInline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`);
+  const headers = new Headers()
+  headers.set('Content-Type', contentType)
+  headers.set('Content-Length', fileBuffer.length.toString())
+  headers.set('Accept-Ranges', 'bytes')
+  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  headers.set('X-Content-Type-Options', 'nosniff')
+  headers.set(
+    'Content-Disposition',
+    `${isSafeInline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileName)}"`
+  )
 
-  return new NextResponse(new Uint8Array(fileBuffer), {
+  return new NextResponse(fileBuffer, {
     status: 200,
     headers,
-  });
+  })
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
-  try { // top-level-get-try
-  const { path } = await params
+export async function HEAD(
+  request: Request,
+  props: { params: Promise<{ path?: string[] }> }
+) {
+  try {
+    const params = await props.params
+    const path = params.path
 
-  if (!path || path.length === 0) {
-    return NextResponse.json({ message: "Missing filename" }, { status: 400 })
-  }
-
-  if (!isAllowedUploadPath(path)) {
-    return NextResponse.json({ message: "Invalid path" }, { status: 400 })
-  }
-
-  // Strict session check only for sensitive directories
-  const isRootUpload = path.length === 1
-  const isPublicPrefix =
-    path[0] === "upload" ||
-    path[0] === "uploads" ||
-    path[0] === "activity-photos" ||
-    path[0] === "profile-photos" ||
-    path[0] === "emergency-reports" ||
-    path[0] === "safety" ||
-    path[0] === "face-attendance-v2" ||
-    path[0] === "sop-win" ||
-    path[0] === "lms-covers" ||
-    path[0] === "lms-materials" ||
-    path[0] === "chitralearning" ||
-    path[0] === "public-career-cv" ||
-    path[0] === "contract-review-attachment" ||
-    path[0] === "reward-store" ||
-    path[0] === "training-requests" ||
-    path[0] === "hse-osm" ||
-    path[0] === "hrga-kerjasama" ||
-    path[0] === "ga-house-rental" ||
-    path[0] === "asset-transfer" ||
-    path[0] === "asset-borrow" ||
-    path[0] === "asset-disposal" ||
-    path[0] === "asset-disposals" ||
-    path[0] === "cer" ||
-    path[0] === "cer-bast" ||
-    path[0] === "cer-attachments"
-
-  const isSensitive = !isRootUpload && !isPublicPrefix
-  if (isSensitive) {
-    const session = await getServerSession()
-    if (!session?.user?.email) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-    }
-  }
-
-  const relativePath = path.join("/")
-  const fileName = path[path.length - 1]
-
-  // Strict RBAC: Dokumen PDF resmi grup Asset Management hanya boleh diunduh oleh Pengaju & Admin
-  const ASSET_MANAGEMENT_PREFIXES = new Set([
-    "cer",
-    "cer-bast",
-    "asset-borrow",
-    "asset-transfer",
-    "asset-disposal",
-    "asset-disposals",
-  ])
-  const isAssetPdf = ASSET_MANAGEMENT_PREFIXES.has(path[0]) && fileName.toLowerCase().endsWith(".pdf")
-  if (isAssetPdf) {
-    const session = await getServerSession()
-    if (!session?.user?.email) {
-      return NextResponse.json({ message: "Unauthorized. Silakan login terlebih dahulu." }, { status: 401 })
+    if (!path || path.length === 0 || !isAllowedUploadPath(path)) {
+      return new NextResponse(null, { status: 400 })
     }
 
-    const { getCurrentEmployeeAccessContext } = await import("@/lib/hero-access")
-    const { isSuperAdminRole } = await import("@/lib/role-utils")
-    const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
-    const userRole = ((session.user as any)?.role || "").toLowerCase()
-    const isAdmin = isSuperAdmin || userRole.includes("admin") || userRole.includes("director")
+    const relativePath = path.join('/')
+    const fileName = path[path.length - 1]
 
-    if (!isAdmin) {
-      const employeeId = empContext?.employeeId
-      const userId = session.user.id
-      const { db } = await import("@/db")
-      const { eq, or } = await import("drizzle-orm")
-      let isOwner = false
-
-      if (path[0] === "cer" || path[0] === "cer-bast") {
-        const { cerRequests } = await import("@/db/schema/cer")
-        const conds = []
-        if (employeeId) conds.push(eq(cerRequests.applicantEmployeeId, employeeId))
-        if (userId) conds.push(eq(cerRequests.createdById, userId))
-        if (conds.length > 0) {
-          const [row] = await db
-            .select({ id: cerRequests.id })
-            .from(cerRequests)
-            .where(or(...conds))
-            .limit(1)
-          if (row) isOwner = true
-        } else {
-          isOwner = true
+    if (isS3UploadConfigured()) {
+      try {
+        const metadata = await getS3ObjectMetadataForProxy(relativePath)
+        if (metadata) {
+          const headers = new Headers()
+          headers.set('Content-Type', metadata.contentType || getContentType(fileName))
+          if (metadata.contentLength) {
+            headers.set('Content-Length', metadata.contentLength.toString())
+          }
+          headers.set('Accept-Ranges', 'bytes')
+          headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+          headers.set('X-Content-Type-Options', 'nosniff')
+          return new NextResponse(null, { status: 200, headers })
         }
-      } else if (path[0] === "asset-borrow") {
-        const { assetBorrows } = await import("@/db/schema/asset-borrow")
-        const [row] = await db
-          .select({ id: assetBorrows.id })
-          .from(assetBorrows)
-          .where(
-            or(
-              employeeId ? eq(assetBorrows.borrowerEmployeeId, employeeId) : undefined,
-              userId ? eq(assetBorrows.createdById, userId) : undefined
-            )
-          )
-          .limit(1)
-        if (row) isOwner = true
-      } else if (path[0] === "asset-transfer") {
-        const { assetTransfers } = await import("@/db/schema/asset-transfer")
-        const [row] = await db
-          .select({ id: assetTransfers.id })
-          .from(assetTransfers)
-          .where(
-            or(
-              employeeId ? eq(assetTransfers.applicantEmployeeId, employeeId) : undefined,
-              userId ? eq(assetTransfers.createdById, userId) : undefined
-            )
-          )
-          .limit(1)
-        if (row) isOwner = true
-      } else if (path[0] === "asset-disposal" || path[0] === "asset-disposals") {
-        const { assetDisposals } = await import("@/db/schema/asset-disposal")
-        const [row] = await db
-          .select({ id: assetDisposals.id })
-          .from(assetDisposals)
-          .where(
-            or(
-              employeeId ? eq(assetDisposals.applicantEmployeeId, employeeId) : undefined,
-              userId ? eq(assetDisposals.createdById, userId) : undefined
-            )
-          )
-          .limit(1)
-        if (row) isOwner = true
-      }
-
-      if (!isOwner) {
-        return NextResponse.json(
-          { message: "Akses ditolak. Dokumen PDF ini hanya dapat diunduh oleh pengaju dan administrator." },
-          { status: 403 }
-        )
-      }
-    }
-  }
-
-  // Parse thumbnail width query param (?w=800 or ?width=800)
-  const reqUrl = new URL(request.url)
-  const widthParam = reqUrl.searchParams.get("w") || reqUrl.searchParams.get("width")
-  const targetWidth = widthParam && !isNaN(Number(widthParam)) ? Math.min(Math.max(Math.round(Number(widthParam)), 32), 2560) : null
-
-  // Fast disk cache check for generated thumbnails
-  const publicDir = join(/*turbopackIgnore: true*/ process.cwd(), "public")
-  const thumbCacheDir = join(publicDir, "uploads", "cache", "thumbnails")
-  let cachedThumbPath: string | undefined
-  if (targetWidth) {
-    const thumbHash = createHash("md5").update(`${relativePath}_w${targetWidth}`).digest("hex")
-    cachedThumbPath = join(thumbCacheDir, `${thumbHash}.jpg`)
-    if (existsSync(cachedThumbPath)) {
-      try {
-        const cachedThumbBuf = readFileSync(cachedThumbPath)
-        return new NextResponse(new Uint8Array(cachedThumbBuf), {
-          headers: {
-            "Content-Type": "image/jpeg",
-            "Cache-Control": "public, max-age=31536000, immutable",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": `inline; filename="thumb-${encodeURIComponent(fileName)}"`,
-          },
-        })
-      } catch (err) {
-        console.warn("Failed reading cached thumbnail:", err)
-      }
-    }
-  }
-
-  // 1. Check local public/uploads directory candidates
-  const candidateLocalPaths = [
-    join(publicDir, "uploads", relativePath),
-    join(publicDir, "uploads", fileName),
-    join(publicDir, relativePath),
-    join(publicDir, fileName),
-  ]
-
-  for (const localPath of candidateLocalPaths) {
-    if (existsSync(localPath)) {
-      try {
-        const rawBuffer = readFileSync(localPath)
-        const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
-        return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
       } catch (e) {
-        console.error("Local file read error:", e)
+        console.warn('S3 metadata HEAD error in uploads proxy:', relativePath, e)
       }
     }
+
+    return new NextResponse(null, { status: 404 })
+  } catch (err: any) {
+    return new NextResponse(null, { status: 500 })
   }
+}
 
-  // 2. Fetch from S3 proxy using candidate keys
-  if (isS3UploadConfigured()) {
-    const candidateS3Keys = [
-      relativePath,
-      fileName,
-      `upload/${fileName}`,
-      `uploads/${fileName}`,
-      `activity-photos/${fileName}`,
-      `attendance-photos/${fileName}`,
-      `emergency-reports/${fileName}`,
-      `safety/${fileName}`,
-      `sop-win-requests/${fileName}`,
-      `sop-win/${fileName}`,
-      `mcu-referral-letters/${fileName}`,
-      `mcu-results/${fileName}`,
-      `offering-letters/${fileName}`,
-      `cer/${fileName}`,
-      `cer-bast/${fileName}`,
-      `cer-attachments/${fileName}`,
-      `public-career-cv/${fileName}`,
-      `lms-materials/${fileName}`,
-      `lms-covers/${fileName}`,
-      `chitralearning/${fileName}`,
-      `contract-review-attachment/${fileName}`,
-      `training-requests/${fileName}`,
-      `marital-status/${fileName}`,
-      `hse-osm/${fileName}`,
-      `hrga-kerjasama/${fileName}`,
-      `ga-house-rental/${fileName}`,
-      `asset-transfer/${fileName}`,
-      `asset-borrow/${fileName}`,
-      `asset-disposal/${fileName}`,
-      `asset-disposals/${fileName}`,
-    ]
+export async function GET(
+  request: Request,
+  props: { params: Promise<{ path?: string[] }> }
+) {
+  try {
+    const params = await props.params
+    const path = params.path
 
-    for (const key of candidateS3Keys) {
+    if (!path || path.length === 0) {
+      return NextResponse.json({ message: 'Missing filename' }, { status: 400 })
+    }
+
+    if (!isAllowedUploadPath(path)) {
+      return NextResponse.json({ message: 'Invalid path' }, { status: 400 })
+    }
+
+    // Strict session check only for sensitive directories
+    const isRootUpload = path.length === 1
+    const isPublicPrefix =
+      path[0] === 'upload' ||
+      path[0] === 'uploads' ||
+      path[0] === 'activity-photos' ||
+      path[0] === 'profile-photos' ||
+      path[0] === 'emergency-reports' ||
+      path[0] === 'safety' ||
+      path[0] === 'face-attendance-v2' ||
+      path[0] === 'sop-win' ||
+      path[0] === 'lms-covers' ||
+      path[0] === 'lms-materials' ||
+      path[0] === 'chitralearning' ||
+      path[0] === 'public-career-cv' ||
+      path[0] === 'contract-review-attachment' ||
+      path[0] === 'reward-store' ||
+      path[0] === 'training-requests' ||
+      path[0] === 'hse-osm' ||
+      path[0] === 'hrga-kerjasama' ||
+      path[0] === 'ga-house-rental' ||
+      path[0] === 'rfr' ||
+      path[0] === 'road-hazard' ||
+      path[0] === 'twibbon-templates' ||
+      path[0] === 'troubleshooting-attachments' ||
+      path[0] === 'troubleshooting' ||
+      path[0] === 'service-desk' ||
+      path[0] === 'cer' ||
+      path[0] === 'cer-bast' ||
+      path[0] === 'cer-attachments' ||
+      path[0] === 'asset-transfer' ||
+      path[0] === 'asset-borrow' ||
+      path[0] === 'asset-disposal' ||
+      path[0] === 'asset-disposals'
+
+    const isSensitive = !isRootUpload && !isPublicPrefix
+    if (isSensitive) {
+      const session = await getServerSession()
+      if (!session?.user?.email) {
+        return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
+      }
+    }
+
+    const relativePath = path.join('/')
+    const fileName = path[path.length - 1]
+
+    // Parse thumbnail width query param (?w=800 or ?width=800)
+    const reqUrl = new URL(request.url)
+    const widthParam = reqUrl.searchParams.get('w') || reqUrl.searchParams.get('width')
+    const targetWidth =
+      widthParam && !isNaN(Number(widthParam))
+        ? Math.min(Math.max(Math.round(Number(widthParam)), 32), 2560)
+        : null
+
+    // 2. Fetch from S3 proxy with fast, targeted lookup
+    if (isS3UploadConfigured()) {
       try {
-        const object = await getS3ObjectForProxy(key)
+        const object = await getS3ObjectForProxy(relativePath)
         if (object && object.body) {
           const rawBuffer = Buffer.from(object.body)
 
-          // Persist S3 download to local public/uploads disk cache so future requests are instantaneous
-          try {
-            const localCachePath = join(publicDir, "uploads", relativePath)
-            const localCacheDir = join(publicDir, "uploads", ...path.slice(0, -1))
-            if (!existsSync(localCacheDir)) mkdirSync(localCacheDir, { recursive: true })
-            writeFileSync(localCachePath, rawBuffer)
-          } catch (writeErr) {
-            console.warn("Failed caching S3 file to local disk:", writeErr)
-          }
-
-          const { data: fileBuffer, contentType, isThumbnail } = await prepareResponseBuffer(rawBuffer, fileName, targetWidth, cachedThumbPath, thumbCacheDir)
+          const {
+            data: fileBuffer,
+            contentType,
+            isThumbnail,
+          } = await prepareResponseBuffer(
+            rawBuffer,
+            fileName,
+            targetWidth
+          )
           return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
         }
       } catch (error) {
-        console.warn("Failed to proxy S3 upload key:", key, error)
+        console.warn('Failed to proxy S3 upload key:', relativePath, error)
       }
     }
-  }
 
-  // 3. For missing image/document/PDF files, return clean 404 instead of receiving HTML
-  const isBinaryOrDocFile = /\.(jpe?g|png|webp|gif|heic|heif|svg|bmp|ico|pdf|docx?|xlsx?|pptx?|zip)$/i.test(fileName)
-  if (isBinaryOrDocFile) {
-    return new NextResponse(null, { status: 404 })
-  }
+    // 3. For missing image/document/PDF files, return clean 404 instead of receiving HTML
+    const isBinaryOrDocFile =
+      /\.(jpe?g|png|webp|gif|heic|heif|svg|bmp|ico|pdf|docx?|xlsx?|pptx?|zip)$/i.test(fileName)
+    if (isBinaryOrDocFile) {
+      return new NextResponse(null, { status: 404 })
+    }
 
-  // 4. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
-  const html = `<!DOCTYPE html>
+    // 4. Fallback for demo/mock attachment files: Render clean HTML notice instead of raw JSON
+    const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="utf-8">
@@ -533,17 +411,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
 </body>
 </html>`
 
-  return new NextResponse(html, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-cache",
-    },
-  })
+    return new NextResponse(html, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      },
+    })
   } catch (err: any) {
-    console.error("[api/uploads] Unhandled proxy error:", err)
+    console.error('[api/uploads] Unhandled proxy error:', err)
     return NextResponse.json(
-      { message: "Terjadi kesalahan saat memuat berkas", error: err?.message },
+      { message: 'Terjadi kesalahan saat memuat berkas', error: err?.message },
       { status: 500 }
     )
   }

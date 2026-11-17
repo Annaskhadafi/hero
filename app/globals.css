@@ -427,9 +427,17 @@ body:has([data-admin-dashboard-shell]) {
     size: A4;
     margin: 0;
   }
+  @page summary-landscape {
+    size: A4 landscape;
+    margin: 5mm 7mm;
+  }
   @page {
     size: A4;
     margin: 10mm;
+  }
+  html:has(#summary-document-printable),
+  html:has(.print-page-wrapper) {
+    page: summary-landscape;
   }
   body {
     -webkit-print-color-adjust: exact;

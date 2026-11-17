@@ -13,6 +13,16 @@ export interface AttendanceExportEmployee {
   department?: string | null
 }
 
+export interface ExportAttendanceDateHeader {
+  day: number
+  dateStr?: string
+  period?: string
+  displayHeader: string // e.g. "16 Sep" or "Tgl 16"
+  subHeader: string // e.g. "Rab" or "Rab*"
+  isWeekend?: boolean
+  isHoliday?: boolean
+}
+
 export interface AttendanceExportCell {
   status: string
   clockIn?: string | null
@@ -23,7 +33,7 @@ export interface AttendanceExportCell {
 
 export interface AttendanceExportRow {
   employee: AttendanceExportEmployee
-  getAttendanceCell: (day: number) => AttendanceExportCell
+  getAttendanceCell: (day: number, dateItem?: ExportAttendanceDateHeader) => AttendanceExportCell
   statusCounts?: {
     present?: number
     off?: number
@@ -39,6 +49,9 @@ export interface ExportAttendanceExcelOptions {
   siteName: string
   period: string
   days: number[]
+  dateHeaders?: ExportAttendanceDateHeader[]
+  cutoffLabel?: string
+  customFileName?: string
   mode: 'attendance' | 'checkin-checkout' | 'work-hours'
   rows: AttendanceExportRow[]
   weekdayLabel: (period: string, day: number) => string
@@ -79,30 +92,30 @@ export interface StandaloneAttendanceExportOptions {
 // ============================================================
 
 const PALETTE = {
-  headerBg: 'FF003461',       // Deep Navy
-  headerText: 'FFFFFFFF',     // Pure White
-  subHeaderBg: 'FFF8FAFC',    // Slate 50
-  subHeaderText: 'FF475569',  // Slate 600
-  weekendBg: 'FFFEE2E2',      // Light Red/Rose
-  weekendText: 'FF991B1B',    // Dark Rose
-  
+  headerBg: 'FF003461', // Deep Navy
+  headerText: 'FFFFFFFF', // Pure White
+  subHeaderBg: 'FFF8FAFC', // Slate 50
+  subHeaderText: 'FF475569', // Slate 600
+  weekendBg: 'FFFEE2E2', // Light Red/Rose
+  weekendText: 'FF991B1B', // Dark Rose
+
   // Section / Dept Groups
-  sectionBg: 'FFE2E8F0',      // Slate 200
-  sectionText: 'FF0F172A',    // Slate 900
-  deptBg: 'FFF1F5F9',         // Slate 100
-  deptText: 'FF334155',       // Slate 700
+  sectionBg: 'FFE2E8F0', // Slate 200
+  sectionText: 'FF0F172A', // Slate 900
+  deptBg: 'FFF1F5F9', // Slate 100
+  deptText: 'FF334155', // Slate 700
 
   // Status Colors (Matching UI Pills)
-  presentBg: 'FFD1FAE5',      // Light Green (Emerald 100)
-  presentText: 'FF065F46',    // Emerald 800
-  sickBg: 'FFFCE7F3',         // Light Pink/Purple (Pink 100)
-  sickText: 'FF831843',       // Pink 800
-  leaveBg: 'FFE0E7FF',        // Light Indigo (Indigo 100)
-  leaveText: 'FF3730A3',      // Indigo 800
-  offBg: 'FFF1F5F9',          // Slate 100
-  offText: 'FF64748B',        // Slate 500
-  absentBg: 'FFFEE2E2',       // Light Red (Red 100)
-  absentText: 'FF991B1B',     // Red 800
+  presentBg: 'FFD1FAE5', // Light Green (Emerald 100)
+  presentText: 'FF065F46', // Emerald 800
+  sickBg: 'FFFCE7F3', // Light Pink/Purple (Pink 100)
+  sickText: 'FF831843', // Pink 800
+  leaveBg: 'FFE0E7FF', // Light Indigo (Indigo 100)
+  leaveText: 'FF3730A3', // Indigo 800
+  offBg: 'FFF1F5F9', // Slate 100
+  offText: 'FF64748B', // Slate 500
+  absentBg: 'FFFEE2E2', // Light Red (Red 100)
+  absentText: 'FF991B1B', // Red 800
 
   // Summary Column Colors
   sumPresentBg: 'FFE6F4EA',
@@ -131,11 +144,19 @@ function getStatusStyle(rawCode: string): { bg: string; text: string; code: stri
     code === 'D' ||
     code === 'N'
   ) {
-    return { bg: PALETTE.presentBg, text: PALETTE.presentText, code: code === 'PRESENT' || code === 'HADIR' ? 'M' : code }
+    return {
+      bg: PALETTE.presentBg,
+      text: PALETTE.presentText,
+      code: code === 'PRESENT' || code === 'HADIR' ? 'M' : code,
+    }
   }
 
   if (code === 'S' || code === 'SD' || code === 'SAKIT' || code === 'SICK') {
-    return { bg: PALETTE.sickBg, text: PALETTE.sickText, code: code === 'SAKIT' || code === 'SICK' ? 'S' : code }
+    return {
+      bg: PALETTE.sickBg,
+      text: PALETTE.sickText,
+      code: code === 'SAKIT' || code === 'SICK' ? 'S' : code,
+    }
   }
 
   if (
@@ -147,7 +168,11 @@ function getStatusStyle(rawCode: string): { bg: string; text: string; code: stri
     code === 'C' ||
     code === 'DL'
   ) {
-    return { bg: PALETTE.leaveBg, text: PALETTE.leaveText, code: code === 'CUTI' || code === 'LEAVE' ? 'C' : code === 'IZIN' ? 'I' : code }
+    return {
+      bg: PALETTE.leaveBg,
+      text: PALETTE.leaveText,
+      code: code === 'CUTI' || code === 'LEAVE' ? 'C' : code === 'IZIN' ? 'I' : code,
+    }
   }
 
   if (code === 'OFF' || code === 'LIBUR' || code === 'O' || code === 'L') {
@@ -164,8 +189,18 @@ function getStatusStyle(rawCode: string): { bg: string; text: string; code: stri
 function formatPeriodIndonesian(period: string): string {
   const [year, month] = period.split('-')
   const monthNames = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    'Januari',
+    'Februari',
+    'Maret',
+    'April',
+    'Mei',
+    'Juni',
+    'Juli',
+    'Agustus',
+    'September',
+    'Oktober',
+    'November',
+    'Desember',
   ]
   const monthIdx = Number(month) - 1
   if (monthIdx >= 0 && monthIdx < 12) {
@@ -182,6 +217,9 @@ export async function exportAttendanceGridToExcel({
   siteName,
   period,
   days,
+  dateHeaders,
+  cutoffLabel,
+  customFileName,
   mode,
   rows,
   weekdayLabel,
@@ -208,11 +246,16 @@ export async function exportAttendanceGridToExcel({
   const titleRow1 = sheet.addRow(['PT CHITRA PARATAMA — HERO SYSTEM'])
   titleRow1.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF003461' } }
 
-  const titleRow2 = sheet.addRow([`LAPORAN REKAPITULASI KEHADIRAN KARYAWAN (${modeTitle})`])
+  const titleRow2 = sheet.addRow([
+    cutoffLabel
+      ? `LAPORAN REKAPITULASI KEHADIRAN KARYAWAN (${modeTitle}) — ${cutoffLabel.toUpperCase()}`
+      : `LAPORAN REKAPITULASI KEHADIRAN KARYAWAN (${modeTitle})`,
+  ])
   titleRow2.font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF1E293B' } }
 
+  const cutoffSub = cutoffLabel ? ` | ${cutoffLabel}` : ''
   const titleRow3 = sheet.addRow([
-    `Site / Proyek: ${siteName.toUpperCase()} | Periode: ${periodLabel} (${period}) | Total Karyawan: ${rows.length} Orang`,
+    `Site / Proyek: ${siteName.toUpperCase()} | Periode: ${periodLabel} (${period})${cutoffSub} | Total Karyawan: ${rows.length} Orang`,
   ])
   titleRow3.font = { name: 'Calibri', size: 10, bold: false, color: { argb: 'FF475569' } }
 
@@ -234,27 +277,48 @@ export async function exportAttendanceGridToExcel({
     'Role / Jabatan',
   ]
 
-  days.forEach((day) => {
-    topHeaderRow.push(`Tgl ${day}`)
-  })
+  const colDateCount = dateHeaders && dateHeaders.length > 0 ? dateHeaders.length : days.length
 
-  topHeaderRow.push('Hadir (Hari)', 'Off (Hari)', 'Izin/Cuti', 'Sakit', 'Total Jam', 'Overtime (Jam)')
+  if (dateHeaders && dateHeaders.length > 0) {
+    dateHeaders.forEach((dh) => {
+      topHeaderRow.push(dh.displayHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      topHeaderRow.push(`Tgl ${day}`)
+    })
+  }
+
+  topHeaderRow.push(
+    'Hadir (Hari)',
+    'Off (Hari)',
+    'Izin/Cuti',
+    'Sakit',
+    'Total Jam',
+    'Overtime (Jam)'
+  )
 
   const header1 = sheet.addRow(topHeaderRow)
   header1.height = 24
 
   const subHeaderRow = ['', '', '', '', '', '']
-  days.forEach((day) => {
-    const wday = weekdayLabel(period, day)
-    const isHoliday = holidaysByDay.has(day)
-    subHeaderRow.push(isHoliday ? `${wday}*` : wday)
-  })
+  if (dateHeaders && dateHeaders.length > 0) {
+    dateHeaders.forEach((dh) => {
+      subHeaderRow.push(dh.subHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      const wday = weekdayLabel(period, day)
+      const isHoliday = holidaysByDay.has(day)
+      subHeaderRow.push(isHoliday ? `${wday}*` : wday)
+    })
+  }
   subHeaderRow.push('M / DS / NS', 'OFF', 'I / C / AL', 'S / SD', 'Jam Kerja', 'SPL Jam')
 
   const header2 = sheet.addRow(subHeaderRow)
   header2.height = 20
 
-  const totalCols = 6 + days.length + 6
+  const totalCols = 6 + colDateCount + 6
 
   // Merge metadata header cells vertically (Rows 6 & 7)
   for (let col = 1; col <= 6; col++) {
@@ -294,11 +358,21 @@ export async function exportAttendanceGridToExcel({
     }
 
     // Highlight Weekend / Holiday subheader columns
-    if (col > 6 && col <= 6 + days.length) {
-      const dayNum = days[col - 7]
-      const wday = weekdayLabel(period, dayNum).toLowerCase()
-      const isWeekend = wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
-      const isHoliday = holidaysByDay.has(dayNum)
+    if (col > 6 && col <= 6 + colDateCount) {
+      const itemIdx = col - 7
+      let isWeekend = false
+      let isHoliday = false
+      if (dateHeaders && dateHeaders.length > 0) {
+        const dh = dateHeaders[itemIdx]
+        isWeekend = Boolean(dh.isWeekend)
+        isHoliday = Boolean(dh.isHoliday)
+      } else {
+        const dayNum = days[itemIdx]
+        const wday = weekdayLabel(period, dayNum).toLowerCase()
+        isWeekend =
+          wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
+        isHoliday = holidaysByDay.has(dayNum)
+      }
 
       if (isWeekend || isHoliday) {
         cell2.fill = {
@@ -324,7 +398,7 @@ export async function exportAttendanceGridToExcel({
   }
 
   let rowNumber = 1
-  const dailyPresentTotals = new Array(days.length).fill(0)
+  const dailyPresentTotals = new Array(colDateCount).fill(0)
   let grandTotalPresent = 0
   let grandTotalOff = 0
   let grandTotalLeave = 0
@@ -344,7 +418,9 @@ export async function exportAttendanceGridToExcel({
 
     Array.from(depts.entries()).forEach(([dept, deptRows]) => {
       // Dept Sub-group Banner
-      const deptRow = sheet.addRow([`  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Orang)`])
+      const deptRow = sheet.addRow([
+        `  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Orang)`,
+      ])
       sheet.mergeCells(deptRow.number, 1, deptRow.number, totalCols)
       deptRow.height = 18
       const dCell = deptRow.getCell(1)
@@ -379,8 +455,11 @@ export async function exportAttendanceGridToExcel({
 
         const cellStyles: { colIndex: number; bg: string; text: string }[] = []
 
-        days.forEach((day, dayIndex) => {
-          const cell = row.getAttendanceCell(day)
+        const dateIterList = dateHeaders && dateHeaders.length > 0 ? dateHeaders : days.map((d) => ({ day: d }))
+
+        dateIterList.forEach((dateItem, dayIndex) => {
+          const day = dateItem.day
+          const cell = row.getAttendanceCell(day, dateHeaders ? dateHeaders[dayIndex] : undefined)
           const rawStatus = (cell.status || '').toUpperCase()
           const clockIn = cell.clockIn || ''
           const clockOut = cell.clockOut || ''
@@ -411,7 +490,12 @@ export async function exportAttendanceGridToExcel({
             rawStatus === 'DL'
           ) {
             empLeave++
-          } else if (rawStatus === 'S' || rawStatus === 'SICK' || rawStatus === 'SAKIT' || rawStatus === 'SD') {
+          } else if (
+            rawStatus === 'S' ||
+            rawStatus === 'SICK' ||
+            rawStatus === 'SAKIT' ||
+            rawStatus === 'SD'
+          ) {
             empSick++
           }
 
@@ -425,14 +509,21 @@ export async function exportAttendanceGridToExcel({
               if (diff < 0) diff += 1440
               cellHours = Math.round((diff / 60) * 10) / 10
             }
-          } else if (rawStatus === 'DS' || rawStatus === 'NS' || rawStatus === 'PRESENT' || rawStatus === 'HADIR' || rawStatus === 'M') {
+          } else if (
+            rawStatus === 'DS' ||
+            rawStatus === 'NS' ||
+            rawStatus === 'PRESENT' ||
+            rawStatus === 'HADIR' ||
+            rawStatus === 'M'
+          ) {
             cellHours = 8.0
           }
           empTotalHours += cellHours
 
           let displayVal = rawStatus || '-'
           if (mode === 'checkin-checkout') {
-            displayVal = clockIn && clockOut ? `${clockIn}-${clockOut}` : clockIn || rawStatus || '-'
+            displayVal =
+              clockIn && clockOut ? `${clockIn}-${clockOut}` : clockIn || rawStatus || '-'
           } else if (mode === 'work-hours') {
             displayVal = cellHours > 0 ? `${cellHours.toFixed(1)}h` : rawStatus || '-'
           } else {
@@ -458,7 +549,14 @@ export async function exportAttendanceGridToExcel({
         grandTotalHours += empTotalHours
         grandTotalOtHours += empOtHours
 
-        rowData.push(empPresent, empOff, empLeave, empSick, empTotalHours.toFixed(1), empOtHours.toFixed(1))
+        rowData.push(
+          empPresent,
+          empOff,
+          empLeave,
+          empSick,
+          empTotalHours.toFixed(1),
+          empOtHours.toFixed(1)
+        )
 
         const addedRow = sheet.addRow(rowData)
         addedRow.height = 19
@@ -550,7 +648,7 @@ export async function exportAttendanceGridToExcel({
       col.width = 20 // Departemen
     } else if (colNumber === 6) {
       col.width = 18 // Role
-    } else if (colNumber <= 6 + days.length) {
+    } else if (colNumber <= 6 + colDateCount) {
       col.width = mode === 'checkin-checkout' ? 14 : 7.5 // Uniform date columns
     } else {
       col.width = 13 // Summary columns
@@ -565,7 +663,10 @@ export async function exportAttendanceGridToExcel({
   const url = window.URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `Rekap_Attendance_Grid_${siteName.replace(/\s+/g, '_')}_${period}.xlsx`
+  const cleanSiteName = siteName.replace(/\s+/g, '_')
+  const cutoffSuffix = cutoffLabel ? '_CK_Cutoff_16-15' : ''
+  anchor.download =
+    customFileName || `Rekap_Attendance_Grid_${cleanSiteName}${cutoffSuffix}_${period}.xlsx`
   document.body.appendChild(anchor)
   anchor.click()
   document.body.removeChild(anchor)
@@ -597,8 +698,16 @@ export async function exportAttendanceGridVisualXlsx({
   sheet.addRow([])
 
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  const headerRow = ['No', 'Nama Karyawan', ...days.map((d) => `Tgl ${d}`), 'Total Masuk', 'Total Sakit', 'Total Izin', 'Total Off']
-  
+  const headerRow = [
+    'No',
+    'Nama Karyawan',
+    ...days.map((d) => `Tgl ${d}`),
+    'Total Masuk',
+    'Total Sakit',
+    'Total Izin',
+    'Total Off',
+  ]
+
   const hRow = sheet.addRow(headerRow)
   hRow.height = 24
 
@@ -870,8 +979,15 @@ export interface TimesheetEmployeeExportRow {
   }
   allowanceTotal?: number
   overtimeTotal?: number
+  overtimeSplitSummary?: {
+    mandatoryHours: number
+    splHours: number
+    payrollEquivalentHours: number
+  }
   payrollOvertimeSummary?: {
     totalOvertimeCalculated: number
+    mandatoryHours?: number
+    splHours?: number
     workDaysPresent: number
     offDaysPresent: number
   }
@@ -882,12 +998,14 @@ export interface ExportTimesheetTabOptions {
   siteName: string
   period: string
   days: number[]
+  dateHeaders?: ExportAttendanceDateHeader[]
   rows: TimesheetEmployeeExportRow[]
   weekdayLabel: (period: string, day: number) => string
   holidaysByDay?: Map<number, { name?: string; localName?: string }>
   info?: {
     rateText?: string
     project?: string
+    cutoffLabel?: string
   }
   customFileName?: string
 }
@@ -896,6 +1014,8 @@ export interface ExportAllTimesheetTabsOptions {
   siteName: string
   period: string
   days: number[]
+  dateHeaders?: ExportAttendanceDateHeader[]
+  cutoffLabel?: string
   tabs: {
     tab: TimesheetExportTab
     rows: TimesheetEmployeeExportRow[]
@@ -1043,15 +1163,23 @@ export function buildTimesheetWorksheet(
 
   // ── ROW 1-4: TITLE & BANNER ──
   const titleRow1 = sheet.addRow(['PT CHITRA PARATAMA — HERO TIMESHEET SYSTEM'])
-  titleRow1.font = { name: 'Calibri', size: 13, bold: true, color: { argb: TIMESHEET_PALETTE.headerBg } }
+  titleRow1.font = {
+    name: 'Calibri',
+    size: 13,
+    bold: true,
+    color: { argb: TIMESHEET_PALETTE.headerBg },
+  }
 
-  const titleRow2 = sheet.addRow([meta.title])
+  const titleRow2 = sheet.addRow([
+    info?.cutoffLabel ? `${meta.title} — ${info.cutoffLabel.toUpperCase()}` : meta.title,
+  ])
   titleRow2.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E293B' } }
 
   const infoSubText = info?.rateText ? ` | ${info.rateText}` : ''
   const projectText = info?.project ? ` · ${info.project}` : ''
+  const cutoffNotice = info?.cutoffLabel ? ` | ${info.cutoffLabel}` : ''
   const titleRow3 = sheet.addRow([
-    `Site / Proyek: ${siteName.toUpperCase()}${projectText} | Periode: ${periodLabel} (${period})${infoSubText} | Total: ${rows.length} Karyawan`,
+    `Site / Proyek: ${siteName.toUpperCase()}${projectText} | Periode: ${periodLabel} (${period})${cutoffNotice}${infoSubText} | Total: ${rows.length} Karyawan`,
   ])
   titleRow3.font = { name: 'Calibri', size: 9.5, bold: false, color: { argb: 'FF475569' } }
 
@@ -1066,10 +1194,17 @@ export function buildTimesheetWorksheet(
   const baseHeaders = ['No', 'Nama Karyawan', 'Manpower', 'Section / Role', 'Departemen']
   const totalBaseCols = baseHeaders.length // 5
 
+  const colDateCount = options.dateHeaders && options.dateHeaders.length > 0 ? options.dateHeaders.length : days.length
   const topHeaderRow = [...baseHeaders]
-  days.forEach((day) => {
-    topHeaderRow.push(`Tgl ${day}`)
-  })
+  if (options.dateHeaders && options.dateHeaders.length > 0) {
+    options.dateHeaders.forEach((dh) => {
+      topHeaderRow.push(dh.displayHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      topHeaderRow.push(`Tgl ${day}`)
+    })
+  }
 
   if (isAttendance) {
     topHeaderRow.push('Hadir', 'OFF', 'Izin', 'Sakit', 'Alpha', 'Total Jam')
@@ -1080,29 +1215,35 @@ export function buildTimesheetWorksheet(
   } else if (tab === 'meals') {
     topHeaderRow.push('Total Meals (Rp)')
   } else if (isOvertime) {
-    topHeaderRow.push('Total Overtime (Jam)')
+    topHeaderRow.push('Overtime Wajib (Jam)', 'Overtime SPL (Jam)', 'Total Overtime Payroll (Jam)')
   } else if (isPayrollOvertime) {
-    topHeaderRow.push('Total Hitungan Lembur', 'Hari Kerja (HK)', 'Hari Libur (HL)')
+    topHeaderRow.push('Overtime Wajib (Jam)', 'Overtime SPL (Jam)', 'Total Hitungan Payroll (Jam)', 'Hari Kerja (HK)', 'Hari Libur (HL)')
   }
 
   const header1 = sheet.addRow(topHeaderRow)
   header1.height = 22
 
   const subHeaderRow = ['', '', '', '', '']
-  days.forEach((day) => {
-    const wday = weekdayLabel(period, day)
-    const isHoliday = holidaysByDay.has(day)
-    subHeaderRow.push(isHoliday ? `${wday}*` : wday)
-  })
+  if (options.dateHeaders && options.dateHeaders.length > 0) {
+    options.dateHeaders.forEach((dh) => {
+      subHeaderRow.push(dh.subHeader)
+    })
+  } else {
+    days.forEach((day) => {
+      const wday = weekdayLabel(period, day)
+      const isHoliday = holidaysByDay.has(day)
+      subHeaderRow.push(isHoliday ? `${wday}*` : wday)
+    })
+  }
 
   if (isAttendance) {
     subHeaderRow.push('Masuk', 'OFF', 'Cuti/Izin', 'Sakit', 'Alpha', 'Jam Kerja')
   } else if (isAllowance) {
     subHeaderRow.push('Nominal')
   } else if (isOvertime) {
-    subHeaderRow.push('SPL Jam')
+    subHeaderRow.push('Jam Wajib', 'Jam SPL', 'Jam Payroll')
   } else if (isPayrollOvertime) {
-    subHeaderRow.push('Hitungan Lembur', 'HK Masuk', 'HL Masuk')
+    subHeaderRow.push('Jam Wajib', 'Jam SPL', 'Jam Payroll', 'HK Masuk', 'HL Masuk')
   }
 
   const header2 = sheet.addRow(subHeaderRow)
@@ -1116,7 +1257,7 @@ export function buildTimesheetWorksheet(
   }
 
   // If single summary column (TU, MSA, Meals, OVT), merge row 6 & 7 vertically
-  if (!isAttendance && !isPayrollOvertime) {
+  if (!isAttendance && !isPayrollOvertime && !isOvertime) {
     sheet.mergeCells(6, totalCols, 7, totalCols)
   }
 
@@ -1128,7 +1269,12 @@ export function buildTimesheetWorksheet(
       pattern: 'solid',
       fgColor: { argb: TIMESHEET_PALETTE.headerBg },
     }
-    cell1.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.headerText } }
+    cell1.font = {
+      name: 'Calibri',
+      size: 9.5,
+      bold: true,
+      color: { argb: TIMESHEET_PALETTE.headerText },
+    }
     cell1.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
     cell1.border = {
       top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -1143,7 +1289,12 @@ export function buildTimesheetWorksheet(
       pattern: 'solid',
       fgColor: { argb: TIMESHEET_PALETTE.subHeaderBg },
     }
-    cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.subHeaderText } }
+    cell2.font = {
+      name: 'Calibri',
+      size: 8.5,
+      bold: true,
+      color: { argb: TIMESHEET_PALETTE.subHeaderText },
+    }
     cell2.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
     cell2.border = {
       top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
@@ -1153,15 +1304,21 @@ export function buildTimesheetWorksheet(
     }
 
     // Highlight Weekend / Holiday subheader columns
-    if (col > totalBaseCols && col <= totalBaseCols + days.length) {
-      const dayNum = days[col - totalBaseCols - 1]
-      const wday = weekdayLabel(period, dayNum).toLowerCase()
-      const isWeekend =
-        wday.includes('sab') ||
-        wday.includes('min') ||
-        wday.includes('sat') ||
-        wday.includes('sun')
-      const isHoliday = holidaysByDay.has(dayNum)
+    if (col > totalBaseCols && col <= totalBaseCols + colDateCount) {
+      const itemIdx = col - totalBaseCols - 1
+      let isWeekend = false
+      let isHoliday = false
+      if (options.dateHeaders && options.dateHeaders.length > 0) {
+        const dh = options.dateHeaders[itemIdx]
+        isWeekend = Boolean(dh.isWeekend)
+        isHoliday = Boolean(dh.isHoliday)
+      } else {
+        const dayNum = days[itemIdx]
+        const wday = weekdayLabel(period, dayNum).toLowerCase()
+        isWeekend =
+          wday.includes('sab') || wday.includes('min') || wday.includes('sat') || wday.includes('sun')
+        isHoliday = holidaysByDay.has(dayNum)
+      }
 
       if (isHoliday) {
         cell2.fill = {
@@ -1169,14 +1326,24 @@ export function buildTimesheetWorksheet(
           pattern: 'solid',
           fgColor: { argb: TIMESHEET_PALETTE.holidayBg },
         }
-        cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.holidayText } }
+        cell2.font = {
+          name: 'Calibri',
+          size: 8.5,
+          bold: true,
+          color: { argb: TIMESHEET_PALETTE.holidayText },
+        }
       } else if (isWeekend) {
         cell2.fill = {
           type: 'pattern',
           pattern: 'solid',
           fgColor: { argb: TIMESHEET_PALETTE.weekendBg },
         }
-        cell2.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.weekendText } }
+        cell2.font = {
+          name: 'Calibri',
+          size: 8.5,
+          bold: true,
+          color: { argb: TIMESHEET_PALETTE.weekendText },
+        }
       }
     }
   }
@@ -1195,7 +1362,7 @@ export function buildTimesheetWorksheet(
   let rowCounter = 1
 
   // Grand totals tracking
-  const dailySums = new Array(days.length).fill(0)
+  const dailySums = new Array(colDateCount).fill(0)
   let grandTotalAttendance = {
     present: 0,
     off: 0,
@@ -1205,9 +1372,11 @@ export function buildTimesheetWorksheet(
     totalHours: 0,
   }
   let grandTotalAllowance = 0
-  let grandTotalOvertime = 0
+  let grandTotalOvertime = { mandatory: 0, spl: 0, payroll: 0 }
   let grandTotalPayrollOvertime = {
     totalCalculated: 0,
+    mandatory: 0,
+    spl: 0,
     hk: 0,
     hl: 0,
   }
@@ -1223,12 +1392,19 @@ export function buildTimesheetWorksheet(
       pattern: 'solid',
       fgColor: { argb: TIMESHEET_PALETTE.sectionBg },
     }
-    secCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.sectionText } }
+    secCell.font = {
+      name: 'Calibri',
+      size: 9.5,
+      bold: true,
+      color: { argb: TIMESHEET_PALETTE.sectionText },
+    }
     secCell.alignment = { vertical: 'middle', indent: 1 }
 
     Array.from(depts.entries()).forEach(([dept, deptRows]) => {
       // Dept Sub-group Banner
-      const deptRow = sheet.addRow([`  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Karyawan)`])
+      const deptRow = sheet.addRow([
+        `  DEPARTEMEN: ${dept.toUpperCase()} (${deptRows.length} Karyawan)`,
+      ])
       sheet.mergeCells(deptRow.number, 1, deptRow.number, totalCols)
       deptRow.height = 17
       const dCell = deptRow.getCell(1)
@@ -1237,7 +1413,12 @@ export function buildTimesheetWorksheet(
         pattern: 'solid',
         fgColor: { argb: TIMESHEET_PALETTE.deptBg },
       }
-      dCell.font = { name: 'Calibri', size: 8.5, bold: true, color: { argb: TIMESHEET_PALETTE.deptText } }
+      dCell.font = {
+        name: 'Calibri',
+        size: 8.5,
+        bold: true,
+        color: { argb: TIMESHEET_PALETTE.deptText },
+      }
       dCell.alignment = { vertical: 'middle', indent: 2 }
 
       const sortedRows = deptRows.slice().sort((a, b) => {
@@ -1266,9 +1447,12 @@ export function buildTimesheetWorksheet(
           align?: 'center' | 'right' | 'left'
         }[] = []
 
-        days.forEach((day, dayIndex) => {
+        const dateIterList = options.dateHeaders && options.dateHeaders.length > 0 ? options.dateHeaders : days.map((d) => ({ day: d }))
+
+        dateIterList.forEach((dateItem, dayIndex) => {
+          const day = dateItem.day
           const dayData = row.daysData[dayIndex] || { day, displayVal: '-' }
-          const isHoliday = holidaysByDay.has(day)
+          const isHoliday = 'isHoliday' in dateItem && dateItem.isHoliday !== undefined ? Boolean(dateItem.isHoliday) : holidaysByDay.has(day)
           const colIndex = totalBaseCols + dayIndex + 1
 
           if (isAttendance) {
@@ -1315,6 +1499,10 @@ export function buildTimesheetWorksheet(
               cellVal = 'FB'
               bg = TIMESHEET_PALETTE.fbBg
               text = TIMESHEET_PALETTE.fbText
+            } else if (dayData.displayVal === 'AL') {
+              cellVal = 'AL'
+              bg = 'D1FAE5'
+              text = '065F46'
             } else if (status === 'standby' || dayData.displayVal === 'ST') {
               cellVal = 'ST'
               bg = TIMESHEET_PALETTE.stBg
@@ -1585,17 +1773,26 @@ export function buildTimesheetWorksheet(
           grandTotalAllowance += tot
           rowData.push(tot)
         } else if (isOvertime) {
-          const tot = row.overtimeTotal || 0
-          grandTotalOvertime += tot
-          rowData.push(tot)
+          const summary = row.overtimeSplitSummary
+          const mandatory = summary?.mandatoryHours ?? row.overtimeTotal ?? 0
+          const spl = summary?.splHours ?? 0
+          const payroll = summary?.payrollEquivalentHours ?? 0
+          grandTotalOvertime.mandatory += mandatory
+          grandTotalOvertime.spl += spl
+          grandTotalOvertime.payroll += payroll
+          rowData.push(mandatory, spl, payroll)
         } else if (isPayrollOvertime) {
           const totCalc = row.payrollOvertimeSummary?.totalOvertimeCalculated ?? 0
+          const mandatory = row.payrollOvertimeSummary?.mandatoryHours ?? 0
+          const spl = row.payrollOvertimeSummary?.splHours ?? 0
           const hk = row.payrollOvertimeSummary?.workDaysPresent ?? 0
           const hl = row.payrollOvertimeSummary?.offDaysPresent ?? 0
           grandTotalPayrollOvertime.totalCalculated += totCalc
+          grandTotalPayrollOvertime.mandatory += mandatory
+          grandTotalPayrollOvertime.spl += spl
           grandTotalPayrollOvertime.hk += hk
           grandTotalPayrollOvertime.hl += hl
-          rowData.push(totCalc, hk, hl)
+          rowData.push(mandatory, spl, totCalc, hk, hl)
         }
 
         const addedRow = sheet.addRow(rowData)
@@ -1616,7 +1813,12 @@ export function buildTimesheetWorksheet(
             currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
           } else if (c === 2) {
             currentCell.alignment = { vertical: 'middle', horizontal: 'left' }
-            currentCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF0F172A' } }
+            currentCell.font = {
+              name: 'Calibri',
+              size: 9.5,
+              bold: true,
+              color: { argb: 'FF0F172A' },
+            }
           } else if (c === 3) {
             currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
             currentCell.font = { name: 'Calibri', size: 8.5, color: { argb: 'FF475569' } }
@@ -1656,21 +1858,25 @@ export function buildTimesheetWorksheet(
             } else if (isPayrollOvertime) {
               const summaryOffset = c - (totalBaseCols + days.length)
               currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
-              if (summaryOffset === 1) {
-                // Total Hitungan Lembur
+              if (summaryOffset === 1 || summaryOffset === 2) {
+                // Separate mandatory and SPL hours
                 currentCell.font = {
                   name: 'Calibri',
                   size: 9.5,
                   bold: true,
-                  color: { argb: TIMESHEET_PALETTE.totalOtText },
+                  color: { argb: summaryOffset === 1 ? TIMESHEET_PALETTE.totalOtText : TIMESHEET_PALETTE.splText },
                 }
                 currentCell.fill = {
                   type: 'pattern',
                   pattern: 'solid',
-                  fgColor: { argb: TIMESHEET_PALETTE.totalOtBg },
+                  fgColor: { argb: summaryOffset === 1 ? TIMESHEET_PALETTE.totalOtBg : TIMESHEET_PALETTE.splBg },
                 }
                 currentCell.numFmt = '0.0'
-              } else if (summaryOffset === 2) {
+              } else if (summaryOffset === 3) {
+                currentCell.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: TIMESHEET_PALETTE.totalOtText } }
+                currentCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TIMESHEET_PALETTE.totalOtBg } }
+                currentCell.numFmt = '0.0'
+              } else if (summaryOffset === 4) {
                 // Hari Kerja (HK)
                 currentCell.font = {
                   name: 'Calibri',
@@ -1684,7 +1890,7 @@ export function buildTimesheetWorksheet(
                   fgColor: { argb: 'FFF0FDF4' }, // Emerald 50
                 }
                 currentCell.numFmt = '#,##0'
-              } else if (summaryOffset === 3) {
+              } else if (summaryOffset === 5) {
                 // Hari Libur (HL)
                 currentCell.font = {
                   name: 'Calibri',
@@ -1701,7 +1907,12 @@ export function buildTimesheetWorksheet(
               }
             } else {
               currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
-              currentCell.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF0F172A' } }
+              currentCell.font = {
+                name: 'Calibri',
+                size: 9,
+                bold: true,
+                color: { argb: 'FF0F172A' },
+              }
             }
           }
         }
@@ -1749,9 +1960,15 @@ export function buildTimesheetWorksheet(
   } else if (isAllowance) {
     summaryRowData.push(grandTotalAllowance)
   } else if (isOvertime) {
-    summaryRowData.push(Number(grandTotalOvertime.toFixed(1)))
+    summaryRowData.push(
+      Number(grandTotalOvertime.mandatory.toFixed(1)),
+      Number(grandTotalOvertime.spl.toFixed(1)),
+      Number(grandTotalOvertime.payroll.toFixed(1))
+    )
   } else if (isPayrollOvertime) {
     summaryRowData.push(
+      Number(grandTotalPayrollOvertime.mandatory.toFixed(1)),
+      Number(grandTotalPayrollOvertime.spl.toFixed(1)),
       Number(grandTotalPayrollOvertime.totalCalculated.toFixed(1)),
       grandTotalPayrollOvertime.hk,
       grandTotalPayrollOvertime.hl
@@ -1781,11 +1998,11 @@ export function buildTimesheetWorksheet(
     if (isAllowance && c > totalBaseCols) {
       cell.numFmt = '"Rp "#,##0'
       cell.alignment = { vertical: 'middle', horizontal: 'right' }
-    } else if (isOvertime && c === totalCols) {
+    } else if (isOvertime && c > totalBaseCols + days.length) {
       cell.numFmt = '0.0 "Jam"'
     } else if (isPayrollOvertime && c > totalBaseCols + days.length) {
       const summaryOffset = c - (totalBaseCols + days.length)
-      if (summaryOffset === 1) {
+      if (summaryOffset <= 3) {
         cell.numFmt = '0.0'
       } else {
         cell.numFmt = '#,##0'
@@ -1806,7 +2023,7 @@ export function buildTimesheetWorksheet(
       col.width = 22 // Section / Role
     } else if (colNumber === 5) {
       col.width = 20 // Departemen
-    } else if (colNumber <= totalBaseCols + days.length) {
+    } else if (colNumber <= totalBaseCols + colDateCount) {
       col.width = isAttendance ? 13 : isAllowance ? 11 : 8.5
     } else {
       col.width = isAttendance ? 10 : isPayrollOvertime ? 15 : 18
@@ -1848,7 +2065,8 @@ export async function exportTimesheetWorkspaceTabToExcel(
 
   const meta = getTabMetadata(options.tab)
   const cleanSite = options.siteName.replace(/\s+/g, '_')
-  const defaultFilename = `${meta.filePrefix}_${cleanSite}_${options.period}.xlsx`
+  const cutoffSuffix = options.info?.cutoffLabel ? '_CK_Cutoff_16-15' : ''
+  const defaultFilename = `${meta.filePrefix}_${cleanSite}${cutoffSuffix}_${options.period}.xlsx`
   const filename = options.customFileName || defaultFilename
 
   await downloadWorkbook(workbook, filename)
@@ -1870,15 +2088,20 @@ export async function exportTimesheetWorkspaceAllTabsToExcel(
       siteName: options.siteName,
       period: options.period,
       days: options.days,
+      dateHeaders: options.dateHeaders,
       rows: item.rows,
       weekdayLabel: options.weekdayLabel,
       holidaysByDay: options.holidaysByDay,
-      info: item.info,
+      info: {
+        ...item.info,
+        cutoffLabel: options.cutoffLabel,
+      },
     })
   }
 
   const cleanSite = options.siteName.replace(/\s+/g, '_')
-  const defaultFilename = `Rekap_Timesheet_Lengkap_5_Tab_${cleanSite}_${options.period}.xlsx`
+  const cutoffSuffix = options.cutoffLabel ? '_CK_Cutoff_16-15' : ''
+  const defaultFilename = `Rekap_Timesheet_Lengkap_5_Tab_${cleanSite}${cutoffSuffix}_${options.period}.xlsx`
   const filename = options.customFileName || defaultFilename
 
   await downloadWorkbook(workbook, filename)

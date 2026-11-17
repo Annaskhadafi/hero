@@ -1,9 +1,8 @@
 "use client"
 
 import * as React from "react"
-import Image from "next/image"
 import Link from "next/link"
-import { Printer, ShieldAlert, ShieldCheck } from "lucide-react"
+import { Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -13,10 +12,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
-import { RiskScoreCell } from "./risk-badge"
+import { HiradcDesignOneReport } from "./hiradc-design-one-report"
+import type { HiradcEntryReportData } from "@/lib/hiradc/queries"
 
 interface HiradcEntry {
   id: number
@@ -56,66 +54,11 @@ interface HiradcDetailDialogProps {
 export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps) {
   const [open, setOpen] = React.useState(false)
 
-  const riskLevel = entry.riskLevelBefore?.toUpperCase() || ""
-  const isHighRisk = riskLevel === "HIGH" || riskLevel === "EXTREME"
-  const documentNo = entry.register?.documentNo || `HSE/HIRADC/00${entry.id}`
-  const dateStr = entry.register?.effectiveDate
-    ? new Date(entry.register.effectiveDate).toLocaleDateString("id-ID")
-    : new Date().toLocaleDateString("id-ID")
-  const picName = entry.register?.preparedBy || "PIC / Auditor"
-
-  const renderBulletPoints = (text: string | null | undefined, fallbackText: string) => {
-    if (!text) return <p className="text-slate-500 italic text-sm">{fallbackText}</p>
-    const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
-    if (lines.length === 0) return <p className="text-slate-500 italic text-sm">{fallbackText}</p>
-
-    const docPrefixes = [
-      "uu", "undang", "kepmen", "permen", "pp", "sop", "wi", 
-      "keputusan", "peraturan", "instruksi", "sk", "se"
-    ]
-
-    const parsedPoints: string[] = []
-
-    lines.forEach((line) => {
-      // Check if it starts with bullet indicators: - or * or • or 1. etc
-      const hasBulletIndicator = /^[-*•\d+\ufe0f.]\s*/.test(line)
-      
-      // Clean leading bullet indicator for checks
-      const cleanLine = line.replace(/^[-*•\d+.]\s*/, "").trim()
-      if (!cleanLine) return
-
-      const firstWord = cleanLine.split(/[\s/]/)[0]?.toLowerCase() || ""
-      
-      // Heuristic check: is it a new list item?
-      const isNewItem = 
-        parsedPoints.length === 0 || 
-        hasBulletIndicator || 
-        docPrefixes.some(p => firstWord.startsWith(p))
-
-      if (isNewItem) {
-        parsedPoints.push(cleanLine)
-      } else {
-        const lastIdx = parsedPoints.length - 1
-        parsedPoints[lastIdx] = `${parsedPoints[lastIdx]} ${cleanLine}`
-      }
-    })
-
-    return (
-      <ul className="list-disc pl-5 space-y-1.5">
-        {parsedPoints.map((point, index) => (
-          <li key={index} className="text-slate-700 font-medium text-sm leading-relaxed">
-            {point}
-          </li>
-        ))}
-      </ul>
-    )
-  }
-
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="max-w-5xl overflow-hidden p-0 sm:rounded-xl">
-        <DialogHeader className="bg-slate-50 px-6 py-4 border-b no-print">
+      <DialogContent className="max-w-5xl max-h-[92vh] p-0 overflow-hidden bg-slate-100 border-slate-200">
+        <DialogHeader className="p-4 sm:p-6 bg-white border-b border-slate-200 sticky top-0 z-20">
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
@@ -127,343 +70,15 @@ export function HiradcDetailDialog({ entry, children }: HiradcDetailDialogProps)
             <Button asChild className="bg-[#1a2332] hover:bg-[#1a2332]/90 text-white rounded-lg px-6 no-print">
               <Link href={`/print/hiradc-entry/${entry.id}?print=1`} target="_blank" rel="noreferrer">
                 <Printer className="w-4 h-4 mr-2" />
-                Download PDF
+                Cetak / Simpan PDF
               </Link>
             </Button>
           </div>
         </DialogHeader>
 
-        <style dangerouslySetInnerHTML={{__html: `
-          @media print {
-            /* Print only the HIRADC design sheet; avoid dashboard/dialog clipping */
-            body * {
-              visibility: hidden !important;
-            }
-
-            .pdf-wrapper-dialog,
-            .pdf-wrapper-dialog * {
-              visibility: visible !important;
-            }
-
-            /* Hide the background app layout and backdrop overlay completely */
-            [data-slot="sidebar-wrapper"],
-            [data-slot="dialog-overlay"],
-            .no-print {
-              display: none !important;
-            }
-
-            body {
-              background: white !important;
-              overflow: visible !important;
-              height: auto !important;
-            }
-
-            * {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-
-            /* Override Radix portal & presentation wrappers to flow naturally in block layout */
-            div[data-radix-portal],
-            div[data-radix-portal] > div,
-            div[role="presentation"] {
-              position: static !important;
-              display: block !important;
-              width: 100% !important;
-              max-width: 100% !important;
-              height: auto !important;
-              min-height: 0 !important;
-              overflow: visible !important;
-              transform: none !important;
-              inset: auto !important;
-              margin: 0 !important;
-              padding: 0 !important;
-            }
-
-            /* Remove fixed centering, border, shadow, and sizing limits on Dialog Content */
-            [data-slot="dialog-content"] {
-              position: static !important;   /* Force natural page flow */
-              left: 0 !important;            /* Cancel left-[50%] centering */
-              top: 0 !important;             /* Cancel top-[50%] centering */
-              transform: none !important;     /* Cancel translate centering offset */
-              display: block !important;
-              width: 100% !important;
-              max-width: 100% !important;    /* Allow it to fit within print margin area */
-              margin: 0 auto !important;
-              padding: 0 !important;
-              border: none !important;
-              box-shadow: none !important;
-              background: transparent !important;
-              max-height: none !important;
-              overflow: visible !important;
-              inset: auto !important;
-            }
-
-            /* Remove height, scroll, and double-padding limits from ScrollArea viewport */
-            [data-slot="scroll-area"] {
-              padding: 0 !important;         /* Eliminate screen-only inner margins */
-              max-height: none !important;
-              height: auto !important;
-              overflow: visible !important;
-              background: white !important;
-              width: 100% !important;
-            }
-            [data-slot="scroll-area-viewport"] {
-              max-height: none !important;
-              height: auto !important;
-              overflow: visible !important;
-              width: 100% !important;
-            }
-
-            [data-slot="scroll-area-scrollbar"] {
-              display: none !important;
-            }
-
-            /* Restore absolute styling inside the printable container */
-            .pdf-wrapper-dialog .absolute {
-              position: absolute !important;
-            }
-
-            /* Keep each info card whole and avoid splitting across page boundaries */
-            .pdf-wrapper-dialog .rounded-2xl {
-              break-inside: avoid !important;
-              page-break-inside: avoid !important;
-            }
-
-            /* Hide dialog close buttons and manual controls */
-            [data-slot="dialog-close"],
-            [role="dialog"] > button {
-              display: none !important;
-            }
-
-            /* Outer page margins */
-            @page {
-              size: A4 portrait;
-              margin: 8mm;
-            }
-
-            .pdf-wrapper-dialog {
-              position: absolute !important;
-              top: 0 !important;
-              left: 0 !important;
-              border: none !important;
-              box-shadow: none !important;
-              padding: 0 !important;
-              margin: 0 !important;
-              width: 194mm !important;
-              max-width: 194mm !important;
-              background: white !important;
-              overflow: visible !important;
-              border-radius: 0 !important;
-            }
-
-            .pdf-wrapper-dialog .grid {
-              gap: 4mm !important;
-            }
-
-            .pdf-wrapper-dialog .rounded-2xl {
-              border-radius: 10px !important;
-            }
-          }
-        `}} />
-
-        <ScrollArea className="max-h-[80vh] bg-slate-50 p-6">
-          <div className="pdf-wrapper-dialog bg-white rounded-2xl shadow-sm border border-slate-200 p-8 relative overflow-hidden">
-            {/* Watermark / Stamp */}
-            <div className="absolute top-12 right-12 opacity-10 pointer-events-none">
-              <ShieldCheck className="w-48 h-48" />
-            </div>
-
-            {/* Header Document */}
-            <div className="flex items-center gap-6 pb-6 border-b border-slate-200">
-              <div className="shrink-0">
-                <Image 
-                  src="/cp_logo-removebg-preview.png" 
-                  alt="PT Chitra Paratama Logo" 
-                  width={120} 
-                  height={60} 
-                  className="object-contain"
-                />
-              </div>
-              <div>
-                <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">PT. CHITRA PARATAMA</h1>
-                <p className="text-blue-700 font-bold text-sm tracking-wide">SAFETY FIRST | COLLABORATE -INNOVATE - DOMINATE</p>
-                <div className="flex items-center gap-1 text-[10px] text-slate-600 mt-1">
-                  <span className="font-bold">OFFICIAL HSE SYSTEM</span>
-                </div>
-              </div>
-              <div className="ml-auto">
-                <div className="w-16 h-16 border-2 border-slate-800 rounded-full flex items-center justify-center rotate-12">
-                  <div className="text-[10px] font-bold text-center leading-tight">VERIFIED<br/>DOCUMENT</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Meta Info Row */}
-            <div className="grid grid-cols-6 gap-4 py-6 border-b border-slate-100">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">NO. DOKUMEN</p>
-                <p className="font-bold text-slate-900 text-sm">{documentNo}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">CLASSIFICATION</p>
-                <p className="font-bold text-slate-900 text-sm">HIRADC REPORT</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">LOCATION / SITE</p>
-                <p className="font-bold text-slate-900 text-sm truncate" title={entry.location}>{entry.location || "N/A"}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">DATE / PERIOD</p>
-                <p className="font-bold text-slate-900 text-sm">{dateStr}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">PIC / AUDITOR</p>
-                <p className="font-bold text-slate-900 text-sm">{picName}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">DOC STATUS</p>
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase">ACTIVE</Badge>
-              </div>
-            </div>
-
-            {/* Title Area */}
-            <div className="py-8 flex justify-between items-start">
-              <div className="max-w-2xl">
-                <p className="text-blue-600 font-bold text-sm tracking-widest uppercase mb-2">HAZARD IDENTIFICATION & RISK ASSESSMENT</p>
-                <h2 className="text-3xl font-black text-slate-900 leading-tight uppercase mb-4">
-                  {entry.activityName}
-                </h2>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="bg-slate-900 text-white rounded-md">ID: {entry.id}</Badge>
-                  <Badge variant="outline" className="rounded-md bg-slate-50 uppercase">{entry.department || "ACTIVE"}</Badge>
-                  <Badge variant="outline" className="rounded-md bg-blue-50 text-blue-700 border-blue-200">
-                    <span className="mr-2">📍</span> {entry.location}
-                  </Badge>
-                </div>
-              </div>
-              <div className="text-right flex flex-col items-end">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">CURRENT RISK STATUS</p>
-                <div className={cn(
-                  "px-6 py-4 rounded-xl border-2 shadow-sm text-center",
-                  isHighRisk ? "bg-red-50 border-red-200 text-red-700" :
-                  riskLevel === "MODERATE" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
-                  "bg-green-50 border-green-200 text-green-700"
-                )}>
-                  <p className="text-2xl font-black leading-none">{riskLevel || "N/A"}</p>
-                  <p className="text-xs font-bold mt-1 opacity-80">RISK</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Content Grid */}
-            <div className="grid grid-cols-3 gap-6">
-              {/* Left Column (Hazards & Controls) */}
-              <div className="col-span-2 space-y-6">
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
-                  <div className="flex items-center gap-2 mb-6">
-                    <span className="text-amber-500">⚠️</span>
-                    <h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">HAZARD & CONSEQUENCE</h3>
-                  </div>
-                  
-                  <div className="mb-6">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">HAZARD DETAIL (BAHAYA)</p>
-                    <p className="text-slate-900 font-bold uppercase leading-relaxed">
-                      {entry.hazardDetails || entry.hazardCategory || "N/A"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">CONSEQUENCE / IMPACT (DAMPAK)</p>
-                    <p className="text-slate-600 italic leading-relaxed">
-                      "{entry.riskConsequence || "N/A"}"
-                    </p>
-                  </div>
-                </div>
-
-                <div className="border border-blue-100 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
-                  <div className="flex items-center gap-2 mb-4">
-                    <ShieldCheck className="w-4 h-4 text-blue-600" />
-                    <h3 className="font-bold text-blue-700 tracking-wide uppercase text-sm">CONTROL MEASURES (PENGENDALIAN RISIKO)</h3>
-                  </div>
-                  <div className="text-slate-700 font-medium text-sm leading-relaxed whitespace-pre-wrap">
-                    {entry.existingControl || "Belum ada tindakan pengendalian."}
-                  </div>
-                </div>
-
-                {/* Pengendalian Tambahan */}
-                <div className="border border-emerald-100 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
-                  <div className="flex items-center gap-2 mb-4">
-                    <ShieldAlert className="w-4 h-4 text-emerald-600" />
-                    <h3 className="font-bold text-emerald-700 tracking-wide uppercase text-sm">ADDITIONAL CONTROL (PENGENDALIAN TAMBAHAN)</h3>
-                  </div>
-                  <div className="text-slate-700 font-medium text-sm leading-relaxed">
-                    {renderBulletPoints(entry.additionalControl, "Tidak ada pengendalian tambahan.")}
-                  </div>
-                </div>
-
-                {/* Referensi Legal */}
-                <div className="border border-slate-200 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-slate-500 font-bold text-sm">📋</span>
-                    <h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">REFERENSI LEGAL (LEGAL REFERENCE)</h3>
-                  </div>
-                  <div className="text-slate-700 font-medium text-sm leading-relaxed">
-                    {renderBulletPoints(entry.legalReference, "Tidak ada referensi legal.")}
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column (Analysis & Verification) */}
-              <div className="space-y-6">
-                <div className="border border-slate-200 rounded-2xl p-6 bg-white text-center shadow-sm">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">RISK MATRIX ANALYSIS</p>
-                  <div className="text-6xl font-black text-slate-900 tracking-tighter mb-6">
-                    {entry.scoreBefore || "-"}
-                  </div>
-                  <div className="flex items-center justify-center gap-6 border-t border-slate-100 pt-6">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">LIKELIHOOD</p>
-                      <p className="text-xl font-bold text-slate-800">{entry.likelihoodBefore || "-"}</p>
-                    </div>
-                    <div className="w-px h-8 bg-slate-200" />
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">SEVERITY</p>
-                      <p className="text-xl font-bold text-slate-800">{entry.severityBefore || "-"}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-[#1a2332] rounded-2xl p-6 text-white shadow-lg">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">VERIFICATION INFO</p>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
-                        <span className="text-slate-400">👤</span>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">PIC REPORTER</p>
-                        <p className="font-bold text-slate-100 text-sm">{picName}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
-                        <span className="text-slate-400">📅</span>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">LAST REVIEW</p>
-                        <p className="font-bold text-slate-100 text-sm">{dateStr}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+        <ScrollArea className="max-h-[calc(92vh-85px)] bg-slate-100 p-4 sm:p-6">
+          <div className="max-w-[210mm] mx-auto">
+            <HiradcDesignOneReport entry={entry as unknown as HiradcEntryReportData} />
           </div>
         </ScrollArea>
       </DialogContent>

@@ -14,6 +14,7 @@
 - ESLint + Prettier for formatting
 - Component-based architecture
 - RBAC for all admin features
+- Terminology: SDS stands for "Sistem Digital Solution" (bukan Software Development System). Seluruh template broadcast WhatsApp, presentasi bulanan, dan dokumen resmi wajib menyebut "Sistem Digital Solution (SDS)" atau "TIM SDS".
 
 ## History
 - 2026-07-13: Field Break requires a minimum 90-day gap from Last to Next Field Break at both UI and server boundaries, falls back stale saved dates to +90 days, recomputes the default two-week finish, and calculates dates in UTC so no local-time conversion displays a 90-day gap as 89. Schedule V2 save, activation, import, and deletion broadcast immediate same-browser Field Break refresh; the Field Break page also refreshes every 10 seconds as a cross-session fallback. Its three filters stay on one horizontal line without an internal scrollbar and its Field Break dialog uses previous/next month controls instead of a month dropdown. The V2 activate control shows its completion count while preserving the complete-roster activation guard.

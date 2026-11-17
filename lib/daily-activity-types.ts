@@ -98,6 +98,9 @@ export interface EmployeeActivityRow {
   representedByName?: string | null
   isMultiSession?: boolean
   multiSessionLabel?: string | null
+  splId?: number
+  splNumber?: string
+  splStatus?: string
 }
 
 export interface ShiftActivitySummary {

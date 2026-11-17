@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { toast } from 'sonner'
-import { Loader2, Plus, Trash2 } from 'lucide-react'
+import { Loader2, Plus, Trash2, ShieldCheck, UserCheck } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -28,8 +28,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { SignaturePad } from '@/components/signature-pad'
-import { saveJsa } from '@/app/dashboard/hse/jsa/actions'
+import { saveJsa, getHseOfficerOptions } from '@/app/dashboard/hse/jsa/actions'
 import { uploadFile } from '@/app/actions/upload'
+import { HeroSearchableSelect, type HeroSearchableSelectOption } from '@/components/templates'
 
 const equipmentUsedOptions = [
   'Hand Tool Only',
@@ -90,6 +91,9 @@ const jsaSchema = z.object({
   jobDescription: z.string().min(1, 'Harus diisi'),
   equipmentNumber: z.string().min(1, 'Harus diisi'),
   teamMembers: z.string().min(1, 'Harus diisi'),
+  targetApproverName: z.string().optional().default(''),
+  targetApproverEmail: z.string().optional().default(''),
+  targetApproverTitle: z.string().optional().default('HSE Officer / Pengawas Site'),
   equipmentUsed: z.array(z.string()),
   requirements: z.array(z.string()),
   permits: z.array(z.string()),
@@ -125,6 +129,7 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
   const [customEquipment, setCustomEquipment] = React.useState('')
   const [customPermit, setCustomPermit] = React.useState('')
   const [customPpe, setCustomPpe] = React.useState('')
+  const [approverOptions, setApproverOptions] = React.useState<HeroSearchableSelectOption[]>([])
   
   const form = useForm<JsaFormInput, unknown, JsaFormValues>({
     resolver: zodResolver(jsaSchema),
@@ -134,6 +139,9 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
       jobDescription: initialData?.jobDescription ?? '',
       equipmentNumber: initialData?.equipmentNumber ?? '',
       teamMembers: initialData?.teamMembers ?? '',
+      targetApproverName: initialData?.signatures?.targetApproverName ?? initialData?.signatures?.verifierName ?? '',
+      targetApproverEmail: initialData?.signatures?.targetApproverEmail ?? '',
+      targetApproverTitle: initialData?.signatures?.targetApproverTitle ?? initialData?.signatures?.verifierTitle ?? 'HSE Officer / Pengawas Site',
       equipmentUsed: initialData?.equipmentUsed ?? [],
       requirements: initialData?.requirements ?? [],
       permits: initialData?.permits ?? [],
@@ -149,6 +157,24 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
     control: form.control,
     name: 'steps',
   })
+
+  // Load active HSE officers & supervisors for selection
+  React.useEffect(() => {
+    if (open) {
+      getHseOfficerOptions()
+        .then((options) => {
+          setApproverOptions(
+            options.map((opt) => ({
+              value: opt.email || opt.name,
+              label: opt.label,
+              description: opt.title,
+              badge: opt.title.toLowerCase().includes('hse') ? 'HSE' : 'Pengawas',
+            }))
+          )
+        })
+        .catch(() => {})
+    }
+  }, [open])
 
   // Reset form when opened with new initial data
   React.useEffect(() => {
@@ -167,6 +193,9 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
           jobDescription: initialData.jobDescription || '',
           equipmentNumber: initialData.equipmentNumber || '',
           teamMembers: initialData.teamMembers || '',
+          targetApproverName: initialData.signatures?.targetApproverName || initialData.signatures?.verifierName || '',
+          targetApproverEmail: initialData.signatures?.targetApproverEmail || '',
+          targetApproverTitle: initialData.signatures?.targetApproverTitle || initialData.signatures?.verifierTitle || 'HSE Officer / Pengawas Site',
           equipmentUsed: initialData.equipmentUsed?.map((i: string) => i.startsWith('Lain-Lain:') ? 'Lain-Lain' : i) || [],
           requirements: initialData.requirements || [],
           permits: initialData.permits?.map((i: string) => i.startsWith('Lain-lainnya:') ? 'Lain-lainnya' : i) || [],
@@ -184,6 +213,9 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
           jobDescription: '',
           equipmentNumber: '',
           teamMembers: '',
+          targetApproverName: '',
+          targetApproverEmail: '',
+          targetApproverTitle: 'HSE Officer / Pengawas Site',
           equipmentUsed: [],
           requirements: [],
           permits: [],
@@ -209,11 +241,19 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
         signatureUrl = base64Url
       }
 
+      const targetName = data.targetApproverName || initialData?.signatures?.targetApproverName || initialData?.signatures?.verifierName || 'HSE Officer / Pengawas Site'
+      const targetTitle = data.targetApproverTitle || initialData?.signatures?.targetApproverTitle || initialData?.signatures?.verifierTitle || 'HSE Officer / Pengawas Site'
+
       const signatures = {
         ...(initialData?.signatures || {}),
         creatorName: data.creatorName,
         executorUrl: signatureUrl,
-        executorDate: new Date().toISOString()
+        executorDate: new Date().toISOString(),
+        targetApproverName: targetName,
+        targetApproverEmail: data.targetApproverEmail || initialData?.signatures?.targetApproverEmail || '',
+        targetApproverTitle: targetTitle,
+        verifierName: targetName,
+        verifierTitle: targetTitle,
       }
 
       const res = await saveJsa({
@@ -634,6 +674,66 @@ export function JsaFormDialog({ open, onOpenChange, initialData, id, publicMode 
                 {form.formState.errors.steps && (
                   <p className="text-sm font-medium text-destructive mt-2">Mohon lengkapi semua baris urutan pekerjaan.</p>
                 )}
+              </div>
+
+              {/* PILIH PENGAWAS SITE / HSE OFFICER */}
+              <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
+                    <UserCheck className="size-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Pengawas Site / HSE Officer (Penerima Approval)
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      Pilih petugas pengawas site / HSE officer yang bertugas memverifikasi dan menandatangani JSA ini.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-semibold text-slate-700">
+                      Nama Pengawas Site / HSE Officer <span className="text-rose-500">*</span>
+                    </FormLabel>
+                    <HeroSearchableSelect
+                      options={approverOptions}
+                      value={form.watch('targetApproverEmail') || form.watch('targetApproverName')}
+                      onChange={(val) => {
+                        const found = approverOptions.find((o) => o.value === val)
+                        if (found) {
+                          form.setValue('targetApproverEmail', found.value.includes('@') ? found.value : '')
+                          form.setValue('targetApproverName', found.label.split(' — ')[0] || found.label)
+                          form.setValue('targetApproverTitle', found.description || 'HSE Officer / Pengawas Site')
+                        } else {
+                          form.setValue('targetApproverName', val)
+                          form.setValue('targetApproverEmail', val.includes('@') ? val : '')
+                        }
+                      }}
+                      placeholder="Cari & pilih nama pengawas / HSE..."
+                      allowCustom={true}
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Notifikasi & approval akan otomatis masuk ke Inbox akun pengawas ini.
+                    </p>
+                  </FormItem>
+
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-semibold text-slate-700">
+                      Jabatan / Role Pengawas
+                    </FormLabel>
+                    <Input
+                      placeholder="HSE Officer / Pengawas Site"
+                      value={form.watch('targetApproverTitle')}
+                      onChange={(e) => form.setValue('targetApproverTitle', e.target.value)}
+                      className="h-10 bg-white"
+                    />
+                    <p className="text-[11px] text-slate-500">
+                      Dicetak pada kolom tanda tangan verifikasi resmi JSA.
+                    </p>
+                  </FormItem>
+                </div>
               </div>
 
               {!initialData?.signatures?.executorUrl && (

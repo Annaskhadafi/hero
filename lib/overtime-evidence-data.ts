@@ -95,16 +95,15 @@ export type OvertimeEvidenceData = {
 export async function getPublicOvertimeEvidenceData(
   idOrSplNumber: number | string
 ): Promise<OvertimeEvidenceData | null> {
-  const numericId =
-    typeof idOrSplNumber === 'number'
-      ? idOrSplNumber
-      : Number(String(idOrSplNumber).replace(/[^0-9]/g, ''))
+  const rawStr = String(idOrSplNumber ?? '').trim()
+  if (!rawStr) return null
 
-  const isNumeric = !isNaN(numericId) && numericId > 0
+  const isOnlyDigits = typeof idOrSplNumber === 'number' || /^\d+$/.test(rawStr)
+  const numericId = isOnlyDigits ? Number(rawStr) : null
 
-  const condition = isNumeric
-    ? eq(overtimeCommandLetters.id, numericId)
-    : eq(overtimeCommandLetters.splNumber, String(idOrSplNumber).trim())
+  const condition = numericId && numericId > 0
+    ? or(eq(overtimeCommandLetters.id, numericId), eq(overtimeCommandLetters.splNumber, rawStr))
+    : eq(overtimeCommandLetters.splNumber, rawStr)
 
   const [document] = await db
     .select({

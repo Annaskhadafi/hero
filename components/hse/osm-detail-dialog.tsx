@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   Calendar,
+  Camera,
   CheckCircle2,
   Clock,
   Compass,
@@ -14,16 +15,50 @@ import {
   HardHat,
   Image as ImageIcon,
   ImageOff,
+  Loader2,
   MapPin,
   Maximize2,
   Plus,
   Printer,
   ShieldCheck,
+  Trash2,
+  UploadCloud,
   User,
   Users,
   X,
   XCircle,
 } from "lucide-react";
+import { uploadFile } from "@/app/actions/upload";
+
+async function uploadPhotoSafe(file: File, uploadTarget = 'hse-osm'): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('uploadTarget', uploadTarget)
+
+  try {
+    const apiRes = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    })
+    if (apiRes.ok) {
+      const data = await apiRes.json()
+      if (data.success && data.url) {
+        return data.url
+      }
+    }
+  } catch (err) {
+    console.warn('[uploadPhotoSafe] API route error, falling back to Server Action:', err)
+  }
+
+  const res = await uploadFile(formData)
+  if (res.success && res.url) {
+    return res.url
+  }
+  throw new Error(res.error || 'Gagal mengunggah foto ke Cloud Storage.')
+}
+
+import { updateHseOsmFindingPhotos } from "@/app/actions/hse-osm";
+import { compressImageFile } from "@/lib/client-image-compression";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +73,7 @@ type OsmDetailDialogProps = {
   sessionData: any;
   onRefresh: () => void;
   allowAddFinding?: boolean;
+  onDelete?: () => void;
 };
 
 export function OsmDetailDialog({
@@ -46,12 +82,81 @@ export function OsmDetailDialog({
   sessionData,
   onRefresh,
   allowAddFinding = false,
+  onDelete,
 }: OsmDetailDialogProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [actionFinding, setActionFinding] = useState<any>(null);
   const [actionModalMode, setActionModalMode] = useState<"submit_action" | "verify_close" | "verify_reject">("submit_action");
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [isAddFindingOpen, setIsAddFindingOpen] = useState(false);
+  const [managePhotosFinding, setManagePhotosFinding] = useState<any | null>(null);
+  const [editingFindingPhotos, setEditingFindingPhotos] = useState<string[]>([]);
+  const [isSavingFindingPhotos, setIsSavingFindingPhotos] = useState(false);
+  const [isUploadingEditPhoto, setIsUploadingEditPhoto] = useState(false);
+
+  async function handleEditPhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (editingFindingPhotos.length + files.length > 5) {
+      alert("Maksimal 5 foto temuan.");
+      return;
+    }
+
+    setIsUploadingEditPhoto(true);
+    try {
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const rawFile = files[i];
+        const file = await compressImageFile(rawFile, {
+          maxDimension: 1200,
+          quality: 0.75,
+          mimeType: "image/webp",
+        });
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("uploadTarget", "hse-osm");
+
+        const res = await uploadFile(formData);
+        if (res.success && res.url) {
+          newUrls.push(res.url);
+        } else {
+          throw new Error(res.error || "Gagal mengunggah foto.");
+        }
+      }
+      setEditingFindingPhotos((prev) => [...prev, ...newUrls]);
+    } catch (err: any) {
+      alert(err?.message || "Gagal mengunggah foto.");
+    } finally {
+      setIsUploadingEditPhoto(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleSaveFindingPhotos() {
+    if (!managePhotosFinding) return;
+    setIsSavingFindingPhotos(true);
+    try {
+      const res = await updateHseOsmFindingPhotos(managePhotosFinding.id, editingFindingPhotos);
+      if (!res.success) {
+        throw new Error(res.error || "Gagal memperbarui foto temuan.");
+      }
+
+      if (sessionData && sessionData.findings) {
+        sessionData.findings = sessionData.findings.map((f: any) =>
+          f.id === managePhotosFinding.id ? { ...f, photoUrls: editingFindingPhotos } : f
+        );
+      }
+
+      onRefresh();
+      setManagePhotosFinding(null);
+    } catch (err: any) {
+      alert(err?.message || "Gagal menyimpan foto temuan.");
+    } finally {
+      setIsSavingFindingPhotos(false);
+    }
+  }
 
   if (!sessionData) return null;
 
@@ -77,6 +182,8 @@ export function OsmDetailDialog({
     findings = [],
   } = sessionData;
 
+  const isLocked = Boolean(sessionData.isLocked || status === 'SUBMITTED' || status === 'COMPLETED');
+
   function openActionModal(finding: any, mode: "submit_action" | "verify_close" | "verify_reject") {
     setActionFinding(finding);
     setActionModalMode(mode);
@@ -96,6 +203,7 @@ export function OsmDetailDialog({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
+                
                     <h2 className="text-lg font-bold tracking-tight">
                       Laporan On the Spot Monitoring (OSM)
                     </h2>
@@ -104,12 +212,27 @@ export function OsmDetailDialog({
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    QHSE Department — PT Chitra Paratama • Standar Pemantauan KPC
+                    HSE Department - PT Chitra Paratama
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
+                {!sessionData.isLocked && onDelete && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      onClose();
+                      onDelete();
+                    }}
+                    className="bg-rose-950/40 border-rose-700/60 hover:bg-rose-900/50 text-rose-300 text-xs h-8 gap-1.5"
+                  >
+                    <Trash2 className="size-3.5" />
+                    Hapus Sesi (Draft)
+                  </Button>
+                )}
+
                 <Button
                   asChild
                   variant="outline"
@@ -314,9 +437,25 @@ export function OsmDetailDialog({
 
                           {/* Photos Gallery */}
                           <div className="space-y-1.5">
-                            <span className="font-bold text-slate-700 dark:text-slate-300 block">
-                              Foto Temuan:
-                            </span>
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-700 dark:text-slate-300 block">
+                                Foto Temuan:
+                              </span>
+                              {!isLocked && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setManagePhotosFinding(f);
+                                    setEditingFindingPhotos([...(f.photoUrls || [])]);
+                                  }}
+                                  className="h-6 gap-1 px-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/50"
+                                >
+                                  <Camera className="size-3" /> Kelola / Ganti Foto
+                                </Button>
+                              )}
+                            </div>
                             {f.photoUrls && f.photoUrls.length > 0 ? (
                               <div className="grid grid-cols-2 gap-2">
                                 {f.photoUrls.map((pUrl: string, pIdx: number) => (
@@ -337,8 +476,22 @@ export function OsmDetailDialog({
                                 ))}
                               </div>
                             ) : (
-                              <div className="p-4 rounded-md border border-dashed text-center text-muted-foreground text-[11px]">
-                                Tidak ada foto temuan
+                              <div className="p-4 rounded-md border border-dashed flex flex-col items-center justify-center gap-1.5 text-center text-muted-foreground text-[11px]">
+                                <span>Tidak ada foto temuan</span>
+                                {!isLocked && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setManagePhotosFinding(f);
+                                      setEditingFindingPhotos([]);
+                                    }}
+                                    className="h-6 text-[10px] gap-1 text-blue-600"
+                                  >
+                                    <Camera className="size-3" /> + Unggah Foto
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -401,19 +554,28 @@ export function OsmDetailDialog({
 
                         {/* Action Buttons for this finding */}
                         <div className="flex items-center justify-end gap-2 pt-1 border-t">
-                          {f.status === "OPEN" && (
+                          {(f.status === "OPEN" || f.status === "REJECTED") && (
                             <Button
                               size="sm"
                               onClick={() => openActionModal(f, "submit_action")}
                               className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-7.5 px-3 gap-1"
                             >
                               <CheckCircle2 className="size-3.5" />
-                              Tindak Lanjuti Perbaikan
+                              {f.status === "REJECTED" ? "Perbaiki Ulang Tindakan" : "Tindak Lanjuti Perbaikan"}
                             </Button>
                           )}
 
                           {f.status === "PROCESSED" && (
                             <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openActionModal(f, "submit_action")}
+                                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs h-7.5 px-3 gap-1"
+                              >
+                                <Camera className="size-3.5" />
+                                {f.actionPhotoUrls && f.actionPhotoUrls.length > 0 ? "Edit Bukti Foto" : "+ Bukti Foto"}
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -469,6 +631,129 @@ export function OsmDetailDialog({
         onSuccess={onRefresh}
       />
 
+      {/* Modal Kelola / Unggah Ulang Foto Temuan */}
+      {managePhotosFinding && (
+        <Dialog open={Boolean(managePhotosFinding)} onOpenChange={(open) => !open && setManagePhotosFinding(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 px-2 py-0.5 rounded">
+                  {managePhotosFinding.findingNumber}
+                </span>
+                <DialogTitle className="text-sm font-bold">
+                  Kelola / Ganti Foto Temuan
+                </DialogTitle>
+              </div>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Hapus foto yang rusak atau gagal muat, dan unggah foto baru dari perangkat Anda.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* Existing Photos Grid */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-semibold text-foreground block">
+                  Daftar Foto ({editingFindingPhotos.length}/5):
+                </span>
+
+                {editingFindingPhotos.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {editingFindingPhotos.map((url, idx) => (
+                      <div
+                        key={idx}
+                        className="relative aspect-video rounded-md border overflow-hidden bg-slate-950 group"
+                      >
+                        <OsmFindingDetailImage
+                          url={url}
+                          alt={`Foto ${idx + 1}`}
+                          className="size-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingFindingPhotos((prev) =>
+                              prev.filter((_, i) => i !== idx)
+                            )
+                          }
+                          className="absolute top-1.5 right-1.5 size-6 rounded-full bg-red-600 text-white flex items-center justify-center opacity-90 hover:opacity-100 shadow transition-opacity"
+                          title="Hapus foto ini"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+                    Belum ada foto yang dipilih.
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Input */}
+              {editingFindingPhotos.length < 5 && (
+                <div>
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 cursor-pointer hover:bg-muted/30 transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleEditPhotoUpload}
+                      disabled={isUploadingEditPhoto}
+                      className="hidden"
+                    />
+                    {isUploadingEditPhoto ? (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin text-blue-600" />
+                        <span>Mengompres & mengunggah foto...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+                        <UploadCloud className="size-5 text-blue-600 mb-0.5" />
+                        <span className="font-semibold text-foreground">
+                          Klik untuk memilih foto
+                        </span>
+                        <span className="text-[10px]">
+                          JPG, PNG, atau WebP (otomatis dikompres)
+                        </span>
+                      </div>
+                    )}
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setManagePhotosFinding(null)}
+                className="h-9 text-xs"
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSaveFindingPhotos}
+                disabled={isSavingFindingPhotos || isUploadingEditPhoto}
+                className="h-9 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isSavingFindingPhotos ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                    Menyimpan...
+                  </>
+                ) : (
+                  "Simpan Perubahan Foto"
+                )}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Photo Lightbox Dialog */}
       {selectedPhoto && (
         <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
@@ -505,13 +790,28 @@ function OsmFindingDetailImage({
   className?: string;
 }) {
   const [hasError, setHasError] = useState(false);
-  const resolved = resolveClientUploadUrl(url);
+  const [retryKey, setRetryKey] = useState(0);
+  const rawResolved = resolveClientUploadUrl(url, { absolute: true });
+  const resolved = rawResolved
+    ? retryKey === 0
+      ? rawResolved
+      : `${rawResolved}${rawResolved.includes('?') ? '&' : '?'}retry=${retryKey}`
+    : '';
 
-  if (hasError || !resolved) {
+  if (!url || (hasError && retryKey >= 2)) {
     return (
-      <div className="size-full flex flex-col items-center justify-center p-2 bg-slate-900 text-slate-400 text-center select-none">
+      <div
+        className="size-full flex flex-col items-center justify-center p-2 bg-slate-900 text-slate-400 text-center select-none cursor-pointer hover:bg-slate-800 transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          setHasError(false);
+          setRetryKey((k) => k + 1);
+        }}
+        title="Klik untuk coba lagi"
+      >
         <ImageOff className="size-4 text-amber-500 mb-1" />
         <span className="text-[9px] font-bold text-slate-300">Gagal Muat</span>
+        <span className="text-[7.5px] text-blue-400 underline">Coba Lagi</span>
       </div>
     );
   }
@@ -519,9 +819,17 @@ function OsmFindingDetailImage({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      key={resolved}
       src={resolved}
       alt={alt}
-      onError={() => setHasError(true)}
+      onLoad={() => setHasError(false)}
+      onError={() => {
+        if (retryKey < 2) {
+          setTimeout(() => setRetryKey((k) => k + 1), 800);
+        } else {
+          setHasError(true);
+        }
+      }}
       className={className}
     />
   );

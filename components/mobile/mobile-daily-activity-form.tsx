@@ -393,12 +393,23 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   formData.append('file', compressed)
   formData.append('uploadTarget', 'activity-photos')
 
-  const result = await uploadFile(formData)
-  if (!result.success || !result.url) {
-    throw new Error(result.error || `Gagal upload evidence ${file.name}.`)
+  let lastError: any = null
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await uploadFile(formData)
+      if (result.success && result.url) {
+        return result.readableUrl || result.url
+      }
+      lastError = new Error(result.error || `Gagal upload evidence ${file.name}.`)
+    } catch (err: any) {
+      lastError = err
+    }
+    if (attempt < 3) {
+      await new Promise((r) => setTimeout(r, attempt * 1200))
+    }
   }
 
-  return result.readableUrl || result.url
+  throw lastError || new Error(`Gagal upload evidence ${file.name}.`)
 }
 
 async function fileToQueuedPhoto(file: File): Promise<QueuedFilePayload> {
@@ -458,7 +469,12 @@ async function prepareEvidence(
 
   const selectedFiles = files?.length ? files : fallbackFile ? [fallbackFile] : []
   if (selectedFiles.length > 0) {
-    return { payloads: [], urls: await Promise.all(selectedFiles.map(uploadActivityPhoto)) }
+    const uploadedUrls: string[] = []
+    for (const f of selectedFiles) {
+      const u = await uploadActivityPhoto(f)
+      uploadedUrls.push(u)
+    }
+    return { payloads: [], urls: uploadedUrls }
   }
 
   if (restored) {
@@ -805,7 +821,9 @@ function ItemTeamPicker({
   const [isOpen, setIsOpen] = useState(false)
 
   const isCustomized = itemTeamMemberIds !== undefined
-  const effectiveIds = isCustomized ? itemTeamMemberIds : sessionTeamIds
+  const effectiveIds = isCustomized
+    ? (isSessionTeamLog ? itemTeamMemberIds.filter((id) => sessionTeamIds.includes(id)) : itemTeamMemberIds)
+    : sessionTeamIds
 
   // Session team members selected in top form
   const sessionTeamMembers = useMemo(() => {
@@ -1578,15 +1596,15 @@ export function MobileDailyActivityForm({
     // Process photo uploads in background so Save Draft and Submit are fast
     void (async () => {
       try {
-        const uploaded = await Promise.all(
-          compressedFiles.map(async (cf) => {
-            try {
-              return await uploadActivityPhoto(cf)
-            } catch {
-              return null
-            }
-          })
-        )
+        const uploaded: (string | null)[] = []
+        for (const cf of compressedFiles) {
+          try {
+            const u = await uploadActivityPhoto(cf)
+            uploaded.push(u)
+          } catch {
+            uploaded.push(null)
+          }
+        }
         const validUploaded = uploaded.filter((u): u is string => typeof u === 'string' && u.length > 0)
         if (validUploaded.length > 0) {
           if (targetId === 'single') {
@@ -1886,19 +1904,35 @@ export function MobileDailyActivityForm({
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPickerOpen, setMemberPickerOpen] = useState(false)
 
-  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock
+  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock on mobile
   useEffect(() => {
     const cleanupBodyPointer = () => {
-      if (typeof document !== 'undefined' && document.body.style.pointerEvents === 'none') {
-        if (!libraryPickerOpen && !isPdfOpen && !memberPickerOpen) {
-          document.body.style.pointerEvents = ''
+      if (typeof document !== 'undefined') {
+        const hasOpenDialog = Boolean(
+          document.querySelector('[data-slot="dialog-content"]') ||
+          document.querySelector('[role="dialog"]') ||
+          document.querySelector('[data-radix-portal] [role="dialog"]')
+        )
+        if (!hasOpenDialog) {
+          if (document.body.style.pointerEvents === 'none') {
+            document.body.style.pointerEvents = ''
+          }
+          if (document.documentElement.style.pointerEvents === 'none') {
+            document.documentElement.style.pointerEvents = ''
+          }
         }
       }
     }
     cleanupBodyPointer()
-    const timer = setInterval(cleanupBodyPointer, 400)
-    return () => clearInterval(timer)
-  }, [libraryPickerOpen, isPdfOpen, memberPickerOpen])
+    const timer = setInterval(cleanupBodyPointer, 300)
+    window.addEventListener('focus', cleanupBodyPointer)
+    window.addEventListener('touchstart', cleanupBodyPointer, { passive: true })
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', cleanupBodyPointer)
+      window.removeEventListener('touchstart', cleanupBodyPointer)
+    }
+  }, [])
 
   const allTeamMembersPool = useMemo(() => {
     const map = new Map<number, any>()
@@ -2999,7 +3033,6 @@ export function MobileDailyActivityForm({
     const keyToUse = instanceKey || `${rawId}__${index}`
 
     if (selfInputEntries[keyToUse]) return selfInputEntries[keyToUse]
-    if (selfInputEntries[`item_${index}`]) return selfInputEntries[`item_${index}`]
 
     if (library.libraryActivityId != null) {
       const libActId = `${library.libraryActivityId}`
@@ -3018,10 +3051,16 @@ export function MobileDailyActivityForm({
       }
     }
 
+    if (selfInputEntries[`item_${index}`]) {
+      const candidate = selfInputEntries[`item_${index}`]
+      if (!candidate.id || candidate.id === (library as any).id || (library.libraryActivityId != null && candidate.id === library.libraryActivityId)) {
+        return candidate
+      }
+    }
+
     for (const [key, val] of Object.entries(selfInputEntries)) {
       if (key === keyToUse) return val
       if (key === rawId) return val
-      if (key === `item_${index}`) return val
       if (library.libraryActivityId != null && key === `${library.libraryActivityId}`) return val
       if (rawId.includes('_') && rawId.endsWith(`_${key}`)) return val
       if (key.includes('_') && key.endsWith(`_${rawId}`)) return val
@@ -3030,9 +3069,6 @@ export function MobileDailyActivityForm({
     const entriesList = Object.values(selfInputEntries)
     if (selectedLibraries.length === 1 && entriesList.length === 1) {
       return entriesList[0]
-    }
-    if (entriesList[index]?.equipmentNo || entriesList[index]?.notes || entriesList[index]?.previewUrls?.length) {
-      return entriesList[index]
     }
 
     return buildDefaultSelfInputEntry(index, defaultStartTime, defaultEndTime)
@@ -3330,6 +3366,25 @@ export function MobileDailyActivityForm({
     return () => window.removeEventListener(ACTIVITY_DRAFTS_CHANGED_EVENT, handleDraftsChanged)
   }, [activeDraftKey, queuedDraftKey])
 
+  // Protect against accidental refresh / page close when user is filling activities
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isDirty = (window as any)?.__heroFormIsDirty
+      if (isDirty && !isSubmitting) {
+        e.preventDefault()
+        e.returnValue = ''
+        return ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (typeof window !== 'undefined') {
+        (window as any).__heroFormIsDirty = false
+      }
+    }
+  }, [isSubmitting])
+
   useEffect(() => {
     // Prevent wiping active draft on initial mount!
     if (isFirstMountRef.current) {
@@ -3365,6 +3420,10 @@ export function MobileDailyActivityForm({
       queuedPhotoPayloads.length > 0 ||
       hasCheckedRoute ||
       hasSelfInputContent
+
+    if (typeof window !== 'undefined') {
+      (window as any).__heroFormIsDirty = hasAnyContent && !isSubmitting
+    }
 
     if (!hasAnyContent) return
 
@@ -3644,15 +3703,36 @@ export function MobileDailyActivityForm({
       ]
     }
 
+    const claimedDraftItemIds = new Set<number>()
     return Promise.all(
       selectedLibraries.map(async (library, index) => {
         const libraryId = `${library.id}`
         const instanceKey = `${libraryId}__${index}`
         const entry = resolveSelfInputEntry(library, index, instanceKey)
-        const matchingSessionItem =
-          (entry.id && (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))) ||
-          rawItems?.[index] ||
-          initialSessionData?.sessionItems?.[index]
+
+        const validLibraryId =
+          typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
+            ? library.libraryActivityId
+            : availableLibrary.some((lib) => String(lib.id) === libraryId)
+              ? Number(library.id)
+              : Number(String(library.id).split('_').pop()) || null
+
+        let matchingSessionItem: any = null
+        if (entry.id && typeof entry.id === 'number' && entry.id > 0 && !claimedDraftItemIds.has(entry.id)) {
+          const found = (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))
+          if (found) {
+            matchingSessionItem = found
+            claimedDraftItemIds.add(found.id)
+          }
+        }
+        if (!matchingSessionItem && validLibraryId != null) {
+          const found = (rawItems.find((it: any) => it.libraryActivityId === validLibraryId && !claimedDraftItemIds.has(it.id)) ||
+            initialSessionData?.sessionItems?.find((it: any) => it.libraryActivityId === validLibraryId && !claimedDraftItemIds.has(it.id)))
+          if (found) {
+            matchingSessionItem = found
+            claimedDraftItemIds.add(found.id)
+          }
+        }
         const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
         const effectiveUrls =
           entry.previewUrls && entry.previewUrls.length > 0
@@ -3715,16 +3795,38 @@ export function MobileDailyActivityForm({
       let itemsToSubmit: any[] = []
 
       if (selectedLibraries.length > 0) {
+        const claimedSubmitItemIds = new Set<number>()
         itemsToSubmit = (
           await Promise.all(
             selectedLibraries.map(async (library, index) => {
               const libraryId = `${library.id}`
               const instanceKey = `${libraryId}__${index}`
               const entry = resolveSelfInputEntry(library, index, instanceKey)
-              const matchingSessionItem =
-                (entry.id && (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))) ||
-                rawItems?.[index] ||
-                initialSessionData?.sessionItems?.[index]
+
+              const validLibraryId =
+                typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
+                  ? library.libraryActivityId
+                  : availableLibrary.some((lib) => String(lib.id) === libraryId)
+                    ? Number(library.id)
+                    : Number(String(library.id).split('_').pop()) || null
+
+              let matchingSessionItem: any = null
+              if (entry.id && typeof entry.id === 'number' && entry.id > 0 && !claimedSubmitItemIds.has(entry.id)) {
+                const found = (rawItems.find((it: any) => it.id === entry.id) || initialSessionData?.sessionItems?.find((it: any) => it.id === entry.id))
+                if (found) {
+                  matchingSessionItem = found
+                  claimedSubmitItemIds.add(found.id)
+                }
+              }
+              if (!matchingSessionItem && validLibraryId != null) {
+                const found = (rawItems.find((it: any) => it.libraryActivityId === validLibraryId && !claimedSubmitItemIds.has(it.id)) ||
+                  initialSessionData?.sessionItems?.find((it: any) => it.libraryActivityId === validLibraryId && !claimedSubmitItemIds.has(it.id)))
+                if (found) {
+                  matchingSessionItem = found
+                  claimedSubmitItemIds.add(found.id)
+                }
+              }
+
               const sessionPhotos = matchingSessionItem ? extractItemPhotos(matchingSessionItem) : []
               const effectiveUrls =
                 entry.previewUrls && entry.previewUrls.length > 0
@@ -3738,25 +3840,19 @@ export function MobileDailyActivityForm({
                 effectiveUrls
               )
 
-              const validLibraryId =
-                matchingSessionItem?.libraryActivityId
-                  ? Number(matchingSessionItem.libraryActivityId)
-                  : typeof library.libraryActivityId === 'number' && library.libraryActivityId > 0
-                    ? library.libraryActivityId
-                    : availableLibrary.some((lib) => String(lib.id) === libraryId)
-                      ? Number(library.id)
-                      : Number(String(library.id).split('_').pop()) || null
-
               const u = (entry.equipmentNo || '').trim()
 
-              const itemTeamMemberIds = entry.itemTeamMemberIds !== undefined
+              const rawItemTeamIds = entry.itemTeamMemberIds !== undefined
                 ? entry.itemTeamMemberIds
                 : (isTeamLog ? selectedMemberIds : [])
-              const itemTeamMembers = entry.itemTeamMembers && entry.itemTeamMembers.length > 0
-                ? entry.itemTeamMembers
+              const itemTeamMemberIds = isTeamLog
+                ? rawItemTeamIds.filter((id) => selectedMemberIds.includes(id))
+                : rawItemTeamIds
+              const itemTeamMembers = (entry.itemTeamMembers && entry.itemTeamMembers.length > 0
+                ? (isTeamLog ? entry.itemTeamMembers.filter((m: any) => selectedMemberIds.includes(m.id)) : entry.itemTeamMembers)
                 : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
                     .filter((m: any) => itemTeamMemberIds.includes(m.id))
-                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn })))
 
               return {
                 id: matchingSessionItem?.id,
@@ -3821,14 +3917,17 @@ export function MobileDailyActivityForm({
                 state?.restoredPhotoPayload,
                 state?.previewUrls
               )
-              const itemTeamMemberIds = state?.itemTeamMemberIds !== undefined
+              const rawRouteItemTeamIds = state?.itemTeamMemberIds !== undefined
                 ? state.itemTeamMemberIds
                 : (isTeamLog ? selectedMemberIds : [])
-              const itemTeamMembers = state?.itemTeamMembers && state.itemTeamMembers.length > 0
-                ? state.itemTeamMembers
+              const itemTeamMemberIds = isTeamLog
+                ? rawRouteItemTeamIds.filter((id) => selectedMemberIds.includes(id))
+                : rawRouteItemTeamIds
+              const itemTeamMembers = (state?.itemTeamMembers && state.itemTeamMembers.length > 0
+                ? (isTeamLog ? state.itemTeamMembers.filter((m: any) => selectedMemberIds.includes(m.id)) : state.itemTeamMembers)
                 : ((teamMembers && teamMembers.length > 0 ? teamMembers : candidateEmployees) || [])
                     .filter((m: any) => itemTeamMemberIds.includes(m.id))
-                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn }))
+                    .map((m: any) => ({ id: m.id, name: m.name, employeeSn: m.employeeSn })))
 
               return {
                 routeItemId: item.routeItemId,
@@ -3994,6 +4093,9 @@ export function MobileDailyActivityForm({
       } catch {}
       window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT))
 
+      if (typeof window !== 'undefined') {
+        (window as any).__heroFormIsDirty = false
+      }
       const targetUrl = `/mobile/activity?tab=approval&submitted=1${checklistContext?.overtimeCommandLetterId ? '&spl=1' : ''}`
       window.location.replace(targetUrl)
     } catch (error) {
@@ -4052,6 +4154,9 @@ export function MobileDailyActivityForm({
     } catch {}
     window.dispatchEvent(new CustomEvent(ACTIVITY_DRAFTS_CHANGED_EVENT, { detail: { deletedKey: activeDraftKey } }))
 
+    if (typeof window !== 'undefined') {
+      (window as any).__heroFormIsDirty = false
+    }
     toast.success('Draft berhasil dibersihkan.')
     window.location.replace('/mobile/activity')
   }
@@ -4061,7 +4166,7 @@ export function MobileDailyActivityForm({
       <Dialog open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen}>
         <DialogContent
           showCloseButton={false}
-          className="max-h-[88dvh] max-w-[min(420px,94vw)] sm:max-w-[420px] w-full gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl flex flex-col z-50"
+          className="max-h-[88dvh] max-w-[min(420px,94vw)] sm:max-w-[420px] w-full gap-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl flex flex-col"
         >
           <DialogHeader className="bg-[linear-gradient(135deg,#003461,#004b87)] px-4 py-3 text-left text-white flex flex-row items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
@@ -4482,19 +4587,45 @@ export function MobileDailyActivityForm({
                 </Button>
 
                 {selectedLibraries.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedLibraries.map((item, idx) => (
-                      <button
-                        key={`${item.id}__${idx}`}
-                        type="button"
-                        onClick={() => removeLibraryAtIndex(idx)}
-                        className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-2 text-[11px] font-black tracking-[0.08em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.05)] cursor-pointer"
-                        title="Hapus aktivitas ini"
-                      >
-                        <span>{item.activityCode}{item.groupName ? ` (${item.groupName})` : ''}</span>
-                        <X className="size-3.5" />
-                      </button>
-                    ))}
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Daftar Aktivitas ({selectedLibraries.length}) • Ketuk item untuk berpindah:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedLibraries.map((item, idx) => (
+                        <div
+                          key={`${item.id}__${idx}`}
+                          onClick={() => {
+                            const el = document.getElementById(`activity-card-${idx}`)
+                            if (el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                              el.classList.add('ring-2', 'ring-blue-500')
+                              setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500'), 1500)
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#f6fbff] pl-3 pr-1.5 py-1.5 text-[11px] font-black tracking-[0.08em] text-[#003f78] uppercase shadow-[inset_0_0_0_1px_rgba(0,52,97,0.08)] cursor-pointer hover:bg-sky-50 active:scale-95 transition-all select-none"
+                          title={`Ketuk untuk pindah ke Aktivitas #${idx + 1}`}
+                        >
+                          <span className="font-bold text-[10px] text-sky-700 bg-sky-100/90 px-1.5 py-0.2 rounded-full">
+                            #{idx + 1}
+                          </span>
+                          <span className="truncate max-w-[130px]">
+                            {item.activityCode}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeLibraryAtIndex(idx)
+                            }}
+                            className="size-5 rounded-full hover:bg-red-100 hover:text-red-600 text-slate-400 inline-flex items-center justify-center transition-colors cursor-pointer"
+                            title={`Hapus aktivitas #${idx + 1}`}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -4607,7 +4738,7 @@ export function MobileDailyActivityForm({
                   ].filter(Boolean)
 
                   return (
-                    <div key={instanceKey} className="rounded-[1rem] bg-[#f6fbff] px-4 py-4">
+                    <div key={instanceKey} id={`activity-card-${index}`} className="rounded-[1rem] bg-[#f6fbff] px-4 py-4 scroll-mt-20 transition-all duration-300">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-[10px] font-black tracking-[0.16em] text-[#486275] uppercase">
@@ -4778,6 +4909,26 @@ export function MobileDailyActivityForm({
                             }, index)
                           }}
                         />
+
+                        {index < selectedLibraries.length - 1 ? (
+                          <div className="pt-2 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextEl = document.getElementById(`activity-card-${index + 1}`)
+                                if (nextEl) {
+                                  nextEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                  nextEl.classList.add('ring-2', 'ring-blue-500')
+                                  setTimeout(() => nextEl.classList.remove('ring-2', 'ring-blue-500'), 1500)
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#003461] bg-white border border-sky-200 px-3 py-1.5 rounded-xl shadow-2xs hover:bg-sky-50 active:scale-95 transition cursor-pointer select-none"
+                            >
+                              <span>Lanjut ke Aktivitas #{index + 2}</span>
+                              <ChevronDown className="size-3.5" />
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   )
@@ -5373,6 +5524,9 @@ export function MobileDailyActivityForm({
                   setSubmitState({ kind: 'error', message: localResult.error })
                   toast.error(localResult.error, { duration: 5000 })
                 } else {
+                  if (submitState.kind === 'error' && submitState.message.includes('Draft tidak dapat disimpan')) {
+                    setSubmitState({ kind: 'idle', message: '' })
+                  }
                   if (draftKey !== ACTIVITY_DRAFT_STORAGE_KEY) {
                     saveActivityDraftIndexEntry(draftKey, completeDraftPayload, serverDraftSessionId || undefined)
                     if (activeDraftKey === ACTIVITY_DRAFT_STORAGE_KEY) {
@@ -5519,7 +5673,7 @@ export function MobileDailyActivityForm({
         <Dialog open={isDraftSavedModalOpen} onOpenChange={setIsDraftSavedModalOpen}>
           <DialogContent
             showCloseButton={true}
-            className="max-w-[min(400px,92vw)] p-6 rounded-3xl bg-white border border-slate-200 text-slate-900 shadow-2xl z-50 text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
+            className="max-w-[min(400px,92vw)] p-6 rounded-3xl bg-white border border-slate-200 text-slate-900 shadow-2xl text-center flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
           >
             <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 mb-2 ring-8 ring-emerald-50/50 shadow-xs">
               <CheckCircle2 className="size-9 stroke-[2.5]" />
@@ -5583,7 +5737,7 @@ export function MobileDailyActivityForm({
         <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
           <DialogContent
             showCloseButton={false}
-            className="max-w-4xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-white border border-slate-200 text-slate-900 shadow-2xl z-50"
+            className="max-w-4xl w-[96vw] max-h-[92vh] p-0 rounded-2xl overflow-hidden flex flex-col bg-white border border-slate-200 text-slate-900 shadow-2xl"
           >
             <DialogHeader className="p-3 bg-[linear-gradient(135deg,#003461,#004b87)] border-b border-blue-900 flex flex-row items-center justify-between space-y-0 shrink-0 text-white">
               <DialogTitle className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">

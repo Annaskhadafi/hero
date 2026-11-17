@@ -1,5 +1,5 @@
 import { getWarehouseRepairDashboardData } from "@/app/actions/warehouse-repair"
-import { WarehouseRepairClient } from "./_components/warehouse-repair-client"
+import { WarehouseRepairOverview } from "@/components/warehouse-repair"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { redirect } from "next/navigation"
 
@@ -9,5 +9,5 @@ export default async function WarehouseRepairPage() {
     redirect("/dashboard")
   }
   const data = await getWarehouseRepairDashboardData()
-  return <WarehouseRepairClient mode="overview" data={data} access={access} />
+  return <WarehouseRepairOverview data={data} access={access} />
 }

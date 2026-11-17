@@ -6,6 +6,7 @@ import { z } from "zod"
 
 import { db } from "@/db"
 import { repairMasterItems, repairMasterSites } from "@/db/schema/repair-master"
+import { parseBahasaMaterialExcel } from "@/lib/bahasa-material"
 import {
   DEFAULT_REPAIR_SITES,
   mergeRepairMasterItemsWithStockSap,
@@ -40,61 +41,141 @@ function cleanText(value: string | null | undefined) {
   return trimmed || null
 }
 
+let repairMasterTablesEnsured = false
+let repairMasterTablesPromise: Promise<void> | null = null
+
 async function ensureRepairMasterTables() {
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS "repair_master_items" (
-      "id" serial PRIMARY KEY NOT NULL,
-      "material_code" varchar(100) NOT NULL,
-      "material_name" text NOT NULL,
-      "valuation_stock_value" varchar(100),
-      "currency" varchar(20),
-      "valuated_stock" varchar(100),
-      "uom" varchar(30),
-      "category" varchar(100),
-      "smu" varchar(50),
-      "default_qty" varchar(50),
-      "standard_time" varchar(50),
-      "notes" text,
-      "is_active" boolean DEFAULT true NOT NULL,
-      "sort_order" integer DEFAULT 0 NOT NULL,
-      "created_at" timestamp DEFAULT now() NOT NULL,
-      "updated_at" timestamp DEFAULT now() NOT NULL,
-      CONSTRAINT "unq_repair_master_item_code" UNIQUE("material_code")
-    )
-  `)
+  if (repairMasterTablesEnsured) return
+  if (repairMasterTablesPromise) return repairMasterTablesPromise
 
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuation_stock_value" varchar(100)`)
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "currency" varchar(20)`)
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuated_stock" varchar(100)`)
-  await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "uom" varchar(30)`)
+  repairMasterTablesPromise = (async () => {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "repair_master_items" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "material_code" varchar(100) NOT NULL,
+        "material_name" text NOT NULL,
+        "valuation_stock_value" varchar(100),
+        "currency" varchar(20),
+        "valuated_stock" varchar(100),
+        "uom" varchar(30),
+        "category" varchar(100),
+        "smu" varchar(50),
+        "default_qty" varchar(50),
+        "standard_time" varchar(50),
+        "notes" text,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "sort_order" integer DEFAULT 0 NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL,
+        CONSTRAINT "unq_repair_master_item_code" UNIQUE("material_code")
+      )
+    `)
 
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS "repair_master_sites" (
-      "id" serial PRIMARY KEY NOT NULL,
-      "site_code" varchar(50) NOT NULL,
-      "site_name" text NOT NULL,
-      "sort_order" integer DEFAULT 0 NOT NULL,
-      "is_active" boolean DEFAULT true NOT NULL,
-      "created_at" timestamp DEFAULT now() NOT NULL,
-      "updated_at" timestamp DEFAULT now() NOT NULL,
-      CONSTRAINT "unq_repair_master_site_code" UNIQUE("site_code")
-    )
-  `)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuation_stock_value" varchar(100)`)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "currency" varchar(20)`)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "valuated_stock" varchar(100)`)
+    await db.execute(sql`ALTER TABLE "repair_master_items" ADD COLUMN IF NOT EXISTS "uom" varchar(30)`)
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "repair_master_sites" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "site_code" varchar(50) NOT NULL,
+        "site_name" text NOT NULL,
+        "sort_order" integer DEFAULT 0 NOT NULL,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "created_at" timestamp DEFAULT now() NOT NULL,
+        "updated_at" timestamp DEFAULT now() NOT NULL,
+        CONSTRAINT "unq_repair_master_site_code" UNIQUE("site_code")
+      )
+    `)
+    repairMasterTablesEnsured = true
+  })().catch((err) => {
+    repairMasterTablesPromise = null
+    throw err
+  })
+
+  return repairMasterTablesPromise
 }
 
 async function ensureDefaultRepairSites() {
   await ensureRepairMasterTables()
 
-  await db
-    .insert(repairMasterSites)
-    .values(
-      DEFAULT_REPAIR_SITES.map((site, index) => ({
+  for (const [index, site] of DEFAULT_REPAIR_SITES.entries()) {
+    await db
+      .insert(repairMasterSites)
+      .values({
         siteCode: site.siteCode,
         siteName: site.siteName,
         sortOrder: index + 1,
-      })),
-    )
-    .onConflictDoNothing({ target: repairMasterSites.siteCode })
+        isActive: true,
+      })
+      .onConflictDoUpdate({
+        target: repairMasterSites.siteCode,
+        set: {
+          siteName: site.siteName,
+          sortOrder: index + 1,
+          updatedAt: new Date(),
+        },
+      })
+  }
+}
+
+export async function syncBahasaMaterialItems() {
+  try {
+    await ensureRepairMasterTables()
+
+    const parsedItems = parseBahasaMaterialExcel()
+    if (parsedItems.length === 0) {
+      return { success: false, count: 0, message: "File Bahasa Material.xlsx tidak ditemukan atau kosong" }
+    }
+
+    let count = 0
+    for (const [index, item] of parsedItems.entries()) {
+      const materialCode = normalizeRepairMasterCode(item.materialCode)
+      await db
+        .insert(repairMasterItems)
+        .values({
+          materialCode,
+          materialName: item.materialName.trim(),
+          valuationStockValue: cleanText(item.valuationStockValue),
+          currency: item.currency || "USD",
+          valuatedStock: cleanText(item.valuatedStock),
+          uom: cleanText(item.uom)?.toUpperCase() ?? "PC",
+          category: cleanText(item.category),
+          smu: cleanText(item.smu),
+          defaultQty: cleanText(item.defaultQty),
+          standardTime: cleanText(item.standardTime),
+          notes: cleanText(item.notes),
+          isActive: true,
+          sortOrder: index + 1,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: repairMasterItems.materialCode,
+          set: {
+            materialName: item.materialName.trim(),
+            valuationStockValue: cleanText(item.valuationStockValue),
+            currency: item.currency || "USD",
+            uom: cleanText(item.uom)?.toUpperCase() ?? "PC",
+            category: cleanText(item.category),
+            notes: cleanText(item.notes),
+            sortOrder: index + 1,
+            updatedAt: new Date(),
+          },
+        })
+      count++
+    }
+
+    revalidatePath(REPAIR_MASTER_PATH)
+    return { success: true, count, message: `Berhasil sinkronisasi ${count} item dari Bahasa Material.xlsx` }
+  } catch (error) {
+    console.error("Error syncing Bahasa Material items:", error)
+    return {
+      success: false,
+      count: 0,
+      error: error instanceof Error ? error.message : "Gagal memproses Bahasa Material.xlsx",
+    }
+  }
 }
 
 async function getStockSapRows(materialCodes: string[]) {
@@ -133,10 +214,23 @@ async function getStockSapRows(materialCodes: string[]) {
 export async function getRepairMasterData() {
   await ensureDefaultRepairSites()
 
-  const [items, sites] = await Promise.all([
-    db.select().from(repairMasterItems).orderBy(asc(repairMasterItems.sortOrder), asc(repairMasterItems.materialCode)),
-    db.select().from(repairMasterSites).orderBy(asc(repairMasterSites.sortOrder), asc(repairMasterSites.siteCode)),
-  ])
+  let items = await db
+    .select()
+    .from(repairMasterItems)
+    .orderBy(asc(repairMasterItems.sortOrder), asc(repairMasterItems.materialCode))
+
+  if (items.length === 0) {
+    await syncBahasaMaterialItems()
+    items = await db
+      .select()
+      .from(repairMasterItems)
+      .orderBy(asc(repairMasterItems.sortOrder), asc(repairMasterItems.materialCode))
+  }
+
+  const sites = await db
+    .select()
+    .from(repairMasterSites)
+    .orderBy(asc(repairMasterSites.sortOrder), asc(repairMasterSites.siteCode))
 
   if (items.length === 0) {
     return { items, sites }

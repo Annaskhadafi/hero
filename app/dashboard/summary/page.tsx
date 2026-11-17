@@ -23,7 +23,7 @@ export default async function SummaryPage({
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 print:p-0 print:space-y-0">
       {summaryData ? (
         <SummaryPreview data={summaryData} />
       ) : (

@@ -25,8 +25,6 @@ import {
   deleteRagDocument,
   sendRagChat,
 } from "@/lib/hero-genius/client";
-import path, { join } from "path";
-import { mkdir, writeFile } from "fs/promises";
 import {
   enqueueSopWinRag,
   getSopWinRagQueueStatus,
@@ -49,6 +47,14 @@ function safeRevalidatePath(path: string) {
   try {
     revalidatePath(path);
   } catch (_) {}
+}
+
+async function uploadSopWinFile(file: File) {
+  if (!isS3UploadConfigured()) {
+    throw new Error("S3 Cloud Storage belum dikonfigurasi. Dokumen SOP/WIN tidak disimpan ke penyimpanan lokal.");
+  }
+  const result = await uploadAnyFileToS3(file, "upload");
+  return `/api/uploads/${result.key}`;
 }
 
 /**
@@ -582,6 +588,7 @@ export async function getSopWinDocumentsAction(filters?: {
       })),
       totalCount: docs.length,
       departmentCounts: counts,
+      departments: deptsList,
     };
   } catch (error: any) {
     console.error("[getSopWinDocumentsAction] error:", error);
@@ -909,44 +916,12 @@ export async function createSopWinDocumentAction(formData: FormData) {
       return { success: false, error: "File PDF wajib diunggah untuk pratinjau dokumen." };
     }
 
-    // Save PDF to persistent uploads & S3
-    const pdfBytes = await pdfFile.arrayBuffer();
-    const pdfBuffer = Buffer.from(pdfBytes);
-    const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const uploadDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-    let pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-    if (isS3UploadConfigured()) {
-      try {
-        const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
-        if (s3Res?.url) {
-          pdfFileUrl = s3Res.url;
-        }
-      } catch (s3Err) {
-        console.warn("[createSopWinDocumentAction] S3 upload error:", s3Err);
-      }
-    }
+    // SOP/WIN files must be durable S3 objects. Upload both files before touching the database.
+    const pdfFileUrl = await uploadSopWinFile(pdfFile);
 
     let docxFileUrl: string | null = null;
     if (docxFile && docxFile.size > 0) {
-      const docxBytes = await docxFile.arrayBuffer();
-      const docxBuffer = Buffer.from(docxBytes);
-      const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await writeFile(join(uploadDir, docxFilename), docxBuffer);
-      docxFileUrl = `/api/uploads/${docxFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
-          if (s3DocxRes?.url) {
-            docxFileUrl = s3DocxRes.url;
-          }
-        } catch (s3Err) {
-          console.warn("[createSopWinDocumentAction] S3 docx upload error:", s3Err);
-        }
-      }
+      docxFileUrl = await uploadSopWinFile(docxFile);
     }
 
 
@@ -1071,30 +1046,13 @@ export async function updateSopWinDocumentAction(formData: FormData) {
     if (effectiveDate) updatePayload.effectiveDate = effectiveDate;
 
     // Optional File Replacements
-    const uploadDir = join(process.cwd(), "public", "uploads");
     let hasNewFile = false;
     let newFileUrl = "";
     let newFileName = "";
     let newFileType: "pdf" | "docx" = "pdf";
 
     if (pdfFile && pdfFile.size > 0) {
-      const pdfBytes = await pdfFile.arrayBuffer();
-      const pdfBuffer = Buffer.from(pdfBytes);
-      const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-      updatePayload.pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
-          if (s3Res?.url) {
-            updatePayload.pdfFileUrl = s3Res.url;
-          }
-        } catch (s3Err) {
-          console.warn("[updateSopWinDocumentAction] S3 upload error:", s3Err);
-        }
-      }
+      updatePayload.pdfFileUrl = await uploadSopWinFile(pdfFile);
 
       hasNewFile = true;
       newFileUrl = updatePayload.pdfFileUrl;
@@ -1103,23 +1061,7 @@ export async function updateSopWinDocumentAction(formData: FormData) {
     }
 
     if (docxFile && docxFile.size > 0) {
-      const docxBytes = await docxFile.arrayBuffer();
-      const docxBuffer = Buffer.from(docxBytes);
-      const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await mkdir(uploadDir, { recursive: true });
-      await writeFile(join(uploadDir, docxFilename), docxBuffer);
-      updatePayload.docxFileUrl = `/api/uploads/${docxFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
-          if (s3DocxRes?.url) {
-            updatePayload.docxFileUrl = s3DocxRes.url;
-          }
-        } catch (s3Err) {
-          console.warn("[updateSopWinDocumentAction] S3 docx upload error:", s3Err);
-        }
-      }
+      updatePayload.docxFileUrl = await uploadSopWinFile(docxFile);
 
       hasNewFile = true;
       newFileUrl = updatePayload.docxFileUrl;
@@ -1195,44 +1137,12 @@ export async function createSopWinRevisionAction(formData: FormData) {
       return { success: false, error: "File PDF revisi baru wajib diunggah." };
     }
 
-    // Save PDF
-    const pdfBytes = await pdfFile.arrayBuffer();
-    const pdfBuffer = Buffer.from(pdfBytes);
-    const pdfFilename = `${randomUUID().slice(0, 10)}_${pdfFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-    const uploadDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(join(uploadDir, pdfFilename), pdfBuffer);
-    let pdfFileUrl = `/api/uploads/${pdfFilename}`;
-
-    if (isS3UploadConfigured()) {
-      try {
-        const s3Res = await uploadAnyFileToS3(pdfFile, "upload");
-        if (s3Res?.url) {
-          pdfFileUrl = s3Res.url;
-        }
-      } catch (s3Err) {
-        console.warn("[createSopWinRevisionAction] S3 upload error:", s3Err);
-      }
-    }
+    // Upload every revision file to S3 before mutating either document table.
+    const pdfFileUrl = await uploadSopWinFile(pdfFile);
 
     let docxFileUrl: string | null = null;
     if (docxFile && docxFile.size > 0) {
-      const docxBytes = await docxFile.arrayBuffer();
-      const docxBuffer = Buffer.from(docxBytes);
-      const docxFilename = `${randomUUID().slice(0, 10)}_${docxFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      await writeFile(join(uploadDir, docxFilename), docxBuffer);
-      docxFileUrl = `/api/uploads/${docxFilename}`;
-
-      if (isS3UploadConfigured()) {
-        try {
-          const s3DocxRes = await uploadAnyFileToS3(docxFile, "upload");
-          if (s3DocxRes?.url) {
-            docxFileUrl = s3DocxRes.url;
-          }
-        } catch (s3Err) {
-          console.warn("[createSopWinRevisionAction] S3 docx upload error:", s3Err);
-        }
-      }
+      docxFileUrl = await uploadSopWinFile(docxFile);
     }
 
 
@@ -3063,6 +2973,110 @@ export async function upsertSopWinDepartmentWorkflowAction(input: {
   } catch (error: any) {
     console.error("[upsertSopWinDepartmentWorkflowAction] error:", error);
     return { success: false, message: error.message || "Gagal menyimpan workflow departemen." };
+  }
+}
+
+
+
+export async function syncSopWinRequestWorkflowAction(requestId: number) {
+  try {
+    const [req] = await db
+      .select()
+      .from(sopWinRequests)
+      .where(eq(sopWinRequests.id, requestId))
+      .limit(1);
+
+    if (!req) {
+      return { success: false, message: "Permohonan dokumen tidak ditemukan." };
+    }
+
+    const reqDept = (req.requesterDepartment || "").trim().toUpperCase();
+    const ownDept = (req.ownDepartment || "").trim().toUpperCase();
+    const docText = (req.requestedDocTitleAndNumber || "").toUpperCase();
+
+    const allWfs = await db.select().from(sopWinDepartmentWorkflows);
+    let matchedWf = allWfs.find(
+      (w) =>
+        w.departmentCode.toUpperCase() === reqDept ||
+        w.departmentCode.toUpperCase() === ownDept
+    );
+
+    if (!matchedWf) {
+      matchedWf = allWfs.find(
+        (w) =>
+          docText.includes(w.departmentCode.toUpperCase()) ||
+          docText.includes(w.departmentName.toUpperCase()) ||
+          reqDept.includes(w.departmentCode.toUpperCase())
+      );
+    }
+
+    if (!matchedWf || !matchedWf.steps || (matchedWf.steps as any[]).length === 0) {
+      return { success: false, message: "Workflow matriks untuk departemen ini belum dikonfigurasi." };
+    }
+
+    const sortedSteps = (matchedWf.steps as any[]).sort((a: any, b: any) => a.stepOrder - b.stepOrder);
+
+    await db
+      .delete(sopWinRequestApprovals)
+      .where(eq(sopWinRequestApprovals.requestId, req.id));
+
+    const newSteps = sortedSteps.map((s: any, idx: number) => ({
+      requestId: req.id,
+      stepOrder: idx + 1,
+      stepLabel: s.stepLabel || `Tahap ${idx + 1}`,
+      approvalToken: `step_${idx + 1}_${randomUUID().replace(/-/g, "")}`,
+      approverName: s.approverName || "Approver",
+      approverEmail: s.approverEmail || "",
+      approverEmployeeId: s.approverEmployeeId || null,
+      status: (idx === 0 ? "pending" : "waiting") as "pending" | "waiting",
+    }));
+
+    await db.insert(sopWinRequestApprovals).values(newSteps);
+
+    try {
+      revalidatePath("/dashboard/sop-win");
+    } catch {}
+
+    return {
+      success: true,
+      message: `Alur approval berhasil disinkronkan dengan matriks departemen ${matchedWf.departmentName} (${newSteps.length} tahapan).`,
+      data: newSteps,
+    };
+  } catch (error: any) {
+    console.error("[syncSopWinRequestWorkflowAction] error:", error);
+    return { success: false, message: error.message || "Gagal menyinkronkan alur approval." };
+  }
+}
+
+export async function getSopWinApproverCandidatesAction() {
+  try {
+    const candidateList = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        employeeSn: employees.employeeSn,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+      })
+      .from(employees)
+      .where(or(eq(employees.employmentStatus, "active"), eq(employees.isActive, true)))
+      .orderBy(asc(employees.name));
+
+    return {
+      success: true,
+      data: candidateList.map((emp) => ({
+        id: emp.id,
+        name: (emp.name || "").trim(),
+        email: (emp.email || "").trim(),
+        employeeSn: emp.employeeSn ? emp.employeeSn.trim() : "",
+        jobTitle: emp.jobTitle ? emp.jobTitle.trim() : "",
+        department: emp.department ? emp.department.trim() : "",
+      })),
+    };
+  } catch (error: any) {
+    console.error("[getSopWinApproverCandidatesAction] error:", error);
+    return { success: false, message: error.message || "Gagal memuat kandidat approver.", data: [] };
   }
 }
 

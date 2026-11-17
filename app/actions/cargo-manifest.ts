@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { db } from '@/db'
@@ -24,44 +24,58 @@ import {
 
 // ─── Ensure tables exist ──────────────────────────────────────────────────────
 
+let cargoManifestTablesEnsured = false
+let cargoManifestTablesPromise: Promise<void> | null = null
+
 async function ensureCargoManifestTables() {
-  await db.execute(sql`
-    create table if not exists hero_cargo_manifests (
-      id serial primary key,
-      manifest_number text not null unique,
-      date date not null,
-      attention text not null default '',
-      transport_via text not null default '',
-      shipped_via text not null default '',
-      final_destination text not null default '',
-      signature_name text not null default '',
-      signature_data_url text not null default '',
-      status text not null default 'draft',
-      created_by_employee_id integer references hero_employees(id) on delete set null,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    )
-  `)
-  await db.execute(sql`
-    create table if not exists hero_cargo_manifest_items (
-      id serial primary key,
-      manifest_id integer not null references hero_cargo_manifests(id) on delete cascade,
-      no integer not null default 1,
-      description text not null default '',
-      serial_number text not null default '',
-      qty integer not null default 1,
-      brand text not null default '',
-      remark text not null default '',
-      created_at timestamptz not null default now()
-    )
-  `)
-  await db.execute(sql`
-    alter table hero_cargo_manifests
-      add column if not exists signature_name text not null default '',
-      add column if not exists signature_data_url text not null default '',
-      add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null,
-      add column if not exists section_id integer references hero_master_sections(id) on delete set null
-  `)
+  if (cargoManifestTablesEnsured) return
+  if (cargoManifestTablesPromise) return cargoManifestTablesPromise
+
+  cargoManifestTablesPromise = (async () => {
+    await db.execute(sql`
+      create table if not exists hero_cargo_manifests (
+        id serial primary key,
+        manifest_number text not null unique,
+        date date not null,
+        attention text not null default '',
+        transport_via text not null default '',
+        shipped_via text not null default '',
+        final_destination text not null default '',
+        signature_name text not null default '',
+        signature_data_url text not null default '',
+        status text not null default 'draft',
+        created_by_employee_id integer references hero_employees(id) on delete set null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `)
+    await db.execute(sql`
+      create table if not exists hero_cargo_manifest_items (
+        id serial primary key,
+        manifest_id integer not null references hero_cargo_manifests(id) on delete cascade,
+        no integer not null default 1,
+        description text not null default '',
+        serial_number text not null default '',
+        qty integer not null default 1,
+        brand text not null default '',
+        remark text not null default '',
+        created_at timestamptz not null default now()
+      )
+    `)
+    await db.execute(sql`
+      alter table hero_cargo_manifests
+        add column if not exists signature_name text not null default '',
+        add column if not exists signature_data_url text not null default '',
+        add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null,
+        add column if not exists section_id integer references hero_master_sections(id) on delete set null
+    `)
+    cargoManifestTablesEnsured = true
+  })().catch((err) => {
+    cargoManifestTablesPromise = null
+    throw err
+  })
+
+  return cargoManifestTablesPromise
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -201,10 +215,15 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
     .where(cargoScopeCondition(access.permission, access.employee))
     .orderBy(desc(cargoManifests.createdAt))
 
-  const items = await db
-    .select()
-    .from(cargoManifestItems)
-    .orderBy(asc(cargoManifestItems.manifestId), asc(cargoManifestItems.no))
+  const manifestIds = rows.map((r) => r.id)
+  const items =
+    manifestIds.length > 0
+      ? await db
+          .select()
+          .from(cargoManifestItems)
+          .where(inArray(cargoManifestItems.manifestId, manifestIds))
+          .orderBy(asc(cargoManifestItems.manifestId), asc(cargoManifestItems.no))
+      : []
 
   const itemsByManifest = new Map<number, CargoManifestItemRecord[]>()
   for (const item of items) {

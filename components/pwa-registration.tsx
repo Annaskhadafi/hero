@@ -11,8 +11,19 @@ export function PwaRegistration() {
           return;
         }
 
-        // Skip PWA registration on MAESTRO customer portal
-        if (window.location.hostname.includes("maestro") || window.location.pathname.startsWith("/maestro")) {
+        // Skip PWA registration on MAESTRO and FORM portals
+        const host = window.location.hostname.toLowerCase();
+        const path = window.location.pathname.toLowerCase();
+        if (
+          host.includes("maestro") ||
+          path.startsWith("/maestro") ||
+          host.includes("form.chitraparatama.com") ||
+          host.startsWith("form.") ||
+          host.includes("form.localhost") ||
+          path === "/form" ||
+          path.startsWith("/form/") ||
+          path.startsWith("/f/")
+        ) {
           return;
         }
 
@@ -63,15 +74,30 @@ export function PwaRegistration() {
           errorObj ||
           ""
       );
-      if (
+      const isChunkOrModuleError =
         msg.includes("Failed to load chunk") ||
         msg.includes("ChunkLoadError") ||
         msg.includes("Loading chunk") ||
-        msg.includes("Failed to fetch") ||
+        msg.includes("Failed to fetch dynamically imported module") ||
+        msg.includes("error loading dynamically imported module") ||
         msg.includes("module factory is not available") ||
         msg.includes("was instantiated because it was required") ||
-        msg.includes("stale browser cache")
-      ) {
+        msg.includes("stale browser cache");
+
+      if (isChunkOrModuleError) {
+        // Prevent auto-reload while user is actively filling out any form or input
+        const pathname = typeof window !== "undefined" ? window.location.pathname.toLowerCase() : "";
+        const isUserOnInputPage =
+          pathname.includes("/activity") ||
+          pathname.includes("/input") ||
+          pathname.includes("/edit") ||
+          Boolean((window as any)?.__heroFormIsDirty);
+
+        if (isUserOnInputPage) {
+          console.warn("[HMR Recovery] Suppressed auto-reload: user is on active input/activity form page.");
+          return;
+        }
+
         console.warn("[HMR Recovery] Detecting stale Turbopack chunk/module factory error. Auto-reloading fresh bundle...");
         const reloadKey = "hero:last-hmr-reload";
         const lastReload = Number(sessionStorage.getItem(reloadKey) || 0);

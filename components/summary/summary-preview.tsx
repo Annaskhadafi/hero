@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
+  AlertTriangle,
   CheckCircle2,
   Clock,
+  ExternalLink,
   FilePenLine,
   FileText,
+  Info,
   Loader2,
   Maximize2,
   Printer,
@@ -15,18 +18,34 @@ import {
   ZoomIn,
   ZoomOut,
   X,
+  XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
-import { submitSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import {
+  submitSummaryAction,
+  deleteSummaryDraftAction,
+  removeItemFromSummaryAction,
+  updateSummaryShoeUsagePeriodAction,
+} from '@/app/dashboard/summary/actions';
+import { printSummaryInPlace } from '@/lib/summary-print';
 import { SummaryApprovalDialog } from './summary-approval-dialog';
+import { SummaryGeneratorModal } from './summary-generator-modal';
 import { ApdRequestDetailModal } from './apd-request-detail-modal';
-import { QTY_ONLY_COLUMNS, SAFETY_SHOES_COL, buildDynamicApdColumns } from '@/lib/summary-constants';
+import {
+  QTY_ONLY_COLUMNS,
+  SAFETY_SHOES_COL,
+  SAFETY_SHOES_MASA_PAKAI_PRESETS,
+  buildDynamicApdColumns,
+  formatApdItemColHeader,
+} from '@/lib/summary-constants';
 
 type SummaryData = {
   id: number;
   summaryNumber: string;
+  sectionId?: number;
+  generatedByEmployeeId?: number;
   status: string;
   generatedAt: Date | null;
   approvedAt: Date | null;
@@ -45,6 +64,7 @@ type SummaryData = {
     isShoe?: boolean;
   }>;
   items: Array<{
+    employeeId?: number;
     employeeName: string;
     employeeSn: string;
     siteName: string;
@@ -70,7 +90,9 @@ type SummaryData = {
 
 export function SummaryPreview({ data }: { data: SummaryData }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
@@ -79,34 +101,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
 
   const handlePrintInPlace = () => {
     setPrinting(true);
-    const existing = document.getElementById('summary-print-iframe');
-    if (existing) existing.remove();
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'summary-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-    iframe.src = `/print/summary/${data.id}`;
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (err) {
-          console.error('Failed to print iframe:', err);
-        } finally {
-          setPrinting(false);
-        }
-      }, 500);
-    };
-
-    document.body.appendChild(iframe);
+    printSummaryInPlace(data.id, () => setPrinting(false));
   };
 
   const handleDeleteDraft = async () => {
@@ -131,6 +126,50 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     }
   };
 
+  const [removingEmpId, setRemovingEmpId] = useState<number | null>(null);
+
+  const handleRemoveItem = async (employeeId: number, apdRequestId?: number | null, empName?: string) => {
+    if (!confirm(`Keluarkan ${empName || 'karyawan ini'} dari dokumen Summary APD ini?`)) {
+      return;
+    }
+    setRemovingEmpId(employeeId);
+    const toastId = toast.loading(`Mengeluarkan ${empName || 'karyawan'}...`);
+    try {
+      const res = await removeItemFromSummaryAction(data.id, employeeId, apdRequestId || undefined);
+      if (res.success) {
+        toast.success(`Data ${empName || 'karyawan'} berhasil dikeluarkan`, { id: toastId });
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal mengeluarkan item', { id: toastId });
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
+    } finally {
+      setRemovingEmpId(null);
+    }
+  };
+
+  const handleMasaPakaiChange = async (
+    employeeId: number,
+    apdRequestId: number | null | undefined,
+    newValue: string,
+    oldValue?: string
+  ) => {
+    const val = (newValue || '').trim();
+    if (val === (oldValue || '').trim()) return;
+    try {
+      const res = await updateSummaryShoeUsagePeriodAction(data.id, employeeId, apdRequestId, val);
+      if (res.success) {
+        toast.success(`Masa pakai safety shoes diperbarui: ${val || '(dikosongkan)'}`);
+        router.refresh();
+      } else {
+        toast.error(res.error || 'Gagal menyimpan masa pakai');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Terjadi kesalahan sistem');
+    }
+  };
+
   const formatSiteName = (site?: string | null) => {
     if (!site) return '';
     const trimmed = site.trim();
@@ -142,6 +181,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const groupedByEmployee = data.items.reduce((acc, item) => {
     if (!acc[item.employeeName]) {
       acc[item.employeeName] = {
+        employeeId: item.employeeId,
         name: item.employeeName,
         sn: item.employeeSn,
         site: formatSiteName(item.siteName),
@@ -162,11 +202,13 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         ? item.requestType
         : (item.remarks && item.remarks !== acc[item.employeeName].remarks ? item.remarks : item.requestType || '');
       acc[item.employeeName].items[item.itemName] = sizeVal;
+    } else if (item.itemName === 'Safety Shoes Masa Pakai') {
+      acc[item.employeeName].items[item.itemName] = item.remarks || item.requestType || '';
     } else {
       acc[item.employeeName].items[item.itemName] = (Number(acc[item.employeeName].items[item.itemName]) || 0) + item.quantity;
     }
     return acc;
-  }, {} as Record<string, { name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }>);
+  }, {} as Record<string, { employeeId?: number; name: string; sn: string; site: string; remarks: string; apdRequestId?: number | null; items: Record<string, any> }>);
 
   const employees = Object.values(groupedByEmployee).sort((a, b) => {
     const siteCmp = (a.site || '').localeCompare(b.site || '', 'id-ID', { sensitivity: 'base' });
@@ -185,7 +227,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           ...buildDynamicApdColumns(masterList).qtyOnlyCols,
           ...data.items
             .map((i) => i.itemName)
-            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size' && name !== 'Safety Shoes Masa Pakai'),
         ])
       )
     : Array.from(
@@ -193,7 +235,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
           ...QTY_ONLY_COLUMNS,
           ...data.items
             .map((i) => i.itemName)
-            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size'),
+            .filter((name) => name !== 'Safety Shoes' && name !== 'Safety Shoes Size' && name !== 'Safety Shoes Masa Pakai'),
         ])
       );
 
@@ -210,7 +252,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       const result = await submitSummaryAction(data.id, signatureUrl);
       if (result.success) {
         toast.success('Summary berhasil disubmit ke approval flow!');
-        router.push('/dashboard/summary');
+        router.push(pathname?.startsWith('/mobile') ? '/mobile/summary' : '/dashboard/summary');
+        router.refresh();
       } else {
         toast.error(result.error || 'Gagal submit summary');
       }
@@ -223,8 +266,8 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
     switch (data.status) {
       case 'draft':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-            <Clock className="size-3.5 text-amber-600" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300">
+            <Clock className="size-3.5 text-slate-600" />
             Draft (Belum Disubmit)
           </span>
         );
@@ -236,11 +279,25 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             Menunggu Persetujuan
           </span>
         );
+      case 'revisi':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+            <AlertTriangle className="size-3.5 text-amber-600" />
+            Perlu Revisi
+          </span>
+        );
       case 'approved':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
             <CheckCircle2 className="size-3.5 text-emerald-600" />
             Disetujui (Approved)
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            <XCircle className="size-3.5 text-rose-600" />
+            Ditolak
           </span>
         );
       default:
@@ -255,36 +312,86 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   const empCount = employees.length;
   const colCount = dynamicQtyCols.length;
   const isDense = empCount > 9;
-  const isUltraDense = empCount > 15;
-  const isWideTable = colCount > 20;
+  const isUltraDense = empCount > 17;
+  const isExtremeDense = empCount > 23;
 
-  const thFontSize = isWideTable ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '7pt';
-  const tdFontSize = isWideTable ? '5pt' : isUltraDense ? '5.5pt' : isDense ? '6pt' : '7pt';
-  const itemHeaderFontSize = isWideTable ? '4.2pt' : isUltraDense ? '4.8pt' : isDense ? '5.2pt' : '5.5pt';
-  const padV = isUltraDense ? '1px' : isDense ? '1.5px' : '3px';
-  const padH = isWideTable ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '2px';
-  const remarksFontSize = isWideTable ? '4.8pt' : isUltraDense ? '5.2pt' : isDense ? '5.8pt' : '6.5pt';
+  // Calibrated font sizing — prevents microscopic text while fitting 30-row dense summaries on 1 A4 Landscape page
+  const thFontSize = isExtremeDense ? '6.4pt' : isUltraDense ? '7pt' : '7.5pt';
+  const itemHeaderFontSize = isExtremeDense ? '5.2pt' : isUltraDense ? '5.8pt' : isDense ? '6.2pt' : '6.8pt';
+  const qtyFontSize = isExtremeDense ? '7pt' : isUltraDense ? '8pt' : '8.5pt';
+  const textFontSize = isExtremeDense ? '6.5pt' : isUltraDense ? '7.2pt' : '7.5pt';
+  const remarksFontSize = isExtremeDense ? '5.8pt' : isUltraDense ? '6.5pt' : '7pt';
 
-  const sigContainerHeight = isUltraDense ? '32px' : isDense ? '38px' : '44px';
-  const sigImgHeight = isUltraDense ? '28px' : isDense ? '34px' : '40px';
+  const padV = isExtremeDense ? '0.5px' : isUltraDense ? '1.5px' : isDense ? '2px' : '3px';
+  const padH = '1px';
+  const rowHeight = isExtremeDense ? '13px' : isUltraDense ? '17px' : isDense ? '19px' : '22px';
 
-  const th: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: thFontSize, background: '#f2f4f7', textAlign: 'center', fontWeight: 'bold', lineHeight: '1.1' };
-  const td: React.CSSProperties = { border: '1px solid #000', paddingTop: padV, paddingBottom: padV, paddingLeft: padH, paddingRight: padH, fontSize: tdFontSize, textAlign: 'center', lineHeight: '1.1' };
-  const tdL: React.CSSProperties = { ...td, textAlign: 'left', paddingLeft: '3px' };
-  const thItem: React.CSSProperties = { ...th, fontSize: itemHeaderFontSize, paddingTop: '1px', paddingBottom: '1px', paddingLeft: '1px', paddingRight: '1px', lineHeight: '1.05', wordBreak: 'break-word', whiteSpace: 'normal', verticalAlign: 'middle' };
+  const sigContainerHeight = isExtremeDense ? '22px' : isUltraDense ? '32px' : '38px';
+  const sigImgHeight = isExtremeDense ? '20px' : isUltraDense ? '28px' : '34px';
+
+  const th: React.CSSProperties = { 
+    border: '1px solid #000', 
+    paddingTop: padV, 
+    paddingBottom: padV, 
+    paddingLeft: padH, 
+    paddingRight: padH, 
+    fontSize: thFontSize, 
+    background: '#f1f5f9', 
+    textAlign: 'center', 
+    fontWeight: 'bold', 
+    lineHeight: '1.15',
+    boxSizing: 'border-box'
+  };
+  const td: React.CSSProperties = { 
+    border: '1px solid #000', 
+    paddingTop: padV, 
+    paddingBottom: padV, 
+    paddingLeft: padH, 
+    paddingRight: padH, 
+    fontSize: qtyFontSize, 
+    textAlign: 'center', 
+    lineHeight: '1.15',
+    boxSizing: 'border-box'
+  };
+  const tdL: React.CSSProperties = { 
+    ...td, 
+    textAlign: 'left', 
+    paddingLeft: '3px',
+    fontSize: textFontSize 
+  };
+  const thItem: React.CSSProperties = { 
+    ...th, 
+    fontSize: itemHeaderFontSize, 
+    paddingTop: '2px', 
+    paddingBottom: '2px', 
+    paddingLeft: '1px', 
+    paddingRight: '1px', 
+    lineHeight: '1.05', 
+    wordBreak: 'break-word', 
+    overflowWrap: 'anywhere',
+    hyphens: 'auto',
+    whiteSpace: 'normal', 
+    verticalAlign: 'middle' 
+  };
 
   const fmtDate = (d: Date) => new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items to fit single page
+  // Standard total rows: 10 rows if <= 9 items; exact count if > 9 items
   const targetTotalRows = isDense ? empCount : 10;
   const displayLimit = Math.max(employees.length, targetTotalRows);
   const emptyRowCount = Math.max(0, targetTotalRows - employees.length);
 
+  // Column width allocations (calibrated for A4 Landscape printable width without right-edge clipping)
+  const colWidthName = isExtremeDense ? '84px' : isUltraDense ? '90px' : '98px';
+  const colWidthSite = isExtremeDense ? '40px' : isUltraDense ? '44px' : '50px';
+  const colWidthRemarks = isExtremeDense ? '58px' : isUltraDense ? '64px' : '74px';
+
   // Renders the document sheet (identical to print document)
   const renderDocumentContent = (isForExport = false) => (
     <div
+      id={isForExport ? 'summary-document-printable-zoom' : 'summary-document-printable'}
       className={`bg-white text-black select-none ${
-        isForExport ? 'w-[1050px] p-5' : 'w-full p-6 sm:p-8 min-w-[950px]'
+        isForExport ? 'w-[1050px] p-5' : 'w-full p-4 sm:p-6 min-w-[950px] print:min-w-0 print:w-full print:p-0'
       }`}
       style={{
         fontFamily: 'Arial, sans-serif',
@@ -298,21 +405,21 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       }}
     >
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: isExtremeDense ? '2px' : '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: '38px', width: 'auto' }} />
+          <img src="/cp_logo-removebg-preview.png" alt="Chitra Paratama" style={{ height: isExtremeDense ? '26px' : '34px', width: 'auto' }} />
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2' }}>
+        <div style={{ textAlign: 'right', paddingRight: '2px' }}>
+          <div style={{ fontSize: isExtremeDense ? '10pt' : '11.5pt', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.15' }}>
             Summary Permintaan Barang Safety
             {data.targetSite === 'VALE' && <span style={{ color: '#ea580c' }}> (Vale)</span>}
             {data.targetSite === 'GABUNGAN' && <span style={{ color: '#2563eb' }}> (Gabungan Site)</span>}
           </div>
-          <div style={{ fontSize: '9pt', fontWeight: 'bold', marginTop: '2px', color: '#333' }}>{data.sectionName}</div>
+          <div style={{ fontSize: isExtremeDense ? '8pt' : '9pt', fontWeight: 'bold', marginTop: '1px', color: '#333' }}>{data.sectionName}</div>
         </div>
       </div>
 
-      <div style={{ fontSize: '7.5pt', marginBottom: '8px', lineHeight: '1.3', color: '#111' }}>
+      <div style={{ fontSize: isExtremeDense ? '6.3pt' : '7.2pt', marginBottom: isExtremeDense ? '2px' : '6px', lineHeight: isExtremeDense ? '1.15' : '1.25', color: '#111' }}>
         <div><strong>Tanggal Pengajuan:</strong> {data.generatedAt ? new Date(data.generatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</div>
         {data.periodStart && data.periodEnd && (
           <div>
@@ -325,88 +432,163 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
       </div>
 
       {/* Table */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', tableLayout: 'fixed' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: isExtremeDense ? '2px' : '6px', tableLayout: 'fixed', boxSizing: 'border-box' }}>
+        <colgroup>
+          <col style={{ width: '18px' }} />
+          <col style={{ width: colWidthName }} />
+          <col style={{ width: '34px' }} />
+          {dynamicQtyCols.map((c) => (
+            <col key={c} />
+          ))}
+          <col style={{ width: '20px' }} />
+          <col style={{ width: '28px' }} />
+          <col style={{ width: '34px' }} />
+          <col style={{ width: colWidthSite }} />
+          <col style={{ width: colWidthRemarks }} />
+          <col style={{ width: isExtremeDense ? '44px' : '50px' }} className="print-hidden print:hidden" />
+        </colgroup>
         <thead>
           <tr>
-            <th style={{ ...th, width: '24px' }} rowSpan={2}>No</th>
-            <th style={{ ...th, width: '105px' }} rowSpan={2}>Nama Karyawan</th>
-            <th style={{ ...th, width: '38px' }} rowSpan={2}>SN</th>
+            <th style={th} rowSpan={2}>No</th>
+            <th style={th} rowSpan={2}>Nama Karyawan</th>
+            <th style={th} rowSpan={2}>SN</th>
             {dynamicQtyCols.map(c => (
-              <th key={c} style={thItem} rowSpan={2}>
-                {c}
+              <th key={c} style={thItem} rowSpan={2} title={c}>
+                {formatApdItemColHeader(c)}
               </th>
             ))}
-            <th style={th} colSpan={2}>{SAFETY_SHOES_COL}</th>
-            <th style={{ ...th, width: '70px' }} rowSpan={2}>Site</th>
-            <th style={{ ...th, width: '65px' }} rowSpan={2}>Remarks</th>
-            <th style={{ ...th, width: '60px' }} className="print:hidden" rowSpan={2}>Dokumen</th>
+            <th style={th} colSpan={3}>{SAFETY_SHOES_COL}</th>
+            <th style={th} rowSpan={2}>Site</th>
+            <th style={th} rowSpan={2}>Remarks</th>
+            <th style={th} className="print-hidden print:hidden" rowSpan={2}>Dokumen</th>
           </tr>
           <tr>
-            <th style={{ ...th, width: '22px' }}>QTY</th>
-            <th style={{ ...th, width: '26px' }}>Size</th>
+            <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>QTY</th>
+            <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>Size</th>
+            <th style={{ ...th, fontSize: '6.5pt', padding: '1px' }}>Masa Pakai</th>
           </tr>
         </thead>
         <tbody>
           {employees.slice(0, displayLimit).map((e, i) => (
-            <tr key={i} style={{ height: '18px' }}>
-              <td style={td}>{i + 1}</td>
+            <tr key={i} style={{ height: rowHeight }}>
+              <td style={{ ...td, fontSize: textFontSize }}>{i + 1}</td>
               <td style={{ ...tdL, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</td>
-              <td style={td}>{e.sn}</td>
+              <td style={{ ...td, fontSize: textFontSize }}>{e.sn}</td>
               {dynamicQtyCols.map(c => (
-                <td key={c} style={td}>{e.items[c] || ''}</td>
+                <td key={c} style={{ ...td, fontWeight: 'bold' }}>{e.items[c] || ''}</td>
               ))}
-              <td style={td}>{e.items['Safety Shoes'] || ''}</td>
-              <td style={td}>{e.items['Safety Shoes Size'] || ''}</td>
-              <td style={{ ...td, fontSize: '6pt', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '1px 2px' }}>{e.site}</td>
-              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '1px 2px', lineHeight: '1.1' }} title={e.remarks}>
+              <td style={{ ...td, fontWeight: 'bold' }}>{e.items['Safety Shoes'] || ''}</td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : textFontSize, wordBreak: 'break-word', lineHeight: '1.05' }}>{e.items['Safety Shoes Size'] || ''}</td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '6.2pt' : '6.8pt', padding: '1px' }}>
+                {e.items['Safety Shoes'] ? (
+                  (data.status === 'draft' || data.status === 'revisi') ? (
+                    <>
+                      <div className="print-hidden print:hidden w-full">
+                        <input
+                          list="masa-pakai-presets-preview"
+                          defaultValue={e.items['Safety Shoes Masa Pakai'] || ''}
+                          onBlur={(ev) =>
+                            handleMasaPakaiChange(
+                              e.employeeId || 0,
+                              e.apdRequestId,
+                              ev.target.value,
+                              e.items['Safety Shoes Masa Pakai']
+                            )
+                          }
+                          className="w-full text-center text-[7px] border border-blue-200 focus:border-blue-500 rounded px-0.5 py-0.5 bg-blue-50/40 text-slate-900 font-medium"
+                          placeholder="Masa pakai"
+                          title="Klik untuk memilih / mengubah masa pakai safety shoes"
+                        />
+                      </div>
+                      <span className="hidden print:inline font-medium">
+                        {e.items['Safety Shoes Masa Pakai'] || '—'}
+                      </span>
+                    </>
+                  ) : (
+                    <span>{e.items['Safety Shoes Masa Pakai'] || '—'}</span>
+                  )
+                ) : (
+                  <span className="text-slate-400">—</span>
+                )}
+              </td>
+              <td style={{ ...td, fontSize: isExtremeDense ? '5.6pt' : '6.8pt', lineHeight: '1.05', overflow: 'hidden', whiteSpace: 'normal', wordBreak: 'break-word', padding: '0.5px 1.5px' }}>
                 <div style={{
-                  maxHeight: isUltraDense ? '22px' : isDense ? '28px' : '36px',
+                  maxHeight: isExtremeDense ? '16px' : undefined,
+                  overflow: isExtremeDense ? 'hidden' : undefined,
+                  display: isExtremeDense ? '-webkit-box' : undefined,
+                  WebkitLineClamp: isExtremeDense ? 2 : undefined,
+                  WebkitBoxOrient: isExtremeDense ? 'vertical' : undefined,
+                }}>
+                  {e.site}
+                </div>
+              </td>
+              <td style={{ ...tdL, fontSize: remarksFontSize, padding: '0.5px 2px', lineHeight: '1.05' }} title={e.remarks}>
+                <div style={{
+                  maxHeight: isExtremeDense ? '15px' : isUltraDense ? '24px' : isDense ? '28px' : '36px',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   display: '-webkit-box',
-                  WebkitLineClamp: isUltraDense ? 2 : isDense ? 3 : 4,
+                  WebkitLineClamp: isExtremeDense ? 1 : isUltraDense ? 2 : isDense ? 3 : 4,
                   WebkitBoxOrient: 'vertical',
                   wordBreak: 'break-word',
                 }}>
                   {e.remarks || '—'}
                 </div>
               </td>
-              <td style={{ ...td, padding: '1px' }} className="print:hidden">
-                {e.apdRequestId ? (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRequestId(e.apdRequestId || null)}
-                    className="inline-flex items-center justify-center gap-1 text-[8px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded shadow-2xs cursor-pointer w-full"
-                    title="Lihat Dokumen Request Karyawan"
-                  >
-                    <FileText className="size-2.5 text-blue-600" />
-                    <span>Dokumen</span>
-                  </button>
-                ) : (
-                  <span className="text-slate-400 text-[8px]">—</span>
-                )}
+              <td style={{ ...td, padding: '1px' }} className="print-hidden print:hidden">
+                <div className="flex items-center justify-center gap-1 px-0.5">
+                  {e.apdRequestId ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequestId(e.apdRequestId || null)}
+                      className="inline-flex items-center justify-center gap-1 text-[8px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1 py-0.5 rounded shadow-2xs cursor-pointer flex-1"
+                      title="Lihat Dokumen Request Karyawan"
+                    >
+                      <FileText className="size-2.5 text-blue-600" />
+                      <span>Dokumen</span>
+                    </button>
+                  ) : (
+                    <span className="text-slate-400 text-[8px] flex-1 text-center">—</span>
+                  )}
+                  {(data.status === 'draft' || data.status === 'revisi') && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(e.employeeId || 0, e.apdRequestId, e.name)}
+                      disabled={removingEmpId === (e.employeeId || 0)}
+                      className="inline-flex items-center justify-center text-rose-600 hover:text-rose-800 hover:bg-rose-50 p-0.5 rounded border border-rose-200 cursor-pointer shrink-0"
+                      title={`Keluarkan ${e.name} dari Summary`}
+                    >
+                      {removingEmpId === (e.employeeId || 0) ? (
+                        <Loader2 className="size-2.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-2.5" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}
           {Array.from({ length: emptyRowCount }).map((_, i) => (
-            <tr key={`e${i}`} style={{ height: '18px' }}>
-              <td style={td}>{employees.length + i + 1}</td>
-              {Array.from({ length: dynamicQtyCols.length + 6 }).map((_, j) => (
+            <tr key={`e${i}`} style={{ height: rowHeight }}>
+              <td style={{ ...td, fontSize: textFontSize }}>{employees.length + i + 1}</td>
+              {Array.from({ length: dynamicQtyCols.length + 7 }).map((_, j) => (
                 <td key={j} style={td}></td>
               ))}
-              <td style={td} className="print:hidden"></td>
+              <td style={td} className="print-hidden print:hidden"></td>
             </tr>
           ))}
-          <tr style={{ background: '#e5e7eb', fontWeight: 'bold', height: '19px' }}>
-            <td style={td} colSpan={3}>Total Qty</td>
+          <tr style={{ background: '#e2e8f0', fontWeight: 'bold', height: rowHeight }}>
+            <td style={{ ...td, fontSize: textFontSize, fontWeight: 'bold' }} colSpan={3}>Total Qty</td>
             {dynamicQtyCols.map(c => (
-              <td key={c} style={td}>{totals[c] || ''}</td>
+              <td key={c} style={{ ...td, fontWeight: 'bold' }}>{totals[c] || ''}</td>
             ))}
-            <td style={td}>{totals['Safety Shoes'] || ''}</td>
-            <td style={td}>—</td>
-            <td style={td}>—</td>
-            <td style={td}>—</td>
-            <td style={td} className="print:hidden">—</td>
+            <td style={{ ...td, fontWeight: 'bold' }}>{totals['Safety Shoes'] || ''}</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }}>—</td>
+            <td style={{ ...td, fontSize: textFontSize }} className="print-hidden print:hidden">—</td>
           </tr>
         </tbody>
       </table>
@@ -438,17 +620,17 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         };
 
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isUltraDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${colCount}, 1fr)`, gap: '8px', textAlign: 'center', marginTop: isExtremeDense ? '2px' : isDense ? '4px' : '6px', flexShrink: 0 }}>
             {/* Diajukan Oleh */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diajukan Oleh,</div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
                   {data.submitterSignatureUrl && <img src={data.submitterSignatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
-              <div style={{ fontSize: '6.5pt', color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{data.generatedByName}</div>
+              <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>Pembuat Dokumen ({data.sectionName})</div>
               {data.generatedAt && (
                 <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(data.generatedAt)}</div>
               )}
@@ -473,14 +655,14 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
                 })();
                 return (
                   <div key={appr.id || idx}>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                    <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                       <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
                         {appr.signatureUrl && <img src={appr.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                       </div>
                     </div>
-                    <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
-                    <div style={{ fontSize: '6.5pt', color: '#444' }}>{roleDisplay}</div>
+                    <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{appr.approverName || '.............'}</div>
+                    <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>{roleDisplay}</div>
                     {appr.reviewedAt && (
                       <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(appr.reviewedAt)}</div>
                     )}
@@ -492,25 +674,25 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
               })
             ) : (
               <div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
+                <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Diperiksa Oleh,</div>
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                   <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}></div>
                 </div>
-                <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>.............</div>
-                <div style={{ fontSize: '6.5pt', color: '#444' }}>(Section Head — {data.sectionName})</div>
+                <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>.............</div>
+                <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>(Section Head — {data.sectionName})</div>
               </div>
             )}
 
             {/* Disetujui Oleh (Department Head) */}
             <div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold', marginBottom: '2px' }}>Disetujui Oleh,</div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2px', height: sigContainerHeight }}>
                 <div style={{ width: '130px', borderBottom: '1px solid #000', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: '2px' }}>
                   {deptHead?.signatureUrl && <img src={deptHead.signatureUrl} alt="TTD" style={{ maxHeight: sigImgHeight, maxWidth: '120px' }} />}
                 </div>
               </div>
-              <div style={{ fontSize: '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
-              <div style={{ fontSize: '6.5pt', color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
+              <div style={{ fontSize: isExtremeDense ? '7pt' : '7.5pt', fontWeight: 'bold' }}>{deptHead?.approverName || '.............'}</div>
+              <div style={{ fontSize: isExtremeDense ? '6.2pt' : '6.5pt', color: '#444' }}>({deptHead?.approverJobTitle || 'Department Head'} — {data.departmentName})</div>
               {deptHead?.reviewedAt && (
                 <div style={{ fontSize: '5.5pt', color: '#777', marginTop: '1px' }}>{fmtDate(deptHead.reviewedAt)}</div>
               )}
@@ -525,9 +707,90 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
   );
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
+    <div className="space-y-5 max-w-7xl mx-auto summary-preview-root print:space-y-0 print:max-w-none print:mx-0">
+      <style>{`
+        @page {
+          size: A4 landscape;
+          margin: 5mm 7mm;
+        }
+        @media print {
+          @page {
+            size: A4 landscape;
+            margin: 5mm 7mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            background: #fff !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          /* Sembunyikan seluruh UI chrome/dialog/iframe selain dokumen printable utama agar tidak terduplikasi antar halaman */
+          body *:not(:has(#summary-document-printable)):not(#summary-document-printable):not(#summary-document-printable *) {
+            display: none !important;
+          }
+          *:has(#summary-document-printable) {
+            display: block !important;
+            position: static !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            overflow: visible !important;
+            transform: none !important;
+          }
+          #summary-document-printable {
+            position: static !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 2px !important;
+            box-sizing: border-box !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: #fff !important;
+            overflow: visible !important;
+          }
+          #summary-document-printable table {
+            width: 100% !important;
+            page-break-after: auto;
+          }
+          #summary-document-printable thead {
+            display: table-header-group;
+          }
+          #summary-document-printable tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          #summary-document-printable col.print-hidden {
+            display: none !important;
+            visibility: collapse !important;
+            width: 0 !important;
+          }
+          .print-hidden,
+          .print\\:hidden {
+            display: none !important;
+            width: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+          }
+        }
+      `}</style>
+
       {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="print-hidden print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -553,6 +816,7 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             onClick={handlePrintInPlace}
             disabled={printing}
             className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer shadow-2xs"
+            title="Cetak langsung dokumen resmi A4 Landscape"
           >
             {printing ? (
               <Loader2 className="size-3.5 animate-spin text-emerald-600" />
@@ -562,8 +826,23 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             <span>Cetak PDF</span>
           </Button>
 
-          {/* Hapus Draft / Pending */}
-          {(data.status === 'draft' || data.status === 'pending' || data.status === 'pending_approval') && (
+          {/* Buka Tab Cetak Baru */}
+          <a
+            href={`/print/summary/${data.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center size-9 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 shadow-2xs transition-colors cursor-pointer"
+            title="Buka halaman cetak resmi di tab baru"
+          >
+            <ExternalLink className="size-4" />
+          </a>
+
+          {/* Hapus Draft / Pending / Revisi / Rejected */}
+          {(data.status === 'draft' ||
+            data.status === 'pending' ||
+            data.status === 'pending_approval' ||
+            data.status === 'revisi' ||
+            data.status === 'rejected') && (
             <Button
               variant="outline"
               size="sm"
@@ -580,15 +859,31 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
             </Button>
           )}
 
-          {/* Submit Approval */}
-          {data.status === 'draft' && (
+          {/* Edit Draft / Revisi */}
+          {(data.status === 'draft' || data.status === 'revisi') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditModal(true)}
+              className="h-9 gap-1.5 text-xs font-bold border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900 rounded-xl shadow-2xs cursor-pointer"
+              title="Edit item APD, keterangan, ukuran sepatu, atau karyawan tanpa perlu menghapus summary"
+            >
+              <FilePenLine className="size-3.5" />
+              <span>Edit</span>
+            </Button>
+          )}
+
+          {/* Submit Approval / Re-submit */}
+          {(data.status === 'draft' || data.status === 'revisi') && (
             <Button
               size="sm"
               onClick={() => setShowApprovalDialog(true)}
               className="h-9 gap-1.5 text-xs font-bold bg-[#003461] text-white hover:bg-[#00274a] rounded-xl shadow-xs cursor-pointer"
             >
               <FilePenLine className="size-3.5" />
-              <span>Tanda Tangan &amp; Submit</span>
+              <span>
+                {data.status === 'revisi' ? 'Tanda Tangan & Submit Ulang' : 'Tanda Tangan & Submit'}
+              </span>
             </Button>
           )}
 
@@ -608,14 +903,69 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         </div>
       </div>
 
+      {/* Revision Notice Banner */}
+      {data.status === 'revisi' && (() => {
+        const revApprover = data.approvals.find(
+          (a) => a.status === 'needs_correction' || (Boolean(a.decisionNote) && a.status !== 'approved')
+        );
+        return (
+          <div className="print-hidden print:hidden rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-5 shadow-sm space-y-2">
+            <div className="flex items-center gap-2.5 text-amber-900 font-bold text-sm">
+              <AlertTriangle className="size-5 text-amber-600" />
+              <span>Dokumen Summary Memerlukan Revisi</span>
+            </div>
+            <p className="text-xs text-amber-800">
+              Dokumen ini telah dikembalikan oleh{' '}
+              <strong>{revApprover?.approverName || 'Approver'}</strong>
+              {revApprover?.approverJobTitle ? ` (${revApprover.approverJobTitle})` : ''} untuk diperbaiki sebelum dapat disetujui.
+            </p>
+            {revApprover?.decisionNote && (
+              <div className="rounded-xl bg-white p-3 border border-amber-200 text-xs text-slate-800 shadow-2xs font-medium">
+                <span className="font-bold text-amber-900">Catatan Revisi dari Approver:</span>
+                <p className="mt-1 text-slate-700 whitespace-pre-wrap">{revApprover.decisionNote}</p>
+              </div>
+            )}
+            <div className="text-[11px] text-amber-700 flex items-center gap-1.5 pt-1">
+              <Info className="size-3.5 text-amber-600 shrink-0" />
+              <span>
+                Klik tombol <strong>Edit</strong> untuk mengubah item APD/keterangan/karyawan tanpa perlu menghapus summary, lalu ajukan kembali dengan menekan tombol <strong>Tanda Tangan &amp; Submit Ulang</strong>.
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Rejected Notice Banner */}
+      {data.status === 'rejected' && (() => {
+        const rejApprover = data.approvals.find((a) => a.status === 'rejected');
+        return (
+          <div className="print-hidden print:hidden rounded-2xl border-2 border-rose-400 bg-rose-50/90 p-5 shadow-sm space-y-2">
+            <div className="flex items-center gap-2.5 text-rose-900 font-bold text-sm">
+              <XCircle className="size-5 text-rose-600" />
+              <span>Dokumen Summary Ditolak</span>
+            </div>
+            <p className="text-xs text-rose-800">
+              Dokumen ini telah ditolak oleh{' '}
+              <strong>{rejApprover?.approverName || 'Approver'}</strong>.
+            </p>
+            {rejApprover?.decisionNote && (
+              <div className="rounded-xl bg-white p-3 border border-rose-200 text-xs text-slate-800 shadow-2xs font-medium">
+                <span className="font-bold text-rose-900">Alasan Penolakan:</span>
+                <p className="mt-1 text-slate-700 whitespace-pre-wrap">{rejApprover.decisionNote}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Main Document Paper Sheet */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-x-auto">
+      <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-x-auto print:border-0 print:shadow-none print:rounded-none print:overflow-visible">
         {renderDocumentContent(false)}
       </div>
 
       {/* Fullscreen Zoom Lightbox Dialog */}
       {isZoomModalOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="print-hidden print:hidden fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200">
           {/* Top Bar */}
           <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-900/90 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
@@ -691,12 +1041,45 @@ export function SummaryPreview({ data }: { data: SummaryData }) {
         />
       )}
 
+      {/* Edit Summary Modal (Draft / Revisi) */}
+      {showEditModal && (
+        <SummaryGeneratorModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          section={{
+            id: data.sectionId || 33,
+            name: data.sectionName,
+            code: '',
+            departmentId: null,
+            headEmployeeId: null,
+            targetSite: data.targetSite || 'GABUNGAN',
+            approvedCount: 0,
+            summaryStatus: data.status,
+            summaryId: data.id,
+            summaryNumber: data.summaryNumber,
+          }}
+          currentEmployeeId={data.generatedByEmployeeId || 0}
+          editSummaryId={data.id}
+          editSectionId={data.sectionId || 33}
+          onSuccess={() => {
+            setShowEditModal(false);
+            router.refresh();
+          }}
+        />
+      )}
+
       {/* APD Request Detail Modal */}
       <ApdRequestDetailModal
         isOpen={Boolean(selectedRequestId)}
         onClose={() => setSelectedRequestId(null)}
         requestId={selectedRequestId}
       />
+
+      <datalist id="masa-pakai-presets-preview">
+        {SAFETY_SHOES_MASA_PAKAI_PRESETS.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
     </div>
   );
 }

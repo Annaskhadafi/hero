@@ -1,9 +1,18 @@
 export const DEFAULT_PINNED_TITLES = [
   "Check-In",
   "Aktivitas Harian",
+  "Troubleshoot & Tiket",
   "Input Progress",
   "Pengajuan SPL",
   "Request Barang",
   "HSE Report",
+  "Izin & Terlambat",
+  "Tire Repair Form",
   "SOP & WIN",
-]
+  "Armada GA",
+  "Audit 5R",
+  "Chitra Learning",
+  "Pengaduan HR",
+  "CS Assets",
+  "Hero Genius",
+];

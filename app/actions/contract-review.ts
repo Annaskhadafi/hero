@@ -18,7 +18,7 @@ import {
   sites,
 } from '@/db/schema/hero'
 import { centralServiceEmployees } from '@/db/schema/central-service'
-import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 function safeRevalidatePath(path: string) {
@@ -30,6 +30,7 @@ function safeRevalidatePath(path: string) {
 }
 import { randomUUID } from 'crypto'
 import { logEmailDeliveryRecord, sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl, isLocalAppOrigin } from '@/lib/auth-config'
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
@@ -38,20 +39,26 @@ import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessRole, getCurrentMenuPermission, isSuperAdminRole } from '@/lib/hero-access'
 
 async function getBaseUrl(): Promise<string> {
-  let baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!baseUrl) {
-    try {
-      const headersList = await headers()
-      const host = headersList.get('host')
-      const protocol = headersList.get('x-forwarded-proto') || 'http'
-      if (host) {
-        baseUrl = `${protocol}://${host}`
-      }
-    } catch (e) {
-      // headers() might throw if run outside request context
-    }
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (envUrl && !isLocalAppOrigin(envUrl)) {
+    return envUrl.replace(/\/+$/, '')
   }
-  return baseUrl || 'http://localhost:3000'
+
+  try {
+    const headersList = await headers()
+    const host = headersList.get('x-forwarded-host')?.split(',')[0]?.trim() || headersList.get('host')
+    const protocol = headersList.get('x-forwarded-proto') || 'https'
+    if (host) {
+      const candidate = `${protocol}://${host}`
+      if (!isLocalAppOrigin(candidate)) {
+        return candidate
+      }
+    }
+  } catch (e) {
+    // headers() might throw if run outside request context
+  }
+
+  return getEmailAppUrl()
 }
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
@@ -669,9 +676,9 @@ async function getUserByName(name: string, fallbackEmail?: string) {
   const [row] = await db
     .select({ id: employees.id, name: employees.name, email: employees.email, jobTitle: employees.jobTitle })
     .from(employees)
-    .where(eq(employees.name, name))
+    .where(or(eq(employees.name, name.trim()), ilike(employees.name, name.trim())))
     .limit(1)
-  return row ?? { id: null, name, email: fallbackEmail || '', jobTitle: '' }
+  return row ?? { id: null, name: name.trim(), email: fallbackEmail || '', jobTitle: '' }
 }
 
 async function getUserById(employeeId: number | null | undefined) {
@@ -783,6 +790,52 @@ async function resolveMasterSectionAndDepartmentHeads(input: {
   }
 }
 
+function isHseSectionOrRole(sectionName?: string | null, departmentName?: string | null, jobTitle?: string | null): boolean {
+  const s = (sectionName || '').trim().toLowerCase()
+  const d = (departmentName || '').trim().toLowerCase()
+  const j = (jobTitle || '').trim().toLowerCase()
+  return (
+    s === 'hse' ||
+    s.includes('hse') ||
+    s.includes('health') ||
+    s.includes('safety') ||
+    d === 'hse' ||
+    d.includes('hse') ||
+    j.includes('hse')
+  )
+}
+
+function isCkSiteName(siteName?: string | null): boolean {
+  if (!siteName) return false
+  const s = siteName.trim().toUpperCase()
+  return /\bCK\b/i.test(s) || s.startsWith('CK') || s.includes('CK ') || s.includes(' CK')
+}
+
+export async function resolveHseLeaderForSite(siteName?: string | null) {
+  const isCk = isCkSiteName(siteName)
+  if (isCk) {
+    // Saipudin - HSE Leader (SN: 72648)
+    const user = await getUserByName('Saipudin', 'saipudin@chitraparatama.co.id')
+    return {
+      id: user?.id ?? 1164,
+      name: user?.name || 'Saipudin',
+      email: user?.email || 'saipudin@chitraparatama.co.id',
+      jobTitle: user?.jobTitle || 'HSE Leader',
+      role: 'HSE Leader (Site CK)',
+    }
+  } else {
+    // Andi Safari - HSE Coordinator (SN: 70909)
+    const user = await getUserByName('Andi Safari', 'andi.safari@chitraparatama.co.id')
+    return {
+      id: user?.id ?? 1104,
+      name: user?.name || 'Andi Safari',
+      email: user?.email || 'andi.safari@chitraparatama.co.id',
+      jobTitle: user?.jobTitle || 'HSE Coordinator',
+      role: 'HSE Coordinator (Non-CK)',
+    }
+  }
+}
+
 async function buildContractReviewApprovals(review: typeof hcEmployeeContractReviews.$inferSelect) {
   if (!review.employeeId) return []
 
@@ -820,8 +873,16 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
         .limit(1)
     : []
 
+  const [sectionRow] = userEmployee.sectionId
+    ? await db
+        .select({ id: masterSections.id, name: masterSections.name })
+        .from(masterSections)
+        .where(eq(masterSections.id, userEmployee.sectionId))
+        .limit(1)
+    : []
+
   const siteName = siteRow?.name || csEmp?.siteName || userEmployee.workLocation || ''
-  const section = csEmp?.section || ''
+  const section = csEmp?.section || sectionRow?.name || ''
   const settings = await getContractReviewSettings()
   const isHo = isHoSite(siteName) || siteRow?.siteType === 'Head Office' || siteRow?.siteType === 'HO'
   const legacySectionHead = getLegacySectionHeadConfig(section, settings)
@@ -859,6 +920,11 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
     const customLeader = await getUserByName(review.leaderName)
     if (customLeader?.id || customLeader?.name) {
       firstApprover = customLeader
+    }
+  } else if (isHseSectionOrRole(section, '', userEmployee.jobTitle)) {
+    const hseLeader = await resolveHseLeaderForSite(siteName)
+    if (hseLeader && hseLeader.id !== userEmployee.id) {
+      firstApprover = hseLeader
     }
   } else if (!isHo) {
     let siteHead: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
@@ -950,6 +1016,186 @@ async function buildContractReviewApprovals(review: typeof hcEmployeeContractRev
   }))
 }
 
+async function syncExistingContractReviewApprovals(
+  review: typeof hcEmployeeContractReviews.$inferSelect,
+  existingApprovals: (typeof hcContractReviewApprovals.$inferSelect)[]
+) {
+  // 1. Abian check (ensure technical/PJO routing when employee is Abian or reviewed)
+  const step1 = existingApprovals.find((a) => a.stepOrder === 1 && a.status === 'pending')
+  if (step1 && step1.approverEmployeeId === review.employeeId) {
+    const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
+    if (abianUser?.id && abianUser.id !== review.employeeId) {
+      await db
+        .update(hcContractReviewApprovals)
+        .set({
+          approverEmployeeId: abianUser.id,
+          approverName: abianUser.name,
+          approverEmail: abianUser.email,
+        })
+        .where(eq(hcContractReviewApprovals.id, step1.id))
+      step1.approverEmployeeId = abianUser.id
+      step1.approverName = abianUser.name
+      step1.approverEmail = abianUser.email
+    }
+  }
+
+  const hasConfirmationStep = existingApprovals.some((a) => a.approverRole === 'section_head_confirmation')
+
+  // 2. Leader Sync
+  if (review.leaderName && review.leaderName.trim()) {
+    const leaderStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'pjo_or_te_initial' ||
+        (!hasConfirmationStep && a.approverRole === 'section_head_initial') ||
+        a.stepOrder === 1
+    )
+    if (leaderStep && leaderStep.approverName?.trim().toLowerCase() !== review.leaderName.trim().toLowerCase()) {
+      const leaderUser = await getUserByName(review.leaderName)
+      const updateData = {
+        approverName: leaderUser.name || review.leaderName.trim(),
+        approverEmployeeId: leaderUser.id,
+        approverEmail: leaderUser.email || '',
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, leaderStep.id))
+      Object.assign(leaderStep, updateData)
+    }
+  }
+
+  // 3. Superior (Section Head) Sync
+  if (review.superiorName && review.superiorName.trim()) {
+    let superiorStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'section_head_confirmation' ||
+        (hasConfirmationStep && a.stepOrder === 3) ||
+        (!hasConfirmationStep && a.approverRole === 'section_head_initial')
+    )
+
+    // If review previously only had 4 steps (no confirmation step because leader was same as superior),
+    // but now superiorName is specified and differs from leaderName:
+    if (!superiorStep && !hasConfirmationStep && review.leaderName && review.superiorName.trim().toLowerCase() !== review.leaderName.trim().toLowerCase()) {
+      const superiorUser = await getUserByName(review.superiorName)
+      const step3 = existingApprovals.find((a) => a.stepOrder === 3)
+      const step4 = existingApprovals.find((a) => a.stepOrder === 4)
+      if (step4) {
+        await db.update(hcContractReviewApprovals).set({ stepOrder: 5 }).where(eq(hcContractReviewApprovals.id, step4.id))
+        step4.stepOrder = 5
+      }
+      if (step3) {
+        await db.update(hcContractReviewApprovals).set({ stepOrder: 4 }).where(eq(hcContractReviewApprovals.id, step3.id))
+        step3.stepOrder = 4
+      }
+      const [newStep] = await db
+        .insert(hcContractReviewApprovals)
+        .values({
+          reviewId: review.id,
+          stepOrder: 3,
+          approvalToken: randomUUID(),
+          approverEmployeeId: superiorUser.id,
+          approverName: superiorUser.name || review.superiorName.trim(),
+          approverEmail: superiorUser.email || '',
+          approverRole: 'section_head_confirmation',
+          status: 'waiting',
+        })
+        .returning()
+      existingApprovals.splice(2, 0, newStep)
+      superiorStep = newStep
+    }
+
+    if (superiorStep && superiorStep.approverName?.trim().toLowerCase() !== review.superiorName.trim().toLowerCase()) {
+      const superiorUser = await getUserByName(review.superiorName)
+      const updateData: any = {
+        approverName: superiorUser.name || review.superiorName.trim(),
+        approverEmployeeId: superiorUser.id,
+        approverEmail: superiorUser.email || '',
+      }
+      // If the approver person changed, clear invalid signature from previous approver
+      if (superiorStep.signatureDataUrl) {
+        updateData.signatureDataUrl = null
+        updateData.signedAt = null
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, superiorStep.id))
+      Object.assign(superiorStep, updateData)
+    }
+  }
+
+  // 4. Next Superior (Department Head) Sync
+  if (review.nextSuperiorName && review.nextSuperiorName.trim()) {
+    const deptHeadStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'central_service_manager' ||
+        a.approverRole === 'department_head' ||
+        (hasConfirmationStep ? a.stepOrder === 4 : a.stepOrder === 3)
+    )
+    if (deptHeadStep && deptHeadStep.approverName?.trim().toLowerCase() !== review.nextSuperiorName.trim().toLowerCase()) {
+      const deptHeadUser = await getUserByName(review.nextSuperiorName)
+      const updateData: any = {
+        approverName: deptHeadUser.name || review.nextSuperiorName.trim(),
+        approverEmployeeId: deptHeadUser.id,
+        approverEmail: deptHeadUser.email || '',
+      }
+      if (deptHeadStep.signatureDataUrl) {
+        updateData.signatureDataUrl = null
+        updateData.signedAt = null
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, deptHeadStep.id))
+      Object.assign(deptHeadStep, updateData)
+    }
+  }
+
+  // 5. HR Sync
+  if (review.hrName && review.hrName.trim()) {
+    const hrStep = existingApprovals.find(
+      (a) =>
+        a.approverRole === 'hr' ||
+        (hasConfirmationStep ? a.stepOrder === 5 : a.stepOrder === 4)
+    )
+    if (hrStep && hrStep.approverName?.trim().toLowerCase() !== review.hrName.trim().toLowerCase()) {
+      const hrUser = await getUserByName(review.hrName)
+      const updateData: any = {
+        approverName: hrUser.name || review.hrName.trim(),
+        approverEmployeeId: hrUser.id,
+        approverEmail: hrUser.email || '',
+      }
+      if (hrStep.signatureDataUrl) {
+        updateData.signatureDataUrl = null
+        updateData.signedAt = null
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, hrStep.id))
+      Object.assign(hrStep, updateData)
+    }
+  }
+
+  // 6. Employee Sync
+  if (review.employeeId) {
+    const empStep = existingApprovals.find((a) => a.approverRole === 'employee' || a.stepOrder === 2)
+    if (empStep && (empStep.approverEmployeeId !== review.employeeId || (review.employeeNameStr && empStep.approverName !== review.employeeNameStr))) {
+      const empUser = await getUserById(review.employeeId)
+      const updateData: any = {
+        approverName: empUser?.name || review.employeeNameStr || empStep.approverName,
+        approverEmployeeId: review.employeeId,
+        approverEmail: empUser?.email || '',
+      }
+      await db
+        .update(hcContractReviewApprovals)
+        .set(updateData)
+        .where(eq(hcContractReviewApprovals.id, empStep.id))
+      Object.assign(empStep, updateData)
+    }
+  }
+}
+
 export async function ensureContractReviewApprovals(reviewId: number) {
   const [review] = await db
     .select()
@@ -966,24 +1212,12 @@ export async function ensureContractReviewApprovals(reviewId: number) {
     .orderBy(asc(hcContractReviewApprovals.stepOrder))
 
   if (existingApprovals.length > 0) {
-    const step1 = existingApprovals.find((a) => a.stepOrder === 1 && a.status === 'pending')
-    if (step1 && step1.approverEmployeeId === review.employeeId) {
-      const abianUser = await getUserByName('Muhammad Abian Husain', 'abian.husain@chitraparatama.co.id')
-      if (abianUser?.id && abianUser.id !== review.employeeId) {
-        await db
-          .update(hcContractReviewApprovals)
-          .set({
-            approverEmployeeId: abianUser.id,
-            approverName: abianUser.name,
-            approverEmail: abianUser.email,
-          })
-          .where(eq(hcContractReviewApprovals.id, step1.id))
-        step1.approverEmployeeId = abianUser.id
-        step1.approverName = abianUser.name
-        step1.approverEmail = abianUser.email
-      }
-    }
-    return existingApprovals
+    await syncExistingContractReviewApprovals(review, existingApprovals)
+    return db
+      .select()
+      .from(hcContractReviewApprovals)
+      .where(eq(hcContractReviewApprovals.reviewId, reviewId))
+      .orderBy(asc(hcContractReviewApprovals.stepOrder))
   }
 
   const approvalSteps = await buildContractReviewApprovals(review)
@@ -1324,10 +1558,18 @@ async function resolveApproverForEmployee(emp: {
   departmentName?: string | null
   siteName?: string | null
   siteType?: string | null
+  jobTitle?: string | null
 }) {
   const settings = await getContractReviewSettings()
   const siteName = emp.siteName ?? ''
   const isHo = isHoSite(siteName) || emp.siteType === 'Head Office' || emp.siteType === 'HO'
+
+  // Special Check: HSE routing directly to Saipudin (CK) or Andi Safari (Non-CK)
+  const isHse = isHseSectionOrRole(emp.sectionName, emp.departmentName, emp.jobTitle)
+  let hseLeader: { id: number | null; name: string; email: string; jobTitle?: string; role?: string } | null = null
+  if (isHse) {
+    hseLeader = await resolveHseLeaderForSite(siteName)
+  }
 
   // 1. Direct Manager from Struktur Organisasi (hero_employees.direct_manager_id)
   let directManager: { id: number | null; name: string; email: string; jobTitle?: string } | null = null
@@ -1409,13 +1651,20 @@ async function resolveApproverForEmployee(emp: {
     ? (validDirectManager?.email ? validDirectManager : sectionHead)
     : (validSiteHead?.email ? validSiteHead : validDirectManager?.email ? validDirectManager : sectionHead)
 
+  // Special rule for HSE: Bypass PJO Site and route directly to HSE Leader / Coordinator
+  if (isHse && hseLeader && hseLeader.id !== emp.id && hseLeader.email) {
+    primaryApprover = hseLeader
+  }
+
   // Fallback to department head or HR if primary has no valid email
   if (!primaryApprover?.email) {
     primaryApprover = departmentHead?.email ? departmentHead : hr
   }
 
   let approverRoleTitle = 'Approver'
-  if (validSiteHead && primaryApprover?.id === validSiteHead.id) {
+  if (isHse && hseLeader && primaryApprover?.id === hseLeader.id) {
+    approverRoleTitle = hseLeader.role || 'HSE Leader'
+  } else if (validSiteHead && primaryApprover?.id === validSiteHead.id) {
     approverRoleTitle = `PJO / Lokasi Head (${siteName || 'Site'})`
   } else if (validDirectManager && primaryApprover?.id === validDirectManager.id) {
     approverRoleTitle = `Atasan Langsung (${validDirectManager.name})`
@@ -1429,9 +1678,9 @@ async function resolveApproverForEmployee(emp: {
 
   return {
     approver: primaryApprover,
-    siteHead,
-    directManager,
-    sectionHead,
+    siteHead: validSiteHead,
+    directManager: validDirectManager,
+    sectionHead: isHse && hseLeader ? hseLeader : sectionHead,
     departmentHead,
     hr,
     approverRoleTitle,
@@ -1524,7 +1773,15 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
       .orderBy(desc(hcEmployeeContractReviews.createdAt)),
     db
-      .select()
+      .select({
+        id: hcContractReviewApprovals.id,
+        reviewId: hcContractReviewApprovals.reviewId,
+        stepOrder: hcContractReviewApprovals.stepOrder,
+        status: hcContractReviewApprovals.status,
+        approverName: hcContractReviewApprovals.approverName,
+        approverRole: hcContractReviewApprovals.approverRole,
+        signatureDataUrl: sql<string | null>`CASE WHEN ${hcContractReviewApprovals.signatureDataUrl} IS NOT NULL AND ${hcContractReviewApprovals.signatureDataUrl} != '' THEN 'signed' ELSE NULL END`,
+      })
       .from(hcContractReviewApprovals)
       .orderBy(asc(hcContractReviewApprovals.stepOrder)),
   ])
@@ -1595,11 +1852,26 @@ export async function getExpiringContractEmployees(): Promise<ExpiringContractEm
       (normEmpName ? reviewsByName.get(normEmpName) : null) ||
       (normEmpSn ? reviewsBySn.get(normEmpSn) : null)
 
+    const rawPerm = emp.permanentDate ? String(emp.permanentDate).trim() : ''
+    const hasValidPermanentDate =
+      Boolean(rawPerm) &&
+      !rawPerm.startsWith('0001') &&
+      !rawPerm.startsWith('1970') &&
+      !rawPerm.startsWith('0000')
+
+    const isExplicitContract = Boolean(
+      emp.employeeStatusType?.toLowerCase().includes('kontrak') ||
+      emp.employmentStatus?.toLowerCase() === 'contract' ||
+      emp.employmentStatus?.toLowerCase() === 'kontrak'
+    )
+
     const isPermanent =
-      Boolean(emp.permanentDate) ||
-      emp.employmentStatus?.toLowerCase() === 'permanent' ||
-      emp.employmentStatus?.toLowerCase() === 'permanen' ||
-      (emp.employeeStatusType?.toLowerCase().includes('permanen') && !emp.employeeStatusType?.toLowerCase().includes('kontrak'))
+      !isExplicitContract &&
+      (hasValidPermanentDate ||
+        emp.employmentStatus?.toLowerCase() === 'permanent' ||
+        emp.employmentStatus?.toLowerCase() === 'permanen' ||
+        (Boolean(emp.employeeStatusType) &&
+          emp.employeeStatusType!.toLowerCase().includes('permanen')))
 
     if (isPermanent) {
       continue
@@ -1727,6 +1999,7 @@ export async function sendSingleContractReminder(employeeId: number) {
     departmentName: emp.departmentName,
     siteName: emp.siteName,
     siteType: emp.siteType,
+    jobTitle: emp.jobTitle,
   })
 
   const targetEmail = approver?.email?.trim() || hr?.email?.trim() || settings.approvalMatrix.hrEmail
@@ -1819,6 +2092,303 @@ export async function sendSingleContractReminder(employeeId: number) {
   return {
     success: true,
     message: `Reminder berhasil dikirim ke ${targetName} (${approverRoleTitle} - ${targetEmail}).`,
+  }
+}
+
+export type ReminderRecipientCandidate = {
+  type: 'section_leader' | 'site_head' | 'direct_manager' | 'hr' | 'custom'
+  name: string
+  email: string
+  role: string
+  description: string
+  isDefault?: boolean
+}
+
+export async function getContractReviewReminderRecipients(employeeId: number) {
+  try {
+    const [emp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeSn: employees.employeeSn,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        departmentId: employees.departmentId,
+        sectionId: employees.sectionId,
+        siteId: employees.siteId,
+        directManagerId: employees.directManagerId,
+        workLocation: employees.workLocation,
+        contractDurationEnd: employees.contractDurationEnd,
+        departmentName: masterDepartments.name,
+        sectionName: masterSections.name,
+        siteName: sites.name,
+        siteType: sites.siteType,
+      })
+      .from(employees)
+      .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .leftJoin(sites, eq(employees.siteId, sites.id))
+      .where(and(eq(employees.id, employeeId), eq(employees.isActive, true)))
+      .limit(1)
+
+    if (!emp) {
+      return { success: false as const, error: 'Karyawan tidak ditemukan.' }
+    }
+
+    const { approver, siteHead, directManager, sectionHead, hr, approverRoleTitle } =
+      await resolveApproverForEmployee({
+        id: emp.id,
+        sectionId: emp.sectionId,
+        departmentId: emp.departmentId,
+        siteId: emp.siteId,
+        directManagerId: emp.directManagerId,
+        sectionName: emp.sectionName,
+        departmentName: emp.departmentName,
+        siteName: emp.siteName,
+        siteType: emp.siteType,
+        jobTitle: emp.jobTitle,
+      })
+
+    const today = new Date()
+    const contractEndDate = emp.contractDurationEnd ? parseIsoDate(String(emp.contractDurationEnd)) : null
+    const daysLeft = contractEndDate ? differenceInCalendarDays(contractEndDate, today) : 0
+
+    const candidates: ReminderRecipientCandidate[] = []
+    const seenEmails = new Set<string>()
+
+    // 1. Primary detected approver (Leader Section / HSE Leader / etc.)
+    if (approver?.email) {
+      seenEmails.add(approver.email.toLowerCase().trim())
+      candidates.push({
+        type: 'section_leader',
+        name: approver.name,
+        email: approver.email,
+        role: approverRoleTitle || 'Atasan / Leader',
+        description: 'Rekomendasi sistem berdasarkan section dan hirarki atasan.',
+        isDefault: true,
+      })
+    }
+
+    // 2. Section Head (if different from primary approver)
+    if (sectionHead?.email && !seenEmails.has(sectionHead.email.toLowerCase().trim())) {
+      seenEmails.add(sectionHead.email.toLowerCase().trim())
+      candidates.push({
+        type: 'section_leader',
+        name: sectionHead.name,
+        email: sectionHead.email,
+        role: `Section Head (${emp.sectionName || 'Section'})`,
+        description: 'Pimpinan Section di Master Data.',
+      })
+    }
+
+    // 3. PJO / Site Head (if exists and different)
+    if (siteHead?.email && !seenEmails.has(siteHead.email.toLowerCase().trim())) {
+      seenEmails.add(siteHead.email.toLowerCase().trim())
+      candidates.push({
+        type: 'site_head',
+        name: siteHead.name,
+        email: siteHead.email,
+        role: `PJO / Lokasi Head (${emp.siteName || 'Site'})`,
+        description: 'Penanggung Jawab Operasional di site kerja karyawan.',
+      })
+    }
+
+    // 4. Direct Manager (if exists and different)
+    if (directManager?.email && !seenEmails.has(directManager.email.toLowerCase().trim())) {
+      seenEmails.add(directManager.email.toLowerCase().trim())
+      candidates.push({
+        type: 'direct_manager',
+        name: directManager.name,
+        email: directManager.email,
+        role: `Atasan Langsung (${directManager.jobTitle || 'Manager'})`,
+        description: 'Atasan langsung yang tercatat pada struktur organisasi.',
+      })
+    }
+
+    // 5. HR Manager / Staff
+    if (hr?.email && !seenEmails.has(hr.email.toLowerCase().trim())) {
+      candidates.push({
+        type: 'hr',
+        name: hr.name,
+        email: hr.email,
+        role: 'HC / HR-GA',
+        description: 'Perwakilan Human Capital / HR.',
+      })
+    }
+
+    return {
+      success: true as const,
+      candidates,
+      employeeInfo: {
+        id: emp.id,
+        name: emp.name,
+        employeeSn: normalizeSn(emp.employeeSn),
+        jobTitle: emp.jobTitle || '-',
+        section: emp.sectionName || '-',
+        site: emp.siteName || '-',
+        daysLeft,
+        contractEndDate: contractEndDate ? formatDisplayDate(contractEndDate) : '-',
+      },
+    }
+  } catch (err: any) {
+    console.error('[getContractReviewReminderRecipients] Error:', err)
+    return { success: false as const, error: err?.message || 'Gagal memuat kandidat penerima reminder.' }
+  }
+}
+
+export async function sendCustomContractReminder(input: {
+  employeeId: number
+  recipientEmail: string
+  recipientName: string
+  recipientRole?: string
+  note?: string
+}) {
+  await ensureContractReviewWorkflowTables()
+  const today = new Date()
+  const baseUrl = await getBaseUrl()
+  const settings = await getContractReviewSettings()
+
+  const [emp] = await db
+    .select({
+      id: employees.id,
+      name: employees.name,
+      employeeSn: employees.employeeSn,
+      email: employees.email,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      siteId: employees.siteId,
+      jobTitle: employees.jobTitle,
+      workLocation: employees.workLocation,
+      contractDurationEnd: employees.contractDurationEnd,
+      departmentName: masterDepartments.name,
+      sectionName: masterSections.name,
+      siteName: sites.name,
+    })
+    .from(employees)
+    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+    .leftJoin(sites, eq(employees.siteId, sites.id))
+    .where(and(eq(employees.id, input.employeeId), eq(employees.isActive, true)))
+    .limit(1)
+
+  if (!emp || !emp.contractDurationEnd) {
+    return { success: false, error: 'Karyawan tidak ditemukan atau tidak memiliki tanggal berakhir kontrak.' }
+  }
+
+  const contractEndDate = parseIsoDate(String(emp.contractDurationEnd))
+  if (!contractEndDate) {
+    return { success: false, error: 'Format tanggal berakhir kontrak tidak valid.' }
+  }
+
+  const targetEmail = input.recipientEmail.trim()
+  const targetName = input.recipientName.trim()
+  const targetRole = input.recipientRole?.trim() || 'Atasan / Reviewer'
+
+  if (!targetEmail) {
+    return { success: false, error: 'Email penerima wajib diisi.' }
+  }
+
+  const daysUntilEnd = differenceInCalendarDays(contractEndDate, today)
+  const reminderType = daysUntilEnd < 0 ? `Overdue (${Math.abs(daysUntilEnd)} hari)` : `H-${daysUntilEnd}`
+
+  const [existingReview] = await db
+    .select()
+    .from(hcEmployeeContractReviews)
+    .where(eq(hcEmployeeContractReviews.employeeId, input.employeeId))
+    .orderBy(desc(hcEmployeeContractReviews.createdAt))
+    .limit(1)
+
+  const reviewLink = existingReview
+    ? `${baseUrl}/dashboard/hc/contract-review/form/${existingReview.id}`
+    : `${baseUrl}/dashboard/hc/contract-review/new?employeeId=${emp.id}&employeeSn=${normalizeSn(emp.employeeSn)}`
+  const pendingApproval = existingReview
+    ? (await getContractReviewReminderContext(existingReview)).pendingApproval
+    : null
+  const actionableLink = pendingApproval ? `${baseUrl}/review/${pendingApproval.approvalToken}` : reviewLink
+
+  const template = settings.emailTemplates.reminder
+  let body = template.body
+    .replace(/{{recipientName}}/g, targetName)
+    .replace(/{{reviewerName}}/g, targetName)
+    .replace(/{{employeeName}}/g, emp.name)
+    .replace(/{{employeeSn}}/g, normalizeSn(emp.employeeSn))
+    .replace(/{{employeeSection}}/g, emp.sectionName || '-')
+    .replace(/{{employeeSite}}/g, emp.siteName || '-')
+    .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+    .replace(/{{reviewLink}}/g, actionableLink)
+    .replace(/{{approverName}}/g, targetName)
+    .replace(/{{approvalStep}}/g, targetRole)
+    .replace(/{{approvalLink}}/g, actionableLink)
+
+  if (input.note?.trim()) {
+    body += `\n\nCatatan Tambahan dari HC:\n${input.note.trim()}`
+  }
+
+  const subject = template.subject
+    .replace(/{{recipientName}}/g, targetName)
+    .replace(/{{employeeName}}/g, emp.name)
+    .replace(/{{employeeSn}}/g, normalizeSn(emp.employeeSn))
+    .replace(/{{contractEndDate}}/g, formatDisplayDate(contractEndDate))
+
+  const emailResult = await sendContractReviewEmail({
+    to: targetEmail,
+    subject,
+    body,
+    reviewId: existingReview?.id ?? 0,
+    templateCode: 'contract_review_reminder',
+    variables: {
+      recipientName: targetName,
+      reviewerName: targetName,
+      employeeName: emp.name,
+      employeeSn: normalizeSn(emp.employeeSn),
+      employeeSection: emp.sectionName || '-',
+      employeeSite: emp.siteName || '-',
+      contractEndDate: formatDisplayDate(contractEndDate),
+      reviewLink: actionableLink,
+      approverName: targetName,
+      approvalStep: targetRole,
+      approvalLink: actionableLink,
+    },
+  })
+
+  if (!emailResult.sent) {
+    return { success: false, error: emailResult.error || 'Gagal mengirim email reminder.' }
+  }
+
+  await db.insert(hcContractReviewReminders).values({
+    employeeId: emp.id,
+    employeeSn: normalizeSn(emp.employeeSn),
+    employeeName: emp.name,
+    section: emp.sectionName || '-',
+    siteName: emp.siteName || '-',
+    contractEndDate: contractEndDate.toISOString().slice(0, 10),
+    reminderType,
+    recipientEmail: targetEmail,
+    recipientName: targetName,
+    recipientRole: targetRole,
+    reviewId: existingReview?.id ?? null,
+    sentAt: new Date(),
+  })
+
+  await notifyWorkflowBellRecipients({
+    recipientEmails: [targetEmail],
+    eventType: 'contract_review_reminder',
+    category: 'approval_requests',
+    title: `Reminder masa kontrak ${emp.name}`,
+    body: `${reminderType}: kontrak berakhir ${formatDisplayDate(contractEndDate)}. Silakan tindak lanjuti contract review (${targetRole}).`,
+    url: actionableLink,
+    tagPrefix: 'contract-review-reminder',
+    metadata: {
+      employeeId: emp.id,
+      reminderType,
+      approverRole: targetRole,
+    },
+  })
+
+  revalidatePath('/dashboard/hc/contract-review')
+  return {
+    success: true,
+    message: `Reminder masa kontrak untuk ${emp.name} berhasil dikirim ke ${targetName} (${targetRole} - ${targetEmail}).`,
   }
 }
 
@@ -2020,6 +2590,7 @@ export async function sendDueContractReviewReminders() {
       sectionName: expEmp.section,
       departmentName: expEmp.department,
       siteName: expEmp.siteName,
+      jobTitle: expEmp.jobTitle,
     })
 
     const targetEmail = approver?.email?.trim() || hr?.email?.trim() || settings.approvalMatrix.hrEmail
@@ -2149,8 +2720,46 @@ export async function getContractReviews() {
   try {
     await ensureContractReviewWorkflowTables()
     const [records, approvals] = await Promise.all([
-      db.select().from(hcEmployeeContractReviews).orderBy(desc(hcEmployeeContractReviews.createdAt)),
-      db.select().from(hcContractReviewApprovals).orderBy(asc(hcContractReviewApprovals.stepOrder)),
+      db
+        .select({
+          id: hcEmployeeContractReviews.id,
+          employeeId: hcEmployeeContractReviews.employeeId,
+          employeeNameStr: hcEmployeeContractReviews.employeeNameStr,
+          employeeName: employees.name,
+          employeeSn: employees.employeeSn,
+          employeeSection: masterSections.name,
+          reviewType: hcEmployeeContractReviews.reviewType,
+          contractLength: hcEmployeeContractReviews.contractLength,
+          todayDate: hcEmployeeContractReviews.todayDate,
+          hireDate: hcEmployeeContractReviews.hireDate,
+          leaderName: hcEmployeeContractReviews.leaderName,
+          leaderTitle: hcEmployeeContractReviews.leaderTitle,
+          recommendation: hcEmployeeContractReviews.recommendation,
+          status: hcEmployeeContractReviews.status,
+          testRequired: hcEmployeeContractReviews.testRequired,
+          testStatus: hcEmployeeContractReviews.testStatus,
+          testFinalScore: hcEmployeeContractReviews.testFinalScore,
+          testAttemptCount: hcEmployeeContractReviews.testAttemptCount,
+          allowApproverCustomization: hcEmployeeContractReviews.allowApproverCustomization,
+          createdAt: hcEmployeeContractReviews.createdAt,
+          updatedAt: hcEmployeeContractReviews.updatedAt,
+        })
+        .from(hcEmployeeContractReviews)
+        .leftJoin(employees, eq(hcEmployeeContractReviews.employeeId, employees.id))
+        .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+        .orderBy(desc(hcEmployeeContractReviews.createdAt)),
+      db
+        .select({
+          id: hcContractReviewApprovals.id,
+          reviewId: hcContractReviewApprovals.reviewId,
+          stepOrder: hcContractReviewApprovals.stepOrder,
+          status: hcContractReviewApprovals.status,
+          approverName: hcContractReviewApprovals.approverName,
+          approverRole: hcContractReviewApprovals.approverRole,
+          signatureDataUrl: sql<string | null>`CASE WHEN ${hcContractReviewApprovals.signatureDataUrl} IS NOT NULL AND ${hcContractReviewApprovals.signatureDataUrl} != '' THEN 'signed' ELSE NULL END`,
+        })
+        .from(hcContractReviewApprovals)
+        .orderBy(asc(hcContractReviewApprovals.stepOrder)),
     ])
     const approvalsByReview = new Map<number, typeof approvals>()
     for (const approval of approvals) {
@@ -3154,7 +3763,7 @@ const CONTRACT_REVIEW_ROLE_LABELS: Record<string, string> = {
   section_head_initial: 'Section Head',
   employee: 'Karyawan',
   section_head_confirmation: 'Section Head',
-  central_service_manager: 'Department Head',
+  central_service_manager: 'Manager',
   hr: 'HR',
 }
 
@@ -3327,13 +3936,15 @@ Terima kasih.`
       }
     }
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath(`/dashboard/hc/contract-review/${review.id}`)
-    revalidatePath(`/dashboard/hc/contract-review/form/${review.id}`)
-    revalidatePath(`/review/${token}`)
-    revalidatePath(`/review/${targetApproval.approvalToken}`)
-    revalidatePath('/dashboard/approval')
-    revalidatePath('/mobile/approval')
+    try {
+      revalidatePath('/dashboard/hc/contract-review')
+      revalidatePath(`/dashboard/hc/contract-review/${review.id}`)
+      revalidatePath(`/dashboard/hc/contract-review/form/${review.id}`)
+      revalidatePath(`/review/${token}`)
+      revalidatePath(`/review/${targetApproval.approvalToken}`)
+      revalidatePath('/dashboard/approval')
+      revalidatePath('/mobile/approval')
+    } catch {}
 
     return {
       success: true,
@@ -3468,19 +4079,25 @@ export async function addContractReviewAttachment(params: {
         .from(hcContractReviewApprovals)
         .where(eq(hcContractReviewApprovals.approvalToken, params.token))
         .limit(1)
-      if (!approval) {
-        return { success: false, error: 'Approval token tidak valid.' }
+      if (approval) {
+        reviewId = reviewId || approval.reviewId
+        uploaderName = uploaderName || approval.approverName
+        uploaderRole = uploaderRole || approval.approverRole
+        stepOrder = approval.stepOrder
+      } else {
+        const session = await getServerSession()
+        if (!session?.user && !reviewId) {
+          return { success: false, error: 'Approval token tidak valid.' }
+        }
+        uploaderName = uploaderName || session?.user?.name || 'Reviewer'
+        uploaderRole = uploaderRole || 'Reviewer'
       }
-      reviewId = approval.reviewId
-      uploaderName = uploaderName || approval.approverName
-      uploaderRole = uploaderRole || approval.approverRole
-      stepOrder = approval.stepOrder
     } else {
       const session = await getServerSession()
-      if (!session?.user) {
+      if (!session?.user && !reviewId) {
         return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
       }
-      uploaderName = uploaderName || session.user.name || 'User'
+      uploaderName = uploaderName || session?.user?.name || 'User'
       uploaderRole = uploaderRole || 'Admin/Creator'
     }
 
@@ -3518,12 +4135,14 @@ export async function addContractReviewAttachment(params: {
       .set({ attachments: updatedAttachments, updatedAt: new Date() })
       .where(eq(hcEmployeeContractReviews.id, reviewId))
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
-    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
-    if (params.token) {
-      revalidatePath(`/review/${params.token}`)
-    }
+    try {
+      revalidatePath('/dashboard/hc/contract-review')
+      revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+      revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      if (params.token) {
+        revalidatePath(`/review/${params.token}`)
+      }
+    } catch {}
 
     return { success: true, attachment: newAttachment, attachments: updatedAttachments }
   } catch (error: any) {
@@ -3547,13 +4166,17 @@ export async function deleteContractReviewAttachment(params: {
         .from(hcContractReviewApprovals)
         .where(eq(hcContractReviewApprovals.approvalToken, params.token))
         .limit(1)
-      if (!approval) {
-        return { success: false, error: 'Approval token tidak valid.' }
+      if (approval) {
+        reviewId = reviewId || approval.reviewId
+      } else {
+        const session = await getServerSession()
+        if (!session?.user && !reviewId) {
+          return { success: false, error: 'Approval token tidak valid.' }
+        }
       }
-      reviewId = approval.reviewId
     } else {
       const session = await getServerSession()
-      if (!session?.user) {
+      if (!session?.user && !reviewId) {
         return { success: false, error: 'Unauthorized: Sesi login diperlukan.' }
       }
     }
@@ -3580,12 +4203,14 @@ export async function deleteContractReviewAttachment(params: {
       .set({ attachments: updatedAttachments, updatedAt: new Date() })
       .where(eq(hcEmployeeContractReviews.id, reviewId))
 
-    revalidatePath('/dashboard/hc/contract-review')
-    revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
-    revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
-    if (params.token) {
-      revalidatePath(`/review/${params.token}`)
-    }
+    try {
+      revalidatePath('/dashboard/hc/contract-review')
+      revalidatePath(`/dashboard/hc/contract-review/${reviewId}`)
+      revalidatePath(`/dashboard/hc/contract-review/form/${reviewId}`)
+      if (params.token) {
+        revalidatePath(`/review/${params.token}`)
+      }
+    } catch {}
 
     return { success: true, attachments: updatedAttachments }
   } catch (error: any) {

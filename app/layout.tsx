@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import { NavigationProgressBar } from "@/components/navigation-progress-bar";
 import { GlobalInputAutoSelect } from "@/components/global-input-auto-select";
 import { DomCleanupPatch } from "@/components/dom-cleanup-patch";
+import { DeploymentSkewHandler } from "@/components/deployment-skew-handler";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -74,6 +75,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           disableTransitionOnChange
         >
           <DomCleanupPatch />
+          <DeploymentSkewHandler />
           <Suspense fallback={null}>
             <NavigationProgressBar />
           </Suspense>

@@ -8,6 +8,7 @@ import {
   Clock,
   Download,
   Eye,
+  FilePenLine,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -24,6 +25,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { generateSummaryAction, deleteSummaryDraftAction } from '@/app/dashboard/summary/actions';
+import { printSummaryInPlace } from '@/lib/summary-print';
 import { SummaryGeneratorModal } from './summary-generator-modal';
 
 export type SectionWithSummary = {
@@ -51,57 +53,29 @@ interface SummaryListProps {
 export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProps) {
   const router = useRouter();
   const [generatorModalSection, setGeneratorModalSection] = useState<SectionWithSummary | null>(null);
+  const [editModalSection, setEditModalSection] = useState<SectionWithSummary | null>(null);
   const [search, setSearch] = useState('');
   const [selectedSite, setSelectedSite] = useState<'all' | 'GABUNGAN' | 'VALE'>('all');
-  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'approved'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<'all' | 'uncreated' | 'draft' | 'pending' | 'revisi' | 'approved' | 'rejected'>('all');
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handlePrintInPlace = (summaryId: number) => {
     setPrintingId(summaryId);
-    const existing = document.getElementById('summary-print-iframe');
-    if (existing) {
-      existing.remove();
-    }
-
-    const iframe = document.createElement('iframe');
-    iframe.id = 'summary-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.visibility = 'hidden';
-    iframe.src = `/print/summary/${summaryId}`;
-
-    iframe.onload = () => {
-      setTimeout(() => {
-        try {
-          iframe.contentWindow?.focus();
-          iframe.contentWindow?.print();
-        } catch (err) {
-          console.error('Failed to print iframe:', err);
-        } finally {
-          setPrintingId(null);
-        }
-      }, 500);
-    };
-
-    document.body.appendChild(iframe);
+    printSummaryInPlace(summaryId, () => setPrintingId(null));
   };
 
   const handleDeleteDraft = async (summaryId: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus draft summary ini?')) return;
+    if (!confirm('Apakah Anda yakin ingin menghapus summary ini?')) return;
     setDeletingId(summaryId);
-    const toastId = toast.loading('Menghapus draft summary...');
+    const toastId = toast.loading('Menghapus summary...');
     try {
       const res = await deleteSummaryDraftAction(summaryId);
       if (res.success) {
-        toast.success('Draft summary berhasil dihapus', { id: toastId });
+        toast.success('Summary berhasil dihapus', { id: toastId });
         router.refresh();
       } else {
-        toast.error(res.error || 'Gagal menghapus draft', { id: toastId });
+        toast.error(res.error || 'Gagal menghapus summary', { id: toastId });
       }
     } catch (err: any) {
       toast.error(err.message || 'Terjadi kesalahan sistem', { id: toastId });
@@ -135,11 +109,25 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
             Menunggu Approval
           </span>
         );
+      case 'revisi':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-300">
+            <AlertCircle className="size-3 text-amber-600" />
+            Perlu Revisi
+          </span>
+        );
       case 'draft':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-            <Clock className="size-3 text-amber-600" />
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-slate-100 text-slate-800 border border-slate-300">
+            <Clock className="size-3 text-slate-600" />
             Draft
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+            <AlertCircle className="size-3 text-rose-600" />
+            Ditolak
           </span>
         );
       default:
@@ -158,7 +146,9 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
       if (selectedStatus === 'uncreated' && s.summaryStatus !== null) return false;
       if (selectedStatus === 'draft' && s.summaryStatus !== 'draft') return false;
       if (selectedStatus === 'pending' && s.summaryStatus !== 'pending') return false;
+      if (selectedStatus === 'revisi' && s.summaryStatus !== 'revisi') return false;
       if (selectedStatus === 'approved' && s.summaryStatus !== 'approved') return false;
+      if (selectedStatus === 'rejected' && s.summaryStatus !== 'rejected') return false;
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -171,7 +161,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
   // KPI calculations
   const totalSections = sections.length;
   const totalApprovedRequests = sections.reduce((acc, s) => acc + s.approvedCount, 0);
-  const pendingCount = sections.filter((s) => s.summaryStatus === 'pending' || s.summaryStatus === 'draft').length;
+  const pendingCount = sections.filter((s) => s.summaryStatus === 'pending' || s.summaryStatus === 'draft' || s.summaryStatus === 'revisi').length;
   const approvedCount = sections.filter((s) => s.summaryStatus === 'approved').length;
 
   async function exportToExcel() {
@@ -305,7 +295,9 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
               <option value="uncreated">Belum Dibuat</option>
               <option value="draft">Draft</option>
               <option value="pending">Menunggu Approval</option>
+              <option value="revisi">Perlu Revisi</option>
               <option value="approved">Disetujui (Approved)</option>
+              <option value="rejected">Ditolak</option>
             </select>
 
             {(search || selectedSite !== 'all' || selectedStatus !== 'all') && (
@@ -435,6 +427,20 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
                             </Button>
                           )}
 
+                          {/* Edit button for draft or revisi status */}
+                          {section.summaryId && (section.summaryStatus === 'revisi' || section.summaryStatus === 'draft') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditModalSection(section)}
+                              className="h-7.5 px-2.5 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 rounded-xl shadow-2xs cursor-pointer gap-1.5 font-semibold"
+                              title="Edit Item APD & Ajukan Ulang"
+                            >
+                              <FilePenLine className="size-3.5" />
+                              Edit
+                            </Button>
+                          )}
+
                           {/* Delete Draft / Pending button */}
                           {section.summaryId && (section.summaryStatus === 'draft' || section.summaryStatus === 'pending') && (
                             <Button
@@ -482,7 +488,7 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
         </div>
       </div>
 
-      {/* Summary Generator Modal */}
+      {/* Summary Generator Modal (Create) */}
       {generatorModalSection && (
         <SummaryGeneratorModal
           isOpen={Boolean(generatorModalSection)}
@@ -490,6 +496,22 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
           section={generatorModalSection}
           currentEmployeeId={currentEmployeeId}
           onSuccess={(summaryId) => {
+            router.push(`/dashboard/summary?preview=${summaryId}`);
+          }}
+        />
+      )}
+
+      {/* Summary Generator Modal (Edit/Revisi) */}
+      {editModalSection && (
+        <SummaryGeneratorModal
+          isOpen={Boolean(editModalSection)}
+          onClose={() => setEditModalSection(null)}
+          section={editModalSection}
+          currentEmployeeId={currentEmployeeId}
+          editSummaryId={editModalSection.summaryId!}
+          editSectionId={editModalSection.id}
+          onSuccess={(summaryId) => {
+            setEditModalSection(null);
             router.push(`/dashboard/summary?preview=${summaryId}`);
           }}
         />

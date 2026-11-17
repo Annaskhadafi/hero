@@ -154,7 +154,8 @@ export async function getDailyActivitySessionDocumentData(
         dailyActivitySessionItems,
         eq(dailyActivitySessionItemTeamMembers.itemId, dailyActivitySessionItems.id)
       )
-      .where(eq(dailyActivitySessionItems.sessionId, sessionId)),
+      .where(eq(dailyActivitySessionItems.sessionId, sessionId))
+      .orderBy(asc(employees.name)),
   ])
 
   const isApprover = approvalsRows.some(
@@ -186,6 +187,7 @@ export async function getDailyActivitySessionDocumentData(
     .from(dailyActivitySessionTeamMembers)
     .innerJoin(employees, eq(dailyActivitySessionTeamMembers.employeeId, employees.id))
     .where(eq(dailyActivitySessionTeamMembers.sessionId, sessionId))
+    .orderBy(asc(employees.name))
 
   const isTeamMember =
     teamMemberRows.some((t) => t.employeeId === currentEmployee.id) ||
@@ -201,6 +203,7 @@ export async function getDailyActivitySessionDocumentData(
       ...itemTeamMemberRows.map((t) => t.name),
     ])
   )
+  allTeamNames.sort((a, b) => a.localeCompare(b, 'id', { sensitivity: 'base' }))
   let teamMembersSummary = allTeamNames.join(', ')
   if (!teamMembersSummary) {
     const teamMatch = (header.summaryRemark || '').match(/\[Team:\s*([^\]]+)\]/i)
@@ -263,6 +266,7 @@ export async function getDailyActivitySessionDocumentData(
           : []
 
       const combinedItemTeam = Array.from(new Set([...dbItemTeam, ...payloadItemTeam]))
+      combinedItemTeam.sort((a, b) => a.localeCompare(b, 'id', { sensitivity: 'base' }))
       const itemTeamMembersSummary = combinedItemTeam.length > 0 ? combinedItemTeam.join(', ') : null
 
       const requesterName = header.employeeName || 'Karyawan'

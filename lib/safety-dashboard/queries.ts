@@ -140,7 +140,11 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     db
       .select({
         id: heroEmployees.id,
+        siteId: heroEmployees.siteId,
         workLocation: heroEmployees.workLocation,
+        jobTitle: heroEmployees.jobTitle,
+        section: heroEmployees.section,
+        role: heroEmployees.role,
         siteName: sites.name,
         siteLocation: sites.location,
       })
@@ -196,31 +200,70 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
 
   // Count active employees per canonical location from User Management (hero_employees)
   const employeeCountsByLocation: Record<string, number> = {}
+  const serviceCountsByLocation: Record<string, number> = {}
+  const repairCountsByLocation: Record<string, number> = {}
+
   for (const emp of activeEmployees) {
-    const rawLoc = emp.workLocation || emp.siteName || emp.siteLocation || ""
+    const rawLoc = emp.siteName || emp.workLocation || emp.siteLocation || ""
     if (!rawLoc) continue
     const canonLoc = locationMapping[rawLoc] || rawLoc
+    // Count each active employee exactly once into the canonical location
     employeeCountsByLocation[canonLoc] = (employeeCountsByLocation[canonLoc] || 0) + 1
-    if (emp.workLocation) employeeCountsByLocation[emp.workLocation] = (employeeCountsByLocation[emp.workLocation] || 0) + 1
-    if (emp.siteName) employeeCountsByLocation[emp.siteName] = (employeeCountsByLocation[emp.siteName] || 0) + 1
+
+    const jt = (emp.jobTitle || "").toLowerCase()
+    const sec = (emp.section || "").toLowerCase()
+    const isService = jt.includes("serviceman") || jt.includes("service") || sec.includes("service")
+    const isRepair = jt.includes("repairman") || jt.includes("repair") || sec.includes("repair") || sec.includes("retread")
+
+    if (isService) {
+      serviceCountsByLocation[canonLoc] = (serviceCountsByLocation[canonLoc] || 0) + 1
+    }
+    if (isRepair) {
+      repairCountsByLocation[canonLoc] = (repairCountsByLocation[canonLoc] || 0) + 1
+    }
   }
 
-  // Sync employee counts in monthlyManHours and manHours with User Management data
+  // Populate alias mappings so lookups by raw workLocation or siteName resolve to the same canonical count
+  for (const [rawKey, targetCanon] of Object.entries(locationMapping)) {
+    if (rawKey !== targetCanon && employeeCountsByLocation[targetCanon] !== undefined) {
+      if (employeeCountsByLocation[rawKey] === undefined) {
+        employeeCountsByLocation[rawKey] = employeeCountsByLocation[targetCanon]
+      }
+      if (serviceCountsByLocation[targetCanon] !== undefined && serviceCountsByLocation[rawKey] === undefined) {
+        serviceCountsByLocation[rawKey] = serviceCountsByLocation[targetCanon]
+      }
+      if (repairCountsByLocation[targetCanon] !== undefined && repairCountsByLocation[rawKey] === undefined) {
+        repairCountsByLocation[rawKey] = repairCountsByLocation[targetCanon]
+      }
+    }
+  }
+
+  // Sync employee counts in monthlyManHours and manHours:
+  // Priority: If user has explicitly entered an employeeCount (> 0), RESPECT IT!
+  // Otherwise, fallback to the real-time active headcount from User Management.
   const monthlyManHours = rawMonthlyManHours.map((row) => {
     const canonLoc = locationMapping[row.workLocation] || row.workLocation
     const countFromEmployees = employeeCountsByLocation[canonLoc] ?? employeeCountsByLocation[row.workLocation]
+    const hasManual = row.employeeCount !== null && row.employeeCount !== undefined && Number(row.employeeCount) > 0
     return {
       ...row,
-      employeeCount: typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0),
+      employeeCount: hasManual
+        ? Number(row.employeeCount)
+        : (typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0)),
+      isManualEmployeeCount: hasManual,
     }
   })
 
   const manHours = rawManHours.map((row) => {
     const canonLoc = locationMapping[row.workLocation] || row.workLocation
     const countFromEmployees = employeeCountsByLocation[canonLoc] ?? employeeCountsByLocation[row.workLocation]
+    const hasManual = row.employeeCount !== null && row.employeeCount !== undefined && Number(row.employeeCount) > 0
     return {
       ...row,
-      employeeCount: typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0),
+      employeeCount: hasManual
+        ? Number(row.employeeCount)
+        : (typeof countFromEmployees === "number" && countFromEmployees > 0 ? countFromEmployees : (row.employeeCount || 0)),
+      isManualEmployeeCount: hasManual,
     }
   })
 
@@ -229,6 +272,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     siteId: number | null
     workLocation: string
     employeeCount: number
+    isManualEmployeeCount?: boolean
     initialManHours: number
     actualMonthlyManHours: number
     safetyManHours: number
@@ -245,6 +289,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
       siteId: siteItem.id,
       workLocation: siteItem.name,
       employeeCount: empCount,
+      isManualEmployeeCount: false,
       initialManHours: 0,
       actualMonthlyManHours: 0,
       safetyManHours: 0,
@@ -286,7 +331,7 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
 
   // Populate safeTarget (always) and initialManHours (only in legacy per-site mode) from safetyManHours table
   for (const mhRow of manHours) {
-    // Skip the global key row — it is handled separately as globalStartData
+    // Skip the global key row â€” it is handled separately as globalStartData
     if (mhRow.workLocation === "__GLOBAL_START_DATA__") continue
 
     const canonName = locationMapping[mhRow.workLocation] || mhRow.workLocation
@@ -301,7 +346,6 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     }
     if (entry) {
       if (mhRow.safeTarget) entry.safeTarget = mhRow.safeTarget
-      // Only carry over per-site initial man hours in legacy mode (no global start data set)
       if (!hasGlobalStartData && mhRow.safetyManHours) {
         entry.initialManHours = parseFloat(`${mhRow.safetyManHours || "0"}`.replace(/,/g, "")) || 0
       }
@@ -316,8 +360,6 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
 
   const siteManHoursSummary = Array.from(siteManHoursMap.values()).map((item) => ({
     ...item,
-    // In global-start-data mode: per-site bar = actual monthly only (initial is in global bar)
-    // In legacy mode: per-site bar = initialManHours + actualMonthlyManHours
     safetyManHours: hasGlobalStartData ? item.actualMonthlyManHours : item.initialManHours + item.actualMonthlyManHours,
     monthlyDetails: item.monthlyDetails.sort((a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()),
   }))
@@ -460,7 +502,18 @@ export async function getSafetyDashboardData(filters?: { year?: string; month?: 
     monthlyManHours,
     siteManHoursSummary,
     globalStartData,
-    masterSites: masterSitesList,
+    masterSites: masterSitesList.map((site) => {
+      const canonName = locationMapping[site.name] || site.name
+      const totalMp = employeeCountsByLocation[canonName] ?? employeeCountsByLocation[site.name] ?? 0
+      const serviceMp = serviceCountsByLocation[canonName] ?? serviceCountsByLocation[site.name] ?? 0
+      const repairMp = repairCountsByLocation[canonName] ?? repairCountsByLocation[site.name] ?? 0
+      return {
+        ...site,
+        totalManpower: totalMp,
+        manpowerService: serviceMp,
+        manpowerRepair: repairMp,
+      }
+    }),
     weeklyActivities,
     inspections,
     inductions,

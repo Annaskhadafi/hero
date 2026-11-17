@@ -40,6 +40,28 @@ export function isClockTime(value: unknown): value is string {
   return typeof value === 'string' && CLOCK_TIME_PATTERN.test(value)
 }
 
+export function isNightShiftScheduleCode(code?: string | null): boolean {
+  if (!code) return false
+  const upper = String(code).trim().toUpperCase()
+  return (
+    [
+      'NS',
+      'NG',
+      'N',
+      'NIGHT',
+      'NIGHTSHIFT',
+      'NIGHT SHIFT',
+      'MALAM',
+      'SHIFT MALAM',
+      'SHIFT 2',
+      'SHIFT-2',
+      'SHIFT2',
+      '2',
+      'S2',
+    ].includes(upper) || upper.startsWith('NS')
+  )
+}
+
 export function normalizeSiteAttendanceClockConfig(value: unknown): SiteAttendanceClockConfig {
   const config = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const legacyDayClock = isClockTime(config.defaultClockIn) ? config.defaultClockIn : null
@@ -116,8 +138,20 @@ export function resolveSiteAttendanceClockConfig(
 export function isStaffRole(
   role?: string | null,
   jobTitle?: string | null,
-  levelName?: string | null
+  levelName?: string | null,
+  employeeStatusType?: string | null
 ): boolean {
+  if (employeeStatusType) {
+    const st = employeeStatusType.trim().toLowerCase()
+    if (st.includes('non staff') || st.includes('non-staff') || st.includes('nonstaff')) {
+      return false
+    }
+    if (st.includes('staff') && !st.includes('non')) {
+      if (!/^(serviceman|repairman|operator|mekanik|mechanic|helper|driver|technician pa)/i.test((role ?? '').trim())) {
+        return true
+      }
+    }
+  }
   if (levelName) {
     const lvl = levelName.trim().toLowerCase()
     if (lvl.includes('non staff') || lvl.includes('non-staff') || lvl.includes('nonstaff')) {
@@ -150,12 +184,11 @@ export function isStaffRole(
     return false
   }
   if (combined.includes('staff')) return true
-  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing/i.test(combined)) {
+  if (/manager|supervisor|spv|admin|koordinator|coord|leader|lead|head|superintendent|engineer|analyst|officer|specialist|director|trainer|support|secretary|planning|planing|operation/i.test(combined)) {
     return true
   }
   return false
 }
-
 export function resolveConfiguredShiftClockIn(
   shiftCode: string | null | undefined,
   config: SiteAttendanceClockConfig,
@@ -455,12 +488,12 @@ export function checkEmployeeOffDayStatus(input: {
   rosterTypeNonStaff?: string | null
   timeZone?: string
 }) {
-  const staff = isStaffRole(input.role, input.jobTitle, input.levelName)
+  const staff = isStaffRole(input.role, input.jobTitle, input.levelName, (input as any).employeeStatusType)
   const code = (input.scheduledCode ?? '').trim().toUpperCase()
 
   let isOffDay = false
 
-  if (['OFF', 'FB', 'LIBUR', 'SAKIT', 'CUTI'].includes(code)) {
+  if (['OFF', 'FB', 'AL', 'LIBUR', 'SAKIT', 'CUTI'].includes(code)) {
     isOffDay = true
   } else if (['IN', 'DS', 'NS', 'PAGI', 'MALAM'].includes(code)) {
     isOffDay = false
@@ -526,25 +559,17 @@ export async function resolveNightShiftCheckoutContext(input: {
   // Look for an unclosed night check-in in the past 24 hours
   const past24h = new Date(input.eventTime.getTime() - 24 * 60 * 60 * 1000)
 
-  const { db } = await import('@/db')
-  const { attendanceRecords } = await import('@/db/schema/hero')
-  const { and, desc, eq, gte, lte } = await import('drizzle-orm')
+  let recentPunches: Array<{ id: number; eventType: string; eventTime: Date }> = []
 
-  const recentPunches = await db
-    .select({
-      id: attendanceRecords.id,
-      eventType: attendanceRecords.eventType,
-      eventTime: attendanceRecords.eventTime,
-    })
-    .from(attendanceRecords)
-    .where(
-      and(
-        eq(attendanceRecords.employeeId, input.employeeId),
-        gte(attendanceRecords.eventTime, past24h),
-        lte(attendanceRecords.eventTime, input.eventTime)
-      )
-    )
-    .orderBy(desc(attendanceRecords.eventTime))
+  if (typeof window === 'undefined') {
+    try {
+      const loadDbHelper = new Function('p', 'return import(p)')
+      const { getRecentPunchesForNightShift } = await loadDbHelper('./attendance-night-shift-db')
+      recentPunches = await getRecentPunchesForNightShift(input.employeeId, past24h, input.eventTime)
+    } catch {
+      recentPunches = []
+    }
+  }
 
   const lastCheckIn = recentPunches.find(
     (p) =>

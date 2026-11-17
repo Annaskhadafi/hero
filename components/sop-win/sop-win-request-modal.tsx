@@ -71,6 +71,7 @@ export function SopWinRequestModal({
   const [docTitleAndNumber, setDocTitleAndNumber] = useState("")
   const [requestType, setRequestType] = useState<"softcopy" | "hardcopy">("softcopy")
   const [fileAttachmentUrl, setFileAttachmentUrl] = useState("")
+  const [isUploading, setIsUploading] = useState(false)
 
   // Searchable Dropdowns State
   const [employeeOptions, setEmployeeOptions] = useState<Array<{
@@ -184,10 +185,11 @@ export function SopWinRequestModal({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 128 * 1024 * 1024) {
-        toast.error("Ukuran file melebihi batas maksimum 128 MB")
+      if (file.size > 15 * 1024 * 1024) {
+        toast.error("Ukuran file melebihi batas maksimum 15 MB")
         return
       }
+      setIsUploading(true)
       try {
         const formData = new FormData()
         formData.append("file", file)
@@ -198,13 +200,14 @@ export function SopWinRequestModal({
           toast.success(`File pendukung berhasil diunggah: ${file.name}`)
           return
         }
+        throw new Error(res.error || "Berkas gagal disimpan ke S3")
       } catch (err) {
         console.error("Upload error:", err)
+        toast.error(err instanceof Error ? err.message : "Upload S3 gagal. Silakan coba lagi.")
+        e.target.value = ""
+      } finally {
+        setIsUploading(false)
       }
-      const safeName = file.name.replace(/\s+/g, "_")
-      const fallbackUrl = `/api/uploads/sop-win-requests/${Date.now()}_${safeName}`
-      setFileAttachmentUrl(fallbackUrl)
-      toast.success(`File pendukung siap: ${file.name}`)
     }
   }
 
@@ -215,6 +218,7 @@ export function SopWinRequestModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (isUploading) return
 
     if (!requesterName.trim()) {
       toast.error("Nama pemohon wajib diisi")
@@ -571,6 +575,7 @@ export function SopWinRequestModal({
                   <div className="flex items-center gap-3">
                     <Input
                       type="file"
+                      disabled={isUploading}
                       onChange={handleFileUpload}
                       className="bg-slate-50 text-xs file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800 cursor-pointer"
                     />
@@ -589,7 +594,7 @@ export function SopWinRequestModal({
             <Button type="button" variant="outline" onClick={onClose} disabled={isPending} className="text-xs font-semibold rounded-xl">
               Batal
             </Button>
-            <Button type="submit" disabled={isPending} className="bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold text-xs gap-1.5 rounded-xl">
+            <Button type="submit" disabled={isPending || isUploading} className="bg-[#0f172a] hover:bg-[#1e293b] text-white font-bold text-xs gap-1.5 rounded-xl">
               <Send className="size-3.5" />
               {isPending ? "Mengirim Permintaan..." : "Kirim Permintaan Dokumen"}
             </Button>

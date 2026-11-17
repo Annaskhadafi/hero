@@ -13,6 +13,40 @@ export interface ActivityTeamResult {
 }
 
 /**
+ * Normalizes and canonicalizes a team string or array of names:
+ * 1. Splits by comma, semicolon, newline, or pipe
+ * 2. Trims and filters out falsy, '-', 'null', 'undefined'
+ * 3. Deduplicates names (case-insensitively, keeping clean casing)
+ * 4. Sorts names alphabetically (localeCompare)
+ * 5. Returns a standard comma-separated string 'A, B, C'
+ */
+export function canonicalizeTeamMembers(val: string | string[] | null | undefined): string {
+  if (!val) return '';
+  const parts = Array.isArray(val)
+    ? val
+    : String(val).split(/[,;\n|]+/);
+
+  const seen = new Set<string>();
+  const cleanMembers: string[] = [];
+
+  for (const raw of parts) {
+    if (!raw) continue;
+    const trimmed = String(raw).trim();
+    if (!trimmed || trimmed === '-' || trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined') {
+      continue;
+    }
+    const lower = trimmed.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      cleanMembers.push(trimmed);
+    }
+  }
+
+  cleanMembers.sort((a, b) => a.localeCompare(b, 'id', { sensitivity: 'base' }));
+  return cleanMembers.join(', ');
+}
+
+/**
  * Formats daily activity team members according to standard business rules:
  * 1. If no team members exist in the session or items: returns hasTeams: false (UI row should be hidden).
  * 2. If all items share the exact same team (1 team composition): returns isSingleTeam: true with plain text 'nama, nama2, nama3' (no numbering/duplication).
@@ -22,30 +56,17 @@ export function formatActivityTeamGroups(
   items: any[] | undefined | null,
   rawSessionTeam?: string | null
 ): ActivityTeamResult {
-  const normalize = (val: string | null | undefined): string => {
-    if (!val) return '';
-    const trimmed = String(val).trim();
-    if (!trimmed || trimmed === '-' || trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined') {
-      return '';
-    }
-    const members = trimmed
-      .split(/[,;\n]+/)
-      .map((m) => m.trim())
-      .filter((m) => m && m !== '-' && m.toLowerCase() !== 'null');
-    return members.join(', ');
-  };
-
+  const cleanSessionTeam = canonicalizeTeamMembers(rawSessionTeam);
   const safeItems = Array.isArray(items) ? items : [];
-  const cleanSessionTeam = normalize(rawSessionTeam);
 
   // Check if any item has explicit itemTeamMembersSummary
   const hasItemSpecificTeam = safeItems.some(
-    (it) => Boolean(normalize(it?.itemTeamMembersSummary || it?.teamMembersSummary))
+    (it) => Boolean(canonicalizeTeamMembers(it?.itemTeamMembersSummary || it?.teamMembersSummary))
   );
 
   const itemTeamPairs: { index: number; team: string }[] = safeItems.map((it, idx) => {
-    const itemSpecific = normalize(it?.itemTeamMembersSummary || it?.teamMembersSummary);
-    const resolvedTeam = hasItemSpecificTeam ? itemSpecific : cleanSessionTeam;
+    const itemSpecific = canonicalizeTeamMembers(it?.itemTeamMembersSummary || it?.teamMembersSummary);
+    const resolvedTeam = hasItemSpecificTeam ? (itemSpecific || cleanSessionTeam) : cleanSessionTeam;
     return {
       index: idx + 1,
       team: resolvedTeam,
@@ -79,7 +100,7 @@ export function formatActivityTeamGroups(
     };
   }
 
-  // Group activity numbers by identical team string
+  // Group activity numbers by identical canonical team string
   const groupMap = new Map<string, number[]>();
   for (const pair of itemsWithTeam) {
     const existing = groupMap.get(pair.team) || [];

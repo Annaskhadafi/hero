@@ -1,5 +1,6 @@
 // Trigger recompile
 export * from "./hero";
+export * from "./road-hazard";
 export { user, session, account, verification } from "./auth";
 export { instagramImageHistory } from "./instagram-history";
 import { relations } from "drizzle-orm";
@@ -291,6 +292,7 @@ export * from './safety-induction'
 
 // Helpdesk & Ticketing
 export * from './helpdesk'
+export * from './service-desk'
 
 // Capital Expenditure Request (CER) & CapEx Budgets
 export * from './cer'
@@ -323,6 +325,8 @@ export * from './hrga-kerjasama'
 // General Affairs - House Rental
 export * from './house-rental'
 
+// Marketing - Twibbon Studio
+export * from './twibbon'
 
 // Asset Management - Transfer, Borrow & Disposal
 export * from './asset-transfer'

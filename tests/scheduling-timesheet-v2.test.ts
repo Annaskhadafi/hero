@@ -36,7 +36,8 @@ describe('scheduling timesheet V2', () => {
     expect(cycleScheduleV2Code('DS')).toBe('NS')
     expect(cycleScheduleV2Code('NS')).toBe('FB')
     expect(cycleScheduleV2Code('FB')).toBe('ST')
-    expect(cycleScheduleV2Code('ST')).toBe('')
+    expect(cycleScheduleV2Code('ST')).toBe('AL')
+    expect(cycleScheduleV2Code('AL')).toBe('')
   })
 
   it('repeats OFF weekly from the selected date and allows custom override', () => {

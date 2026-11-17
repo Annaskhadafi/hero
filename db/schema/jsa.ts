@@ -11,6 +11,7 @@ export const heroJsas = pgTable('hero_jsas', {
   permits: jsonb('permits').notNull().default([]),
   ppeRequirements: jsonb('ppe_requirements').notNull().default([]),
   riskLevel: varchar('risk_level', { length: 50 }).notNull(),
+  status: varchar('status', { length: 50 }).notNull().default('pending'),
   signatures: jsonb('signatures').notNull().default({}),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

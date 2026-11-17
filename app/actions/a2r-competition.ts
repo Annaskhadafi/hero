@@ -134,7 +134,10 @@ function getR49PointsFromUnitPrice(unitPrice: number) {
     return 0
 }
 
+let a2rSalesTargetsTableEnsured = false;
+
 async function ensureA2RSalesTargetsTable() {
+    if (a2rSalesTargetsTableEnsured) return;
     await db.execute(sql`
         CREATE TABLE IF NOT EXISTS "a2r_sales_targets" (
             "id" serial PRIMARY KEY NOT NULL,
@@ -150,6 +153,7 @@ async function ensureA2RSalesTargetsTable() {
         CREATE UNIQUE INDEX IF NOT EXISTS "a2r_sales_targets_period_salesman_uidx"
         ON "a2r_sales_targets" ("period", "salesman")
     `)
+    a2rSalesTargetsTableEnsured = true;
 }
 
 function buildSelectedMonths(year: number, requestedMonths: string[]) {

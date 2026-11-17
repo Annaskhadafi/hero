@@ -1,11 +1,20 @@
 'use server'
 
 import { db } from '@/db'
-import { activities, dailyActivitySessions, employees } from '@/db/schema/hero'
-import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import {
+  activities,
+  dailyActivitySessions,
+  dailyActivitySessionItems,
+  employees,
+  overtimeCommandLetters,
+  overtimeCommandLetterParticipants,
+  overtimeCommandLetterItems,
+} from '@/db/schema/hero'
+import { and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { getServerSession } from '@/lib/auth-session'
 import { canAccessDailyActivityMonitoring, isSuperAdminRole } from '@/lib/hero-access'
 import { revalidatePath } from 'next/cache'
+import { ensureOvertimeApprovalsExist } from '@/app/dashboard/overtime-requests/actions'
 
 export async function deleteDailyActivityRecordAction(input: {
   sessionId?: number | null
@@ -160,6 +169,384 @@ export async function getEmployeeEwhAnalyticsAction(
   } catch (error: any) {
     console.error('[getEmployeeEwhAnalyticsAction] error:', error)
     return { success: false, error: error.message || 'Gagal memuat analitik EWH karyawan.' }
+  }
+}
+
+function formatTimeToHms(t?: string | null, fallback = '00:00:00'): string {
+  if (!t || !t.trim()) return fallback
+  const parts = t.trim().split(':')
+  const hh = String(parseInt(parts[0], 10) || 0).padStart(2, '0')
+  const mm = String(parseInt(parts[1], 10) || 0).padStart(2, '0')
+  const ss = String(parseInt(parts[2], 10) || 0).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
+export interface CreateSplFromDailyActivityInput {
+  employeeDbId?: number | null
+  employeeSn?: string | null
+  employeeName?: string | null
+  sessionId?: number | null
+  sessionIds?: number[]
+  workDate: string // YYYY-MM-DD
+  plannedStartTime?: string // HH:mm
+  plannedEndTime?: string // HH:mm
+  title?: string
+  requestNotes?: string
+  executionNotes?: string
+  siteId?: number | null
+  shiftCode?: string | null
+  isOffDay?: boolean
+  tasks?: Array<{
+    sessionItemId?: number | null
+    label: string
+    unitNumber?: string
+    startedAt?: string
+    endedAt?: string
+    points?: number
+    remarks?: string
+    photoUrl?: string | null
+    photos?: string[]
+  }>
+}
+
+export async function createSplFromDailyActivityAction(
+  input: CreateSplFromDailyActivityInput
+): Promise<{ success: boolean; splId?: number; splNumber?: string; error?: string; message?: string }> {
+  try {
+    const session = await getServerSession()
+    if (!session?.user?.email) {
+      return { success: false, error: 'Sesi login tidak valid atau kadaluarsa.' }
+    }
+
+    // 1. Operator / Creator employee
+    const userConds = []
+    if (session.user.id) userConds.push(eq(employees.authUserId, session.user.id))
+    if (session.user.email) userConds.push(sql`lower(${employees.email}) = lower(${session.user.email})`)
+
+    const [currentEmp] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        accessRole: employees.accessRole,
+        siteId: employees.siteId,
+        departmentId: employees.departmentId,
+      })
+      .from(employees)
+      .where(userConds.length > 1 ? or(...userConds) : userConds[0])
+      .limit(1)
+
+    // 2. Target worker employee (the person doing the overtime work)
+    let targetEmp: {
+      id: number
+      name: string
+      email: string | null
+      employeeSn: string | null
+      jobTitle: string | null
+      role: string | null
+      siteId: number | null
+      departmentId: number | null
+      sectionId: number | null
+      positionId: number | null
+      signatureDataUrl: string | null
+      directManagerId: number | null
+    } | null = null
+
+    const empSelectCols = {
+      id: employees.id,
+      name: employees.name,
+      email: employees.email,
+      employeeSn: employees.employeeSn,
+      jobTitle: employees.jobTitle,
+      role: employees.role,
+      siteId: employees.siteId,
+      departmentId: employees.departmentId,
+      sectionId: employees.sectionId,
+      positionId: employees.positionId,
+      signatureDataUrl: employees.signatureDataUrl,
+      directManagerId: employees.directManagerId,
+    }
+
+    if (input.employeeDbId && Number.isFinite(input.employeeDbId) && input.employeeDbId > 0) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(eq(employees.id, input.employeeDbId))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp && input.employeeSn && input.employeeSn.trim()) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(eq(employees.employeeSn, input.employeeSn.trim()))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp && input.employeeName && input.employeeName.trim()) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(ilike(employees.name, `%${input.employeeName.trim()}%`))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp && currentEmp) {
+      const [found] = await db
+        .select(empSelectCols)
+        .from(employees)
+        .where(eq(employees.id, currentEmp.id))
+        .limit(1)
+      if (found) targetEmp = found
+    }
+
+    if (!targetEmp) {
+      return { success: false, error: 'Data karyawan lembur tidak ditemukan.' }
+    }
+
+    // 3. Operational Site ID
+    const effectiveSiteId = input.siteId || targetEmp.siteId || currentEmp?.siteId || 1
+
+    // 4. Parse Dates & Start/End Times with consistent Indonesian timezone (+07:00 / site local)
+    const workDateStr = (input.workDate || '').trim().split('T')[0] || new Date().toISOString().split('T')[0]
+    const parsedWorkDate = new Date(`${workDateStr}T00:00:00+07:00`)
+
+    const startTimeStr = (input.plannedStartTime || '17:00').trim()
+    const endTimeStr = (input.plannedEndTime || '21:00').trim()
+
+    const cleanStart = formatTimeToHms(startTimeStr, '17:00:00')
+    const cleanEnd = formatTimeToHms(endTimeStr, '21:00:00')
+
+    if (cleanStart === cleanEnd) {
+      return { success: false, error: 'Jam mulai dan jam selesai lembur tidak boleh sama.' }
+    }
+
+    const plannedStartAt = new Date(`${workDateStr}T${cleanStart}+07:00`)
+    let plannedEndAt = new Date(`${workDateStr}T${cleanEnd}+07:00`)
+
+    if (isNaN(parsedWorkDate.getTime()) || isNaN(plannedStartAt.getTime()) || isNaN(plannedEndAt.getTime())) {
+      return { success: false, error: 'Format tanggal atau jam lembur tidak valid.' }
+    }
+
+    // Cross-midnight handling: if end time is strictly earlier than start time, advance by 24h
+    if (plannedEndAt < plannedStartAt) {
+      plannedEndAt = new Date(plannedEndAt.getTime() + 24 * 60 * 60 * 1000)
+    }
+
+    const durationMinutes = Math.max(
+      30,
+      Math.round((plannedEndAt.getTime() - plannedStartAt.getTime()) / (1000 * 60))
+    )
+
+    // 5. Title & Notes
+    const title = input.title?.trim() || `Penugasan Lembur - ${targetEmp.name} (${workDateStr})`
+    const requestNotes = input.requestNotes?.trim() || `Pengajuan lembur otomatis terintegrasi dari Daily Activity Report tanggal ${workDateStr}.`
+    const executionNotes = input.executionNotes?.trim() || 'Semua prosedur keselamatan kerja (JSA & SOP) telah dipatuhi.'
+
+    // 6. Generate Guaranteed Unique SPL Number & Insert with collision retry
+    const year = parsedWorkDate.getFullYear() || new Date().getFullYear()
+    const prefix = `SPL-${year}-`
+    const requesterEmployeeId = targetEmp.id
+
+    let insertedSpl: typeof overtimeCommandLetters.$inferSelect | null = null
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const [last] = await db
+        .select({ id: overtimeCommandLetters.id })
+        .from(overtimeCommandLetters)
+        .orderBy(desc(overtimeCommandLetters.id))
+        .limit(1)
+
+      let seq = (last?.id || 0) + 1 + attempt
+      let nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
+
+      while (true) {
+        const [existing] = await db
+          .select({ id: overtimeCommandLetters.id })
+          .from(overtimeCommandLetters)
+          .where(eq(overtimeCommandLetters.splNumber, nextNumber))
+          .limit(1)
+        if (!existing) break
+        seq++
+        nextNumber = `${prefix}${String(seq).padStart(4, '0')}`
+      }
+
+      try {
+        const [spl] = await db
+          .insert(overtimeCommandLetters)
+          .values({
+            splNumber: nextNumber,
+            siteId: effectiveSiteId,
+            departmentId: targetEmp.departmentId,
+            sectionId: targetEmp.sectionId,
+            positionId: targetEmp.positionId,
+            title,
+            workDate: parsedWorkDate,
+            plannedStartAt,
+            plannedEndAt,
+            status: 'Submitted',
+            requestNotes,
+            executionNotes,
+            requestedByEmployeeId: requesterEmployeeId,
+            origin: 'daily_activity',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning()
+        insertedSpl = spl
+        break
+      } catch (insertErr: any) {
+        if (insertErr?.code === '23505' && attempt < 4) {
+          continue
+        }
+        throw insertErr
+      }
+    }
+
+    if (!insertedSpl) {
+      return { success: false, error: 'Gagal membuat nomor SPL unik.' }
+    }
+
+    // 8. Insert Participant with exact credited overtime minutes
+    const participantCategory = input.isOffDay ? 'off_day' : 'after_mandatory_ot'
+    await db.insert(overtimeCommandLetterParticipants).values({
+      overtimeCommandLetterId: insertedSpl.id,
+      employeeId: targetEmp.id,
+      shiftCode: (input.shiftCode || 'DS').toUpperCase(),
+      rosterType: '5:2',
+      category: participantCategory,
+      overtimeCreditMinutes: durationMinutes,
+      createdAt: new Date(),
+    })
+
+    // 9. Insert Line Items from Daily Activity with full metadata payload for overtime module
+    const rawTasks = input.tasks && input.tasks.length > 0 ? input.tasks : []
+    const tasksToInsert = rawTasks.length > 0
+      ? rawTasks
+      : [{
+          label: 'Pekerjaan Lembur Operasional',
+          unitNumber: '-',
+          startedAt: startTimeStr,
+          endedAt: endTimeStr,
+          points: 10,
+          remarks: 'Pekerjaan lembur operasional lapangan berdasarkan Daily Activity Report.',
+        }]
+
+    for (let i = 0; i < tasksToInsert.length; i++) {
+      const t = tasksToInsert[i]
+      let diffMinutes = 60
+      if (t.startedAt && t.endedAt && t.startedAt !== '-' && t.endedAt !== '-') {
+        const [sh, sm] = t.startedAt.split(':').map((v) => parseInt(v, 10))
+        const [eh, em] = t.endedAt.split(':').map((v) => parseInt(v, 10))
+        if (!isNaN(sh) && !isNaN(eh)) {
+          let mins = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0))
+          if (mins < 0) mins += 24 * 60
+          diffMinutes = mins > 0 ? mins : 30
+        }
+      }
+
+      const metaPayload = {
+        code: '',
+        name: t.label || 'Pekerjaan Lembur Operasional',
+        unitNumber: t.unitNumber || '-',
+        tireCount: 1,
+        materialUsed: '',
+        startTime: t.startedAt && t.startedAt !== '-' ? t.startedAt : startTimeStr,
+        endTime: t.endedAt && t.endedAt !== '-' ? t.endedAt : endTimeStr,
+        duration: String(diffMinutes),
+        remark: t.remarks || `Pekerjaan lembur lapangan: ${t.label}`,
+        photos: t.photos || (t.photoUrl ? [t.photoUrl] : []),
+        photoUrl: t.photoUrl || (t.photos && t.photos[0]) || null,
+      }
+
+      const [insertedLine] = await db
+        .insert(overtimeCommandLetterItems)
+        .values({
+          overtimeCommandLetterId: insertedSpl.id,
+          assignedEmployeeId: targetEmp.id,
+          lineLabel: t.label || 'Pekerjaan Lembur Operasional',
+          lineDescription: JSON.stringify(metaPayload),
+          targetUnit: t.unitNumber || '-',
+          estimatedMinutes: diffMinutes,
+          plannedPoints: t.points || 10,
+          sortOrder: i + 1,
+          createdAt: new Date(),
+        })
+        .returning({ id: overtimeCommandLetterItems.id })
+
+      if (t.sessionItemId && Number.isFinite(t.sessionItemId) && t.sessionItemId > 0 && insertedLine?.id) {
+        await db
+          .update(dailyActivitySessionItems)
+          .set({
+            overtimeCommandLetterItemId: insertedLine.id,
+          })
+          .where(eq(dailyActivitySessionItems.id, t.sessionItemId))
+      }
+    }
+
+    // 10. Link Daily Activity Sessions to the generated SPL
+    const targetSessionIds = new Set<number>()
+    if (input.sessionId && Number.isFinite(input.sessionId) && input.sessionId > 0) {
+      targetSessionIds.add(input.sessionId)
+    }
+    if (Array.isArray(input.sessionIds)) {
+      for (const sId of input.sessionIds) {
+        if (Number.isFinite(sId) && sId > 0) targetSessionIds.add(sId)
+      }
+    }
+    if (targetSessionIds.size === 0 && targetEmp.id) {
+      const matchingSessions = await db
+        .select({ id: dailyActivitySessions.id })
+        .from(dailyActivitySessions)
+        .where(
+          and(
+            eq(dailyActivitySessions.employeeId, targetEmp.id),
+            sql`(${dailyActivitySessions.workDate} >= ${workDateStr + ' 00:00:00'}::timestamp and ${dailyActivitySessions.workDate} <= ${workDateStr + ' 23:59:59'}::timestamp)`,
+            isNull(dailyActivitySessions.deletedAt)
+          )
+        )
+      for (const s of matchingSessions) {
+        targetSessionIds.add(s.id)
+      }
+    }
+    if (targetSessionIds.size > 0) {
+      await db
+        .update(dailyActivitySessions)
+        .set({
+          overtimeCommandLetterId: insertedSpl.id,
+          updatedAt: new Date(),
+        })
+        .where(inArray(dailyActivitySessions.id, Array.from(targetSessionIds)))
+    }
+
+    // 11. Multi-tier Approval Setup (Leader / PJO workflow)
+    await ensureOvertimeApprovalsExist(insertedSpl.id)
+
+    // 11. Revalidation
+    revalidatePath('/dashboard/daily-activity')
+    revalidatePath('/dashboard/overtime-requests')
+    revalidatePath('/dashboard/activity-hub')
+    revalidatePath('/dashboard/approval')
+    revalidatePath('/mobile/activity')
+    revalidatePath('/mobile/overtime')
+    revalidatePath('/mobile/approval')
+
+    return {
+      success: true,
+      splId: insertedSpl.id,
+      splNumber: insertedSpl.splNumber,
+      message: `Surat Perintah Lembur ${insertedSpl.splNumber} berhasil diterbitkan!`,
+    }
+  } catch (error: any) {
+    console.error('[createSplFromDailyActivityAction] error:', error)
+    return {
+      success: false,
+      error: error.message || 'Gagal membuat Surat Perintah Lembur dari Daily Activity.',
+    }
   }
 }
 

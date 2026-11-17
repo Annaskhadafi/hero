@@ -71,7 +71,7 @@ export type AttendancePreviewConflict = {
   reason: string
 }
 
-const blockedScheduleCodes = new Set(['OFF', 'FB', 'Sakit', 'Libur'])
+const blockedScheduleCodes = new Set(['OFF', 'FB', 'AL', 'Sakit', 'Libur'])
 
 export function normalizeAttendanceImportIdentity(value: string | null | undefined) {
   const normalized = (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')

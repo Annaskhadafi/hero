@@ -6,6 +6,7 @@ import { ShieldAlert, ShieldCheck } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { HiradcEntryReportData } from "@/lib/hiradc/queries"
+import { HiradcRiskMatrixTable } from "@/components/hiradc/hiradc-risk-matrix-table"
 
 interface HiradcDesignOneReportProps {
   entry: HiradcEntryReportData
@@ -87,8 +88,8 @@ export function HiradcDesignOneReport({ entry, className }: HiradcDesignOneRepor
         </div>
       </div>
 
-      <div className="hiradc-print-content grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
+      <div className="hiradc-print-content grid grid-cols-12 gap-6">
+        <div className="col-span-6 space-y-6">
           <div className="hiradc-print-section bg-slate-50 border border-slate-200 rounded-2xl p-6">
             <div className="flex items-center gap-2 mb-6"><span className="text-amber-500">⚠️</span><h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">HAZARD & CONSEQUENCE</h3></div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">HAZARD DETAIL (BAHAYA)</p>
@@ -100,9 +101,12 @@ export function HiradcDesignOneReport({ entry, className }: HiradcDesignOneRepor
           <div className="hiradc-print-section hiradc-print-section--major border border-emerald-100 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden"><div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" /><div className="flex items-center gap-2 mb-4"><ShieldAlert className="w-4 h-4 text-emerald-600" /><h3 className="font-bold text-emerald-700 tracking-wide uppercase text-sm">ADDITIONAL CONTROL (PENGENDALIAN TAMBAHAN)</h3></div><div className="text-slate-700 font-medium text-sm leading-relaxed">{renderBulletPoints(entry.additionalControl, "Tidak ada pengendalian tambahan.")}</div></div>
           <div className="hiradc-print-section border border-slate-200 bg-white rounded-2xl p-6 shadow-sm relative overflow-hidden"><div className="flex items-center gap-2 mb-4"><span className="text-slate-500 font-bold text-sm">📋</span><h3 className="font-bold text-slate-700 tracking-wide uppercase text-sm">REFERENSI LEGAL (LEGAL REFERENCE)</h3></div><div className="text-slate-700 font-medium text-sm leading-relaxed">{renderBulletPoints(entry.legalReference, "Tidak ada referensi legal.")}</div></div>
         </div>
-        <div className="space-y-6">
+        <div className="col-span-6 space-y-6">
           <div className="hiradc-print-section border border-slate-200 rounded-2xl p-6 bg-white text-center shadow-sm"><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">RISK MATRIX ANALYSIS</p><div className="text-6xl font-black text-slate-900 tracking-tighter mb-6">{entry.scoreBefore || "-"}</div><div className="flex items-center justify-center gap-6 border-t border-slate-100 pt-6"><div><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">LIKELIHOOD</p><p className="text-xl font-bold text-slate-800">{entry.likelihoodBefore || "-"}</p></div><div className="w-px h-8 bg-slate-200" /><div><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">SEVERITY</p><p className="text-xl font-bold text-slate-800">{entry.severityBefore || "-"}</p></div></div></div>
           <div className="hiradc-print-section bg-[#1a2332] rounded-2xl p-6 text-white shadow-lg"><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6">VERIFICATION INFO</p><div className="space-y-4"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">👤</div><div><p className="text-[10px] font-bold text-slate-400 uppercase">PIC REPORTER</p><p className="font-bold text-slate-100 text-sm">{picName}</p></div></div><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shrink-0">📅</div><div><p className="text-[10px] font-bold text-slate-400 uppercase">LAST REVIEW</p><p className="font-bold text-slate-100 text-sm">{dateStr}</p></div></div></div></div>
+          <div className="hiradc-print-section shadow-sm">
+            <HiradcRiskMatrixTable />
+          </div>
         </div>
       </div>
     </div>

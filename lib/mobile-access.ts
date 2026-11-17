@@ -17,6 +17,7 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/profile',
   '/mobile/information',
   '/mobile/attendance',
+  '/mobile/attendance/permission',
   '/mobile/chitralearning',
   '/mobile/activity',
   '/mobile/activity/input',
@@ -33,9 +34,14 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/atk/new',
   '/mobile/ga/vehicles',
   '/mobile/training/pengajuan',
+  '/mobile/twibbon',
+  '/mobile/helpdesk',
+  '/mobile/troubleshoot',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/helpdesk', mobile: '/mobile/helpdesk' },
+  { desktop: '/dashboard/troubleshoot', mobile: '/mobile/helpdesk' },
   { desktop: '/dashboard/ga/vehicles', mobile: '/mobile/ga/vehicles' },
   { desktop: '/dashboard/ga/atk', mobile: '/mobile/atk' },
   { desktop: '/dashboard/repair-retread/inspection', mobile: '/mobile/tire-repair/inspection' },
@@ -68,6 +74,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/hse/izin-kerja-ptw', mobile: '/mobile/hse/ptw' },
   { desktop: '/dashboard/hse/sia-sio-tools-certification', mobile: '/mobile/hse/sia-sio-tools' },
   { desktop: '/dashboard/hse/tire-inspection', mobile: '/mobile/hse/tire-inspection' },
+  { desktop: '/dashboard/hse/road-hazard', mobile: '/mobile/hse/road-hazard' },
   { desktop: '/dashboard/reports/road-condition', mobile: '/mobile/reports/road-condition' },
   {
     desktop: '/dashboard/central-service/site-condition',
@@ -88,6 +95,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/training-records', mobile: '/mobile/training' },
   { desktop: '/dashboard/training/pengajuan', mobile: '/mobile/training/pengajuan' },
   { desktop: '/dashboard/hc/permission', mobile: '/mobile/attendance/permission' },
+  { desktop: '/dashboard/scheduling-timesheet/permission', mobile: '/mobile/attendance/permission' },
   { desktop: '/dashboard/attendance', mobile: '/mobile/attendance' },
   { desktop: '/dashboard/chitralearning-lms', mobile: '/mobile/chitralearning' },
   { desktop: '/dashboard/central-service/assets', mobile: '/mobile/central-service/assets' },
@@ -101,6 +109,7 @@ const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
   { desktop: '/dashboard/quality/5r', mobile: '/mobile/quality/5r' },
   { desktop: '/dashboard/quality/5r/create', mobile: '/mobile/quality/5r/create' },
   { desktop: '/dashboard/quality/5r/master-area', mobile: '/dashboard/quality/5r/master-area' },
+  { desktop: '/dashboard/twibbon', mobile: '/mobile/twibbon' },
 ]
 
 const fallbackMobileSegments = new Set([
@@ -129,6 +138,7 @@ const fallbackMobileSegments = new Set([
   'profile',
   'reports',
   'road-condition',
+  'road-hazard',
   'site-condition',
   'summary',
   'timesheet',
@@ -147,6 +157,7 @@ const fallbackMobileSegments = new Set([
   'sia-sio-tools',
   'tire-inspection',
   'sop-win',
+  'twibbon',
 ])
 
 export function getMobileUrlForDesktopUrl(desktopUrl: string): string | null {

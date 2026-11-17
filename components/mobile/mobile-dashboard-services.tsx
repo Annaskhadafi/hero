@@ -18,6 +18,7 @@ import {
   Dumbbell,
   Trophy,
   Route,
+  Video,
   HardHat,
   BookOpen,
   TrendingUp,
@@ -38,6 +39,7 @@ import {
   Pin,
   PinOff,
   RotateCcw,
+  ImagePlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -393,6 +395,15 @@ export function MobileDashboardServices({
       description: 'Catatan tugas harian & log kerja',
     },
     {
+      title: 'Troubleshoot & Tiket',
+      href: '/mobile/helpdesk',
+      resource: 'helpdesk',
+      icon: Wrench,
+      bg: 'bg-rose-500/10 text-rose-600',
+      section: 'Operasional',
+      description: 'Lapor kendala telematika & tiket sistem',
+    },
+    {
       title: 'Input Progress',
       href: '/mobile/activity/input',
       resource: 'tire_service',
@@ -446,6 +457,15 @@ export function MobileDashboardServices({
       bg: 'bg-gradient-to-tr from-blue-500/10 to-indigo-500/10 text-indigo-600',
       section: 'Standar Mutu',
       description: 'Instruksi kerja & SOP resmi',
+    },
+    {
+      title: 'Road Hazard Live AI',
+      href: '/mobile/hse/road-hazard',
+      resource: 'hse_road_hazard',
+      icon: Video,
+      bg: 'bg-blue-500/10 text-blue-600',
+      section: 'HSE & Safety',
+      description: 'Live scan & record kendala jalan rusak',
     },
     {
       title: 'Site Condition',
@@ -570,6 +590,14 @@ export function MobileDashboardServices({
       bg: 'bg-amber-500/10 text-amber-600',
       section: 'Umum',
       description: 'Broadcast pengumuman kantor pusat',
+    },
+    {
+      title: 'Twibbon',
+      href: '/mobile/twibbon',
+      icon: ImagePlus,
+      bg: 'bg-violet-500/10 text-violet-600',
+      section: 'Umum',
+      description: 'Buat foto & video frame twibbon IG',
     },
     {
       title: 'Wellness',

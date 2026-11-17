@@ -2,7 +2,7 @@ import { db } from '@/db';
 import { approvals as heroApprovals, apdRequests, apdRequestItems, employees, sites, masterSections, masterDepartments, approvalMatrices, approvalMatrixSteps, orgChartNodes, employeeAssets } from '@/db/schema/hero';
 import { masterApd } from '@/db/schema/apd';
 import { apdSummaries, apdSummaryItems, apdSummaryApprovals } from '@/db/schema/apd-summary';
-import { eq, and, asc, desc, sql, inArray, ilike } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, ilike, ne, or } from 'drizzle-orm';
 import { sendWorkflowEmail, getAppUrl } from '@/lib/workflow-email';
 import { createNotificationEventForEmployee } from '@/lib/push-notifications';
 import { sendSummaryPendingApprovalEmail } from '@/lib/summary-email';
@@ -14,10 +14,12 @@ import {
   QTY_ONLY_COLUMNS,
   APD_ITEM_COLUMNS,
   APD_COLUMNS,
+  filterSelectedRequestItems,
   type PendingSummaryRequestItem,
   type PendingSummaryRequest,
   type ManualSummaryEntry,
   type ManualSummaryItem,
+  type SelectedSummaryRequestOption,
 } from '@/lib/summary-constants';
 
 export {
@@ -29,6 +31,7 @@ export {
   type PendingSummaryRequest,
   type ManualSummaryEntry,
   type ManualSummaryItem,
+  type SelectedSummaryRequestOption,
 };
 
 let summarySchemaChecked = false;
@@ -97,6 +100,11 @@ const ITEM_NAME_MAP: Record<string, string> = {
   'Kaos Tangan Dotting': 'Sarung Tangan Dotting',
   'Hand Glove (Knit)': 'Sarung Tangan Dotting',
   'Hand Glove (Cotton)': 'Sarung Tangan Dotting',
+  'Sarung Tangan Kulit (Vale)': 'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kulit': 'Sarung Tangan Kulit (Vale)',
+  'Sarung Tangan Kleenguard G40 (Vale)': 'Sarung Tangan Kleenguard G40 (Vale)',
+  'Sarung Tangan Kleenguard': 'Sarung Tangan Kleenguard G40 (Vale)',
+  'Kleenguard G40': 'Sarung Tangan Kleenguard G40 (Vale)',
   // Lockout / Tagout & Tools
   'Padlock Merah': 'Padlock Merah',
   'Padlock Kuning': 'Padlock Kuning',
@@ -171,7 +179,7 @@ export async function getSectionsWithApprovedRequests() {
     apdRequestId: apdSummaryItems.apdRequestId,
   }).from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
-    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved']));
+    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi']));
 
   const assignedRequestIds = new Set(assignedReqRows.map(r => r.apdRequestId).filter(Boolean));
 
@@ -324,7 +332,12 @@ export async function getSectionsWithApprovedRequests() {
   });
 }
 
-export async function getPendingRequestsForSection(sectionId: number, targetSite: string, dateRange?: { startDate?: string; endDate?: string }): Promise<PendingSummaryRequest[]> {
+export async function getPendingRequestsForSection(
+  sectionId: number,
+  targetSite: string,
+  dateRange?: { startDate?: string; endDate?: string },
+  excludeSummaryId?: number
+): Promise<PendingSummaryRequest[]> {
   await ensureSummarySchema();
 
   const isValeQuery = targetSite === 'VALE' 
@@ -338,32 +351,80 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     ? inArray(effectiveSec, [33, 34])
     : eq(effectiveSec, sectionId);
 
-  // Get active summary items to avoid duplicates
+  // Get active summary items to avoid duplicates (excluding the summary currently being edited)
   const activeSummaryRows = await db.select({
     apdRequestId: apdSummaryItems.apdRequestId,
   }).from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
-    .where(inArray(apdSummaries.status, ['draft', 'pending', 'approved']));
+    .where(
+      excludeSummaryId
+        ? and(inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi']), ne(apdSummaries.id, excludeSummaryId))
+        : inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi'])
+    );
 
   const assignedRequestIds = new Set(activeSummaryRows.map(r => r.apdRequestId).filter(Boolean));
 
-  const pendingConditions = [
+  // In edit mode, load existing items of the summary being edited so checked APD items & metadata are restored
+  const editedSummaryItemsByReq = new Map<number, {
+    itemNameCounts: Map<string, number>;
+    remarks: string;
+    shoeSize: string;
+    shoeMasaPakai: string;
+  }>();
+
+  if (excludeSummaryId) {
+    const existingRows = await db.select({
+      apdRequestId: apdSummaryItems.apdRequestId,
+      itemName: apdSummaryItems.itemName,
+      remarks: apdSummaryItems.remarks,
+      requestType: apdSummaryItems.requestType,
+    }).from(apdSummaryItems)
+      .where(eq(apdSummaryItems.summaryId, excludeSummaryId));
+
+    for (const row of existingRows) {
+      let entry = editedSummaryItemsByReq.get(row.apdRequestId);
+      if (!entry) {
+        entry = { itemNameCounts: new Map(), remarks: '', shoeSize: '', shoeMasaPakai: '' };
+        editedSummaryItemsByReq.set(row.apdRequestId, entry);
+      }
+      if (row.itemName === 'Safety Shoes Size') {
+        entry.shoeSize = row.requestType || row.remarks || '';
+      } else if (row.itemName === 'Safety Shoes Masa Pakai') {
+        entry.shoeMasaPakai = row.requestType || row.remarks || '';
+      } else {
+        const key = (mapItemToColumn(row.itemName) || row.itemName).toLowerCase();
+        entry.itemNameCounts.set(key, (entry.itemNameCounts.get(key) || 0) + 1);
+        if (!entry.remarks && row.remarks) {
+          entry.remarks = row.remarks;
+        }
+      }
+    }
+  }
+
+  const dateConds: any[] = [];
+  if (dateRange?.startDate) {
+    const start = new Date(`${dateRange.startDate}T00:00:00.000Z`);
+    dateConds.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) >= ${start}`);
+  }
+
+  if (dateRange?.endDate) {
+    const end = new Date(`${dateRange.endDate}T23:59:59.999Z`);
+    dateConds.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
+  }
+
+  const baseFilter = and(
     sectionFilter,
     inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
     sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
     sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
     isValeQuery,
-  ];
+    ...dateConds
+  );
 
-  if (dateRange?.startDate) {
-    const start = new Date(`${dateRange.startDate}T00:00:00.000Z`);
-    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) >= ${start}`);
-  }
-
-  if (dateRange?.endDate) {
-    const end = new Date(`${dateRange.endDate}T23:59:59.999Z`);
-    pendingConditions.push(sql`COALESCE(${apdRequests.requestDate}, ${apdRequests.createdAt}) <= ${end}`);
-  }
+  const existingIds = Array.from(editedSummaryItemsByReq.keys());
+  const whereClause = existingIds.length > 0
+    ? or(baseFilter, inArray(apdRequests.id, existingIds))!
+    : baseFilter!;
 
   const approvedRequests = await db.select({
     requestId: apdRequests.id,
@@ -381,14 +442,14 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(...pendingConditions))
+    .where(whereClause)
     .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   const results: PendingSummaryRequest[] = [];
 
   for (const req of approvedRequests) {
-    if (assignedRequestIds.has(req.requestId)) {
-      continue; // Skip requests already in an active summary
+    if (assignedRequestIds.has(req.requestId) && !editedSummaryItemsByReq.has(req.requestId)) {
+      continue; // Skip requests already in another active summary
     }
 
     const items = await db.select().from(apdRequestItems)
@@ -396,7 +457,6 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 
     const mappedItems: PendingSummaryRequestItem[] = [];
     let hasSafetyShoes = false;
-    let shoesRequestType = 'baru';
 
     for (const item of items) {
       const canonical = mapItemToColumn(item.itemType) || item.itemType;
@@ -410,7 +470,6 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       });
       if (canonical === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu') || item.itemType.toLowerCase().includes('shoes')) {
         hasSafetyShoes = true;
-        shoesRequestType = item.requestType;
       }
     }
 
@@ -433,6 +492,21 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       }
     }
 
+    const editedEntry = editedSummaryItemsByReq.get(req.requestId);
+    let preselectedItemIds: number[] | undefined;
+    if (editedEntry) {
+      const remaining = new Map(editedEntry.itemNameCounts);
+      preselectedItemIds = [];
+      for (const mi of mappedItems) {
+        const key = mi.canonicalName.toLowerCase();
+        const count = remaining.get(key) || 0;
+        if (count > 0) {
+          preselectedItemIds.push(mi.id);
+          remaining.set(key, count - 1);
+        }
+      }
+    }
+
     results.push({
       requestId: req.requestId,
       requestNumber: req.requestNumber,
@@ -444,8 +518,11 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
       siteName: req.siteName,
       departmentName: req.departmentName,
       items: mappedItems,
-      safetyShoesSize: shoeSize,
-      suggestedRemarks: req.notes || '',
+      safetyShoesSize: editedEntry?.shoeSize || shoeSize,
+      safetyShoesMasaPakai: editedEntry?.shoeMasaPakai || '',
+      suggestedRemarks: editedEntry ? editedEntry.remarks : (req.notes || ''),
+      preselectedItemIds,
+      isIncludedInEditedSummary: Boolean(editedEntry),
     });
   }
 
@@ -459,26 +536,55 @@ export async function getPendingRequestsForSection(sectionId: number, targetSite
 }
 
 export type GenerateSummaryOptions = {
-  selectedRequests?: Array<{
-    requestId: number;
-    remarks?: string;
-    safetyShoesSize?: string;
-  }>;
+  selectedRequests?: SelectedSummaryRequestOption[];
   manualEntries?: ManualSummaryEntry[];
   defaultRemarks?: string;
   periodStart?: string | Date | null;
   periodEnd?: string | Date | null;
 };
 
-export async function generateSummary(
-  sectionId: number,
-  generatedByEmployeeId: number,
-  targetSite: string,
-  options?: GenerateSummaryOptions
-) {
-  await ensureSummarySchema();
+type SummaryItemInsert = {
+  apdRequestId: number;
+  employeeId: number;
+  employeeName: string;
+  employeeSn: string;
+  siteName: string;
+  itemName: string;
+  quantity: number;
+  requestType: string;
+  remarks: string;
+};
 
-  const isValeQuery = targetSite === 'VALE' 
+async function resolveSafetyShoeSizeFallback(
+  employeeId: number,
+  customSize?: string,
+  items?: Array<{ itemType: string; notes: string }>
+): Promise<string> {
+  let shoeSize = customSize?.trim() || '';
+  if (!shoeSize && items) {
+    const shoeItem = items.find(
+      (i) => i.itemType.toLowerCase().includes('sepatu') || i.itemType.toLowerCase().includes('shoes')
+    );
+    if (shoeItem?.notes) shoeSize = shoeItem.notes;
+  }
+  if (!shoeSize) {
+    const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
+      .where(and(
+        eq(employeeAssets.employeeId, employeeId),
+        ilike(employeeAssets.itemName, '%sepatu%')
+      )).limit(1);
+    if (asset?.size) shoeSize = asset.size;
+  }
+  return shoeSize;
+}
+
+async function collectSummaryItems(
+  sectionId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions,
+  manualNotePrefix = 'Manual Entry Summary APD'
+): Promise<{ summaryItems: SummaryItemInsert[]; isServiceCombined: boolean } | { error: string }> {
+  const isValeQuery = targetSite === 'VALE'
     ? sql`${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE'`
     : sql`NOT (${sites.name} ILIKE '%vale%' OR ${sites.name} = 'VALE')`;
 
@@ -487,6 +593,15 @@ export async function generateSummary(
   const sectionFilter = isServiceCombined
     ? inArray(effectiveSecGen, [33, 34])
     : eq(effectiveSecGen, sectionId);
+
+  const explicitSelectedIds = (options?.selectedRequests || []).map(r => r.requestId).filter(id => id > 0);
+  const baseCollectWhere = and(
+    sectionFilter,
+    inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
+    sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
+    sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
+    isValeQuery
+  );
 
   let approvedRequests = await db.select({
     requestId: apdRequests.id,
@@ -500,13 +615,11 @@ export async function generateSummary(
   }).from(apdRequests)
     .innerJoin(employees, eq(apdRequests.employeeId, employees.id))
     .innerJoin(sites, eq(apdRequests.siteId, sites.id))
-    .where(and(
-      sectionFilter, 
-      inArray(apdRequests.status, ['approved', 'proses_order', 'complete', 'completed']),
-      sql`(${apdRequests.requestCategory} IS NULL OR ${apdRequests.requestCategory} = 'APD' OR UPPER(${apdRequests.requestCategory}) = 'APD')`,
-      sql`(${apdRequests.requestCategory} IS NULL OR UPPER(${apdRequests.requestCategory}) NOT IN ('TOOLS', 'MATERIAL'))`,
-      isValeQuery
-    ))
+    .where(
+      explicitSelectedIds.length > 0
+        ? or(baseCollectWhere, inArray(apdRequests.id, explicitSelectedIds))!
+        : baseCollectWhere!
+    )
     .orderBy(desc(apdRequests.updatedAt), desc(apdRequests.id));
 
   if (options?.selectedRequests && options.selectedRequests.length > 0) {
@@ -523,43 +636,30 @@ export async function generateSummary(
   });
 
   const manualEntries = options?.manualEntries || [];
-
-  if (approvedRequests.length === 0 && manualEntries.length === 0) {
-    return { error: 'Tidak ada pengajuan yang dipilih atau ditambahkan untuk section ini' };
-  }
-
   const requestOptionsMap = new Map(
     (options?.selectedRequests || []).map(r => [r.requestId, r])
   );
 
-  const summaryItems: Array<{
-    apdRequestId: number;
-    employeeId: number;
-    employeeName: string;
-    employeeSn: string;
-    siteName: string;
-    itemName: string;
-    quantity: number;
-    requestType: string;
-    remarks: string;
-  }> = [];
+  const summaryItems: SummaryItemInsert[] = [];
 
-  // 1. Process regular approved requests
+  // 1. Process regular approved requests (respecting per-item Admin approval selection)
   for (const req of approvedRequests) {
     const customOpt = requestOptionsMap.get(req.requestId);
     const employeeRemarks = customOpt?.remarks?.trim() || options?.defaultRemarks?.trim() || '';
 
-    const items = await db.select().from(apdRequestItems)
+    const rawItems = await db.select().from(apdRequestItems)
       .where(eq(apdRequestItems.requestId, req.requestId));
+    const items = filterSelectedRequestItems(rawItems, customOpt?.selectedItemIds);
+
+    if (items.length === 0) {
+      continue;
+    }
 
     let employeeHasSafetyShoes = false;
-    let shoesReqType = 'baru';
-
     for (const item of items) {
       const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
       if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu')) {
         employeeHasSafetyShoes = true;
-        shoesReqType = item.requestType;
       }
       summaryItems.push({
         apdRequestId: req.requestId,
@@ -574,24 +674,8 @@ export async function generateSummary(
       });
     }
 
-    // If safety shoes requested, record Safety Shoes Size
     if (employeeHasSafetyShoes) {
-      let shoeSize = customOpt?.safetyShoesSize?.trim() || '';
-
-      if (!shoeSize) {
-        const shoeItem = items.find(i => i.itemType.toLowerCase().includes('sepatu') || i.itemType.toLowerCase().includes('shoes'));
-        if (shoeItem?.notes) shoeSize = shoeItem.notes;
-      }
-
-      if (!shoeSize) {
-        const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
-          .where(and(
-            eq(employeeAssets.employeeId, req.employeeId),
-            ilike(employeeAssets.itemName, '%sepatu%')
-          )).limit(1);
-        if (asset?.size) shoeSize = asset.size;
-      }
-
+      const shoeSize = await resolveSafetyShoeSizeFallback(req.employeeId, customOpt?.safetyShoesSize, items);
       if (shoeSize) {
         summaryItems.push({
           apdRequestId: req.requestId,
@@ -605,11 +689,28 @@ export async function generateSummary(
           remarks: shoeSize,
         });
       }
+
+      const shoeMasaPakai = customOpt?.safetyShoesMasaPakai?.trim() || '';
+      if (shoeMasaPakai) {
+        summaryItems.push({
+          apdRequestId: req.requestId,
+          employeeId: req.employeeId,
+          employeeName: req.employeeName,
+          employeeSn: req.employeeSn,
+          siteName: req.siteName,
+          itemName: 'Safety Shoes Masa Pakai',
+          quantity: 0,
+          requestType: shoeMasaPakai,
+          remarks: shoeMasaPakai,
+        });
+      }
     }
   }
 
   // 2. Process manual employee entries
   for (const manual of manualEntries) {
+    if (!manual.items || manual.items.length === 0) continue;
+
     const [empData] = await db.select({
       id: employees.id,
       name: employees.name,
@@ -627,7 +728,6 @@ export async function generateSummary(
     const empSiteName = manual.siteName || empData?.siteName || 'Site';
     const employeeRemarks = manual.remarks?.trim() || options?.defaultRemarks?.trim() || '';
 
-    // Generate request number for manual entry
     const timestampSuffix = Date.now().toString().slice(-4);
     const randomSuffix = Math.floor(Math.random() * 900 + 100);
     const manualRequestNumber = `APD-${new Date().getFullYear()}-M${timestampSuffix}${randomSuffix}`;
@@ -638,11 +738,10 @@ export async function generateSummary(
       siteId: empSiteId,
       requestCategory: 'APD',
       status: 'proses_order',
-      notes: employeeRemarks || 'Manual Entry Summary APD',
+      notes: employeeRemarks || manualNotePrefix,
     }).returning();
 
     let manualHasSafetyShoes = false;
-
     for (const item of manual.items) {
       const canonicalName = mapItemToColumn(item.itemType) || item.itemType;
       if (canonicalName === SAFETY_SHOES_COL || item.itemType.toLowerCase().includes('sepatu')) {
@@ -671,17 +770,7 @@ export async function generateSummary(
     }
 
     if (manualHasSafetyShoes) {
-      let shoeSize = manual.safetyShoesSize?.trim() || '';
-
-      if (!shoeSize) {
-        const [asset] = await db.select({ size: employeeAssets.size }).from(employeeAssets)
-          .where(and(
-            eq(employeeAssets.employeeId, manual.employeeId),
-            ilike(employeeAssets.itemName, '%sepatu%')
-          )).limit(1);
-        if (asset?.size) shoeSize = asset.size;
-      }
-
+      const shoeSize = await resolveSafetyShoeSizeFallback(manual.employeeId, manual.safetyShoesSize);
       if (shoeSize) {
         summaryItems.push({
           apdRequestId: createdRequest.id,
@@ -695,8 +784,44 @@ export async function generateSummary(
           remarks: shoeSize,
         });
       }
+
+      const shoeMasaPakai = manual.safetyShoesMasaPakai?.trim() || '';
+      if (shoeMasaPakai) {
+        summaryItems.push({
+          apdRequestId: createdRequest.id,
+          employeeId: manual.employeeId,
+          employeeName: empName,
+          employeeSn: empSn,
+          siteName: empSiteName,
+          itemName: 'Safety Shoes Masa Pakai',
+          quantity: 0,
+          requestType: shoeMasaPakai,
+          remarks: shoeMasaPakai,
+        });
+      }
     }
   }
+
+  if (summaryItems.length === 0) {
+    return { error: 'Tidak ada item APD yang dipilih atau ditambahkan untuk section ini' };
+  }
+
+  return { summaryItems, isServiceCombined };
+}
+
+export async function generateSummary(
+  sectionId: number,
+  generatedByEmployeeId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions
+) {
+  await ensureSummarySchema();
+
+  const collected = await collectSummaryItems(sectionId, targetSite, options, 'Manual Entry Summary APD');
+  if ('error' in collected) {
+    return collected;
+  }
+  const { summaryItems, isServiceCombined } = collected;
 
   const [lastSummary] = await db.select({ summaryNumber: apdSummaries.summaryNumber })
     .from(apdSummaries).orderBy(desc(apdSummaries.id)).limit(1);
@@ -765,13 +890,13 @@ export async function syncApprovedApdRequestToSummary(apdRequestId: number) {
     return { skipped: true, reason: 'Not an APD request' };
   }
 
-  // 2. Check if already in an active summary (draft, pending, approved)
+  // 2. Check if already in an active summary (draft, pending, approved, revisi)
   const [existingItem] = await db.select({ id: apdSummaryItems.id })
     .from(apdSummaryItems)
     .innerJoin(apdSummaries, eq(apdSummaryItems.summaryId, apdSummaries.id))
     .where(and(
       eq(apdSummaryItems.apdRequestId, apdRequestId),
-      inArray(apdSummaries.status, ['draft', 'pending', 'approved'])
+      inArray(apdSummaries.status, ['draft', 'pending', 'approved', 'revisi'])
     ))
     .limit(1);
 
@@ -952,8 +1077,14 @@ export async function deleteSummaryDraft(summaryId: number) {
   }).from(apdSummaries).where(eq(apdSummaries.id, summaryId)).limit(1);
 
   if (!summary) return { error: 'Summary tidak ditemukan' };
-  if (summary.status !== 'draft' && summary.status !== 'pending' && summary.status !== 'pending_approval') {
-    return { error: 'Hanya summary berstatus Draft atau Pending yang dapat dihapus' };
+  if (
+    summary.status !== 'draft' &&
+    summary.status !== 'pending' &&
+    summary.status !== 'pending_approval' &&
+    summary.status !== 'revisi' &&
+    summary.status !== 'rejected'
+  ) {
+    return { error: 'Hanya summary berstatus Draft, Pending, Revisi, atau Ditolak yang dapat dihapus' };
   }
 
   await db.delete(apdSummaryItems).where(eq(apdSummaryItems.summaryId, summaryId));
@@ -962,6 +1093,66 @@ export async function deleteSummaryDraft(summaryId: number) {
   await db.delete(apdSummaries).where(eq(apdSummaries.id, summaryId));
 
   return { success: true };
+}
+
+/**
+ * Regenerate items for an existing summary (revisi/draft) without changing summary number.
+ * Clears all existing items and re-inserts from the provided options.
+ * Status is set back to 'draft' so the submitter can review and resubmit.
+ */
+export async function regenerateSummaryItems(
+  summaryId: number,
+  sectionId: number,
+  targetSite: string,
+  options?: GenerateSummaryOptions
+) {
+  await ensureSummarySchema();
+
+  const [summary] = await db
+    .select({ id: apdSummaries.id, status: apdSummaries.status, sectionId: apdSummaries.sectionId, targetSite: apdSummaries.targetSite })
+    .from(apdSummaries)
+    .where(eq(apdSummaries.id, summaryId))
+    .limit(1);
+
+  if (!summary) return { error: 'Summary tidak ditemukan' };
+  if (summary.status !== 'revisi' && summary.status !== 'draft') {
+    return { error: 'Hanya summary berstatus Revisi atau Draft yang dapat diedit' };
+  }
+
+  const collected = await collectSummaryItems(sectionId, targetSite, options, 'Manual Entry Summary APD (Edit)');
+  if ('error' in collected) {
+    return collected;
+  }
+  const { summaryItems } = collected;
+
+  // Replace all items atomically: delete old, insert new, preserve 'revisi' status so Admin can review notes & re-submit
+  await db.delete(apdSummaryItems).where(eq(apdSummaryItems.summaryId, summaryId));
+
+  for (const item of summaryItems) {
+    await db.insert(apdSummaryItems).values({ summaryId, ...item });
+  }
+
+  const preservedStatus = summary.status === 'revisi' ? 'revisi' : 'draft';
+
+  await db
+    .update(apdSummaries)
+    .set({
+      status: preservedStatus,
+      updatedAt: new Date(),
+      periodStart: options?.periodStart ? new Date(options.periodStart) : undefined,
+      periodEnd: options?.periodEnd ? new Date(options.periodEnd) : undefined,
+    })
+    .where(eq(apdSummaries.id, summaryId));
+
+  return { summaryId, itemCount: summaryItems.length };
+}
+
+export function isValeSummaryTarget(targetSite?: string | null, itemSiteNames?: string[]): boolean {
+  const siteLower = (targetSite || '').toLowerCase().trim();
+  if (siteLower) {
+    return siteLower.includes('vale');
+  }
+  return (itemSiteNames || []).some((s) => (s || '').toLowerCase().includes('vale'));
 }
 
 export async function resolveSummaryApprovers(sectionId: number, targetSite?: string | null, itemSiteNames?: string[]) {
@@ -990,7 +1181,10 @@ export async function resolveSummaryApprovers(sectionId: number, targetSite?: st
 
   if (isServiceCombined) {
     // Single source of truth for Service Operation:
-    // Level 1: ALWAYS TWO PARALLEL APPROVERS (Head Section MVC & Head Section Others)
+    // - GABUNGAN: Level 1 has TWO PARALLEL APPROVERS (Head Section MVC [Apriyanto] & Head Section Others [Junaidi])
+    // - VALE: Level 1 ONLY has Head Section Others (Junaidi), without Apriyanto (Admin -> Junaidi -> Romy Hidayat)
+    const isValeService = isValeSummaryTarget(targetSite, itemSiteNames);
+
     const [sec33] = await db.select({
       headEmployeeId: masterSections.headEmployeeId,
       name: masterSections.name,
@@ -1006,22 +1200,24 @@ export async function resolveSummaryApprovers(sectionId: number, targetSite?: st
       name: masterDepartments.name,
     }).from(masterDepartments).where(eq(masterDepartments.id, 2)).limit(1);
 
-    // 1. Head Section MVC (Apriyanto)
-    const head33Id = sec33?.headEmployeeId || 955;
-    const [emp33] = await db.select({
-      id: employees.id,
-      name: employees.name,
-      email: employees.email,
-      jobTitle: employees.jobTitle,
-    }).from(employees).where(eq(employees.id, head33Id)).limit(1);
+    // 1. Head Section MVC (Apriyanto) — excluded for Vale Service Operation
+    if (!isValeService) {
+      const head33Id = sec33?.headEmployeeId || 955;
+      const [emp33] = await db.select({
+        id: employees.id,
+        name: employees.name,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+      }).from(employees).where(eq(employees.id, head33Id)).limit(1);
 
-    if (emp33) {
-      level1Approvers.push({
-        ...emp33,
-        email: emp33.email || '',
-        jobTitle: 'Section Head Service MVC',
-        sectionName: 'Service Operation MVC',
-      });
+      if (emp33) {
+        level1Approvers.push({
+          ...emp33,
+          email: emp33.email || '',
+          jobTitle: 'Section Head Service MVC',
+          sectionName: 'Service Operation MVC',
+        });
+      }
     }
 
     // 2. Head Section Others (Junaidi)
@@ -1333,7 +1529,7 @@ export async function approveSummaryStep(
 
   // 3. Level 1 AND logic check
   if (level === 1) {
-    const pendingLevel1 = await db.select({
+    let pendingLevel1 = await db.select({
       id: apdSummaryApprovals.id,
       approverEmployeeId: apdSummaryApprovals.approverEmployeeId,
     }).from(apdSummaryApprovals)
@@ -1342,6 +1538,47 @@ export async function approveSummaryStep(
         eq(apdSummaryApprovals.level, 1),
         eq(apdSummaryApprovals.status, 'pending')
       ));
+
+    // Clean up obsolete pending Level 1 approvers that are no longer required by current rules
+    // (e.g., Service MVC on an existing pending Vale Service Operation summary)
+    if (pendingLevel1.length > 0) {
+      const [summaryRow] = await db.select({
+        sectionId: apdSummaries.sectionId,
+        targetSite: apdSummaries.targetSite,
+      }).from(apdSummaries).where(eq(apdSummaries.id, summaryId)).limit(1);
+
+      if (summaryRow) {
+        const items = await db.select({ siteName: apdSummaryItems.siteName })
+          .from(apdSummaryItems)
+          .where(eq(apdSummaryItems.summaryId, summaryId));
+        const itemSiteNames = Array.from(new Set(items.map(i => i.siteName).filter(Boolean)));
+        const { level1Approvers: activeL1 } = await resolveSummaryApprovers(
+          summaryRow.sectionId,
+          summaryRow.targetSite,
+          itemSiteNames
+        );
+        const activeL1Ids = new Set(activeL1.map(a => a.id));
+        const obsoleteIds = pendingLevel1
+          .filter(p => !activeL1Ids.has(p.approverEmployeeId))
+          .map(p => p.approverEmployeeId);
+
+        if (obsoleteIds.length > 0) {
+          await db.delete(apdSummaryApprovals).where(and(
+            eq(apdSummaryApprovals.summaryId, summaryId),
+            eq(apdSummaryApprovals.level, 1),
+            eq(apdSummaryApprovals.status, 'pending'),
+            inArray(apdSummaryApprovals.approverEmployeeId, obsoleteIds)
+          ));
+          await db.delete(heroApprovals).where(and(
+            eq(heroApprovals.apdSummaryId, summaryId),
+            eq(heroApprovals.level, 1),
+            eq(heroApprovals.status, 'pending'),
+            inArray(heroApprovals.approverEmployeeId, obsoleteIds)
+          ));
+          pendingLevel1 = pendingLevel1.filter(p => !obsoleteIds.includes(p.approverEmployeeId));
+        }
+      }
+    }
 
     if (pendingLevel1.length > 0) {
       // Still waiting for the other Level 1 approver(s)
@@ -1388,12 +1625,14 @@ export async function approveSummaryStep(
       // Notify Dept Head (Bell & Email)
       const summaryDetails = await getSummaryDetails(summaryId);
       if (summaryDetails) {
+        const l1Count = summaryDetails.approvals.filter(a => a.level === 1).length;
+        const checkedByLabel = l1Count > 1 ? 'kedua Section Head' : 'Section Head';
         await createNotificationEventForEmployee({
           employeeId: deptHeadId,
           category: 'approval_requests',
           eventType: 'summary_progress',
           title: `Persetujuan Department Head: Summary APD ${summaryDetails.summaryNumber}`,
-          body: `Summary APD ${summaryDetails.summaryNumber} telah selesai diperiksa oleh kedua Section Head dan siap disetujui.`,
+          body: `Summary APD ${summaryDetails.summaryNumber} telah selesai diperiksa oleh ${checkedByLabel} dan siap disetujui.`,
           url: '/dashboard/approval',
         }).catch(console.error);
 
@@ -1632,9 +1871,12 @@ export async function getSummaryDetails(summaryId: number) {
     }
   }
 
-  // If actualApprovals has level 1 approvers that were not in level1Approvers
+  // Preserve signed/historical Level 1 approvers that were not in level1Approvers,
+  // while hiding obsolete unsigned pending rows (e.g. Service MVC on Vale Service Operation summaries)
   for (const act of actualApprovals.filter(a => a.level === 1)) {
-    if (!enrichedApprovals.some(e => e.level === 1 && e.approverEmployeeId === act.approverEmployeeId)) {
+    const isAlreadyIncluded = enrichedApprovals.some(e => e.level === 1 && e.approverEmployeeId === act.approverEmployeeId);
+    const isSignedOrHistorical = summary.status === 'approved' || act.status === 'approved' || Boolean(act.signatureUrl);
+    if (!isAlreadyIncluded && isSignedOrHistorical) {
       enrichedApprovals.push({
         ...act,
         approverSectionName: act.approverSectionName || '',
@@ -1692,4 +1934,316 @@ export async function getSummaryDetails(summaryId: number) {
     masterCatalog: masterCatalog.map((m) => ({ name: m.name, hasSize: m.hasSize, isQtyOnly: m.isQtyOnly })),
     approvals: enrichedApprovals.length > 0 ? enrichedApprovals : actualApprovals,
   };
+}
+
+export async function returnSummaryForRevision(
+  summaryId: number,
+  level: number,
+  approverEmployeeId: number,
+  note: string,
+  actorName?: string
+) {
+  await ensureSummarySchema();
+  const now = new Date();
+  const trimmedNote = (note || '').trim();
+
+  // 1. Update summary status to 'revisi'
+  await db
+    .update(apdSummaries)
+    .set({
+      status: 'revisi',
+      updatedAt: now,
+    })
+    .where(eq(apdSummaries.id, summaryId));
+
+  // 2. Update specific approver row in apdSummaryApprovals
+  await db
+    .update(apdSummaryApprovals)
+    .set({
+      status: 'needs_correction',
+      decisionNote: trimmedNote || 'Summary dikembalikan untuk revisi.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(apdSummaryApprovals.summaryId, summaryId),
+        eq(apdSummaryApprovals.level, level)
+      )
+    );
+
+  // 3. Update heroApprovals for Unified Approval Inbox
+  await db
+    .update(heroApprovals)
+    .set({
+      status: 'needs_correction',
+      decisionNote: trimmedNote || 'Summary dikembalikan untuk revisi.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(heroApprovals.apdSummaryId, summaryId),
+        eq(heroApprovals.level, level)
+      )
+    );
+
+  // 4. Send Bell notification & Email to summary generator
+  const summaryDetails = await getSummaryDetails(summaryId);
+  if (summaryDetails) {
+    const generatorEmail = await db
+      .select({ email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
+      .limit(1);
+
+    const displayName = actorName || 'Approver';
+    const roleLabel = level === 1 ? 'Section Head' : 'Department Head';
+
+    if (generatorEmail[0]?.email) {
+      await createNotificationEventForEmployee({
+        employeeId: summaryDetails.generatedByEmployeeId,
+        category: 'approval_requests',
+        eventType: 'summary_returned',
+        title: `Summary APD Perlu Revisi`,
+        body: `Summary ${summaryDetails.summaryNumber} dikembalikan untuk revisi oleh ${displayName} (${roleLabel}). Catatan: ${trimmedNote || '-'}`,
+        url: `/dashboard/summary?preview=${summaryId}`,
+      }).catch(console.error);
+
+      // Email notification
+      const { sendSummaryReturnedEmail } = await import('@/lib/summary-email');
+      await sendSummaryReturnedEmail(
+        summaryDetails,
+        displayName,
+        roleLabel,
+        trimmedNote
+      ).catch(console.error);
+    }
+  }
+
+  return { success: true };
+}
+
+export async function rejectSummary(
+  summaryId: number,
+  level: number,
+  approverEmployeeId: number,
+  note: string,
+  actorName?: string
+) {
+  await ensureSummarySchema();
+  const now = new Date();
+  const trimmedNote = (note || '').trim();
+
+  // 1. Update summary status to 'rejected'
+  await db
+    .update(apdSummaries)
+    .set({
+      status: 'rejected',
+      updatedAt: now,
+    })
+    .where(eq(apdSummaries.id, summaryId));
+
+  // 2. Update specific approver row in apdSummaryApprovals
+  await db
+    .update(apdSummaryApprovals)
+    .set({
+      status: 'rejected',
+      decisionNote: trimmedNote || 'Summary ditolak.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(apdSummaryApprovals.summaryId, summaryId),
+        eq(apdSummaryApprovals.level, level)
+      )
+    );
+
+  // 3. Update heroApprovals for Unified Approval Inbox
+  await db
+    .update(heroApprovals)
+    .set({
+      status: 'rejected',
+      decisionNote: trimmedNote || 'Summary ditolak.',
+      reviewedAt: now,
+    })
+    .where(
+      and(
+        eq(heroApprovals.apdSummaryId, summaryId),
+        eq(heroApprovals.level, level)
+      )
+    );
+
+  // Skip other pending approvals for this summary
+  await db
+    .update(heroApprovals)
+    .set({ status: 'skipped', reviewedAt: now })
+    .where(
+      and(
+        eq(heroApprovals.apdSummaryId, summaryId),
+        ne(heroApprovals.level, level)
+      )
+    );
+
+  // 4. Send Bell notification to generator
+  const summaryDetails = await getSummaryDetails(summaryId);
+  if (summaryDetails) {
+    const generatorEmail = await db
+      .select({ email: employees.email })
+      .from(employees)
+      .where(eq(employees.id, summaryDetails.generatedByEmployeeId))
+      .limit(1);
+
+    const displayName = actorName || 'Approver';
+    if (generatorEmail[0]?.email) {
+      await createNotificationEventForEmployee({
+        employeeId: summaryDetails.generatedByEmployeeId,
+        category: 'approval_requests',
+        eventType: 'summary_rejected',
+        title: `Summary Ditolak`,
+        body: `Summary ${summaryDetails.summaryNumber} telah ditolak oleh ${displayName}. Catatan: ${trimmedNote || '-'}`,
+        url: `/dashboard/summary?preview=${summaryId}`,
+      }).catch(console.error);
+    }
+  }
+
+  return { success: true };
+}
+
+export async function removeItemFromSummary(
+  summaryId: number,
+  employeeId: number,
+  apdRequestId?: number
+) {
+  await ensureSummarySchema();
+  const [summary] = await db
+    .select({ status: apdSummaries.status })
+    .from(apdSummaries)
+    .where(eq(apdSummaries.id, summaryId))
+    .limit(1);
+
+  if (!summary) return { error: 'Summary tidak ditemukan' };
+  if (summary.status !== 'draft' && summary.status !== 'revisi') {
+    return { error: 'Hanya summary berstatus Draft atau Revisi yang itemnya dapat diubah' };
+  }
+
+  if (apdRequestId) {
+    await db
+      .delete(apdSummaryItems)
+      .where(
+        and(
+          eq(apdSummaryItems.summaryId, summaryId),
+          eq(apdSummaryItems.apdRequestId, apdRequestId)
+        )
+      );
+  } else {
+    await db
+      .delete(apdSummaryItems)
+      .where(
+        and(
+          eq(apdSummaryItems.summaryId, summaryId),
+          eq(apdSummaryItems.employeeId, employeeId)
+        )
+      );
+  }
+
+  await db
+    .update(apdSummaries)
+    .set({ updatedAt: new Date() })
+    .where(eq(apdSummaries.id, summaryId));
+
+  return { success: true };
+}
+
+export async function updateSummaryShoeUsagePeriod(
+  summaryId: number,
+  employeeId: number,
+  apdRequestId: number | null | undefined,
+  masaPakai: string
+) {
+  await ensureSummarySchema();
+  const [summary] = await db
+    .select({ status: apdSummaries.status })
+    .from(apdSummaries)
+    .where(eq(apdSummaries.id, summaryId))
+    .limit(1);
+
+  if (!summary) return { success: false, error: 'Summary tidak ditemukan' };
+  if (summary.status !== 'draft' && summary.status !== 'revisi') {
+    return { success: false, error: 'Hanya summary berstatus Draft atau Revisi yang masa pakainya dapat diubah' };
+  }
+
+  const trimmed = (masaPakai || '').trim();
+
+  // Check if item already exists
+  const existing = await db
+    .select()
+    .from(apdSummaryItems)
+    .where(
+      and(
+        eq(apdSummaryItems.summaryId, summaryId),
+        eq(apdSummaryItems.employeeId, employeeId),
+        eq(apdSummaryItems.itemName, 'Safety Shoes Masa Pakai')
+      )
+    );
+
+  if (existing.length > 0) {
+    if (trimmed) {
+      await db
+        .update(apdSummaryItems)
+        .set({
+          requestType: trimmed,
+          remarks: trimmed,
+        })
+        .where(
+          and(
+            eq(apdSummaryItems.summaryId, summaryId),
+            eq(apdSummaryItems.employeeId, employeeId),
+            eq(apdSummaryItems.itemName, 'Safety Shoes Masa Pakai')
+          )
+        );
+    } else {
+      await db
+        .delete(apdSummaryItems)
+        .where(
+          and(
+            eq(apdSummaryItems.summaryId, summaryId),
+            eq(apdSummaryItems.employeeId, employeeId),
+            eq(apdSummaryItems.itemName, 'Safety Shoes Masa Pakai')
+          )
+        );
+    }
+  } else if (trimmed) {
+    // Find reference item of this employee in the summary to copy employee metadata
+    const [refItem] = await db
+      .select()
+      .from(apdSummaryItems)
+      .where(
+        and(
+          eq(apdSummaryItems.summaryId, summaryId),
+          eq(apdSummaryItems.employeeId, employeeId)
+        )
+      )
+      .limit(1);
+
+    if (refItem) {
+      await db.insert(apdSummaryItems).values({
+        summaryId,
+        apdRequestId: apdRequestId || refItem.apdRequestId,
+        employeeId,
+        employeeName: refItem.employeeName,
+        employeeSn: refItem.employeeSn,
+        siteName: refItem.siteName,
+        itemName: 'Safety Shoes Masa Pakai',
+        quantity: 0,
+        requestType: trimmed,
+        remarks: trimmed,
+      });
+    }
+  }
+
+  await db
+    .update(apdSummaries)
+    .set({ updatedAt: new Date() })
+    .where(eq(apdSummaries.id, summaryId));
+
+  return { success: true };
 }

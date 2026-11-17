@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { downloadElementAsPdf } from '@/lib/pdf-download'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { cn } from '@/lib/utils'
 
@@ -91,13 +92,21 @@ function statusLabel(row: MobileSplHistoryRow) {
 export function MobileSplHistory({
   rows,
   activeOnly = false,
+  initialQuery = '',
 }: {
   rows: MobileSplHistoryRow[]
   activeOnly?: boolean
+  initialQuery?: string
 }) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery)
   const [status, setStatus] = useState('all')
-  const [visible, setVisible] = useState(8)
+  const [visible, setVisible] = useState(30)
+
+  useEffect(() => {
+    if (initialQuery) {
+      setQuery(initialQuery)
+    }
+  }, [initialQuery])
 
   // ── Floating PDF Preview State ──
   const [selectedSplId, setSelectedSplId] = useState<number | null>(null)
@@ -384,9 +393,9 @@ export function MobileSplHistory({
       )}
 
       {/* ── List Cards ── */}
-      {filtered.slice(0, visible).map((row) => (
+      {filtered.slice(0, visible).map((row, idx) => (
         <details
-          key={`${row.id}-${row.participantName || row.workerNames.join('-')}`}
+          key={`${row.id}-${row.participantName || ''}-${idx}`}
           className="group overflow-hidden rounded-[1.25rem] bg-white shadow-[0_14px_32px_rgba(8,32,51,0.08)] border border-slate-100/80"
         >
           <summary className="flex min-h-12 cursor-pointer list-none items-start justify-between gap-3 p-4">
@@ -534,7 +543,7 @@ export function MobileSplHistory({
       <Dialog open={isPdfOpen} onOpenChange={setIsPdfOpen}>
         <DialogContent
           showCloseButton={false}
-          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl"
         >
           {/* Top Viewer Navbar */}
           <div className="bg-white px-3 sm:px-4 py-2.5 flex items-center justify-between border-b border-slate-200 shrink-0 select-none">
@@ -838,7 +847,16 @@ export function MobileSplHistory({
                                   <td className="text-center font-bold font-mono text-black">{item.plannedPoints || 0} pts</td>
                                   <td className="text-center text-[7pt]">
                                     {hasPhoto ? (
-                                      <span className="font-bold text-emerald-600">📷 Ada Foto</span>
+                                      <a
+                                        href={resolveUploadUrl(item.photoUrl || (Array.isArray(item.photos) ? item.photos[0] : ''))}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="font-bold text-emerald-600 hover:text-emerald-700 underline inline-flex items-center justify-center gap-0.5"
+                                        onClick={(e) => e.stopPropagation()}
+                                        title="Klik untuk melihat foto bukti lembur"
+                                      >
+                                        📷 Ada Foto
+                                      </a>
                                     ) : (
                                       <span className="text-slate-400">—</span>
                                     )}

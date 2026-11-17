@@ -29,7 +29,7 @@ test("contract review form receives master head map for signatory autofill", () 
   assert.match(editPageSource, /masterHeadMap/);
   assert.match(formSource, /masterDepartmentHead/);
   assert.match(formSource, /masterSectionHead/);
-  assert.match(publicApprovalSource, /central_service_manager: 'Department Head'/);
+  assert.match(publicApprovalSource, /central_service_manager: 'Manager'/);
 });
 
 test("contract review leader signature preview uses latest canvas data", () => {

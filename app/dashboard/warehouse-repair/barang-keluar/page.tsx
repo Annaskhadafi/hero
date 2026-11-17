@@ -1,7 +1,16 @@
-import { getWarehouseRepairPageData } from "@/app/actions/warehouse-repair"
-import { WarehouseRepairClient } from "../_components/warehouse-repair-client"
+import { getWarehouseRepairOutbound, getWarehouseRepairItems } from "@/app/actions/warehouse-repair"
+import { WarehouseRepairOutboundTable } from "@/components/warehouse-repair"
+import { getCurrentMenuPermission } from "@/lib/hero-access"
+import { redirect } from "next/navigation"
 
 export default async function WarehouseRepairBarangKeluarPage() {
-  const data = await getWarehouseRepairPageData()
-  return <WarehouseRepairClient mode="outbound" data={data} />
+  const access = await getCurrentMenuPermission("warehouse_repair_barang_keluar")
+  if (!access.canView) {
+    redirect("/dashboard")
+  }
+  const [outbound, items] = await Promise.all([
+    getWarehouseRepairOutbound(),
+    getWarehouseRepairItems(),
+  ])
+  return <WarehouseRepairOutboundTable outbound={outbound} items={items} access={access} />
 }

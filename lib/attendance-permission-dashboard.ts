@@ -3,6 +3,7 @@ import { employees, sites } from '@/db/schema/hero'
 import { attendancePermissionRequests, timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { ensureSchedulingTimesheetTables } from '@/lib/timesheet/scheduling-infrastructure'
 import { and, desc, eq, inArray, sql, gte, lte } from 'drizzle-orm'
+import { getTodayDateString } from '@/lib/indonesia-timezone'
 
 export type AttendancePermissionRow = {
   id: string
@@ -53,7 +54,12 @@ function readNotePart(note: string, label: string) {
 }
 
 function dayName(date: string) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long' })
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim())
+  if (!match) return '-'
+  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+  return Number.isNaN(utc.getTime())
+    ? '-'
+    : utc.toLocaleDateString('id-ID', { weekday: 'long', timeZone: 'UTC' })
 }
 
 function topCounts(rows: AttendancePermissionRow[], getter: (row: AttendancePermissionRow) => string, limit = 8) {
@@ -234,8 +240,7 @@ export async function getAttendancePermissionDashboardData(filters: IzinDashboar
   const nonPendingRows = rows.filter((row) => row.status !== 'pending')
   const rejectedRows: AttendancePermissionRow[] = []
 
-  const now = new Date()
-  const thisMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const thisMonthStr = getTodayDateString().slice(0, 7)
   const thisMonthRows = rows.filter((row) => row.date.startsWith(thisMonthStr))
 
   const employeeSites = await db

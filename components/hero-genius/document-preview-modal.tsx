@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { PdfCanvasViewer } from "./pdf-canvas-viewer";
 import { MarkdownDocViewer } from "./markdown-doc-viewer";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 interface DocumentPreviewModalProps {
   isOpen: boolean;
@@ -66,17 +67,18 @@ export function DocumentPreviewModal({
     /\.(md|markdown|txt)$/i.test(filename || url);
 
   // Avoid double-wrapping if url is already a document-stream route
-  const streamUrl = url.startsWith("/api/hero-genius/document-stream")
-    ? url
+  const resolvedRaw = resolveUploadUrl(url) || url;
+  const streamUrl = resolvedRaw.startsWith("/api/hero-genius/document-stream") || resolvedRaw.startsWith("/api/uploads/")
+    ? resolvedRaw
     : `/api/hero-genius/document-stream?url=${encodeURIComponent(
-        url
+        resolvedRaw
       )}&filename=${encodeURIComponent(filename)}&format=${encodeURIComponent(format || "")}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         onContextMenu={(e) => e.preventDefault()}
-        className="w-full max-w-[96vw] sm:max-w-4xl lg:max-w-5xl h-[94dvh] sm:h-[90vh] p-0 gap-0 overflow-hidden flex flex-col rounded-2xl sm:rounded-3xl border-slate-200 dark:border-slate-800 select-none z-[9999] bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 shadow-2xl"
+        className="w-full max-w-[100vw] sm:max-w-4xl lg:max-w-5xl h-[100dvh] sm:h-[90vh] p-0 gap-0 overflow-hidden flex flex-col rounded-none sm:rounded-3xl border-slate-200 dark:border-slate-800 select-none z-[9999] bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 shadow-2xl"
       >
         {/* Top Header Bar */}
         <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-800 bg-[#003461] px-3 sm:px-6 py-2.5 sm:py-3 text-white shrink-0">
@@ -163,7 +165,7 @@ export function DocumentPreviewModal({
             <PdfCanvasViewer
               url={streamUrl}
               filename={filename}
-              preferNativeViewer={true}
+              preferNativeViewer={false}
               hideToolbar={true}
               hideDownload={true}
               onLoaded={(pages) => setTotalPages(pages)}

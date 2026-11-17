@@ -9,6 +9,7 @@ import { syncFaceAttendanceToTimesheet } from '@/lib/timesheet/face-attendance-s
 import { resolveSiteAttendancePunctuality } from '@/lib/timesheet/site-attendance-punctuality'
 import { authenticateMobileRequest } from '@/lib/mobile-auth'
 import { rarayCheckAntiSpoofUniFaceV2 } from '@/lib/raray-vision/client'
+import { parseStoredEmbedding } from '@/lib/security/biometric-crypto'
 
 // --- Constants ---
 const SIMILARITY_THRESHOLD = 0.85
@@ -329,7 +330,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 8. Compute cosine similarity
-    const storedEmbedding = employee.faceEmbedding as number[]
+    const storedEmbedding = parseStoredEmbedding(employee.faceEmbedding)
+    if (!storedEmbedding) {
+      return errorResponse(
+        404,
+        'NO_FACE_REGISTRATION',
+        'Data vektor wajah karyawan tidak dapat dibaca. Silakan lakukan registrasi ulang.'
+      )
+    }
     const similarity = cosineSimilarity(liveEmbedding, storedEmbedding)
     const faceDistance = euclideanDistance(liveEmbedding, storedEmbedding)
 

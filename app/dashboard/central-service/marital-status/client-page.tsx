@@ -21,6 +21,7 @@ import {
   approveMaritalStatusStepAction,
   rejectMaritalStatusStepAction,
   deleteMaritalStatusRequestAction,
+  getMaritalStatusDetailAction,
 } from './actions';
 import { toast } from 'sonner';
 import {
@@ -171,15 +172,16 @@ export function MaritalStatusDashboardClient({
       if (res.data) {
         setSelectedRequest(res.data);
       } else {
-        // Fallback server action call if route not created
-        const { fetchMaritalStatusRequestById } = await import('@/lib/marital-status-data');
-        const detail = await fetchMaritalStatusRequestById(requestId);
+        const detail = await getMaritalStatusDetailAction(requestId);
         setSelectedRequest(detail);
       }
     } catch (e) {
-      const { fetchMaritalStatusRequestById } = await import('@/lib/marital-status-data');
-      const detail = await fetchMaritalStatusRequestById(requestId);
-      setSelectedRequest(detail);
+      try {
+        const detail = await getMaritalStatusDetailAction(requestId);
+        setSelectedRequest(detail);
+      } catch (err: any) {
+        console.error('Failed to load marital status detail:', err);
+      }
     } finally {
       setLoadingDetail(false);
     }

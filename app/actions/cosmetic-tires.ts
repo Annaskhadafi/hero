@@ -20,23 +20,37 @@ const cosmeticTireSchema = z.object({
 
 export type CosmeticTireInput = z.infer<typeof cosmeticTireSchema>
 
+let cosmeticTiresTableEnsured = false
+let cosmeticTiresTablePromise: Promise<void> | null = null
+
 async function ensureCosmeticTiresTable() {
-    await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS "cosmetic_tires" (
-            "id" serial PRIMARY KEY NOT NULL,
-            "tyre_size" varchar(150),
-            "pattern" varchar(150),
-            "serial_number" varchar(150),
-            "month" varchar(50),
-            "city" varchar(150),
-            "year" varchar(50),
-            "material_number" varchar(150),
-            "description" text,
-            "created_by" text REFERENCES "user"("id"),
-            "created_at" timestamp DEFAULT now() NOT NULL,
-            "updated_at" timestamp DEFAULT now() NOT NULL
-        )
-    `)
+    if (cosmeticTiresTableEnsured) return
+    if (cosmeticTiresTablePromise) return cosmeticTiresTablePromise
+
+    cosmeticTiresTablePromise = (async () => {
+        await db.execute(sql`
+            CREATE TABLE IF NOT EXISTS "cosmetic_tires" (
+                "id" serial PRIMARY KEY NOT NULL,
+                "tyre_size" varchar(150),
+                "pattern" varchar(150),
+                "serial_number" varchar(150),
+                "month" varchar(50),
+                "city" varchar(150),
+                "year" varchar(50),
+                "material_number" varchar(150),
+                "description" text,
+                "created_by" text REFERENCES "user"("id"),
+                "created_at" timestamp DEFAULT now() NOT NULL,
+                "updated_at" timestamp DEFAULT now() NOT NULL
+            )
+        `)
+        cosmeticTiresTableEnsured = true
+    })().catch((err) => {
+        cosmeticTiresTablePromise = null
+        throw err
+    })
+
+    return cosmeticTiresTablePromise
 }
 
 function normalizeInput(data: CosmeticTireInput) {

@@ -160,7 +160,7 @@ export function SiteCoordinatePickerInner({
         </DialogHeader>
 
         {/* Map Container */}
-        <div className="relative h-[480px] w-full bg-slate-100">
+        <div className="relative isolate z-0 h-[480px] w-full bg-slate-100">
           <MapContainer
             center={position}
             zoom={7}
@@ -186,7 +186,7 @@ export function SiteCoordinatePickerInner({
           </MapContainer>
 
           {/* Floating Coordinate Pill */}
-          <div className="absolute bottom-3 left-3 z-[400] flex items-center gap-3 bg-white/95 px-3 py-2 rounded-xl shadow-lg border border-slate-200 text-xs font-semibold backdrop-blur-md">
+          <div className="absolute bottom-3 left-3 z-20 flex items-center gap-3 bg-white/95 px-3 py-2 rounded-xl shadow-lg border border-slate-200 text-xs font-semibold backdrop-blur-md">
             <div className="flex items-center gap-1.5 text-slate-700">
               <Crosshair className="size-4 text-rose-600" />
               <span>Titik Terpilih:</span>

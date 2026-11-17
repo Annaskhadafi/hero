@@ -63,7 +63,7 @@ function SignInContent() {
         setMessage(`Login Wajah Berhasil! Selamat datang, ${userData.name}.`);
         setTimeout(() => {
             if (userData.token) {
-                window.location.href = `/api/auth/magic-link/verify?token=${userData.token}&callbackURL=${encodeURIComponent(getClientPostLoginPath(callbackPath))}`;
+                window.location.href = `/api/auth/magic-link/verify?token=${userData.token}&callbackURL=${encodeURIComponent(getClientPostLoginPath(callbackPath))}&errorCallbackURL=${encodeURIComponent("/sign-in")}`;
             } else {
                 window.location.href = getClientPostLoginPath(callbackPath);
             }

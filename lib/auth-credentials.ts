@@ -29,9 +29,11 @@ function credentialWhere(authUserId: string | null, accountIds: string[]) {
   const matches = accountIds.map(
     (accountId) => sql`lower(trim(${account.accountId})) = ${accountId}`
   )
-  const ownerMatches = authUserId ? [eq(account.userId, authUserId)] : matches
+  const ownerMatches = authUserId
+    ? [eq(account.userId, authUserId), eq(account.accountId, authUserId)]
+    : []
 
-  return and(eq(account.providerId, 'credential'), or(...ownerMatches))
+  return and(eq(account.providerId, 'credential'), or(...ownerMatches, ...matches))
 }
 
 function pickCanonicalCredential(rows: CredentialAccount[]) {
@@ -103,7 +105,7 @@ async function writeCanonicalCredential({
       await tx
         .update(account)
         .set({
-          accountId: normalizedEmail,
+          accountId: authUserId,
           userId: authUserId,
           password: passwordHash,
           updatedAt: now,
@@ -117,7 +119,7 @@ async function writeCanonicalCredential({
 
       return {
         ...canonical,
-        accountId: normalizedEmail,
+        accountId: authUserId,
         userId: authUserId,
         password: passwordHash,
       }
@@ -126,7 +128,7 @@ async function writeCanonicalCredential({
     const created = {
       id: randomUUID(),
       userId: authUserId,
-      accountId: normalizedEmail,
+      accountId: authUserId,
       password: passwordHash,
     }
     await tx.insert(account).values({
@@ -213,13 +215,13 @@ export async function updateCredentialEmailAccountId({
 
     await tx
       .update(account)
-      .set({ accountId: normalizedEmail, userId: authUserId, updatedAt: now })
+      .set({ accountId: authUserId, userId: authUserId, updatedAt: now })
       .where(eq(account.id, canonical.id))
 
     for (const duplicate of rows.filter((row) => row.id !== canonical.id)) {
       await tx.delete(account).where(eq(account.id, duplicate.id))
     }
 
-    return { ...canonical, accountId: normalizedEmail, userId: authUserId }
+    return { ...canonical, accountId: authUserId, userId: authUserId }
   })
 }

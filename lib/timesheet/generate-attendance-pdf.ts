@@ -9,6 +9,9 @@ import {
 
 export type AttendanceDayData = {
   day: number
+  dateLabel?: string
+  dateStr?: string
+  period?: string
   dayName: string
   status: string
   clockIn: string
@@ -17,6 +20,8 @@ export type AttendanceDayData = {
   isHoliday: boolean
   holidayName?: string
   overtime?: OvertimeCalculationResult
+  hasManualOvertimeOverride?: boolean
+  manualOvertimeHours?: number | null
   workingTimeFrom?: string
   workingTimeTo?: string
   configuredOvertimeIntervals?: OvertimeInterval[]
@@ -41,6 +46,8 @@ export type AttendanceDayData = {
 type OvertimeRecordInput = {
   documentTitle?: string
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   employeeId?: number
   employeeName: string
   employeeSn: string
@@ -49,14 +56,18 @@ type OvertimeRecordInput = {
   siteName: string
   signatures: PdfSignatureNames
   days: AttendanceDayData[]
-  isNonStaff: boolean
+  isNonStaff?: boolean
+  overtimeMode?: 'template' | 'realtime' | 'spl' | string
   showTotalOvertime?: boolean
   evidenceUrl?: string
   appBaseUrl?: string
+  isPjo?: boolean
 }
 
 type SiteAllowanceInput = {
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   employeeName: string
   employeeSn: string
   department: string
@@ -66,7 +77,7 @@ type SiteAllowanceInput = {
   days: AttendanceDayData[]
 }
 
-function formatPeriodLabel(period: string) {
+export function formatPeriodLabel(period: string) {
   const [year, month] = period.split('-').map(Number)
   const months = [
     '',
@@ -316,7 +327,8 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
   const valX = colonX + 15
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -436,7 +448,8 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
       day.scheduleCode === 'Libur' ||
-      day.status === 'off'
+      day.status === 'off' ||
+      day.workingTimeFrom === 'OFF'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const isAbsent =
@@ -453,7 +466,7 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
       !isAbsent &&
       (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
     const configuredOvertimeIntervals =
-      isOff && !hasManualAttendance
+      isOff
         ? []
         : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
     const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
@@ -463,28 +476,85 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
       interval ? `${String(interval.end).replace(':', '.')}` : ''
 
-    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-    const otTo = formatOvertimeIntervalEnd(
-      configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+    let otFrom = isOff ? '' : formatOvertimeInterval(configuredOvertimeIntervals[0])
+    let otTo = isOff
+      ? ''
+      : formatOvertimeIntervalEnd(
+          configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+        )
+
+    const hasManualOverride = Boolean(
+      day.hasManualOvertimeOverride ||
+      day.overtime?.source === 'Legacy' ||
+      (day.manualOvertimeHours !== undefined && day.manualOvertimeHours !== null)
     )
 
-    let ot = day.overtime?.totalHours ?? 0
-    if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
-      ot = 0
-    } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
-      ot = configuredOvertimeIntervals.reduce((sum, inv) => {
-        if (!inv || !inv.start || !inv.end) return sum
-        const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
-        const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
-        if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
-        let startMin = sh * 60 + sm
-        let endMin = eh * 60 + em
-        if (endMin < startMin) endMin += 1440
-        return sum + (endMin - startMin) / 60
-      }, 0)
+    let ot = hasManualOverride
+      ? (day.manualOvertimeHours ?? day.overtime?.totalHours ?? 0)
+      : (day.overtime?.totalHours ?? 0)
+
+    const hasManualOvertime = ot > 0
+    const isRealtimeMode = input.overtimeMode === 'realtime'
+
+    if (hasManualOverride) {
+      if (ot <= 0) {
+        ot = 0
+        otFrom = ''
+        otTo = ''
+      } else {
+        if (!otFrom && configuredOvertimeIntervals[0]) {
+          otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+        }
+        if (!otTo) {
+          otTo = day.clockOut
+            ? day.clockOut.replace(':', '.')
+            : formatOvertimeIntervalEnd(
+                configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
+              )
+        }
+      }
+    } else {
+      // Jika mode realtime: Overtime To mengikuti jam realtime pulang aktual (clockOut)
+      // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
+      if (ot > 0 && hasManualAttendance && day.clockOut && isRealtimeMode) {
+        otTo = day.clockOut.replace(':', '.')
+      }
+
+      if (otFrom === '00.00' && otTo === '00.00') {
+        otFrom = ''
+        otTo = ''
+      }
+      if ((isAbsent || isStatusWithoutTime || isOff) && !hasManualOvertime) {
+        ot = 0
+      } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
+        ot = configuredOvertimeIntervals.reduce((sum, inv) => {
+          if (!inv || !inv.start || !inv.end) return sum
+          const [sh, sm] = String(inv.start).split(/[:.]/).map(Number)
+          const [eh, em] = String(inv.end).split(/[:.]/).map(Number)
+          if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return sum
+          let startMin = sh * 60 + sm
+          let endMin = eh * 60 + em
+          if (endMin < startMin) endMin += 1440
+          return sum + (endMin - startMin) / 60
+        }, 0)
+      }
     }
 
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+    // Khusus CK-MHU (MP): Seluruh hari hadir otomatis dihitung 11 jam lembur merata (From 05.00 To 18.00 untuk DS, 17.00 To 06.00 untuk NS)
+    // PENTING: Hari OFF / Libur / FB TIDAK BOLEH mendapatkan lembur otomatis 11 jam (wajib kosong)
+    const isNightShift = day.scheduleCode === 'NS' || (Boolean(day.workingTimeFrom) && (String(day.workingTimeFrom).startsWith('17') || String(day.workingTimeFrom).startsWith('18')))
+    const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
+    if (isMhuSite && !isAbsent && !isStatusWithoutTime && !isOff) {
+      ot = 11
+      if (!otFrom) otFrom = isNightShift ? '17.00' : '05.00'
+      if (!otTo) otTo = isNightShift ? '06.00' : '18.00'
+    } else if (isOff && (!hasManualOverride || ot <= 0)) {
+      ot = 0
+      otFrom = ''
+      otTo = ''
+    }
+
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualOverride)) {
       totalOT += ot
     }
 
@@ -496,10 +566,11 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
     // Col 0: Date
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], rowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -515,29 +586,36 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
     })
 
     const shouldRenderWorkTimes =
+      (!isOff || hasManualOvertime) &&
       !isAbsent &&
-      !day.isHoliday &&
-      Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn) &&
-      !isOff
+      (!day.isHoliday || hasManualAttendance || hasManualOvertime) &&
+      Boolean(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn)
     const workFrom = shouldRenderWorkTimes
-      ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? '').replace(':', '.')
+      ? String(day.workingTimeFrom !== undefined ? day.workingTimeFrom : day.clockIn ?? (hasManualOvertime ? '07.00' : '')).replace(':', '.')
       : ''
     const workTo = shouldRenderWorkTimes
-      ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? '').replace(':', '.')
+      ? String(day.workingTimeTo !== undefined ? day.workingTimeTo : day.clockOut ?? (hasManualOvertime ? '18.00' : '')).replace(':', '.')
       : ''
     const shouldRenderOtTimes =
-      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+      isMhuSite
+        ? !isOff && !isAbsent && !isStatusWithoutTime && ot > 0
+        : (!isOff || hasManualOvertime) && (hasOvertimeIntervals || hasManualOvertime) && !isAbsent && !isStatusWithoutTime
+
+    if (!isOff && (hasManualOvertime || isMhuSite) && !otFrom && !otTo) {
+      otFrom = isMhuSite ? (isNightShift ? '17.00' : '05.00') : (workFrom || '07.00')
+      otTo = isMhuSite ? (isNightShift ? '06.00' : '18.00') : (workTo || '18.00')
+    }
 
     // Col 2-3: Working Time From & To
     drawCell(page, colX[2], y, cols[2], rowH, {
-      text: isOff && !hasManualAttendance ? 'OFF' : workFrom,
-      font: isOff && !hasManualAttendance ? fontBold : font,
+      text: isOff && !hasManualOvertime ? 'OFF' : workFrom,
+      font: isOff && !hasManualOvertime ? fontBold : font,
       fontSize: 7.5,
       align: 'center',
       bgColor,
     })
     drawCell(page, colX[3], y, cols[3], rowH, {
-      text: workTo,
+      text: isOff && !hasManualOvertime ? '' : workTo,
       font,
       fontSize: 7.5,
       align: 'center',
@@ -575,11 +653,11 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 
     // Col 7: WD
     const rawWd = day.status === 'standby' ? 'ST' : day.status === 'field_break' ? 'FB' : day.scheduleCode || ''
-    const wdCode = rawWd === 'OFF' ? '' : rawWd
+    const wdCode = (isOff || rawWd === 'OFF') && !hasManualOvertime ? '' : (rawWd === 'OFF' ? 'DS' : rawWd)
     drawCell(page, colX[7], y, cols[7], rowH, {
       text: wdCode,
       font,
-      fontSize: 7,
+      fontSize: 7.5,
       align: 'center',
       bgColor,
     })
@@ -647,14 +725,21 @@ export async function generateOvertimeRecordPdf(input: OvertimeRecordInput): Pro
 // ============================================================
 // SUMMARY SPL PDF (6 Columns matching user PDF standard)
 // ============================================================
-export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise<Uint8Array> {
-  const doc = await PDFDocument.create()
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
-  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+// SUMMARY SPL PDF (6 Columns matching official PT Chitra Paratama standard)
+// ============================================================
+export async function appendSummarySplPersonPages(
+  doc: PDFDocument,
+  input: OvertimeRecordInput,
+  sharedAssets: {
+    font: PDFFont
+    fontBold: PDFFont
+    fontItalic: PDFFont
+    logo: { image: any; width: number; height: number } | null
+  }
+): Promise<void> {
+  const { font, fontBold, fontItalic, logo } = sharedAssets
   let page = doc.addPage([595, 842])
   const { width } = page.getSize()
-  const logo = await embedLogo(doc)
 
   const LM = 45
   let y = 790
@@ -687,7 +772,8 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
   const valX = colonX + 15
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -778,7 +864,8 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
       day.scheduleCode === 'Libur' ||
-      day.status === 'off'
+      day.status === 'off' ||
+      day.workingTimeFrom === 'OFF'
     const isStatusWithoutTime = day.status === 'standby' || day.status === 'field_break'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const isAbsent =
@@ -794,8 +881,13 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     const hasAttendance =
       !isAbsent &&
       (hasManualAttendance || (Boolean(day.workingTimeFrom) && day.status !== 'empty' && !isOff))
+    const hasManualOverride = Boolean(
+      day.hasManualOvertimeOverride ||
+      day.overtime?.source === 'Legacy' ||
+      (day.manualOvertimeHours !== undefined && day.manualOvertimeHours !== null)
+    )
     const configuredOvertimeIntervals =
-      isOff && !hasManualAttendance
+      isOff && !hasManualOverride
         ? []
         : (day.configuredOvertimeIntervals ?? day.overtime?.intervals ?? [])
     const hasOvertimeIntervals = configuredOvertimeIntervals.length > 0
@@ -805,14 +897,42 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     const formatOvertimeIntervalEnd = (interval: OvertimeInterval | undefined) =>
       interval ? `${String(interval.end).replace(':', '.')}` : ''
 
-    const otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
-    const otTo = formatOvertimeIntervalEnd(
+    let otFrom = formatOvertimeInterval(configuredOvertimeIntervals[0])
+    let otTo = formatOvertimeIntervalEnd(
       configuredOvertimeIntervals[configuredOvertimeIntervals.length - 1] || configuredOvertimeIntervals[0]
     )
 
-    let ot = day.overtime?.totalHours ?? 0
+    let ot = hasManualOverride
+      ? (day.manualOvertimeHours ?? day.overtime?.totalHours ?? 0)
+      : (day.overtime?.totalHours ?? 0)
+    const isRealtimeMode = input.overtimeMode === 'realtime'
+
+    // Jika mode realtime, atau hari libur/OFF: Overtime To mengikuti jam realtime pulang aktual (clockOut)
+    // Khusus mode template (Wajib Lembur): Overtime To tetap mengikuti template (misal 19.00), kecuali lembur diperpanjang
+    if (ot > 0 && hasManualAttendance && day.clockOut && (isRealtimeMode || isOff)) {
+      otTo = day.clockOut.replace(':', '.')
+    }
+
+    if (otFrom === '00.00' && otTo === '00.00') {
+      if (hasManualAttendance && day.clockIn && day.clockOut) {
+        otFrom = day.clockIn.replace(':', '.')
+        otTo = day.clockOut.replace(':', '.')
+      } else {
+        otFrom = ''
+        otTo = ''
+      }
+    }
     if (isAbsent || isStatusWithoutTime || (isOff && !hasManualAttendance)) {
       ot = 0
+    } else if (ot <= 0 && isOff && hasManualAttendance && day.clockIn && day.clockOut) {
+      const [sh, sm] = day.clockIn.split(/[:.]/).map(Number)
+      const [eh, em] = day.clockOut.split(/[:.]/).map(Number)
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        ot = Math.round(((endMin - startMin) / 60) * 10) / 10
+      }
     } else if (ot <= 0 && hasOvertimeIntervals && !isOff && (hasAttendance || day.isHoliday)) {
       ot = configuredOvertimeIntervals.reduce((sum, inv) => {
         if (!inv || !inv.start || !inv.end) return sum
@@ -826,7 +946,33 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
       }, 0)
     }
 
-    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)) {
+    if (ot <= 0 && configuredOvertimeIntervals.length === 1 && otFrom && otTo) {
+      const [sh, sm] = otFrom.split(/[:.]/).map(Number)
+      const [eh, em] = otTo.split(/[:.]/).map(Number)
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        let startMin = sh * 60 + sm
+        let endMin = eh * 60 + em
+        if (endMin < startMin) endMin += 1440
+        let diffHours = Math.round(((endMin - startMin) / 60) * 10) / 10
+        if (diffHours >= 12) diffHours = 11 // Continuous shift of 12h has 1h mandatory rest -> 11h
+        if (diffHours > 0) ot = diffHours
+      }
+    }
+
+    // Khusus CK-MHU: Seluruh hari kerja normal otomatis dihitung 11 jam lembur (kecuali OFF / tidak masuk)
+    // PENTING: Hari OFF / Libur / FB TIDAK BOLEH mendapatkan lembur otomatis 11 jam (wajib kosong)
+    const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
+    if (isMhuSite && !isAbsent && !isStatusWithoutTime && !isOff) {
+      ot = 11
+      if (!otFrom) otFrom = '06.00'
+      if (!otTo) otTo = '18.00'
+    } else if (isOff && (!hasManualOverride || ot <= 0)) {
+      ot = 0
+      otFrom = ''
+      otTo = ''
+    }
+
+    if (ot > 0 && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualOverride)) {
       totalOT += ot
     }
 
@@ -886,10 +1032,11 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
     // Col 0: Tanggal
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], dynamicRowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -905,7 +1052,7 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
     })
 
     const shouldRenderOtTimes =
-      hasOvertimeIntervals && !isAbsent && !isStatusWithoutTime && (!isOff || hasManualAttendance)
+      !isAbsent && !isStatusWithoutTime && (!isOff || hasManualOverride) && ot > 0
 
     // Col 2-3: Overtime Mulai & Selesai
     drawCell(page, colX[2], y, cols[2], dynamicRowH, {
@@ -981,9 +1128,19 @@ export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise
   // Signatures (3 equal columns)
   y -= 30
   await drawSummarySplSignatures(doc, page, { regular: font, italic: fontItalic, bold: fontBold }, y, input)
+}
 
+export async function generateSummarySplPdf(input: OvertimeRecordInput): Promise<Uint8Array> {
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  const logo = await embedLogo(doc)
+
+  await appendSummarySplPersonPages(doc, input, { font, fontBold, fontItalic, logo })
   return doc.save()
 }
+
 
 async function drawSummarySplSignatures(
   doc: PDFDocument,
@@ -994,16 +1151,23 @@ async function drawSummarySplSignatures(
 ) {
   const { width } = page.getSize()
   const names = input.signatures
+  const isPjo = Boolean(input.isPjo || names.isPjo)
 
-  const labels: [string, string][] = [
-    ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || 'Pemohon'],
-    ['Approved by:', names.pjoLeader?.trim() || 'Supervisor'],
-    ['Diketahui oleh:', names.approvedBy?.trim() || names.hrName?.trim() || 'Branch Manager / Factory Manager'],
-  ]
+  const labels: [string, string][] = isPjo
+    ? [
+        ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || 'PJO'],
+        ['Approved by :', names.approvedBy?.trim() || names.pjoLeader?.trim() || 'Leader'],
+      ]
+    : [
+        ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || 'Pengaju'],
+        ['Approved by :', names.pjoLeader?.trim() || 'PJO'],
+        ['Approved by :', names.approvedBy?.trim() || 'Leader'],
+      ]
 
   const LM = 45
   const printableWidth = width - LM * 2
-  const columnWidth = printableWidth / 3
+  const columnCount = labels.length
+  const columnWidth = printableWidth / columnCount
   const lineWidth = columnWidth - 25
 
   labels.forEach(([label, name], index) => {
@@ -1025,6 +1189,7 @@ async function drawSummarySplSignatures(
   })
 }
 
+// ============================================================
 async function drawOvertimeRecordSignatures(
   doc: PDFDocument,
   page: PDFPage,
@@ -1034,32 +1199,59 @@ async function drawOvertimeRecordSignatures(
 ) {
   const { width } = page.getSize()
   const names = input.signatures
+  const isPjo = Boolean(input.isPjo || names.isPjo)
+
+  const isKpcSite = Boolean(input.siteName && /kpc/i.test(input.siteName))
+  const normalizeSigner = (val?: string): string => {
+    const trimmed = (val || '').trim()
+    if (
+      (isKpcSite && trimmed.toLowerCase().startsWith('plant. spv department')) ||
+      (trimmed.toLowerCase().startsWith('plant. spv department') && trimmed.toLowerCase().includes('kpc'))
+    ) {
+      return 'Leader WS.KPC'
+    }
+    return trimmed
+  }
 
   let labels: [string, string][] = []
   if (names.useExternalOnly) {
+    const isMhuSite = Boolean(input.siteName && /mhu/i.test(input.siteName))
+    const rawCustomer =
+      names.externalApprovedBy?.trim() ||
+      names.approvedBy?.trim() ||
+      (isKpcSite ? 'Leader WS.KPC' : isMhuSite ? 'Plant. Suptend Department CK-MHU' : 'Customer / SPV Eksternal')
+    const customerSigner = normalizeSigner(rawCustomer) || (isKpcSite ? 'Leader WS.KPC' : 'Customer / SPV Eksternal')
+
+    // 2 Kolom Approval Eksternal: Manpower vs Customer (Plant. Suptend Department CK-MHU / Leader WS.KPC)
     labels = [
-      ['Dibuat oleh :', names.externalPreparedBy?.trim() || names.preparedBy || input.employeeName || '-'],
-      ['Approved by:', names.externalApprovedBy?.trim() || names.approvedBy || '-'],
-      ['Approved by:', names.pjoLeader || '-'],
-      ['Diketahui oleh:', names.hrName || '-'],
+      ['Dibuat oleh :', input.employeeName || names.externalPreparedBy?.trim() || names.preparedBy || '-'],
+      ['Approved by:', customerSigner],
     ]
   } else {
+    const rawApproved = names.approvedBy?.trim() || (isKpcSite ? 'Leader WS.KPC' : 'PJO / Manager')
+    const approvedSigner = normalizeSigner(rawApproved) || (isKpcSite ? 'Leader WS.KPC' : 'PJO / Manager')
     labels = [
-      ['Dibuat oleh :', names.preparedBy?.trim() || input.employeeName || '-'],
+      ['Dibuat oleh :', input.employeeName || names.preparedBy?.trim() || '-'],
       ['Approved by:', names.pjoLeader?.trim() || 'Supervisor / Leader'],
-      ['Approved by:', names.approvedBy?.trim() || 'PJO / Manager'],
+      ['Approved by:', approvedSigner],
       ['Diketahui oleh:', names.hrName?.trim() || 'HC / Admin'],
     ]
   }
 
   const LM = 45
   const printableWidth = width - LM * 2
-  const columnWidth = printableWidth / 4
-  const lineWidth = columnWidth - 18
+  const columnCount = labels.length
+  const isTwoSigners = columnCount === 2
+  const columnWidth = isTwoSigners ? 220 : printableWidth / columnCount
+  const lineWidth = isTwoSigners ? 180 : columnWidth - 18
 
-  // Draw 4 Equal Signature Columns across page width
+  // Draw Signature Columns across page width
   labels.forEach(([label, name], index) => {
-    const x = LM + index * columnWidth
+    const x = isTwoSigners
+      ? index === 0
+        ? LM
+        : width - LM - lineWidth
+      : LM + index * columnWidth
     page.drawText(label, { x, y, font: fonts.italic, size: 8, color: rgb(0.3, 0.3, 0.3) })
     page.drawLine({
       start: { x, y: y - 42 },
@@ -1075,6 +1267,304 @@ async function drawOvertimeRecordSignatures(
       maxWidth: lineWidth,
     })
   })
+}
+
+// ============================================================
+// SITE SUMMARY SPL PDF (Consolidated All-Employee Overtime by Site)
+// ============================================================
+export type SiteSummarySplRow = {
+  dateStr: string
+  dayName: string
+  splNumber: string
+  employeeName: string
+  employeeSn?: string
+  department?: string
+  startTime: string
+  endTime: string
+  durationHours: number
+  taskSummary: string
+  isWeekend?: boolean
+}
+
+export type SiteSummaryEmployeeStat = {
+  employeeName: string
+  employeeSn?: string
+  department?: string
+  splCount: number
+  totalHours: number
+}
+
+export type SiteSummarySplInput = {
+  documentTitle?: string
+  period: string
+  siteName: string
+  totalSplCount: number
+  totalHours: number
+  totalEmployees: number
+  rows: SiteSummarySplRow[]
+  employeeStats: SiteSummaryEmployeeStat[]
+  signatures: {
+    preparedBy?: string
+    pjoLeader?: string
+    approvedBy?: string
+    isPjo?: boolean
+    logoUrl?: string
+  }
+}
+
+export async function generateSiteSummarySplPdf(
+  inputOrInputs: SiteSummarySplInput | OvertimeRecordInput[]
+): Promise<Uint8Array> {
+  if (Array.isArray(inputOrInputs)) {
+    const doc = await PDFDocument.create()
+    const font = await doc.embedFont(StandardFonts.Helvetica)
+    const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+    const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+    const logo = await embedLogo(doc)
+
+    for (const input of inputOrInputs) {
+      await appendSummarySplPersonPages(doc, input, { font, fontBold, fontItalic, logo })
+    }
+    return doc.save()
+  }
+
+  const input = inputOrInputs
+  const doc = await PDFDocument.create()
+  const font = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+  const fontItalic = await doc.embedFont(StandardFonts.HelveticaOblique)
+  let page = doc.addPage([595, 842])
+  const { width } = page.getSize()
+  const logo = await embedLogo(doc)
+
+  const LM = 45
+  let y = 790
+
+  // === LOGO + HEADER ===
+  if (logo) {
+    page.drawImage(logo.image, { x: LM, y: y - 15, width: logo.width, height: logo.height })
+  }
+  if (input.signatures.logoUrl) {
+    const custLogo = await embedCustomLogo(doc, input.signatures.logoUrl)
+    if (custLogo) {
+      page.drawImage(custLogo.image, {
+        x: width - LM - custLogo.width,
+        y: y - 15,
+        width: custLogo.width,
+        height: custLogo.height,
+      })
+    }
+  }
+
+  const title1 = 'PT. CHITRA PARATAMA'
+  const title2 = input.documentTitle || 'SUMMARY SPL PER SITE'
+  page.drawText(title1, { x: centerX(width, title1, fontBold, 13), y, font: fontBold, size: 13 })
+  y -= 16
+  page.drawText(title2, { x: centerX(width, title2, fontBold, 10.5), y, font: fontBold, size: 10.5 })
+  y -= 13
+  const subTitle = 'HUMAN CAPITAL • REKAPITULASI LEMBUR KARYAWAN SITE'
+  page.drawText(subTitle, { x: centerX(width, subTitle, font, 7.5), y, font, size: 7.5, color: rgb(0.2, 0.25, 0.3) })
+  y -= 25
+
+  // === INFO / METADATA ===
+  const colonX = LM + 110
+  const valX = colonX + 15
+  page.drawText('MONTH / BULAN', { x: LM, y, font, size: 8.5 })
+  page.drawText(':', { x: colonX, y, font, size: 8.5 })
+  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 8.5 })
+  page.drawText(`TOTAL SPL: ${input.totalSplCount} Dokumen`, { x: width - 180, y, font: fontBold, size: 8.5 })
+  y -= 14
+
+  page.drawText('SITE / LOKASI', { x: LM, y, font, size: 8.5 })
+  page.drawText(':', { x: colonX, y, font, size: 8.5 })
+  page.drawText(input.siteName.toUpperCase(), { x: valX, y, font: fontBold, size: 8.5 })
+  page.drawText(`TOTAL PEKERJA: ${input.totalEmployees} Orang`, { x: width - 180, y, font: fontBold, size: 8.5 })
+  y -= 14
+
+  page.drawText('TOTAL JAM LEMBUR', { x: LM, y, font, size: 8.5 })
+  page.drawText(':', { x: colonX, y, font, size: 8.5 })
+  page.drawText(`${input.totalHours} Jam`, { x: valX, y, font: fontBold, size: 8.5, color: rgb(0, 0.45, 0.7) })
+  y -= 20
+
+  // === TABLE HEADER ===
+  // cols: Tgl (28), Hari (42), Karyawan (85), Dept (60), Mulai (35), Selesai (35), Total Jam (40), Pekerjaan (180) = 505
+  const cols = [28, 42, 85, 60, 35, 35, 40, 180]
+  const tableStartX = LM
+  const colX: number[] = []
+  let cx = tableStartX
+  for (const w of cols) {
+    colX.push(cx)
+    cx += w
+  }
+
+  const hH = 22
+  const drawTableHeader = (pg: PDFPage, curY: number) => {
+    drawCell(pg, colX[0], curY - hH, cols[0], hH, { text: 'Tgl', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[1], curY - hH, cols[1], hH, { text: 'Hari', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[2], curY - hH, cols[2], hH, { text: 'Nama Karyawan', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[3], curY - hH, cols[3], hH, { text: 'Departemen', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[4], curY - 11, cols[4] + cols[5], 11, { text: 'Jam Lembur', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[4], curY - hH, cols[4], 11, { text: 'Mulai', font: fontBold, fontSize: 6.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[5], curY - hH, cols[5], 11, { text: 'Selesai', font: fontBold, fontSize: 6.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[6], curY - hH, cols[6], hH, { text: 'Total Jam', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+    drawCell(pg, colX[7], curY - hH, cols[7], hH, { text: 'Yang Dikerjakan / No. SPL', font: fontBold, fontSize: 7.5, align: 'center', bgColor: rgb(0.95, 0.96, 0.98) })
+  }
+
+  drawTableHeader(page, y)
+  y -= hH
+
+  // === TABLE ROWS ===
+  let pageNum = 1
+  for (const row of input.rows) {
+    const isWeekend = row.isWeekend || row.dayName === 'Minggu' || row.dayName === 'Sabtu'
+    const bgColor = isWeekend ? rgb(1, 0.95, 0.95) : undefined
+    const textRedColor = isWeekend ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
+
+    // Dynamic row height
+    const maxTextW = cols[7] - 8
+    let taskLines = 1
+    if (row.taskSummary && font) {
+      let linesCount = 0
+      for (const paragraph of row.taskSummary.split('\n')) {
+        let line = ''
+        for (const word of paragraph.split(/\s+/)) {
+          const test = line ? `${line} ${word}` : word
+          if (line && font.widthOfTextAtSize(test, 6.5) > maxTextW) {
+            linesCount++
+            line = word
+          } else {
+            line = test
+          }
+        }
+        if (line) linesCount++
+      }
+      taskLines = Math.max(1, linesCount)
+    }
+    const dynamicRowH = Math.max(15, taskLines * 8 + 6)
+
+    // Page break check
+    if (y - dynamicRowH < 85) {
+      page = doc.addPage([595, 842])
+      pageNum++
+      y = 790
+
+      const subTitleCont = `PT. CHITRA PARATAMA — SUMMARY SPL PER SITE (Halaman ${pageNum})`
+      page.drawText(subTitleCont, { x: centerX(width, subTitleCont, fontBold, 9.5), y, font: fontBold, size: 9.5 })
+      y -= 18
+      drawTableHeader(page, y)
+      y -= hH
+    }
+
+    y -= dynamicRowH
+
+    const tglOnly = row.dateStr.split(' ')[0] || row.dateStr
+    drawCell(page, colX[0], y, cols[0], dynamicRowH, { text: tglOnly, font, fontSize: 7, align: 'center', bgColor, color: textRedColor })
+    drawCell(page, colX[1], y, cols[1], dynamicRowH, { text: row.dayName, font, fontSize: 7, align: 'center', bgColor, color: textRedColor })
+    drawCell(page, colX[2], y, cols[2], dynamicRowH, { text: row.employeeName, font: fontBold, fontSize: 7, align: 'left', wrap: true, bgColor })
+    drawCell(page, colX[3], y, cols[3], dynamicRowH, { text: row.department || '-', font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
+    drawCell(page, colX[4], y, cols[4], dynamicRowH, { text: row.startTime, font, fontSize: 6.5, align: 'center', bgColor })
+    drawCell(page, colX[5], y, cols[5], dynamicRowH, { text: row.endTime, font, fontSize: 6.5, align: 'center', bgColor })
+    drawCell(page, colX[6], y, cols[6], dynamicRowH, { text: `${row.durationHours} Jam`, font: fontBold, fontSize: 7, align: 'center', color: rgb(0, 0.4, 0.7), bgColor })
+    const cleanTask = (row.taskSummary || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/[•]/g, '*').replace(/[^\x00-\xFF]/g, ' '); drawCell(page, colX[7], y, cols[7], dynamicRowH, { text: cleanTask, font, fontSize: 6.5, align: 'left', wrap: true, bgColor })
+  }
+
+  // Check room for Total Row + Employee Recap + Signatures
+  if (y - 140 < 50) {
+    page = doc.addPage([595, 842])
+    pageNum++
+    y = 790
+  }
+
+  // === TOTAL ROW ===
+  const rowH = 16
+  y -= rowH
+  const tBg = rgb(0.85, 0.98, 0.88)
+  const tMergeW = cols[0] + cols[1] + cols[2] + cols[3] + cols[4] + cols[5]
+  drawCell(page, colX[0], y, tMergeW, rowH, { text: 'TOTAL JAM LEMBUR SITE:', font: fontBold, fontSize: 8, align: 'center', bgColor: tBg, color: rgb(0.1, 0.5, 0.2) })
+  drawCell(page, colX[6], y, cols[6], rowH, { text: `${input.totalHours} Jam`, font: fontBold, fontSize: 8.5, align: 'center', bgColor: tBg, color: rgb(0, 0.5, 0) })
+  drawCell(page, colX[7], y, cols[7], rowH, { text: `(${input.totalSplCount} SPL • ${input.totalEmployees} Karyawan)`, font: fontBold, fontSize: 7, align: 'left', bgColor: tBg, color: rgb(0.1, 0.5, 0.2) })
+
+  // === REKAPITULASI PER KARYAWAN TABLE ===
+  if (input.employeeStats && input.employeeStats.length > 0) {
+    if (y - (input.employeeStats.length * 14 + 40) < 70) {
+      page = doc.addPage([595, 842])
+      pageNum++
+      y = 790
+    }
+
+    y -= 18
+    const recapTitle = `REKAPITULASI TOTAL LEMBUR PER KARYAWAN (SITE: ${input.siteName.toUpperCase()})`
+    page.drawText(recapTitle, { x: LM, y, font: fontBold, size: 8, color: rgb(0, 0.2, 0.45) })
+    y -= 6
+
+    const rCols = [25, 180, 120, 80, 100]
+    const rColX: number[] = []
+    let rcx = LM
+    for (const w of rCols) {
+      rColX.push(rcx)
+      rcx += w
+    }
+
+    const rHH = 14
+    y -= rHH
+    drawCell(page, rColX[0], y, rCols[0], rHH, { text: 'No', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[1], y, rCols[1], rHH, { text: 'Nama Karyawan', font: fontBold, fontSize: 7, align: 'left', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[2], y, rCols[2], rHH, { text: 'Departemen', font: fontBold, fontSize: 7, align: 'left', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[3], y, rCols[3], rHH, { text: 'Jumlah SPL', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.9, 0.93, 0.96) })
+    drawCell(page, rColX[4], y, rCols[4], rHH, { text: 'Total Jam Lembur', font: fontBold, fontSize: 7, align: 'center', bgColor: rgb(0.9, 0.93, 0.96) })
+
+    input.employeeStats.forEach((st, idx) => {
+      const rH = 13
+      if (y - rH < 75) {
+        page = doc.addPage([595, 842])
+        pageNum++
+        y = 790
+      }
+      y -= rH
+      const rBg = idx % 2 === 1 ? rgb(0.98, 0.98, 0.99) : undefined
+      drawCell(page, rColX[0], y, rCols[0], rH, { text: String(idx + 1), font, fontSize: 7, align: 'center', bgColor: rBg })
+      drawCell(page, rColX[1], y, rCols[1], rH, { text: `${st.employeeName}${st.employeeSn && st.employeeSn !== '-' && st.employeeSn !== '—' ? ` (${st.employeeSn})` : ''}`, font: fontBold, fontSize: 7, align: 'left', bgColor: rBg })
+      drawCell(page, rColX[2], y, rCols[2], rH, { text: st.department || '-', font, fontSize: 7, align: 'left', bgColor: rBg })
+      drawCell(page, rColX[3], y, rCols[3], rH, { text: `${st.splCount} SPL`, font, fontSize: 7, align: 'center', bgColor: rBg })
+      drawCell(page, rColX[4], y, rCols[4], rH, { text: `${st.totalHours} Jam`, font: fontBold, fontSize: 7, align: 'center', color: rgb(0, 0.4, 0.7), bgColor: rBg })
+    })
+  }
+
+  // === SIGNATURES ===
+  if (y - 75 < 45) {
+    page = doc.addPage([595, 842])
+    pageNum++
+    y = 790
+  }
+  y -= 25
+
+  const sigCols = 3
+  const sigW = (width - LM * 2) / sigCols
+  const sigData = [
+    { label: 'Dibuat oleh :', name: input.signatures.preparedBy || 'Admin Site' },
+    { label: 'Diketahui oleh :', name: input.signatures.pjoLeader || 'PJO Site' },
+    { label: 'Approved by :', name: input.signatures.approvedBy || 'Site Leader' },
+  ]
+
+  sigData.forEach((sig, idx) => {
+    const sx = LM + idx * sigW
+    page.drawText(sig.label, { x: sx, y, font: fontItalic, size: 7.5, color: rgb(0.3, 0.3, 0.3) })
+    page.drawLine({
+      start: { x: sx, y: y - 38 },
+      end: { x: sx + sigW - 20, y: y - 38 },
+      color: rgb(0.4, 0.4, 0.4),
+      thickness: 0.5,
+    })
+    page.drawText(sig.name, {
+      x: sx,
+      y: y - 48,
+      font: fontBold,
+      size: 7.5,
+      maxWidth: sigW - 20,
+    })
+  })
+
+  return doc.save()
 }
 
 // ============================================================
@@ -1120,7 +1610,8 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
   const valX = colonX + 15 // posisi value setelah titik dua
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN: ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -1288,10 +1779,11 @@ export async function generateSiteAllowancePdf(input: SiteAllowanceInput): Promi
         : undefined
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], rowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -1438,6 +1930,8 @@ const ALLOWANCE_RECORD_COLUMNS: Record<AllowanceRecordView, string> = {
 export async function generateEmployeeAllowanceRecordPdf(input: {
   view: AllowanceRecordView
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   employeeName: string
   employeeSn: string
   department: string
@@ -1446,6 +1940,7 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
   signatures: PdfSignatureNames
   days: Array<{
     day: number
+    dateLabel?: string
     dayName: string
     scheduleCode: string
     status: string
@@ -1494,7 +1989,8 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
   const valX = colonX + 15
   page.drawText('MONTH', { x: LM, y, font, size: 9 })
   page.drawText(':', { x: colonX, y, font, size: 9 })
-  page.drawText(formatPeriodLabel(input.period), { x: valX, y, font: fontBold, size: 9 })
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  page.drawText(periodText, { x: valX, y, font: fontBold, size: 9 })
   page.drawText(`SN  ${input.employeeSn}`, { x: width - 140, y, font, size: 9 })
   y -= 15
   page.drawText('Name of Employee', { x: LM, y, font, size: 9 })
@@ -1555,7 +2051,8 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
       day.scheduleCode === 'OFF' ||
       day.scheduleCode === 'FB' ||
       day.scheduleCode === 'Libur' ||
-      day.status === 'off'
+      day.status === 'off' ||
+      day.workingTimeFrom === 'OFF'
     const isSunday = day.dayName === 'Sunday' || day.dayName === 'Saturday'
     const bgColor = isFb
       ? rgb(0.95, 0.9, 1)
@@ -1566,10 +2063,11 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
           : undefined
     const dayColor = isSunday || day.isHoliday ? rgb(0.8, 0, 0) : rgb(0, 0, 0)
 
+    const dateCellText = day.dateLabel || String(day.day)
     drawCell(page, colX[0], y, cols[0], rowH, {
-      text: String(day.day),
+      text: dateCellText,
       font,
-      fontSize: 8,
+      fontSize: dateCellText.length > 3 ? 6.5 : 8,
       align: 'center',
       bgColor,
       color: dayColor,
@@ -1660,15 +2158,17 @@ export async function generateEmployeeAllowanceRecordPdf(input: {
 }
 
 // ============================================================
-// SUMMARY TABLE PDF (OT / MSA / Meals / Tunjangan Khusus)
+// SUMMARY TABLE PDF (OT / SPL / MSA / Meals / Tunjangan Khusus)
 // ============================================================
-export type SummaryTableView = 'ot' | 'msa' | 'meals' | 'lokasi'
+export type SummaryTableView = 'ot' | 'spl' | 'msa' | 'meals' | 'lokasi' | 'attendance'
 
 export const SUMMARY_TABLE_TITLES: Record<SummaryTableView, string> = {
   ot: 'OVERTIME SUMMARY',
+  spl: 'OVERTIME SPL SUMMARY',
   msa: 'MSA SUMMARY',
   meals: 'MLS SUMMARY',
   lokasi: 'TU SUMMARY',
+  attendance: 'ATTENDANCE SUMMARY',
 }
 
 export type SummaryTableRow = {
@@ -1686,9 +2186,18 @@ export type SummaryTableRow = {
 export type SummaryTableInput = {
   view: SummaryTableView
   period: string
+  periodLabelOverride?: string
+  cutoffLabel?: string
   siteName: string
   project?: string
   dayCount: number
+  customDateHeaders?: Array<{
+    day: number
+    dateStr?: string
+    displayHeader?: string
+    isWeekend?: boolean
+    isHoliday?: boolean
+  }>
   rows: SummaryTableRow[]
   signatures: PdfSignatureNames
   holidays?: Array<{ day?: number; date: string; localName?: string; name?: string }>
@@ -1720,15 +2229,18 @@ export async function generateSummaryTablePdf(
   const pageHeight = 595
   const LM = 30
   const tableW = pageWidth - LM * 2
-  const dayW = 16
+  const dateHeaders = input.customDateHeaders
+  const effectiveDayCount = dateHeaders && dateHeaders.length > 0 ? dateHeaders.length : input.dayCount
+  const availableTableW = tableW - 18 - 40 - 42 - 40 - 34
+  const dayW = effectiveDayCount > 31 ? Math.max(11, Math.min(16, (availableTableW - 80) / effectiveDayCount)) : 16
 
   const widths: number[] = [
     18,
-    Math.max(80, tableW - 18 - 40 - 42 - dayW * input.dayCount - 40 - 34),
+    Math.max(70, tableW - 18 - 40 - 42 - dayW * effectiveDayCount - 40 - 34),
     40,
     42,
   ]
-  for (let i = 0; i < input.dayCount; i++) widths.push(dayW)
+  for (let i = 0; i < effectiveDayCount; i++) widths.push(dayW)
   widths.push(40, 34)
 
   const colX: number[] = []
@@ -1739,7 +2251,11 @@ export async function generateSummaryTablePdf(
   }
 
   const headerLabels: string[] = ['No', 'Name', 'SN', 'LOC']
-  for (let i = 1; i <= input.dayCount; i++) headerLabels.push(String(i))
+  if (dateHeaders && dateHeaders.length > 0) {
+    dateHeaders.forEach((dh) => headerLabels.push(String(dh.day)))
+  } else {
+    for (let i = 1; i <= effectiveDayCount; i++) headerLabels.push(String(i))
+  }
   headerLabels.push('Total', 'Remark')
 
   const headerBg = rgb(0.9, 0.9, 0.9)
@@ -1751,15 +2267,20 @@ export async function generateSummaryTablePdf(
 
   const drawTableHeader = (top: number) => {
     headerLabels.forEach((label, index) => {
-      const isDayColumn = index >= 4 && index < 4 + input.dayCount
-      const isTotalColumn = index === 4 + input.dayCount
+      const isDayColumn = index >= 4 && index < 4 + effectiveDayCount
+      const isTotalColumn = index === 4 + effectiveDayCount
       let bgColor = headerBg
       let textColor = rgb(0, 0, 0)
       if (isDayColumn) {
-        const day = index - 3
-        const dayName = getDayName(input.period, day)
-        const isWeekend = dayName === 'Saturday' || dayName === 'Sunday'
-        const isHoliday = holidayDays.has(day)
+        const dIdx = index - 4
+        const dateItem = dateHeaders?.[dIdx]
+        const day = dateItem ? dateItem.day : index - 3
+        const isWeekend = dateItem
+          ? Boolean(dateItem.isWeekend)
+          : (getDayName(input.period, day) === 'Saturday' || getDayName(input.period, day) === 'Sunday')
+        const isHoliday = dateItem
+          ? Boolean(dateItem.isHoliday)
+          : holidayDays.has(day)
         if (isHoliday) {
           bgColor = cHolidayBg
           textColor = cRedText
@@ -1774,7 +2295,7 @@ export async function generateSummaryTablePdf(
       drawCell(page, colX[index], top - 15, widths[index], 15, {
         text: label,
         font: fontBold,
-        fontSize: 6,
+        fontSize: effectiveDayCount > 31 ? 5 : 6,
         align: index === 1 ? 'left' : 'center',
         bgColor,
         color: textColor,
@@ -1816,7 +2337,8 @@ export async function generateSummaryTablePdf(
     font: fontBold,
     size: 11,
   })
-  const subtitle = [formatPeriodLabel(input.period), input.siteName, input.project]
+  const periodText = input.periodLabelOverride || (input.cutoffLabel ? `${formatPeriodLabel(input.period)} (${input.cutoffLabel})` : formatPeriodLabel(input.period))
+  const subtitle = [periodText, input.siteName, input.project]
     .filter(Boolean)
     .join('  ·  ')
   page.drawText(subtitle, {
@@ -1900,6 +2422,9 @@ export async function generateSummaryTablePdf(
         cellColor = cRedText
       } else if (text === 'FB') {
         cellBg = cFbBg
+      } else if (text === 'AL') {
+        cellBg = rgb(0.82, 0.98, 0.90)
+        cellColor = rgb(0.02, 0.37, 0.27)
       } else if (text === 'ST' || text === 'GD') {
         cellColor = cBlueText
       } else if (text === 'SPL') {
@@ -1951,18 +2476,72 @@ export async function generateSummaryTablePdf(
 export function buildAttendanceDayData(params: {
   period: string
   dayCount: number
-  getCell: (day: number) => { status: string; clockIn: string; clockOut: string }
-  getScheduleCode: (day: number) => string
+  dateItems?: Array<{
+    period: string
+    day: number
+    dateStr: string
+    displayHeader?: string
+    isHoliday?: boolean
+  }>
+  getCell: (day: number, period?: string, dateStr?: string) => { status: string; clockIn: string; clockOut: string; overtimeHours?: number | null }
+  getScheduleCode: (day: number, period?: string, dateStr?: string) => string
   holidays: Array<{ day?: number; date: string; localName?: string; name?: string }>
-  getOvertime?: (day: number) => OvertimeCalculationResult
+  getOvertime?: (day: number, period?: string, dateStr?: string) => OvertimeCalculationResult
 }): AttendanceDayData[] {
-  const { period, dayCount, getCell, getScheduleCode, holidays, getOvertime } = params
+  const { period, dayCount, dateItems, getCell, getScheduleCode, holidays, getOvertime } = params
   const holidayByDay = new Map(holidays.map((h) => [h.day ?? Number(h.date.slice(-2)), h]))
+
+  if (dateItems && dateItems.length > 0) {
+    return dateItems.map((item) => {
+      const cell = getCell(item.day, item.period, item.dateStr)
+      const holidayMatch = holidays.find(
+        (h) => h.date === item.dateStr || (h.day === item.day && h.date?.startsWith(item.period))
+      )
+      const ovt = getOvertime?.(item.day, item.period, item.dateStr)
+      const hasManualOverride =
+        (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) ||
+        ovt?.source === 'Legacy'
+      const manualOtHours =
+        cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null
+          ? Number(cell.overtimeHours)
+          : ovt?.source === 'Legacy'
+            ? ovt.totalHours
+            : null
+
+      return {
+        day: item.day,
+        dateLabel: item.displayHeader || String(item.day),
+        dateStr: item.dateStr,
+        period: item.period,
+        dayName: getDayName(item.period, item.day),
+        status: cell?.status || 'empty',
+        clockIn: cell?.clockIn || '',
+        clockOut: cell?.clockOut || '',
+        scheduleCode: getScheduleCode(item.day, item.period, item.dateStr),
+        isHoliday: Boolean(holidayMatch),
+        holidayName: holidayMatch?.localName ?? holidayMatch?.name,
+        overtime: ovt,
+        hasManualOvertimeOverride: hasManualOverride,
+        manualOvertimeHours: manualOtHours,
+      }
+    })
+  }
 
   return Array.from({ length: dayCount }, (_, i) => {
     const day = i + 1
     const cell = getCell(day)
     const holiday = holidayByDay.get(day)
+    const ovt = getOvertime?.(day)
+    const hasManualOverride =
+      (cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null) ||
+      ovt?.source === 'Legacy'
+    const manualOtHours =
+      cell && cell.overtimeHours !== undefined && cell.overtimeHours !== null
+        ? Number(cell.overtimeHours)
+        : ovt?.source === 'Legacy'
+          ? ovt.totalHours
+          : null
+
     return {
       day,
       dayName: getDayName(period, day),
@@ -1972,7 +2551,9 @@ export function buildAttendanceDayData(params: {
       scheduleCode: getScheduleCode(day),
       isHoliday: Boolean(holiday),
       holidayName: holiday?.localName ?? holiday?.name,
-      overtime: getOvertime?.(day),
+      overtime: ovt,
+      hasManualOvertimeOverride: hasManualOverride,
+      manualOvertimeHours: manualOtHours,
     }
   })
 }

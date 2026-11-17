@@ -1,15 +1,17 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
+import { useState, useEffect, useTransition, useMemo } from "react"
 import {
   getSopWinDepartmentWorkflowsAction,
   upsertSopWinDepartmentWorkflowAction,
   seedDefaultSopWinDepartmentWorkflowsAction,
+  getSopWinApproverCandidatesAction,
 } from "@/app/dashboard/sop-win/actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { HeroSearchableSelect, type HeroSearchableSelectOption } from "@/components/templates"
 import { toast } from "sonner"
 import {
   Building2,
@@ -22,17 +24,28 @@ import {
   ArrowUp,
   ArrowDown,
   Search,
+  UserCheck,
 } from "lucide-react"
 
-interface StepConfig {
+export interface CandidateEmployee {
+  id: number
+  name: string
+  email: string
+  employeeSn?: string
+  jobTitle?: string
+  department?: string
+}
+
+export interface StepConfig {
   stepOrder: number
   stepLabel: string
   approverRole: string
   approverName?: string
   approverEmail?: string
+  approverEmployeeId?: number | null
 }
 
-interface DeptWorkflow {
+export interface DeptWorkflow {
   id: number
   departmentCode: string
   departmentName: string
@@ -42,10 +55,15 @@ interface DeptWorkflow {
 
 interface SopWinApprovalMatrixPanelProps {
   initialWorkflows?: DeptWorkflow[]
+  initialEmployees?: CandidateEmployee[]
 }
 
-export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinApprovalMatrixPanelProps) {
+export function SopWinApprovalMatrixPanel({
+  initialWorkflows = [],
+  initialEmployees = [],
+}: SopWinApprovalMatrixPanelProps) {
   const [workflows, setWorkflows] = useState<DeptWorkflow[]>(initialWorkflows)
+  const [employeesList, setEmployeesList] = useState<CandidateEmployee[]>(initialEmployees)
   const [search, setSearch] = useState("")
   const [isLoading, setIsLoading] = useState(initialWorkflows.length === 0)
   const [isPending, startTransition] = useTransition()
@@ -64,6 +82,14 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
     }
   }, [initialWorkflows])
 
+  useEffect(() => {
+    if (initialEmployees && initialEmployees.length > 0) {
+      setEmployeesList(initialEmployees)
+    } else {
+      fetchCandidates()
+    }
+  }, [initialEmployees])
+
   const fetchWorkflows = async () => {
     setIsLoading(true)
     try {
@@ -80,10 +106,24 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
     }
   }
 
+  const fetchCandidates = async () => {
+    try {
+      const res = await getSopWinApproverCandidatesAction()
+      if (res.success && res.data) {
+        setEmployeesList(res.data)
+      }
+    } catch (err) {
+      console.error("Failed to fetch approver candidates:", err)
+    }
+  }
+
   const handleOpenEdit = (wf: DeptWorkflow) => {
     setSelectedWorkflow(wf)
     setEditingSteps(JSON.parse(JSON.stringify(wf.steps)))
     setIsEditOpen(true)
+    if (employeesList.length === 0) {
+      fetchCandidates()
+    }
   }
 
   const handleAddStep = () => {
@@ -96,6 +136,7 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
         approverRole: "Approver Role",
         approverName: "",
         approverEmail: "",
+        approverEmployeeId: null,
       },
     ])
   }
@@ -125,6 +166,80 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
     const updated = [...editingSteps]
     updated[index] = { ...updated[index], [field]: value }
     setEditingSteps(updated)
+  }
+
+  // Handle approver selection via Searchable Select
+  const handleApproverSelect = (index: number, selectedName: string) => {
+    const updated = [...editingSteps]
+    const trimmed = (selectedName || "").trim()
+
+    if (!trimmed) {
+      // Clear selection
+      updated[index] = {
+        ...updated[index],
+        approverName: "",
+        approverEmail: "",
+        approverEmployeeId: null,
+      }
+    } else {
+      // Match candidate employee by name
+      const matched = employeesList.find((e) => e.name.toLowerCase() === trimmed.toLowerCase())
+
+      if (matched) {
+        updated[index] = {
+          ...updated[index],
+          approverName: matched.name,
+          approverEmail: matched.email || updated[index].approverEmail || "",
+          approverEmployeeId: matched.id,
+        }
+        // Auto-fill approver role if it is empty or placeholder
+        if (!updated[index].approverRole || updated[index].approverRole === "Approver Role") {
+          if (matched.jobTitle) {
+            updated[index].approverRole = matched.jobTitle
+          }
+        }
+      } else {
+        // Custom typed name
+        updated[index] = {
+          ...updated[index],
+          approverName: trimmed,
+          approverEmployeeId: null,
+        }
+      }
+    }
+
+    setEditingSteps(updated)
+  }
+
+  // Build employee dropdown options
+  const baseEmployeeOptions = useMemo<HeroSearchableSelectOption[]>(() => {
+    return employeesList.map((emp) => ({
+      value: emp.name,
+      label: emp.name,
+      description: `${emp.employeeSn ? `SN: ${emp.employeeSn} • ` : ""}${emp.jobTitle ? `${emp.jobTitle} • ` : ""}${emp.email || "Tanpa email"}`,
+      badge: emp.department || undefined,
+      badgeColor: "bg-blue-50 text-blue-700 border border-blue-200",
+    }))
+  }, [employeesList])
+
+  // Get options for a step, ensuring current custom/preset name is represented
+  const getStepApproverOptions = (step: StepConfig) => {
+    if (
+      step.approverName &&
+      !baseEmployeeOptions.some((o) => o.value.toLowerCase() === step.approverName!.toLowerCase())
+    ) {
+      return [
+        {
+          value: step.approverName,
+          label: step.approverName,
+          description: step.approverEmail ? `Email: ${step.approverEmail}` : "Preset / Kustom",
+          badge: "Kustom",
+          badgeColor: "bg-slate-100 text-slate-700 border border-slate-200",
+        },
+        ...baseEmployeeOptions,
+      ]
+    }
+    return baseEmployeeOptions
   }
 
   const handleSaveWorkflow = () => {
@@ -177,7 +292,7 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
             </div>
             <p className="text-xs text-blue-100/90">
               Atur urutan penandatanganan resmi dokumen per departemen (Total {workflows.length} Departemen).
-              Dapat menyertakan nama karyawan spesifik (misal Ria Annisa) maupun role jabatan.
+              Pilih nama karyawan spesifik dengan pencarian terintegrasi dan email otomatis terisi.
             </p>
           </div>
 
@@ -258,7 +373,7 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
                         </span>
                         <span className="font-semibold truncate text-[11px] text-slate-900">{s.stepLabel}</span>
                       </div>
-                      <span className="shrink-0 text-[10px] font-medium text-slate-500">
+                      <span className="shrink-0 text-[10px] font-medium text-slate-500 truncate max-w-[150px]">
                         {s.approverName || s.approverRole}
                       </span>
                     </div>
@@ -287,7 +402,7 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
 
       {/* Edit Workflow Steps Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-2xl rounded-2xl p-6">
+        <DialogContent className="max-w-3xl rounded-2xl p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-extrabold text-slate-900">
               <Building2 className="h-5 w-5 text-blue-600" />
@@ -295,15 +410,15 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 my-2 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="space-y-4 my-2 max-h-[65vh] overflow-y-auto pr-1">
             <p className="text-xs text-slate-500">
               Urutkan tahapan penandatanganan dokumen dari Step 1 sampai selesai.
-              Isi <span className="font-semibold text-slate-700">Nama Approver</span> jika ingin menentukan orang spesifik (misal Ria Annisa), atau biarkan kosong jika berdasarkan Role/Jabatan.
+              Pilih <span className="font-semibold text-slate-700">Nama User / Karyawan</span> dengan pencarian real-time untuk mengisi email dan nama otomatis, atau masukkan nama kustom.
             </p>
 
             <div className="space-y-3">
               {editingSteps.map((step, index) => (
-                <div key={index} className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+                <div key={index} className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#003461] text-xs font-bold text-white">
@@ -348,45 +463,68 @@ export function SopWinApprovalMatrixPanel({ initialWorkflows = [] }: SopWinAppro
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Nama Label Step</label>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                        Nama Label Step <span className="text-red-500">*</span>
+                      </label>
                       <Input
                         type="text"
                         value={step.stepLabel}
                         onChange={(e) => handleStepChange(index, "stepLabel", e.target.value)}
                         placeholder="Misal: Verifikasi Teknis"
-                        className="h-8 text-xs bg-white"
+                        className="h-9 text-xs bg-white rounded-lg border-border/70 shadow-xs"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Role / Jabatan Approver</label>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-1">
+                        Role / Jabatan Approver <span className="text-red-500">*</span>
+                      </label>
                       <Input
                         type="text"
                         value={step.approverRole}
                         onChange={(e) => handleStepChange(index, "approverRole", e.target.value)}
                         placeholder="Misal: Head of Dept / Admin SOP"
-                        className="h-8 text-xs bg-white"
+                        className="h-9 text-xs bg-white rounded-lg border-border/70 shadow-xs"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Nama Orang Spesifik (Opsional)</label>
-                      <Input
-                        type="text"
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] font-bold text-slate-600">
+                          Nama Orang Spesifik (Opsional)
+                        </label>
+                        {step.approverName && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-blue-700">
+                            <UserCheck className="size-2.5" /> Terpilih
+                          </span>
+                        )}
+                      </div>
+                      <HeroSearchableSelect
+                        placeholder="Pilih nama user / approver..."
+                        options={getStepApproverOptions(step)}
                         value={step.approverName || ""}
-                        onChange={(e) => handleStepChange(index, "approverName", e.target.value)}
-                        placeholder="Misal: Ria Annisa"
-                        className="h-8 text-xs bg-white"
+                        onChange={(val: any) => handleApproverSelect(index, typeof val === "string" ? val : "")}
+                        allowCustom
+                        className="w-full text-xs"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 mb-1">Email Approver (Opsional)</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] font-bold text-slate-600">
+                          Email Approver (Opsional)
+                        </label>
+                        {step.approverEmail && step.approverName && (
+                          <span className="text-[9px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Auto-filled
+                          </span>
+                        )}
+                      </div>
                       <Input
                         type="email"
                         value={step.approverEmail || ""}
                         onChange={(e) => handleStepChange(index, "approverEmail", e.target.value)}
-                        placeholder="Misal: ria.annisa@chitraparatama.com"
-                        className="h-8 text-xs bg-white"
+                        placeholder="Otomatis terisi saat memilih user di samping..."
+                        className="h-9 text-xs bg-white rounded-lg border-border/70 shadow-xs"
                       />
                     </div>
                   </div>

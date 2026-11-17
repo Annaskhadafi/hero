@@ -6,7 +6,10 @@ import { eq, desc, asc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+let mcuClinicsTableEnsured = false;
+
 async function ensureMcuClinicsTable() {
+  if (mcuClinicsTableEnsured) return;
   try {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS hero_hc_mcu_clinics (
@@ -23,6 +26,7 @@ async function ensureMcuClinicsTable() {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
     `);
+    mcuClinicsTableEnsured = true;
   } catch {
     // ignore
   }

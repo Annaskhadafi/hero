@@ -23,6 +23,8 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Download, RotateCcw, Upload, Paperclip, FileText, Image as ImageIcon, ExternalLink, Loader2, Trash2, Eye, AlertCircle, CheckCircle2, PenTool, FileCheck, Edit, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { PdfCanvasViewer } from '@/components/hero-genius/pdf-canvas-viewer'
 import {
   Dialog,
   DialogContent,
@@ -55,12 +57,20 @@ const ROLE_LABELS: Record<string, string> = {
   section_head_initial: 'Section Head',
   employee: 'Karyawan',
   section_head_confirmation: 'Section Head',
-  central_service_manager: 'Department Head',
+  central_service_manager: 'Manager',
   hr: 'HR',
 }
 
 function getSignatureStep(approvals: any[], role: string) {
-  return approvals.find((s: any) => ['approved', 'preview'].includes(s.status) && s.signatureDataUrl && s.approverRole === role)
+  return approvals.find((s: any) => {
+    if (!['approved', 'preview'].includes(s.status) || !s.signatureDataUrl) return false
+    if (s.approverRole === role) return true
+    if (role === 'central_service_manager') {
+      const lower = (s.approverRole || '').toLowerCase()
+      return lower.includes('manager') || lower === 'dept_head' || lower === 'department_head' || s.stepOrder === 4
+    }
+    return false
+  })
 }
 
 function hasVisibleCanvasInk(canvas: HTMLCanvasElement) {
@@ -77,6 +87,9 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const pathname = usePathname()
   const isMobileRoute = pathname.startsWith('/mobile/review/')
   const signatureRef = useRef<SignatureCanvas | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [signatureMode, setSignatureMode] = useState<'draw' | 'upload'>('draw')
+  const [uploadedSignatureDataUrl, setUploadedSignatureDataUrl] = useState<string>('')
   const [remarks, setRemarks] = useState(approval.remarks || '')
   const [error, setError] = useState('')
   const [done, setDone] = useState(approval.status === 'approved')
@@ -98,26 +111,35 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
   const [previewModalAttachment, setPreviewModalAttachment] = useState<any | null>(null)
 
-  // Ambil tanda tangan tersimpan jika belum ada dari token dan user sedang login di browser
+  // Ambil tanda tangan tersimpan jika belum ada dari token dan user yang sedang login di browser adalah approver yang sah
   useEffect(() => {
     if (!registeredSig?.signatureDataUrl) {
-      getUserSignatureAction().then((res) => {
+      getUserSignatureAction().then((res: any) => {
         if (res.success && res.signatureDataUrl) {
-          const sigObj = {
-            signatureDataUrl: res.signatureDataUrl,
-            signatureRegisteredAt: res.signatureRegisteredAt || null,
-            employeeName: res.employeeName || approval.approverName,
-          }
-          setRegisteredSig(sigObj)
-          if (!approval.signatureDataUrl) {
-            setUseRegisteredSig(true)
-            setPreviewSignatureDataUrl(res.signatureDataUrl)
-            setPreviewSignedAt(new Date())
+          // Validasi keamanan: Pastikan sesi user yang sedang login benar-benar cocok dengan approver step ini
+          const isMatchingApprover = Boolean(
+            (res.employeeId && approval.approverEmployeeId && res.employeeId === approval.approverEmployeeId) ||
+            (res.employeeEmail && approval.approverEmail && res.employeeEmail.trim().toLowerCase() === approval.approverEmail.trim().toLowerCase()) ||
+            (res.employeeName && approval.approverName && res.employeeName.trim().toLowerCase() === approval.approverName.trim().toLowerCase())
+          )
+
+          if (isMatchingApprover) {
+            const sigObj = {
+              signatureDataUrl: res.signatureDataUrl,
+              signatureRegisteredAt: res.signatureRegisteredAt || null,
+              employeeName: res.employeeName || approval.approverName,
+            }
+            setRegisteredSig(sigObj)
+            if (!approval.signatureDataUrl) {
+              setUseRegisteredSig(true)
+              setPreviewSignatureDataUrl(res.signatureDataUrl)
+              setPreviewSignedAt(new Date())
+            }
           }
         }
       }).catch(() => {})
     }
-  }, [approval.signatureDataUrl, registeredSig?.signatureDataUrl, approval.approverName])
+  }, [approval.signatureDataUrl, registeredSig?.signatureDataUrl, approval.approverName, approval.approverEmployeeId, approval.approverEmail])
 
   // PDF scale for mobile — fit A4 (794px wide) into screen width without horizontal scroll
   const pdfContainerRef = useRef<HTMLDivElement>(null)
@@ -141,26 +163,23 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     const file = e.target.files?.[0]
     if (!file) return
 
-    const isImage = file.type.startsWith('image/')
-    const isPdf = file.type === 'application/pdf'
+    const lowerName = file.name.toLowerCase()
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lowerName)
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || lowerName.endsWith('.pdf')
     if (!isImage && !isPdf) {
-      alert('File harus berupa PDF atau gambar (JPG/PNG).')
+      toast.error('Berkas harus berupa PDF atau gambar (JPG/PNG/WEBP).')
       e.target.value = ''
       return
     }
 
-    if (isImage && file.size > 5 * 1024 * 1024) {
-      alert('Ukuran gambar maksimal 5MB.')
-      e.target.value = ''
-      return
-    }
-    if (isPdf && file.size > 10 * 1024 * 1024) {
-      alert('Ukuran PDF maksimal 10MB.')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas maksimal 15MB.')
       e.target.value = ''
       return
     }
 
     setIsUploadingAttachment(true)
+    const toastId = toast.loading(`Mengunggah "${file.name}"...`)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -169,7 +188,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
       const res = await uploadFile(formData)
       if (!res.success || !res.url) {
-        alert(res.error || 'Gagal mengunggah file.')
+        toast.error(res.error || 'Gagal mengunggah file.', { id: toastId })
         return
       }
 
@@ -189,11 +208,12 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
 
       if (attachRes.success && attachRes.attachments) {
         setAttachments(attachRes.attachments)
+        toast.success(`Lampiran "${file.name}" berhasil diunggah!`, { id: toastId })
       } else {
-        alert(attachRes.error || 'Gagal menyimpan lampiran.')
+        toast.error(attachRes.error || 'Gagal menyimpan lampiran.', { id: toastId })
       }
     } catch (err: any) {
-      alert(err.message || 'Terjadi kesalahan saat upload file.')
+      toast.error(err.message || 'Terjadi kesalahan saat upload file.', { id: toastId })
     } finally {
       setIsUploadingAttachment(false)
       e.target.value = ''
@@ -223,10 +243,75 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
   const [letterIssuance, setLetterIssuance] = useState<string>(review.letterIssuance || '')
   const [currentStatus, setCurrentStatus] = useState<string>(approval.status || 'pending')
 
+  // Public Approval Draft Auto-Save
+  const approvalDraftKey = `hero_cr_approval_draft_${token}`
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false)
+  const isInitialApprovalMount = useRef(true)
+
+  // 1. Restore approval draft on mount
+  useEffect(() => {
+    if (typeof window === 'undefined' || done) return
+    try {
+      const raw = localStorage.getItem(approvalDraftKey)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed) {
+          let hasRestored = false
+          if (parsed.remarks && parsed.remarks !== approval.remarks) {
+            setRemarks(parsed.remarks)
+            hasRestored = true
+          }
+          if (parsed.recommendation && parsed.recommendation !== review.recommendation) {
+            setRecommendation(parsed.recommendation)
+            hasRestored = true
+          }
+          if (parsed.contractExtendedMonths !== undefined) {
+            setContractExtendedMonths(parsed.contractExtendedMonths)
+            hasRestored = true
+          }
+          if (parsed.letterIssuance && parsed.letterIssuance !== review.letterIssuance) {
+            setLetterIssuance(parsed.letterIssuance)
+            hasRestored = true
+          }
+          if (hasRestored) {
+            setHasRestoredDraft(true)
+            toast.info('Catatan persetujuan dipulihkan dari draf lokal.')
+          }
+        }
+      }
+    } catch {}
+  }, [token, done, approval.remarks, review.recommendation, review.letterIssuance, approvalDraftKey])
+
+  // 2. Debounced auto-save of approval remarks & recommendation
+  useEffect(() => {
+    if (isInitialApprovalMount.current) {
+      isInitialApprovalMount.current = false
+      return
+    }
+    if (typeof window === 'undefined' || done) return
+    const timer = setTimeout(() => {
+      try {
+        if (remarks || recommendation || contractExtendedMonths || letterIssuance) {
+          localStorage.setItem(
+            approvalDraftKey,
+            JSON.stringify({
+              remarks,
+              recommendation,
+              contractExtendedMonths,
+              letterIssuance,
+              savedAt: new Date().toISOString(),
+            })
+          )
+        }
+      } catch {}
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [remarks, recommendation, contractExtendedMonths, letterIssuance, done, approvalDraftKey])
+
   const isWaitingForPreviousStep = currentStatus === 'waiting'
 
   const isSectionHead = approval.approverRole === 'section_head_confirmation' || approval.approverRole === 'section_head_initial'
-  const isDeptHead = approval.approverRole === 'central_service_manager'
+  const isDeptHead = approval.approverRole === 'central_service_manager' || (approval.approverRole || '').toLowerCase().includes('manager') || approval.approverRole === 'department_head'
   const isHr = approval.approverRole === 'hr'
   const isEmployee = approval.approverRole === 'employee' || approval.stepOrder === 2
 
@@ -313,9 +398,15 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
       alert('Tidak ada penandatangan yang dapat diubah.')
       return
     }
+    const defaultRole =
+      target.approverRole === 'central_service_manager' ||
+      (target.approverRole || '').toLowerCase() === 'central service manager' ||
+      (target.approverRole || '').toLowerCase() === 'department head'
+        ? 'Manager'
+        : ROLE_LABELS[target.approverRole] || target.approverRole || ''
     setSelectedApproverToEdit(target)
     setEditApproverName(target.approverName || '')
-    setEditApproverRole(target.approverRole || '')
+    setEditApproverRole(defaultRole)
     setEditApproverEmail(target.approverEmail || '')
     setIsEditApproverModalOpen(true)
   }
@@ -362,19 +453,61 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     .filter((s: any) => Number(s.stepOrder) > Number(approval.stepOrder) && s.remarks?.trim())
     .sort((a: any, b: any) => Number(b.stepOrder) - Number(a.stepOrder))[0] || null
 
+  function handleSignatureFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      alert('Mohon pilih file gambar (PNG, JPG, JPEG, WebP, dsb).')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Ukuran file gambar maksimal 5MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      if (!result) return
+      setUploadedSignatureDataUrl(result)
+      setPreviewSignatureDataUrl(result)
+      setPreviewSignedAt(new Date())
+      setError('')
+    }
+    reader.readAsDataURL(file)
+    event.target.value = ''
+  }
+
+  function handleClearUploadedSignature() {
+    setUploadedSignatureDataUrl('')
+    setPreviewSignatureDataUrl('')
+    setPreviewSignedAt(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   function getSignatureDataUrl() {
     if (useRegisteredSig && registeredSig?.signatureDataUrl) {
       return registeredSig.signatureDataUrl
     }
-    const signature = signatureRef.current
-    if (!signature) return previewSignatureDataUrl || ''
-    const canvas = signature.getCanvas()
-    if (!hasVisibleCanvasInk(canvas) && signature.isEmpty()) return previewSignatureDataUrl || ''
-    try {
-      return signature.getTrimmedCanvas().toDataURL('image/png')
-    } catch {
-      return signature.toDataURL('image/png')
+    if (signatureMode === 'upload' && uploadedSignatureDataUrl) {
+      return uploadedSignatureDataUrl
     }
+    const signature = signatureRef.current
+    if (signature && hasVisibleCanvasInk(signature.getCanvas()) && !signature.isEmpty()) {
+      try {
+        return signature.getTrimmedCanvas().toDataURL('image/png')
+      } catch {
+        return signature.toDataURL('image/png')
+      }
+    }
+    if (uploadedSignatureDataUrl) {
+      return uploadedSignatureDataUrl
+    }
+    return previewSignatureDataUrl || ''
   }
 
   function updateSignaturePreview() {
@@ -415,24 +548,57 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
     setPreviewSignatureDataUrl(signatureDataUrl)
     setPreviewSignedAt(signedAt)
     startTransition(async () => {
-      const result = await approveContractReviewStep(token, {
-        signatureDataUrl,
-        remarks,
-        recommendation: canEditRecommendation ? recommendation : undefined,
-        contractExtendedMonths: canEditRecommendation ? contractExtendedMonths : undefined,
-        letterIssuance: canEditLetterIssuance ? letterIssuance : undefined,
-      })
-      if (result.success) {
-        setDone(true)
-        setCurrentStatus('approved')
-        setApprovalHistory((current) =>
-          current.map((step: any) =>
-            step.id === approval.id
-              ? { ...step, status: 'approved', signatureDataUrl, remarks, signedAt }
-              : step
+      try {
+        const result = await approveContractReviewStep(token, {
+          signatureDataUrl,
+          remarks,
+          recommendation: canEditRecommendation ? recommendation : undefined,
+          contractExtendedMonths: canEditRecommendation ? contractExtendedMonths : undefined,
+          letterIssuance: canEditLetterIssuance ? letterIssuance : undefined,
+        })
+        if (result.success) {
+          try {
+            localStorage.removeItem(approvalDraftKey)
+          } catch {}
+          setDone(true)
+          setCurrentStatus('approved')
+          setApprovalHistory((current) =>
+            current.map((step: any) =>
+              step.id === approval.id
+                ? { ...step, status: 'approved', signatureDataUrl, remarks, signedAt }
+                : step
+            )
           )
-        )
-      } else setError(result.error || 'Gagal menyimpan approval.')
+        } else {
+          try {
+            localStorage.setItem(
+              approvalDraftKey,
+              JSON.stringify({
+                remarks,
+                recommendation,
+                contractExtendedMonths,
+                letterIssuance,
+                savedAt: new Date().toISOString(),
+              })
+            )
+          } catch {}
+          setError((result.error || 'Gagal menyimpan approval.') + ' (Catatan Anda tetap aman tersimpan di draf).')
+        }
+      } catch (err: any) {
+        try {
+          localStorage.setItem(
+            approvalDraftKey,
+            JSON.stringify({
+              remarks,
+              recommendation,
+              contractExtendedMonths,
+              letterIssuance,
+              savedAt: new Date().toISOString(),
+            })
+          )
+        } catch {}
+        setError((err?.message || 'Gagal menyimpan approval.') + ' (Catatan Anda tetap aman tersimpan di draf).')
+      }
     })
   }
 
@@ -769,7 +935,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 }}
                 disabled={!canEditRecommendation}
               />{' '}
-              Confirm to Permanent
+              Purpose to Permanent
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -1551,42 +1717,133 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   </div>
                 ) : null}
 
-                {/* Canvas Tanda Tangan Manual */}
+                {/* Canvas atau Upload Tanda Tangan Manual */}
                 {(!registeredSig?.signatureDataUrl || !useRegisteredSig) && (
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs text-slate-600">
-                      <span className="font-semibold">Gambar Tanda Tangan:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400">Gunakan jari atau stylus</span>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-700">Metode Tanda Tangan:</span>
+                      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
                         <button
                           type="button"
                           onClick={() => {
-                            signatureRef.current?.clear()
-                            setPreviewSignatureDataUrl('')
-                            setPreviewSignedAt(null)
+                            setSignatureMode('draw')
                           }}
-                          className="text-[11px] font-medium text-rose-600 hover:text-rose-700 underline underline-offset-2 flex items-center gap-1"
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            signatureMode === 'draw'
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
                         >
-                          <RotateCcw className="size-2.5" /> Bersihkan
+                          <PenTool className="size-3" /> Gambar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSignatureMode('upload')
+                            if (uploadedSignatureDataUrl) {
+                              setPreviewSignatureDataUrl(uploadedSignatureDataUrl)
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            signatureMode === 'upload'
+                              ? 'bg-white text-slate-900 shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <Upload className="size-3" /> Upload TTD
                         </button>
                       </div>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-white p-2">
-                      <SignatureCanvas
-                        ref={signatureRef}
-                        onEnd={updateSignaturePreview}
-                        canvasProps={{
-                          className: isMobileRoute
-                            ? 'h-36 w-full touch-none rounded-lg bg-white'
-                            : 'h-44 w-full touch-none rounded-lg bg-white sm:h-40',
-                        }}
-                      />
-                    </div>
+
+                    {signatureMode === 'draw' ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs text-slate-600">
+                          <span className="text-[10px] text-slate-400">Gunakan jari atau stylus</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              signatureRef.current?.clear()
+                              setPreviewSignatureDataUrl('')
+                              setPreviewSignedAt(null)
+                            }}
+                            className="text-[11px] font-medium text-rose-600 hover:text-rose-700 underline underline-offset-2 flex items-center gap-1"
+                          >
+                            <RotateCcw className="size-2.5" /> Bersihkan
+                          </button>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white p-2">
+                          <SignatureCanvas
+                            ref={signatureRef}
+                            onEnd={updateSignaturePreview}
+                            canvasProps={{
+                              className: isMobileRoute
+                                ? 'h-36 w-full touch-none rounded-lg bg-white'
+                                : 'h-44 w-full touch-none rounded-lg bg-white sm:h-40',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {uploadedSignatureDataUrl ? (
+                          <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50/30 p-3 space-y-2">
+                            <div className="flex items-center justify-center h-28 bg-white rounded-lg border border-slate-200 p-2">
+                              <img
+                                src={uploadedSignatureDataUrl}
+                                alt="Preview TTD Diunggah"
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between pt-1">
+                              <label className="inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800">
+                                <Upload className="size-3" /> Ganti Gambar
+                                <input
+                                  ref={fileInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleSignatureFileUpload}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={handleClearUploadedSignature}
+                                className="inline-flex items-center gap-1 text-xs font-medium text-rose-600 hover:text-rose-700"
+                              >
+                                <Trash2 className="size-3" /> Hapus
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center h-36 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/30 bg-slate-50/50 p-4 transition-all">
+                            <div className="p-2.5 bg-white rounded-full border border-slate-200 shadow-2xs mb-2">
+                              <Upload className="size-5 text-emerald-600" />
+                            </div>
+                            <span className="text-xs font-semibold text-slate-700">Pilih atau unggah file tanda tangan</span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">Format PNG, JPG, JPEG (Maks. 5MB)</span>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleSignatureFileUpload}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-xs text-slate-500 font-medium">Catatan Persetujuan (Opsional):</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-slate-500 font-medium">Catatan Persetujuan (Opsional):</label>
+                    {hasRestoredDraft && (
+                      <span className="text-[10px] text-amber-700 font-medium bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                        Draf Dipulihkan
+                      </span>
+                    )}
+                  </div>
                   <Textarea
                     value={remarks}
                     onChange={(event) => setRemarks(event.target.value)}
@@ -1836,7 +2093,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                                 <Eye className="size-3.5" /> Preview
                               </Button>
                               <a
-                                href={att.fileUrl}
+                                href={resolveUploadUrl(att.fileUrl)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
@@ -1858,7 +2115,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                                     <Eye className="size-3" /> Layar Penuh
                                   </button>
                                   <a
-                                    href={att.fileUrl}
+                                    href={resolveUploadUrl(att.fileUrl)}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-xs text-slate-600 hover:underline flex items-center gap-1"
@@ -1867,11 +2124,16 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                                   </a>
                                 </div>
                               </div>
-                              <iframe
-                                src={`${att.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                                title={att.fileName}
-                                className="w-full h-[650px] border-0 bg-white"
-                              />
+                              <div className="w-full h-[650px] bg-slate-50 relative">
+                                <PdfCanvasViewer
+                                  url={resolveUploadUrl(att.fileUrl)}
+                                  filename={att.fileName}
+                                  preferNativeViewer={false}
+                                  hideToolbar={false}
+                                  hideDownload={false}
+                                  className="w-full h-full"
+                                />
+                              </div>
                             </div>
                           ) : (
                             <div
@@ -1879,7 +2141,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                               onClick={() => setPreviewModalAttachment(att)}
                             >
                               <img
-                                src={att.fileUrl}
+                                src={resolveUploadUrl(att.fileUrl)}
                                 alt={att.fileName}
                                 className="max-h-[700px] max-w-full object-contain rounded shadow-sm hover:opacity-95 transition"
                               />
@@ -1934,7 +2196,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <a
-                href={previewModalAttachment?.fileUrl}
+                href={resolveUploadUrl(previewModalAttachment?.fileUrl)}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
@@ -1942,7 +2204,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 <ExternalLink className="size-3.5" /> Buka Tab Baru
               </a>
               <a
-                href={previewModalAttachment?.fileUrl}
+                href={resolveUploadUrl(previewModalAttachment?.fileUrl)}
                 download={previewModalAttachment?.fileName}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition"
               >
@@ -1952,14 +2214,19 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
           </DialogHeader>
           <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-2 sm:p-4">
             {previewModalAttachment?.fileType === 'pdf' ? (
-              <iframe
-                src={`${previewModalAttachment.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                title={previewModalAttachment.fileName}
-                className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white"
-              />
+              <div className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white overflow-hidden relative">
+                <PdfCanvasViewer
+                  url={resolveUploadUrl(previewModalAttachment.fileUrl)}
+                  filename={previewModalAttachment.fileName}
+                  preferNativeViewer={false}
+                  hideToolbar={false}
+                  hideDownload={false}
+                  className="w-full h-full"
+                />
+              </div>
             ) : (
               <img
-                src={previewModalAttachment?.fileUrl}
+                src={resolveUploadUrl(previewModalAttachment?.fileUrl)}
                 alt={previewModalAttachment?.fileName}
                 className="max-h-full max-w-full object-contain rounded shadow-lg"
               />
@@ -1983,7 +2250,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
               <Label className="text-xs font-semibold">Rekomendasi Kontrak</Label>
               <div className="space-y-2 pt-1">
                 {[
-                  { value: 'confirm_permanent', label: 'Confirm to Permanent (Diangkat Tetap)' },
+                  { value: 'confirm_permanent', label: 'Purpose to Permanent (Diangkat Tetap)' },
                   { value: 'contract_extended', label: 'Contract Extended (Perpanjangan Kontrak)' },
                   { value: 'terminate_probation', label: 'Unsuccessful Probationary (Penghentian Masa Percobaan)' },
                   { value: 'contract_ended', label: 'Contract Ended (Selesai Kontrak)' },
@@ -2135,9 +2402,15 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                   onChange={(e) => {
                     const found = approvalHistory.find((s: any) => s.id === Number(e.target.value))
                     if (found) {
+                      const defaultRole =
+                        found.approverRole === 'central_service_manager' ||
+                        (found.approverRole || '').toLowerCase() === 'central service manager' ||
+                        (found.approverRole || '').toLowerCase() === 'department head'
+                          ? 'Manager'
+                          : ROLE_LABELS[found.approverRole] || found.approverRole || ''
                       setSelectedApproverToEdit(found)
                       setEditApproverName(found.approverName || '')
-                      setEditApproverRole(found.approverRole || '')
+                      setEditApproverRole(defaultRole)
                       setEditApproverEmail(found.approverEmail || '')
                     }
                   }}
@@ -2174,7 +2447,7 @@ export function ContractReviewPublicApproval({ token, approval, review, allAppro
                 id="editApproverRole"
                 value={editApproverRole}
                 onChange={(e) => setEditApproverRole(e.target.value)}
-                placeholder="Contoh: Section Head / PJO"
+                placeholder="Contoh: Manager / Section Head"
               />
             </div>
 

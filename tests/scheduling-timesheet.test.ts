@@ -11,8 +11,79 @@ import {
   type ScheduleCode,
 } from '@/lib/timesheet-scheduling'
 import { normalizeApiHariLiburResponse, normalizeOpenHolidayResponse } from '@/lib/openholiday'
+import { resolveAttendanceShiftFromRoster } from '@/lib/timesheet/attendance-roster-shift'
+import { canEmployeeSeeSplChecklist } from '@/lib/daily-activity-spl-visibility'
 
 describe('scheduling timesheet workflow', () => {
+  it('limits unscoped SPL visibility to its requester and honors explicit recipients', () => {
+    const base = {
+      employeeId: 10,
+      requestedByEmployeeId: 10,
+      sectionId: null,
+      positionId: null,
+      employeeSectionId: 3,
+      employeePositionId: 7,
+      participantEmployeeIds: [],
+      itemAssignedEmployeeIds: [],
+    }
+
+    expect(canEmployeeSeeSplChecklist(base)).toBe(true)
+    expect(canEmployeeSeeSplChecklist({ ...base, employeeId: 11 })).toBe(false)
+    expect(
+      canEmployeeSeeSplChecklist({
+        ...base,
+        employeeId: 11,
+        sectionId: 3,
+        positionId: 7,
+        participantEmployeeIds: [10],
+      })
+    ).toBe(false)
+    expect(
+      canEmployeeSeeSplChecklist({
+        ...base,
+        employeeId: 11,
+        sectionId: 3,
+        positionId: 7,
+        participantEmployeeIds: [11],
+      })
+    ).toBe(true)
+    expect(
+      canEmployeeSeeSplChecklist({
+        ...base,
+        employeeId: 11,
+        itemAssignedEmployeeIds: [10],
+      })
+    ).toBe(false)
+  })
+
+  it.each([
+    ['DS', 'day'],
+    ['NS', 'night'],
+    ['ST', 'standby'],
+  ])('maps roster %s to attendance shift %s', (rosterCode, shiftCode) => {
+    expect(
+      resolveAttendanceShiftFromRoster(rosterCode, [
+        { value: 'day', label: 'Shift Pagi' },
+        { value: 'night', label: 'Shift Malam' },
+        { value: 'standby', label: 'Standby / On-call' },
+      ])?.value
+    ).toBe(shiftCode)
+  })
+
+  it('grants PJO Site access to roster, attendance, and Schedule V2 within site scope', () => {
+    const accessSource = fs.readFileSync(path.join(process.cwd(), 'lib/hero-access.ts'), 'utf8')
+    const scheduleV2Source = fs.readFileSync(
+      path.join(process.cwd(), 'components/scheduling-timesheet/schedule-v2-workspace.tsx'),
+      'utf8'
+    )
+
+    expect(accessSource).toContain("roleName.trim().toLowerCase() === 'pjo site'")
+    expect(accessSource).toContain("'scheduling_timesheet_attendance'")
+    expect(accessSource).toContain("'scheduling_timesheet_schedule_v2'")
+    expect(accessSource).toContain("dataScope: 'site'")
+    expect(scheduleV2Source).toContain("import { Switch } from '@/components/ui/switch'")
+  })
+
   it('does not use localStorage scheduling persistence', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'components/scheduling-timesheet-workspace.tsx'),

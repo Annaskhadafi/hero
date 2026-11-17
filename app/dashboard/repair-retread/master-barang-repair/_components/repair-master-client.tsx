@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import { CheckCircle2, Download, Pencil, Plus, Search, Trash2, Wrench, MapPin } from "lucide-react"
+import { CheckCircle2, Download, FileSpreadsheet, Layers, MapPin, Pencil, Plus, Search, Trash2, Wrench } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -9,12 +9,14 @@ import {
   deleteRepairMasterItem,
   deleteRepairMasterSite,
   getRepairMasterData,
+  syncBahasaMaterialItems,
   upsertRepairMasterItem,
   upsertRepairMasterSite,
 } from "@/app/actions/repair-master"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { HeroKpiCard } from "@/components/templates/hero-kpi-card"
 import {
   Dialog,
   DialogContent,
@@ -291,6 +293,7 @@ export function RepairMasterClient({
   canEdit = true,
   canDelete = true,
 }: RepairMasterClientProps) {
+  const [activeTab, setActiveTab] = useState<string>("items")
   const [items, setItems] = useState(initialItems)
   const [sites, setSites] = useState(initialSites)
   const [itemQuery, setItemQuery] = useState("")
@@ -375,6 +378,18 @@ export function RepairMasterClient({
     })
   }
 
+  const handleSyncBahasaMaterial = () => {
+    startTransition(async () => {
+      const result = await syncBahasaMaterialItems()
+      if (result.success) {
+        toast.success(result.message || "Berhasil sinkronisasi Bahasa Material")
+        await refreshData()
+      } else {
+        toast.error(result.error || result.message || "Gagal sinkronisasi Bahasa Material")
+      }
+    })
+  }
+
   const handleDeleteSite = (id: number) => {
     if (!window.confirm("Hapus site repair ini?")) return
 
@@ -390,13 +405,25 @@ export function RepairMasterClient({
   }
 
   return (
-    <Tabs defaultValue="items" className="space-y-4">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
       <TabsList className="grid w-full grid-cols-2 md:w-[420px]">
-        <TabsTrigger value="items" className="gap-2">
+        <TabsTrigger
+          value="items"
+          id="tab-trigger-items"
+          data-tab="items"
+          className="gap-2"
+          onClick={() => setActiveTab("items")}
+        >
           <Wrench className="h-4 w-4" />
           Barang Repair
         </TabsTrigger>
-        <TabsTrigger value="sites" className="gap-2">
+        <TabsTrigger
+          value="sites"
+          id="tab-trigger-sites"
+          data-tab="sites"
+          className="gap-2"
+          onClick={() => setActiveTab("sites")}
+        >
           <MapPin className="h-4 w-4" />
           Site Repair
         </TabsTrigger>
@@ -404,29 +431,52 @@ export function RepairMasterClient({
 
       <TabsContent value="items" className="space-y-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Total Barang</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{items.length.toLocaleString("id-ID")}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Active</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{items.filter((item) => item.isActive).length.toLocaleString("id-ID")}</p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <p className="text-sm text-muted-foreground">Selected</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums">{selectedItemIds.length.toLocaleString("id-ID")}</p>
-          </div>
+          <HeroKpiCard
+            title="Total Barang"
+            value={items.length.toLocaleString("id-ID")}
+            unit="Item"
+            icon={<Wrench className="h-5 w-5" />}
+            tone="blue"
+            description="Katalog barang & material repair"
+          />
+          <HeroKpiCard
+            title="Barang Aktif"
+            value={items.filter((item) => item.isActive).length.toLocaleString("id-ID")}
+            unit="Item"
+            icon={<CheckCircle2 className="h-5 w-5" />}
+            tone="emerald"
+            description="Aktif digunakan pada WIP"
+          />
+          <HeroKpiCard
+            title="Barang Terpilih"
+            value={selectedItemIds.length.toLocaleString("id-ID")}
+            unit="Item"
+            icon={<Layers className="h-5 w-5" />}
+            tone="amber"
+            description="Siap untuk tindakan massal"
+          />
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative md:w-80">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input value={itemQuery} onChange={(event) => setItemQuery(event.target.value)} className="pl-9" placeholder="Cari material, category, SMU..." />
+            <Input value={itemQuery} onChange={(event) => setItemQuery(event.target.value)} className="pl-9 h-9" placeholder="Cari material, category, pemakaian..." />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
+              className="h-9 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium"
+              onClick={handleSyncBahasaMaterial}
+              disabled={isPending}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
+              Sinkron Bahasa Material
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9"
               onClick={() =>
                 downloadCsv(
                   `repair_master_items_${new Date().toISOString().slice(0, 10)}.csv`,
@@ -452,12 +502,12 @@ export function RepairMasterClient({
               Export
             </Button>
             {canDelete && (
-              <Button type="button" variant="destructive" disabled={selectedItemIds.length === 0 || isPending} onClick={handleBulkDeleteItems}>
+              <Button type="button" variant="destructive" className="h-9" disabled={selectedItemIds.length === 0 || isPending} onClick={handleBulkDeleteItems}>
                 <Trash2 className="mr-2 h-4 w-4" />
                 Hapus Terpilih
               </Button>
             )}
-            {canEdit && <ItemDialog onSaved={refreshData} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} />}
+            {canEdit && <ItemDialog onSaved={refreshData} trigger={<Button className="h-9"><Plus className="mr-2 h-4 w-4" />Tambah Barang</Button>} />}
           </div>
         </div>
 
@@ -469,14 +519,14 @@ export function RepairMasterClient({
                   <TableHead className="w-12">
                     <Checkbox checked={allVisibleItemsSelected} onCheckedChange={(value) => toggleAllVisibleItems(Boolean(value))} />
                   </TableHead>
-                  <TableHead>Material Code</TableHead>
+                  <TableHead className="w-36">Material Code</TableHead>
                   <TableHead>Material Name</TableHead>
-                  <TableHead>Stock Qty</TableHead>
-                  <TableHead>UOM</TableHead>
-                  <TableHead>Curr</TableHead>
-                  <TableHead>Valuation Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="w-24">Stock Qty</TableHead>
+                  <TableHead className="w-20">UOM</TableHead>
+                  <TableHead className="w-20">Curr</TableHead>
+                  <TableHead className="w-28">Valuation Stock</TableHead>
+                  <TableHead className="w-24">Status</TableHead>
+                  <TableHead className="w-24 text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -493,27 +543,41 @@ export function RepairMasterClient({
                           }
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{item.materialCode}</TableCell>
-                      <TableCell className="min-w-72">{item.materialName}</TableCell>
-                      <TableCell>{item.valuationStockValue || "-"}</TableCell>
+                      <TableCell className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">{item.materialCode}</TableCell>
+                      <TableCell className="min-w-72">
+                        <div className="font-medium text-slate-900 dark:text-slate-100">{item.materialName}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          {item.category && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                              {item.category}
+                            </span>
+                          )}
+                          {item.notes && (
+                            <span className="text-xs font-normal text-blue-600 dark:text-blue-400">
+                              {item.notes}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="tabular-nums">{item.valuationStockValue || "-"}</TableCell>
                       <TableCell>{item.uom || "-"}</TableCell>
                       <TableCell>{item.currency || "-"}</TableCell>
-                      <TableCell>{item.valuatedStock || "-"}</TableCell>
+                      <TableCell className="tabular-nums">{item.valuatedStock || "-"}</TableCell>
                       <TableCell>
                         <Badge variant={item.isActive ? "default" : "secondary"}>{item.isActive ? "Active" : "Inactive"}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-1">
                           {canEdit && (
                             <ItemDialog
                               item={item}
                               onSaved={refreshData}
-                              trigger={<Button type="button" variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button>}
+                              trigger={<Button type="button" variant="ghost" size="icon" className="h-8 w-8"><Pencil className="h-3.5 w-3.5" /></Button>}
                             />
                           )}
                           {canDelete && (
-                            <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteItem(item.id)} disabled={isPending}>
-                              <Trash2 className="h-4 w-4" />
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteItem(item.id)} disabled={isPending}>
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           )}
                         </div>
@@ -522,8 +586,12 @@ export function RepairMasterClient({
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-28 text-center text-muted-foreground">
-                      Belum ada data barang repair.
+                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Wrench className="h-8 w-8 text-muted-foreground/50" />
+                        <p className="font-medium">Belum ada data barang repair.</p>
+                        <p className="text-xs text-muted-foreground">Klik tombol &quot;Sinkron Bahasa Material&quot; untuk mengisi otomatis dari file Excel.</p>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -537,12 +605,13 @@ export function RepairMasterClient({
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative md:w-80">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input value={siteQuery} onChange={(event) => setSiteQuery(event.target.value)} className="pl-9" placeholder="Cari code atau nama site..." />
+            <Input value={siteQuery} onChange={(event) => setSiteQuery(event.target.value)} className="pl-9 h-9" placeholder="Cari code atau nama site..." />
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="outline"
+              className="h-9"
               onClick={() =>
                 downloadCsv(
                   `repair_master_sites_${new Date().toISOString().slice(0, 10)}.csv`,
@@ -554,7 +623,7 @@ export function RepairMasterClient({
               <Download className="mr-2 h-4 w-4" />
               Export
             </Button>
-            {canEdit && <SiteDialog onSaved={refreshData} trigger={<Button><Plus className="mr-2 h-4 w-4" />Tambah Site</Button>} />}
+            {canEdit && <SiteDialog onSaved={refreshData} trigger={<Button className="h-9"><Plus className="mr-2 h-4 w-4" />Tambah Site</Button>} />}
           </div>
         </div>
 
@@ -562,8 +631,8 @@ export function RepairMasterClient({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-40">Site Code</TableHead>
-                <TableHead>Site Name</TableHead>
+                <TableHead className="w-40">Site Code (SLoc)</TableHead>
+                <TableHead>Site Name / Description</TableHead>
                 <TableHead className="w-28">Status</TableHead>
                 <TableHead className="w-32 text-right">Action</TableHead>
               </TableRow>
@@ -571,8 +640,8 @@ export function RepairMasterClient({
             <TableBody>
               {filteredSites.map((site) => (
                 <TableRow key={site.id}>
-                  <TableCell className="font-medium">{site.siteCode}</TableCell>
-                  <TableCell>{site.siteName}</TableCell>
+                  <TableCell className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-200">{site.siteCode}</TableCell>
+                  <TableCell className="font-medium text-slate-900 dark:text-slate-100">{site.siteName}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {site.isActive ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : null}
@@ -580,17 +649,17 @@ export function RepairMasterClient({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-1">
                       {canEdit && (
                         <SiteDialog
                           site={site}
                           onSaved={refreshData}
-                          trigger={<Button type="button" variant="ghost" size="icon"><Pencil className="h-4 w-4" /></Button>}
+                          trigger={<Button type="button" variant="ghost" size="icon" className="h-8 w-8"><Pencil className="h-3.5 w-3.5" /></Button>}
                         />
                       )}
                       {canDelete && (
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDeleteSite(site.id)} disabled={isPending}>
-                          <Trash2 className="h-4 w-4" />
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteSite(site.id)} disabled={isPending}>
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
                     </div>

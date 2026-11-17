@@ -28,6 +28,7 @@ import {
   getTemplateFeature,
   type EmailTemplatePreset,
 } from "@/lib/email-template-presets";
+import { replaceLocalAppUrlsForEmail } from "@/lib/auth-config";
 import { EmployeeMultiSelect } from "@/components/employee-multi-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -133,9 +134,11 @@ function renderTemplatePreview(content: string, values: Record<string, string>) 
     ...values,
   };
 
-  return content.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, token: string) => {
+  const rendered = content.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_match, token: string) => {
     return resolvedValues[token] ?? values[token] ?? "";
   });
+
+  return replaceLocalAppUrlsForEmail(rendered);
 }
 
 function buildFormFromPreset(

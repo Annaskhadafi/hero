@@ -80,8 +80,10 @@ export async function getUserSignatureAction() {
       hasSignature: Boolean(finalSig),
       signatureDataUrl: finalSig,
       signatureRegisteredAt: finalRegAt,
+      employeeId: emp.id,
       employeeName: record?.name || emp.name,
       employeeSn: record?.employeeSn || emp.employeeSn,
+      employeeEmail: emp.email,
       departmentName: record?.departmentName || 'Human Capital Dept',
     }
   } catch (error: any) {

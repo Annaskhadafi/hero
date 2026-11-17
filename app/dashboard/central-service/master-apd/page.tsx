@@ -9,9 +9,15 @@ export const metadata = {
 };
 
 export default async function MasterApdPage() {
-  const access = await getCurrentMenuPermission('central-service');
+  const [csAccess, masterAccess, apdAccess] = await Promise.all([
+    getCurrentMenuPermission('central-service'),
+    getCurrentMenuPermission('central_service_master_apd'),
+    getCurrentMenuPermission('apd-request'),
+  ]);
 
-  if (!access.canView) {
+  const canView = csAccess.canView || masterAccess.canView || apdAccess.canView;
+
+  if (!canView) {
     redirect('/dashboard');
   }
 

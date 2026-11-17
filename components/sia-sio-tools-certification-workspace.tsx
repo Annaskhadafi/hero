@@ -19,7 +19,11 @@ import {
   Trash2,
   UploadCloud,
   Users,
+  ExternalLink,
 } from "lucide-react";
+import { toast } from "sonner";
+import { HeroFileUpload } from "@/components/templates";
+import { resolveUploadUrl } from "@/lib/resolve-upload-url";
 
 import { Combobox } from "@/components/ui/combobox";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +76,7 @@ type CertificationRecord = {
   attachmentName: string;
   attachmentType: string;
   attachmentPreview: string;
+  attachmentUrl?: string;
   reminder: ReminderSettings;
 };
 
@@ -364,10 +369,61 @@ function CertificationDialog({ record }: { record: CertificationRecord }) {
             </div>
             <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
               <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500"><FileText className="size-4" /> Evidence & Certification File Preview</p><p className="mt-1 text-sm font-semibold text-slate-700">{record.attachmentName}</p></div>
-                <div className="flex gap-2"><Button size="sm" className="gap-2" onClick={handlePrint}><Download className="size-4" /> Download PDF</Button><Button size="sm" variant="outline" className="gap-2" onClick={handlePrint}><Printer className="size-4" /> Cetak Dokumen</Button></div>
+                <div>
+                  <p className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                    <FileText className="size-4" /> Evidence & Certification File Preview
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-700">{record.attachmentName}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {record.attachmentUrl && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                      onClick={() => window.open(resolveUploadUrl(record.attachmentUrl!), '_blank')}
+                    >
+                      <ExternalLink className="size-4" /> Buka Berkas Penuh
+                    </Button>
+                  )}
+                  <Button size="sm" className="gap-2" onClick={handlePrint}>
+                    <Download className="size-4" /> Download PDF
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-2" onClick={handlePrint}>
+                    <Printer className="size-4" /> Cetak Dokumen
+                  </Button>
+                </div>
               </div>
-              <div className="grid min-h-56 place-items-center rounded-xl bg-white p-6 text-center shadow-inner"><div><FileText className="mx-auto size-14 text-slate-300" /><p className="mt-3 text-4xl font-black tracking-widest text-slate-200">SAMPLE</p><p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-slate-500">{record.attachmentPreview}</p></div></div>
+
+              {record.attachmentUrl ? (
+                <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 shadow-xs">
+                  {record.attachmentUrl.toLowerCase().endsWith('.pdf') ? (
+                    <iframe
+                      src={resolveUploadUrl(record.attachmentUrl)}
+                      title="Pratinjau Sertifikat PDF"
+                      className="w-full h-[520px] rounded-lg border-0"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-4">
+                      <img
+                        src={resolveUploadUrl(record.attachmentUrl)}
+                        alt={record.attachmentName}
+                        className="max-h-[500px] max-w-full rounded-lg object-contain shadow-sm border border-slate-200"
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid min-h-56 place-items-center rounded-xl bg-white p-6 text-center shadow-inner">
+                  <div>
+                    <FileText className="mx-auto size-14 text-slate-300" />
+                    <p className="mt-3 text-4xl font-black tracking-widest text-slate-200">SAMPLE</p>
+                    <p className="mx-auto mt-2 max-w-xl text-sm font-semibold text-slate-500">
+                      {record.attachmentPreview}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -377,6 +433,7 @@ function CertificationDialog({ record }: { record: CertificationRecord }) {
 }
 
 function AddCertificationDialog({ categories, onAddCategory, onSave, userOptions }: { categories: string[]; onAddCategory: (category: string) => void; onSave: (record: CertificationRecord) => void; userOptions: string[] }) {
+  const [open, setOpen] = useState(false);
   const [assetOrOperator, setAssetOrOperator] = useState("");
   const [certificationType, setCertificationType] = useState("SIO");
   const [category, setCategory] = useState("Fire & Emergency");
@@ -387,38 +444,202 @@ function AddCertificationDialog({ categories, onAddCategory, onSave, userOptions
   const [expiryDate, setExpiryDate] = useState("");
   const [risk, setRisk] = useState<RiskLevel>("High");
   const [standard, setStandard] = useState("");
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<string[]>(["HSE Superintendent", "Workshop Supervisor Tire Repair"]);
   const [escalations, setEscalations] = useState<string[]>(["Site Manager"]);
   const [days, setDays] = useState("90, 60, 30, 14, 7, 1");
   const [enabled, setEnabled] = useState(true);
 
+  const handleSave = () => {
+    if (!assetOrOperator.trim()) {
+      toast.error("Nama alat / operator wajib diisi.");
+      return;
+    }
+
+    const fileName = attachmentUrl ? attachmentUrl.split('/').pop() || 'Sertifikat Terlampir' : 'Belum ada attachment';
+    const isPdf = attachmentUrl ? attachmentUrl.toLowerCase().endsWith('.pdf') : false;
+    const attachType = attachmentUrl ? (isPdf ? 'PDF Certificate' : 'Image Evidence') : 'Missing';
+    const attachPreview = attachmentUrl
+      ? (isPdf ? 'Dokumen sertifikat resmi PDF terlampir.' : 'Foto/gambar sertifikat resmi terlampir.')
+      : 'Dokumen belum diunggah.';
+    const initialStatus: CertificationStatus = attachmentUrl ? 'Active' : 'Missing Attachment';
+
+    onSave({
+      id: `CERT-${Date.now()}`,
+      assetOrOperator,
+      certificationType,
+      category,
+      subcategory,
+      area,
+      assetTag,
+      permitNumber,
+      projectLocation: area || 'Workshop Tire Mining',
+      pic: recipients[0] ?? '',
+      examiner: 'HSE Inspector',
+      standard,
+      risk,
+      expiryDate: expiryDate || new Date().toISOString().slice(0, 10),
+      status: initialStatus,
+      attachmentName: fileName,
+      attachmentType: attachType,
+      attachmentPreview: attachPreview,
+      attachmentUrl: attachmentUrl || undefined,
+      reminder: {
+        enabled,
+        recipients,
+        escalationRecipients: escalations,
+        daysBeforeExpiry: days.split(',').map((item) => Number(item.trim())).filter(Number.isFinite),
+        lastSent: '-',
+        nextReminder: expiryDate || '-',
+      },
+    });
+
+    toast.success("Sertifikasi SIA/SIO berhasil ditambahkan beserta dokumen lampiran!");
+    setOpen(false);
+    setAssetOrOperator("");
+    setAttachmentUrl(null);
+  };
+
   return (
-    <Dialog>
-      <DialogTrigger asChild><Button className="h-10 gap-2 bg-blue-600 text-white hover:bg-blue-700"><Plus className="size-4" /> Tambah Sertifikasi</Button></DialogTrigger>
-      <DialogContent className="max-w-4xl bg-white">
-        <DialogHeader><DialogTitle>Tambah Sertifikasi SIA/SIO & Tools</DialogTitle><DialogDescription>Form untuk Tire Service, Tire Repair, forklift, hydrant, tools, dan sertifikasi workshop mining.</DialogDescription></DialogHeader>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="h-10 gap-2 bg-blue-600 text-white hover:bg-blue-700 cursor-pointer">
+          <Plus className="size-4" /> Tambah Sertifikasi
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-4xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Tambah Sertifikasi SIA/SIO & Tools</DialogTitle>
+          <DialogDescription>
+            Form untuk Tire Service, Tire Repair, forklift, hydrant, tools, dan sertifikasi workshop mining.
+          </DialogDescription>
+        </DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 md:col-span-2"><Label>Nama alat / operator</Label><Input value={assetOrOperator} onChange={(event) => setAssetOrOperator(event.target.value)} placeholder="Contoh: Forklift Toyota 3 Ton / Operator Suryadi" /></div>
-          <div className="space-y-2"><Label>Tipe sertifikasi</Label><Input value={certificationType} onChange={(event) => setCertificationType(event.target.value)} placeholder="SIO, SIA, Calibration, Inspection Certificate" /></div>
-          <div className="space-y-2"><Label>Kategori (combobox, bisa tambah baru)</Label><Combobox value={category} onChange={(next) => { setCategory(next); onAddCategory(next); }} options={categories} placeholder="Pilih / tambah kategori" className="h-10 bg-white" allowCustom /></div>
-          <div className="space-y-2"><Label>Subkategori</Label><Input value={subcategory} onChange={(event) => setSubcategory(event.target.value)} placeholder="Forklift, Hydrant, Torque Tool, Compressor" /></div>
-          <div className="space-y-2"><Label>Area workshop</Label><Input value={area} onChange={(event) => setArea(event.target.value)} placeholder="Tire Repair Bay, Tire Service Bay, Tool Store" /></div>
-          <div className="space-y-2"><Label>Asset tag / unit code</Label><Input value={assetTag} onChange={(event) => setAssetTag(event.target.value)} placeholder="FLT-TRB-03" /></div>
-          <div className="space-y-2"><Label>Nomor seri / izin</Label><Input value={permitNumber} onChange={(event) => setPermitNumber(event.target.value)} placeholder="SIO-FLT/TRB/2026/001" /></div>
-          <div className="space-y-2"><Label>Tanggal kadaluarsa</Label><Input value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} type="date" /></div>
-          <div className="space-y-2"><Label>Risk level</Label><Select value={risk} onValueChange={(value) => setRisk(value as RiskLevel)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Low">Low</SelectItem><SelectItem value="Medium">Medium</SelectItem><SelectItem value="High">High</SelectItem><SelectItem value="Critical">Critical</SelectItem></SelectContent></Select></div>
-          <div className="space-y-2"><Label>Standard pemeriksaan</Label><Input value={standard} onChange={(event) => setStandard(event.target.value)} placeholder="Disnaker, OEM, Vendor Calibration, Internal HSE" /></div>
-          <div className="space-y-2 md:col-span-2"><Label>Upload lampiran certificate/dokumen</Label><div className="grid min-h-28 place-items-center rounded-xl border border-dashed bg-slate-50 text-center text-sm font-semibold text-slate-500"><UploadCloud className="mb-2 size-6" /> Pilih PDF / gambar sertifikat</div></div>
-        </div>
-        <div className="rounded-2xl border bg-slate-50 p-4">
-          <div className="mb-4 flex items-center justify-between"><div><h4 className="font-display font-bold">Reminder Settings</h4><p className="text-sm text-slate-500">Atur siapa yang dapat reminder dan berapa hari sebelum expired.</p></div><Switch checked={enabled} onCheckedChange={setEnabled} /></div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2"><Label>Reminder ke user</Label><UserMultiSelect value={recipients} onChange={setRecipients} options={userOptions} /></div>
-            <div className="space-y-2"><Label>Escalation recipient</Label><UserMultiSelect value={escalations} onChange={setEscalations} options={userOptions} /></div>
-            <div className="space-y-2 md:col-span-2"><Label>Hari sebelum expired</Label><Input value={days} onChange={(event) => setDays(event.target.value)} placeholder="90, 60, 30, 14, 7, 1" /></div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Nama alat / operator</Label>
+            <Input
+              value={assetOrOperator}
+              onChange={(event) => setAssetOrOperator(event.target.value)}
+              placeholder="Contoh: Forklift Toyota 3 Ton / Operator Suryadi"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Tipe sertifikasi</Label>
+            <Input
+              value={certificationType}
+              onChange={(event) => setCertificationType(event.target.value)}
+              placeholder="SIO, SIA, Calibration, Inspection Certificate"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Kategori (combobox, bisa tambah baru)</Label>
+            <Combobox
+              value={category}
+              onChange={(next) => { setCategory(next); onAddCategory(next); }}
+              options={categories}
+              placeholder="Pilih / tambah kategori"
+              className="h-10 bg-white"
+              allowCustom
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Subkategori</Label>
+            <Input
+              value={subcategory}
+              onChange={(event) => setSubcategory(event.target.value)}
+              placeholder="Forklift, Hydrant, Torque Tool, Compressor"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Area workshop</Label>
+            <Input
+              value={area}
+              onChange={(event) => setArea(event.target.value)}
+              placeholder="Tire Repair Bay, Tire Service Bay, Tool Store"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Asset tag / unit code</Label>
+            <Input
+              value={assetTag}
+              onChange={(event) => setAssetTag(event.target.value)}
+              placeholder="FLT-TRB-03"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Nomor seri / izin</Label>
+            <Input
+              value={permitNumber}
+              onChange={(event) => setPermitNumber(event.target.value)}
+              placeholder="SIO-FLT/TRB/2026/001"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Tanggal kadaluarsa</Label>
+            <Input
+              value={expiryDate}
+              onChange={(event) => setExpiryDate(event.target.value)}
+              type="date"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Risk level</Label>
+            <Select value={risk} onValueChange={(value) => setRisk(value as RiskLevel)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Low">Low</SelectItem>
+                <SelectItem value="Medium">Medium</SelectItem>
+                <SelectItem value="High">High</SelectItem>
+                <SelectItem value="Critical">Critical</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Standard pemeriksaan</Label>
+            <Input
+              value={standard}
+              onChange={(event) => setStandard(event.target.value)}
+              placeholder="Disnaker, OEM, Vendor Calibration, Internal HSE"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Upload lampiran certificate/dokumen (PDF atau Gambar)</Label>
+            <HeroFileUpload
+              value={attachmentUrl}
+              onChange={(url) => setAttachmentUrl(url)}
+              label=""
+              description="Format PDF, JPG, PNG (Maks. 15MB)"
+              accept="application/pdf,image/*"
+            />
           </div>
         </div>
-        <DialogFooter><Button variant="outline">Batal</Button><Button onClick={() => onSave({ id: `CERT-${Date.now()}`, assetOrOperator, certificationType, category, subcategory, area, assetTag, permitNumber, projectLocation: area, pic: recipients[0] ?? '', examiner: 'HSE Inspector', standard, risk, expiryDate: expiryDate || new Date().toISOString().slice(0, 10), status: 'Pending Review', attachmentName: 'Belum ada attachment', attachmentType: 'Missing', attachmentPreview: 'Dokumen belum diunggah.', reminder: { enabled, recipients, escalationRecipients: escalations, daysBeforeExpiry: days.split(',').map((item) => Number(item.trim())).filter(Number.isFinite), lastSent: '-', nextReminder: expiryDate || '-' } })}>Simpan Data</Button></DialogFooter>
+        <div className="rounded-2xl border bg-slate-50 p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h4 className="font-display font-bold">Reminder Settings</h4>
+              <p className="text-sm text-slate-500">Atur siapa yang dapat reminder dan berapa hari sebelum expired.</p>
+            </div>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Reminder ke user</Label>
+              <UserMultiSelect value={recipients} onChange={setRecipients} options={userOptions} />
+            </div>
+            <div className="space-y-2">
+              <Label>Escalation recipient</Label>
+              <UserMultiSelect value={escalations} onChange={setEscalations} options={userOptions} />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Hari sebelum expired</Label>
+              <Input value={days} onChange={(event) => setDays(event.target.value)} placeholder="90, 60, 30, 14, 7, 1" />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
+          <Button onClick={handleSave}>Simpan Data</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -449,6 +670,7 @@ function EditCertificationDialog({
   const [risk, setRisk] = useState<RiskLevel>(record.risk);
   const [status, setStatus] = useState<CertificationStatus>(record.status);
   const [standard, setStandard] = useState(record.standard);
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(record.attachmentUrl || null);
   const [recipients, setRecipients] = useState(record.reminder.recipients);
   const [escalations, setEscalations] = useState(record.reminder.escalationRecipients);
   const [days, setDays] = useState(record.reminder.daysBeforeExpiry.join(", "));
@@ -457,6 +679,22 @@ function EditCertificationDialog({
   const save = () => {
     const nextCategory = category.trim() || record.category;
     onAddCategory(nextCategory);
+
+    let updatedName = record.attachmentName;
+    let updatedType = record.attachmentType;
+    let updatedPreview = record.attachmentPreview;
+
+    if (attachmentUrl && attachmentUrl !== record.attachmentUrl) {
+      updatedName = attachmentUrl.split('/').pop() || 'Sertifikat Terlampir';
+      const isPdf = attachmentUrl.toLowerCase().endsWith('.pdf');
+      updatedType = isPdf ? 'PDF Certificate' : 'Image Evidence';
+      updatedPreview = isPdf ? 'Dokumen sertifikat resmi PDF terlampir.' : 'Foto/gambar sertifikat resmi terlampir.';
+    } else if (!attachmentUrl) {
+      updatedName = 'Belum ada attachment';
+      updatedType = 'Missing';
+      updatedPreview = 'Dokumen belum diunggah.';
+    }
+
     onSave({
       ...record,
       assetOrOperator: assetOrOperator.trim() || record.assetOrOperator,
@@ -468,10 +706,22 @@ function EditCertificationDialog({
       permitNumber: permitNumber.trim() || record.permitNumber,
       expiryDate,
       risk,
-      status,
+      status: attachmentUrl && status === 'Missing Attachment' ? 'Active' : status,
       standard: standard.trim() || record.standard,
-      reminder: { ...record.reminder, enabled, recipients, escalationRecipients: escalations, daysBeforeExpiry: readReminderDays(days) },
+      attachmentName: updatedName,
+      attachmentType: updatedType,
+      attachmentPreview: updatedPreview,
+      attachmentUrl: attachmentUrl || undefined,
+      reminder: {
+        ...record.reminder,
+        enabled,
+        recipients,
+        escalationRecipients: escalations,
+        daysBeforeExpiry: readReminderDays(days),
+      },
     });
+
+    toast.success("Perubahan sertifikasi dan lampiran berhasil disimpan!");
     setOpen(false);
   };
 
@@ -480,10 +730,10 @@ function EditCertificationDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="h-8 gap-2"><Pencil className="size-4" /> Edit</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl bg-white">
+      <DialogContent className="max-w-4xl bg-white max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Sertifikasi</DialogTitle>
-          <DialogDescription>Field edit disamakan dengan form tambah sertifikasi.</DialogDescription>
+          <DialogDescription>Perbarui data dan lampiran dokumen sertifikasi.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2 md:col-span-2"><Label>Nama alat / operator</Label><Input value={assetOrOperator} onChange={(event) => setAssetOrOperator(event.target.value)} /></div>
@@ -497,7 +747,16 @@ function EditCertificationDialog({
           <div className="space-y-2"><Label>Risk level</Label><Select value={risk} onValueChange={(value) => setRisk(value as RiskLevel)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{riskOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Status validitas</Label><Select value={status} onValueChange={(value) => setStatus(value as CertificationStatus)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2 md:col-span-2"><Label>Standard pemeriksaan</Label><Input value={standard} onChange={(event) => setStandard(event.target.value)} /></div>
-          <div className="space-y-2 md:col-span-2"><Label>Upload lampiran certificate/dokumen</Label><div className="grid min-h-28 place-items-center rounded-xl border border-dashed bg-slate-50 text-center text-sm font-semibold text-slate-500"><UploadCloud className="mb-2 size-6" /> {record.attachmentName}</div></div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Upload lampiran certificate/dokumen (PDF atau Gambar)</Label>
+            <HeroFileUpload
+              value={attachmentUrl}
+              onChange={(url) => setAttachmentUrl(url)}
+              label=""
+              description="Format PDF, JPG, PNG (Maks. 15MB)"
+              accept="application/pdf,image/*"
+            />
+          </div>
         </div>
         <div className="rounded-2xl border bg-slate-50 p-4">
           <div className="mb-4 flex items-center justify-between"><div><h4 className="font-display font-bold">Reminder Settings</h4><p className="text-sm text-slate-500">Atur siapa yang dapat reminder dan berapa hari sebelum expired.</p></div><Switch checked={enabled} onCheckedChange={setEnabled} /></div>
@@ -629,7 +888,23 @@ export function SiaSioToolsCertificationWorkspace({
                   <TableCell><Pill className={statusTone[record.status]}>{record.status}</Pill></TableCell>
                   <TableCell className="min-w-[130px] font-bold text-slate-800">{formatDate(record.expiryDate)}</TableCell>
                   <TableCell className="min-w-[240px]"><div className="flex items-center gap-2 font-bold text-slate-800"><BellRing className="size-4 text-blue-600" /> {formatDate(record.reminder.nextReminder)}</div><div className="mt-1 flex items-center gap-2 text-xs font-semibold text-slate-500"><Users className="size-3" /> {record.reminder.recipients.length} recipients • H-{record.reminder.daysBeforeExpiry.join("/")}</div></TableCell>
-                  <TableCell className="min-w-[210px]"><div className="flex items-center gap-2 font-bold text-slate-800"><FileText className="size-4 text-slate-500" /> {record.attachmentType}</div><div className="text-xs font-semibold text-slate-500">{record.attachmentName}</div></TableCell>
+                  <TableCell className="min-w-[210px]">
+                    <div className="flex items-center gap-2 font-bold text-slate-800">
+                      <FileText className="size-4 text-slate-500" />
+                      <span>{record.attachmentType}</span>
+                      {record.attachmentUrl && (
+                        <Badge
+                          className="bg-blue-100 text-blue-700 hover:bg-blue-200 text-[10px] px-1.5 py-0.2 cursor-pointer transition-colors"
+                          onClick={() => window.open(resolveUploadUrl(record.attachmentUrl!), '_blank')}
+                        >
+                          <ExternalLink className="size-2.5 mr-0.5 inline" /> Buka
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs font-semibold text-slate-500 truncate max-w-[180px]" title={record.attachmentName}>
+                      {record.attachmentName}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <CertificationDialog record={record} />

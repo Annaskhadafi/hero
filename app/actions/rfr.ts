@@ -18,6 +18,7 @@ import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
+import { getEmailAppUrl, isLocalAppOrigin } from '@/lib/auth-config'
 import { headers } from 'next/headers'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
@@ -25,18 +26,26 @@ import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center
 import { generateRfrPdf, type RfrPdfData } from '@/lib/rfr-pdf'
 
 async function getBaseUrl(): Promise<string> {
-  let baseUrl = process.env.NEXT_PUBLIC_APP_URL
-  if (!baseUrl) {
-    try {
-      const headersList = await headers()
-      const host = headersList.get('host')
-      const protocol = headersList.get('x-forwarded-proto') || 'http'
-      if (host) baseUrl = `${protocol}://${host}`
-    } catch (e) {
-      // headers fallback
-    }
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (envUrl && !isLocalAppOrigin(envUrl)) {
+    return envUrl.replace(/\/+$/, '')
   }
-  return baseUrl || 'http://localhost:3000'
+
+  try {
+    const headersList = await headers()
+    const host = headersList.get('x-forwarded-host')?.split(',')[0]?.trim() || headersList.get('host')
+    const protocol = headersList.get('x-forwarded-proto') || 'https'
+    if (host) {
+      const candidate = `${protocol}://${host}`
+      if (!isLocalAppOrigin(candidate)) {
+        return candidate
+      }
+    }
+  } catch (e) {
+    // headers fallback
+  }
+
+  return getEmailAppUrl()
 }
 
 async function getSmtpSettings(): Promise<EmailTransportSettings | null> {
@@ -206,7 +215,7 @@ async function resolveDeptHeadByDepartment(sectionDepartmentStr: string) {
   }
 
   const parts = norm.split('/')
-  const deptTerm = (parts.length > 1 ? parts[1] : parts[0]).trim()
+  const deptTerm = parts[parts.length - 1].trim()
   const deptRow = (await findMasterDepartmentByKeyword(deptTerm)) || (await findMasterDepartmentByKeyword(parts[0].trim()))
 
   if (deptRow && deptRow.headEmployeeId) {
@@ -276,7 +285,7 @@ export async function resolveRfrMatrixAction(sectionDepartment: string): Promise
 export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<RfrMatrixStep[]> {
   const normDept = (sectionDepartment || '').trim()
   const parts = normDept.split('/')
-  const deptTerm = (parts.length > 1 ? parts[1] : parts[0]).trim()
+  const deptTerm = parts[parts.length - 1].trim()
 
   // 1. Check workflow builder matrix (approvalMatrices where transactionType = 'rfr_approval')
   try {
@@ -376,10 +385,12 @@ export async function getRfrMatrixSettings(sectionDepartment?: string): Promise<
             if (!approverEmployeeId) approverEmployeeId = 970
           } else if (labelNorm.includes('manager departemen') || labelNorm.includes('dept head') || labelNorm.includes('manager department')) {
             stepKey = 'acknowledge_dept_head'
-            approverName = dh.name
-            approverEmail = dh.email
-            approverTitle = dh.title || `${deptTerm || 'Departemen'} Manager`
-            approverEmployeeId = dh.employeeId || s.empId || null
+            if (!s.empId) {
+              approverName = dh.name
+              approverEmail = dh.email
+              approverTitle = dh.title || `${deptTerm || 'Departemen'} Manager`
+              approverEmployeeId = dh.employeeId || null
+            }
           } else if (labelNorm.includes('general manager') || labelNorm.includes('gm')) {
             stepKey = 'approval_gm'
             if (!approverName) approverName = 'Person Sihaloho'

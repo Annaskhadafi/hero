@@ -1,8 +1,10 @@
 import { getContractReviewSettings, getContractReviews, getExpiringContractEmployees } from "@/app/actions/contract-review"
 import { ContractReviewClientPage } from "./client-page"
 import { db } from "@/db"
-import { employees, hrPositions, masterDepartments, masterSections } from "@/db/schema/hero"
+import { employees, hrPositions, masterSections } from "@/db/schema/hero"
 import { eq } from "drizzle-orm"
+import { redirect } from "next/navigation"
+import { getCurrentEmployeeAccessRole, getCurrentMenuPermission, isSuperAdminRole } from "@/lib/hero-access"
 
 export const metadata = {
   title: "Employee Contract Review - HC",
@@ -28,9 +30,6 @@ function populateEmailsFromEmployees(settings: any, empList: any[]) {
   return s
 }
 
-import { redirect } from "next/navigation"
-import { getCurrentEmployeeAccessRole, getCurrentMenuPermission, isSuperAdminRole } from "@/lib/hero-access"
-
 export default async function ContractReviewPage() {
   const [access, role] = await Promise.all([
     getCurrentMenuPermission('hc_contract_review'),
@@ -40,32 +39,27 @@ export default async function ContractReviewPage() {
     redirect('/dashboard')
   }
 
-  const [reviewsResult, settings, expiringEmployees] = await Promise.all([
+  const [reviewsResult, settings, expiringEmployees, employeeList] = await Promise.all([
     getContractReviews(),
     getContractReviewSettings(),
     getExpiringContractEmployees(),
+    db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        employeeId: employees.employeeSn,
+        email: employees.email,
+        jobTitle: employees.jobTitle,
+        position: hrPositions.levelName,
+        rank: hrPositions.rankName,
+        section: masterSections.name,
+      })
+      .from(employees)
+      .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
+      .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
+      .where(eq(employees.isActive, true)),
   ])
   const reviews = reviewsResult.success ? reviewsResult.data : []
-  
-  const employeeList = await db
-    .select({
-      id: employees.id,
-      name: employees.name,
-      employeeId: employees.employeeSn,
-      email: employees.email,
-      jobTitle: employees.jobTitle,
-      position: hrPositions.levelName,
-      rank: hrPositions.rankName,
-      department: masterDepartments.name,
-      section: masterSections.name,
-      sectionId: employees.sectionId,
-    })
-    .from(employees)
-    .leftJoin(hrPositions, eq(employees.positionId, hrPositions.id))
-    .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-    .leftJoin(masterSections, eq(employees.sectionId, masterSections.id))
-    .where(eq(employees.isActive, true))
-
   const enrichedSettings = populateEmailsFromEmployees(settings, employeeList)
 
   return (

@@ -45,6 +45,7 @@ import { toast } from 'sonner'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
 import { OvertimeEvidenceModal } from '@/components/overtime-evidence-modal'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { PdfCanvasViewer } from '@/components/hero-genius/pdf-canvas-viewer'
 import { SplEvidenceQrBox } from '@/components/overtime-document-qr'
 import { formatActivityTeamGroups } from '@/lib/activity-team-format'
 import { SopWinAccessSettingsModal } from '@/components/sop-win/sop-win-access-settings-modal'
@@ -99,6 +100,11 @@ import {
   normalizePermitTypes,
 } from '@/lib/ptw-helpers'
 import { reviewSopWinDocumentRequestAction } from '@/app/dashboard/sop-win/actions'
+import {
+  quickApproveJsaAction,
+  quickRejectJsaAction,
+  revertJsaAction,
+} from '@/app/dashboard/hse/jsa/actions'
 import { AdminDetailDrawer } from '@/components/admin/admin-detail-drawer'
 import { ApprovalRequestDetails } from '@/components/approval-request-details'
 import { ApdApprovalDialog } from '@/components/admin/apd-approval-dialog'
@@ -125,6 +131,7 @@ import { ApdRequestDetailModal } from '@/components/summary/apd-request-detail-m
 import { getFormWoDetailAction } from '@/app/actions/form-wo'
 import { RfrApprovalDialog } from '@/components/admin/rfr-approval-dialog'
 import { MaritalStatusApprovalDialog } from '@/components/admin/marital-status-approval-dialog'
+import { FlightRouteChangeApprovalDialog } from '@/components/admin/flight-route-approval-dialog'
 import { AdminMetricGrid } from '@/components/admin-metric-grid'
 import { AdminPageShell } from '@/components/admin-page-shell'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
@@ -167,9 +174,29 @@ type ApprovalCenterData = Awaited<ReturnType<typeof getApprovalCenterData>>
 
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return '—'
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
+    if (match) {
+      const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 4, 0, 0))
+      if (!isNaN(utc.getTime())) {
+        return utc.toLocaleDateString('id-ID', {
+          day: 'numeric',
+          month: 'numeric',
+          year: 'numeric',
+          timeZone: 'UTC',
+        })
+      }
+    }
+  }
   const d = value instanceof Date ? value : new Date(value)
   if (isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'numeric', year: 'numeric' })
+  return d.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+    timeZone: 'Asia/Makassar',
+  })
 }
 
 function formatTimestamp(value: Date | string | null | undefined) {
@@ -449,6 +476,7 @@ export function InboxTab({
   dailyActivityItems = [],
   overtimeItems = [],
   ptwItems = [],
+  jsaItems = [],
   contractReviewItems = [],
   sopWinRequestItems = [],
   trainingRequestItems = [],
@@ -461,6 +489,7 @@ export function InboxTab({
   dailyActivityItems?: ApprovalCenterData['dailyActivityInboxItems']
   overtimeItems?: ApprovalCenterData['overtimeInboxItems']
   ptwItems?: ApprovalCenterData['ptwInboxItems']
+  jsaItems?: any[]
   contractReviewItems?: ApprovalCenterData['contractReviewInboxItems']
   sopWinRequestItems?: ApprovalCenterData['sopWinRequestInboxItems']
   trainingRequestItems?: any[]
@@ -676,26 +705,23 @@ export function InboxTab({
     const file = e.target.files?.[0]
     if (!file) return
 
-    const isImage = file.type.startsWith('image/')
-    const isPdf = file.type === 'application/pdf'
+    const lowerName = file.name.toLowerCase()
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lowerName)
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || lowerName.endsWith('.pdf')
     if (!isImage && !isPdf) {
-      toast.error('File harus berupa PDF atau gambar (JPG/PNG).')
+      toast.error('Berkas harus berupa PDF atau gambar (JPG/PNG/WEBP).')
       e.target.value = ''
       return
     }
 
-    if (isImage && file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran gambar maksimal 5MB.')
-      e.target.value = ''
-      return
-    }
-    if (isPdf && file.size > 10 * 1024 * 1024) {
-      toast.error('Ukuran PDF maksimal 10MB.')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas maksimal 15MB.')
       e.target.value = ''
       return
     }
 
     setIsUploadingContractAttachment(true)
+    const toastId = toast.loading(`Mengunggah "${file.name}"...`)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -712,7 +738,7 @@ export function InboxTab({
 
       const res = await uploadFile(formData)
       if (!res.success || !res.url) {
-        toast.error(res.error || 'Gagal mengunggah berkas.')
+        toast.error(res.error || 'Gagal mengunggah berkas.', { id: toastId })
         return
       }
 
@@ -725,9 +751,11 @@ export function InboxTab({
         uploadedByRole: (doc as any).approverRole || 'Approver',
       }
 
+      const targetReviewId = (doc as any).rawContractReview?.reviewId || (doc as any).reviewId
+
       const attachRes = await addContractReviewAttachment({
         token: token || undefined,
-        reviewId: (doc as any).rawContractReview?.reviewId || (doc as any).reviewId,
+        reviewId: targetReviewId,
         file: fileInfo,
       })
 
@@ -736,13 +764,13 @@ export function InboxTab({
           ...prev,
           [doc.id]: [...(prev[doc.id] || []), attachRes.attachment],
         }))
-        toast.success(`Lampiran "${file.name}" berhasil diunggah!`)
+        toast.success(`Lampiran "${file.name}" berhasil diunggah!`, { id: toastId })
       } else {
-        toast.error(attachRes.error || 'Gagal menyimpan lampiran dokumen.')
+        toast.error(attachRes.error || 'Gagal menyimpan lampiran dokumen.', { id: toastId })
       }
     } catch (err: any) {
       console.error(err)
-      toast.error(err.message || 'Terjadi kesalahan saat upload berkas.')
+      toast.error(err.message || 'Terjadi kesalahan saat upload berkas.', { id: toastId })
     } finally {
       setIsUploadingContractAttachment(false)
       e.target.value = ''
@@ -879,6 +907,30 @@ export function InboxTab({
         isReverted,
         actionLabel: (p as any).actionLabel || (isReverted ? 'Revisi Dokumen' : 'Buka TTD ↗'),
         rawPtw: p,
+      })
+    }
+
+    for (const j of jsaItems) {
+      const isReverted = Boolean((j as any).isReverted)
+      list.push({
+        id: j.id,
+        category: 'JSA',
+        categoryLabel: 'Job Safety Analysis (JSA)',
+        documentNumber: j.documentNumber || `JSA-${j.jsaId}`,
+        title: j.title || `Job Safety Analysis`,
+        employeeName: j.employeeName,
+        location: j.location,
+        stepLabel: j.stepLabel || (isReverted ? 'Perlu Revisi' : 'Menunggu Approval HSE'),
+        approverName: j.approverName || 'HSE Officer',
+        approverRole: j.approverRole || 'HSE Dept',
+        dueState: j.dueState,
+        dueAt: j.dueAt,
+        submittedAt: j.submittedAt,
+        url: j.url || `/dashboard/hse/jsa?tab=approval&id=${j.jsaId}`,
+        jsaId: j.jsaId,
+        isReverted,
+        actionLabel: j.actionLabel || (isReverted ? 'Revisi Dokumen' : 'Verifikasi & TTD ↗'),
+        rawJsa: j,
       })
     }
 
@@ -1024,6 +1076,19 @@ export function InboxTab({
             return (a.level ?? 1) - (b.level ?? 1);
           });
         const maritalItem = maritalItems[0];
+        const attPermItem = nonFormWoItems.find(
+          (i: any) =>
+            i.attendancePermission != null ||
+            i.templateKey === 'attendance-permission' ||
+            i.activityType === 'Pengajuan Izin' ||
+            String(i.requestNumber || '').toUpperCase().startsWith('ATT-')
+        )
+        const leavePermItem = nonFormWoItems.find(
+          (i: any) =>
+            i.templateKey === 'leave-permission' ||
+            i.activityType === 'Pengajuan Cuti' ||
+            String(i.requestNumber || '').toUpperCase().startsWith('LEV-')
+        )
         const apdItem = nonFormWoItems.find(
           (i: any) =>
             i.activityType?.toLowerCase().includes('request apd') ||
@@ -1037,6 +1102,8 @@ export function InboxTab({
         )
 
         const isMaritalStatus = Boolean(maritalItem)
+        const isAttPerm = Boolean(attPermItem)
+        const isLeavePerm = Boolean(leavePermItem)
         const isApd = Boolean(apdItem)
         const isSummary = apdItem?.activityType === 'Summary APD' || apdItem?.title?.toLowerCase().includes('summary')
         const isMaterial = apdItem?.activityType?.toLowerCase().includes('material') || apdItem?.title?.toLowerCase().includes('material')
@@ -1045,6 +1112,10 @@ export function InboxTab({
 
         const resolvedCategory = isMaritalStatus
           ? 'MARITAL_STATUS'
+          : isAttPerm
+          ? 'ATTENDANCE_PERMISSION'
+          : isLeavePerm
+          ? 'LEAVE_PERMISSION'
           : isSummary
           ? 'SUMMARY'
           : isMaterial
@@ -1059,6 +1130,10 @@ export function InboxTab({
 
         const resolvedCategoryLabel = isMaritalStatus
           ? 'Perubahan Status Pernikahan'
+          : isAttPerm
+          ? 'Pengajuan Izin'
+          : isLeavePerm
+          ? 'Pengajuan Cuti'
           : isSummary
           ? 'Summary Permintaan Barang'
           : isMaterial
@@ -1073,6 +1148,10 @@ export function InboxTab({
 
         const resolvedDocNumber = isMaritalStatus
           ? ((maritalItem as any)?.requestNumber || `MS-${(maritalItem as any)?.maritalStatusRequestId || (maritalItem as any)?.approvalId}`)
+          : isAttPerm
+          ? (attPermItem?.requestNumber || `ATT-${attPermItem?.approvalId || g.id}`)
+          : isLeavePerm
+          ? (leavePermItem?.requestNumber || `LEV-${leavePermItem?.approvalId || g.id}`)
           : isApd
           ? (apdItem?.requestNumber ||
               (apdItem?.title?.includes(' - ')
@@ -1089,6 +1168,10 @@ export function InboxTab({
 
         const resolvedTitle = isMaritalStatus
           ? ((maritalItem as any)?.title || `Permohonan Status Pernikahan - ${(maritalItem as any)?.requestNumber || ''}`)
+          : isAttPerm
+          ? (attPermItem?.title || `Pengajuan Izin - ${g.requesterName}`)
+          : isLeavePerm
+          ? (leavePermItem?.title || `Pengajuan Cuti - ${g.requesterName}`)
           : isApd
           ? (apdItem?.title || `${resolvedCategoryLabel} - ${g.requesterName}`)
           : `${g.requesterName} - ${nonFormWoItems.length} Item Activity`
@@ -1102,16 +1185,34 @@ export function InboxTab({
           employeeName: g.requesterName,
           siteName: g.siteName,
           workDate: g.workDate,
-          stepLabel: isMaritalStatus ? ((maritalItem as any)?.currentStepLabel || 'Menunggu Approval') : (isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`),
+          dateRangeLabel: attPermItem?.attendancePermission?.dateRangeLabel || null,
+          attendancePermission: attPermItem?.attendancePermission ?? null,
+          stepLabel: isMaritalStatus
+            ? ((maritalItem as any)?.currentStepLabel || 'Menunggu Approval')
+            : isAttPerm
+            ? (attPermItem?.currentStepLabel || 'Menunggu Approval')
+            : isLeavePerm
+            ? (leavePermItem?.currentStepLabel || 'Menunggu Approval')
+            : (isApd && apdItem?.currentStepLabel ? apdItem.currentStepLabel : `${nonFormWoItems.length} Step Pending`),
           dueState: g.overdueCount > 0 ? 'overdue' : g.dueSoonCount > 0 ? 'due_soon' : 'open',
           dueAt: nonFormWoItems[0]?.dueAt || new Date(),
           submittedAt: nonFormWoItems[0]?.submittedAt || new Date(),
-          url: isMaritalStatus ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || 1}` : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}` : `/print/apd/${apdItem?.activityId}`) : '#'),
-          activityType: isMaritalStatus ? 'Perubahan Status Pernikahan' : (isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity'))),
-          activityId: (isMaritalStatus ? (maritalItem as any)?.activityId : (apdItem?.activityId)) ?? Number(g.id),
+          url: isMaritalStatus
+            ? `/print/central-service/marital-status/${(maritalItem as any)?.maritalStatusRequestId || 1}`
+            : isAttPerm
+            ? '/mobile/attendance/permission'
+            : (isApd ? (isSummary ? `/print/summary/${apdItem?.activityId}?embed=1&from=approval` : `/print/apd/${apdItem?.activityId}`) : '#'),
+          activityType: isMaritalStatus
+            ? 'Perubahan Status Pernikahan'
+            : isAttPerm
+            ? 'Pengajuan Izin'
+            : isLeavePerm
+            ? 'Pengajuan Cuti'
+            : (isSummary ? 'Summary APD' : (apdItem?.activityType || (isApd ? (isMaterial ? 'Request Material' : isTools ? 'Request Tools' : 'Request APD') : 'Form Activity'))),
+          activityId: (isMaritalStatus ? (maritalItem as any)?.activityId : isAttPerm ? attPermItem?.activityId : isLeavePerm ? leavePermItem?.activityId : (apdItem?.activityId)) ?? Number(g.id),
           maritalStatusRequestId: (maritalItem as any)?.maritalStatusRequestId || null,
-          requestNumber: (maritalItem as any)?.requestNumber || resolvedDocNumber,
-          approvalId: (maritalItem as any)?.approvalId || apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
+          requestNumber: (maritalItem as any)?.requestNumber || attPermItem?.requestNumber || leavePermItem?.requestNumber || resolvedDocNumber,
+          approvalId: (maritalItem as any)?.approvalId || attPermItem?.approvalId || leavePermItem?.approvalId || apdItem?.approvalId || nonFormWoItems[0]?.approvalId,
           approverName: (nonFormWoItems[0] as any)?.approverName || null,
           rawGeneralGroup: {
             ...g,
@@ -1175,7 +1276,7 @@ export function InboxTab({
     }
 
     return sorted
-  }, [dailyActivityItems, overtimeItems, ptwItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, assetManagementItems, groups, filterCategory, processedBatchIds])
+  }, [dailyActivityItems, overtimeItems, ptwItems, jsaItems, contractReviewItems, sopWinRequestItems, rfrItems, trainingRequestItems, assetManagementItems, groups, filterCategory, processedBatchIds])
 
   const searchParams = useSearchParams()
   const [autoOpenedDoc, setAutoOpenedDoc] = useState<string | null>(null)
@@ -1610,6 +1711,8 @@ export function InboxTab({
         toast.success(`Permohonan Status Pernikahan #${currentBatchDoc.documentNumber} berhasil diproses (${action === 'approve' ? 'Disetujui' : action === 'revert' ? 'Dikembalikan' : 'Ditolak'}).`)
       } else if (
         (currentBatchDoc.category === 'GENERAL' ||
+          currentBatchDoc.category === 'ATTENDANCE_PERMISSION' ||
+          currentBatchDoc.category === 'LEAVE_PERMISSION' ||
           currentBatchDoc.category === 'DAILY_ACTIVITY' ||
           currentBatchDoc.category === 'GENERAL_ACTIVITY' ||
           currentBatchDoc.category === 'APD' ||
@@ -1726,6 +1829,8 @@ export function InboxTab({
       const generalItems = itemsToProcess.filter(
         (it) =>
           (it.category === 'GENERAL' ||
+            it.category === 'ATTENDANCE_PERMISSION' ||
+            it.category === 'LEAVE_PERMISSION' ||
             it.category === 'APD' ||
             it.category === 'MATERIAL' ||
             it.category === 'TOOLS' ||
@@ -1881,6 +1986,25 @@ export function InboxTab({
         }
         await approveApprovalGroupAction(formData)
         successCount++
+      }
+
+      // JSA Items
+      const jsaItemsToProcess = itemsToProcess.filter(it => it.category === 'JSA' && (it as any).rawJsa)
+      for (const item of jsaItemsToProcess) {
+        const jsaId = (item as any).rawJsa.id
+        if (action === 'approve') {
+          const res = await quickApproveJsaAction(jsaId, reason || 'Disetujui via Central Approval Inbox')
+          if (res.success) successCount++
+          else failCount++
+        } else if (action === 'revert') {
+          const res = await revertJsaAction(jsaId)
+          if (res.success) successCount++
+          else failCount++
+        } else if (action === 'reject') {
+          const res = await quickRejectJsaAction(jsaId, reason || 'Ditolak via Central Approval Inbox')
+          if (res.success) successCount++
+          else failCount++
+        }
       }
 
       // General Items
@@ -2292,6 +2416,8 @@ export function InboxTab({
                             ? 'bg-purple-50 text-purple-800 border-purple-200/80'
                             : item.category === 'CONTRACT_REVIEW'
                             ? 'bg-indigo-50 text-indigo-800 border-indigo-200/80'
+                            : item.category === 'MARITAL_STATUS' || item.category === 'ATTENDANCE_PERMISSION' || item.category === 'LEAVE_PERMISSION'
+                            ? 'bg-sky-50 text-sky-800 border-sky-200/80'
                             : item.category === 'SOP_WIN' || item.category === 'SOP_WIN_REQUEST'
                             ? 'bg-cyan-50 text-cyan-800 border-cyan-200/80'
                             : 'bg-blue-50 text-blue-700 border-blue-200/60'
@@ -2323,7 +2449,11 @@ export function InboxTab({
                   <p className="text-xs font-semibold text-slate-500 flex items-center gap-1">
                     <MapPin className="size-3 text-slate-400" />
                     <span>{item.siteName || item.location || 'Semua Site'}</span>
-                    {item.shiftCode && <span>• Shift {item.shiftCode}</span>}
+                    {(item as any).dateRangeLabel ? (
+                      <span>• {(item as any).dateRangeLabel}</span>
+                    ) : item.shiftCode ? (
+                      <span>• Shift {item.shiftCode}</span>
+                    ) : null}
                   </p>
                 </div>
 
@@ -2622,6 +2752,9 @@ export function InboxTab({
                             item.category === 'SUMMARY' && 'bg-purple-50 text-purple-800 border-purple-200',
                             item.category === 'MARITAL_STATUS' && 'bg-pink-50 text-pink-700 border-pink-200',
                             item.category === 'ASSET_MANAGEMENT' && 'bg-blue-50 text-blue-700 border-blue-200',
+                            item.category === 'FLIGHT_ROUTE' && 'bg-sky-50 text-sky-700 border-sky-200',
+                            item.category === 'ATTENDANCE_PERMISSION' && 'bg-sky-50 text-sky-800 border-sky-200',
+                            item.category === 'LEAVE_PERMISSION' && 'bg-teal-50 text-teal-800 border-teal-200',
                             item.category === 'GENERAL' && 'bg-slate-100 text-slate-700 border-slate-200'
                           )}
                         >
@@ -2652,7 +2785,11 @@ export function InboxTab({
                             </span>
                           )}
                         </div>
-                        <p className="text-muted-foreground text-xs">{item.department ? `Dept: ${item.department}` : 'Pengajuan operasional'}</p>
+                        {(item as any).dateRangeLabel ? (
+                          <p className="text-sky-700 font-semibold text-xs">Tanggal Izin: {(item as any).dateRangeLabel}</p>
+                        ) : (
+                          <p className="text-muted-foreground text-xs">{item.department ? `Dept: ${item.department}` : 'Pengajuan operasional'}</p>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
@@ -2690,6 +2827,8 @@ export function InboxTab({
                         <FiveRApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : item.category === 'MARITAL_STATUS' || (item as any).maritalStatusRequestId || (item as any).activityType === 'marital_status' || (item as any).activityType === 'Permohonan Status Pernikahan' || (item as any).activityType === 'Perubahan Status Pernikahan' ? (
                         <MaritalStatusApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
+                      ) : item.category === 'FLIGHT_ROUTE' || (item as any).flightRouteRequestId || (item as any).activityType === 'flight_route_change' || (item as any).activityType === 'Permohonan Perubahan Rute Penerbangan' ? (
+                        <FlightRouteChangeApprovalDialog item={item as any} group={(item as any).rawGeneralGroup || item} />
                       ) : (item as any).isReverted ? (
                         <Button
                           size="sm"
@@ -2803,13 +2942,17 @@ export function InboxTab({
                 )
               )
 
+            const isAttPermDoc =
+              (currentBatchDoc?.category as any) === 'ATTENDANCE_PERMISSION' ||
+              Boolean((currentBatchDoc as any)?.attendancePermission)
+
             const isCleanCustomDoc = isLandscapeDoc || isFiveRDoc || isApdDoc || isContractReviewDoc || isMaritalStatusDoc
             return (
               <DialogContent
                 showCloseButton={false}
                 className={cn(
                   viewMode === 'mobile'
-                    ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+                    ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl"
                     : "max-h-[94vh] h-[94vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl transition-all",
                   viewMode !== 'mobile' && ((isLandscapeDoc || isContractReviewDoc) ? "max-w-[98vw] 2xl:max-w-[1600px]" : "max-w-[96vw] xl:max-w-6xl 2xl:max-w-7xl")
                 )}
@@ -2825,7 +2968,7 @@ export function InboxTab({
                         Review • <span className="text-[#003461]">{currentBatchDoc?.documentNumber}</span>
                       </p>
                       <p className="text-[10px] sm:text-xs text-slate-500 truncate">
-                        {currentBatchDoc?.employeeName} • {formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)}
+                        {currentBatchDoc?.employeeName} • {(currentBatchDoc as any)?.attendancePermission?.dateRangeLabel || formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)}
                       </p>
                     </div>
                   </div>
@@ -2956,10 +3099,10 @@ export function InboxTab({
                     {/* 1. PDF Letterhead Document Preview Container (Draggable & Scalable) */}
                     {currentBatchDoc && (() => {
                       const baseScale = isLandscapeDoc
-                        ? (viewMode === 'mobile' ? 0.32 : 0.58)
+                        ? (isSummaryDoc ? (viewMode === 'mobile' ? 0.65 : 0.92) : (viewMode === 'mobile' ? 0.32 : 0.58))
                         : (viewMode === 'mobile' ? 0.48 : 0.80)
                       const effectiveScale = baseScale * viewerZoom
-                      const originalHeightMm = isLandscapeDoc ? 210 : 297
+                      const originalHeightMm = isLandscapeDoc ? (isSummaryDoc ? 285 : 210) : 297
                       if (isContractReviewDoc) {
                         const crReviewId = (currentBatchDoc as any)?.rawContractReview?.reviewId || (currentBatchDoc as any)?.reviewId
                         const crToken = (currentBatchDoc as any)?.rawContractReview?.approvalToken || (currentBatchDoc as any)?.approvalToken || (currentBatchDoc.url ? currentBatchDoc.url.split('/').pop()?.split('?')[0] : '')
@@ -3021,7 +3164,7 @@ export function InboxTab({
                             className={cn(
                               "relative mx-auto shrink-0 bg-white shadow-xl border border-slate-200 rounded-sm origin-top box-border",
                               isDragging ? "transition-none" : "transition-transform duration-150 ease-out",
-                              isLandscapeDoc ? "w-[297mm] min-h-[210mm]" : "w-[210mm] min-h-[297mm]"
+                              isLandscapeDoc ? (isSummaryDoc ? "w-[297mm] min-h-[285mm]" : "w-[297mm] min-h-[210mm]") : "w-[210mm] min-h-[297mm]"
                             )}
                             style={{
                               backgroundImage: isCleanCustomDoc ? 'none' : 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
@@ -4397,15 +4540,15 @@ export function InboxTab({
                           (currentBatchDoc?.category as any) === 'SUMMARY' ||
                           apdItem?.title?.toLowerCase().includes('summary')
                         const printUrl = isSummary
-                          ? `/print/summary/${apdItem.activityId}?embed=1`
+                          ? `/print/summary/${apdItem.activityId}?embed=1&from=approval`
                           : `/print/apd/${apdItem.activityId}?embed=1`
 
                         if (isSummary) {
                           return (
-                            <div className="w-[297mm] h-[210mm] min-h-[210mm] max-h-[210mm] overflow-hidden flex justify-center p-0 m-0">
+                            <div className="w-[297mm] min-h-[285mm] h-[285mm] overflow-visible flex justify-center p-0 m-0">
                               <iframe
                                 src={printUrl}
-                                className="w-[297mm] min-h-[210mm] h-[210mm] border-0 bg-white shadow-none p-0 m-0 block"
+                                className="w-[297mm] min-h-[285mm] h-[285mm] border-0 bg-white shadow-none p-0 m-0 block"
                                 title="Preview Dokumen Summary APD"
                                 onLoad={(e) => {
                                   const iframe = e.target as HTMLIFrameElement
@@ -4542,9 +4685,104 @@ export function InboxTab({
                         </div>
                       )}
 
+                      {/* Attendance Permission (Pengajuan Izin Sakit / Terlambat) Document Preview */}
+                      {isAttPermDoc && (() => {
+                        const attItem = currentBatchDoc.rawGeneralGroup?.items?.find((i: any) => i.attendancePermission)
+                        const perm = (currentBatchDoc as any).attendancePermission || attItem?.attendancePermission
+                        const permAttachmentUrl = perm?.attachmentUrl ? resolveUploadUrl(perm.attachmentUrl) : null
+                        return (
+                          <div>
+                            <div className="text-center mb-3">
+                              <h2 className="text-xs font-bold tracking-wider text-[#0d3b66] border-b-2 border-[#0d3b66] inline-block pb-0.5 uppercase">
+                                FORM PENGAJUAN IZIN ATTENDANCE
+                              </h2>
+                            </div>
+
+                            <table className="w-full border-collapse border border-black mb-3 [&_td]:border [&_td]:border-black [&_td]:px-2 [&_td]:py-1.5 text-[8.5pt]">
+                              <tbody>
+                                <tr>
+                                  <td colSpan={2} className="font-bold bg-slate-50 text-black py-1">
+                                    Informasi Pengajuan Izin Karyawan
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="w-1/2">Nomor Dokumen: <strong className="font-mono">{currentBatchDoc.documentNumber}</strong></td>
+                                  <td className="w-1/2">Jenis Izin: <strong>{perm?.permissionLabel || currentBatchDoc.categoryLabel}</strong></td>
+                                </tr>
+                                <tr>
+                                  <td>Nama Karyawan: <strong>{currentBatchDoc.employeeName}</strong></td>
+                                  <td>Site / Lokasi: <strong>{currentBatchDoc.siteName || currentBatchDoc.location || '—'}</strong></td>
+                                </tr>
+                                <tr>
+                                  <td>Tanggal Izin: <strong className="text-[#003461]">{perm?.dateRangeLabel || formatDate(currentBatchDoc.workDate || currentBatchDoc.submittedAt)}</strong></td>
+                                  <td>Tanggal Diajukan: <strong>{formatDate(currentBatchDoc.submittedAt)}</strong></td>
+                                </tr>
+                                {perm?.permissionType === 'sick' ? (
+                                  <tr>
+                                    <td colSpan={2}>Kategori Sakit: <strong>{perm?.sickCategory || '-'}</strong></td>
+                                  </tr>
+                                ) : (
+                                  <tr>
+                                    <td>Alasan Terlambat: <strong>{perm?.lateReason || '-'}</strong></td>
+                                    <td>Jam Kembali / Masuk: <strong>{perm?.returnTime || '-'}</strong></td>
+                                  </tr>
+                                )}
+                                <tr>
+                                  <td colSpan={2}>
+                                    <span className="font-bold block mb-0.5">Keterangan / Alasan Lengkap:</span>
+                                    <span className="whitespace-pre-wrap text-slate-800">{perm?.reason || attItem?.remarks || '-'}</span>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+
+                            {permAttachmentUrl && (
+                              <div className="mb-3 border border-black p-2 bg-slate-50/50">
+                                <p className="font-bold text-[8pt] text-slate-800 mb-1.5 uppercase">Lampiran / Surat Dokter / Bukti Izin</p>
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={permAttachmentUrl}
+                                    alt="Lampiran Izin"
+                                    className="max-h-40 rounded border border-slate-300 object-contain cursor-pointer bg-white"
+                                    onClick={() => setSelectedPreviewImage(permAttachmentUrl)}
+                                  />
+                                  <a
+                                    href={permAttachmentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[8pt] font-semibold text-[#003461] underline"
+                                  >
+                                    Buka Lampiran Penuh ↗
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="mt-5 grid grid-cols-2 gap-6 text-[8.5pt] text-center">
+                              <div className="border border-black p-2">
+                                <p className="font-bold mb-6">Diajukan Oleh,</p>
+                                <p className="font-bold underline">{currentBatchDoc.employeeName}</p>
+                                <p className="text-[7pt] text-slate-500">Pemohon</p>
+                              </div>
+                              <div className="border border-black p-2">
+                                <p className="font-bold mb-2">Disetujui Oleh,</p>
+                                {signatureDataUrl ? (
+                                  <img src={signatureDataUrl} alt="Tanda Tangan Approver" className="h-10 mx-auto object-contain my-1" />
+                                ) : (
+                                  <div className="h-10 flex items-center justify-center text-[7pt] text-slate-400 italic">Menunggu TTD</div>
+                                )}
+                                <p className="font-bold underline">{currentUserName || currentBatchDoc.approverName || 'Approver'}</p>
+                                <p className="text-[7pt] text-indigo-700 font-semibold">{currentBatchDoc.stepLabel || 'Persetujuan Atasan'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })()}
+
                       {/* General Group (Form Activity) */}
                       {!isApdDoc &&
                         !isMaritalStatusDoc &&
+                        !isAttPermDoc &&
                         currentBatchDoc.category === 'GENERAL' &&
                         !Boolean(currentBatchDoc.rawGeneralGroup?.items?.some((i: any) => i.repairFormWo)) &&
                         !Boolean(
@@ -4696,8 +4934,8 @@ export function InboxTab({
                     <div className="text-xs text-slate-600 space-y-1 pt-1">
                       <p><span className="text-slate-400">Karyawan:</span> <span className="font-semibold text-slate-900">{currentBatchDoc?.employeeName}</span></p>
                       <p><span className="text-slate-400">Kode Sesi:</span> <span className="font-mono text-indigo-700 font-semibold">{currentBatchDoc?.documentNumber}</span></p>
-                      <p><span className="text-slate-400">Tanggal:</span> <span className="font-semibold text-slate-900">{formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)}</span></p>
-                      <p><span className="text-slate-400">Shift:</span> <span className="font-semibold text-slate-900">{currentBatchDoc?.shiftCode || 'ALL'}</span></p>
+                      <p><span className="text-slate-400">{isAttPermDoc ? 'Tanggal Izin:' : 'Tanggal:'}</span> <span className="font-semibold text-slate-900">{(currentBatchDoc as any)?.attendancePermission?.dateRangeLabel || formatDate(currentBatchDoc?.workDate || currentBatchDoc?.submittedAt)}</span></p>
+                      <p><span className="text-slate-400">{isAttPermDoc ? 'Jenis Izin:' : 'Shift:'}</span> <span className="font-semibold text-slate-900">{(currentBatchDoc as any)?.attendancePermission?.permissionLabel || currentBatchDoc?.shiftCode || 'ALL'}</span></p>
                     </div>
 
                     {currentBatchDoc?.category === 'SOP_WIN_REQUEST' && (
@@ -4807,12 +5045,19 @@ export function InboxTab({
                               Lampiran Reviewer ({allAttachments.length})
                             </p>
                           </div>
-                          <label className="cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 transition shadow-2xs">
-                            <Upload className="size-3" />
+                          <label className={cn(
+                            "cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 transition shadow-2xs",
+                            isUploadingContractAttachment && "opacity-60 cursor-not-allowed pointer-events-none"
+                          )}>
+                            {isUploadingContractAttachment ? (
+                              <Loader2 className="size-3 animate-spin text-indigo-600" />
+                            ) : (
+                              <Upload className="size-3" />
+                            )}
                             <span>{isUploadingContractAttachment ? 'Mengunggah...' : '+ Upload Berkas'}</span>
                             <input
                               type="file"
-                              accept="application/pdf,image/*"
+                              accept="application/pdf,image/*,.pdf,.jpg,.jpeg,.png,.webp"
                               className="hidden"
                               disabled={isUploadingContractAttachment}
                               onChange={(e) => handleUploadContractAttachment(e, currentBatchDoc)}
@@ -4855,7 +5100,7 @@ export function InboxTab({
                                       <Eye className="size-3" /> Preview
                                     </Button>
                                     <a
-                                      href={att.fileUrl}
+                                      href={resolveUploadUrl(att.fileUrl)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center justify-center h-7 w-7 text-slate-500 hover:text-slate-800 hover:bg-slate-200 rounded-md"
@@ -4901,7 +5146,7 @@ export function InboxTab({
                             placeholder="Pilih Rekomendasi Evaluasi"
                             options={[
                               { value: 'contract_extended', label: 'Perpanjangan Masa Kontrak (Contract Extended)' },
-                              { value: 'confirm_permanent', label: 'Pengangkatan Karyawan Tetap (Confirm Permanent)' },
+                              { value: 'confirm_permanent', label: 'Pengangkatan Karyawan Tetap (Purpose to Permanent)' },
                               { value: 'terminate_probation', label: 'Pemutusan Masa Percobaan (Terminate Probation)' },
                               { value: 'contract_ended', label: 'Selesai Kontrak / Tidak Diperpanjang (Contract Ended)' },
                             ]}
@@ -5149,7 +5394,7 @@ export function InboxTab({
                 </div>
                 <div className="flex items-center gap-2 pr-6">
                   <a
-                    href={previewAttachmentModal.fileUrl}
+                    href={resolveUploadUrl(previewAttachmentModal.fileUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg"
@@ -5160,14 +5405,19 @@ export function InboxTab({
               </DialogHeader>
               <div className="flex-1 w-full bg-slate-100 rounded-xl overflow-hidden flex items-center justify-center p-2 mt-2">
                 {previewAttachmentModal.fileType === 'pdf' || previewAttachmentModal.fileName?.toLowerCase().endsWith('.pdf') ? (
-                  <iframe
-                    src={`${previewAttachmentModal.fileUrl}#toolbar=1&navpanes=0`}
-                    className="w-full h-full border-0 bg-white rounded-lg shadow-sm"
-                    title={previewAttachmentModal.fileName}
-                  />
+                  <div className="w-full h-full min-h-[500px] bg-white rounded-lg overflow-hidden relative">
+                    <PdfCanvasViewer
+                      url={resolveUploadUrl(previewAttachmentModal.fileUrl)}
+                      filename={previewAttachmentModal.fileName}
+                      preferNativeViewer={false}
+                      hideToolbar={false}
+                      hideDownload={false}
+                      className="w-full h-full"
+                    />
+                  </div>
                 ) : (
                   <img
-                    src={previewAttachmentModal.fileUrl}
+                    src={resolveUploadUrl(previewAttachmentModal.fileUrl)}
                     alt={previewAttachmentModal.fileName}
                     className="max-h-full max-w-full object-contain rounded-lg shadow-sm"
                   />
@@ -5204,7 +5454,7 @@ export function InboxTab({
 
         {/* Quick Lightbox Dialog */}
         <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
-          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+          <DialogContent overlayClassName="z-[200]" className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center z-[210]">
             {selectedPreviewImage && (
               <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
                 <img
@@ -5308,6 +5558,14 @@ function getHistoryItemLinks(item: any) {
   let downloadUrl: string | null = null
 
   if (
+    (item as any).attendancePermission != null ||
+    (item as any).templateKey === 'attendance-permission' ||
+    actType === 'pengajuan izin' ||
+    unitNumber.startsWith('att-')
+  ) {
+    viewUrl = `/mobile/attendance/permission`
+    downloadUrl = null
+  } else if (
     actId.startsWith('overtime-') ||
     actType.includes('lembur') ||
     actType.includes('overtime') ||
@@ -5365,6 +5623,10 @@ function getHistoryItemLinks(item: any) {
     viewUrl = `/dashboard/repair-retread/form-wo`
     downloadUrl = rawId ? `/api/form-wo/${rawId}/pdf` : null
   } else if (
+    actType.includes('summary') ||
+    title.includes('summary') ||
+    Boolean((item as any)?.apdSummaryId) ||
+    (item as any)?.category === 'SUMMARY' ||
     actType.includes('apd') ||
     actType.includes('tools') ||
     actType.includes('material') ||
@@ -5372,9 +5634,13 @@ function getHistoryItemLinks(item: any) {
     title.includes('tools') ||
     title.includes('material')
   ) {
-    rawId = actId.replace(/[^0-9]/g, '')
-    const isSummary = actType.includes('summary') || title.includes('summary')
-    viewUrl = isSummary ? `/print/summary/${rawId}` : `/print/apd/${rawId}`
+    rawId = (item as any)?.apdSummaryId ? String((item as any).apdSummaryId) : actId.replace(/[^0-9]/g, '')
+    const isSummary =
+      actType.includes('summary') ||
+      title.includes('summary') ||
+      Boolean((item as any)?.apdSummaryId) ||
+      (item as any)?.category === 'SUMMARY'
+    viewUrl = isSummary ? `/print/summary/${rawId}?embed=1&from=approval` : `/print/apd/${rawId}`
     downloadUrl = isSummary
       ? `/print/summary/${rawId}`
       : actId.startsWith('rfr-') || actType.includes('rfr')
@@ -5459,34 +5725,49 @@ export function HistoryTab({
     const title = String(item.title || '').toLowerCase()
     const unitNumber = String(item.unitNumber || '').toLowerCase()
 
+    const isAttPermission =
+      Boolean((item as any).attendancePermission) ||
+      (item as any).templateKey === 'attendance-permission' ||
+      actType === 'pengajuan izin' ||
+      unitNumber.startsWith('att-')
+
     const isSpl =
-      actId.startsWith('overtime-') ||
-      actType.includes('lembur') ||
-      actType.includes('overtime') ||
-      actType.includes('spl') ||
-      title.includes('spl') ||
-      unitNumber.includes('spl')
+      !isAttPermission &&
+      (actId.startsWith('overtime-') ||
+        actType.includes('lembur') ||
+        actType.includes('overtime') ||
+        actType.includes('spl') ||
+        title.includes('spl') ||
+        unitNumber.includes('spl'))
 
     const isDaily =
-      actId.startsWith('daily-') ||
-      actId.startsWith('das-') ||
-      actType.includes('daily') ||
-      actType.includes('dar') ||
-      actType.includes('das') ||
-      title.includes('daily') ||
-      title.includes('dar') ||
-      title.includes('das-') ||
-      unitNumber.startsWith('das-')
+      !isAttPermission &&
+      (actId.startsWith('daily-') ||
+        actId.startsWith('das-') ||
+        actType.includes('daily') ||
+        actType.includes('dar') ||
+        actType.includes('das') ||
+        title.includes('daily') ||
+        title.includes('dar') ||
+        title.includes('das-') ||
+        unitNumber.startsWith('das-'))
 
     const isPtw =
-      actId.startsWith('ptw-') ||
-      actType.includes('ptw') ||
-      actType.includes('ijin') ||
-      actType.includes('izin') ||
-      title.includes('ptw') ||
-      title.includes('izin kerja')
+      !isAttPermission &&
+      (actId.startsWith('ptw-') ||
+        actType.includes('ptw') ||
+        actType.includes('izin kerja') ||
+        title.includes('ptw') ||
+        title.includes('izin kerja'))
+
+    const isSummaryItem =
+      (item as any)?.category === 'SUMMARY' ||
+      actType.includes('summary') ||
+      title.includes('summary') ||
+      Boolean((item as any)?.apdSummaryId)
 
     const isApd =
+      isSummaryItem ||
       actId.startsWith('rfr-') ||
       actId.startsWith('apd-') ||
       actType.includes('apd') ||
@@ -5652,34 +5933,49 @@ export function HistoryTab({
     const title = String(item.title || '').toLowerCase()
     const unitNumber = String(item.unitNumber || '').toLowerCase()
 
+    const isAttPermission =
+      Boolean((item as any).attendancePermission) ||
+      (item as any).templateKey === 'attendance-permission' ||
+      actType === 'pengajuan izin' ||
+      unitNumber.startsWith('att-')
+
     const isSpl =
-      actId.startsWith('overtime-') ||
-      actType.includes('lembur') ||
-      actType.includes('overtime') ||
-      actType.includes('spl') ||
-      title.includes('spl') ||
-      unitNumber.includes('spl')
+      !isAttPermission &&
+      (actId.startsWith('overtime-') ||
+        actType.includes('lembur') ||
+        actType.includes('overtime') ||
+        actType.includes('spl') ||
+        title.includes('spl') ||
+        unitNumber.includes('spl'))
 
     const isDaily =
-      actId.startsWith('daily-') ||
-      actId.startsWith('das-') ||
-      actType.includes('daily') ||
-      actType.includes('dar') ||
-      actType.includes('das') ||
-      title.includes('daily') ||
-      title.includes('dar') ||
-      title.includes('das-') ||
-      unitNumber.startsWith('das-')
+      !isAttPermission &&
+      (actId.startsWith('daily-') ||
+        actId.startsWith('das-') ||
+        actType.includes('daily') ||
+        actType.includes('dar') ||
+        actType.includes('das') ||
+        title.includes('daily') ||
+        title.includes('dar') ||
+        title.includes('das-') ||
+        unitNumber.startsWith('das-'))
 
     const isPtw =
-      actId.startsWith('ptw-') ||
-      actType.includes('ptw') ||
-      actType.includes('ijin') ||
-      actType.includes('izin') ||
-      title.includes('ptw') ||
-      title.includes('izin kerja')
+      !isAttPermission &&
+      (actId.startsWith('ptw-') ||
+        actType.includes('ptw') ||
+        actType.includes('izin kerja') ||
+        title.includes('ptw') ||
+        title.includes('izin kerja'))
+
+    const isSummaryItem =
+      (item as any)?.category === 'SUMMARY' ||
+      actType.includes('summary') ||
+      title.includes('summary') ||
+      Boolean((item as any)?.apdSummaryId)
 
     const isApd =
+      isSummaryItem ||
       actId.startsWith('rfr-') ||
       actId.startsWith('apd-') ||
       actType.includes('apd') ||
@@ -5960,8 +6256,8 @@ export function HistoryTab({
         showCloseButton={false}
         className={cn(
           viewMode === 'mobile'
-            ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
-            : "max-w-4xl max-h-[92vh] h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl z-50"
+            ? "max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl"
+            : "max-w-4xl max-h-[92vh] h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-2xl"
         )}
       >
         {/* Header Bar */}
@@ -6985,7 +7281,7 @@ export function HistoryTab({
 
         {/* Quick Lightbox Dialog */}
         <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
-          <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+          <DialogContent overlayClassName="z-[200]" className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center z-[210]">
             {selectedPreviewImage && (
               <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
                 <img
@@ -7252,7 +7548,7 @@ export function HistoryTab({
 
       {/* Quick Lightbox Dialog */}
       <Dialog open={Boolean(selectedPreviewImage)} onOpenChange={(open) => !open && setSelectedPreviewImage(null)}>
-        <DialogContent className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center">
+        <DialogContent overlayClassName="z-[200]" className="max-w-3xl p-2 bg-black/95 border-0 rounded-2xl flex flex-col items-center justify-center z-[210]">
           {selectedPreviewImage && (
             <div className="relative max-h-[82vh] max-w-full flex items-center justify-center p-2">
               <img
@@ -7361,6 +7657,7 @@ export function ApprovalWorkbench({
             dailyActivityItems={safeData.dailyActivityInboxItems || []}
             overtimeItems={isDailyOnly ? [] : safeData.overtimeInboxItems || []}
             ptwItems={isDailyOnly ? [] : safeData.ptwInboxItems || []}
+            jsaItems={isDailyOnly ? [] : (safeData as any).jsaInboxItems || []}
             contractReviewItems={isDailyOnly ? [] : safeData.contractReviewInboxItems || []}
             sopWinRequestItems={isDailyOnly ? [] : safeData.sopWinRequestInboxItems || []}
             trainingRequestItems={isDailyOnly ? [] : safeData.trainingRequestInboxItems || []}

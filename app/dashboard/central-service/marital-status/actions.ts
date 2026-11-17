@@ -5,7 +5,7 @@ import { maritalStatusRequests, employees, approvals } from '@/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { getCurrentEmployee } from '@/lib/get-current-employee';
-import { ensureMaritalStatusRequestSchema } from '@/lib/marital-status-data';
+import { ensureMaritalStatusRequestSchema, fetchMaritalStatusRequestById } from '@/lib/marital-status-data';
 import { createNotificationEventForEmployee } from '@/lib/push-notifications';
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center';
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine';
@@ -677,6 +677,15 @@ export async function resetInvalidMaritalStatusAction(employeeId: number) {
   } catch (error: any) {
     console.error('Error resetting invalid marital status:', error);
     return { success: false, error: error.message || 'Gagal mereset status pernikahan.' };
+  }
+}
+
+export async function getMaritalStatusDetailAction(id: number) {
+  try {
+    return await fetchMaritalStatusRequestById(id);
+  } catch (error: any) {
+    console.error('Error fetching marital status detail:', error);
+    return null;
   }
 }
 

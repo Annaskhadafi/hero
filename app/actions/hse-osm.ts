@@ -4,12 +4,7 @@ import { and, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { db } from '@/db'
-import {
-  employees,
-  masterDepartments,
-  masterSections,
-  sites,
-} from '@/db/schema/hero'
+import { employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
 import {
   heroHseOsmFindings,
   heroHseOsmMasterClassifications,
@@ -22,7 +17,12 @@ import {
 } from '@/db/schema/hse-osm'
 import { auth } from '@/lib/auth'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
-import type { HseOsmFindingStatus, HseOsmRiskLevel, HseOsmFindingCondition } from '@/lib/hse-osm-constants'
+import type {
+  HseOsmFindingStatus,
+  HseOsmRiskLevel,
+  HseOsmFindingCondition,
+} from '@/lib/hse-osm-constants'
+import { sendHseOsmFindingNotifications, resolvePicArea } from '@/lib/hse-osm-notifications'
 
 export type OsmTeamMemberInput = {
   employeeId?: number | null
@@ -80,6 +80,7 @@ export type OsmFilterOptions = {
   dateTo?: string | null
   limit?: number
   offset?: number
+  reportTab?: 'all' | 'created' | 'received' | 'assigned' | null
 }
 
 async function getActorEmployee() {
@@ -176,12 +177,7 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
       const sessionsInSite = db
         .select({ id: heroHseOsmSessions.id })
         .from(heroHseOsmSessions)
-        .where(
-          and(
-            eq(heroHseOsmSessions.siteId, siteId),
-            isNull(heroHseOsmSessions.deletedAt)
-          )
-        )
+        .where(and(eq(heroHseOsmSessions.siteId, siteId), isNull(heroHseOsmSessions.deletedAt)))
       statusConditions.push(inArray(heroHseOsmFindings.sessionId, sessionsInSite))
     }
 
@@ -266,9 +262,301 @@ export async function getHseOsmDashboardData(siteId?: number | null) {
   }
 }
 
+export interface HseOsmPerformanceFilter {
+  year?: number
+  department?: string
+  siteId?: number | null
+}
+
+export interface HseOsmPerformanceMetrics {
+  year: number
+  overallPercentage: number
+  q1Percentage: number
+  q2Percentage: number
+  q3Percentage: number
+  q4Percentage: number
+  totalSessions: number
+  totalTarget: number
+  siteLeaderboard: {
+    siteId: number | null
+    siteName: string
+    totalSessions: number
+    targetSessions: number
+    percentage: number
+    q1: number
+    q2: number
+    q3: number
+    q4: number
+  }[]
+  monthlyBreakdown: {
+    id: string
+    department: string
+    siteName: string
+    employeeName: string
+    badgeNumber: string
+    totalTarget: number
+    jan: number
+    feb: number
+    mar: number
+    apr: number
+    may: number
+    jun: number
+    jul: number
+    aug: number
+    sep: number
+    oct: number
+    nov: number
+    dec: number
+    totalAchieved: number
+    percentage: number
+  }[]
+  availableYears: number[]
+  availableDepartments: string[]
+  availableSites: { id: number; name: string }[]
+}
+
+export async function getHseOsmPerformanceMetrics(filter: HseOsmPerformanceFilter = {}) {
+  try {
+    const selectedYear = filter.year || new Date().getFullYear()
+
+    // 1. Fetch available sites & departments for filter controls
+    const [allSites, allDepts] = await Promise.all([
+      db.select({ id: sites.id, name: sites.name }).from(sites).where(eq(sites.isActive, true)).orderBy(sites.name),
+      db.select({ name: masterDepartments.name }).from(masterDepartments).where(eq(masterDepartments.isActive, true)).orderBy(masterDepartments.name),
+    ])
+
+    // 2. Fetch all non-deleted sessions for the selected year
+    const sessions = await db
+      .select({
+        id: heroHseOsmSessions.id,
+        inspectionDate: heroHseOsmSessions.inspectionDate,
+        leadBadgeNumber: heroHseOsmSessions.leadBadgeNumber,
+        leadEmployeeName: heroHseOsmSessions.leadEmployeeName,
+        leadDepartment: heroHseOsmSessions.leadDepartment,
+        siteId: heroHseOsmSessions.siteId,
+        siteName: sites.name,
+      })
+      .from(heroHseOsmSessions)
+      .leftJoin(sites, eq(heroHseOsmSessions.siteId, sites.id))
+      .where(
+        and(
+          isNull(heroHseOsmSessions.deletedAt),
+          sql`${heroHseOsmSessions.inspectionDate} LIKE ${selectedYear + '-%'}`
+        )
+      )
+
+    // Filter by department and siteId if selected
+    let filteredSessions = sessions
+    if (filter.department && filter.department !== 'ALL') {
+      filteredSessions = filteredSessions.filter((s) => s.leadDepartment === filter.department)
+    }
+    if (filter.siteId && filter.siteId !== 0) {
+      filteredSessions = filteredSessions.filter((s) => s.siteId === filter.siteId)
+    }
+
+    // 3. Aggregate Monthly & Quarterly sessions
+    // Target is 2 sessions per inspector per month (Total target: 24 per year)
+    const inspectorMap = new Map<string, {
+      department: string
+      siteName: string
+      employeeName: string
+      badgeNumber: string
+      months: number[]
+    }>()
+
+    const siteMap = new Map<string, {
+      siteId: number | null
+      siteName: string
+      q1: number
+      q2: number
+      q3: number
+      q4: number
+      total: number
+      inspectors: Set<string>
+    }>()
+
+    for (const s of allSites) {
+      siteMap.set(s.name, {
+        siteId: s.id,
+        siteName: s.name,
+        q1: 0,
+        q2: 0,
+        q3: 0,
+        q4: 0,
+        total: 0,
+        inspectors: new Set<string>(),
+      })
+    }
+
+    for (const sess of filteredSessions) {
+      const siteDisplayName = sess.siteName || 'Head Office / Balikpapan'
+      const inspectorKey = `${sess.leadBadgeNumber || sess.leadEmployeeName}_${siteDisplayName}`
+      
+      if (!inspectorMap.has(inspectorKey)) {
+        inspectorMap.set(inspectorKey, {
+          department: sess.leadDepartment || 'Mining Operations',
+          siteName: siteDisplayName,
+          employeeName: sess.leadEmployeeName || 'Unknown Inspector',
+          badgeNumber: sess.leadBadgeNumber || '-',
+          months: Array(12).fill(0),
+        })
+      }
+
+      const insp = inspectorMap.get(inspectorKey)!
+      const monthIndex = parseInt(sess.inspectionDate.split('-')[1] || '1', 10) - 1
+      if (monthIndex >= 0 && monthIndex < 12) {
+        insp.months[monthIndex] += 1
+      }
+
+      // Site map
+      if (!siteMap.has(siteDisplayName)) {
+        siteMap.set(siteDisplayName, {
+          siteId: sess.siteId,
+          siteName: siteDisplayName,
+          q1: 0,
+          q2: 0,
+          q3: 0,
+          q4: 0,
+          total: 0,
+          inspectors: new Set<string>(),
+        })
+      }
+      const siteData = siteMap.get(siteDisplayName)!
+      siteData.total += 1
+      siteData.inspectors.add(inspectorKey)
+      if (monthIndex >= 0 && monthIndex <= 2) siteData.q1 += 1
+      else if (monthIndex >= 3 && monthIndex <= 5) siteData.q2 += 1
+      else if (monthIndex >= 6 && monthIndex <= 8) siteData.q3 += 1
+      else if (monthIndex >= 9 && monthIndex <= 11) siteData.q4 += 1
+    }
+
+    const currentMonth = new Date().getFullYear() === selectedYear ? new Date().getMonth() + 1 : 12
+    const targetPerMonth = 2
+    const totalTargetMonths = Math.max(1, currentMonth) * targetPerMonth
+
+    const monthlyBreakdown = Array.from(inspectorMap.entries()).map(([key, data]) => {
+      const totalAchieved = data.months.reduce((acc, val) => acc + val, 0)
+      const target = totalTargetMonths
+      const percentage = target > 0 ? Math.round((totalAchieved / target) * 100) : 0
+      return {
+        id: key,
+        department: data.department,
+        siteName: data.siteName,
+        employeeName: data.employeeName,
+        badgeNumber: data.badgeNumber,
+        totalTarget: target,
+        jan: data.months[0],
+        feb: data.months[1],
+        mar: data.months[2],
+        apr: data.months[3],
+        may: data.months[4],
+        jun: data.months[5],
+        jul: data.months[6],
+        aug: data.months[7],
+        sep: data.months[8],
+        oct: data.months[9],
+        nov: data.months[10],
+        dec: data.months[11],
+        totalAchieved,
+        percentage,
+      }
+    })
+
+    monthlyBreakdown.sort((a, b) => b.percentage - a.percentage)
+
+    const siteLeaderboard = Array.from(siteMap.values())
+      .filter((s) => !filter.siteId || s.siteId === filter.siteId)
+      .map((s) => {
+        const inspectorCount = Math.max(1, s.inspectors.size)
+        const targetSessions = inspectorCount * totalTargetMonths
+        const percentage = targetSessions > 0 ? Math.round((s.total / targetSessions) * 100) : 0
+        return {
+          siteId: s.siteId,
+          siteName: s.siteName,
+          totalSessions: s.total,
+          targetSessions,
+          percentage,
+          q1: s.q1,
+          q2: s.q2,
+          q3: s.q3,
+          q4: s.q4,
+        }
+      })
+
+    siteLeaderboard.sort((a, b) => b.percentage - a.percentage || b.totalSessions - a.totalSessions || a.siteName.localeCompare(b.siteName))
+
+    const totalInspectors = Math.max(1, inspectorMap.size)
+    const quarterTarget = totalInspectors * (3 * targetPerMonth)
+    const totalOverallTarget = totalInspectors * totalTargetMonths
+
+    let totalQ1 = 0
+    let totalQ2 = 0
+    let totalQ3 = 0
+    let totalQ4 = 0
+
+    for (const insp of Array.from(inspectorMap.values())) {
+      totalQ1 += insp.months[0] + insp.months[1] + insp.months[2]
+      totalQ2 += insp.months[3] + insp.months[4] + insp.months[5]
+      totalQ3 += insp.months[6] + insp.months[7] + insp.months[8]
+      totalQ4 += insp.months[9] + insp.months[10] + insp.months[11]
+    }
+
+    const totalSessionsAll = filteredSessions.length
+    const overallPercentage = totalOverallTarget > 0 ? Math.round((totalSessionsAll / totalOverallTarget) * 100) : 0
+    const q1Percentage = quarterTarget > 0 ? Math.round((totalQ1 / quarterTarget) * 100) : 0
+    const q2Percentage = quarterTarget > 0 ? Math.round((totalQ2 / quarterTarget) * 100) : 0
+    const q3Percentage = quarterTarget > 0 ? Math.round((totalQ3 / quarterTarget) * 100) : 0
+    const q4Percentage = quarterTarget > 0 ? Math.round((totalQ4 / quarterTarget) * 100) : 0
+
+    const deptSet = new Set<string>()
+    for (const d of allDepts) {
+      if (d.name) deptSet.add(d.name)
+    }
+    for (const s of sessions) {
+      if (s.leadDepartment) deptSet.add(s.leadDepartment)
+    }
+
+    const currentYr = new Date().getFullYear()
+    const availableYears = [currentYr - 1, currentYr, currentYr + 1]
+
+    return {
+      success: true,
+      data: {
+        year: selectedYear,
+        overallPercentage,
+        q1Percentage,
+        q2Percentage,
+        q3Percentage,
+        q4Percentage,
+        totalSessions: totalSessionsAll,
+        totalTarget: totalOverallTarget,
+        siteLeaderboard,
+        monthlyBreakdown,
+        availableYears,
+        availableDepartments: Array.from(deptSet).sort(),
+        availableSites: allSites,
+      },
+    }
+  } catch (error: any) {
+    console.error('getHseOsmPerformanceMetrics error:', error)
+    return { success: false, error: error?.message || 'Gagal memuat data OSM performance' }
+  }
+}
+
 export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
   try {
-    const { siteId, status, focusItemId, search, dateFrom, dateTo, limit = 50, offset = 0 } = options
+    const actor = await getActorEmployee()
+    const {
+      siteId,
+      status,
+      focusItemId,
+      search,
+      dateFrom,
+      dateTo,
+      limit = 50,
+      offset = 0,
+      reportTab,
+    } = options
 
     const conditions = [isNull(heroHseOsmSessions.deletedAt)]
 
@@ -320,6 +608,7 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
         leadRole: heroHseOsmSessions.leadRole,
         notes: heroHseOsmSessions.notes,
         status: heroHseOsmSessions.status,
+        createdBy: heroHseOsmSessions.createdBy,
         createdAt: heroHseOsmSessions.createdAt,
       })
       .from(heroHseOsmSessions)
@@ -344,10 +633,7 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       })
       .from(heroHseOsmFindings)
       .where(
-        and(
-          inArray(heroHseOsmFindings.sessionId, sessionIds),
-          isNull(heroHseOsmFindings.deletedAt)
-        )
+        and(inArray(heroHseOsmFindings.sessionId, sessionIds), isNull(heroHseOsmFindings.deletedAt))
       )
       .groupBy(heroHseOsmFindings.sessionId, heroHseOsmFindings.status)
 
@@ -386,8 +672,46 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
         ticketStatus = 'CLOSED'
       }
 
+      const isLocked = session.status === 'SUBMITTED' || session.status === 'COMPLETED'
+      const progressPercent =
+        totalFindings > 0
+          ? Math.round((closedCount / totalFindings) * 1000) / 10
+          : isLocked
+            ? 100
+            : 0
+
+      const actorEmailNorm = (actor?.sessionUser?.email || '').toLowerCase()
+      const actorBadge = actor?.employee?.employeeSn || ''
+      const actorId = actor?.employee?.id
+      const actorSiteId = actor?.employee?.siteId
+      const picInfo = resolvePicArea(session.locationArea)
+
+      const isCreatedByMe = Boolean(
+        (session.createdBy &&
+          actorEmailNorm &&
+          session.createdBy.toLowerCase() === actorEmailNorm) ||
+        (session.leadBadgeNumber && actorBadge && session.leadBadgeNumber === actorBadge) ||
+        (session.leadEmployeeId && actorId && session.leadEmployeeId === actorId)
+      )
+
+      const isReceivedByArea = Boolean(
+        !isCreatedByMe &&
+        ((session.siteId && actorSiteId && session.siteId === actorSiteId) ||
+          picInfo.picEmail.toLowerCase() === actorEmailNorm)
+      )
+
+      const isAssigned = Boolean(
+        (openCount > 0 || processedCount > 0) &&
+        (isReceivedByArea || picInfo.picEmail.toLowerCase() === actorEmailNorm || isCreatedByMe)
+      )
+
       return {
         ...session,
+        isLocked,
+        progressPercent,
+        isCreatedByMe,
+        isReceivedByArea,
+        isAssigned,
         ticketStatus,
         findingsSummary: {
           total: totalFindings,
@@ -402,13 +726,28 @@ export async function getHseOsmSessions(options: OsmFilterOptions = {}) {
       }
     })
 
-    let filteredData = sessionData
-    if (status && status !== 'ALL') {
-      const target = status.toUpperCase().replace('_', ' ')
-      filteredData = sessionData.filter((s) => s.ticketStatus === target || s.status === status)
+    const tabCounts = {
+      created: sessionData.filter((s) => s.isCreatedByMe).length,
+      received: sessionData.filter((s) => s.isReceivedByArea).length,
+      assigned: sessionData.filter((s) => s.isAssigned).length,
+      total: sessionData.length,
     }
 
-    return { success: true, data: filteredData }
+    let filteredData = sessionData
+    if (reportTab === 'created') {
+      filteredData = sessionData.filter((s) => s.isCreatedByMe)
+    } else if (reportTab === 'received') {
+      filteredData = sessionData.filter((s) => s.isReceivedByArea)
+    } else if (reportTab === 'assigned') {
+      filteredData = sessionData.filter((s) => s.isAssigned)
+    }
+
+    if (status && status !== 'ALL') {
+      const target = status.toUpperCase().replace('_', ' ')
+      filteredData = filteredData.filter((s) => s.ticketStatus === target || s.status === status)
+    }
+
+    return { success: true, data: filteredData, tabCounts }
   } catch (error: any) {
     console.error('getHseOsmSessions error:', error)
     return { success: false, error: error?.message || 'Gagal mengambil data sesi OSM' }
@@ -483,18 +822,14 @@ export async function getHseOsmSessionById(id: number) {
         createdAt: heroHseOsmFindings.createdAt,
       })
       .from(heroHseOsmFindings)
-      .where(
-        and(
-          eq(heroHseOsmFindings.sessionId, id),
-          isNull(heroHseOsmFindings.deletedAt)
-        )
-      )
+      .where(and(eq(heroHseOsmFindings.sessionId, id), isNull(heroHseOsmFindings.deletedAt)))
       .orderBy(heroHseOsmFindings.id)
 
     return {
       success: true,
       data: {
         ...session,
+        isLocked: session.status === 'SUBMITTED' || session.status === 'COMPLETED',
         teamMembers,
         findings,
       },
@@ -557,7 +892,7 @@ export async function createHseOsmSession(input: CreateOsmSessionInput) {
       for (const finding of input.findings) {
         const findingNumber = await generateFindingNumber()
         const isStandard = finding.condition === 'STANDARD' || finding.status === 'CLOSED'
-        const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : (finding.status || 'OPEN')
+        const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : finding.status || 'OPEN'
         const now = new Date()
 
         await db.insert(heroHseOsmFindings).values({
@@ -572,21 +907,28 @@ export async function createHseOsmSession(input: CreateOsmSessionInput) {
           riskLevel: finding.riskLevel || 'MEDIUM',
           status: findingStatus,
           actionRequired: isStandard
-            ? (finding.actionRequired || 'Good Condition / Sesuai Standar Keselamatan')
-            : (finding.actionRequired || ''),
+            ? finding.actionRequired || 'Good Condition / Sesuai Standar Keselamatan'
+            : finding.actionRequired || '',
           actionTaken: isStandard
-            ? (finding.actionTaken || 'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).')
-            : (finding.actionTaken || ''),
+            ? finding.actionTaken ||
+              'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).'
+            : finding.actionTaken || '',
           actionPhotoUrls: finding.actionPhotoUrls || [],
           actionSubmittedAt: isStandard ? now : null,
           actionSubmittedBy: isStandard
-            ? (actor?.sessionUser?.name || actor?.employee?.name || input.leadEmployeeName || 'Inspector Lead')
+            ? actor?.sessionUser?.name ||
+              actor?.employee?.name ||
+              input.leadEmployeeName ||
+              'Inspector Lead'
             : null,
           verifiedAt: isStandard ? now : null,
           verifiedBy: isStandard
-            ? (actor?.sessionUser?.name || actor?.employee?.name || input.leadEmployeeName || 'Inspector Lead')
+            ? actor?.sessionUser?.name ||
+              actor?.employee?.name ||
+              input.leadEmployeeName ||
+              'Inspector Lead'
             : null,
-          dueDate: isStandard ? null : (finding.dueDate || null),
+          dueDate: isStandard ? null : finding.dueDate || null,
         })
       }
     }
@@ -641,14 +983,22 @@ export async function createHseOsmFinding(
       return { success: false, error: 'Sesi OSM tidak ditemukan' }
     }
 
+    if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Laporan OSM telah disubmit dan terkunci. Tidak dapat menambah temuan baru.',
+      }
+    }
+
     const findingNumber = await generateFindingNumber()
     const now = new Date()
     const currentDate = now.toISOString().split('T')[0]
     const currentTime = now.toTimeString().slice(0, 5)
 
     const isStandard = input.condition === 'STANDARD' || input.status === 'CLOSED'
-    const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : (input.status || 'OPEN')
-    const actionBy = actor?.sessionUser?.name || actor?.employee?.name || session.leadEmployeeName || 'Inspector'
+    const findingStatus: HseOsmFindingStatus = isStandard ? 'CLOSED' : input.status || 'OPEN'
+    const actionBy =
+      actor?.sessionUser?.name || actor?.employee?.name || session.leadEmployeeName || 'Inspector'
 
     const [newFinding] = await db
       .insert(heroHseOsmFindings)
@@ -664,16 +1014,17 @@ export async function createHseOsmFinding(
         riskLevel: input.riskLevel || 'MEDIUM',
         status: findingStatus,
         actionRequired: isStandard
-          ? (input.actionRequired?.trim() || 'Good Condition / Sesuai Standar Keselamatan')
-          : (input.actionRequired || ''),
+          ? input.actionRequired?.trim() || 'Good Condition / Sesuai Standar Keselamatan'
+          : input.actionRequired || '',
         actionTaken: isStandard
-          ? (input.actionTaken?.trim() || 'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).')
+          ? input.actionTaken?.trim() ||
+            'Kondisi telah diperiksa dan dipastikan sesuai standar keselamatan (Standard / Close).'
           : '',
         actionSubmittedAt: isStandard ? now : null,
         actionSubmittedBy: isStandard ? actionBy : null,
         verifiedAt: isStandard ? now : null,
         verifiedBy: isStandard ? actionBy : null,
-        dueDate: isStandard ? null : (input.dueDate || null),
+        dueDate: isStandard ? null : input.dueDate || null,
       })
       .returning()
 
@@ -718,6 +1069,25 @@ export async function submitHseOsmAction(
       return { success: false, error: 'Temuan tidak ditemukan' }
     }
 
+    const [sessionRow] = await db
+      .select({ status: heroHseOsmSessions.status })
+      .from(heroHseOsmSessions)
+      .where(eq(heroHseOsmSessions.id, finding.sessionId))
+      .limit(1)
+    if (sessionRow?.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Sesi OSM ini telah selesai (Completed) dan ditutup secara permanen.',
+      }
+    }
+
+    if (finding.status !== 'OPEN' && finding.status !== 'REJECTED') {
+      return {
+        success: false,
+        error: 'Tindak lanjut hanya dapat dilakukan pada temuan yang berstatus OPEN atau REJECTED.',
+      }
+    }
+
     const [updatedFinding] = await db
       .update(heroHseOsmFindings)
       .set({
@@ -725,6 +1095,7 @@ export async function submitHseOsmAction(
         actionPhotoUrls: input.actionPhotoUrls || [],
         actionSubmittedAt: new Date(),
         actionSubmittedBy: actor?.employee?.name || actor?.sessionUser?.name || 'Inspector',
+        rejectionReason: '',
         status: 'PROCESSED',
         updatedAt: new Date(),
       })
@@ -746,6 +1117,7 @@ export async function verifyHseOsmFinding(
   input: {
     status: 'CLOSED' | 'REJECTED'
     rejectionReason?: string
+    actionPhotoUrls?: string[]
   }
 ) {
   try {
@@ -760,15 +1132,22 @@ export async function verifyHseOsmFinding(
       return { success: false, error: 'Temuan tidak ditemukan' }
     }
 
+    const updatePayload: Record<string, any> = {
+      status: input.status,
+      rejectionReason: input.status === 'REJECTED' ? input.rejectionReason || '' : '',
+      verifiedAt: new Date(),
+      verifiedBy: actor?.employee?.name || actor?.sessionUser?.name || 'HSE Coordinator',
+      updatedAt: new Date(),
+    }
+
+    // Persist attached proof photos if supplied during close / verification
+    if (input.actionPhotoUrls && input.actionPhotoUrls.length > 0) {
+      updatePayload.actionPhotoUrls = input.actionPhotoUrls
+    }
+
     const [updatedFinding] = await db
       .update(heroHseOsmFindings)
-      .set({
-        status: input.status,
-        rejectionReason: input.status === 'REJECTED' ? input.rejectionReason || '' : '',
-        verifiedAt: new Date(),
-        verifiedBy: actor?.employee?.name || actor?.sessionUser?.name || 'HSE Coordinator',
-        updatedAt: new Date(),
-      })
+      .set(updatePayload)
       .where(eq(heroHseOsmFindings.id, findingId))
       .returning()
 
@@ -784,6 +1163,28 @@ export async function verifyHseOsmFinding(
 
 export async function deleteHseOsmSession(id: number) {
   try {
+    const [session] = await db
+      .select({
+        id: heroHseOsmSessions.id,
+        sessionNumber: heroHseOsmSessions.sessionNumber,
+        status: heroHseOsmSessions.status,
+      })
+      .from(heroHseOsmSessions)
+      .where(and(eq(heroHseOsmSessions.id, id), isNull(heroHseOsmSessions.deletedAt)))
+      .limit(1)
+
+    if (!session) {
+      return { success: false, error: 'Sesi OSM tidak ditemukan atau sudah dihapus.' }
+    }
+
+    if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
+      return {
+        success: false,
+        error:
+          'Sesi OSM yang telah disubmit dan terkunci tidak dapat dihapus. Hanya tiket draft yang dapat dihapus.',
+      }
+    }
+
     const now = new Date()
     await db
       .update(heroHseOsmSessions)
@@ -808,6 +1209,29 @@ export async function deleteHseOsmSession(id: number) {
 
 export async function deleteHseOsmFinding(id: number) {
   try {
+    const [finding] = await db
+      .select({ id: heroHseOsmFindings.id, sessionId: heroHseOsmFindings.sessionId })
+      .from(heroHseOsmFindings)
+      .where(and(eq(heroHseOsmFindings.id, id), isNull(heroHseOsmFindings.deletedAt)))
+      .limit(1)
+
+    if (!finding) {
+      return { success: false, error: 'Temuan tidak ditemukan atau sudah dihapus.' }
+    }
+
+    const [session] = await db
+      .select({ status: heroHseOsmSessions.status })
+      .from(heroHseOsmSessions)
+      .where(eq(heroHseOsmSessions.id, finding.sessionId))
+      .limit(1)
+
+    if (session?.status === 'SUBMITTED' || session?.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Laporan OSM telah disubmit dan terkunci. Temuan tidak dapat dihapus.',
+      }
+    }
+
     const now = new Date()
     await db
       .update(heroHseOsmFindings)
@@ -869,10 +1293,7 @@ export async function syncHseOsmOfflineBatch(batchPayloads: CreateOsmSessionInpu
   }
 }
 
-export async function updateHseOsmFindingPhotos(
-  findingId: number,
-  photoUrls: string[]
-) {
+export async function updateHseOsmFindingPhotos(findingId: number, photoUrls: string[]) {
   try {
     const [finding] = await db
       .select({ id: heroHseOsmFindings.id, sessionId: heroHseOsmFindings.sessionId })
@@ -882,6 +1303,19 @@ export async function updateHseOsmFindingPhotos(
 
     if (!finding) {
       return { success: false, error: 'Temuan tidak ditemukan' }
+    }
+
+    const [sessionRow] = await db
+      .select({ status: heroHseOsmSessions.status })
+      .from(heroHseOsmSessions)
+      .where(eq(heroHseOsmSessions.id, finding.sessionId))
+      .limit(1)
+
+    if (sessionRow?.status === 'COMPLETED') {
+      return {
+        success: false,
+        error: 'Laporan OSM telah selesai (Completed) dan ditutup secara permanen. Foto temuan tidak dapat diubah lagi.',
+      }
     }
 
     const [updated] = await db
@@ -904,3 +1338,67 @@ export async function updateHseOsmFindingPhotos(
   }
 }
 
+export async function submitHseOsmSession(sessionId: number) {
+  try {
+    const actor = await getActorEmployee()
+    const [session] = await db
+      .select()
+      .from(heroHseOsmSessions)
+      .where(and(eq(heroHseOsmSessions.id, sessionId), isNull(heroHseOsmSessions.deletedAt)))
+      .limit(1)
+
+    if (!session) {
+      return { success: false, error: 'Sesi OSM tidak ditemukan.' }
+    }
+
+    if (session.status === 'SUBMITTED' || session.status === 'COMPLETED') {
+      return { success: false, error: 'Sesi OSM sudah pernah disubmit dan terkunci.' }
+    }
+
+    const findings = await db
+      .select()
+      .from(heroHseOsmFindings)
+      .where(and(eq(heroHseOsmFindings.sessionId, sessionId), isNull(heroHseOsmFindings.deletedAt)))
+
+    if (findings.length < 3) {
+      return {
+        success: false,
+        error: `Minimal 3 hasil inspeksi baru agar dapat di-Submit (saat ini baru ${findings.length} temuan).`,
+      }
+    }
+
+    const now = new Date()
+    const [updatedSession] = await db
+      .update(heroHseOsmSessions)
+      .set({
+        status: 'SUBMITTED',
+        updatedAt: now,
+      })
+      .where(eq(heroHseOsmSessions.id, sessionId))
+      .returning()
+
+    // Kirim notifikasi email ke PIC Area & CC sesuai tingkat risiko (Slide 7 & 8)
+    const emailResult = await sendHseOsmFindingNotifications(sessionId)
+
+    // Notify bell
+    if (actor?.sessionUser?.email) {
+      await notifyWorkflowBellRecipients({
+        recipientEmails: [actor.sessionUser.email],
+        eventType: 'HSE_OSM_SESSION_SUBMITTED',
+        category: 'hse_alerts',
+        title: 'Laporan OSM Berhasil Disubmit',
+        body: `Laporan OSM ${session.sessionNumber} (${session.locationArea}) berhasil disubmit dan terkunci dengan ${findings.length} temuan.`,
+        url: '/mobile/hse/osm',
+      }).catch(() => null)
+    }
+
+    safeRevalidatePath('/dashboard/hse/osm')
+    safeRevalidatePath('/mobile/hse/osm')
+    safeRevalidatePath('/mobile/hse')
+
+    return { success: true, data: updatedSession, emailNotifications: emailResult }
+  } catch (error: any) {
+    console.error('submitHseOsmSession error:', error)
+    return { success: false, error: error?.message || 'Gagal melakukan submit laporan OSM.' }
+  }
+}

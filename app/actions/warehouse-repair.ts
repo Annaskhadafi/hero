@@ -83,6 +83,7 @@ export async function getWarehouseRepairItems() {
         updatedAt: warehouseRepairItems.updatedAt,
       })
       .from(warehouseRepairItems)
+      .where(eq(warehouseRepairItems.isActive, true))
       .leftJoin(
         warehouseRepairItemTypes,
         eq(warehouseRepairItems.typeId, warehouseRepairItemTypes.id)

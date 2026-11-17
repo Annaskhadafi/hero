@@ -7,6 +7,7 @@ import {
   getSopWinApprovalsAction,
   getSopWinDocumentRequestsAction,
   getSopWinDepartmentWorkflowsAction,
+  getSopWinApproverCandidatesAction,
 } from "@/app/dashboard/sop-win/actions";
 import { getServerSession } from "@/lib/auth-session";
 import { getCurrentMenuPermission } from "@/lib/hero-access";
@@ -17,6 +18,7 @@ import { SopWinApprovalMatrixPanel } from "@/components/sop-win/sop-win-approval
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Files, BarChart3, FolderKanban, CheckCircle2, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "SOP / WIN Document System | HERO",
@@ -33,7 +35,7 @@ export default async function SopWinPage({
   const resolvedParams = searchParams ? await searchParams : {};
   const activeTab = resolvedParams?.tab || "explorer";
 
-  const [rawDashboard, rawDocs, rawEmployees, rawDepts, rawApprovals, rawDocRequests, rawMatrixWorkflows, permission, session] = await Promise.all([
+  const [rawDashboard, rawDocs, rawEmployees, rawDepts, rawApprovals, rawDocRequests, rawMatrixWorkflows, rawApproverCandidates, permission, session] = await Promise.all([
     getSopWinDashboardAction().catch((err) => {
       console.error('[SopWinPage] dashboard action failed:', err);
       return null;
@@ -60,6 +62,10 @@ export default async function SopWinPage({
     }),
     getSopWinDepartmentWorkflowsAction().catch((err) => {
       console.error('[SopWinPage] department workflows action failed:', err);
+      return { success: false as const, data: [] };
+    }),
+    getSopWinApproverCandidatesAction().catch((err) => {
+      console.error('[SopWinPage] approver candidates action failed:', err);
       return { success: false as const, data: [] };
     }),
     getCurrentMenuPermission("sop-win").catch(() => null),
@@ -110,6 +116,8 @@ export default async function SopWinPage({
   const pendingRequestsCount = docRequestsList.filter((r: any) => r.status === "pending_ria" || r.status === "pending_creator" || r.status === "pending_owner" || r.status === "pending_bardynia").length;
   const matrixWorkflowsData = rawMatrixWorkflows && typeof rawMatrixWorkflows === "object" ? JSON.parse(JSON.stringify(rawMatrixWorkflows)) : { data: [] };
   const matrixWorkflowsList = Array.isArray(matrixWorkflowsData?.data) ? matrixWorkflowsData.data : [];
+  const approverCandidatesData = rawApproverCandidates && typeof rawApproverCandidates === "object" ? JSON.parse(JSON.stringify(rawApproverCandidates)) : { data: [] };
+  const approverCandidatesList = Array.isArray(approverCandidatesData?.data) ? approverCandidatesData.data : [];
 
   const canEdit = !!permission?.canEdit;
   const canDelete = !!permission?.canDelete;
@@ -130,8 +138,11 @@ export default async function SopWinPage({
       </div>
 
       {/* Tabs Layout */}
+      <Link href="/mobile/sop-win" className="lg:hidden flex h-9 items-center justify-center rounded-lg bg-[#0753e7] px-3 text-sm font-semibold text-white">
+        Buka tampilan SOP/WIN untuk HP
+      </Link>
       <Tabs defaultValue={activeTab} className="space-y-4">
-        <TabsList className="bg-slate-100/90 p-1 dark:bg-slate-900">
+        <TabsList className="max-w-full justify-start overflow-x-auto bg-slate-100/90 p-1 dark:bg-slate-900">
           <TabsTrigger
             value="explorer"
             className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-[#003461] data-[state=active]:shadow-sm"
@@ -196,7 +207,7 @@ export default async function SopWinPage({
         </TabsContent>
 
         <TabsContent value="matrix" className="space-y-4 outline-none">
-          <SopWinApprovalMatrixPanel initialWorkflows={matrixWorkflowsList} />
+          <SopWinApprovalMatrixPanel initialWorkflows={matrixWorkflowsList} initialEmployees={approverCandidatesList} />
         </TabsContent>
       </Tabs>
     </div>

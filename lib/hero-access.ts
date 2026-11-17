@@ -216,6 +216,24 @@ export async function getMenuPermissionForRole(
     }
   }
 
+  if (
+    roleName.trim().toLowerCase() === 'pjo site' &&
+    [
+      'scheduling_timesheet',
+      'scheduling_timesheet_attendance',
+      'scheduling_timesheet_schedule_v2',
+    ].includes(resource)
+  ) {
+    return {
+      roleName,
+      canView: true,
+      canEdit: true,
+      canDelete: false,
+      canSelectAll: false,
+      dataScope: 'site',
+    }
+  }
+
   const [permission] = await db
     .select({
       canView: roleMenuPermissions.canView,
@@ -383,7 +401,18 @@ export async function getDashboardRoutePermission(pathname: string) {
       const cleanUrl = url.split('?')[0].replace(/\/$/, '')
       return cleanPath === cleanUrl || cleanPath.startsWith(`${cleanUrl}/`)
     })
-    .sort((left, right) => right.url.length - left.url.length)[0]
+    .sort((left, right) => {
+      const leftExact = left.url === pathname ? 1 : 0
+      const rightExact = right.url === pathname ? 1 : 0
+      if (leftExact !== rightExact) return rightExact - leftExact
+
+      const cleanLeft = left.url.split('?')[0].replace(/\/$/, '')
+      const cleanRight = right.url.split('?')[0].replace(/\/$/, '')
+      if (cleanRight.length !== cleanLeft.length) {
+        return cleanRight.length - cleanLeft.length
+      }
+      return left.url.length - right.url.length
+    })[0]
 
   if (matchingMenu) {
     return getCurrentMenuPermission(matchingMenu.resource)

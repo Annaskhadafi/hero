@@ -31,66 +31,237 @@ export const HSE_OSM_DEFAULT_FOCUS_ITEMS = [
   },
 ] as const;
 
-export const HSE_OSM_DEFAULT_CLASSIFICATIONS = [
+export type HseOsmClassificationAspect = "Keselamatan" | "Kesehatan" | "Lingkungan";
+
+export interface HseOsmClassificationItem {
+  code: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+  aspect: HseOsmClassificationAspect;
+}
+
+export const HSE_OSM_ASPECT_LABELS: Record<HseOsmClassificationAspect, string> = {
+  Keselamatan: "Aspek Keselamatan (Safety)",
+  Kesehatan: "Aspek Kesehatan (Health / Industrial Hygiene)",
+  Lingkungan: "Aspek Lingkungan",
+};
+
+export const HSE_OSM_DEFAULT_CLASSIFICATIONS: readonly HseOsmClassificationItem[] = [
+  // ── Aspek Keselamatan (Safety) ──
   {
-    code: "VEHICLE_PNEUMATIC_TOOLS",
-    name: "Vehicle & Mobile Equipment Pneumatic & Hand Tools",
-    description: "Kelaikan unit sarana/mobile equipment, perkakas pneumatik, dan hand tools",
+    code: "SAFETY_APD",
+    name: "Keselamatan - Alat Pelindung Diri (APD)",
+    description: "Kepatuhan dan kelayakan penggunaan APD standar (Helm, Rompi, Kacamata, Sepatu, Sarung Tangan)",
     sortOrder: 1,
+    aspect: "Keselamatan",
   },
   {
-    code: "TYRE_INFLATION_LIFTING",
-    name: "Lifting & Support Equipment Tyre Inflation & Deflation",
-    description: "Peralatan pengangkat, jack, stand, inflasi/deflasi ban bertekanan tinggi",
+    code: "SAFETY_BLIND_SPOT",
+    name: "Keselamatan - Posisi Kerja / Blind Spot",
+    description: "Posisi tubuh aman, penghindaran line of fire, pinch point, dan blind spot unit/alat berat",
     sortOrder: 2,
+    aspect: "Keselamatan",
   },
   {
-    code: "ELECTRICAL_SAFETY",
-    name: "Wheel, Rim & Component Electrical Safety",
-    description: "Inspeksi velg, lock ring, komponen roda, dan keselamatan instalasi elektrikal",
+    code: "SAFETY_WORKING_AT_HEIGHT",
+    name: "Keselamatan - Bekerja di Ketinggian (Working at Height)",
+    description: "Scaffolding, tangga platform, full body harness, & titik angkur aman",
     sortOrder: 3,
+    aspect: "Keselamatan",
   },
   {
-    code: "HOT_WORK_SAFETY",
-    name: "Hot Work Safety (Pekerjaan Panas)",
-    description: "Pengelasan, pemotongan las, fire blanket, APAR siaga, & izin kerja panas",
+    code: "SAFETY_LOTO",
+    name: "Keselamatan - Isolasi Energi (LOTO)",
+    description: "Penerapan Lockout / Tagout, pelepasan energi sisa, dan verifikasi zero energy state",
     sortOrder: 4,
+    aspect: "Keselamatan",
   },
   {
-    code: "HAZMAT_HOUSEKEEPING",
-    name: "Housekeeping & Storage: HAZMAT & Spill Control",
-    description: "Kerapian workshop, drum storage, secondary containment, & spill kit",
+    code: "SAFETY_LIFTING_GEAR",
+    name: "Keselamatan - Alat Angkat (Lifting Gear) & Aksesori",
+    description: "Kelayakan crane, tyre handler, webbing sling, shackle, chain block, & sertifikasi lifting",
     sortOrder: 5,
+    aspect: "Keselamatan",
   },
   {
-    code: "FIRE_EMERGENCY_LOTO",
-    name: "Fire & Emergency Response: LOTO & Work Permit",
-    description: "Sistem isolasi energi (LOTO), jalur evakuasi, APAR, & surat izin kerja aman (PTW)",
+    code: "SAFETY_MACHINE_GUARDING",
+    name: "Keselamatan - Pelindung Mesin (Machine Guarding)",
+    description: "Pemasangan cover pelindung pada bagian mesin berputar dan transmisi bergerak",
     sortOrder: 6,
+    aspect: "Keselamatan",
   },
   {
-    code: "TRAFFIC_BARRICATION",
-    name: "Traffic & Barrication",
-    description: "Rambu tambang, barikade area kerja, parkir aman, & pemisahan manusia-alat",
+    code: "SAFETY_ACCESS_EVACUATION",
+    name: "Keselamatan - Jalur Akses & Evakuasi",
+    description: "Akses jalan aman, tangga darurat, penanda jalur evakuasi, & muster point bebas hambatan",
     sortOrder: 7,
+    aspect: "Keselamatan",
   },
   {
-    code: "WORKING_AT_HEIGHT",
-    name: "Working at Height (Bekerja di Ketinggian)",
-    description: "Scaffolding, full body harness, tangga kerja, & titik angkur terinspeksi",
+    code: "SAFETY_TRAFFIC_SPEED",
+    name: "Keselamatan - Rambu Lalu Lintas & Batas Kecepatan (Speed Limit)",
+    description: "Kepatuhan rambu tambang/workshop, batas kecepatan sarana, & pemisahan jalur orang-alat",
     sortOrder: 8,
+    aspect: "Keselamatan",
   },
   {
-    code: "ERGONOMICS_MANUAL_HANDLING",
-    name: "Ergonomics & Manual Handling Environmental & Waste",
-    description: "Postur pengangkatan manual, batas beban kerja, serta pemilahan sampah operasional",
+    code: "SAFETY_PERMIT_TO_WORK",
+    name: "Keselamatan - Izin Kerja (Permit to Work)",
+    description: "Kelengkapan surat izin kerja aman (PTW) pekerjaan panas, ketinggian, atau ruang terbatas",
     sortOrder: 9,
+    aspect: "Keselamatan",
   },
   {
-    code: "PPE_APD",
-    name: "PPE / APD",
-    description: "Kepatuhan dan kelaikan alat pelindung diri standar (Helm, Sepatu, Kacamata, Rompi)",
+    code: "SAFETY_SOP_JSA",
+    name: "Keselamatan - Prosedur Kerja & Instruksi Kerja (SOP/JSA)",
+    description: "Ketersediaan, sosialisasi, dan kepatuhan langkah kerja aman SOP, WIN, & JSA",
     sortOrder: 10,
+    aspect: "Keselamatan",
+  },
+  {
+    code: "SAFETY_FIRE_PREVENTION_APAR",
+    name: "Keselamatan - Pencegahan Kebakaran & Alat Pemadam (APAR)",
+    description: "Kesiapan dan kelayakan tabung APAR, hydrant, fire blanket, & deteksi dini bahaya kebakaran",
+    sortOrder: 11,
+    aspect: "Keselamatan",
+  },
+  {
+    code: "SAFETY_BARRICADE_RESTRICTED",
+    name: "Keselamatan - Barikade & Pengamanan Area Terbatas",
+    description: "Pemasangan barikade fisik, safety cone, tagging, & larangan masuk area berisiko tinggi",
+    sortOrder: 12,
+    aspect: "Keselamatan",
+  },
+  {
+    code: "SAFETY_HAND_POWER_TOOLS",
+    name: "Keselamatan - Kelayakan Perkakas Tangan & Power Tools",
+    description: "Inspeksi fisik, tagging warna berkala, & kelaikan alat tangan manual maupun bertenaga",
+    sortOrder: 13,
+    aspect: "Keselamatan",
+  },
+
+  // ── Aspek Kesehatan (Health / Industrial Hygiene) ──
+  {
+    code: "HEALTH_ERGONOMICS",
+    name: "Kesehatan - Ergonomi & Postur Kerja (Manual Handling)",
+    description: "Teknik pengangkatan manual, batas beban angkat, penataan stasiun kerja, & peregangan",
+    sortOrder: 14,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_DUST_EXPOSURE",
+    name: "Kesehatan - Paparan Debu & Partikulat",
+    description: "Pengendalian debu respirabel/inhalabel dan penggunaan masker particulate standar",
+    sortOrder: 15,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_NOISE_LEVEL",
+    name: "Kesehatan - Paparan Kebisingan (Noise Level)",
+    description: "Zonasi kebisingan tinggi workshop/pit, peredam suara, & pemakaian earplug/earmuff",
+    sortOrder: 16,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_LIGHTING_ILLUMINATION",
+    name: "Kesehatan - Pencahayaan Area Kerja (Iluminasi)",
+    description: "Kecukupan kuat cahaya lux meter pada workshop, pit, & penerangan shift malam",
+    sortOrder: 17,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_VENTILATION_AIR",
+    name: "Kesehatan - Ventilasi & Kualitas Udara",
+    description: "Sirkulasi udara workshop, kelayakan exhaust fan, & pengukuran gas/uap kimia berbahaya",
+    sortOrder: 18,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_WELFARE_FACILITIES",
+    name: "Kesehatan - Fasilitas Kesejahteraan (P3K, Air Minum, Toilet)",
+    description: "Kelengkapan kotak P3K, ketersediaan air minum higienis, fasilitas istirahat, & toilet bersih",
+    sortOrder: 19,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_FATIGUE_MANAGEMENT",
+    name: "Kesehatan - Manajemen Kelelahan Kerja (Fatigue Management)",
+    description: "Pemeriksaan fit to work harian, jam tidur/istirahat cukup, & pencegahan microsleep",
+    sortOrder: 20,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_HYGIENE_SANITATION",
+    name: "Kesehatan - Higiene Perorangan & Sanitasi Tempat Kerja",
+    description: "Fasilitas cuci tangan, sabun, kebersihan kantin/mess, & pengendalian vektor hama penyakit",
+    sortOrder: 21,
+    aspect: "Kesehatan",
+  },
+  {
+    code: "HEALTH_MSDS_CHEMICALS",
+    name: "Kesehatan - Ketersediaan & Informasi Bahan Kimia (MSDS/LDKB)",
+    description: "Penyediaan dokumen MSDS bahasa Indonesia, label bahaya GHS, & secondary container label",
+    sortOrder: 22,
+    aspect: "Kesehatan",
+  },
+
+  // ── Aspek Lingkungan ──
+  {
+    code: "ENV_B3_WASTE",
+    name: "Lingkungan - Pengelolaan Limbah B3 (Oli Bekas, Grease, Filter, Majun)",
+    description: "Pemisahan, pelabelan simbol B3, logbook neraca, & penyimpanan di TPS Limbah B3 berizin",
+    sortOrder: 23,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_NON_B3_SCRAP",
+    name: "Lingkungan - Pengelolaan Limbah Non-B3 & Besi Tua (Scrap Metal/Parts)",
+    description: "Pemisahan sampah domestik organik/anorganik dan penumpukan scrap besi/part bekas aman",
+    sortOrder: 24,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_SCRAP_OTR_TYRE",
+    name: "Lingkungan - Pengelolaan Ban Bekas (Scrap OTR Tyre)",
+    description: "Penataan tyre scrap yard rapi, pencegahan genangan air/sarang nyamuk, & stacking aman",
+    sortOrder: 25,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_SPILL_KIT_SAND",
+    name: "Lingkungan - Penanganan Tumpahan B3 (Ketersediaan Spill Kit & Pasir)",
+    description: "Kesiapan spill kit, absorbent pad, sawdust/pasir, sekop, & penanganan cepat tumpahan oli",
+    sortOrder: 26,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_DRAINAGE_OIL_TRAP",
+    name: "Lingkungan - Kondisi Saluran Drainase & Oil Trap (Oil-Water Separator)",
+    description: "Kebersihan saluran parit bengkel, fungsi oil trap, & pengerukan endapan lumpur berkala",
+    sortOrder: 27,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_SECONDARY_CONTAINMENT",
+    name: "Lingkungan - Penyimpanan B3 & Penampungan Sekunder (Secondary Containment)",
+    description: "Bunding/bundwall drum storage, kapasitas penampungan sekunder minimal 110%, bebas kebocoran",
+    sortOrder: 28,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_WASTEWATER_MANAGEMENT",
+    name: "Lingkungan - Pengelolaan Air Limbah",
+    description: "Penyaluran dan sedimentasi air cucian unit (washpad) sesuai baku mutu lingkungan",
+    sortOrder: 29,
+    aspect: "Lingkungan",
+  },
+  {
+    code: "ENV_DUST_HOUSEKEEPING",
+    name: "Lingkungan - Pengendalian Debu & Partikulat Area Bengkel (Housekeeping)",
+    description: "Penyiraman jalan akses workshop, pembersihan lantai kerja berkala, serta budaya 5R/5S",
+    sortOrder: 30,
+    aspect: "Lingkungan",
   },
 ] as const;
 

@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { SignaturePad } from '@/components/signature-pad'
 import { uploadFile } from '@/app/actions/upload'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import {
   getEmployeesForTrainingPicker,
   createTrainingRequest,
@@ -107,6 +108,9 @@ export function TrainingRequestFormDialog({
   const [attachmentUrl, setAttachmentUrl] = useState('')
   const [attachmentName, setAttachmentName] = useState('')
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const [uploadBytes, setUploadBytes] = useState<{ loaded: number; total: number }>({ loaded: 0, total: 0 })
+  const [uploadStage, setUploadStage] = useState<'idle' | 'uploading' | 'processing' | 'done'>('idle')
 
   // Custom Approvers
   const [approvers, setApprovers] = useState<ApproverStepInput[]>([
@@ -278,24 +282,87 @@ export function TrainingRequestFormDialog({
     const file = e.target.files?.[0]
     if (!file) return
 
-    setIsUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('folder', 'training-requests')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas melebihi batas maksimal 15MB.')
+      return
+    }
 
-      const res = await uploadFile(formData)
-      if (res && res.success && res.url) {
-        setAttachmentUrl(res.url)
+    setIsUploading(true)
+    setUploadProgress(0)
+    setUploadBytes({ loaded: 0, total: file.size })
+    setUploadStage('uploading')
+
+    try {
+      const result = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            const pct = Math.min(99, Math.round((event.loaded / event.total) * 100))
+            setUploadProgress(pct)
+            setUploadBytes({ loaded: event.loaded, total: event.total })
+          }
+        }
+
+        xhr.upload.onload = () => {
+          setUploadProgress(100)
+          setUploadBytes({ loaded: file.size, total: file.size })
+          setUploadStage('processing')
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              resolve(JSON.parse(xhr.responseText))
+            } catch {
+              reject(new Error('Respon server tidak valid'))
+            }
+          } else {
+            try {
+              const err = JSON.parse(xhr.responseText)
+              reject(new Error(err?.error || `Upload gagal (${xhr.status})`))
+            } catch {
+              reject(new Error(`Upload gagal (${xhr.status})`))
+            }
+          }
+        }
+
+        xhr.onerror = () => reject(new Error('Koneksi upload ke server terputus'))
+        xhr.ontimeout = () => reject(new Error('Waktu upload habis (timeout)'))
+        xhr.timeout = 240_000
+
+        xhr.open('POST', '/api/uploads/document')
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('uploadTarget', 'training-requests')
+        formData.append('folder', 'training-requests')
+        xhr.send(formData)
+      }).catch(async (xhrError) => {
+        console.warn('[FormDialog] Direct stream upload error, falling back to Server Action:', xhrError)
+        const fallbackFormData = new FormData()
+        fallbackFormData.append('file', file)
+        fallbackFormData.append('uploadTarget', 'training-requests')
+        fallbackFormData.append('folder', 'training-requests')
+        return await uploadFile(fallbackFormData)
+      })
+
+      if (result && result.success && result.url) {
+        setAttachmentUrl(result.url)
         setAttachmentName(file.name)
+        setUploadStage('done')
         toast.success(`Berkas ${file.name} berhasil diunggah`)
       } else {
-        toast.error('Gagal mengunggah berkas')
+        toast.error(result?.error || 'Gagal mengunggah berkas')
+        setUploadStage('idle')
       }
     } catch (err: any) {
       toast.error(err?.message || 'Gagal mengunggah berkas')
+      setUploadStage('idle')
     } finally {
       setIsUploading(false)
+      if (e.target) {
+        e.target.value = ''
+      }
     }
   }
 
@@ -930,12 +997,44 @@ export function TrainingRequestFormDialog({
               </h3>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {isUploading && (
+                <div className="p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl space-y-2 shadow-xs animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2 font-bold text-[#003461]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                      <span>
+                        {uploadStage === 'processing'
+                          ? 'Menyimpan ke S3 Cloud Storage...'
+                          : 'Mengunggah berkas ke server...'}
+                      </span>
+                    </div>
+                    <span className="font-extrabold text-blue-700 tabular-nums text-sm">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+
+                  <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-300/70 shadow-inner">
+                    <div
+                      className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 h-full rounded-full transition-all duration-150 ease-out shadow-xs"
+                      style={{ width: `${Math.max(4, uploadProgress)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-600">
+                    <span className="font-medium text-slate-600">Progres Transmisi</span>
+                    <span className="tabular-nums font-semibold text-slate-500">
+                      {(uploadBytes.loaded / (1024 * 1024)).toFixed(2)} MB / {(uploadBytes.total / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center gap-3">
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept="application/pdf,image/*"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     onChange={handleFileUpload}
                     className="hidden"
                   />
@@ -946,7 +1045,7 @@ export function TrainingRequestFormDialog({
                       </>
                     ) : (
                       <>
-                        <Upload className="w-4 h-4 text-blue-600" /> Pilih File Lampiran (PDF / Gambar)
+                        <Upload className="w-4 h-4 text-blue-600" /> Pilih File Lampiran (PDF / Excel / Word / Gambar)
                       </>
                     )}
                   </span>
@@ -957,18 +1056,29 @@ export function TrainingRequestFormDialog({
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                     <span className="truncate max-w-xs">{attachmentName || 'Berkas Terlampir'}</span>
                     <a
-                      href={attachmentUrl}
+                      href={resolveUploadUrl(attachmentUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className="underline text-blue-700 text-[11px] ml-1"
                     >
                       Buka
                     </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachmentUrl('')
+                        setAttachmentName('')
+                      }}
+                      className="text-slate-400 hover:text-rose-600 ml-1 p-0.5 rounded transition-colors"
+                      title="Hapus lampiran"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
               <p className="text-[11px] text-slate-500">
-                Format yang didukung: PDF, JPG, PNG. Berkas otomatis tersimpan di cloud proxy sistem.
+                Format yang didukung: PDF, Excel (.xlsx/.xls), Word (.docx), Gambar JPG/PNG (Maks. 15MB). Berkas otomatis tersimpan di cloud proxy sistem.
               </p>
             </div>
           </div>

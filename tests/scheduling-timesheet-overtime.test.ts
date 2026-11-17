@@ -173,6 +173,8 @@ describe('scheduling timesheet overtime policy', () => {
     }
     const withoutSpl = calculateConfiguredOvertime(base)
     expect(withoutSpl.totalHours).toBe(4)
+    expect(withoutSpl.autoMinutes).toBe(240)
+    expect(withoutSpl.splMinutes).toBe(0)
     expect(withoutSpl.unauthorizedMinutes).toBe(120)
 
     const withSpl = calculateConfiguredOvertime({
@@ -190,6 +192,8 @@ describe('scheduling timesheet overtime policy', () => {
       ],
     })
     expect(withSpl.totalHours).toBe(6)
+    expect(withSpl.autoMinutes).toBe(240)
+    expect(withSpl.splMinutes).toBe(120)
     expect(withSpl.unauthorizedMinutes).toBe(0)
     expect(withSpl.source).toBe('Auto + SPL')
     expect(withSpl.splNumbers).toEqual(['SPL-001'])
@@ -220,7 +224,7 @@ describe('scheduling timesheet overtime policy', () => {
     expect(result.splNumbers).toEqual(['SPL-SHORT'])
   })
 
-  it('uses fixed 6:1 OFF credit after approved SPL', () => {
+  it('keeps approved SPL overlapping mandatory overtime out of the SPL bucket', () => {
     const result = calculateConfiguredOvertime({
       config: activeConfig,
       dayKey: 'hariLibur',
@@ -240,8 +244,60 @@ describe('scheduling timesheet overtime policy', () => {
         overtimeCreditMinutes: 660,
       }],
     })
+    // Payroll keeps the configured off-day SPL credit; the display buckets
+    // remain mutually exclusive and use actual intervals.
     expect(result.totalHours).toBe(11)
-    expect(result.splNumbers).toEqual(['SPL-OFF'])
+    expect(result.splMinutes).toBe(0)
+    expect(result.splNumbers).toEqual([])
+  })
+
+  it('counts only the actual SPL portion outside mandatory overtime', () => {
+    const result = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '06:00',
+      clockOut: '20:00',
+      splWindows: [
+        {
+          id: 5,
+          splNumber: 'SPL-PARTIAL',
+          siteId: 1,
+          employeeId: 1,
+          plannedStartAt: '2026-07-01T09:00:00.000Z',
+          plannedEndAt: '2026-07-01T11:00:00.000Z',
+          status: 'approved',
+        },
+      ],
+    })
+
+    // 16:00-18:00 is mandatory; the approved SPL is 17:00-19:00 Makassar,
+    // so only 18:00-19:00 belongs to Overtime SPL.
+    expect(result.autoMinutes).toBe(240)
+    expect(result.splMinutes).toBe(60)
+    expect(result.totalMinutes).toBe(300)
+    expect(result.splNumbers).toEqual(['SPL-PARTIAL'])
+  })
+
+  it('counts approved break SPL outside mandatory overtime without losing payroll hours', () => {
+    const result = calculateConfiguredOvertime({
+      config: activeConfig,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '06:00',
+      clockOut: '18:00',
+      splWindows: [{
+        id: 20, splNumber: 'SPL-BREAK', siteId: 1, employeeId: 1,
+        plannedStartAt: '2026-07-01T04:00:00.000Z',
+        plannedEndAt: '2026-07-01T05:00:00.000Z',
+        status: 'approved', category: 'break',
+      }],
+    })
+    expect(result.autoMinutes).toBe(240)
+    expect(result.splMinutes).toBe(60)
+    expect(result.totalMinutes).toBe(300)
   })
 
   it('uses legacy hours when the site switch is inactive', () => {
@@ -256,6 +312,26 @@ describe('scheduling timesheet overtime policy', () => {
     })
     expect(result.source).toBe('Legacy')
     expect(result.totalHours).toBe(7.5)
+    expect(result.autoMinutes).toBe(0)
+  })
+
+  it('does not classify legacy fallback as mandatory overtime when no windows are configured', () => {
+    const config = {
+      ...activeConfig,
+      hariBiasa: { dayShift: [], nightShift: [] },
+    }
+    const result = calculateOvertime({
+      config,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-07-01',
+      clockIn: '08:00',
+      clockOut: '20:00',
+      legacyHours: 4,
+    })
+    expect(result.source).toBe('Legacy')
+    expect(result.totalHours).toBe(4)
+    expect(result.autoMinutes).toBe(0)
   })
 
   it.each(['draft', 'submitted', 'returned', 'rejected'])('ignores SPL status %s', (status) => {
@@ -325,6 +401,35 @@ describe('scheduling timesheet overtime policy', () => {
     })
     expect(pdfWithEvidenceUrl).toBeInstanceOf(Uint8Array)
     expect(pdfWithEvidenceUrl.length).toBeGreaterThan(1000)
+
+    // Test Overtime Record with 2 external approvals
+    const pdfExternal2 = await generateOvertimeRecordPdf({
+      ...baseInput,
+      signatures: {
+        ...baseInput.signatures,
+        useExternalOnly: true,
+        externalSignatureCount: 2,
+        externalPreparedBy: 'Adit Prasetyo',
+        externalApprovedBy: 'Plant Group Leader AMM MIFA',
+      },
+    })
+    expect(pdfExternal2).toBeInstanceOf(Uint8Array)
+    expect(pdfExternal2.length).toBeGreaterThan(1000)
+
+    // Test Overtime Record with 3 external approvals and custom signer
+    const pdfExternal3 = await generateOvertimeRecordPdf({
+      ...baseInput,
+      signatures: {
+        ...baseInput.signatures,
+        useExternalOnly: true,
+        externalSignatureCount: 3,
+        externalPreparedBy: 'Adit Prasetyo',
+        externalApprovedBy: 'Plant Group Leader AMM MIFA',
+        customSigners: [{ label: 'Approved by (Dept Head):', name: 'Budi Santoso' }],
+      },
+    })
+    expect(pdfExternal3).toBeInstanceOf(Uint8Array)
+    expect(pdfExternal3.length).toBeGreaterThan(1000)
   })
 
   it('allows optional empty overtime intervals in site setup and validation', () => {
@@ -369,6 +474,110 @@ describe('scheduling timesheet overtime policy', () => {
     const errors = validateSiteOvertimeConfig(incompleteConfig)
     expect(errors.length).toBeGreaterThan(0)
     expect(errors[0]).toContain('jam mulai/selesai yang tidak lengkap')
+  })
+
+  it('calculates actual overtime on off-days when requireSpl is false without needing SPL', () => {
+    const offConfigNoSpl: SiteOvertimeConfig = {
+      ...activeConfig,
+      requireSpl: false,
+      hariLibur: {
+        dayShift: [],
+        nightShift: [],
+      },
+    }
+    const result = calculateConfiguredOvertime({
+      config: offConfigNoSpl,
+      dayKey: 'hariLibur',
+      shiftCode: 'DS',
+      workDate: '2026-10-10',
+      clockIn: '10:13',
+      clockOut: '18:14',
+    })
+    expect(result.totalHours).toBeCloseTo(8.016, 2)
+    expect(result.unauthorizedMinutes).toBe(0)
+    expect(result.intervals.length).toBe(1)
+    expect(result.intervals[0].start).toBe('10:13')
+    expect(result.intervals[0].end).toBe('18:14')
+  })
+
+  it('includes additional 1 hour overtime when requireSpl is false without SPL', () => {
+    const regularConfigNoSpl: SiteOvertimeConfig = {
+      ...activeConfig,
+      requireSpl: false,
+    }
+    const result = calculateConfiguredOvertime({
+      config: regularConfigNoSpl,
+      dayKey: 'hariBiasa',
+      shiftCode: 'DS',
+      workDate: '2026-10-06',
+      clockIn: '06:00',
+      clockOut: '19:00',
+    })
+    expect(result.totalHours).toBe(5)
+    expect(result.unauthorizedMinutes).toBe(0)
+  })
+
+  it('renders actual off-day overtime and extended overtime +1 hour in Overtime Record PDF', async () => {
+    const { generateOvertimeRecordPdf } = await import('@/lib/timesheet/generate-attendance-pdf')
+    const pdf = await generateOvertimeRecordPdf({
+      documentTitle: 'OVERTIME RECORD',
+      period: '2026-10',
+      employeeId: 999,
+      employeeName: 'Tini Dwi Saripah',
+      employeeSn: '73226',
+      department: 'Finance',
+      section: 'Finance Operations',
+      siteName: 'Balikpapan',
+      signatures: { preparedBy: 'Tini Dwi Saripah' },
+      isNonStaff: true,
+      showTotalOvertime: true,
+      days: [
+        {
+          day: 1,
+          dayName: 'Thursday',
+          status: 'present',
+          clockIn: '08:00',
+          clockOut: '20:00',
+          scheduleCode: 'DS',
+          isHoliday: false,
+          configuredOvertimeIntervals: [{ start: '17:00', end: '19:00' }],
+          overtime: {
+            totalHours: 3,
+            totalMinutes: 180,
+            autoMinutes: 120,
+            splMinutes: 60,
+            unauthorizedMinutes: 0,
+            source: 'Auto',
+            splNumbers: [],
+            intervals: [{ startMinute: 1020, endMinute: 1200, start: '17:00', end: '20:00', source: 'Auto' }],
+            workingIntervals: [],
+          },
+        },
+        {
+          day: 3,
+          dayName: 'Saturday',
+          status: 'present',
+          clockIn: '10:13',
+          clockOut: '18:14',
+          scheduleCode: 'OFF',
+          isHoliday: false,
+          configuredOvertimeIntervals: [{ start: '00:00', end: '00:00' }],
+          overtime: {
+            totalHours: 8,
+            totalMinutes: 480,
+            autoMinutes: 480,
+            splMinutes: 0,
+            unauthorizedMinutes: 0,
+            source: 'Auto',
+            splNumbers: [],
+            intervals: [{ startMinute: 613, endMinute: 1094, start: '10:13', end: '18:14', source: 'Auto' }],
+            workingIntervals: [],
+          },
+        },
+      ],
+    })
+    expect(pdf).toBeInstanceOf(Uint8Array)
+    expect(pdf.length).toBeGreaterThan(1000)
   })
 })
 

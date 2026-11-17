@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, UploadCloud, Loader2, Image as ImageIcon, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,15 @@ export function OsmActionModal({
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && finding) {
+      setActionTaken(finding.actionTaken || "");
+      setUploadedPhotos(finding.actionPhotoUrls || []);
+      setRejectionReason("");
+      setError(null);
+    }
+  }, [isOpen, finding]);
 
   if (!finding) return null;
 
@@ -107,6 +116,7 @@ export function OsmActionModal({
       } else if (mode === "verify_close") {
         const res = await verifyHseOsmFinding(finding.id, {
           status: "CLOSED",
+          actionPhotoUrls: uploadedPhotos.length > 0 ? uploadedPhotos : undefined,
         });
         if (!res.success) throw new Error(res.error || "Gagal memverifikasi penutupan.");
       } else if (mode === "verify_reject") {
@@ -227,16 +237,65 @@ export function OsmActionModal({
           )}
 
           {mode === "verify_close" && (
-            <div className="space-y-2">
-              <p className="text-muted-foreground">
+            <div className="space-y-3">
+              <p className="text-muted-foreground text-xs leading-relaxed">
                 Apakah Anda yakin telah memverifikasi bahwa tindakan perbaikan di lapangan telah tuntas dan kondisi bahaya berhasil dieliminasi?
               </p>
               {finding.actionTaken && (
                 <div className="rounded-lg border bg-emerald-50/50 p-3 text-xs dark:bg-emerald-950/20">
                   <span className="font-semibold text-emerald-900 dark:text-emerald-300">Tindakan Perbaikan Lapangan:</span>
-                  <p className="mt-1 text-emerald-800 dark:text-emerald-200">{finding.actionTaken}</p>
+                  <p className="mt-1 text-emerald-800 dark:text-emerald-200 leading-relaxed">{finding.actionTaken}</p>
                 </div>
               )}
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">Foto Bukti Perbaikan (Opsional / Tambahan)</Label>
+                  {uploadedPhotos.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground">{uploadedPhotos.length}/3 Foto</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {uploadedPhotos.map((url, idx) => (
+                    <div key={idx} className="relative aspect-video rounded-md border overflow-hidden group bg-slate-950">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={resolveClientUploadUrl(url, { absolute: true })}
+                        alt={`Bukti perbaikan ${idx + 1}`}
+                        className="size-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto(idx)}
+                        className="absolute top-1 right-1 size-6 rounded-full bg-red-600 text-white flex items-center justify-center opacity-80 hover:opacity-100 shadow transition-opacity"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {uploadedPhotos.length < 3 && (
+                    <label className="border-2 border-dashed rounded-md aspect-video flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/20 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handlePhotoUpload}
+                        disabled={isUploading}
+                      />
+                      {isUploading ? (
+                        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                      ) : (
+                        <>
+                          <ImageIcon className="size-5 text-muted-foreground mb-1" />
+                          <span className="text-[11px] text-muted-foreground font-medium">Unggah Bukti</span>
+                        </>
+                      )}
+                    </label>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

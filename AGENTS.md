@@ -30,9 +30,11 @@ Untuk memastikan seluruh berkas yang diunggah dapat diakses secara persisten di 
 * Daftar prefix standar sistem:
   `upload`, `uploads`, `activity-photos`, `attendance-photos`, `profile-photos`, `curhat`, `curhat-attachments`, `mcu-wellness-results`, `mcu-referral-letters`, `mcu-results`, `offering-letters`, `sop-win-requests`, `sop-win`, `lms-materials`, `lms-covers`, `chitralearning`, `emergency-reports`, `safety`, `face-attendance`, `face-attendance-v2`, `contract-review-attachment`, `public-career-cv`.
 
-### 4. Penyimpanan Lokal Dokploy (Fallback Persistence)
-* Direktori `public/uploads` di production (Dokploy) dipetakan ke Persistent Bind Mount di `/mnt/data/one-chitra/uploads`.
-* Gunakan centralized `uploadFile` action di `app/actions/upload.ts`. Jangan gunakan `fs` langsung di komponen klien.
+### 4. S3 Wajib, Tanpa Fallback Lokal
+* Semua upload baru wajib berhasil disimpan ke S3 sebelum URL berkas disimpan ke database. Jika konfigurasi atau upload S3 gagal, batalkan aksi dan tampilkan error; dilarang beralih ke disk lokal.
+* Gunakan centralized `uploadFile` action di `app/actions/upload.ts` atau helper S3 baku. Dokumen SOP/WIN, revisi, dan lampiran permintaan mengikuti aturan yang sama.
+* Proxy upload tidak boleh menyalin hasil unduhan S3 ke disk lokal. Berkas lokal lama hanya boleh dipakai sebagai sumber migrasi; verifikasi objek S3 sebelum menghapus atau mengganti referensinya.
+* Pertahankan seluruh segmen object key, termasuk nama dokumen yang mengandung `/`, saat memetakan URL S3 menjadi URL proxy.
 
 ---
 
@@ -122,6 +124,56 @@ Jika skenario pengetesan membutuhkan akses login ke dalam HERO, **WAJIB** menggu
 
 ---
 
+# Standar Wajib Pelaporan Progress & Update Slide PPT Bulanan (MANDATORI - SETIAP FITUR / PERBAIKAN)
+
+## Monthly report design and language
+
+* Use the approved revised November 2026 monthly report as the visual reference for future monthly reports and feature or fix slides once that revision has been finalized.
+* Write all slide titles, summaries, descriptions, labels, and planning content in clear, professional English. Preserve official product names and acronyms. Screenshots are evidence and may retain the application's original language; do not alter their contents or imply that they are translated.
+* Preserve the existing corporate backgrounds, logos, footer artwork, and slide dimensions. Keep the report colorful and readable with the same typography, spacing, accent colors, and evidence layout as the reference deck.
+* Keep screenshots proportional and legible, use concise descriptions, and verify the rendered slides for clipping, overlap, and readability. Do not remove prior work or evidence when updating an existing monthly report.
+* The monthly presentation automation must follow this reference. Review and adapt its generated slide and summary text to these requirements before saving; do not assume the script's default layout or language is compliant.
+
+## 📊 Aturan Wajib Pembaruan Slide Presentasi Bulanan (`D:\\[01] PROJECT\\HERO\\Monthly`)
+
+Untuk memastikan setiap progress pekerjaan harian, perbaikan bug (fix), dan penambahan fitur baru terdokumentasi secara resmi, rapi, dan transparan bersama bukti nyata tangkapan layar (screenshot E2E):
+
+### 1. Eksekusi Skrip Pembaruan Presentasi Otomatis
+* **WAJIB HUKUMNYA** setelah pengujian E2E selesai dan screenshot berhasil diambil, Agent **WAJIB** mengeksekusi skrip otomasi:
+  ```bash
+  python scripts/update-monthly-presentation.py \
+    --title "Nama Fitur atau Perbaikan" \
+    --description "Penjelasan singkat mengenai perbaikan/fitur dan tujuannya" \
+    --screenshots "path/to/screenshot1.png" "path/to/screenshot2.png" \
+    --system "HERO" # Atau "ONE-CHITRA" jika modul terkait ONE-CHITRA
+  ```
+* Skrip ini secara otomatis:
+  1. **Mendeteksi Bulan Berjalan**: Menyesuaikan dengan bulan dan tahun aktif sistem dalam Bahasa Indonesia (misal: `MONTHLY NOVEMBER 2026 SDS.pptx`).
+  2. **Inisialisasi Otomatis File Baru**: Jika file bulan berjalan belum ada, skrip otomatis menyalin (*copy*) dari file bulan sebelumnya di folder `Monthly/`, memperbarui cover Slide 1 (Bulan & Tahun), judul SI Gantt di Slide 5, mengosongkan daftar lama di Slide 4, dan menghapus slide detail bulan lalu agar siap digunakan dengan bersih.
+  3. **Menambahkan Poin Ringkasan di Slide 4**: Menambahkan poin bullet `• <Judul Fitur/Fix>` ke dalam kotak `HERO ECOSYSTEM` atau `ONE-CHITRA ECOSYSTEM` pada slide *"What We Have Done / List (Evidance)"*.
+  4. **Membuat Slide Detail "HERO Update" Baru**: Menambahkan slide baru lengkap dengan badge kategori di pojok kanan atas, judul fitur, deskripsi singkat, dan menyematkan 1 atau 2 screenshot E2E secara rapi dan presisi berdampingan (*side-by-side*) tepat sebelum slide *"Planning on next months"*.
+
+### 2. Format Wajib Laporan Akhir ke Pengguna (MANDATORI - OTOMATIS & LANGSUNG TANPA DIMINTA)
+> [!CRITICAL]
+> **DILARANG KERAS** berhenti sebelum seluruh rangkaian selesai atau menunggu user meminta manual "buatkan broadcast wa", "lanjutkan", atau "minta ss". Begitu suatu fitur/fix/tugas selesai dikerjakan, Agent **WAJIB OTOMATIS LANGSUNG** mengeksekusi E2E, mengambil screenshot, update presentasi PPT bulanan, git commit & push, dan menyajikan di respons akhir:
+
+Di akhir setiap respons penyelesaian tugas (fitur baru, perbaikan bug, atau refactoring), Agent **WAJIB LANGSUNG MENYERTAKAN SECARA LENGKAP DALAM SATU JAWABAN**:
+1. **Template Broadcast WhatsApp (WA) Simple & Profesional dari TIM SDS**:
+   - Ditempatkan paling atas atau prominen, format siap copy-paste langsung oleh user tanpa perlu diedit lagi.
+2. **Bukti Visual Tangkapan Layar (Screenshot / SS)**:
+   - Wajib menyalin screenshot E2E ke `<appDataDir>\brain\<conversation-id>\` dan menampilkannya langsung sebagai inline image markdown (`![Deskripsi](...)`) serta clickable file link (`file:///...`) agar visualnya langsung terlihat di chat.
+3. **Ringkasan Progress Pekerjaan**:
+   - Rekapitulasi apa saja masalahnya, akar penyebab, dan solusi teknis yang telah diterapkan.
+4. **Status Slide Presentasi Bulanan**:
+   - File target yang diperbarui: `D:\\[01] PROJECT\\HERO\\Monthly\\MONTHLY [BULAN] [TAHUN] SDS.pptx`
+   - Nomor slide detail baru yang ditambahkan (misal: Slide #40 atau #41).
+   - Bukti screenshot E2E yang telah disematkan ke dalam slide presentasi sebagai bukti resmi (*official evidence*).
+5. **Status Git & Deploy**:
+   - Konfirmasi sinkronisasi git pull origin main (atau git pull --rebase origin main) sebelum commit/push untuk menjaga kelancaran kolaborasi tim.
+   - Hash commit dan konfirmasi push ke origin/main.
+
+---
+
 # MAESTRO Trigger (`/maestro`)
 
 Jika request user menyertakan marker `/maestro`, perlakukan seluruh request
@@ -182,9 +234,18 @@ disimpan pada URL atau nama file.
 
 ### 4\. Requirement Clarification \& Feature Alignment (Grill-Me Mode)
 
-* **Kondisi:** Setiap kali ada fitur baru yang spesifikasinya kurang jelas, ambigu, atau memiliki banyak percabangan keputusan desain/flow.
-* **Aturan:** WAJIB gunakan mode interview `/grill-me` (tanya detail, bongkar asumsi, kunci requirements) sebelum eksekusi coding.
-* **Output:** Dokumen planning/spec yang matang, komprehensif, dan presisi ("gacor") sebelum mulai penulisan kode.
+* **Default sesi baru:** Mulai setiap session HERO dengan menilai permintaan memakai `grill-me` (`.agents/skills/grill-me/SKILL.md`). Skill ini mengarah ke `grilling` (`.agents/skills/grilling/SKILL.md`); baca dan ikuti alur interview interaktifnya.
+* **Pemicu ulang:** Gunakan lagi ketika maksud user, target, kriteria selesai, atau keputusan desain/flow belum jelas. Untuk tugas yang sudah jelas dan trivial, langsung kerjakan tanpa interview yang tidak perlu.
+* **Interaksi:** Susun pohon keputusan; tanyakan hanya keputusan yang sudah siap dijawab, maksimal 3 pertanyaan per ronde, dengan opsi yang bisa dipilih dan rekomendasi yang jelas. Tunggu jawaban sebelum ronde berikutnya. Cari sendiri fakta yang bisa diperiksa dari repo/tools; jangan lempar pencarian fakta ke user.
+* **Sebelum coding:** Nyatakan asumsi, alternatif tafsir, dan tradeoff yang relevan. Jika keputusan penting masih terbuka, jangan memilih diam-diam; kunci pemahaman bersama dan minta konfirmasi ringkasan requirements sebelum implementasi. Buat spec hanya bila kompleksitas tugas memang memerlukannya.
+
+### Behavioral Guidelines for Coding
+
+* **Think before coding:** Pahami alur nyata dan kriteria sukses lebih dulu. Ungkapkan asumsi dan kebingungan, tampilkan interpretasi yang berbeda, serta sarankan cara lebih sederhana bila ada.
+* **Simplicity first:** Tulis kode minimum untuk permintaan yang disepakati. Jangan menambah fitur spekulatif, abstraksi sekali pakai, konfigurasi tanpa kebutuhan, atau penanganan kondisi yang mustahil. Sederhanakan solusi yang membesar tanpa alasan.
+* **Surgical changes:** Ubah hanya baris yang terkait langsung dengan permintaan; ikuti gaya lokal. Jangan merapikan atau menghapus kode lama yang tidak terkait. Hapus import, variabel, dan fungsi yang menjadi tidak terpakai akibat perubahan sendiri; cukup laporkan temuan lama di luar scope.
+* **Goal-driven execution:** Untuk tugas bertahap, tulis rencana singkat dengan verifikasi tiap langkah. Reproduksi bug sebelum memperbaikinya; validasi input dengan kasus gagal; untuk refactor pastikan perilaku lolos sebelum dan sesudah. Ulangi sampai kriteria sukses terbukti.
+* Pedoman ini mengutamakan kehati-hatian; gunakan penilaian untuk tugas trivial dan ikuti aturan keamanan, RBAC, integritas data, serta pengujian khusus HERO yang lebih ketat.
 
 ### 5\. Multi-Agent \& Teamwork Delegation (Teamwork \& Sub-agents)
 
@@ -250,6 +311,16 @@ disimpan pada URL atau nama file.
 
 ### Git Commit \& Push Guard
 
+* **WAJIB PULL DARI REMOTE SEBELUM COMMIT & PUSH (MANDATORI - KOLABORASI TIM)**:
+  Karena repositori HERO dikerjakan secara kolaboratif bersama tim lainnya, **SEBELUM** mengeksekusi git commit dan git push, Agent **WAJIB HUKUMNYA** melakukan sinkronisasi dengan remote repository terlebih dahulu (git pull origin main atau git pull --rebase origin main).
+  **Alur Eksekusi Baku**:
+  1. git status (cek daftar berkas kerja lokal)
+  2. git pull --rebase origin main (atau git pull origin main) untuk menarik pembaruan terbaru dari rekan tim ke lokal dan mencegah timbulnya konflik atau stale commits
+  3. Selesaikan conflict jika ada dan pastikan repository bersih
+  4. Lakukan git commit
+  5. Lakukan git push origin main
+
+* **WAJIB CEK REMOTE SEBELUM PUSH (MANDATORI)**: Setiap kali akan melakukan git push, DILARANG KERAS langsung push secara asal/buta. Agent **WAJIB** mengecek remote terlebih dahulu (git remote -v, git fetch origin, git status, dan git pull --rebase origin main jika ada commit baru di remote) untuk memastikan repository lokal dan remote telah sinkron, terverifikasi, dan aman sebelum eksekusi git push.
 * Dilarang melakukan `git commit` dan `git push` tanpa perintah eksplisit dari user.
 * Selalu minta konfirmasi sebelum setiap `git commit` atau `git push`, meskipun user pernah menyetujui di sesi/percakapan sebelumnya.
 * Operasi git read-only seperti `git status`, `git diff`, `git log`, `git branch` boleh dilakukan tanpa konfirmasi.
@@ -705,10 +776,14 @@ GitHub issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
 
 Single-context repo. See `docs/agents/domain.md`.
 
+### Security audit
+
+Gunakan skill `security-audit` (`.agents/skills/security-audit` / Cloudflare multi-phase security review) untuk semua vulnerability review, dependency audits, dan laporan keamanan harian. Semua temuan wajib memiliki concrete principal, crossed boundary, source evidence, dan smallest effective fix.
+
 
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 

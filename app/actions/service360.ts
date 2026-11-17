@@ -553,7 +553,8 @@ export async function getLatestSignatureByFromName(fromName: string) {
 export async function createQuotation(data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
+    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, isFlatPrice, discountType, discountValue, showDays, includeBast, includeRoster,
+    showCustomApproval, customApprovals, customApprovalPosition
   } = data
 
   const resolvedCustomerId = await resolveQuotationCustomerId(customerId, manualCustomerName)
@@ -598,11 +599,15 @@ export async function createQuotation(data: any) {
     hideBackupPrice: hideBackupPrice ?? false,
     hideBackupDate: hideBackupDate ?? false,
     hideMonthColumn: hideMonthColumn ?? false,
+    isFlatPrice: isFlatPrice ?? false,
     discountType: discountType || null,
     discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
     includeRoster: includeRoster ?? false,
+    showCustomApproval: showCustomApproval ?? false,
+    customApprovalPosition: customApprovalPosition || "middle",
+    customApprovals: customApprovals || null,
   }).returning()
 
   if (items && items.length > 0) {
@@ -636,7 +641,8 @@ export async function createQuotation(data: any) {
 export async function updateQuotation(id: number, data: any) {
   const { 
     quotationNumber, customerId, quotationDate, taxRate, taxAmount, subTotal, totalAmount, status, 
-    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, discountType, discountValue, showDays, includeBast, includeRoster
+    manualCustomerName, items, attn, cc, fromName, fromSignatureUrl, subject, poNumber, projectName, poPeriod, showLevel, notes, showIntro, customIntro, showQty, hideBackupPrice, hideBackupDate, hideMonthColumn, isFlatPrice, discountType, discountValue, showDays, includeBast, includeRoster,
+    showCustomApproval, customApprovals, customApprovalPosition
   } = data
 
   const resolvedCustomerId = await resolveQuotationCustomerId(customerId, manualCustomerName)
@@ -666,11 +672,15 @@ export async function updateQuotation(id: number, data: any) {
     hideBackupPrice: hideBackupPrice ?? false,
     hideBackupDate: hideBackupDate ?? false,
     hideMonthColumn: hideMonthColumn ?? false,
+    isFlatPrice: isFlatPrice ?? false,
     discountType: discountType || null,
     discountValue: discountType ? discountValue ?? 0 : 0,
     showDays: showDays ?? true,
     includeBast: includeBast ?? false,
     includeRoster: includeRoster ?? false,
+    showCustomApproval: showCustomApproval ?? false,
+    customApprovalPosition: customApprovalPosition || "middle",
+    customApprovals: customApprovals || null,
     updatedAt: new Date()
   }).where(eq(service360Quotations.id, id)).returning()
 

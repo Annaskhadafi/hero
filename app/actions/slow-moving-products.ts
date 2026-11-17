@@ -15,21 +15,35 @@ const slowMovingProductSchema = z.object({
 
 export type SlowMovingProductInput = z.infer<typeof slowMovingProductSchema>
 
+let slowMovingProductsTableEnsured = false
+let slowMovingProductsTablePromise: Promise<void> | null = null
+
 async function ensureSlowMovingProductsTable() {
-    await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS "slow_moving_products" (
-            "id" serial PRIMARY KEY NOT NULL,
-            "material_key" varchar(150) NOT NULL UNIQUE,
-            "material_number" varchar(150) NOT NULL,
-            "description" text,
-            "created_by" text REFERENCES "user"("id"),
-            "created_at" timestamp DEFAULT now() NOT NULL,
-            "updated_at" timestamp DEFAULT now() NOT NULL
-        )
-    `)
-    await db.execute(sql`
-        ALTER TABLE "slow_moving_products" ADD COLUMN IF NOT EXISTS "initial_stock" integer DEFAULT 0 NOT NULL;
-    `)
+    if (slowMovingProductsTableEnsured) return
+    if (slowMovingProductsTablePromise) return slowMovingProductsTablePromise
+
+    slowMovingProductsTablePromise = (async () => {
+        await db.execute(sql`
+            CREATE TABLE IF NOT EXISTS "slow_moving_products" (
+                "id" serial PRIMARY KEY NOT NULL,
+                "material_key" varchar(150) NOT NULL UNIQUE,
+                "material_number" varchar(150) NOT NULL,
+                "description" text,
+                "created_by" text REFERENCES "user"("id"),
+                "created_at" timestamp DEFAULT now() NOT NULL,
+                "updated_at" timestamp DEFAULT now() NOT NULL
+            )
+        `)
+        await db.execute(sql`
+            ALTER TABLE "slow_moving_products" ADD COLUMN IF NOT EXISTS "initial_stock" integer DEFAULT 0 NOT NULL;
+        `)
+        slowMovingProductsTableEnsured = true
+    })().catch((err) => {
+        slowMovingProductsTablePromise = null
+        throw err
+    })
+
+    return slowMovingProductsTablePromise
 }
 
 export async function getSlowMovingProducts() {

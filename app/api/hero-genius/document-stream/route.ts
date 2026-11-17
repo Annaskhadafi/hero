@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-session";
+import { auth } from "@/lib/auth";
 import { resolveRagDocumentUrl, getRagApiKey } from "@/lib/hero-genius/client";
 import { isS3UploadConfigured, getS3ObjectForProxy } from "@/lib/s3-storage";
 import { existsSync, promises as fs } from "fs";
@@ -79,11 +80,6 @@ function extractLocalUploadPath(targetUrl: string): string | null {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     let targetUrl = searchParams.get("url") || searchParams.get("file") || "";
     try {
@@ -103,6 +99,28 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Access to private/internal network addresses is forbidden" }, { status: 403 });
     }
 
+    // Authenticate: check getServerSession() or auth.api.getSession({ headers: req.headers })
+    let session = await getServerSession();
+    if (!session?.user) {
+      try {
+        session = await auth.api.getSession({ headers: req.headers });
+      } catch (_) {}
+    }
+
+    // Allow internal company uploads to stream without strict session abort (e.g. within iframe or webview)
+    const localRelPath = extractLocalUploadPath(targetUrl);
+    const isInternalUpload =
+      targetUrl.includes("is3.cloudhost.id") ||
+      targetUrl.startsWith("/api/uploads/") ||
+      targetUrl.startsWith("upload/") ||
+      targetUrl.startsWith("uploads/") ||
+      targetUrl.startsWith("sop-win/") ||
+      (localRelPath && (localRelPath.startsWith("upload") || localRelPath.startsWith("sop-win")));
+
+    if (!session?.user && !isInternalUpload) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     let buffer: Buffer | null = null;
     let filename = targetUrl.split("/").pop() || requestedFilename;
     try {
@@ -116,7 +134,6 @@ export async function GET(req: NextRequest) {
     const hashedCachePath = join(docCacheDir, `${urlHash}.bin`);
 
     // 1. FAST PATH: Try local filesystem and cache FIRST before any network calls
-    const localRelPath = extractLocalUploadPath(targetUrl);
     if (localRelPath) {
       const uploadFilePath = join(uploadDir, localRelPath);
       if (resolve(uploadFilePath).startsWith(uploadDir) && existsSync(uploadFilePath)) {
@@ -331,12 +348,19 @@ export async function GET(req: NextRequest) {
       contentType = isAscii ? "text/markdown; charset=utf-8" : "application/pdf";
     }
 
+    let safeFilename = (requestedFilename || filename || "document.pdf")
+      .replace(/[/\\?%*:|"<>]/g, "_")
+      .trim();
+    if (!safeFilename.toLowerCase().endsWith(".pdf") && contentType === "application/pdf") {
+      safeFilename = `${safeFilename}.pdf`;
+    }
+
     const headers = new Headers();
     headers.set("Content-Type", contentType);
     headers.set("Accept-Ranges", "bytes");
     headers.set(
       "Content-Disposition",
-      `inline; filename="${encodeURIComponent(requestedFilename)}"`
+      `inline; filename="${encodeURIComponent(safeFilename)}"`
     );
     headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
     headers.set("X-Content-Type-Options", "nosniff");

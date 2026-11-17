@@ -12,6 +12,7 @@ import {
   Check,
   CheckCheck,
   CheckCircle2,
+  Clock,
   Clock3,
   Copy,
   Download,
@@ -42,6 +43,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AdminStatusBadge } from '@/components/admin-status-badge'
 import { DailyActivityEvidenceModal } from '@/components/daily-activity-evidence-modal'
+import { DailyActivityCreateSplModal } from '@/components/daily-activity-create-spl-modal'
+import { mapMobileDarToEmployeeActivityRow } from '@/lib/daily-activity-spl-mapper'
+import type { EmployeeActivityRow } from '@/lib/daily-activity-dashboard'
 import { MissingSignatureDialog } from '@/components/missing-signature-dialog'
 import { MobileDailyActivityForm } from '@/components/mobile/mobile-daily-activity-form'
 import { MobileActivityLog } from '@/components/mobile/mobile-activity-log'
@@ -147,6 +151,9 @@ export function MobileDailyActivityClient({
   const [isSigModalOpen, setIsSigModalOpen] = useState(false)
   const [isMissingSigDialogOpen, setIsMissingSigDialogOpen] = useState(false)
   const [userSignature, setUserSignature] = useState<string | null>(data?.employee?.signatureDataUrl || null)
+  const [isCreateSplModalOpen, setIsCreateSplModalOpen] = useState(false)
+  const [createSplSourceRow, setCreateSplSourceRow] = useState<EmployeeActivityRow | null>(null)
+  const [optimisticSplBySessionId, setOptimisticSplBySessionId] = useState<Record<number, { splNumber: string; splId: number }>>({})
   const [previewZoom, setPreviewZoom] = useState(1.0)
   const pdfRef = useRef<HTMLDivElement | null>(null)
   const evidencePageRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -444,6 +451,36 @@ export function MobileDailyActivityClient({
   }
 
   const [isMounted, setIsMounted] = useState(false)
+
+  // Safeguard: auto-recover document.body pointer-events if frozen by Radix scroll-lock on mobile
+  useEffect(() => {
+    const cleanupBodyPointer = () => {
+      if (typeof document !== 'undefined') {
+        const hasOpenDialog = Boolean(
+          document.querySelector('[data-slot="dialog-content"]') ||
+          document.querySelector('[role="dialog"]') ||
+          document.querySelector('[data-radix-portal] [role="dialog"]')
+        )
+        if (!hasOpenDialog) {
+          if (document.body.style.pointerEvents === 'none') {
+            document.body.style.pointerEvents = ''
+          }
+          if (document.documentElement.style.pointerEvents === 'none') {
+            document.documentElement.style.pointerEvents = ''
+          }
+        }
+      }
+    }
+    cleanupBodyPointer()
+    const timer = setInterval(cleanupBodyPointer, 300)
+    window.addEventListener('focus', cleanupBodyPointer)
+    window.addEventListener('touchstart', cleanupBodyPointer, { passive: true })
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', cleanupBodyPointer)
+      window.removeEventListener('touchstart', cleanupBodyPointer)
+    }
+  }, [])
   const [draftsCount, setDraftsCount] = useState<number>(0)
   const [selectedDraftKey, setSelectedDraftKey] = useState<string | null>(() => draftQuery || null)
   const [formInstanceId, setFormInstanceId] = useState(0)
@@ -622,7 +659,7 @@ export function MobileDailyActivityClient({
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="apply">
+        <TabsContent value="apply" forceMount className={activeTab === 'apply' ? 'block' : 'hidden'}>
           {isMounted ? (
             <MobileDailyActivityForm
               key={`form-${formInstanceId}-${editSessionData?.sessionId || editSessionData?.id || (editSessionData?.session ? (editSessionData.session.sessionId || editSessionData.session.id) : '')}-${selectedDraftKey || draftQuery || 'form'}`}
@@ -878,6 +915,21 @@ export function MobileDailyActivityClient({
             activities={data.activities}
             onOpenReview={handleOpenReview}
             onCloneActivity={handleCloneActivity}
+            optimisticSplBySessionId={optimisticSplBySessionId}
+            onCreateSpl={(activity) => {
+              const row = mapMobileDarToEmployeeActivityRow(activity, {
+                id: data?.employee?.id,
+                name: data?.employee?.name,
+                employeeSn: data?.employee?.employeeSn,
+                jobTitle: data?.employee?.jobTitle,
+                department: data?.employee?.department,
+                section: data?.employee?.section,
+                siteId: data?.employee?.siteId,
+                siteName: data?.site?.name,
+              })
+              setCreateSplSourceRow(row)
+              setIsCreateSplModalOpen(true)
+            }}
           />
         </TabsContent>
       </Tabs>
@@ -886,7 +938,7 @@ export function MobileDailyActivityClient({
       <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
         <DialogContent
           showCloseButton={false}
-          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl z-50"
+          className="max-w-[430px] w-full sm:max-w-[430px] mx-auto h-[92dvh] sm:h-[86dvh] max-h-[92dvh] flex flex-col p-0 overflow-hidden bg-slate-100 border border-slate-200 shadow-2xl rounded-t-2xl sm:rounded-2xl"
         >
           {/* Mobile Header Bar */}
           <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-slate-200 text-slate-900 shrink-0 select-none">
@@ -1441,6 +1493,36 @@ export function MobileDailyActivityClient({
                     <p><span className="text-slate-400">Shift:</span> <span className="font-semibold text-slate-800">{selectedReviewDoc?.shiftCode || 'ALL'}</span></p>
                   </div>
 
+                  {(() => {
+                    const reviewSessionId = Number(selectedReviewDoc?.sessionId || selectedReviewDoc?.id || 0)
+                    const optSpl = reviewSessionId ? optimisticSplBySessionId[reviewSessionId] : undefined
+                    const reviewSplNumber = optSpl?.splNumber || selectedReviewDoc?.splNumber
+                    const reviewSplStatus = optSpl ? 'SUBMITTED' : selectedReviewDoc?.splStatus || 'SUBMITTED'
+                    if (!reviewSplNumber) return null
+                    return (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
+                            SPL Terbit • {String(reviewSplStatus).toUpperCase()}
+                          </p>
+                          <p className="font-mono font-bold text-blue-700 truncate">
+                            {reviewSplNumber}
+                          </p>
+                        </div>
+                        <Button
+                          asChild
+                          size="sm"
+                          className="h-8 rounded-lg bg-[#0753e7] hover:bg-blue-700 text-white font-bold text-[11px] px-2.5 shrink-0"
+                        >
+                          <Link href={`/mobile/overtime?tab=history&splNumber=${encodeURIComponent(reviewSplNumber)}`}>
+                            <ExternalLink className="size-3.5 mr-1" />
+                            Buka SPL
+                          </Link>
+                        </Button>
+                      </div>
+                    )
+                  })()}
+
                   {/* TTD Approver Status & Quick Register / Edit */}
                   <div className="flex items-center justify-between rounded-xl border border-slate-200/90 bg-white p-2.5 shadow-xs">
                     <div className="flex items-center gap-2">
@@ -1519,6 +1601,35 @@ export function MobileDailyActivityClient({
                     </div>
                   </div>
 
+                  {/* Buat SPL Lembur Button */}
+                  <Button
+                    type="button"
+                    data-testid="mobile-review-btn-buat-spl"
+                    onClick={() => {
+                      if (!selectedReviewDoc) return
+                      const row = mapMobileDarToEmployeeActivityRow(selectedReviewDoc, {
+                        id: data?.employee?.id,
+                        name: data?.employee?.name,
+                        employeeSn: data?.employee?.employeeSn,
+                        jobTitle: data?.employee?.jobTitle,
+                        department: data?.employee?.department,
+                        section: data?.employee?.section,
+                        siteId: data?.employee?.siteId,
+                        siteName: data?.site?.name,
+                      })
+                      setCreateSplSourceRow(row)
+                      setIsCreateSplModalOpen(true)
+                    }}
+                    className="w-full bg-[#0753e7] hover:bg-blue-700 text-white font-bold text-xs h-9 rounded-lg shadow-xs cursor-pointer flex items-center justify-center gap-1.5 mt-2"
+                  >
+                    <Clock className="size-3.5" />
+                    <span>
+                      {(optimisticSplBySessionId[Number(selectedReviewDoc?.sessionId || selectedReviewDoc?.id || 0)]?.splNumber || selectedReviewDoc?.splNumber)
+                        ? 'BUAT SPL TAMBAHAN'
+                        : 'BUAT SPL LEMBUR'}
+                    </span>
+                  </Button>
+
                   {/* Buat Ulang Aktivitas Button */}
                   <Button
                     type="button"
@@ -1573,6 +1684,30 @@ export function MobileDailyActivityClient({
           setUserSignature(sigUrl)
           setIsMissingSigDialogOpen(false)
           toast.success('Tanda tangan digital berhasil didaftarkan! Silakan tekan tombol APPROVE.')
+        }}
+      />
+
+      {/* Mobile Auto-generate SPL from Daily Activity Modal */}
+      <DailyActivityCreateSplModal
+        isOpen={isCreateSplModalOpen}
+        onClose={() => {
+          setIsCreateSplModalOpen(false)
+          setCreateSplSourceRow(null)
+        }}
+        employee={createSplSourceRow}
+        splModuleBasePath="/mobile/overtime"
+        onSuccess={(splNumber, splId) => {
+          const sid = createSplSourceRow?.sessionId
+          if (sid) {
+            setOptimisticSplBySessionId((prev) => ({
+              ...prev,
+              [sid]: { splNumber, splId },
+            }))
+          }
+          if (selectedReviewDoc && (selectedReviewDoc.sessionId === sid || selectedReviewDoc.id === sid)) {
+            setSelectedReviewDoc((prev: any) => (prev ? { ...prev, splNumber, splId, overtimeCommandLetterId: splId, splStatus: 'Submitted' } : prev))
+          }
+          router.refresh()
         }}
       />
     </div>

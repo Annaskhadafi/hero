@@ -15,6 +15,7 @@ import {
   overtimeCommandLetterParticipants,
   sites,
 } from '@/db/schema/hero'
+import { timesheetAttendanceRealOverrides } from '@/db/schema/timesheet'
 import { asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { OvertimeListingClient, type OvertimeListingRow } from './client'
 import { getOvertimeWorkflowSettings } from './actions'
@@ -25,12 +26,25 @@ export const metadata = {
   title: 'Overtime Requests Approval - HERO',
 }
 
+interface OvertimeRequestsPageProps {
+  searchParams?: Promise<{
+    splNumber?: string
+    q?: string
+    [key: string]: string | string[] | undefined
+  }>
+}
+
 // Overtime Requests Server Page
-export default async function OvertimeRequestsPage() {
+export default async function OvertimeRequestsPage({ searchParams }: OvertimeRequestsPageProps) {
   const session = await getServerSession()
   if (!session?.user?.email) {
     redirect('/sign-in')
   }
+
+  const resolvedParams = searchParams ? await searchParams : {}
+  const initialSearchQuery =
+    (typeof resolvedParams.splNumber === 'string' ? resolvedParams.splNumber : '') ||
+    (typeof resolvedParams.q === 'string' ? resolvedParams.q : '')
 
   const activeEmployee = await getCurrentEmployee()
   const userRole = ((session?.user as any)?.role || '').toLowerCase()
@@ -52,9 +66,16 @@ export default async function OvertimeRequestsPage() {
     userEmail.startsWith('admin_') ||
     userEmail.includes('admin')
 
-  const isSiteAdmin = accessRole === 'site admin'
+  const jobTitleLower = (activeEmployee?.jobTitle || '').toLowerCase()
+  const isSiteAdmin =
+    accessRole === 'site admin' ||
+    accessRole.includes('site') ||
+    accessRole.includes('pjo') ||
+    jobTitleLower.includes('pjo') ||
+    jobTitleLower.includes('site lead') ||
+    jobTitleLower.includes('site head')
 
-  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows] = await Promise.all([
+  const [rawSplRecords, allEmployees, rawSections, rawDepartments, rawSites, rawActivityLibraries, routeTemplateRows, routeGroupRows, routeItemRows, initialSettings] = await Promise.all([
     db
       .select({
         id: overtimeCommandLetters.id,
@@ -68,13 +89,16 @@ export default async function OvertimeRequestsPage() {
         requesterName: employees.name,
         requesterDepartment: masterDepartments.name,
         requesterSection: employees.section,
-        siteId: employees.siteId,
+        siteId: overtimeCommandLetters.siteId,
+        employeeSiteId: employees.siteId,
         requestNotes: overtimeCommandLetters.requestNotes,
       })
       .from(overtimeCommandLetters)
       .leftJoin(employees, eq(overtimeCommandLetters.requestedByEmployeeId, employees.id))
       .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
-      .orderBy(desc(overtimeCommandLetters.id)),
+      .where(isSiteAdmin && activeEmployee?.siteId ? eq(overtimeCommandLetters.siteId, activeEmployee.siteId) : undefined)
+      .orderBy(desc(overtimeCommandLetters.id))
+      .limit(isAdmin ? 2500 : 1500),
     db
       .select({
         id: employees.id,
@@ -139,6 +163,7 @@ export default async function OvertimeRequestsPage() {
       })
       .from(activityRouteItems)
       .orderBy(asc(activityRouteItems.sortOrder)),
+    getOvertimeWorkflowSettings(),
   ])
 
   const itemsByGroupId = new Map<number, any[]>()
@@ -183,9 +208,9 @@ export default async function OvertimeRequestsPage() {
 
   const rawSplIds = rawSplRecords.map((r) => r.id)
 
-  const rawApprovalsList =
+  const [rawApprovalsList, rawParticipantsList, rawItemsList] = await Promise.all([
     rawSplIds.length > 0
-      ? await db
+      ? db
           .select({
             overtimeCommandLetterId: overtimeApprovals.overtimeCommandLetterId,
             stepOrder: overtimeApprovals.stepOrder,
@@ -195,18 +220,16 @@ export default async function OvertimeRequestsPage() {
             approverName: overtimeApprovals.approverName,
             approverEmail: overtimeApprovals.approverEmail,
             approverEmployeeId: overtimeApprovals.approverEmployeeId,
-            signatureDataUrl: overtimeApprovals.signatureDataUrl,
+            hasSignature: sql<boolean>`CASE WHEN ${overtimeApprovals.signatureDataUrl} IS NOT NULL AND length(${overtimeApprovals.signatureDataUrl}) > 0 THEN true ELSE false END`,
             remarks: overtimeApprovals.remarks,
             signedAt: overtimeApprovals.signedAt,
           })
           .from(overtimeApprovals)
           .where(inArray(overtimeApprovals.overtimeCommandLetterId, rawSplIds))
           .orderBy(asc(overtimeApprovals.stepOrder))
-      : []
-
-  const rawParticipantsList =
+      : Promise.resolve([]),
     rawSplIds.length > 0
-      ? await db
+      ? db
           .select({
             overtimeCommandLetterId: overtimeCommandLetterParticipants.overtimeCommandLetterId,
             employeeId: overtimeCommandLetterParticipants.employeeId,
@@ -214,11 +237,26 @@ export default async function OvertimeRequestsPage() {
             shiftCode: overtimeCommandLetterParticipants.shiftCode,
             rosterType: overtimeCommandLetterParticipants.rosterType,
             category: overtimeCommandLetterParticipants.category,
+            overtimeCreditMinutes: overtimeCommandLetterParticipants.overtimeCreditMinutes,
           })
           .from(overtimeCommandLetterParticipants)
           .leftJoin(employees, eq(overtimeCommandLetterParticipants.employeeId, employees.id))
           .where(inArray(overtimeCommandLetterParticipants.overtimeCommandLetterId, rawSplIds))
-      : []
+      : Promise.resolve([]),
+    rawSplIds.length > 0
+      ? db
+          .select({
+            overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
+            lineLabel: overtimeCommandLetterItems.lineLabel,
+            lineDescription: overtimeCommandLetterItems.lineDescription,
+            targetUnit: overtimeCommandLetterItems.targetUnit,
+            estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
+            plannedPoints: overtimeCommandLetterItems.plannedPoints,
+          })
+          .from(overtimeCommandLetterItems)
+          .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, rawSplIds))
+      : Promise.resolve([]),
+  ])
 
   const approvalsBySplMap = new Map<number, (typeof rawApprovalsList)[number][]>()
   for (const a of rawApprovalsList) {
@@ -273,21 +311,7 @@ export default async function OvertimeRequestsPage() {
   const splIds = splRecords.map((r) => r.id)
   const approvalsList = rawApprovalsList.filter((a) => splIds.includes(a.overtimeCommandLetterId))
   const participantsList = rawParticipantsList.filter((p) => splIds.includes(p.overtimeCommandLetterId))
-
-  const itemsList =
-    splIds.length > 0
-      ? await db
-          .select({
-            overtimeCommandLetterId: overtimeCommandLetterItems.overtimeCommandLetterId,
-            lineLabel: overtimeCommandLetterItems.lineLabel,
-            lineDescription: overtimeCommandLetterItems.lineDescription,
-            targetUnit: overtimeCommandLetterItems.targetUnit,
-            estimatedMinutes: overtimeCommandLetterItems.estimatedMinutes,
-            plannedPoints: overtimeCommandLetterItems.plannedPoints,
-          })
-          .from(overtimeCommandLetterItems)
-          .where(inArray(overtimeCommandLetterItems.overtimeCommandLetterId, splIds))
-      : []
+  const itemsList = rawItemsList.filter((item) => splIds.includes(item.overtimeCommandLetterId))
 
   const approvalsMap = new Map<number, OvertimeListingRow['approvals']>()
   for (const a of approvalsList) {
@@ -300,21 +324,51 @@ export default async function OvertimeRequestsPage() {
       approverName: a.approverName || '',
       approverEmail: a.approverEmail || null,
       approverEmployeeId: a.approverEmployeeId ? Number(a.approverEmployeeId) : null,
-      signatureDataUrl: a.signatureDataUrl || null,
+      signatureDataUrl: null,
+      hasSignature: Boolean(a.hasSignature),
       remarks: a.remarks || null,
       signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : null,
     })
     approvalsMap.set(a.overtimeCommandLetterId, list)
   }
 
+  const employeeIds = allEmployees.map((e) => e.id)
+  const attendanceOverrides =
+    employeeIds.length > 0
+      ? await db
+          .select({
+            employeeId: timesheetAttendanceRealOverrides.employeeId,
+            period: timesheetAttendanceRealOverrides.period,
+            day: timesheetAttendanceRealOverrides.day,
+            overtimeHours: timesheetAttendanceRealOverrides.overtimeHours,
+            clockIn: timesheetAttendanceRealOverrides.clockIn,
+            clockOut: timesheetAttendanceRealOverrides.clockOut,
+          })
+          .from(timesheetAttendanceRealOverrides)
+          .where(inArray(timesheetAttendanceRealOverrides.employeeId, employeeIds))
+      : []
+
+  const attendanceOverrideMap = new Map<string, { overtimeHours: number | null; clockIn: string | null; clockOut: string | null }>()
+  for (const att of attendanceOverrides) {
+    if (att.employeeId != null && att.period && att.day != null) {
+      attendanceOverrideMap.set(`${att.employeeId}:${att.period}:${att.day}`, {
+        overtimeHours: att.overtimeHours != null ? Number(att.overtimeHours) : null,
+        clockIn: att.clockIn || null,
+        clockOut: att.clockOut || null,
+      })
+    }
+  }
+
   const participantsMap = new Map<number, any[]>()
   for (const p of participantsList) {
     const list = participantsMap.get(p.overtimeCommandLetterId) || []
     list.push({
+      employeeId: p.employeeId ? Number(p.employeeId) : null,
       employeeName: p.employeeName || 'Karyawan',
       shiftCode: p.shiftCode || 'DS',
       rosterType: p.rosterType || '5:2',
       category: p.category || 'after_mandatory_ot',
+      overtimeCreditMinutes: (p as any).overtimeCreditMinutes != null ? Number((p as any).overtimeCreditMinutes) : null,
     })
     participantsMap.set(p.overtimeCommandLetterId, list)
   }
@@ -356,6 +410,29 @@ export default async function OvertimeRequestsPage() {
       .filter((p) => p.employeeName && p.employeeName.toLowerCase() !== (r.requesterName || '').toLowerCase().trim())
       .map((p) => p.employeeName)
 
+    const splSiteId = r.siteId ? Number(r.siteId) : (r.employeeSiteId ? Number(r.employeeSiteId) : null)
+    const workDateObj = r.workDate ? new Date(r.workDate) : new Date()
+    let pYear = workDateObj.getFullYear()
+    let pMonth = String(workDateObj.getMonth() + 1).padStart(2, '0')
+    let pDay = workDateObj.getDate()
+    try {
+      const makassarStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Makassar',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(workDateObj)
+      const [y, m, d] = makassarStr.split('-')
+      if (y && m && d) {
+        pYear = parseInt(y, 10)
+        pMonth = m
+        pDay = parseInt(d, 10)
+      }
+    } catch {}
+    const periodKey = `${pYear}-${pMonth}`
+    const reqAtt = r.requestedByEmployeeId ? attendanceOverrideMap.get(`${r.requestedByEmployeeId}:${periodKey}:${pDay}`) : undefined
+
+
     // 1. Requester / Koordinator Row
     rows.push({
       id: Number(r.id),
@@ -368,6 +445,7 @@ export default async function OvertimeRequestsPage() {
       requestedByEmployeeId: r.requestedByEmployeeId ? Number(r.requestedByEmployeeId) : null,
       requesterName: r.requesterName || 'Pemohon',
       requesterDepartment: r.requesterDepartment || 'Central Services',
+      siteId: splSiteId,
       requestNotes: r.requestNotes || null,
       workerCount: parts.length > 0 ? parts.length : 1,
       teamRole: otherParticipantNames.length > 0 ? 'Pemohon' : undefined,
@@ -375,6 +453,9 @@ export default async function OvertimeRequestsPage() {
       participants: parts,
       lineItems: itemsMap.get(r.id) || [],
       approvals: approvalsMap.get(r.id) || [],
+      actualOvertimeHours: reqAtt?.overtimeHours != null ? (Number(reqAtt.overtimeHours) === 12 ? 11 : Number(reqAtt.overtimeHours)) : null,
+      attendanceClockIn: reqAtt?.clockIn ?? null,
+      attendanceClockOut: reqAtt?.clockOut ?? null,
     })
 
     // 2. Participant Team Member Rows (e.g. Sanudin, mechanics in the team)
@@ -388,6 +469,15 @@ export default async function OvertimeRequestsPage() {
         ...parts.filter((other) => other.employeeName !== p.employeeName && other.employeeName !== r.requesterName).map((o) => o.employeeName)
       ].filter(Boolean).join(', ')
 
+      const participantEmp = allEmployees.find((e) => e.id === p.employeeId)
+      const participantSiteId = participantEmp?.siteId ? Number(participantEmp.siteId) : splSiteId
+
+      const partAtt = p.employeeId ? attendanceOverrideMap.get(`${p.employeeId}:${periodKey}:${pDay}`) : undefined
+      const effectivePartOt = (p as any).overtimeCreditMinutes != null && (p as any).overtimeCreditMinutes > 0
+        ? p.overtimeCreditMinutes / 60
+        : (partAtt?.overtimeHours != null ? partAtt.overtimeHours : null)
+
+
       rows.push({
         id: Number(r.id),
         splNumber: r.splNumber || `SPL-${r.id}`,
@@ -399,6 +489,7 @@ export default async function OvertimeRequestsPage() {
         requestedByEmployeeId: p.employeeId ? Number(p.employeeId) : null,
         requesterName: p.employeeName,
         requesterDepartment: r.requesterDepartment || 'Central Services',
+        siteId: participantSiteId,
         requestNotes: r.requestNotes || null,
         workerCount: parts.length > 0 ? parts.length : 1,
         teamRole: 'Anggota Tim',
@@ -406,6 +497,9 @@ export default async function OvertimeRequestsPage() {
         participants: parts,
         lineItems: itemsMap.get(r.id) || [],
         approvals: approvalsMap.get(r.id) || [],
+        actualOvertimeHours: effectivePartOt != null ? (Number(effectivePartOt) === 12 ? 11 : Number(effectivePartOt)) : null,
+        attendanceClockIn: partAtt?.clockIn ?? null,
+        attendanceClockOut: partAtt?.clockOut ?? null,
       })
     }
   }
@@ -428,12 +522,12 @@ export default async function OvertimeRequestsPage() {
     siteHeadId: e.siteHeadId ? Number(e.siteHeadId) : null,
   }))
 
-  const initialSettings = await getOvertimeWorkflowSettings()
-
   return (
     <OvertimeListingClient
       rows={rows}
+      sites={(rawSites || []).map((s) => ({ id: Number(s.id), name: s.name || '' }))}
       employees={sanitizedEmployees}
+      currentEmployeeSiteId={activeEmployee?.siteId ? Number(activeEmployee.siteId) : null}
       activityLibraries={rawActivityLibraries || []}
       routeFolders={availableRouteFolders || []}
       initialSettings={initialSettings}
@@ -441,6 +535,15 @@ export default async function OvertimeRequestsPage() {
       currentEmployeeEmail={normalizedEmail}
       currentEmployeeName={activeEmployee?.name || ''}
       isAdmin={isAdmin}
+      initialSearchQuery={initialSearchQuery}
+      attendanceOverrides={(attendanceOverrides || []).map((a) => ({
+        employeeId: Number(a.employeeId),
+        period: a.period,
+        day: Number(a.day),
+        overtimeHours: a.overtimeHours != null ? (Number(a.overtimeHours) === 12 ? 11 : Number(a.overtimeHours)) : null,
+        clockIn: a.clockIn || null,
+        clockOut: a.clockOut || null,
+      }))}
     />
   )
 }

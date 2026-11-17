@@ -38,6 +38,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
+import { resolveUploadUrl } from "@/lib/resolve-upload-url"
+import { PdfCanvasViewer } from "@/components/hero-genius/pdf-canvas-viewer"
 
 type MasterHeadMap = {
   sections?: Record<string, { headEmployeeId?: number | null; headName?: string; headEmail?: string; headTitle?: string; departmentId?: number | null }>
@@ -49,7 +51,7 @@ const APPROVAL_ROLES_MAP: Record<string, string> = {
   section_head_initial: 'Section Head',
   employee: 'Karyawan',
   section_head_confirmation: 'Section Head',
-  central_service_manager: 'Department Head',
+  central_service_manager: 'Manager',
   hr: 'HR',
 }
 
@@ -115,10 +117,6 @@ export function ContractReviewClientForm({
   const [drawingStep, setDrawingStep] = useState<any | null>(null)
   const stepSigRef = useRef<SignatureCanvas | null>(null)
   const [selectedSignatoryTarget, setSelectedSignatoryTarget] = useState<string>('leader')
-
-  useEffect(() => {
-    if (approvalHistory) setApprovalsList(approvalHistory)
-  }, [approvalHistory])
 
   useEffect(() => {
     getUserSignatureAction().then((result) => {
@@ -247,7 +245,7 @@ export function ContractReviewClientForm({
     hrName: initialData?.hrName || "Kesuma Bagaskara",
     hrTitle: initialData?.hrTitle || resolveEmployeeTitle(initialData?.hrName || "Kesuma Bagaskara", "HR-GA"),
     nextSuperiorName: initialData?.nextSuperiorName || "",
-    nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Department Head") : ""),
+    nextSuperiorTitle: initialData?.nextSuperiorTitle || (initialData?.nextSuperiorName ? resolveEmployeeTitle(initialData.nextSuperiorName, "Manager") : ""),
     recommendation: initialData?.recommendation || "contract_extended",
     contractExtendedMonths: initialData?.contractExtendedMonths || "",
     contractEndDate: initialData?.contractEndDate || "",
@@ -273,6 +271,337 @@ export function ContractReviewClientForm({
     }>,
   })
 
+  // Draft Auto-Save & Recovery State
+  const [restoredDraftInfo, setRestoredDraftInfo] = useState<{
+    savedAt: string
+    sourceKey: string
+  } | null>(null)
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null)
+  const [isAutoSaving, setIsAutoSaving] = useState(false)
+  const isInitialMount = useRef(true)
+  const isDirty = useRef(false)
+
+  // 1. Recovery on initial mount: Check if an unsubmitted draft exists
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const primaryKey = initialData?.id
+      ? `hero_cr_draft_id_${initialData.id}`
+      : employeeIdParam
+      ? `hero_cr_draft_emp_${employeeIdParam}`
+      : `hero_cr_draft_new`
+
+    let savedRaw = localStorage.getItem(primaryKey)
+    let activeKey = primaryKey
+
+    if (!savedRaw && !initialData?.id) {
+      savedRaw = localStorage.getItem('hero_cr_draft_new')
+      activeKey = 'hero_cr_draft_new'
+    }
+
+    if (savedRaw) {
+      try {
+        const parsed = JSON.parse(savedRaw)
+        if (parsed && parsed.form) {
+          const hasActivities = Array.isArray(parsed.form.performanceActivities) && 
+            parsed.form.performanceActivities.some((a: any) => a.activity?.trim() || a.remark?.trim())
+          const hasCompRemarks = Boolean(
+            parsed.form.compDisciplineRemark?.trim() ||
+            parsed.form.compSkillRemark?.trim() ||
+            parsed.form.compResultRemark?.trim() ||
+            parsed.form.compQualityRemark?.trim() ||
+            parsed.form.compCustomerRemark?.trim() ||
+            parsed.form.compTeamworkRemark?.trim()
+          )
+          const hasSignaturesOrNotes = Boolean(parsed.previewLeaderSig || parsed.form.recommendation)
+
+          if (hasActivities || hasCompRemarks || hasSignaturesOrNotes) {
+            setForm((prev) => ({
+              ...prev,
+              ...parsed.form,
+              id: initialData?.id ?? parsed.form.id,
+              performanceActivities: parsed.form.performanceActivities?.length > 0
+                ? parsed.form.performanceActivities
+                : prev.performanceActivities,
+            }))
+
+            if (parsed.previewLeaderSig) {
+              setPreviewLeaderSig(parsed.previewLeaderSig)
+            }
+            if (parsed.leaderSignatureOverride) {
+              setLeaderSignatureOverride(parsed.leaderSignatureOverride)
+            }
+
+            setRestoredDraftInfo({
+              savedAt: parsed.savedAt || new Date().toISOString(),
+              sourceKey: activeKey,
+            })
+            setLastSavedTime(parsed.savedAt ? new Date(parsed.savedAt) : new Date())
+            toast.info('Draf penilaian sebelumnya ditemukan dan berhasil dipulihkan.', {
+              description: `Tersimpan di draf: ${new Date(parsed.savedAt || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`,
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse contract review draft:', e)
+      }
+    }
+  }, [initialData?.id, employeeIdParam])
+
+  // 2. Debounced auto-save on any change to the form
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+
+    isDirty.current = true
+
+    const primaryKey = initialData?.id
+      ? `hero_cr_draft_id_${initialData.id}`
+      : form.employeeId
+      ? `hero_cr_draft_emp_${form.employeeId}`
+      : `hero_cr_draft_new`
+
+    const timer = setTimeout(() => {
+      try {
+        const hasContent = Boolean(
+          form.employeeId ||
+          form.performanceActivities.some((a: any) => a.activity?.trim() || a.remark?.trim()) ||
+          form.compDisciplineRemark?.trim() ||
+          form.compSkillRemark?.trim() ||
+          form.compResultRemark?.trim() ||
+          form.compQualityRemark?.trim() ||
+          form.compCustomerRemark?.trim() ||
+          form.compTeamworkRemark?.trim() ||
+          previewLeaderSig
+        )
+
+        if (hasContent) {
+          setIsAutoSaving(true)
+          const draftData = {
+            form,
+            previewLeaderSig,
+            leaderSignatureOverride,
+            savedAt: new Date().toISOString(),
+          }
+          localStorage.setItem(primaryKey, JSON.stringify(draftData))
+          if (!initialData?.id) {
+            localStorage.setItem('hero_cr_draft_new', JSON.stringify(draftData))
+          }
+          setLastSavedTime(new Date())
+          setTimeout(() => setIsAutoSaving(false), 400)
+        }
+      } catch (err) {
+        console.warn('Auto-save error:', err)
+        setIsAutoSaving(false)
+      }
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [form, previewLeaderSig, leaderSignatureOverride, initialData?.id])
+
+  // 3. Warn before accidental window close if unsaved edits exist
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty.current) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  const handleManualSaveDraft = () => {
+    try {
+      const primaryKey = initialData?.id
+        ? `hero_cr_draft_id_${initialData.id}`
+        : form.employeeId
+        ? `hero_cr_draft_emp_${form.employeeId}`
+        : `hero_cr_draft_new`
+
+      const draftData = {
+        form,
+        previewLeaderSig,
+        leaderSignatureOverride,
+        savedAt: new Date().toISOString(),
+      }
+      localStorage.setItem(primaryKey, JSON.stringify(draftData))
+      if (!initialData?.id) {
+        localStorage.setItem('hero_cr_draft_new', JSON.stringify(draftData))
+      }
+      isDirty.current = false
+      const now = new Date()
+      setLastSavedTime(now)
+      toast.success('Draf formulir berhasil disimpan!', {
+        description: `Seluruh poin review objektif tersimpan aman di draf (${now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}).`,
+      })
+    } catch (e: any) {
+      toast.error('Gagal menyimpan draf: ' + (e?.message || 'Storage browser penuh.'))
+    }
+  }
+
+  const handleDiscardDraft = () => {
+    if (confirm('Buang draf lokal dan kembalikan formulir ke data awal?')) {
+      const keysToRemove = [
+        `hero_cr_draft_id_${initialData?.id}`,
+        `hero_cr_draft_emp_${form.employeeId}`,
+        `hero_cr_draft_new`,
+      ]
+      keysToRemove.forEach((k) => {
+        try { localStorage.removeItem(k) } catch {}
+      })
+      setRestoredDraftInfo(null)
+      setLastSavedTime(null)
+      isDirty.current = false
+
+      if (initialData) {
+        window.location.reload()
+      } else {
+        setForm({
+          id: undefined,
+          employeeId: "",
+          reviewType: "probation",
+          contractLength: "",
+          todayDate: new Date().toISOString().slice(0, 10),
+          hireDate: "",
+          performanceActivities: [{ activity: "", achievement: "100", remark: "" }],
+          compDisciplineAch: "",
+          compDisciplineRemark: "",
+          compSkillAch: "",
+          compSkillRemark: "",
+          compResultAch: "",
+          compResultRemark: "",
+          compQualityAch: "",
+          compQualityRemark: "",
+          compCustomerAch: "",
+          compCustomerRemark: "",
+          compTeamworkAch: "",
+          compTeamworkRemark: "",
+          leaderName: currentUser?.name || "",
+          leaderTitle: currentUser?.jobTitle || "",
+          employeeNameStr: "",
+          superiorName: "",
+          superiorTitle: "",
+          hrName: "Kesuma Bagaskara",
+          hrTitle: "HR-GA",
+          nextSuperiorName: "",
+          nextSuperiorTitle: "",
+          recommendation: "contract_extended",
+          contractExtendedMonths: "",
+          contractEndDate: "",
+          permanentDate: "",
+          letterIssuance: "",
+          status: "draft",
+          testRequired: false,
+          testConfigId: undefined,
+          testStatus: "none",
+          testFinalScore: undefined,
+          testAttemptCount: 0,
+          testCompletedAt: undefined,
+          attachments: [],
+        })
+        setPreviewLeaderSig(currentUser?.signatureDataUrl || '')
+      }
+      toast.success('Draf lokal telah dibuang.')
+    }
+  }
+
+  const syncApprovalSignatory = (
+    roleKey: 'leader' | 'superior' | 'nextSuperior' | 'hr' | 'employee',
+    newName: string,
+    employeeObj?: any
+  ) => {
+    setApprovalsList((prev) => {
+      if (!prev || prev.length === 0) return prev
+      const hasConfirmationStep = prev.some((s) => s.approverRole === 'section_head_confirmation')
+
+      return prev.map((step) => {
+        let isMatch = false
+        if (roleKey === 'leader') {
+          isMatch =
+            step.approverRole === 'pjo_or_te_initial' ||
+            (!hasConfirmationStep && step.approverRole === 'section_head_initial') ||
+            step.stepOrder === 1
+        } else if (roleKey === 'superior') {
+          isMatch =
+            step.approverRole === 'section_head_confirmation' ||
+            (!hasConfirmationStep && step.approverRole === 'section_head_initial') ||
+            (hasConfirmationStep && step.stepOrder === 3)
+        } else if (roleKey === 'nextSuperior') {
+          isMatch =
+            step.approverRole === 'central_service_manager' ||
+            step.approverRole === 'department_head' ||
+            (hasConfirmationStep ? step.stepOrder === 4 : step.stepOrder === 3)
+        } else if (roleKey === 'hr') {
+          isMatch = step.approverRole === 'hr' || (hasConfirmationStep ? step.stepOrder === 5 : step.stepOrder === 4)
+        } else if (roleKey === 'employee') {
+          isMatch = step.approverRole === 'employee' || step.stepOrder === 2
+        }
+
+        if (isMatch) {
+          const isNameChanged = step.approverName?.trim().toLowerCase() !== newName.trim().toLowerCase()
+          return {
+            ...step,
+            approverName: newName,
+            approverEmployeeId: employeeObj?.id ?? step.approverEmployeeId,
+            approverEmail: employeeObj?.email ?? step.approverEmail,
+            ...(isNameChanged && step.signatureDataUrl
+              ? { signatureDataUrl: null, status: 'pending', signedAt: null }
+              : {}),
+          }
+        }
+        return step
+      })
+    })
+  }
+
+  useEffect(() => {
+    if (approvalHistory && approvalHistory.length > 0) {
+      const hasConf = approvalHistory.some((s) => s.approverRole === 'section_head_confirmation')
+      const synced = approvalHistory.map((step) => {
+        let name = step.approverName
+        let empId = step.approverEmployeeId
+        let email = step.approverEmail
+
+        if (step.approverRole === 'section_head_confirmation' || (hasConf && step.stepOrder === 3)) {
+          if (form.superiorName && form.superiorName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.superiorName
+            const emp = employees.find((e) => e.name === form.superiorName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        } else if (step.approverRole === 'pjo_or_te_initial' || step.stepOrder === 1) {
+          if (form.leaderName && form.leaderName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.leaderName
+            const emp = employees.find((e) => e.name === form.leaderName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        } else if (step.approverRole === 'central_service_manager' || (hasConf ? step.stepOrder === 4 : step.stepOrder === 3)) {
+          if (form.nextSuperiorName && form.nextSuperiorName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.nextSuperiorName
+            const emp = employees.find((e) => e.name === form.nextSuperiorName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        } else if (step.approverRole === 'hr' || (hasConf ? step.stepOrder === 5 : step.stepOrder === 4)) {
+          if (form.hrName && form.hrName.trim().toLowerCase() !== (name || '').trim().toLowerCase()) {
+            name = form.hrName
+            const emp = employees.find((e) => e.name === form.hrName)
+            if (emp) { empId = emp.id; email = emp.email }
+          }
+        }
+
+        if (name !== step.approverName) {
+          return { ...step, approverName: name, approverEmployeeId: empId, approverEmail: email }
+        }
+        return step
+      })
+      setApprovalsList(synced)
+    } else if (approvalHistory) {
+      setApprovalsList(approvalHistory)
+    }
+  }, [approvalHistory, form.superiorName, form.leaderName, form.nextSuperiorName, form.hrName, employees])
+
   const selectedEmp = useMemo(() => {
     if (!form.employeeId) return null
     return employees.find(e => String(e.id) === form.employeeId) || null
@@ -291,6 +620,53 @@ export function ContractReviewClientForm({
   const autoPopulateSignatories = (employeeId: string, currentForm: any) => {
     const emp = employees.find(e => String(e.id) === employeeId)
     if (!emp) return currentForm
+
+    const sectionStr = (emp.section || '').trim().toLowerCase()
+    const deptStr = (emp.department || '').trim().toLowerCase()
+    const jobStr = (emp.jobTitle || emp.position || emp.rank || '').trim().toLowerCase()
+    const isHse =
+      sectionStr === 'hse' ||
+      sectionStr.includes('hse') ||
+      sectionStr.includes('health') ||
+      sectionStr.includes('safety') ||
+      deptStr === 'hse' ||
+      deptStr.includes('hse') ||
+      jobStr.includes('hse')
+
+    // Rule for HSE:
+    // - CK Sites (e.g. CK BIB, CK) -> Leader: Saipudin (HSE Leader)
+    // - Non-CK Sites -> Leader: Andi Safari (HSE Coordinator)
+    // - Superior: Andi Safari (for CK) or Dept Head / Manager (for Non-CK), remaining flexible
+    if (isHse) {
+      const siteStr = (emp.siteName || '').toUpperCase()
+      const isCk = /\bCK\b/i.test(siteStr) || siteStr.startsWith('CK') || siteStr.includes('CK ') || siteStr.includes(' CK')
+      
+      const leaderName = isCk ? 'Saipudin' : 'Andi Safari'
+      const leaderTitle = isCk ? 'HSE Leader' : 'HSE Coordinator'
+      const superiorName = isCk ? 'Andi Safari' : (masterHeadMap?.departments?.[String(emp.departmentId)]?.headName || 'Romy Hidayat')
+      const superiorTitle = isCk ? 'HSE Coordinator' : 'Department Head'
+      const nextSuperiorName = masterHeadMap?.departments?.[String(emp.departmentId)]?.headName || 'Romy Hidayat'
+      const nextSuperiorTitle = 'Manager'
+      const hrName = currentForm.hrName || approvalSettings?.approvalMatrix?.hrName || 'Kesuma Bagaskara'
+      const hrTitle = currentForm.hrTitle || resolveEmployeeTitle(hrName, 'HR-GA')
+
+      const finalLeaderName = currentForm.leaderName || leaderName
+      const finalSuperiorName = currentForm.superiorName || superiorName
+      const finalNextSuperiorName = currentForm.nextSuperiorName || nextSuperiorName
+
+      return {
+        ...currentForm,
+        employeeId,
+        leaderName: finalLeaderName,
+        leaderTitle: currentForm.leaderTitle || (finalLeaderName === currentUser?.name ? currentUser?.jobTitle || 'Leader' : leaderTitle),
+        superiorName: finalSuperiorName,
+        superiorTitle: currentForm.superiorTitle || superiorTitle,
+        nextSuperiorName: finalNextSuperiorName,
+        nextSuperiorTitle: currentForm.nextSuperiorTitle || nextSuperiorTitle,
+        hrName,
+        hrTitle,
+      }
+    }
 
     const isCentralService = emp.department?.toLowerCase().includes('central') || emp.section?.toLowerCase().includes('repair') || emp.section?.toLowerCase().includes('retread') || emp.section?.toLowerCase().includes('mvc') || emp.section?.toLowerCase().includes('service')
     const isHo = emp.siteName && (emp.siteName.toLowerCase().includes('balikpapan') || emp.siteName.toLowerCase().includes('jakarta'))
@@ -320,7 +696,7 @@ export function ContractReviewClientForm({
       }
 
       const managerName = masterDepartmentHead?.headName || approvalSettings.approvalMatrix.managerName
-      const managerTitle = masterDepartmentHead?.headTitle || 'Department Head'
+      const managerTitle = masterDepartmentHead?.headTitle || 'Manager'
 
       // For Site: find PJO/TE at same site from employees list
       let leaderName = sectionHeadName
@@ -364,7 +740,7 @@ export function ContractReviewClientForm({
         superiorName: finalSuperiorName,
         superiorTitle: currentForm.superiorTitle || superiorTitle || resolveEmployeeTitle(finalSuperiorName, "Superior"),
         nextSuperiorName: finalNextSuperiorName,
-        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle || resolveEmployeeTitle(finalNextSuperiorName, "Department Head"),
+        nextSuperiorTitle: currentForm.nextSuperiorTitle || managerTitle || resolveEmployeeTitle(finalNextSuperiorName, "Manager"),
         hrName,
         hrTitle,
       }
@@ -491,7 +867,7 @@ export function ContractReviewClientForm({
       superiorName: finalSuperiorName,
       superiorTitle: currentForm.superiorTitle || newSupTitle || resolveEmployeeTitle(finalSuperiorName, 'Superior'),
       nextSuperiorName: finalNextSuperiorName,
-      nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle || resolveEmployeeTitle(finalNextSuperiorName, 'Department Head'),
+      nextSuperiorTitle: currentForm.nextSuperiorTitle || newNextSupTitle || resolveEmployeeTitle(finalNextSuperiorName, 'Manager'),
       hrName: finalHrName,
       hrTitle: newHrTitle || currentForm.hrTitle || resolveEmployeeTitle(finalHrName, 'HR-GA'),
     }
@@ -539,7 +915,7 @@ export function ContractReviewClientForm({
       }
     }
     if (form.nextSuperiorName && !form.nextSuperiorTitle) {
-      const resolved = resolveEmployeeTitle(form.nextSuperiorName, 'Department Head')
+      const resolved = resolveEmployeeTitle(form.nextSuperiorName, 'Manager')
       if (resolved && resolved !== form.nextSuperiorTitle) {
         updated.nextSuperiorTitle = resolved
         shouldUpdate = true
@@ -679,65 +1055,114 @@ export function ContractReviewClientForm({
 
   const handleSave = () => {
     startTransition(async () => {
-      const leaderCanvasSignature = getLeaderSignatureDataUrl()
-      const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
+      try {
+        const leaderCanvasSignature = getLeaderSignatureDataUrl()
+        const leaderSignatureDataUrl = leaderCanvasSignature || previewLeaderSig || initialData?.leaderSignatureDataUrl || leaderSignatureOverride || (!initialData?.id ? previewLeaderSig : '')
 
-      if (leaderSignatureDataUrl && form.testRequired) {
-        if (['none', 'pending', 'in_progress'].includes(form.testStatus)) {
-          alert('Ujian Online belum diselesaikan oleh karyawan. Dokumen hanya dapat disimpan sebagai draft sebelum ujian selesai.')
-          return
-        }
-        if (form.testStatus === 'failed') {
-          const cfg = initialData?.testConfig
-          if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (form.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
-            alert(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap tunggu hingga remedial selesai.`)
+        if (leaderSignatureDataUrl && form.testRequired) {
+          if (['none', 'pending', 'in_progress'].includes(form.testStatus)) {
+            handleManualSaveDraft()
+            alert('Ujian Online belum diselesaikan oleh karyawan. Dokumen hanya dapat disimpan sebagai draft sebelum ujian selesai.\n\nCatatan: Seluruh poin review yang sudah Anda isi tetap aman tersimpan di DRAF.')
             return
           }
+          if (form.testStatus === 'failed') {
+            const cfg = initialData?.testConfig
+            if (cfg?.hasPassingGrade && cfg.maxRemedialAttempts > 0 && (form.testAttemptCount || 0) <= cfg.maxRemedialAttempts) {
+              handleManualSaveDraft()
+              alert(`Karyawan belum mencapai passing grade (${cfg.passingGrade}%) dan masih memiliki kuota remedial. Harap tunggu hingga remedial selesai.\n\nCatatan: Seluruh poin review yang sudah Anda isi tetap aman tersimpan di DRAF.`)
+              return
+            }
+          }
         }
-      }
 
-      const payload = {
-        ...form,
-        leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
-        superiorTitle: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
-        hrTitle: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
-        nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Department Head'),
-        employeeId: form.employeeId ? parseInt(form.employeeId) : null,
-        contractExtendedMonths: form.contractExtendedMonths ? parseInt(form.contractExtendedMonths as string) : null,
-        todayDate: new Date(form.todayDate),
-        hireDate: form.hireDate ? new Date(form.hireDate) : new Date(),
-        employeeNameStr: selectedEmp?.name || form.employeeNameStr,
-        leaderSignatureDataUrl,
-      }
-      const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
-      if (res.success) {
-        if (adminMode && initialData?.id && approvalsList && approvalsList.length > 0) {
-          let currentApprovals = [...approvalsList]
-          if (selectedSignatoryTarget && selectedSignatoryTarget.startsWith("step-")) {
-            const stepId = parseInt(selectedSignatoryTarget.replace("step-", ""))
-            const canvas = leaderSigRef.current?.getTrimmedCanvas()
-            const activeDataUrl = canvas ? canvas.toDataURL("image/png") : ""
-            if (activeDataUrl) {
-              currentApprovals = currentApprovals.map((s) =>
-                s.id === stepId ? { ...s, signatureDataUrl: activeDataUrl, status: "approved" } : s
-              )
-            }
-          }
-          for (const step of currentApprovals) {
-            if (step.signatureDataUrl) {
-              await updateAdminContractReviewApprovalSignature(initialData.id, step.id, step.signatureDataUrl)
-            }
-          }
+        const payload = {
+          ...form,
+          leaderTitle: form.leaderTitle || resolveEmployeeTitle(form.leaderName, 'Leader'),
+          superiorTitle: form.superiorTitle || resolveEmployeeTitle(form.superiorName, 'Superior'),
+          hrTitle: form.hrTitle || resolveEmployeeTitle(form.hrName, 'HR-GA'),
+          nextSuperiorTitle: form.nextSuperiorTitle || resolveEmployeeTitle(form.nextSuperiorName, 'Manager'),
+          employeeId: form.employeeId ? parseInt(form.employeeId) : null,
+          contractExtendedMonths: form.contractExtendedMonths ? parseInt(form.contractExtendedMonths as string) : null,
+          todayDate: new Date(form.todayDate),
+          hireDate: form.hireDate ? new Date(form.hireDate) : new Date(),
+          employeeNameStr: selectedEmp?.name || form.employeeNameStr,
+          leaderSignatureDataUrl,
         }
-        const savedId = (res as any).data?.id
-        if (!adminMode && !pathname.startsWith('/mobile/') && !initialData?.id && savedId) {
-          // Create mode: redirect ke form edit agar user bisa upload lampiran
-          router.push(`/dashboard/hc/contract-review/form/${savedId}`)
+        const res = adminMode ? await saveAdminContractReview(payload as any) : await saveContractReview(payload as any)
+        if (res.success) {
+          // SAVE SUCCESS: Clear local draft
+          try {
+            if (initialData?.id) {
+              localStorage.removeItem(`hero_cr_draft_id_${initialData.id}`)
+            }
+            if (form.employeeId) {
+              localStorage.removeItem(`hero_cr_draft_emp_${form.employeeId}`)
+            }
+            localStorage.removeItem('hero_cr_draft_new')
+          } catch {}
+          isDirty.current = false
+          setRestoredDraftInfo(null)
+
+          if (adminMode && initialData?.id && approvalsList && approvalsList.length > 0) {
+            let currentApprovals = [...approvalsList]
+            if (selectedSignatoryTarget && selectedSignatoryTarget.startsWith("step-")) {
+              const stepId = parseInt(selectedSignatoryTarget.replace("step-", ""))
+              const canvas = leaderSigRef.current?.getTrimmedCanvas()
+              const activeDataUrl = canvas ? canvas.toDataURL("image/png") : ""
+              if (activeDataUrl) {
+                currentApprovals = currentApprovals.map((s) =>
+                  s.id === stepId ? { ...s, signatureDataUrl: activeDataUrl, status: "approved" } : s
+                )
+              }
+            }
+            for (const step of currentApprovals) {
+              if (step.signatureDataUrl) {
+                await updateAdminContractReviewApprovalSignature(initialData.id, step.id, step.signatureDataUrl)
+              }
+            }
+          }
+          const savedId = (res as any).data?.id
+          if (!adminMode && !pathname.startsWith('/mobile/') && !initialData?.id && savedId) {
+            // Create mode: redirect ke form edit agar user bisa upload lampiran
+            router.push(`/dashboard/hc/contract-review/form/${savedId}`)
+          } else {
+            router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+          }
         } else {
-          router.push(adminMode ? `/dashboard/hc/contract-review/form/${initialData?.id}?admin=1` : pathname.startsWith('/mobile/') ? '/mobile/dashboard' : "/dashboard/hc/contract-review")
+          // SAVE FAILED: Keep draft intact & re-save to local storage immediately
+          try {
+            const primaryKey = initialData?.id
+              ? `hero_cr_draft_id_${initialData.id}`
+              : form.employeeId
+              ? `hero_cr_draft_emp_${form.employeeId}`
+              : `hero_cr_draft_new`
+            localStorage.setItem(primaryKey, JSON.stringify({
+              form,
+              previewLeaderSig,
+              leaderSignatureOverride,
+              savedAt: new Date().toISOString(),
+            }))
+            setLastSavedTime(new Date())
+          } catch {}
+          alert("Gagal menyimpan: " + res.error + "\n\nCatatan: Seluruh poin penilaian yang sudah Anda isi tetap aman tersimpan di DRAF.")
         }
-      } else {
-        alert("Gagal menyimpan: " + res.error)
+      } catch (err: any) {
+        // EXCEPTION: Keep draft safely
+        try {
+          const primaryKey = initialData?.id
+            ? `hero_cr_draft_id_${initialData.id}`
+            : form.employeeId
+            ? `hero_cr_draft_emp_${form.employeeId}`
+            : `hero_cr_draft_new`
+          localStorage.setItem(primaryKey, JSON.stringify({
+            form,
+            previewLeaderSig,
+            leaderSignatureOverride,
+            savedAt: new Date().toISOString(),
+          }))
+          setLastSavedTime(new Date())
+        } catch {}
+        alert("Terjadi kesalahan sistem saat menyimpan: " + (err?.message || "Koneksi terputus") + "\n\nCatatan: Seluruh poin penilaian yang sudah Anda isi tetap aman tersimpan di DRAF.")
       }
     })
   }
@@ -849,26 +1274,23 @@ export function ContractReviewClientForm({
     const file = e.target.files?.[0]
     if (!file) return
 
-    const isImage = file.type.startsWith('image/')
-    const isPdf = file.type === 'application/pdf'
+    const lowerName = file.name.toLowerCase()
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(lowerName)
+    const isPdf = file.type === 'application/pdf' || file.type === 'application/x-pdf' || lowerName.endsWith('.pdf')
     if (!isImage && !isPdf) {
-      alert('File harus berupa PDF atau gambar (JPG/PNG).')
+      toast.error('Berkas harus berupa PDF atau gambar (JPG/PNG/WEBP).')
       e.target.value = ''
       return
     }
 
-    if (isImage && file.size > 5 * 1024 * 1024) {
-      alert('Ukuran gambar maksimal 5MB.')
-      e.target.value = ''
-      return
-    }
-    if (isPdf && file.size > 10 * 1024 * 1024) {
-      alert('Ukuran PDF maksimal 10MB.')
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran berkas maksimal 15MB.')
       e.target.value = ''
       return
     }
 
     setIsUploadingAttachment(true)
+    const toastId = toast.loading(`Mengunggah "${file.name}"...`)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -876,7 +1298,7 @@ export function ContractReviewClientForm({
 
       const res = await uploadFile(formData)
       if (!res.success || !res.url) {
-        alert(res.error || 'Gagal mengunggah file.')
+        toast.error(res.error || 'Gagal mengunggah file.', { id: toastId })
         return
       }
 
@@ -896,8 +1318,9 @@ export function ContractReviewClientForm({
         })
         if (attachRes.success && attachRes.attachments) {
           setForm((prev) => ({ ...prev, attachments: attachRes.attachments }))
+          toast.success(`Lampiran "${file.name}" berhasil diunggah!`, { id: toastId })
         } else {
-          alert(attachRes.error || 'Gagal menyimpan lampiran ke review.')
+          toast.error(attachRes.error || 'Gagal menyimpan lampiran ke review.', { id: toastId })
         }
       } else {
         const newAttachment = {
@@ -909,9 +1332,10 @@ export function ContractReviewClientForm({
           ...prev,
           attachments: [...(prev.attachments || []), newAttachment],
         }))
+        toast.success(`Lampiran "${file.name}" berhasil ditambahkan!`, { id: toastId })
       }
     } catch (err: any) {
-      alert(err.message || 'Terjadi kesalahan saat upload file.')
+      toast.error(err.message || 'Terjadi kesalahan saat upload file.', { id: toastId })
     } finally {
       setIsUploadingAttachment(false)
       e.target.value = ''
@@ -1254,7 +1678,7 @@ export function ContractReviewClientForm({
       </table>
       <div className="font-bold mb-1.5">Recommendation</div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-3 text-[7.5pt]">
-        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Confirm to Permanent</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'confirm_permanent'} readOnly />Purpose to Permanent</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'terminate_probation'} readOnly />Unsuccessful Probationary (termination)</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_extended'} readOnly />Contract Extended <span className="border-b border-black w-12 inline-block text-center">{form.contractExtendedMonths || '\u00A0'}</span> months</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={form.recommendation === 'contract_ended'} readOnly />Contract ended</label>
@@ -1464,9 +1888,9 @@ export function ContractReviewClientForm({
         key: 'next_superior',
         label: 'Next Superior Signature',
         name: nextSuperiorName,
-        title: form.nextSuperiorTitle || resolveEmployeeTitle(nextSuperiorName, 'Department Head'),
-        signatureUrl: getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, visibleManagerApprovalSig || findSignatureForName(nextSuperiorName)),
-        meta: managerApprovalMeta || getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head'], nextSuperiorName, nextSuperiorApprover),
+        title: form.nextSuperiorTitle || resolveEmployeeTitle(nextSuperiorName, 'Manager'),
+        signatureUrl: getStepSignature(4, ['central_service_manager', 'dept_head', 'department_head', 'manager', 'Manager'], nextSuperiorName, visibleManagerApprovalSig || findSignatureForName(nextSuperiorName)),
+        meta: managerApprovalMeta || getStepMeta(4, ['central_service_manager', 'dept_head', 'department_head', 'manager', 'Manager'], nextSuperiorName, nextSuperiorApprover),
       },
       {
         key: 'hr',
@@ -1702,7 +2126,7 @@ export function ContractReviewClientForm({
                   <Eye className="size-3.5" /> Preview
                 </Button>
                 <a
-                  href={att.fileUrl}
+                  href={resolveUploadUrl(att.fileUrl)}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
@@ -1724,7 +2148,7 @@ export function ContractReviewClientForm({
                       <Eye className="size-3" /> Layar Penuh
                     </button>
                     <a
-                      href={att.fileUrl}
+                      href={resolveUploadUrl(att.fileUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs text-slate-600 hover:underline flex items-center gap-1"
@@ -1733,11 +2157,16 @@ export function ContractReviewClientForm({
                     </a>
                   </div>
                 </div>
-                <iframe
-                  src={`${att.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-                  title={att.fileName}
-                  className="w-full h-[650px] border-0 bg-white"
-                />
+                <div className="w-full h-[650px] bg-slate-50 relative">
+                  <PdfCanvasViewer
+                    url={resolveUploadUrl(att.fileUrl)}
+                    filename={att.fileName}
+                    preferNativeViewer={false}
+                    hideToolbar={false}
+                    hideDownload={false}
+                    className="w-full h-full"
+                  />
+                </div>
               </div>
             ) : (
               <div
@@ -1745,7 +2174,7 @@ export function ContractReviewClientForm({
                 onClick={() => setPreviewModalAttachment(att)}
               >
                 <img
-                  src={att.fileUrl}
+                  src={resolveUploadUrl(att.fileUrl)}
                   alt={att.fileName}
                   className="max-h-[700px] max-w-full object-contain rounded shadow-sm hover:opacity-95 transition"
                 />
@@ -1908,6 +2337,34 @@ export function ContractReviewClientForm({
 
         {/* Workflow & Simpan */}
         <div className="flex flex-wrap items-center gap-2 ml-auto">
+          {/* Live Auto-save indicator */}
+          <div className="flex items-center gap-1.5 px-1.5 sm:px-2 text-[11px] text-slate-500 font-medium">
+            {isAutoSaving ? (
+              <>
+                <Loader2 className="size-3 animate-spin text-amber-500" />
+                <span className="text-amber-700 hidden sm:inline">Menyimpan draf...</span>
+              </>
+            ) : lastSavedTime ? (
+              <>
+                <FileCheck className="size-3.5 text-emerald-600" />
+                <span className="text-slate-600 hidden sm:inline">
+                  Draf {lastSavedTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </>
+            ) : null}
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleManualSaveDraft}
+            variant="outline"
+            size="sm"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 text-xs text-slate-700 hover:bg-slate-100 border-slate-300"
+            title="Simpan seluruh poin penilaian secara instan ke draf lokal"
+          >
+            <FileText className="mr-1.5 size-3.5 text-slate-500" /> Simpan Draf
+          </Button>
+
           {initialData?.id && (
             <Button
               type="button"
@@ -1942,6 +2399,44 @@ export function ContractReviewClientForm({
           </Button>
         </div>
       </div>
+
+      {/* Draft Restored Banner */}
+      {restoredDraftInfo && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50/95 p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between print:hidden animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-200 text-amber-800">
+              <FileText className="size-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-amber-950">
+                Draf Penilaian Belum Tersimpan Ditemukan & Dipulihkan
+              </p>
+              <p className="text-[11px] text-amber-800">
+                Poin-poin evaluasi objektif yang Anda ketik sebelumnya telah dipulihkan otomatis (Tersimpan di draf: {new Date(restoredDraftInfo.savedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleDiscardDraft}
+              className="h-8 border-amber-300 bg-white px-2.5 text-xs text-amber-900 hover:bg-amber-100"
+            >
+              Buang Draf
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setRestoredDraftInfo(null)}
+              className="h-8 bg-amber-600 px-3 text-xs text-white hover:bg-amber-700 shadow-sm"
+            >
+              Gunakan Draf Ini
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className={cn("grid gap-6", isPrintMode ? "xl:grid-cols-1" : "xl:grid-cols-2")}>
         {/* KIRI: Form Input */}
@@ -1979,6 +2474,7 @@ export function ContractReviewClientForm({
                   placeholder="Pilih Karyawan..."
                   value={form.employeeId}
                   onValueChange={(val) => {
+                    const emp = employees.find(e => String(e.id) === val)
                     const populated = autoPopulateSignatories(val, { 
                       ...form, 
                       employeeId: val, 
@@ -1992,6 +2488,9 @@ export function ContractReviewClientForm({
                       hrTitle: ""
                     })
                     setForm(populated)
+                    if (emp) {
+                      syncApprovalSignatory('employee', emp.name, emp)
+                    }
                   }}
                   options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} (${emp.employeeId})` }))}
                   widthClassName="w-full"
@@ -2199,7 +2698,7 @@ export function ContractReviewClientForm({
                 <Select value={form.recommendation} onValueChange={(val) => setForm({ ...form, recommendation: val })}>
                   <SelectTrigger className="w-full"><SelectValue placeholder="Pilih Rekomendasi" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="confirm_permanent">Confirm to Permanent</SelectItem>
+                    <SelectItem value="confirm_permanent">Purpose to Permanent</SelectItem>
                     <SelectItem value="contract_extended">Contract Extended</SelectItem>
                     <SelectItem value="terminate_probation">Unsuccessful Probationary</SelectItem>
                     <SelectItem value="contract_ended">Contract Ended</SelectItem>
@@ -2221,8 +2720,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.leaderName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, leaderName: m.name, leaderTitle: m.rank || m.position || m.jobTitle || "Leader" }))
-                    else setForm(prev => ({ ...prev, leaderName: "", leaderTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, leaderName: m.name, leaderTitle: m.rank || m.position || m.jobTitle || "Leader" }))
+                      syncApprovalSignatory('leader', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, leaderName: "", leaderTitle: "" }))
+                      syncApprovalSignatory('leader', "", null)
+                    }
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
@@ -2242,8 +2746,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.superiorName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, superiorName: m.name, superiorTitle: m.rank || m.position || m.jobTitle || "Superior" }))
-                    else setForm(prev => ({ ...prev, superiorName: "", superiorTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, superiorName: m.name, superiorTitle: m.rank || m.position || m.jobTitle || "Superior" }))
+                      syncApprovalSignatory('superior', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, superiorName: "", superiorTitle: "" }))
+                      syncApprovalSignatory('superior', "", null)
+                    }
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
@@ -2263,12 +2772,17 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.nextSuperiorName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Department Head" }))
-                    else setForm(prev => ({ ...prev, nextSuperiorName: "", nextSuperiorTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, nextSuperiorName: m.name, nextSuperiorTitle: m.rank || m.position || m.jobTitle || "Manager" }))
+                      syncApprovalSignatory('nextSuperior', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, nextSuperiorName: "", nextSuperiorTitle: "" }))
+                      syncApprovalSignatory('nextSuperior', "", null)
+                    }
                   }}
                   options={employees
                     .filter(e => !selectedEmp || e.departmentId === selectedEmp.departmentId || e.department?.toLowerCase().includes("hr"))
-                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Department Head'}` }))}
+                    .map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'Manager'}` }))}
                   widthClassName="w-full"
                 />
               </div>
@@ -2284,8 +2798,13 @@ export function ContractReviewClientForm({
                   value={employees.find(e => e.name === form.hrName)?.id?.toString() || ""}
                   onValueChange={(val) => {
                     const m = employees.find(e => String(e.id) === val)
-                    if (m) setForm(prev => ({ ...prev, hrName: m.name, hrTitle: m.rank || m.position || m.jobTitle || "HR-GA" }))
-                    else setForm(prev => ({ ...prev, hrName: "", hrTitle: "" }))
+                    if (m) {
+                      setForm(prev => ({ ...prev, hrName: m.name, hrTitle: m.rank || m.position || m.jobTitle || "HR-GA" }))
+                      syncApprovalSignatory('hr', m.name, m)
+                    } else {
+                      setForm(prev => ({ ...prev, hrName: "", hrTitle: "" }))
+                      syncApprovalSignatory('hr', "", null)
+                    }
                   }}
                   options={employees.map(emp => ({ value: String(emp.id), label: `${emp.name} - ${emp.rank || emp.position || emp.jobTitle || 'HR'}` }))}
                   widthClassName="w-full"
@@ -2771,7 +3290,7 @@ export function ContractReviewClientForm({
                 )}
                 <input
                   type="file"
-                  accept="image/*,application/pdf"
+                  accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp"
                   className="hidden"
                   disabled={isUploadingAttachment}
                   onChange={handleFileUpload}
@@ -2922,7 +3441,7 @@ export function ContractReviewClientForm({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <a
-              href={previewModalAttachment?.fileUrl}
+              href={resolveUploadUrl(previewModalAttachment?.fileUrl)}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition"
@@ -2930,7 +3449,7 @@ export function ContractReviewClientForm({
               <ExternalLink className="size-3.5" /> Buka Tab Baru
             </a>
             <a
-              href={previewModalAttachment?.fileUrl}
+              href={resolveUploadUrl(previewModalAttachment?.fileUrl)}
               download={previewModalAttachment?.fileName}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition"
             >
@@ -2940,14 +3459,19 @@ export function ContractReviewClientForm({
         </DialogHeader>
         <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-2 sm:p-4">
           {previewModalAttachment?.fileType === 'pdf' ? (
-            <iframe
-              src={`${previewModalAttachment.fileUrl}#toolbar=1&navpanes=0&scrollbar=1`}
-              title={previewModalAttachment.fileName}
-              className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white"
-            />
+            <div className="w-full h-full min-h-[60vh] rounded border border-slate-800 bg-white overflow-hidden relative">
+              <PdfCanvasViewer
+                url={resolveUploadUrl(previewModalAttachment.fileUrl)}
+                filename={previewModalAttachment.fileName}
+                preferNativeViewer={false}
+                hideToolbar={false}
+                hideDownload={false}
+                className="w-full h-full"
+              />
+            </div>
           ) : (
             <img
-              src={previewModalAttachment?.fileUrl}
+              src={resolveUploadUrl(previewModalAttachment?.fileUrl)}
               alt={previewModalAttachment?.fileName}
               className="max-h-full max-w-full object-contain rounded shadow-lg"
             />

@@ -19,6 +19,7 @@ import { SearchableSelect } from '@/components/ui/searchable-select'
 import { SpeechTextarea as Textarea } from "@/components/ui/speech-textarea"
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { HiradcRiskMatrixTable } from '@/components/hiradc/hiradc-risk-matrix-table'
 import {
   PERMIT_TYPE_OPTIONS,
   EQUIPMENT_CHECKLIST_PER_TYPE,
@@ -1447,6 +1448,9 @@ export function MobileHiradcClient({ entries }: { entries: HiradcEntry[] }) {
                   <div><p className="text-[10px] font-bold text-slate-400 uppercase">LAST REVIEW</p><p className="font-bold text-slate-100 text-sm">{new Date().toLocaleDateString("id-ID")}</p></div>
                 </div>
               </div>
+            </div>
+            <div className="shadow-sm">
+              <HiradcRiskMatrixTable />
             </div>
           </div>
         </div>

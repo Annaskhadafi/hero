@@ -1,6 +1,6 @@
 import { emailDeliveryLogs } from "@/db/schema/hero";
 import { db } from "@/db";
-import { getPublicAppUrl } from "@/lib/auth-config";
+import { getPublicAppUrl, replaceLocalAppUrlsForEmail } from "@/lib/auth-config";
 import { getEmailSmtpSettingsData } from "@/lib/hero-admin";
 import { sendEmailViaSmtp } from "@/lib/email-delivery";
 
@@ -73,8 +73,9 @@ export async function sendAuthEmail(payload: AuthEmailPayload) {
     }
 }
 
-export function buildMagicLinkEmail(email: string, url: string) {
+export function buildMagicLinkEmail(email: string, rawUrl: string) {
     const appUrl = getBaseUrl();
+    const url = replaceLocalAppUrlsForEmail(rawUrl, appUrl);
 
     return {
         to: email,
@@ -99,8 +100,9 @@ export function buildMagicLinkEmail(email: string, url: string) {
     };
 }
 
-export function buildResetPasswordEmail(email: string, url: string) {
+export function buildResetPasswordEmail(email: string, rawUrl: string) {
     const appUrl = getBaseUrl();
+    const url = replaceLocalAppUrlsForEmail(rawUrl, appUrl);
 
     return {
         to: email,

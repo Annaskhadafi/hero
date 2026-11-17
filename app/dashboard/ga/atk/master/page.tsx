@@ -25,7 +25,7 @@ export default async function AtkMasterPage() {
   const items = await getMasterAtkList()
 
   return (
-    <div className="flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full">
+    <div className="flex-1 p-4 md:p-6 w-full">
       <AtkMasterClient initialItems={items} />
     </div>
   )

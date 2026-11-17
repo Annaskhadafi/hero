@@ -40,7 +40,8 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { OsmMiniMap } from '@/components/ui/osm-mini-map'
-import { getTodayDateString } from '@/lib/indonesia-timezone'
+import { getTodayDateString, getTimezoneDateParts } from '@/lib/indonesia-timezone'
+import { resolveAttendanceShiftFromRoster } from '@/lib/timesheet/attendance-roster-shift'
 
 type FlowState =
   | 'idle'
@@ -268,27 +269,15 @@ export function FaceAttendanceV2Client({
           },
         ]
 
+  const todayStr = getTodayDateString(rosterCalendar.timezone)
+  const todayRosterCode = rosterCalendar.days.find((day) => day.date === todayStr)?.code
+  const rosterShift = resolveAttendanceShiftFromRoster(todayRosterCode, activeShifts)
+
   const [selectedShift, setSelectedShift] = useState<string>(() => {
-    // 1. Check if today's roster specifically specifies NS or DS
-    const todayStr = getTodayDateString()
-    const todayRoster = rosterCalendar.days.find((d) => d.date === todayStr)
-    if (todayRoster?.code) {
-      const code = todayRoster.code.toUpperCase()
-      if (code === 'NS') {
-        const nightOption = activeShifts.find(
-          (s) => s.value === 'night' || s.value.toLowerCase().includes('night') || s.value === 'NS'
-        )
-        if (nightOption) return nightOption.value
-      } else if (code === 'DS') {
-        const dayOption = activeShifts.find(
-          (s) => s.value === 'day' || s.value.toLowerCase().includes('day') || s.value === 'DS'
-        )
-        if (dayOption) return dayOption.value
-      }
-    }
+    if (rosterShift) return rosterShift.value
 
     // 2. Fallback to time of day (True night shift check-in window is 18:00 - 05:00)
-    const currentHour = new Date().getHours()
+    const currentHour = getTimezoneDateParts(new Date(), rosterCalendar.timezone).hours
     const isNight = currentHour >= 18 || currentHour < 5
     if (isNight) {
       const nightOption = activeShifts.find(
@@ -298,6 +287,11 @@ export function FaceAttendanceV2Client({
     }
     return activeShifts[0]?.value ?? 'day'
   })
+
+  useEffect(() => {
+    if (rosterShift) setSelectedShift(rosterShift.value)
+  }, [todayStr, todayRosterCode, rosterCalendar.timezone, shiftOptions, rosterShift?.value])
+
   const [logs, setLogs] = useState<TodayLog[]>(todayLogs)
 
   const currentEventType = logs[0]?.eventType ?? lastEventType
@@ -1098,7 +1092,7 @@ export function FaceAttendanceV2Client({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-semibold text-slate-500">Shift attendance</span>
+                  <span className="text-[10px] font-semibold text-slate-500">Shift attendance · otomatis dari roster</span>
                   <select
                     value={selectedShift}
                     onChange={(e) => setSelectedShift(e.target.value)}
