@@ -93,14 +93,27 @@ export function ServiceDeskSettingsClient({
   const [templateToDelete, setTemplateToDelete] = useState<ServiceDeskTemplateItem | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Map employees to HeroSearchableSelect options
+  // Map employees to HeroSearchableSelect options (Prioritize Admin Mochamad Annas Khadafi)
   const employeeOptions: HeroSearchableSelectOption[] = useMemo(() => {
-    return employees.map((emp) => ({
-      value: String(emp.id),
-      label: `${emp.name} (${emp.employee_sn || 'SN'})`,
-      description: emp.role || 'Staff HERO',
-      badge: emp.role,
-    }))
+    const sorted = [...employees].sort((a, b) => {
+      const aIsKhadafi = a.id === 5 || a.employee_sn === '71261' || a.name.toLowerCase().includes('khadafi')
+      const bIsKhadafi = b.id === 5 || b.employee_sn === '71261' || b.name.toLowerCase().includes('khadafi')
+      if (aIsKhadafi && !bIsKhadafi) return -1
+      if (!aIsKhadafi && bIsKhadafi) return 1
+      return a.name.localeCompare(b.name)
+    })
+
+    return sorted.map((emp) => {
+      const isKhadafi = emp.id === 5 || emp.employee_sn === '71261' || emp.name.toLowerCase().includes('khadafi')
+      return {
+        value: String(emp.id),
+        label: isKhadafi ? `⭐ ${emp.name} (Admin HERO / SDS)` : `${emp.name} (${emp.employee_sn || 'SN'})`,
+        description: isKhadafi
+          ? 'Default Admin HERO (mochamad.khadafi@chitraparatama.co.id)'
+          : (emp.role || 'Staff HERO'),
+        badge: isKhadafi ? 'Admin SDS' : emp.role,
+      }
+    })
   }, [employees])
 
   // Open Edit Category Routing Dialog
@@ -363,10 +376,27 @@ export function ServiceDeskSettingsClient({
                 <tbody className="divide-y divide-slate-100">
                   {categories.map((cat) => {
                     const pics = cat.defaultAssignedEmployees || []
+                    const isHeroIssue =
+                      cat.code?.startsWith('HERO_') ||
+                      (cat as any)?.is_system_issue === true ||
+                      cat.name.toLowerCase().includes('hero') ||
+                      cat.name.toLowerCase().includes('aplikasi') ||
+                      cat.name.toLowerCase().includes('presensi') ||
+                      cat.name.toLowerCase().includes('bug') ||
+                      cat.name.toLowerCase().includes('timesheet') ||
+                      cat.name.toLowerCase().includes('server')
+
                     return (
                       <tr key={cat.id} className="hover:bg-slate-50/60 transition-colors">
                         <td className="py-3 px-4">
-                          <div className="font-semibold text-slate-900 text-sm">{cat.name}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-900 text-sm">{cat.name}</span>
+                            {isHeroIssue && (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-semibold px-1.5 py-0">
+                                Default Admin HERO
+                              </Badge>
+                            )}
+                          </div>
                           <span className="font-mono text-[11px] text-slate-400">{cat.code}</span>
                         </td>
                         <td className="py-3 px-4">
@@ -399,15 +429,31 @@ export function ServiceDeskSettingsClient({
                             <span className="text-slate-400 italic">Belum ada PIC default</span>
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
-                              {pics.map((pic, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center gap-1 bg-blue-50 text-blue-900 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-200"
-                                >
-                                  <IconUser className="size-3 text-blue-600" />
-                                  {pic.name} {pic.role && <span className="text-[10px] text-blue-600/70">({pic.role})</span>}
-                                </span>
-                              ))}
+                              {pics.map((pic, idx) => {
+                                const isKhadafi =
+                                  pic.id === 5 ||
+                                  pic.employeeSn === '71261' ||
+                                  pic.name?.toLowerCase().includes('khadafi')
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={cn(
+                                      'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border',
+                                      isKhadafi
+                                        ? 'bg-amber-50 text-amber-900 border-amber-300 font-semibold shadow-2xs'
+                                        : 'bg-blue-50 text-blue-900 border-blue-200'
+                                    )}
+                                  >
+                                    <IconUser className={cn('size-3', isKhadafi ? 'text-amber-600' : 'text-blue-600')} />
+                                    {isKhadafi ? '⭐ Admin: Mochamad Annas Khadafi' : pic.name}
+                                    {pic.role && (
+                                      <span className={cn('text-[10px]', isKhadafi ? 'text-amber-700' : 'text-blue-600/70')}>
+                                        ({isKhadafi ? 'mochamad.khadafi@chitraparatama.co.id' : pic.role})
+                                      </span>
+                                    )}
+                                  </span>
+                                )
+                              })}
                             </div>
                           )}
                         </td>
@@ -513,15 +559,26 @@ export function ServiceDeskSettingsClient({
                               <span className="text-slate-400 italic">Mengikuti kategori</span>
                             ) : (
                               <div className="flex flex-wrap gap-1">
-                                {pics.map((pic, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="inline-flex items-center gap-1 bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded text-[10px] font-medium border border-slate-200"
-                                  >
-                                    <IconUser className="size-2.5 text-slate-500" />
-                                    {pic.name.split(' ')[0]}
-                                  </span>
-                                ))}
+                                {pics.map((pic, idx) => {
+                                  const isKhadafi =
+                                    pic.id === 5 ||
+                                    pic.employeeSn === '71261' ||
+                                    pic.name?.toLowerCase().includes('khadafi')
+                                  return (
+                                    <span
+                                      key={idx}
+                                      className={cn(
+                                        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border',
+                                        isKhadafi
+                                          ? 'bg-amber-50 text-amber-900 border-amber-300 font-semibold'
+                                          : 'bg-slate-100 text-slate-800 border-slate-200'
+                                      )}
+                                    >
+                                      <IconUser className={cn('size-2.5', isKhadafi ? 'text-amber-600' : 'text-slate-500')} />
+                                      {isKhadafi ? '⭐ Admin (Khadafi)' : pic.name.split(' ')[0]}
+                                    </span>
+                                  )
+                                })}
                               </div>
                             )}
                           </td>

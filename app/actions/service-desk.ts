@@ -374,11 +374,48 @@ export async function createTroubleshootTicket(payload: {
     const slaHours = payload.slaHours || (payload.priority === 'kritis' ? 6 : payload.priority === 'tinggi' ? 12 : 24)
     const targetSlaAt = new Date(Date.now() + slaHours * 3600 * 1000)
 
-    const assignedList = Array.isArray(payload.assignedEmployees) && payload.assignedEmployees.length > 0
+    let assignedList = Array.isArray(payload.assignedEmployees) && payload.assignedEmployees.length > 0
       ? payload.assignedEmployees
       : payload.assignedEmployeeName
         ? [{ id: payload.assignedEmployeeId || 0, name: payload.assignedEmployeeName }]
         : []
+
+    // Default to Admin Khadafi if HERO kendala and no explicit assignees provided
+    if (assignedList.length === 0) {
+      // 1. Check category routing from database
+      const catCheck = await c.query(
+        'SELECT is_system_issue, code, default_assigned_employees FROM hero_service_desk_categories WHERE name = $1',
+        [payload.categoryName]
+      )
+      if (catCheck.rows.length > 0 && Array.isArray(catCheck.rows[0].default_assigned_employees) && catCheck.rows[0].default_assigned_employees.length > 0) {
+        assignedList = catCheck.rows[0].default_assigned_employees
+      } else {
+        const textToCheck = `${payload.categoryName || ''} ${payload.systemModule || ''} ${payload.title || ''}`.toLowerCase()
+        const isHeroRelated =
+          catCheck.rows[0]?.is_system_issue ||
+          catCheck.rows[0]?.code?.startsWith('HERO_') ||
+          textToCheck.includes('hero') ||
+          textToCheck.includes('aplikasi') ||
+          textToCheck.includes('bug') ||
+          textToCheck.includes('error') ||
+          textToCheck.includes('presensi') ||
+          textToCheck.includes('roster') ||
+          textToCheck.includes('timesheet') ||
+          textToCheck.includes('jaringan') ||
+          textToCheck.includes('server')
+
+        if (isHeroRelated) {
+          assignedList = [
+            {
+              id: 5,
+              name: 'Mochamad Annas Khadafi',
+              employeeSn: '71261',
+              role: 'System & Digital Solution',
+            },
+          ]
+        }
+      }
+    }
 
     const primaryAssignee = assignedList[0] || null
     const assignedEmployeeId = primaryAssignee?.id ? Number(primaryAssignee.id) : (payload.assignedEmployeeId || null)

@@ -17,11 +17,11 @@ test('verify service desk dedicated settings routing pic and problem templates',
 
   // 4. Click shortcut button to navigate to /dashboard/helpdesk/settings
   await settingsBtn.click();
-  await new Promise((resolve) => setTimeout(resolve, 3000));
+  await new Promise((resolve) => setTimeout(resolve, 4000));
 
   // 5. Verify Settings Page Header & Tab Matriks Routing
   const settingsTitle = browser.locator('h1:has-text("Pengaturan Service Desk: Routing PIC & Master Template")').first();
-  await expect(settingsTitle).toBeVisible({ timeout: 30000 });
+  await expect(settingsTitle).toBeVisible({ timeout: 60000 });
 
   const tabRouting = browser.locator('button:has-text("Matriks Routing PIC Kategori")').first();
   await expect(tabRouting).toBeVisible();

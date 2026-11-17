@@ -245,14 +245,27 @@ export function ExcellenceTroubleshootWorkspace({
   const [editPicIds, setEditPicIds] = useState<string[]>([])
   const [editTargetSla, setEditTargetSla] = useState('')
 
-  // Map employees to HeroSearchableSelect options
+  // Map employees to HeroSearchableSelect options (Prioritize Admin Mochamad Annas Khadafi)
   const employeeOptions: HeroSearchableSelectOption[] = useMemo(() => {
-    return employees.map((emp) => ({
-      value: String(emp.id),
-      label: `${emp.name} (${emp.employee_sn || 'SN'})`,
-      description: emp.role || 'Staff HERO',
-      badge: emp.role,
-    }))
+    const sorted = [...employees].sort((a, b) => {
+      const aIsKhadafi = a.id === 5 || a.employee_sn === '71261' || a.name.toLowerCase().includes('khadafi')
+      const bIsKhadafi = b.id === 5 || b.employee_sn === '71261' || b.name.toLowerCase().includes('khadafi')
+      if (aIsKhadafi && !bIsKhadafi) return -1
+      if (!aIsKhadafi && bIsKhadafi) return 1
+      return a.name.localeCompare(b.name)
+    })
+
+    return sorted.map((emp) => {
+      const isKhadafi = emp.id === 5 || emp.employee_sn === '71261' || emp.name.toLowerCase().includes('khadafi')
+      return {
+        value: String(emp.id),
+        label: isKhadafi ? `⭐ ${emp.name} (Admin HERO / SDS)` : `${emp.name} (${emp.employee_sn || 'SN'})`,
+        description: isKhadafi
+          ? 'Default Admin HERO (mochamad.khadafi@chitraparatama.co.id)'
+          : (emp.role || 'Staff HERO'),
+        badge: isKhadafi ? 'Admin SDS' : emp.role,
+      }
+    })
   }, [employees])
 
   // Load ticket activities
@@ -399,21 +412,67 @@ export function ExcellenceTroubleshootWorkspace({
     toast.info(`Template "${tpl.template_name}" diterapkan: teknisi & judul otomatis terisi!`)
   }
 
-  // Category change handler with auto-fill routing
+  // Category change handler with auto-fill routing & Admin Khadafi matching for HERO issues
   const handleCategoryChange = (catName: string) => {
     setFormCategory(catName)
     const cat = categories.find((c) => c.name === catName)
+    const isHeroRelated =
+      cat?.code?.startsWith('HERO_') ||
+      (cat as any)?.is_system_issue === true ||
+      catName.toLowerCase().includes('hero') ||
+      catName.toLowerCase().includes('aplikasi') ||
+      catName.toLowerCase().includes('bug') ||
+      catName.toLowerCase().includes('presensi') ||
+      catName.toLowerCase().includes('timesheet') ||
+      catName.toLowerCase().includes('server')
+
     if (cat) {
       if (cat.default_priority) {
         setFormPriority(cat.default_priority as any)
       }
       const defaultPics = cat.default_assigned_employees || []
-      if (Array.isArray(defaultPics) && defaultPics.length > 0) {
-        const picIds = defaultPics.map((e: any) => String(e.id))
-        setFormAssignedPicIds(picIds)
-        toast.info(`Kategori ${catName}: ${picIds.length} teknisi PIC otomatis terpilih.`)
+      let picIds = Array.isArray(defaultPics) ? defaultPics.map((e: any) => String(e.id)) : []
+
+      // If HERO related, ensure Admin Mochamad Annas Khadafi (ID 5) is defaulted
+      if (isHeroRelated && !picIds.includes('5')) {
+        picIds = ['5', ...picIds]
       }
+
+      if (picIds.length > 0) {
+        setFormAssignedPicIds(picIds)
+        if (isHeroRelated) {
+          toast.info(`Kendala HERO terdeteksi: PIC otomatis dialihkan ke Admin Mochamad Annas Khadafi.`)
+        } else {
+          toast.info(`Kategori ${catName}: ${picIds.length} teknisi PIC otomatis terpilih.`)
+        }
+      }
+    } else if (isHeroRelated) {
+      setFormAssignedPicIds(['5'])
+      toast.info(`Kendala HERO terdeteksi: PIC default ke Admin Mochamad Annas Khadafi.`)
     }
+  }
+
+  // Open create dialog with smart HERO default PIC
+  const handleOpenCreateDialog = () => {
+    const initialCat = categories[0]
+    if (initialCat) {
+      setFormCategory(initialCat.name)
+      if (initialCat.default_priority) {
+        setFormPriority(initialCat.default_priority as any)
+      }
+      const defaultPics = initialCat.default_assigned_employees || []
+      let picIds = Array.isArray(defaultPics) ? defaultPics.map((e: any) => String(e.id)) : []
+      const isHeroRelated =
+        initialCat.code?.startsWith('HERO_') ||
+        (initialCat as any)?.is_system_issue === true ||
+        initialCat.name.toLowerCase().includes('hero')
+
+      if (isHeroRelated && !picIds.includes('5')) {
+        picIds = ['5', ...picIds]
+      }
+      setFormAssignedPicIds(picIds)
+    }
+    setCreateDialogOpen(true)
   }
 
   // Create ticket handler
@@ -782,7 +841,7 @@ export function ExcellenceTroubleshootWorkspace({
           </div>
 
           <Button
-            onClick={() => setCreateDialogOpen(true)}
+            onClick={handleOpenCreateDialog}
             size="sm"
             className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-xs"
           >
