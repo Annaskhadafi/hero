@@ -24,6 +24,7 @@ export interface TroubleshootTicketItem {
   assignedEmployeeId: number | null
   assignedEmployeeName: string | null
   assignedRole: string | null
+  assignedEmployees?: Array<{ id: number; name: string; employeeSn?: string; role?: string }>
   title: string
   findingDescription: string
   sourceType: string
@@ -98,6 +99,7 @@ export async function getTroubleshootDashboardData(filter?: {
   status?: string
   siteId?: number
   search?: string
+  assignedEmployeeIds?: number[]
 }) {
   const c = await pool.connect()
   try {
@@ -127,6 +129,16 @@ export async function getTroubleshootDashboardData(filter?: {
       params.push(filter.siteId)
       query += ` AND t.site_id = $${params.length}`
     }
+    if (filter?.assignedEmployeeIds && filter.assignedEmployeeIds.length > 0) {
+      params.push(filter.assignedEmployeeIds)
+      query += ` AND (
+        t.assigned_employee_id = ANY($${params.length})
+        OR EXISTS (
+          SELECT 1 FROM jsonb_array_elements(COALESCE(t.assigned_employees, '[]'::jsonb)) elem
+          WHERE (elem->>'id')::int = ANY($${params.length})
+        )
+      )`
+    }
     if (filter?.search?.trim()) {
       params.push(`%${filter.search.trim().toLowerCase()}%`)
       query += ` AND (
@@ -147,6 +159,13 @@ export async function getTroubleshootDashboardData(filter?: {
       const targetSlaDate = new Date(row.target_sla_at)
       const slaInfo = formatSlaStatus(targetSlaDate, row.status)
 
+      let assignedEmployees: Array<{ id: number; name: string; employeeSn?: string; role?: string }> = []
+      if (Array.isArray(row.assigned_employees) && row.assigned_employees.length > 0) {
+        assignedEmployees = row.assigned_employees
+      } else if (row.assigned_employee_id) {
+        assignedEmployees = [{ id: row.assigned_employee_id, name: row.assigned_employee_name || 'Staff' }]
+      }
+
       return {
         id: row.id,
         ticketNumber: row.ticket_number,
@@ -163,6 +182,7 @@ export async function getTroubleshootDashboardData(filter?: {
         assignedEmployeeId: row.assigned_employee_id,
         assignedEmployeeName: row.assigned_employee_name,
         assignedRole: row.assigned_role,
+        assignedEmployees,
         title: row.title,
         findingDescription: row.finding_description,
         sourceType: row.source_type,
@@ -177,6 +197,17 @@ export async function getTroubleshootDashboardData(filter?: {
         attachments: row.attachments || [],
       }
     })
+
+    // Analytics calculations for Maestro-Grade KPI & Charts
+    const totalAll = tickets.length
+    const completedTickets = tickets.filter((t) => t.status === 'selesai')
+    const activeTickets = tickets.filter((t) => t.status !== 'selesai' && t.status !== 'dibatalkan')
+    const overdueTickets = tickets.filter((t) => t.isOverdue && t.status !== 'selesai')
+    const criticalTickets = tickets.filter((t) => t.priority === 'kritis' && t.status !== 'selesai')
+    const investigatingTickets = tickets.filter((t) => t.status === 'investigasi')
+    const onTrackTickets = tickets.filter((t) => !t.isOverdue && t.status !== 'selesai')
+    const slaComplianceRate =
+      totalAll > 0 ? Math.round(((totalAll - overdueTickets.length) / totalAll) * 100) : 100
 
     // 2. Build Kanban columns
     const kanban = {
@@ -244,6 +275,13 @@ export async function getTroubleshootDashboardData(filter?: {
       kanban,
       tickets,
       totalTickets: tickets.length,
+      activeCount: activeTickets.length,
+      completedCount: completedTickets.length,
+      overdueCount: overdueTickets.length,
+      criticalCount: criticalTickets.length,
+      investigatingCount: investigatingTickets.length,
+      onTrackCount: onTrackTickets.length,
+      slaComplianceRate,
       categoryStats,
       siteSummary,
       sites: sitesList.rows,
@@ -306,8 +344,10 @@ export async function createTroubleshootTicket(payload: {
   sourceType?: string
   sourceDetail?: string
   priority: 'kritis' | 'tinggi' | 'sedang' | 'rendah'
+  assignedEmployeeId?: number
   assignedEmployeeName?: string
   assignedRole?: string
+  assignedEmployees?: Array<{ id: number; name: string; employeeSn?: string; role?: string }>
   slaHours?: number
   attachments?: Array<{ url: string; name: string; size: number; type: string }>
 }) {
@@ -322,10 +362,21 @@ export async function createTroubleshootTicket(payload: {
     const slaHours = payload.slaHours || (payload.priority === 'kritis' ? 6 : payload.priority === 'tinggi' ? 12 : 24)
     const targetSlaAt = new Date(Date.now() + slaHours * 3600 * 1000)
 
+    const assignedList = Array.isArray(payload.assignedEmployees) && payload.assignedEmployees.length > 0
+      ? payload.assignedEmployees
+      : payload.assignedEmployeeName
+        ? [{ id: payload.assignedEmployeeId || 0, name: payload.assignedEmployeeName }]
+        : []
+
+    const primaryAssignee = assignedList[0] || null
+    const assignedEmployeeId = primaryAssignee?.id ? Number(primaryAssignee.id) : (payload.assignedEmployeeId || null)
+    const assignedEmployeeName = primaryAssignee?.name || payload.assignedEmployeeName || null
+    const assignedStatus = (assignedList.length > 0 || assignedEmployeeName) ? 'assigned' : 'baru'
+
     const insertRes = await c.query(
       `INSERT INTO hero_service_desk_tickets
-       (ticket_number, unit_code, system_module, site_id, category_name, reporter_employee_id, source_department_id, title, finding_description, source_type, source_detail, priority, status, assigned_employee_name, assigned_role, target_sla_at, attachments)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       (ticket_number, unit_code, system_module, site_id, category_name, reporter_employee_id, source_department_id, title, finding_description, source_type, source_detail, priority, status, assigned_employee_id, assigned_employee_name, assigned_role, assigned_employees, target_sla_at, attachments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19)
        RETURNING id`,
       [
         ticketNumber,
@@ -340,9 +391,11 @@ export async function createTroubleshootTicket(payload: {
         payload.sourceType || 'user_report',
         payload.sourceDetail || 'Pelaporan Pengguna HERO',
         payload.priority,
-        payload.assignedEmployeeName ? 'assigned' : 'baru',
-        payload.assignedEmployeeName || null,
+        assignedStatus,
+        assignedEmployeeId,
+        assignedEmployeeName,
         payload.assignedRole || null,
+        JSON.stringify(assignedList),
         targetSlaAt,
         JSON.stringify(payload.attachments || []),
       ]
@@ -711,6 +764,152 @@ export async function getMobileDashboardTroubleshootData(
       categories: [],
       error: error.message || 'Gagal memuat data tiket mobile dashboard',
     }
+  } finally {
+    c.release()
+  }
+}
+
+export interface AdminEditTicketInput {
+  title: string
+  findingDescription: string
+  categoryId?: number
+  categoryName: string
+  priority: 'kritis' | 'tinggi' | 'sedang' | 'rendah'
+  status: 'baru' | 'assigned' | 'investigasi' | 'menunggu_part' | 'selesai' | 'dibatalkan'
+  siteId?: number
+  systemModule?: string
+  unitCode?: string
+  targetSlaAt?: string
+  assignedEmployees?: Array<{ id: number; name: string; employeeSn?: string; role?: string }>
+}
+
+function isUserAdmin(emp: any): boolean {
+  if (!emp) return false
+  const role = (emp.role || emp.accessRole || '').toLowerCase()
+  return (
+    ['admin', 'superadmin', 'super admin', 'site admin'].includes(role) ||
+    emp.isAdmin === true ||
+    emp.is_admin === true
+  )
+}
+
+export async function updateTicketAdminAction(ticketId: number, data: AdminEditTicketInput) {
+  const currentEmp = await getCurrentEmployee()
+  if (!currentEmp || !isUserAdmin(currentEmp)) {
+    return { success: false, error: 'Akses ditolak: Hanya Admin yang dapat menyunting tiket ini.' }
+  }
+
+  const c = await pool.connect()
+  try {
+    const assignedList =
+      Array.isArray(data.assignedEmployees) && data.assignedEmployees.length > 0
+        ? data.assignedEmployees
+        : []
+
+    const primaryAssignee = assignedList[0] || null
+    const assignedEmployeeId = primaryAssignee?.id ? Number(primaryAssignee.id) : null
+    const assignedEmployeeName = primaryAssignee?.name || null
+
+    await c.query(
+      `UPDATE hero_service_desk_tickets
+       SET title = $1,
+           finding_description = $2,
+           category_name = $3,
+           priority = $4,
+           status = $5,
+           assigned_employee_id = $6,
+           assigned_employee_name = $7,
+           assigned_employees = $8::jsonb,
+           target_sla_at = COALESCE($9::timestamp, target_sla_at),
+           site_id = COALESCE($10, site_id),
+           unit_code = COALESCE($11, unit_code),
+           system_module = COALESCE($12, system_module),
+           updated_at = NOW()
+       WHERE id = $13`,
+      [
+        data.title,
+        data.findingDescription,
+        data.categoryName,
+        data.priority,
+        data.status,
+        assignedEmployeeId,
+        assignedEmployeeName,
+        JSON.stringify(assignedList),
+        data.targetSlaAt ? new Date(data.targetSlaAt) : null,
+        data.siteId || null,
+        data.unitCode || null,
+        data.systemModule || null,
+        ticketId,
+      ]
+    )
+
+    await c.query(
+      `INSERT INTO hero_service_desk_activities (ticket_id, actor_employee_id, actor_name, action_type, title, description)
+       VALUES ($1, $2, $3, 'updated', 'Tiket diperbarui oleh Admin', $4)`,
+      [
+        ticketId,
+        currentEmp.id,
+        currentEmp.name,
+        `Admin menyunting rincian tiket (${data.priority.toUpperCase()} - ${data.status.toUpperCase()})`,
+      ]
+    )
+
+    revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
+    return { success: true, message: 'Tiket berhasil diperbarui oleh Admin.' }
+  } catch (error: any) {
+    console.error('Error updating ticket by admin:', error)
+    return { success: false, error: error.message || 'Gagal menyunting tiket.' }
+  } finally {
+    c.release()
+  }
+}
+
+export async function deleteTicketAdminAction(ticketId: number) {
+  const currentEmp = await getCurrentEmployee()
+  if (!currentEmp || !isUserAdmin(currentEmp)) {
+    return { success: false, error: 'Akses ditolak: Hanya Admin yang dapat menghapus tiket.' }
+  }
+
+  const c = await pool.connect()
+  try {
+    await c.query('DELETE FROM hero_service_desk_activities WHERE ticket_id = $1', [ticketId])
+    await c.query('DELETE FROM hero_service_desk_tickets WHERE id = $1', [ticketId])
+
+    revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
+    return { success: true, message: 'Tiket berhasil dihapus secara permanen.' }
+  } catch (error: any) {
+    console.error('Error deleting ticket by admin:', error)
+    return { success: false, error: error.message || 'Gagal menghapus tiket.' }
+  } finally {
+    c.release()
+  }
+}
+
+export async function bulkDeleteTicketsAction(ticketIds: number[]) {
+  const currentEmp = await getCurrentEmployee()
+  if (!currentEmp || !isUserAdmin(currentEmp)) {
+    return { success: false, error: 'Akses ditolak: Hanya Admin yang dapat menghapus tiket.' }
+  }
+  if (!ticketIds || ticketIds.length === 0) {
+    return { success: false, error: 'Tidak ada tiket yang dipilih.' }
+  }
+
+  const c = await pool.connect()
+  try {
+    await c.query('DELETE FROM hero_service_desk_activities WHERE ticket_id = ANY($1)', [ticketIds])
+    await c.query('DELETE FROM hero_service_desk_tickets WHERE id = ANY($1)', [ticketIds])
+
+    revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
+    return { success: true, deletedCount: ticketIds.length, message: `${ticketIds.length} tiket berhasil dihapus.` }
+  } catch (error: any) {
+    console.error('Error bulk deleting tickets by admin:', error)
+    return { success: false, error: error.message || 'Gagal menghapus tiket secara massal.' }
   } finally {
     c.release()
   }

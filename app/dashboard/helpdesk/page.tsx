@@ -52,6 +52,11 @@ export default async function HeroHelpdeskPage({ searchParams }: PageProps) {
   const ticketsResult = maestroData[0]
   const settingsResult = maestroData[1]
 
+  const empRole = (currentEmployee.role || '').toLowerCase()
+  const isAdmin =
+    ['admin', 'superadmin', 'super admin', 'site admin'].includes(empRole) ||
+    (currentEmployee as any).is_admin === true
+
   return (
     <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-slate-50/70">
       <Tabs defaultValue={activeTab} className="w-full">
@@ -87,6 +92,17 @@ export default async function HeroHelpdeskPage({ searchParams }: PageProps) {
               id: currentEmployee.id,
               name: currentEmployee.name,
               email: currentEmployee.email,
+              role: currentEmployee.role,
+            }}
+            isAdmin={isAdmin}
+            analytics={{
+              activeCount: (troubleshootData as any).activeCount ?? 0,
+              completedCount: (troubleshootData as any).completedCount ?? 0,
+              overdueCount: (troubleshootData as any).overdueCount ?? 0,
+              criticalCount: (troubleshootData as any).criticalCount ?? 0,
+              investigatingCount: (troubleshootData as any).investigatingCount ?? 0,
+              onTrackCount: (troubleshootData as any).onTrackCount ?? 0,
+              slaComplianceRate: (troubleshootData as any).slaComplianceRate ?? 100,
             }}
             initialSelectedTicketId={selectedTicketId}
           />
