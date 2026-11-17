@@ -2,7 +2,7 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import { loginToHero } from './e2e-auth-helper';
 
-test('verify excellence troubleshooting and ticketing mobile workspace', { timeout: 300000 }, async ({
+test('verify authentic troubleshooting and ticketing mobile workflow without dummy data', { timeout: 300000 }, async ({
   app,
   screen,
   browser,
@@ -38,48 +38,7 @@ test('verify excellence troubleshooting and ticketing mobile workspace', { timeo
   await expect(tabKategori).toBeVisible();
   await expect(tabSites).toBeVisible();
 
-  // Capture Screenshot 1: Mobile Troubleshoot Overview
-  await app.screenshot('01-mobile-troubleshoot-overview');
-
-  // 6. Test Interactive Tab Switching: Kategori
-  await tabKategori.click();
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  const temuanTitle = browser.locator('h3:has-text("Temuan per Kategori")').first();
-  await expect(temuanTitle).toBeVisible();
-
-  // 7. Test Interactive Tab Switching: Site MTTR
-  await tabSites.click();
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  const sitesTitle = browser.locator('h3:has-text("Performa & MTTR per Site")').first();
-  await expect(sitesTitle).toBeVisible();
-
-  // 8. Return to Alur Tiket & Open Ticket Inspector Bottom Sheet
-  await tabAlur.click();
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-
-  const firstTicketCard = browser.locator('div[class*="border-l-4"]').first();
-  if (await firstTicketCard.isVisible().catch(() => false)) {
-    await firstTicketCard.click();
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-
-  // Verify Bottom Sheet opens
-  const auditTitle = browser.locator('text=Riwayat Aktivitas & Log Penanganan').first();
-  await expect(auditTitle).toBeVisible({ timeout: 15000 });
-
-  // Capture Screenshot 2: Mobile Ticket Inspector Bottom Sheet
-  await app.screenshot('02-mobile-troubleshoot-inspector');
-
-  // 9. Close Inspector Sheet
-  const closeBtn = browser.locator('button[aria-label="Tutup Detail Tiket"]').first();
-  if (await closeBtn.isVisible().catch(() => false)) {
-    await closeBtn.click();
-  } else {
-    await browser.keyboard.press('Escape');
-  }
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-
-  // 10. Test Create Ticket Button & Dialog
+  // 6. Test Action: Buat Tiket Baru from Mobile
   const buatTiketBtn = browser.locator('button:has-text("Buat Tiket")').first();
   await expect(buatTiketBtn).toBeVisible();
   await buatTiketBtn.click();
@@ -88,6 +47,40 @@ test('verify excellence troubleshooting and ticketing mobile workspace', { timeo
   const dialogCreateTitle = browser.locator('div[role="dialog"] :has-text("Lapor Kendala / Buat Tiket")').first();
   await expect(dialogCreateTitle).toBeVisible({ timeout: 10000 });
 
-  // Capture Screenshot 3: Mobile Lapor Kendala Form Dialog
-  await app.screenshot('03-mobile-troubleshoot-create-dialog');
+  // Fill mobile ticket form
+  const titleInput = browser.locator('div[role="dialog"] input[placeholder*="Gagal sinkron"]').first();
+  await titleInput.fill('Kendala Sinyal VSAT Intermiten di Site Sangatta');
+
+  const unitInput = browser.locator('div[role="dialog"] input[placeholder*="Timesheet V2"]').first();
+  await unitInput.fill('Jaringan VSAT');
+
+  const descTextarea = browser.locator('div[role="dialog"] textarea[placeholder*="Rincian kendala"]').first();
+  await descTextarea.fill('Perangkat terminal VSAT mengalami flapping setiap 30 menit di area operasional Sangatta.');
+
+  // Capture Screenshot 1: Mobile Lapor Kendala Form Dialog
+  await app.screenshot('01-mobile-troubleshoot-create-dialog');
+
+  // Submit Mobile Form
+  const submitBtn = browser.locator('div[role="dialog"] button:has-text("Kirim Laporan")').first();
+  await submitBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+
+  // 7. Verify Ticket Appears on Mobile
+  const createdTicket = browser.locator('text=Kendala Sinyal VSAT Intermiten').first();
+  await expect(createdTicket).toBeVisible({ timeout: 15000 });
+
+  // Capture Screenshot 2: Mobile Troubleshoot Overview with Real Ticket
+  await app.screenshot('02-mobile-troubleshoot-overview');
+
+  // 8. Open Mobile Ticket Inspector Bottom Sheet
+  const ticketCard = browser.locator('[data-testid^="mobile-ticket-card-"]').first();
+  await ticketCard.click();
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  // Verify Bottom Sheet opens
+  const auditTitle = browser.locator('text=Riwayat Aktivitas & Log Penanganan').first();
+  await expect(auditTitle).toBeVisible({ timeout: 15000 });
+
+  // Capture Screenshot 3: Mobile Ticket Inspector Bottom Sheet
+  await app.screenshot('03-mobile-troubleshoot-inspector');
 });

@@ -109,7 +109,6 @@ export function ExcellenceTroubleshootWorkspace({
   // Selected Ticket for Inspector Panel
   const defaultSelected =
     initialTickets.find((t) => t.id === initialSelectedTicketId) ||
-    initialTickets.find((t) => t.ticketNumber === 'TCK-2026-0031') ||
     initialTickets[0] ||
     null
 
@@ -176,15 +175,11 @@ export function ExcellenceTroubleshootWorkspace({
     return true
   })
 
-  // Quick filter chips list based on real HERO modules & cross-dept categories
+  // Quick filter chips list based on real HERO categories from database
   const filterChips = [
     { id: 'all', label: `Semua (${tickets.length})` },
-    { id: 'Timesheet & Roster Kerja', label: 'Timesheet & Roster' },
-    { id: 'Presensi Wajah & GPS', label: 'Presensi & GPS' },
-    { id: 'Koneksi Jaringan & Server Site', label: 'Jaringan & Server' },
-    { id: 'Aplikasi Mobile & Sync DAR', label: 'Mobile & DAR' },
-    { id: 'Supply Chain & Logistik (APD/Alat)', label: 'Supply Chain' },
-    { id: 'Fasilitas & Kendaraan Operasional', label: 'Fasilitas' },
+    ...categories.map((c) => ({ id: c.name, label: c.name })),
+    { id: 'kritis', label: 'Kritis', isAlert: false },
     { id: 'overdue', label: 'Overdue SLA', isAlert: true },
   ]
 
@@ -1081,7 +1076,7 @@ export function ExcellenceTroubleshootWorkspace({
             <div className="flex flex-col gap-1.5">
               <label className="font-semibold text-slate-700">Judul Temuan Kendala *</label>
               <Input
-                placeholder="Contoh: Sensor Pos 4 tidak respon 6 hari berturut-turut"
+                placeholder="Contoh: Gagal sinkronisasi data roster lembur / Kendala GPS presensi"
                 value={formTitle}
                 onChange={(e) => setFormTitle(e.target.value)}
                 className="h-9 text-xs"

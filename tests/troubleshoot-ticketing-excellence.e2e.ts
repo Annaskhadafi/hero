@@ -2,19 +2,19 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import { loginToHero } from './e2e-auth-helper';
 
-test('verify excellence troubleshooting and ticketing dashboard matches reference layout', { timeout: 300000 }, async ({
+test('verify authentic troubleshooting and ticketing workflow without dummy data', { timeout: 300000 }, async ({
   app,
   screen,
   browser,
 }) => {
-  // 1. Perform login with standard credentials
+  // 1. Authenticate with standard HERO credentials
   await loginToHero(app, screen, browser);
 
   // 2. Open /dashboard/helpdesk with active session
   await app.open('/dashboard/helpdesk');
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // 3. Verify Section 1: Alur Tiket (Kanban Board with 5 Status Columns)
+  // 3. Verify All 4 Core Sections are Present
   const alurTiketTitle = browser.locator('h2:has-text("1. Alur Tiket")').first();
   await expect(alurTiketTitle).toBeVisible({ timeout: 45000 });
 
@@ -30,44 +30,89 @@ test('verify excellence troubleshooting and ticketing dashboard matches referenc
   await expect(menungguPartCol).toBeVisible();
   await expect(selesaiCol).toBeVisible();
 
-  // 4. Verify Section 2: Daftar Tiket Troubleshoot & Detail Tiket (Split View)
   const daftarTiketTitle = browser.locator('h2:has-text("2. Daftar Tiket Troubleshoot")').first();
   await expect(daftarTiketTitle).toBeVisible();
 
   const detailTiketTitle = browser.locator('h3:has-text("Detail Tiket")').first();
   await expect(detailTiketTitle).toBeVisible();
 
-  // 5. Verify Section 3: Temuan per Kategori (Horizontal Bar Chart)
   const temuanKategoriTitle = browser.locator('h3:has-text("3. Temuan per Kategori")').first();
   await expect(temuanKategoriTitle).toBeVisible();
 
-  // 6. Verify Section 4: Ringkasan per Site
   const ringkasanSiteTitle = browser.locator('h3:has-text("4. Ringkasan per Site")').first();
   await expect(ringkasanSiteTitle).toBeVisible();
 
-  // Capture Screenshot 1: Primary Overview of 4 Sections Matching Reference
-  await app.screenshot('01-excellence-troubleshoot-overview');
-
-  // 7. Test Interactive Ticket Selection: Click a ticket in the table
-  const ticketRow = browser.locator('td:has-text("TCK-2026-0042"), td:has-text("TCK-2026-0031")').first();
-  if (await ticketRow.isVisible().catch(() => false)) {
-    await ticketRow.click();
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  }
-
-  // Capture Screenshot 2: Active Inspector Panel with Ticket Details & Activities
-  await app.screenshot('02-excellence-troubleshoot-inspector-selected');
-
-  // 8. Test Action Button: Click "+ Buat Tiket Baru"
+  // 4. Test Action: Buat Tiket Baru (Real User Submission)
   const createBtn = browser.locator('button:has-text("Buat Tiket Baru")').first();
   await expect(createBtn).toBeVisible();
   await createBtn.click();
   await new Promise((resolve) => setTimeout(resolve, 1500));
 
-  // Verify dialog is open
+  // Verify Dialog opens
   const dialogTitle = browser.locator('div[role="dialog"] :has-text("Lapor Kendala / Buat Tiket")').first();
   await expect(dialogTitle).toBeVisible({ timeout: 10000 });
 
-  // Capture Screenshot 3: Create Ticket Form Dialog with Smart Troubleshooting
-  await app.screenshot('03-excellence-troubleshoot-create-dialog');
+  // Fill real ticket data
+  const titleInput = browser.locator('div[role="dialog"] input[placeholder*="Gagal sinkron"]').first();
+  await titleInput.fill('Kendala Sinkronisasi Presensi GPS di Site Balikpapan');
+
+  const descTextarea = browser.locator('div[role="dialog"] textarea[placeholder*="Jelaskan kondisi"]').first();
+  await descTextarea.fill('Karyawan shift pagi melaporkan aplikasi mobile menampilkan radius GPS di luar jangkauan saat berada di area workshop Balikpapan.');
+
+  const unitInput = browser.locator('div[role="dialog"] input[placeholder*="Timesheet V2"]').first();
+  await unitInput.fill('Mobile App GPS');
+
+  // Capture Screenshot 1: Create Ticket Dialog
+  await app.screenshot('01-excellence-troubleshoot-create-dialog');
+
+  // Submit Form
+  const submitBtn = browser.locator('div[role="dialog"] button:has-text("Submit Tiket")').first();
+  await submitBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+
+  // 5. Verify Newly Created Real Ticket Appears in Table and Kanban
+  const newTicketCell = browser.locator('text=Mobile App GPS').first();
+  await expect(newTicketCell).toBeVisible({ timeout: 15000 });
+
+  // Capture Screenshot 2: Overview with Real Ticket
+  await app.screenshot('02-excellence-troubleshoot-overview');
+
+  // 6. Test Interactive Ticket Selection & Inspector Panel
+  const tableRow = browser.locator('tr:has-text("Mobile App GPS")').first();
+  await tableRow.click();
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Verify Inspector displays the selected real ticket
+  const inspectorFinding = browser.locator('text=Karyawan shift pagi melaporkan aplikasi mobile').first();
+  await expect(inspectorFinding).toBeVisible();
+
+  // 7. Test Action: Tambah Catatan (Add Note)
+  const addNoteBtn = browser.locator('button:has-text("Tambah Catatan")').first();
+  await expect(addNoteBtn).toBeVisible();
+  await addNoteBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const noteTextarea = browser.locator('div[role="dialog"] textarea[placeholder*="Tuliskan catatan teknis"]').first();
+  await noteTextarea.fill('Tim IT Site Balikpapan sedang melakukan verifikasi koordinat geotagging workshop.');
+
+  const saveNoteBtn = browser.locator('div[role="dialog"] button:has-text("Kirim Catatan")').first();
+  await saveNoteBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Verify note appears in activity audit trail
+  const activityNote = browser.locator('text=Tim IT Site Balikpapan sedang melakukan verifikasi').first();
+  await expect(activityNote).toBeVisible({ timeout: 10000 });
+
+  // 8. Test Action: Update Status (to Investigasi)
+  const updateStatusBtn = browser.locator('button:has-text("Update Status")').first();
+  await expect(updateStatusBtn).toBeVisible();
+  await updateStatusBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  const saveStatusBtn = browser.locator('div[role="dialog"] button:has-text("Simpan Perubahan")').first();
+  await saveStatusBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Capture Screenshot 3: Inspector with Activities & Real Data
+  await app.screenshot('03-excellence-troubleshoot-inspector-selected');
 });

@@ -676,6 +676,9 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
                   return (
                     <div
                       key={ticket.id}
+                      data-testid={`mobile-ticket-card-${ticket.id}`}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleSelectTicket(ticket)}
                       className={cn(
                         'p-3.5 rounded-xl border bg-card transition-all active:scale-[0.99] cursor-pointer shadow-2xs hover:shadow-sm space-y-2.5',
