@@ -324,8 +324,8 @@ export async function createTroubleshootTicket(payload: {
 
     const insertRes = await c.query(
       `INSERT INTO hero_service_desk_tickets
-       (ticket_number, unit_code, system_module, site_id, category_name, reporter_employee_id, title, finding_description, source_type, source_detail, priority, status, assigned_employee_name, assigned_role, target_sla_at, attachments)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       (ticket_number, unit_code, system_module, site_id, category_name, reporter_employee_id, source_department_id, title, finding_description, source_type, source_detail, priority, status, assigned_employee_name, assigned_role, target_sla_at, attachments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING id`,
       [
         ticketNumber,
@@ -334,6 +334,7 @@ export async function createTroubleshootTicket(payload: {
         payload.siteId,
         payload.categoryName,
         currentEmp?.id || null,
+        currentEmp?.department_id || null,
         payload.title,
         payload.findingDescription,
         payload.sourceType || 'user_report',
@@ -376,6 +377,8 @@ export async function createTroubleshootTicket(payload: {
     }
 
     revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
     return { success: true, ticketNumber, ticketId }
   } catch (error: any) {
     console.error('Error creating troubleshoot ticket:', error)
@@ -561,10 +564,153 @@ export async function escalateTicketAction(ticketId: number, reason: string) {
     }
 
     revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
     return { success: true }
   } catch (error: any) {
     console.error('Error escalating ticket:', error)
     return { success: false, error: error.message || 'Gagal melakukan eskalasi tiket' }
+  } finally {
+    c.release()
+  }
+}
+
+export interface MobileDashboardTroubleshootResult {
+  success: boolean
+  scope: 'personal' | 'department'
+  personalCount: number
+  departmentCount: number
+  userDepartmentName: string
+  tickets: TroubleshootTicketItem[]
+  sites: Array<{ id: number; name: string }>
+  categories: Array<{ id: number; code: string; name: string; default_sla_hours: number }>
+  error?: string
+}
+
+export async function getMobileDashboardTroubleshootData(
+  scope: 'personal' | 'department' = 'personal'
+): Promise<MobileDashboardTroubleshootResult> {
+  const currentEmp = await getCurrentEmployee()
+  const c = await pool.connect()
+  try {
+    const empId = currentEmp?.id || 0
+    const empName = currentEmp?.name || ''
+    const deptId = currentEmp?.department_id || null
+    const deptName = currentEmp?.department || 'Umum'
+
+    // 1. Get counts for both scopes
+    const personalCountRes = await c.query(
+      `SELECT COUNT(*) FROM hero_service_desk_tickets 
+       WHERE status != 'selesai' AND status != 'dibatalkan' 
+       AND (reporter_employee_id = $1 OR assigned_employee_id = $1 OR LOWER(assigned_employee_name) = LOWER($2))`,
+      [empId, empName]
+    )
+    const personalCount = parseInt(personalCountRes.rows[0]?.count || '0', 10)
+
+    let departmentCount = 0
+    if (deptId) {
+      const deptCountRes = await c.query(
+        `SELECT COUNT(*) FROM hero_service_desk_tickets 
+         WHERE status != 'selesai' AND status != 'dibatalkan' 
+         AND (source_department_id = $1 OR target_department_id = $1)`,
+        [deptId]
+      )
+      departmentCount = parseInt(deptCountRes.rows[0]?.count || '0', 10)
+    } else {
+      const allOpenRes = await c.query(
+        `SELECT COUNT(*) FROM hero_service_desk_tickets WHERE status != 'selesai' AND status != 'dibatalkan'`
+      )
+      departmentCount = parseInt(allOpenRes.rows[0]?.count || '0', 10)
+    }
+
+    // 2. Query scoped tickets
+    let query = `
+      SELECT t.*, s.name as site_name, e.name as reporter_name
+      FROM hero_service_desk_tickets t
+      JOIN hero_sites s ON t.site_id = s.id
+      LEFT JOIN hero_employees e ON t.reporter_employee_id = e.id
+      WHERE t.status != 'dibatalkan'
+    `
+    const params: any[] = []
+
+    if (scope === 'personal') {
+      params.push(empId, empName)
+      query += ` AND (t.reporter_employee_id = $1 OR t.assigned_employee_id = $1 OR LOWER(t.assigned_employee_name) = LOWER($2))`
+    } else {
+      if (deptId) {
+        params.push(deptId)
+        query += ` AND (t.source_department_id = $1 OR t.target_department_id = $1)`
+      }
+    }
+
+    query += ` ORDER BY t.detected_at DESC LIMIT 10`
+
+    const rawTickets = await c.query(query, params)
+
+    const tickets: TroubleshootTicketItem[] = rawTickets.rows.map((row) => {
+      const detectedDate = new Date(row.detected_at)
+      const targetSlaDate = new Date(row.target_sla_at)
+      const slaInfo = formatSlaStatus(targetSlaDate, row.status)
+
+      return {
+        id: row.id,
+        ticketNumber: row.ticket_number,
+        unitCode: row.unit_code,
+        systemModule: row.system_module || 'General',
+        siteId: row.site_id,
+        siteName: row.site_name,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        reporterEmployeeId: row.reporter_employee_id,
+        reporterName: row.reporter_name,
+        priority: row.priority,
+        status: row.status,
+        assignedEmployeeId: row.assigned_employee_id,
+        assignedEmployeeName: row.assigned_employee_name,
+        assignedRole: row.assigned_role,
+        title: row.title,
+        findingDescription: row.finding_description,
+        sourceType: row.source_type,
+        sourceDetail: row.source_detail,
+        detectedAt: row.detected_at.toISOString(),
+        targetSlaAt: row.target_sla_at.toISOString(),
+        resolvedAt: row.resolved_at ? row.resolved_at.toISOString() : null,
+        ageStr: formatAge(detectedDate),
+        slaLabel: slaInfo.label,
+        isOverdue: slaInfo.isOverdue,
+        mttrHours: row.mttr_hours,
+        attachments: row.attachments || [],
+      }
+    })
+
+    const [sitesRes, catRes] = await Promise.all([
+      c.query('SELECT id, name FROM hero_sites WHERE is_active = true ORDER BY name ASC'),
+      c.query('SELECT id, code, name, default_sla_hours FROM hero_service_desk_categories WHERE is_active = true ORDER BY name ASC'),
+    ])
+
+    return {
+      success: true,
+      scope,
+      personalCount,
+      departmentCount,
+      userDepartmentName: deptName,
+      tickets,
+      sites: sitesRes.rows,
+      categories: catRes.rows,
+    }
+  } catch (error: any) {
+    console.error('Error fetching mobile dashboard troubleshoot data:', error)
+    return {
+      success: false,
+      scope,
+      personalCount: 0,
+      departmentCount: 0,
+      userDepartmentName: 'Departemen',
+      tickets: [],
+      sites: [],
+      categories: [],
+      error: error.message || 'Gagal memuat data tiket mobile dashboard',
+    }
   } finally {
     c.release()
   }

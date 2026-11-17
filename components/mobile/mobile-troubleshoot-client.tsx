@@ -1,19 +1,24 @@
 'use client'
 
-import React, { useState, useTransition, useEffect } from 'react'
+import React, { useState, useTransition, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
+  Camera,
   CheckCircle2,
   ChevronRight,
   Clock,
+  Download,
   ExternalLink,
+  FileText,
   Flame,
+  Image as ImageIcon,
   Info,
   Layers,
   MapPin,
+  Maximize2,
   MessageSquare,
   Plus,
   Radio,
@@ -41,6 +46,8 @@ import {
   type CategoryStatItem,
   type SiteSummaryItem,
 } from '@/app/actions/service-desk'
+import { uploadFile } from '@/app/actions/upload'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -127,6 +134,10 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
     categoryName: data.categories[0]?.name || 'Timesheet & Roster Kerja',
     sourceDetail: 'Pelaporan Pengguna Mobile',
   })
+  const [formAttachments, setFormAttachments] = useState<Array<{ url: string; name: string; size: number; type: string }>>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
 
   // Load activities when selected ticket changes
   useEffect(() => {
@@ -210,6 +221,49 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
     setIsInspectorOpen(true)
   }
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 15MB')
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploadTarget', 'troubleshooting-attachments')
+
+      const res = await uploadFile(formData)
+      if (res.success && res.url) {
+        setFormAttachments((prev) => [
+          ...prev,
+          {
+            url: res.url,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          },
+        ])
+        toast.success(`Foto ${file.name} berhasil diunggah!`)
+      } else {
+        toast.error(res.error || 'Gagal mengunggah file')
+      }
+    } catch (err: any) {
+      console.error('Upload error:', err)
+      toast.error('Gagal mengunggah berkas')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const handleRemoveAttachment = (idx: number) => {
+    setFormAttachments((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   const handleCreateTicketSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!createForm.title.trim() || !createForm.description.trim()) {
@@ -226,12 +280,14 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
           siteId: parseInt(createForm.siteId, 10),
           categoryName: createForm.categoryName,
           priority: createForm.priority,
+          attachments: formAttachments,
           sourceDetail: createForm.sourceDetail,
         })
 
         if (res.success) {
           toast.success(`Tiket ${res.ticketNumber} berhasil dilaporkan!`)
           setIsCreateOpen(false)
+          setFormAttachments([])
           setCreateForm({
             title: '',
             description: '',
@@ -928,6 +984,65 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
                   </div>
                 </div>
 
+                {/* GALERI LAMPIRAN / FOTO BUKTI (DENGAN POPUP LIGHTBOX) */}
+                {Array.isArray(selectedTicket.attachments) && selectedTicket.attachments.length > 0 && (
+                  <div className="space-y-2 border-t border-border/60 pt-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                        <ImageIcon className="size-3.5 text-blue-500" />
+                        Foto Bukti / Lampiran ({selectedTicket.attachments.length})
+                      </h4>
+                      <span className="text-[10px] text-muted-foreground">Klik foto untuk popup besar</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {selectedTicket.attachments.map((att: any, idx: number) => {
+                        const resolvedUrl = resolveUploadUrl(att.url)
+                        const isImg = att.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(att.name)
+
+                        return (
+                          <div
+                            key={idx}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              if (isImg) setLightboxImage({ url: resolvedUrl, name: att.name })
+                              else window.open(resolvedUrl, '_blank')
+                            }}
+                            className="group relative rounded-xl border border-border/90 overflow-hidden bg-slate-100 dark:bg-slate-800 cursor-pointer shadow-2xs hover:shadow-xs transition-transform active:scale-95"
+                          >
+                            {isImg ? (
+                              <div className="relative aspect-video w-full overflow-hidden bg-slate-950/5">
+                                <img
+                                  src={resolvedUrl}
+                                  alt={att.name}
+                                  className="size-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                  <Maximize2 className="size-5" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="aspect-video w-full flex flex-col items-center justify-center p-2 text-center">
+                                <FileText className="size-6 text-slate-500 mb-1" />
+                                <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate max-w-full">
+                                  {att.name}
+                                </span>
+                              </div>
+                            )}
+                            <div className="p-1.5 bg-white dark:bg-slate-900 border-t border-border/60 flex items-center justify-between text-[10px]">
+                              <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
+                                {att.name}
+                              </span>
+                              <ExternalLink className="size-3 text-muted-foreground shrink-0" />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Riwayat Aktivitas Audit Trail */}
                 <div className="space-y-2">
                   <h4 className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
@@ -1102,6 +1217,79 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
               />
             </div>
 
+            {/* Upload Attachment / Foto */}
+            <div>
+              <label className="font-semibold block mb-1 text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                <span>Foto Bukti / Dokumen Lampiran</span>
+                <span className="text-[10px] text-muted-foreground font-normal">Maks 15MB</span>
+              </label>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*,application/pdf"
+                className="hidden"
+              />
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="h-8 text-xs flex items-center gap-1.5 border-dashed border-blue-300 bg-blue-50/50 hover:bg-blue-100/60 text-blue-700"
+                >
+                  <Camera className="size-3.5" />
+                  <span>{isUploading ? 'Mengunggah...' : 'Pilih Foto / Dokumen'}</span>
+                </Button>
+              </div>
+
+              {formAttachments.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {formAttachments.map((att, idx) => {
+                    const resolved = resolveUploadUrl(att.url)
+                    const isImg = att.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(att.name)
+
+                    return (
+                      <div
+                        key={idx}
+                        className="relative p-1.5 rounded-lg border border-border/80 bg-slate-50 dark:bg-slate-950 flex items-center gap-2 group"
+                      >
+                        {isImg ? (
+                          <img
+                            src={resolved}
+                            alt={att.name}
+                            className="size-10 object-cover rounded border border-border/60 shrink-0"
+                          />
+                        ) : (
+                          <div className="size-10 rounded bg-slate-200 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                            <FileText className="size-5 text-slate-500" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-medium truncate text-slate-800 dark:text-slate-200">
+                            {att.name}
+                          </p>
+                          <span className="text-[9px] text-muted-foreground block">
+                            {Math.round(att.size / 1024)} KB
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachment(idx)}
+                          className="size-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
             <DialogFooter className="pt-2 flex flex-row gap-2 justify-end">
               <Button
                 type="button"
@@ -1270,6 +1458,43 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 9. Dialog: LIGHTBOX / IMAGE PREVIEW POPUP */}
+      {lightboxImage && (
+        <Dialog open={Boolean(lightboxImage)} onOpenChange={(open) => !open && setLightboxImage(null)}>
+          <DialogContent className="max-w-xl w-[95vw] p-2 rounded-2xl bg-black/95 text-white border-slate-800">
+            <div className="flex items-center justify-between p-2 border-b border-slate-800 text-xs">
+              <span className="font-semibold truncate max-w-[70%]">{lightboxImage.name}</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={lightboxImage.url}
+                  download={lightboxImage.name}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-1 text-[11px]"
+                >
+                  <Download className="size-3.5" />
+                  <span>Unduh</span>
+                </a>
+                <button
+                  onClick={() => setLightboxImage(null)}
+                  className="p-1 rounded-full hover:bg-slate-800 text-slate-300"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-2 flex items-center justify-center min-h-[50vh] max-h-[75vh] overflow-hidden">
+              <img
+                src={lightboxImage.url}
+                alt={lightboxImage.name}
+                className="max-h-[70vh] max-w-full object-contain rounded-lg"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
