@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   ResponsiveContainer,
   PieChart,
@@ -105,7 +106,26 @@ interface WorkspaceProps {
   categoryStats: CategoryStatItem[]
   siteSummary: SiteSummaryItem[]
   sites: Array<{ id: number; name: string }>
-  categories: Array<{ id: number; code: string; name: string; color: string; default_sla_hours: number }>
+  categories: Array<{
+    id: number
+    code: string
+    name: string
+    color: string
+    default_sla_hours: number
+    default_priority?: string
+    default_assigned_employees?: any[]
+  }>
+  templates?: Array<{
+    id: number
+    template_name: string
+    title_template: string
+    description_template: string
+    priority: string
+    sla_hours: number
+    assigned_employees: any[]
+    category_id: number
+    category_name: string
+  }>
   employees: Array<{ id: number; name: string; employee_sn: string; role: string }>
   currentEmployee: { id: number; name: string; email: string; role?: string }
   isAdmin?: boolean
@@ -146,6 +166,7 @@ export function ExcellenceTroubleshootWorkspace({
   siteSummary,
   sites,
   categories,
+  templates = [],
   employees,
   currentEmployee,
   isAdmin = false,
@@ -161,6 +182,7 @@ export function ExcellenceTroubleshootWorkspace({
   const [selectedSiteFilter, setSelectedSiteFilter] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('table')
   const [showAnalytics, setShowAnalytics] = useState(true)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom')
 
   // Selected Ticket for Inspector Panel
   const defaultSelected =
@@ -357,6 +379,40 @@ export function ExcellenceTroubleshootWorkspace({
     } finally {
       setIsUploadingPhoto(false)
       if (e.target) e.target.value = ''
+    }
+  }
+
+  // Quick template selection handler
+  const handleSelectTemplate = (tplId: string) => {
+    setSelectedTemplateId(tplId)
+    if (tplId === 'custom') return
+    const tpl = templates.find((t) => String(t.id) === tplId)
+    if (!tpl) return
+    setFormTitle(tpl.title_template)
+    setFormDescription(tpl.description_template || '')
+    setFormCategory(tpl.category_name)
+    setFormPriority((tpl.priority as any) || 'sedang')
+    const assignedIds = (tpl.assigned_employees || []).map((e: any) => String(e.id))
+    if (assignedIds.length > 0) {
+      setFormAssignedPicIds(assignedIds)
+    }
+    toast.info(`Template "${tpl.template_name}" diterapkan: teknisi & judul otomatis terisi!`)
+  }
+
+  // Category change handler with auto-fill routing
+  const handleCategoryChange = (catName: string) => {
+    setFormCategory(catName)
+    const cat = categories.find((c) => c.name === catName)
+    if (cat) {
+      if (cat.default_priority) {
+        setFormPriority(cat.default_priority as any)
+      }
+      const defaultPics = cat.default_assigned_employees || []
+      if (Array.isArray(defaultPics) && defaultPics.length > 0) {
+        const picIds = defaultPics.map((e: any) => String(e.id))
+        setFormAssignedPicIds(picIds)
+        toast.info(`Kategori ${catName}: ${picIds.length} teknisi PIC otomatis terpilih.`)
+      }
     }
   }
 
@@ -676,6 +732,18 @@ export function ExcellenceTroubleshootWorkspace({
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-xs font-semibold text-slate-700 bg-white border-slate-200 hover:bg-slate-50"
+          >
+            <Link href="/dashboard/helpdesk/settings">
+              <IconSettings className="size-4 text-slate-500" />
+              Pengaturan Routing &amp; Template
+            </Link>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -1488,6 +1556,28 @@ export function ExcellenceTroubleshootWorkspace({
         maxWidth="lg"
       >
         <div className="flex flex-col gap-3 py-2 text-xs">
+          {/* Quick Problem Template Selector */}
+          {templates.length > 0 && (
+            <HeroFormField
+              label="Pilih Template Cepat (Opsional)"
+              description="Pilih template kendala untuk otomatis mengisi judul, prioritas, deskripsi, dan teknisi PIC"
+            >
+              <Select value={selectedTemplateId} onValueChange={(tplId) => handleSelectTemplate(tplId)}>
+                <SelectTrigger className="h-9 text-xs bg-blue-50/40 border-blue-200">
+                  <SelectValue placeholder="Pilih Template Kendala Siap Pakai..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">-- Tanpa Template (Isi Manual) --</SelectItem>
+                  {templates.map((tpl) => (
+                    <SelectItem key={tpl.id} value={String(tpl.id)}>
+                      {tpl.template_name} ({tpl.category_name})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HeroFormField>
+          )}
+
           <HeroFormField label="Judul Kendala *" description="Deskripsi singkat masalah yang ditemukan">
             <HeroInput
               value={formTitle}
@@ -1499,7 +1589,7 @@ export function ExcellenceTroubleshootWorkspace({
 
           <div className="grid grid-cols-2 gap-3">
             <HeroFormField label="Kategori Temuan *">
-              <Select value={formCategory} onValueChange={setFormCategory}>
+              <Select value={formCategory} onValueChange={handleCategoryChange}>
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue />
                 </SelectTrigger>

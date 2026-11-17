@@ -87,6 +87,7 @@ export default async function HeroHelpdeskPage({ searchParams }: PageProps) {
             siteSummary={troubleshootData.siteSummary}
             sites={troubleshootData.sites}
             categories={troubleshootData.categories}
+            templates={(troubleshootData as any).templates || []}
             employees={troubleshootData.employees}
             currentEmployee={{
               id: currentEmployee.id,

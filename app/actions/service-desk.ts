@@ -263,11 +263,22 @@ export async function getTroubleshootDashboardData(filter?: {
       mttrAvgHours: row.avg_mttr ? parseFloat(row.avg_mttr) : null,
     }))
 
-    // 5. Fetch Master Filters (Sites, Categories, Technicians)
-    const [sitesList, categoriesList, employeesList] = await Promise.all([
+    // 5. Fetch Master Filters (Sites, Categories, Technicians, Templates)
+    const [sitesList, categoriesList, employeesList, templatesList] = await Promise.all([
       c.query('SELECT id, name FROM hero_sites ORDER BY name ASC'),
-      c.query('SELECT id, code, name, color, default_sla_hours FROM hero_service_desk_categories WHERE is_active = true ORDER BY name ASC'),
-      c.query('SELECT id, name, employee_sn, role FROM hero_employees WHERE is_active = true ORDER BY name ASC LIMIT 100'),
+      c.query(
+        'SELECT id, code, name, color, default_sla_hours, default_priority, default_assigned_employees FROM hero_service_desk_categories WHERE is_active = true ORDER BY name ASC'
+      ),
+      c.query(
+        'SELECT id, name, employee_sn, role FROM hero_employees WHERE is_active = true ORDER BY name ASC LIMIT 100'
+      ),
+      c.query(`
+        SELECT t.*, c.name as category_name
+        FROM hero_service_desk_templates t
+        JOIN hero_service_desk_categories c ON t.category_id = c.id
+        WHERE t.is_active = true
+        ORDER BY t.template_name ASC
+      `),
     ])
 
     return {
@@ -287,6 +298,7 @@ export async function getTroubleshootDashboardData(filter?: {
       sites: sitesList.rows,
       categories: categoriesList.rows,
       employees: employeesList.rows,
+      templates: templatesList.rows,
     }
   } catch (error: any) {
     console.error('Error fetching troubleshoot dashboard data:', error)
