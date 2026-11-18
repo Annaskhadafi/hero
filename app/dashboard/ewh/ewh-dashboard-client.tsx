@@ -353,11 +353,15 @@ export function EwhDashboardClient({
     })
   }, [selectedDayDetail, rowsByDay, daySearchQuery, dayStatusFilter])
 
-  // Calculate live matrix with customized powerman if changed
+  // Calculate live matrix: kolom durasiKerjaHours adalah total jam seluruh personil pada hari itu (jangan dibagi dulu).
+  // Baris paling bawah baru memakai Formula Pembagi Kapasitas Standar Tambang (= SUM / 22 / Powerman).
   const liveMatrix = useMemo(() => {
     return monthlyMatrixData.matrix.map((r) => {
-      const ewhRatio = currentPowerman > 0 ? (r.durasiKerjaHours / (22 * currentPowerman)) * 100 : 0
-      const ewhHoursPerPerson = currentPowerman > 0 ? Math.round((r.durasiKerjaHours / 22 / currentPowerman) * 100) / 100 : 0
+      const effectiveWorkers = r.workerCount || currentPowerman || 1
+      const ewhHoursPerPerson = r.durasiKerjaHours > 0 && effectiveWorkers > 0
+        ? Math.round((r.durasiKerjaHours / effectiveWorkers) * 100) / 100
+        : 0
+      const ewhRatio = ewhHoursPerPerson > 0 ? Math.round((ewhHoursPerPerson / 8.0) * 10000) / 100 : 0
       return {
         ...r,
         ewhHoursPerPerson,
@@ -366,12 +370,18 @@ export function EwhDashboardClient({
     })
   }, [monthlyMatrixData.matrix, currentPowerman])
 
-  // Live average EWH: =SUM(Durasi Kerja 1..31) / 22 / Powerman
+  // Total jam akumulasi bulanan: Total Durasi Aktivitas = SUM(Durasi Kerja 1..31)
+  const totalDurasiHoursSum = useMemo(() => {
+    return liveMatrix.reduce((sum, r) => sum + r.durasiKerjaHours, 0)
+  }, [liveMatrix])
+
+  // Formula Standar Tambang:
+  // EWH (Jam/Orang) = Total Durasi Aktivitas / (Shift Kapasitas (22 Jam) × Powerman)
   const liveEwhAverage = useMemo(() => {
-    const totalHours = liveMatrix.reduce((sum, r) => sum + r.durasiKerjaHours, 0)
-    if (currentPowerman <= 0) return 0
-    return Math.round((totalHours / 22 / currentPowerman) * 10) / 10
-  }, [liveMatrix, currentPowerman])
+    const totalCapacity = 22 * currentPowerman
+    if (totalCapacity <= 0) return 0
+    return Math.round((totalDurasiHoursSum / totalCapacity) * 10) / 10
+  }, [totalDurasiHoursSum, currentPowerman])
 
   // Matrix Hover Column Info Type
   type MatrixHoverColumnInfo =
@@ -2256,8 +2266,81 @@ export function EwhDashboardClient({
                             <td className="py-2.5 px-2 border-r border-emerald-600">{monthlyMatrixData.sumRow.cleanUp}</td>
                             <td className="py-2.5 px-2 border-r border-emerald-600">{monthlyMatrixData.sumRow.maintenanceRim}</td>
                             <td className="py-2.5 px-2 border-r border-emerald-600">{monthlyMatrixData.sumRow.retorque}</td>
-                            <td className="py-2.5 px-3 font-mono font-black text-slate-950 text-right">
-                              {liveEwhAverage.toFixed(1)}
+                            <td className="py-2 px-3 font-mono font-black text-slate-950 text-right cursor-pointer hover:bg-emerald-300 transition-colors">
+                              <HoverCard openDelay={40} closeDelay={100}>
+                                <HoverCardTrigger asChild>
+                                  <div
+                                    onClick={() =>
+                                      handleOpenActivityDetail('durasiKerjaHours', {
+                                        title: 'Akumulasi Durasi Jam Kerja Bulanan',
+                                        scopeLabel: 'Formula Standar Tambang (SUM / 22 / Powerman)',
+                                        totalVolume: totalDurasiHoursSum,
+                                        isDurasiKerja: true,
+                                      })
+                                    }
+                                    className="w-full flex flex-col items-end leading-tight"
+                                  >
+                                    <span className="text-[12.5px] font-black">{liveEwhAverage.toFixed(1)}</span>
+                                    <span className="text-[8.5px] font-semibold text-emerald-950/80 font-sans tracking-tight">
+                                      Durasi ÷ (22 × {currentPowerman})
+                                    </span>
+                                  </div>
+                                </HoverCardTrigger>
+                                <HoverCardContent
+                                  side="top"
+                                  align="end"
+                                  sideOffset={8}
+                                  className="w-84 p-0 rounded-xl border border-emerald-300 shadow-xl bg-white overflow-hidden z-50 text-left"
+                                >
+                                  <div className="p-3 bg-emerald-50 border-b border-emerald-200">
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                      <span className="text-[10px] font-mono font-bold bg-emerald-600 text-white px-1.5 py-0.5 rounded">
+                                        Standar Tambang
+                                      </span>
+                                      <span className="text-xs font-bold text-emerald-950">
+                                        Formula EWH (Jam/Orang)
+                                      </span>
+                                    </div>
+                                    <div className="bg-white border border-emerald-200 rounded-lg p-2 text-center text-xs font-mono font-bold text-emerald-900 shadow-2xs">
+                                      <div className="border-b border-emerald-300 pb-1 mb-1">
+                                        Total Durasi Aktivitas
+                                      </div>
+                                      <div>
+                                        Shift Kapasitas (22 Jam) × Powerman ({currentPowerman} Orang)
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="p-3 space-y-2 text-xs">
+                                    <div className="flex items-center justify-between text-slate-600 border-b border-slate-100 pb-1.5">
+                                      <span>Total Durasi Aktivitas:</span>
+                                      <strong className="font-mono text-slate-900">{totalDurasiHoursSum.toFixed(2)} Jam</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between text-slate-600 border-b border-slate-100 pb-1.5">
+                                      <span>Shift Kapasitas:</span>
+                                      <strong className="font-mono text-slate-900">22 Jam (2 Shift/Hari)</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between text-slate-600 border-b border-slate-100 pb-1.5">
+                                      <span>Powerman ({monthlyMatrixData.siteName}):</span>
+                                      <strong className="font-mono text-slate-900">{currentPowerman} Orang</strong>
+                                    </div>
+                                    <div className="flex items-center justify-between text-slate-600 border-b border-slate-100 pb-1.5">
+                                      <span>Total Kapasitas Penyebut:</span>
+                                      <strong className="font-mono text-slate-900">
+                                        22 × {currentPowerman} = {22 * currentPowerman} Jam
+                                      </strong>
+                                    </div>
+                                    <div className="flex items-center justify-between bg-emerald-100/70 p-2.5 rounded-lg text-emerald-950">
+                                      <span className="font-semibold">EWH (Jam/Orang):</span>
+                                      <strong className="text-sm font-mono font-black text-emerald-800">
+                                        {liveEwhAverage.toFixed(1)} Jam/Orang
+                                      </strong>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 italic pt-0.5 text-center">
+                                      Klik untuk melihat kontributor total durasi aktivitas bulanan
+                                    </p>
+                                  </div>
+                                </HoverCardContent>
+                              </HoverCard>
                             </td>
                           </tr>
                         </tbody>

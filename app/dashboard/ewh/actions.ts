@@ -1968,8 +1968,13 @@ export async function getEwhSiteMonthlyMatrixAction(
       totalDurasiHoursSum += durasiKerjaHours
     }
 
-    const ewhRatio = powerman > 0 ? (durasiKerjaHours / (shiftHours * powerman)) * 100 : 0
-    const ewhHoursPerPerson = powerman > 0 ? Math.round((durasiKerjaHours / shiftHours / powerman) * 100) / 100 : 0
+    const effectiveWorkers = dayWorkers.size || (durasiKerjaHours > 0 ? powerman : 1)
+    // Kolom durasiKerjaHours adalah total jam seluruh personil pada hari itu (jangan dibagi dulu).
+    // Rata-rata per orang pada hari ini dihitung terhadap personil aktif (tanpa dibagi 22 standar tambang bulanan).
+    const ewhHoursPerPerson = durasiKerjaHours > 0 && effectiveWorkers > 0
+      ? Math.round((durasiKerjaHours / effectiveWorkers) * 100) / 100
+      : 0
+    const ewhRatio = ewhHoursPerPerson > 0 ? Math.round((ewhHoursPerPerson / 8.0) * 10000) / 100 : 0
 
     matrix.push({
       day,
@@ -2189,9 +2194,9 @@ export async function getEwhSiteMonthlyMatrixAction(
     activeMonthsCount: ytdActiveMonths,
   }
 
-  // 8. FORMULA EKSPLISIT USER: =SUM(O6:O36) / 22 / Powerman
+  // 8. FORMULA STANDAR TAMBANG: EWH (Jam/Orang) = Total Durasi Aktivitas / (Shift Kapasitas (22 Jam) * Powerman)
   const monthlyEwhAverage = powerman > 0
-    ? Math.round((totalDurasiHoursSum / shiftHours / powerman) * 10) / 10
+    ? Math.round((totalDurasiHoursSum / (shiftHours * powerman)) * 10) / 10
     : 0
 
   const monthlyEfficiencyPercent = powerman > 0 && activeWorkDaysCount > 0

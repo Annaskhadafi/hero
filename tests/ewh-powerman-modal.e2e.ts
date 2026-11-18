@@ -7,12 +7,13 @@ test('verifies ewh powerman manpower list modal dialog across sites', async ({ a
   await loginToHero(app, screen, browser, '/dashboard/ewh')
 
   // 2. Wait for EWH dashboard Powerman card to be visible
-  const powermanCard = screen.getByTestId('powerman-card-btn', { visible: true })
-  await expect(powermanCard).toBeVisible()
+  await expect(screen.getByTestId('powerman-card-btn', { visible: true })).toBeVisible()
   await app.screenshot('01-ewh-dashboard-loaded')
+  await new Promise((r) => setTimeout(r, 800))
 
   // 3. Click Powerman card to open dialog
-  await powermanCard.click()
+  const powermanBtn = screen.getByTestId('powerman-card-btn', { visible: true })
+  await powermanBtn.click()
 
   // 4. Verify modal title and manpower table are visible
   const modalTitle = screen.getByText(/Daftar Manpower Powerman/i, { visible: true })
@@ -98,8 +99,8 @@ test('verifies ewh powerman manpower list modal dialog across sites', async ({ a
     await new Promise((r) => setTimeout(r, 1000))
     await app.screenshot('10-ewh-rekap-per-team-tab')
 
-    const teamDetailBtn = screen.getByRole('button', { name: /Lihat Detail Tanggal & Aktivitas Tim/i, visible: true })
-    if (teamDetailBtn) {
+    const teamDetailBtn = browser.locator('button:has-text("Lihat Detail Tanggal & Aktivitas Tim")').first()
+    if (await teamDetailBtn.isVisible().catch(() => false)) {
       await teamDetailBtn.click().catch(() => {})
       await new Promise((r) => setTimeout(r, 1000))
       await app.screenshot('11-ewh-team-detailing-modal')
