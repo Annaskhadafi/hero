@@ -1452,6 +1452,15 @@ export interface EwhYtdSummary {
   activeMonthsCount: number
 }
 
+export interface EwhServicemanInfo {
+  id: number
+  name: string
+  employeeSn: string
+  jobTitle: string
+  section: string
+  department: string
+}
+
 export interface EwhSiteMonthlyMatrixResult {
   success: boolean
   siteId: number | null
@@ -1461,6 +1470,7 @@ export interface EwhSiteMonthlyMatrixResult {
   period: string
   powerman: number
   defaultPowerman: number
+  servicemen?: EwhServicemanInfo[]
   shiftHours: number // 22 (2 shift)
   matrix: EwhMatrixDayRow[]
   weeklyBreakdown: EwhWeeklyBreakdownItem[]
@@ -1577,6 +1587,7 @@ export async function getEwhSiteMonthlyMatrixAction(
   const rawTargetEmployees = await db
     .select({
       id: employees.id,
+      employeeSn: employees.employeeSn,
       siteId: employees.siteId,
       departmentId: employees.departmentId,
       department: employees.department,
@@ -1587,6 +1598,7 @@ export async function getEwhSiteMonthlyMatrixAction(
     })
     .from(employees)
     .where(and(...empWhere))
+    .orderBy(employees.name)
 
   // 2. Query Year Sessions & Direct Activities for YTD & Current Month + Month Attendance
   const sessionWhere = [
@@ -2210,6 +2222,14 @@ export async function getEwhSiteMonthlyMatrixAction(
     period,
     powerman,
     defaultPowerman,
+    servicemen: targetEmployees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      employeeSn: e.employeeSn || '',
+      jobTitle: e.jobTitle || 'Serviceman',
+      section: e.section || '',
+      department: e.department || '',
+    })),
     shiftHours,
     matrix,
     weeklyBreakdown,

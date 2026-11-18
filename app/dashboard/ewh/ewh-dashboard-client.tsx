@@ -55,6 +55,7 @@ import {
   createEwhTeamAction,
   updateEwhTeamAction,
   deleteEwhTeamAction,
+  type EwhServicemanInfo,
   type EwhMatrixDayRow,
   type EwhSiteMonthlyMatrixResult,
   type EwhWeeklyBreakdownItem,
@@ -231,6 +232,26 @@ export function EwhDashboardClient({
   // Search & Filter state for individual/team
   const [search, setSearch] = useState('')
   const [sectionFilter, setSectionFilter] = useState('all')
+
+  // Powerman Manpower Dialog State
+  const [isPowermanModalOpen, setIsPowermanModalOpen] = useState(false)
+  const [powermanSearch, setPowermanSearch] = useState('')
+
+  const servicemenList: EwhServicemanInfo[] = useMemo(() => {
+    return monthlyMatrixData.servicemen || []
+  }, [monthlyMatrixData.servicemen])
+
+  const filteredServicemen = useMemo(() => {
+    if (!powermanSearch.trim()) return servicemenList
+    const q = powermanSearch.toLowerCase()
+    return servicemenList.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.employeeSn.toLowerCase().includes(q) ||
+        s.jobTitle.toLowerCase().includes(q) ||
+        s.section.toLowerCase().includes(q)
+    )
+  }, [servicemenList, powermanSearch])
 
   // PDF Preview Modal State
   const [pdfPreviewState, setPdfPreviewState] = useState<{
@@ -1414,20 +1435,22 @@ export function EwhDashboardClient({
           </div>
 
           {/* Powerman Metric (Master Data Serviceman) */}
-          <div
-            className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 transition-all cursor-help hover:bg-blue-50/50 hover:border-blue-200"
-            title="Powerman khusus personel Service Operation (Serviceman). Posisi Technical dan Repair tidak diikutsertakan agar pembagi EWH & Utilitas akurat."
+          <button
+            type="button"
+            onClick={() => setIsPowermanModalOpen(true)}
+            className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 transition-all cursor-pointer hover:bg-blue-50 hover:border-blue-300 text-left"
+            title="Klik untuk melihat daftar nama manpower Powerman"
           >
             <Users className="size-3.5 text-blue-600" />
             <span className="text-xs font-medium text-slate-600">Powerman:</span>
             <span className="text-xs font-black text-slate-900">{currentPowerman} Orang</span>
             <span
-              className="text-[10px] font-bold text-blue-700 bg-blue-100/70 border border-blue-200 rounded px-1.5 py-0.5 cursor-help"
-              title="Khusus Manpower Service Operation (Serviceman)"
+              className="text-[10px] font-bold text-blue-700 bg-blue-100/70 border border-blue-200 rounded px-1.5 py-0.5"
+              title="Khusus Manpower Service Operation (Serviceman) - Klik untuk melihat daftar"
             >
               Service Only
             </span>
-          </div>
+          </button>
 
           {/* Export Actions (Excel & PDF) */}
           <div className="flex items-center gap-2">
@@ -1505,15 +1528,24 @@ export function EwhDashboardClient({
         <div className="space-y-6">
           {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="rounded-2xl border-slate-200/80 shadow-2xs">
-              <CardContent className="p-4 flex items-center gap-3.5">
-                <div className="size-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black">
-                  <Users className="size-5" />
+            <Card
+              onClick={() => setIsPowermanModalOpen(true)}
+              className="rounded-2xl border-slate-200/80 shadow-2xs hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group"
+              title="Klik untuk melihat daftar nama manpower Powerman"
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3.5">
+                  <div className="size-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <Users className="size-5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Powerman ({monthlyMatrixData.departmentName})</p>
+                    <p className="text-xl font-black text-slate-900 mt-0.5">{currentPowerman} <span className="text-xs font-semibold text-slate-500">Orang</span></p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Powerman ({monthlyMatrixData.departmentName})</p>
-                  <p className="text-xl font-black text-slate-900 mt-0.5">{currentPowerman} <span className="text-xs font-semibold text-slate-500">Orang</span></p>
-                </div>
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full group-hover:bg-blue-100 transition-all">
+                  Lihat &rarr;
+                </span>
               </CardContent>
             </Card>
 
@@ -1662,12 +1694,15 @@ export function EwhDashboardClient({
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span
-                        className="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md cursor-help"
-                        title="Powerman khusus Service Operation (Serviceman) — Technical & Repair dikecualikan"
+                      <button
+                        type="button"
+                        onClick={() => setIsPowermanModalOpen(true)}
+                        className="text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 px-2.5 py-1 rounded-md cursor-pointer transition-all inline-flex items-center gap-1.5"
+                        title="Klik untuk melihat rincian nama 17 orang Powerman"
                       >
+                        <Users className="size-3 text-blue-600" />
                         Powerman: {currentPowerman} Orang (Service)
-                      </span>
+                      </button>
                     </div>
                   </CardHeader>
 
@@ -2243,13 +2278,15 @@ export function EwhDashboardClient({
                   </button>
                 </div>
 
-                <Badge
-                  variant="outline"
-                  className="text-xs font-bold text-slate-600 bg-slate-50 cursor-help"
-                  title="Powerman khusus Service Operation (Serviceman)"
+                <button
+                  type="button"
+                  onClick={() => setIsPowermanModalOpen(true)}
+                  className="text-xs font-bold text-slate-600 bg-slate-50 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 border border-slate-200 px-2.5 py-1 rounded-md cursor-pointer transition-all inline-flex items-center gap-1.5"
+                  title="Klik untuk melihat rincian nama 17 orang Powerman"
                 >
+                  <Users className="size-3 text-blue-600" />
                   Powerman: {currentPowerman} Orang (Service)
-                </Badge>
+                </button>
                 <Badge className="bg-[#003461] text-white text-xs font-bold">
                   {viewMode.toUpperCase()}
                 </Badge>
@@ -3586,6 +3623,122 @@ export function EwhDashboardClient({
             <Button size="sm" variant="outline" onClick={handleClosePdfPreview} className="rounded-xl cursor-pointer">
               Tutup
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Powerman Manpower List Dialog */}
+      <Dialog open={isPowermanModalOpen} onOpenChange={setIsPowermanModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 overflow-hidden rounded-2xl bg-white border border-slate-200 shadow-2xl">
+          <DialogHeader className="p-5 border-b border-slate-100 bg-slate-50/80 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0">
+                <Users className="size-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-black text-slate-900">
+                  Daftar Manpower Powerman ({currentPowerman} Orang)
+                </DialogTitle>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {monthlyMatrixData.siteName} &bull; Periode {period} &bull; Khusus Service Operation (Serviceman)
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="p-3.5 border-b border-slate-100 bg-white flex items-center gap-3 shrink-0">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+              <Input
+                value={powermanSearch}
+                onChange={(e) => setPowermanSearch(e.target.value)}
+                placeholder="Cari nama, NIK/SN, atau seksi kerja..."
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+            {powermanSearch && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPowermanSearch('')}
+                className="h-9 px-2 text-xs"
+              >
+                Reset
+              </Button>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-xs border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-2.5 px-3 text-center w-12 border-r border-slate-200">No</th>
+                    <th className="py-2.5 px-3 text-left w-24 border-r border-slate-200">NIK / SN</th>
+                    <th className="py-2.5 px-3 text-left border-r border-slate-200">Nama Karyawan</th>
+                    <th className="py-2.5 px-3 text-left border-r border-slate-200">Jabatan</th>
+                    <th className="py-2.5 px-3 text-left border-r border-slate-200">Seksi (Section)</th>
+                    <th className="py-2.5 px-3 text-center w-24">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredServicemen.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-slate-400">
+                        {servicemenList.length === 0
+                          ? 'Daftar rincian manpower dapat dilihat pada tab "Rekap Individu Karyawan".'
+                          : 'Tidak ada data karyawan yang cocok dengan pencarian.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredServicemen.map((emp, i) => (
+                      <tr key={emp.id} className="hover:bg-blue-50/40 transition-colors">
+                        <td className="py-2 px-3 text-center text-slate-400 font-medium border-r border-slate-100">{i + 1}</td>
+                        <td className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100">{emp.employeeSn || '-'}</td>
+                        <td className="py-2 px-3 font-bold text-slate-900 border-r border-slate-100">{emp.name}</td>
+                        <td className="py-2 px-3 text-slate-600 border-r border-slate-100">{emp.jobTitle}</td>
+                        <td className="py-2 px-3 text-slate-600 border-r border-slate-100">{emp.section || '-'}</td>
+                        <td className="py-2 px-3 text-center">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Aktif
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 p-3 rounded-xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-800 leading-relaxed">
+              <strong>💡 Catatan Operasional:</strong> Powerman EWH khusus menghitung personel <em>Service Operation (Serviceman)</em>. Posisi Technical Engineer, PJO, dan Repairman otomatis dikecualikan agar pembagi rasio EWH dan Utilitas murni mencerminkan aktivitas serviceman di lapangan.
+            </div>
+          </div>
+
+          <DialogFooter className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between sm:justify-between shrink-0">
+            <span className="text-xs text-slate-500">
+              Total: <strong>{filteredServicemen.length}</strong> orang
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs cursor-pointer"
+                onClick={() => {
+                  setIsPowermanModalOpen(false)
+                  setActiveTab('individual')
+                }}
+              >
+                Buka Rekap Individu &rarr;
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs bg-[#003461] hover:bg-[#002447] text-white cursor-pointer"
+                onClick={() => setIsPowermanModalOpen(false)}
+              >
+                Tutup
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
