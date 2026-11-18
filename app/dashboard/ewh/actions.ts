@@ -1499,6 +1499,7 @@ export interface EwhSiteMonthlyMatrixResult {
     shortName: string
     value: number
     color?: string
+    actKey?: string
   }>
   allSites: Array<{ id: number; name: string }>
   allDepartments: Array<{ id: number; code: string; name: string }>
@@ -2199,19 +2200,19 @@ export async function getEwhSiteMonthlyMatrixAction(
 
   // Chart Data format for "UTILITIES & EWH [SITE_NAME]"
   const chartData = [
-    { name: 'P5M/Safety Talk', shortName: 'P5M/Safety Talk', value: sumCounts.p5m },
-    { name: 'Check Pressure/Day', shortName: 'Check Pressure/Day', value: sumCounts.checkPressure },
-    { name: 'Adjust Pressure/Tire', shortName: 'Adjust Pressure/Tire', value: sumCounts.adjustPressure },
-    { name: 'Reseal/Tire', shortName: 'Reseal/Tire', value: sumCounts.reseal },
-    { name: 'Assembly/Tire', shortName: 'Assembly/Tire', value: sumCounts.assembly },
-    { name: 'Disassembly/Tire', shortName: 'Disassembly/Tire', value: sumCounts.disassembly },
-    { name: 'Mounting/Tire', shortName: 'Mounting/Tire', value: sumCounts.mounting },
-    { name: 'Dismounting/Tire', shortName: 'Dismounting/Tire', value: sumCounts.dismounting },
-    { name: 'PM Check/Unit', shortName: 'PM Check/Unit', value: sumCounts.pmCheck },
-    { name: 'Clean Up/Day', shortName: 'Clean Up/Day', value: sumCounts.cleanUp },
-    { name: 'Maintenance Rim', shortName: 'Maintenance Rim', value: sumCounts.maintenanceRim },
-    { name: 'Retorque/Tire', shortName: 'Retorque/Tire', value: sumCounts.retorque },
-    { name: 'Durasi Kerja/Hours', shortName: 'Durasi Kerja/Hours', value: monthlyEwhAverage, color: '#10b981' },
+    { name: 'P5M/Safety Talk', shortName: 'P5M/Safety Talk', value: sumCounts.p5m, actKey: 'p5m' },
+    { name: 'Check Pressure/Day', shortName: 'Check Pressure/Day', value: sumCounts.checkPressure, actKey: 'checkPressure' },
+    { name: 'Adjust Pressure/Tire', shortName: 'Adjust Pressure/Tire', value: sumCounts.adjustPressure, actKey: 'adjustPressure' },
+    { name: 'Reseal/Tire', shortName: 'Reseal/Tire', value: sumCounts.reseal, actKey: 'reseal' },
+    { name: 'Assembly/Tire', shortName: 'Assembly/Tire', value: sumCounts.assembly, actKey: 'assembly' },
+    { name: 'Disassembly/Tire', shortName: 'Disassembly/Tire', value: sumCounts.disassembly, actKey: 'disassembly' },
+    { name: 'Mounting/Tire', shortName: 'Mounting/Tire', value: sumCounts.mounting, actKey: 'mounting' },
+    { name: 'Dismounting/Tire', shortName: 'Dismounting/Tire', value: sumCounts.dismounting, actKey: 'dismounting' },
+    { name: 'PM Check/Unit', shortName: 'PM Check/Unit', value: sumCounts.pmCheck, actKey: 'pmCheck' },
+    { name: 'Clean Up/Day', shortName: 'Clean Up/Day', value: sumCounts.cleanUp, actKey: 'cleanUp' },
+    { name: 'Maintenance Rim', shortName: 'Maintenance Rim', value: sumCounts.maintenanceRim, actKey: 'maintenanceRim' },
+    { name: 'Retorque/Tire', shortName: 'Retorque/Tire', value: sumCounts.retorque, actKey: 'retorque' },
+    { name: 'Durasi Kerja/Hours', shortName: 'Durasi Kerja/Hours', value: monthlyEwhAverage, color: '#10b981', actKey: 'durasiKerjaHours' },
   ]
 
   return {
