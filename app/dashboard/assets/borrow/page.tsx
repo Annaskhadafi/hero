@@ -32,9 +32,7 @@ export default async function AssetBorrowPage() {
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-4 p-4 md:p-6">
         <AssetBorrowDashboard
-          initialItems={borrowsRes.items || []}
-          totalItems={borrowsRes.total || 0}
-          kpiStats={borrowsRes.kpi}
+          initialData={borrowsRes}
           masterAssets={formDataRes.assets || []}
           employees={formDataRes.employees || []}
         />

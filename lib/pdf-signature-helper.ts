@@ -86,6 +86,17 @@ export async function embedSignatureImage(
       }
     }
 
+    // S3 Object fallback for persistent S3 storage / proxy paths
+    try {
+      const { getS3ObjectForProxy } = await import('@/lib/s3-storage')
+      const s3Obj = await getS3ObjectForProxy(trimmed)
+      if (s3Obj?.body) {
+        const buf = Buffer.from(s3Obj.body)
+        const img = await embedImageBuffer(pdfDoc, buf)
+        if (img) return img
+      }
+    } catch {}
+
     // Remote HTTP / HTTPS URL fallback (e.g. S3 object or proxy endpoint)
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       try {

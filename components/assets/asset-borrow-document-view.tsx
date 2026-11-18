@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 export interface AssetBorrowDocumentData {
   borrowNumber: string
@@ -18,6 +19,9 @@ export interface AssetBorrowDocumentData {
   equipmentNotes?: string | null
   purpose: string
   returnNotes?: string | null
+  returnConditionNotes?: string | null
+  assetCondition?: string | null
+  returnPhotoUrls?: string[] | string | null
   submittedAt?: string | Date | null
   approvedAt?: string | Date | null
   approvals?: Array<{
@@ -131,7 +135,7 @@ export function AssetBorrowDocumentView({
   return (
     <div
       ref={containerRef}
-      className="print-area w-[297mm] min-w-[297mm] max-w-[297mm] min-h-[210mm] bg-white text-slate-900 border border-slate-300 p-8 shadow-md font-sans text-xs flex flex-col justify-between"
+      className="print-area w-[210mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 border border-slate-300 p-6 shadow-md font-sans text-xs flex flex-col justify-between"
       style={{ boxSizing: 'border-box' }}
     >
       <div>
@@ -273,6 +277,82 @@ export function AssetBorrowDocumentView({
               Peminjam bertanggung jawab penuh atas keamanan dan perawatan aset selama masa pinjam
             </span>
           </div>
+
+          {/* Konfirmasi Serah Terima & Pemeriksaan Pengembalian Fisik */}
+          {(doc.actualReturnDate || doc.returnNotes || doc.returnConditionNotes) && (() => {
+            let photos: string[] = []
+            if (Array.isArray(doc.returnPhotoUrls)) {
+              photos = doc.returnPhotoUrls.filter(Boolean)
+            } else if (typeof doc.returnPhotoUrls === 'string') {
+              try {
+                const parsed = JSON.parse(doc.returnPhotoUrls)
+                if (Array.isArray(parsed)) photos = parsed.filter(Boolean)
+                else if (typeof parsed === 'string' && parsed.trim()) photos = [parsed.trim()]
+              } catch {
+                if (doc.returnPhotoUrls.trim()) photos = [doc.returnPhotoUrls.trim()]
+              }
+            }
+
+            const condLabel = doc.assetCondition === 'DAMAGED'
+              ? 'Rusak (DAMAGED)'
+              : doc.assetCondition === 'NEEDS_REPAIR'
+              ? 'Perlu Servis / Perbaikan (NEEDS_REPAIR)'
+              : 'Normal & Berfungsi Baik (ACTIVE)'
+            const condColor = doc.assetCondition === 'DAMAGED'
+              ? 'text-rose-700 bg-rose-50 border-rose-200'
+              : doc.assetCondition === 'NEEDS_REPAIR'
+              ? 'text-amber-800 bg-amber-50 border-amber-200'
+              : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+
+            return (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/40 p-3 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 pb-2">
+                  <span className="text-[11px] font-bold tracking-wide uppercase text-slate-900">
+                    Konfirmasi Serah Terima & Pemeriksaan Fisik Pengembalian
+                  </span>
+                  <span className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded border ${condColor}`}>
+                    Kondisi: {condLabel}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 block">Waktu Pengembalian Fisik:</span>
+                    <span className="font-medium text-slate-900">{formatIndoDateTime(doc.actualReturnDate)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold text-slate-500 block">Catatan Peminjam:</span>
+                    <span className="text-slate-800 italic">{doc.returnNotes || '-'}</span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-[10px] font-semibold text-slate-500 block">Catatan Hasil Pemeriksaan Holder:</span>
+                    <span className="text-slate-800">{doc.returnConditionNotes || '-'}</span>
+                  </div>
+                </div>
+
+                {photos.length > 0 && (
+                  <div className="pt-2 border-t border-emerald-200/50">
+                    <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wide block mb-1.5">
+                      Lampiran Dokumentasi Foto Kondisi Fisik ({photos.length} Foto):
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {photos.map((p, idx) => (
+                        <div key={idx} className="group relative rounded border border-slate-200 bg-white p-1 overflow-hidden shadow-xs">
+                          <img
+                            src={resolveUploadUrl(p)}
+                            alt={`Foto Fisik #${idx + 1}`}
+                            className="h-28 w-full object-cover rounded transition-transform group-hover:scale-105"
+                          />
+                          <div className="mt-1 px-1 text-[9px] text-center font-medium text-slate-600 truncate">
+                            Foto #{idx + 1}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
       </div>
 

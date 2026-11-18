@@ -21,6 +21,7 @@ export const assetBorrows = pgTable('hero_asset_borrows', {
     .notNull()
     .references(() => employees.id, { onDelete: 'restrict' }),
   borrowerName: text('borrower_name').notNull(),
+  borrowerSignatureUrl: text('borrower_signature_url'),
   
   // Pemegang Saat Ini (Holder Asal yang Meminjamkan)
   holderEmployeeId: integer('holder_employee_id')
@@ -39,10 +40,15 @@ export const assetBorrows = pgTable('hero_asset_borrows', {
   expectedReturnDate: timestamp('expected_return_date'),
   actualReturnDate: timestamp('actual_return_date'),
   
-  // Catatan Pengembalian
+  // Catatan & Verifikasi Pengembalian (2 Langkah)
+  returnRequestDate: timestamp('return_request_date'),
   returnNotes: text('return_notes'),
+  returnPhotoUrls: text('return_photo_urls'), // JSON array string of physical photo URLs
+  returnConditionNotes: text('return_condition_notes'),
+  holderReturnSignatureUrl: text('holder_return_signature_url'),
+  holderReturnSignedAt: timestamp('holder_return_signed_at'),
   
-  // Status Alur: 'pending' | 'borrowed' | 'returned' | 'rejected' | 'cancelled' | 'needs_revision'
+  // Status Alur: 'pending' | 'borrowed' | 'pending_return' | 'returned' | 'rejected' | 'cancelled' | 'needs_revision'
   status: text('status').notNull().default('pending'),
   currentStepOrder: integer('current_step_order').notNull().default(1),
   lastRevertedByEmployeeId: integer('last_reverted_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
@@ -63,7 +69,22 @@ export const assetBorrows = pgTable('hero_asset_borrows', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })
 
-export const assetBorrowsRelations = relations(assetBorrows, ({ one }) => ({
+export const assetBorrowHistories = pgTable('hero_asset_borrow_histories', {
+  id: serial('id').primaryKey(),
+  assetBorrowId: integer('asset_borrow_id')
+    .notNull()
+    .references(() => assetBorrows.id, { onDelete: 'cascade' }),
+  action: text('action').notNull(), // 'submitted' | 'approved' | 'rejected' | 'needs_revision' | 'resubmitted' | 'return_requested' | 'returned' | 'cancelled'
+  actorEmployeeId: integer('actor_employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  actorName: text('actor_name').notNull(),
+  actorRole: text('actor_role').notNull(), // 'Peminjam' | 'Holder' | 'Super Admin' | 'Pemohon'
+  note: text('note'),
+  photoUrl: text('photo_url'),
+  signatureUrl: text('signature_url'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const assetBorrowsRelations = relations(assetBorrows, ({ one, many }) => ({
   asset: one(centralServiceAssets, {
     fields: [assetBorrows.assetId],
     references: [centralServiceAssets.id],
@@ -84,7 +105,21 @@ export const assetBorrowsRelations = relations(assetBorrows, ({ one }) => ({
     fields: [assetBorrows.applicantEmployeeId],
     references: [employees.id],
   }),
+  histories: many(assetBorrowHistories),
+}))
+
+export const assetBorrowHistoriesRelations = relations(assetBorrowHistories, ({ one }) => ({
+  borrow: one(assetBorrows, {
+    fields: [assetBorrowHistories.assetBorrowId],
+    references: [assetBorrows.id],
+  }),
+  actor: one(employees, {
+    fields: [assetBorrowHistories.actorEmployeeId],
+    references: [employees.id],
+  }),
 }))
 
 export type AssetBorrowRow = typeof assetBorrows.$inferSelect
 export type NewAssetBorrowRow = typeof assetBorrows.$inferInsert
+export type AssetBorrowHistoryRow = typeof assetBorrowHistories.$inferSelect
+export type NewAssetBorrowHistoryRow = typeof assetBorrowHistories.$inferInsert

@@ -15,6 +15,7 @@ export interface HeroStatusOption {
 
 export interface HeroStatusBadgeProps {
   status: string
+  label?: string
   editable?: boolean
   options?: HeroStatusOption[]
   onChange?: (newStatus: string) => void
@@ -23,6 +24,7 @@ export interface HeroStatusBadgeProps {
 
 export function HeroStatusBadge({
   status,
+  label,
   editable = false,
   options = [],
   onChange,
@@ -33,7 +35,7 @@ export function HeroStatusBadge({
   if (!editable || options.length === 0) {
     return (
       <div className={cn('inline-flex items-center', className)}>
-        <AdminStatusBadge status={status} />
+        <AdminStatusBadge status={status} label={label} />
       </div>
     )
   }
@@ -48,7 +50,7 @@ export function HeroStatusBadge({
             className
           )}
         >
-          <AdminStatusBadge status={status} />
+          <AdminStatusBadge status={status} label={label} />
           <ChevronDown className="size-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
         </button>
       </PopoverTrigger>

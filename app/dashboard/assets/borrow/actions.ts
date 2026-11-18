@@ -1,17 +1,38 @@
 'use server'
 
 import { db } from '@/db'
-import { assetBorrows, type AssetBorrowRow } from '@/db/schema/asset-borrow'
+import {
+  assetBorrows,
+  assetBorrowHistories,
+  type AssetBorrowRow,
+  type AssetBorrowHistoryRow,
+} from '@/db/schema/asset-borrow'
 import { centralServiceAssets } from '@/db/schema/central-service'
 import { employees, sites, masterDepartments, approvals } from '@/db/schema/hero'
+import { createNotificationEventForEmployee } from '@/lib/push-notifications'
 import { generateAssetBorrowPdf } from '@/lib/asset-borrow-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessContext, isSuperAdminRole } from '@/lib/hero-access'
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
-import { assetBorrowInputSchema, type AssetBorrowInput } from './schema'
-import { sendAssetRevisionRequestedEmail, sendAssetResubmittedEmail } from '@/lib/asset-approval-email'
+import {
+  assetBorrowInputSchema,
+  type AssetBorrowInput,
+  assetBorrowReturnRequestSchema,
+  type AssetBorrowReturnRequestInput,
+  assetBorrowConfirmReturnSchema,
+  type AssetBorrowConfirmReturnInput,
+} from './schema'
+import {
+  sendAssetBorrowSubmittedEmail,
+  sendAssetBorrowApprovedEmail,
+  sendAssetBorrowReturnRequestedEmail,
+  sendAssetBorrowReturnedEmail,
+  sendAssetRevisionRequestedEmail,
+  sendAssetResubmittedEmail,
+  sendAssetBorrowExtensionRequestedEmail,
+} from '@/lib/asset-approval-email'
 
 /**
  * Fetch Asset Borrow list with filter, pagination, and KPI statistics
@@ -30,7 +51,7 @@ export async function getAssetBorrows(params?: {
         message: 'Unauthorized',
         items: [],
         total: 0,
-        kpi: { total: 0, pending: 0, borrowed: 0, returned: 0 },
+        kpi: { total: 0, pending: 0, borrowed: 0, pendingReturn: 0, returned: 0 },
       }
     }
 
@@ -76,6 +97,7 @@ export async function getAssetBorrows(params?: {
         serialNumber: assetBorrows.serialNumber,
         borrowerEmployeeId: assetBorrows.borrowerEmployeeId,
         borrowerName: assetBorrows.borrowerName,
+        borrowerSignatureUrl: assetBorrows.borrowerSignatureUrl,
         holderEmployeeId: assetBorrows.holderEmployeeId,
         holderName: assetBorrows.holderName,
         equipmentNotes: assetBorrows.equipmentNotes,
@@ -83,7 +105,10 @@ export async function getAssetBorrows(params?: {
         borrowDate: assetBorrows.borrowDate,
         expectedReturnDate: assetBorrows.expectedReturnDate,
         actualReturnDate: assetBorrows.actualReturnDate,
+        returnRequestDate: assetBorrows.returnRequestDate,
         returnNotes: assetBorrows.returnNotes,
+        returnPhotoUrls: assetBorrows.returnPhotoUrls,
+        returnConditionNotes: assetBorrows.returnConditionNotes,
         status: assetBorrows.status,
         approvalNote: assetBorrows.approvalNote,
         approvedAt: assetBorrows.approvedAt,
@@ -120,6 +145,7 @@ export async function getAssetBorrows(params?: {
       total: 0,
       pending: 0,
       borrowed: 0,
+      pendingReturn: 0,
       returned: 0,
     }
 
@@ -127,6 +153,7 @@ export async function getAssetBorrows(params?: {
       kpi.total += r.count
       if (r.status === 'pending') kpi.pending += r.count
       if (r.status === 'borrowed') kpi.borrowed += r.count
+      if (r.status === 'pending_return') kpi.pendingReturn += r.count
       if (r.status === 'returned') kpi.returned += r.count
     }
 
@@ -142,11 +169,27 @@ export async function getAssetBorrows(params?: {
         (currentUserId && r.createdById === currentUserId)
       )
 
+      const isOverdue = Boolean(
+        r.status === 'borrowed' &&
+        r.expectedReturnDate &&
+        new Date(r.expectedReturnDate).getTime() < Date.now()
+      )
+      const overdueDays = isOverdue
+        ? Math.max(1, Math.floor((Date.now() - new Date(r.expectedReturnDate!).getTime()) / (1000 * 60 * 60 * 24)))
+        : 0
+
       return {
         ...r,
+        isOverdue,
+        overdueDays,
         canApprove: Boolean((r.status === 'pending') && (isHolder || isSuperAdmin)),
-        canReturn: Boolean((r.status === 'borrowed') && (isHolder || isBorrower || isSuperAdmin)),
-        canCancel: Boolean((r.status === 'pending') && (isCreator || isSuperAdmin)),
+        canRequestReturn: Boolean((r.status === 'borrowed') && (isBorrower || isSuperAdmin)),
+        canConfirmReturn: Boolean((r.status === 'pending_return') && (isHolder || isSuperAdmin)),
+        canReturn: Boolean(
+          ((r.status === 'borrowed') && (isBorrower || isSuperAdmin)) ||
+          ((r.status === 'pending_return') && (isHolder || isSuperAdmin))
+        ),
+        canCancel: Boolean((r.status === 'pending' || r.status === 'needs_revision') && (isCreator || isBorrower || isSuperAdmin)),
         canEditRevision: Boolean((r.status === 'needs_revision') && (isCreator || isBorrower || isSuperAdmin)),
         canDownload: Boolean(isBorrower || isCreator || isHolder || isSuperAdmin),
       }
@@ -157,6 +200,11 @@ export async function getAssetBorrows(params?: {
       items: mappedItems,
       total: count,
       kpi,
+      currentAuth: {
+        userId: currentUserId,
+        employeeId: currentEmpId,
+        isSuperAdmin,
+      },
     }
   } catch (error: any) {
     console.error('getAssetBorrows error:', error)
@@ -165,13 +213,13 @@ export async function getAssetBorrows(params?: {
       message: error?.message || 'Gagal memuat data peminjaman aset',
       items: [],
       total: 0,
-      kpi: { total: 0, pending: 0, borrowed: 0, returned: 0 },
+      kpi: { total: 0, pending: 0, borrowed: 0, pendingReturn: 0, returned: 0 },
     }
   }
 }
 
 /**
- * Fetch single Asset Borrow detail
+ * Fetch single Asset Borrow detail with full timeline history
  */
 export async function getAssetBorrowDetail(id: number) {
   try {
@@ -202,20 +250,46 @@ export async function getAssetBorrowDetail(id: number) {
       (currentUserId && borrow.createdById === currentUserId)
     )
 
+    // 1. Fetch approval steps
     const approvalSteps = await db
       .select()
       .from(approvals)
       .where(eq(approvals.assetBorrowId, id))
       .orderBy(approvals.level)
 
+    // 2. Fetch full chronological history
+    const histories = await db
+      .select()
+      .from(assetBorrowHistories)
+      .where(eq(assetBorrowHistories.assetBorrowId, id))
+      .orderBy(asc(assetBorrowHistories.createdAt))
+
+    const isOverdue = Boolean(
+      borrow.status === 'borrowed' &&
+      borrow.expectedReturnDate &&
+      new Date(borrow.expectedReturnDate).getTime() < Date.now()
+    )
+    const overdueDays = isOverdue
+      ? Math.max(1, Math.floor((Date.now() - new Date(borrow.expectedReturnDate!).getTime()) / (1000 * 60 * 60 * 24)))
+      : 0
+
     return {
       success: true,
       item: {
         ...borrow,
         approvalSteps,
+        histories,
+        isOverdue,
+        overdueDays,
         canApprove: Boolean((borrow.status === 'pending') && (isHolder || isSuperAdmin)),
-        canReturn: Boolean((borrow.status === 'borrowed') && (isHolder || isBorrower || isSuperAdmin)),
-        canCancel: Boolean((borrow.status === 'pending') && (isCreator || isSuperAdmin)),
+        canRequestReturn: Boolean((borrow.status === 'borrowed') && (isBorrower || isSuperAdmin)),
+        canConfirmReturn: Boolean((borrow.status === 'pending_return') && (isHolder || isSuperAdmin)),
+        canReturn: Boolean(
+          ((borrow.status === 'borrowed') && (isBorrower || isSuperAdmin)) ||
+          ((borrow.status === 'pending_return') && (isHolder || isSuperAdmin))
+        ),
+        canCancel: Boolean((borrow.status === 'pending' || borrow.status === 'needs_revision') && (isCreator || isBorrower || isSuperAdmin)),
+        canRequestExtension: Boolean((borrow.status === 'borrowed') && (isBorrower || isCreator || isSuperAdmin)),
         canEditRevision: Boolean((borrow.status === 'needs_revision') && (isCreator || isBorrower || isSuperAdmin)),
         canDownload: Boolean(isBorrower || isCreator || isHolder || isSuperAdmin),
       },
@@ -341,7 +415,7 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
     }
 
     const [holder] = await db
-      .select({ id: employees.id, name: employees.name })
+      .select({ id: employees.id, name: employees.name, email: employees.email })
       .from(employees)
       .where(eq(employees.id, asset.holderEmployeeId))
       .limit(1)
@@ -352,7 +426,7 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
 
     // 3. Validate Borrower
     const [borrower] = await db
-      .select({ id: employees.id, name: employees.name })
+      .select({ id: employees.id, name: employees.name, email: employees.email })
       .from(employees)
       .where(eq(employees.id, input.borrowerEmployeeId))
       .limit(1)
@@ -390,51 +464,100 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
 
     const empContext = await getCurrentEmployeeAccessContext()
 
-    // 5. Insert Record
-    const [newBorrow] = await db
-      .insert(assetBorrows)
-      .values({
-        borrowNumber,
-        assetId: asset.id,
-        assetName: asset.description,
-        assetNumber: asset.assetNumber || '',
-        serialNumber: asset.serialNumber || '',
-        borrowerEmployeeId: borrower.id,
-        borrowerName: borrower.name,
-        holderEmployeeId: holder.id,
-        holderName: holder.name,
-        equipmentNotes: input.equipmentNotes || null,
-        purpose: input.purpose,
-        borrowDate: new Date(input.borrowDate),
-        expectedReturnDate: input.expectedReturnDate ? new Date(input.expectedReturnDate) : null,
-        status: 'pending',
-        createdById: session.user.id,
-        applicantEmployeeId: empContext?.employeeId || null,
+    // 5. Insert Record & History in Transaction
+    let newBorrow: AssetBorrowRow | null = null
+
+    await db.transaction(async (tx) => {
+      const [inserted] = await tx
+        .insert(assetBorrows)
+        .values({
+          borrowNumber,
+          assetId: asset.id,
+          assetName: asset.description,
+          assetNumber: asset.assetNumber || '',
+          serialNumber: asset.serialNumber || '',
+          borrowerEmployeeId: borrower.id,
+          borrowerName: borrower.name,
+          borrowerSignatureUrl: input.borrowerSignatureUrl || null,
+          holderEmployeeId: holder.id,
+          holderName: holder.name,
+          equipmentNotes: input.equipmentNotes || null,
+          purpose: input.purpose,
+          borrowDate: new Date(input.borrowDate),
+          expectedReturnDate: input.expectedReturnDate ? new Date(input.expectedReturnDate) : null,
+          status: 'pending',
+          createdById: session.user.id,
+          applicantEmployeeId: empContext?.employeeId || null,
+          submittedAt: now,
+        })
+        .returning()
+
+      newBorrow = inserted
+
+      // Sync to hero_approvals for central Approval Inbox
+      await tx.insert(approvals).values({
+        assetBorrowId: inserted.id,
+        level: 1,
+        approverName: holder.name,
+        approverEmployeeId: holder.id,
+        status: 'Pending',
+        formName: 'Formulir Peminjaman Aset (Asset Borrow)',
+        activityType: 'ASSET_BORROW',
+        requestNumber: borrowNumber,
+        activityTitle: `Peminjaman Aset: ${asset.description}`,
         submittedAt: now,
       })
-      .returning()
 
-    // Sync to hero_approvals for central Approval Inbox
-    await db.insert(approvals).values({
-      assetBorrowId: newBorrow.id,
-      level: 1,
-      approverName: holder.name,
-      approverEmployeeId: holder.id,
-      status: 'Pending',
-      formName: 'Formulir Peminjaman Aset (Asset Borrow)',
-      activityType: 'ASSET_BORROW',
-      requestNumber: borrowNumber,
-      activityTitle: `Peminjaman Aset: ${asset.description}`,
-      submittedAt: now,
+      // Record History: SUBMITTED
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: inserted.id,
+        action: 'submitted',
+        actorEmployeeId: empContext?.employeeId || borrower.id,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrower.name,
+        actorRole: 'Peminjam',
+        note: `Pengajuan peminjaman diajukan untuk keperluan: ${input.purpose}`,
+      })
     })
+
+    if (!newBorrow) {
+      return { success: false, message: 'Gagal membuat data peminjaman aset.' }
+    }
+
+    const createdRecord: AssetBorrowRow = newBorrow
+
+    // Send Notification to Holder
+    if (holder.email) {
+      await sendAssetBorrowSubmittedEmail({
+        holderEmail: holder.email,
+        holderName: holder.name,
+        borrowerName: borrower.name,
+        borrowNumber: createdRecord.borrowNumber,
+        assetName: asset.description,
+        assetNumber: asset.assetNumber,
+        purpose: input.purpose,
+        borrowDate: createdRecord.borrowDate,
+        expectedReturnDate: createdRecord.expectedReturnDate,
+        equipmentNotes: input.equipmentNotes,
+        borrowId: createdRecord.id,
+      }).catch((err) => console.error('[createAssetBorrow] Email notify error:', err))
+    }
+
+    await createNotificationEventForEmployee({
+      employeeId: holder.id,
+      eventType: 'asset_borrow_submitted',
+      category: 'approval_requests',
+      title: `Peminjaman Aset Baru: ${createdRecord.borrowNumber}`,
+      body: `${borrower.name} mengajukan peminjaman aset "${asset.description}". Memerlukan persetujuan Anda sebagai Holder.`,
+      url: '/dashboard/assets/borrow',
+    }).catch((err) => console.error('[createAssetBorrow] Bell notify error:', err))
 
     revalidatePath('/dashboard/assets/borrow')
     revalidatePath('/dashboard/central-service/assets')
 
     return {
       success: true,
-      message: `Peminjaman aset berhasil diajukan dengan nomor ${newBorrow.borrowNumber}`,
-      item: newBorrow,
+      message: `Peminjaman aset berhasil diajukan dengan nomor ${createdRecord.borrowNumber}`,
+      item: createdRecord,
     }
   } catch (error: any) {
     console.error('createAssetBorrow error:', error)
@@ -487,6 +610,7 @@ export async function approveAssetBorrow(id: number, decisionNote: string, signa
     const [borrower] = await db
       .select({
         name: employees.name,
+        email: employees.email,
         jobTitle: employees.jobTitle,
         department: masterDepartments.name,
         signatureDataUrl: employees.signatureDataUrl,
@@ -508,7 +632,7 @@ export async function approveAssetBorrow(id: number, decisionNote: string, signa
         borrowerName: borrow.borrowerName,
         borrowerJobTitle: borrower?.jobTitle,
         borrowerDepartment: borrower?.department,
-        borrowerSignatureUrl: borrower?.signatureDataUrl,
+        borrowerSignatureUrl: borrow.borrowerSignatureUrl || borrower?.signatureDataUrl || null,
         assetName: borrow.assetName,
         assetNumber: borrow.assetNumber,
         serialNumber: borrow.serialNumber,
@@ -556,7 +680,41 @@ export async function approveAssetBorrow(id: number, decisionNote: string, signa
           signatureUrl: signatureUrl || undefined,
         })
         .where(eq(approvals.assetBorrowId, id))
+
+      // 4. Record History: APPROVED
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: id,
+        action: 'approved',
+        actorEmployeeId: empContext?.employeeId || borrow.holderEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
+        actorRole: isSuperAdmin && !isHolder ? 'Super Admin' : 'Holder',
+        note: decisionNote.trim(),
+        signatureUrl: signatureUrl || null,
+      })
     })
+
+    // Send Notification to Borrower
+    if (borrower?.email) {
+      await sendAssetBorrowApprovedEmail({
+        borrowerEmail: borrower.email,
+        borrowerName: borrower.name,
+        holderName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
+        borrowNumber: borrow.borrowNumber,
+        assetName: borrow.assetName,
+        approvalNote: decisionNote.trim(),
+        pdfUrl,
+        borrowId: id,
+      }).catch((err) => console.error('[approveAssetBorrow] Email notify error:', err))
+    }
+
+    await createNotificationEventForEmployee({
+      employeeId: borrow.borrowerEmployeeId,
+      eventType: 'asset_borrow_approved',
+      category: 'approval_requests',
+      title: `Peminjaman Disetujui: ${borrow.borrowNumber}`,
+      body: `Peminjaman aset "${borrow.assetName}" telah disetujui oleh ${borrow.holderName}. Silakan ambil fisik unit aset.`,
+      url: '/dashboard/assets/borrow',
+    }).catch((err) => console.error('[approveAssetBorrow] Bell notify error:', err))
 
     revalidatePath('/dashboard/assets/borrow')
     revalidatePath('/dashboard/central-service/assets')
@@ -633,7 +791,26 @@ export async function rejectAssetBorrow(id: number, reason: string) {
           rejectionReason: reason.trim(),
         })
         .where(eq(approvals.assetBorrowId, id))
+
+      // Record History: REJECTED
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: id,
+        action: 'rejected',
+        actorEmployeeId: empContext?.employeeId || borrow.holderEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
+        actorRole: isSuperAdmin && !isHolder ? 'Super Admin' : 'Holder',
+        note: reason.trim(),
+      })
     })
+
+    await createNotificationEventForEmployee({
+      employeeId: borrow.borrowerEmployeeId,
+      eventType: 'asset_borrow_rejected',
+      category: 'approval_requests',
+      title: `Peminjaman Ditolak: ${borrow.borrowNumber}`,
+      body: `Peminjaman aset "${borrow.assetName}" ditolak oleh ${borrow.holderName}. Alasan: ${reason.trim()}`,
+      url: '/dashboard/assets/borrow',
+    }).catch((err) => console.error('[rejectAssetBorrow] Bell notify error:', err))
 
     revalidatePath('/dashboard/assets/borrow')
 
@@ -644,131 +821,6 @@ export async function rejectAssetBorrow(id: number, reason: string) {
   } catch (error: any) {
     console.error('rejectAssetBorrow error:', error)
     return { success: false, message: error?.message || 'Gagal menolak peminjaman aset' }
-  }
-}
-
-/**
- * Return Asset (Kembalikan Aset Fisik)
- */
-export async function returnAssetBorrow(id: number, returnNotes?: string) {
-  try {
-    const session = await getServerSession()
-    if (!session?.user) {
-      return { success: false, message: 'Unauthorized' }
-    }
-
-    const [borrow] = await db
-      .select()
-      .from(assetBorrows)
-      .where(eq(assetBorrows.id, id))
-      .limit(1)
-
-    if (!borrow) {
-      return { success: false, message: 'Data peminjaman tidak ditemukan.' }
-    }
-
-    if (borrow.status !== 'borrowed') {
-      return { success: false, message: `Aset ini tidak dalam status dipinjam (status: ${borrow.status}).` }
-    }
-
-    const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
-    const isHolder = Boolean(empContext?.employeeId && borrow.holderEmployeeId === empContext.employeeId)
-    const isBorrower = Boolean(empContext?.employeeId && borrow.borrowerEmployeeId === empContext.employeeId)
-
-    if (!isHolder && !isBorrower && !isSuperAdmin) {
-      return {
-        success: false,
-        message: 'Hanya Holder Aset, Peminjam, atau Super Admin yang dapat mengonfirmasi pengembalian aset.',
-      }
-    }
-
-    const now = new Date()
-
-    await db.transaction(async (tx) => {
-      // 1. Update Borrow record
-      await tx
-        .update(assetBorrows)
-        .set({
-          status: 'returned',
-          actualReturnDate: now,
-          returnNotes: returnNotes?.trim() || null,
-          updatedAt: now,
-        })
-        .where(eq(assetBorrows.id, id))
-
-      // 2. Restore Central Service Asset condition to 'ACTIVE'
-      await tx
-        .update(centralServiceAssets)
-        .set({
-          condition: 'ACTIVE',
-          updatedAt: now,
-        })
-        .where(eq(centralServiceAssets.id, borrow.assetId))
-    })
-
-    revalidatePath('/dashboard/assets/borrow')
-    revalidatePath('/dashboard/central-service/assets')
-
-    return {
-      success: true,
-      message: `Aset ${borrow.assetName} telah berhasil dikonfirmasi kembali ke pemegang aset.`,
-    }
-  } catch (error: any) {
-    console.error('returnAssetBorrow error:', error)
-    return { success: false, message: error?.message || 'Gagal mengonfirmasi pengembalian aset' }
-  }
-}
-
-/**
- * Cancel Asset Borrow (Pembatalan Pengajuan oleh Pembuat/Admin)
- */
-export async function cancelAssetBorrow(id: number) {
-  try {
-    const session = await getServerSession()
-    if (!session?.user) {
-      return { success: false, message: 'Unauthorized' }
-    }
-
-    const [borrow] = await db
-      .select()
-      .from(assetBorrows)
-      .where(eq(assetBorrows.id, id))
-      .limit(1)
-
-    if (!borrow) {
-      return { success: false, message: 'Data peminjaman tidak ditemukan.' }
-    }
-
-    if (borrow.status !== 'pending') {
-      return { success: false, message: 'Hanya pengajuan berstatus Pending yang dapat dibatalkan.' }
-    }
-
-    const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
-    const isCreator = Boolean(
-      (empContext?.employeeId && borrow.applicantEmployeeId === empContext.employeeId) ||
-      (session.user.id && borrow.createdById === session.user.id)
-    )
-
-    if (!isCreator && !isSuperAdmin) {
-      return {
-        success: false,
-        message: 'Anda tidak memiliki hak untuk membatalkan pengajuan ini.',
-      }
-    }
-
-    await db.delete(assetBorrows).where(eq(assetBorrows.id, id))
-
-    revalidatePath('/dashboard/assets/borrow')
-
-    return {
-      success: true,
-      message: `Pengajuan peminjaman ${borrow.borrowNumber} telah berhasil dibatalkan dan dihapus.`,
-    }
-  } catch (error: any) {
-    console.error('cancelAssetBorrow error:', error)
-    return { success: false, message: error?.message || 'Gagal membatalkan pengajuan' }
   }
 }
 
@@ -830,6 +882,16 @@ export async function revertAssetBorrowAction(id: number, revertReason: string) 
           rejectionReason: revertReason.trim(),
         })
         .where(eq(approvals.assetBorrowId, id))
+
+      // Record History: NEEDS_REVISION
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: id,
+        action: 'needs_revision',
+        actorEmployeeId: empContext?.employeeId || borrow.holderEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
+        actorRole: isSuperAdmin && !isHolder ? 'Super Admin' : 'Holder',
+        note: revertReason.trim(),
+      })
     })
 
     // Send email & bell notification to borrower
@@ -933,6 +995,16 @@ export async function resubmitAssetBorrowAction(input: {
           signatureUrl: null,
         })
         .where(eq(approvals.assetBorrowId, input.id))
+
+      // Record History: RESUBMITTED
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: input.id,
+        action: 'resubmitted',
+        actorEmployeeId: empContext?.employeeId || borrow.borrowerEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.borrowerName,
+        actorRole: 'Peminjam',
+        note: `Pengajuan diperbaiki: ${input.purpose}`,
+      })
     })
 
     // Send email & bell notification to holder (last approver)
@@ -963,5 +1035,641 @@ export async function resubmitAssetBorrowAction(input: {
   } catch (error: any) {
     console.error('resubmitAssetBorrowAction error:', error)
     return { success: false, message: error?.message || 'Gagal mengirim ulang revisi peminjaman' }
+  }
+}
+
+/**
+ * Request Asset Return (Langkah 1: Peminjam Mengajukan Pengembalian Aset Fisik)
+ * Wajib melampirkan minimal 1 foto fisik kondisi aset.
+ */
+export async function requestAssetBorrowReturn(rawInput: AssetBorrowReturnRequestInput) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Unauthorized' }
+    }
+
+    const validated = assetBorrowReturnRequestSchema.safeParse(rawInput)
+    if (!validated.success) {
+      const firstError = (validated.error as any).errors?.[0]?.message || validated.error.message || 'Validasi pengembalian gagal'
+      return { success: false, message: firstError }
+    }
+
+    const input = validated.data
+
+    const [borrow] = await db
+      .select()
+      .from(assetBorrows)
+      .where(eq(assetBorrows.id, input.id))
+      .limit(1)
+
+    if (!borrow) {
+      return { success: false, message: 'Data peminjaman tidak ditemukan.' }
+    }
+
+    if (borrow.status !== 'borrowed') {
+      return { success: false, message: `Aset ini tidak dalam status sedang dipinjam (status saat ini: ${borrow.status}).` }
+    }
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isBorrower = Boolean(empContext?.employeeId && borrow.borrowerEmployeeId === empContext.employeeId)
+
+    if (!isBorrower && !isSuperAdmin) {
+      return {
+        success: false,
+        message: 'Hanya Peminjam Aset atau Super Admin yang dapat mengajukan pengembalian aset.',
+      }
+    }
+
+    if (!input.photoUrls || input.photoUrls.length === 0) {
+      return {
+        success: false,
+        message: 'Wajib mengunggah minimal 1 foto kondisi fisik aset saat pengembalian.',
+      }
+    }
+
+    const now = new Date()
+    const parsedReturnDate = new Date(input.actualReturnDate)
+    const returnReqDate = isNaN(parsedReturnDate.getTime()) ? now : parsedReturnDate
+
+    await db.transaction(async (tx) => {
+      // 1. Update Borrow record to pending_return
+      await tx
+        .update(assetBorrows)
+        .set({
+          status: 'pending_return',
+          returnRequestDate: returnReqDate,
+          returnNotes: input.returnNotes.trim(),
+          returnPhotoUrls: JSON.stringify(input.photoUrls),
+          updatedAt: now,
+        })
+        .where(eq(assetBorrows.id, input.id))
+
+      // 2. Record History: RETURN_REQUESTED
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: input.id,
+        action: 'return_requested',
+        actorEmployeeId: empContext?.employeeId || borrow.borrowerEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.borrowerName,
+        actorRole: isSuperAdmin && !isBorrower ? 'Super Admin' : 'Peminjam',
+        note: input.returnNotes.trim(),
+        photoUrl: input.photoUrls[0],
+        signatureUrl: input.signatureUrl || null,
+      })
+    })
+
+    // Notify Holder
+    const [holderEmp] = await db
+      .select({ email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, borrow.holderEmployeeId))
+      .limit(1)
+
+    if (holderEmp?.email) {
+      await sendAssetBorrowReturnRequestedEmail({
+        holderEmail: holderEmp.email,
+        holderName: holderEmp.name,
+        borrowerName: borrow.borrowerName,
+        borrowNumber: borrow.borrowNumber,
+        assetName: borrow.assetName,
+        returnNotes: input.returnNotes.trim(),
+        borrowId: input.id,
+      }).catch((err) => console.error('[requestAssetBorrowReturn] Email notify error:', err))
+    }
+
+    await createNotificationEventForEmployee({
+      employeeId: borrow.holderEmployeeId,
+      eventType: 'asset_borrow_return_requested',
+      category: 'approval_requests',
+      title: `Pengembalian Fisik Aset: ${borrow.borrowNumber}`,
+      body: `${borrow.borrowerName} mengajukan pengembalian fisik aset "${borrow.assetName}". Mohon verifikasi kondisi fisik.`,
+      url: '/dashboard/assets/borrow',
+    }).catch((err) => console.error('[requestAssetBorrowReturn] Bell notify error:', err))
+
+    revalidatePath('/dashboard/assets/borrow')
+
+    return {
+      success: true,
+      message: `Pengajuan pengembalian ${borrow.borrowNumber} berhasil dikirim ke Holder (${borrow.holderName}) untuk verifikasi fisik.`,
+    }
+  } catch (error: any) {
+    console.error('requestAssetBorrowReturn error:', error)
+    return { success: false, message: error?.message || 'Gagal mengajukan pengembalian aset' }
+  }
+}
+
+/**
+ * Confirm Asset Return (Langkah 2: Holder Memeriksa Fisik & Konfirmasi Penerimaan Kembali)
+ * Mengubah status menjadi 'returned' dan mengembalikan kondisi aset di master data ke 'ACTIVE'.
+ */
+export async function confirmAssetBorrowReturn(rawInput: AssetBorrowConfirmReturnInput) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Unauthorized' }
+    }
+
+    const validated = assetBorrowConfirmReturnSchema.safeParse(rawInput)
+    if (!validated.success) {
+      const firstError = (validated.error as any).errors?.[0]?.message || validated.error.message || 'Validasi gagal'
+      return { success: false, message: firstError }
+    }
+
+    const input = validated.data
+
+    const [borrow] = await db
+      .select()
+      .from(assetBorrows)
+      .where(eq(assetBorrows.id, input.id))
+      .limit(1)
+
+    if (!borrow) {
+      return { success: false, message: 'Data peminjaman tidak ditemukan.' }
+    }
+
+    if (borrow.status !== 'borrowed' && borrow.status !== 'pending_return') {
+      return {
+        success: false,
+        message: `Aset ini tidak dalam status dipinjam atau menunggu konfirmasi pengembalian (status saat ini: ${borrow.status}).`,
+      }
+    }
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isHolder = Boolean(empContext?.employeeId && borrow.holderEmployeeId === empContext.employeeId)
+
+    if (!isHolder && !isSuperAdmin) {
+      return {
+        success: false,
+        message: 'Hanya Holder Aset (atau Super Admin) yang berwenang mengonfirmasi penerimaan fisik aset.',
+      }
+    }
+
+    const now = new Date()
+    const returnDate = borrow.returnRequestDate || now
+
+    // Fetch employee details & approval rows for PDF generation and notifications
+    const [borrowerEmp, holderEmp, approvalRows] = await Promise.all([
+      db
+        .select({
+          name: employees.name,
+          email: employees.email,
+          jobTitle: employees.jobTitle,
+          department: masterDepartments.name,
+          signatureDataUrl: employees.signatureDataUrl,
+        })
+        .from(employees)
+        .leftJoin(masterDepartments, eq(employees.departmentId, masterDepartments.id))
+        .where(eq(employees.id, borrow.borrowerEmployeeId))
+        .limit(1)
+        .then((r) => r[0] || null),
+      db
+        .select({
+          jobTitle: employees.jobTitle,
+          signatureDataUrl: employees.signatureDataUrl,
+        })
+        .from(employees)
+        .where(eq(employees.id, borrow.holderEmployeeId))
+        .limit(1)
+        .then((r) => r[0] || null),
+      db
+        .select({
+          level: approvals.level,
+          approverName: approvals.approverName,
+          jobTitle: employees.jobTitle,
+          status: approvals.status,
+          reviewedAt: approvals.reviewedAt,
+          signatureUrl: approvals.signatureUrl,
+          decisionNote: approvals.decisionNote,
+          formName: approvals.formName,
+        })
+        .from(approvals)
+        .leftJoin(employees, eq(approvals.approverEmployeeId, employees.id))
+        .where(eq(approvals.assetBorrowId, input.id))
+        .orderBy(asc(approvals.level)),
+    ])
+
+    // Regenerate Official PDF with Return Confirmation & Physical Asset Photos
+    let pdfUrl = borrow.pdfUrl
+    try {
+      const pdfApprovers = approvalRows.map((app) => ({
+        level: app.level || 1,
+        title: app.decisionNote || (app.formName || `Step ${app.level}`),
+        approverName: app.approverName || 'Approver',
+        jobTitle: app.jobTitle || app.formName || 'Pemegang Aset',
+        status: app.status || 'Approved',
+        reviewedAt: app.reviewedAt,
+        signatureUrl: app.signatureUrl,
+        decisionNote: app.decisionNote || null,
+      }))
+
+      const pdfBytes = await generateAssetBorrowPdf({
+        borrowNumber: borrow.borrowNumber,
+        borrowDate: borrow.borrowDate,
+        expectedReturnDate: borrow.expectedReturnDate,
+        actualReturnDate: returnDate,
+        status: 'returned',
+        borrowerName: borrow.borrowerName,
+        borrowerJobTitle: borrowerEmp?.jobTitle || 'Karyawan',
+        borrowerDepartment: borrowerEmp?.department || null,
+        borrowerSignatureUrl: borrow.borrowerSignatureUrl || borrowerEmp?.signatureDataUrl || null,
+        assetName: borrow.assetName,
+        assetNumber: borrow.assetNumber,
+        serialNumber: borrow.serialNumber,
+        equipmentNotes: borrow.equipmentNotes,
+        holderName: borrow.holderName,
+        holderJobTitle: holderEmp?.jobTitle || 'Pemegang Aset',
+        holderSignatureUrl: borrow.holderSignatureUrl || holderEmp?.signatureDataUrl || null,
+        holderSignedAt: borrow.approvedAt || now,
+        purpose: borrow.purpose,
+        approvalNote: borrow.approvalNote,
+        returnNotes: borrow.returnNotes,
+        returnConditionNotes: input.returnConditionNotes.trim(),
+        assetCondition: input.assetCondition || 'ACTIVE',
+        returnPhotoUrls: borrow.returnPhotoUrls,
+        holderReturnSignatureUrl: input.signatureUrl || holderEmp?.signatureDataUrl || null,
+        holderReturnSignedAt: now,
+        approvals: pdfApprovers.length > 0 ? pdfApprovers : undefined,
+      })
+
+      const generatedUrl = await saveGeneratedPdfUpload(pdfBytes, 'asset-borrow', borrow.borrowNumber)
+      if (generatedUrl) {
+        pdfUrl = generatedUrl
+      }
+    } catch (pdfErr) {
+      console.error('[confirmAssetBorrowReturn] PDF generation error:', pdfErr)
+    }
+
+    await db.transaction(async (tx) => {
+      // 1. Update Borrow record
+      await tx
+        .update(assetBorrows)
+        .set({
+          status: 'returned',
+          actualReturnDate: returnDate,
+          returnConditionNotes: input.returnConditionNotes.trim(),
+          holderReturnSignatureUrl: input.signatureUrl || undefined,
+          holderReturnSignedAt: now,
+          pdfUrl: pdfUrl || undefined,
+          updatedAt: now,
+        })
+        .where(eq(assetBorrows.id, input.id))
+
+      // 2. Restore Central Service Asset condition
+      await tx
+        .update(centralServiceAssets)
+        .set({
+          condition: input.assetCondition || 'ACTIVE',
+          updatedAt: now,
+        })
+        .where(eq(centralServiceAssets.id, borrow.assetId))
+
+      // 3. Record History: RETURNED
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: input.id,
+        action: 'returned',
+        actorEmployeeId: empContext?.employeeId || borrow.holderEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
+        actorRole: isSuperAdmin && !isHolder ? 'Super Admin' : 'Holder',
+        note: input.returnConditionNotes.trim(),
+        signatureUrl: input.signatureUrl || null,
+      })
+    })
+
+    // Notify Borrower
+    if (borrowerEmp?.email) {
+      await sendAssetBorrowReturnedEmail({
+        borrowerEmail: borrowerEmp.email,
+        borrowerName: borrowerEmp.name,
+        holderName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.holderName,
+        borrowNumber: borrow.borrowNumber,
+        assetName: borrow.assetName,
+        returnConditionNotes: input.returnConditionNotes.trim(),
+        borrowId: input.id,
+      }).catch((err) => console.error('[confirmAssetBorrowReturn] Email notify error:', err))
+    }
+
+    await createNotificationEventForEmployee({
+      employeeId: borrow.borrowerEmployeeId,
+      eventType: 'asset_borrow_returned',
+      category: 'approval_requests',
+      title: `Peminjaman Aset Selesai: ${borrow.borrowNumber}`,
+      body: `Pengembalian fisik aset "${borrow.assetName}" telah diverifikasi dan diterima kembali oleh ${borrow.holderName}.`,
+      url: '/dashboard/assets/borrow',
+    }).catch((err) => console.error('[confirmAssetBorrowReturn] Bell notify error:', err))
+
+    revalidatePath('/dashboard/assets/borrow')
+    revalidatePath('/dashboard/central-service/assets')
+
+    return {
+      success: true,
+      message: `Aset ${borrow.assetName} telah berhasil dikonfirmasi diterima kembali oleh Holder.`,
+      pdfUrl,
+    }
+  } catch (error: any) {
+    console.error('confirmAssetBorrowReturn error:', error)
+    return { success: false, message: error?.message || 'Gagal mengonfirmasi pengembalian aset' }
+  }
+}
+
+/**
+ * Return Asset (Backward compatibility wrapper calling confirmAssetBorrowReturn)
+ */
+export async function returnAssetBorrow(id: number, returnNotes?: string, signatureUrl?: string) {
+  return confirmAssetBorrowReturn({
+    id,
+    returnConditionNotes: returnNotes || 'Fisik aset telah diperiksa dan diterima kembali dalam kondisi baik.',
+    assetCondition: 'ACTIVE',
+    signatureUrl: signatureUrl || undefined,
+  })
+}
+
+/**
+ * Cancel Asset Borrow (Pembatalan Pengajuan oleh Pembuat/Admin)
+ * Otomatis menghapus pengajuan dari database beserta approval dan history terkait.
+ */
+export async function cancelAssetBorrow(id: number) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Unauthorized' }
+    }
+
+    const [borrow] = await db
+      .select()
+      .from(assetBorrows)
+      .where(eq(assetBorrows.id, id))
+      .limit(1)
+
+    if (!borrow) {
+      return { success: false, message: 'Data peminjaman tidak ditemukan.' }
+    }
+
+    if (borrow.status !== 'pending' && borrow.status !== 'needs_revision') {
+      return { success: false, message: 'Hanya pengajuan berstatus Pending atau Perlu Revisi yang dapat dibatalkan.' }
+    }
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isBorrower = Boolean(empContext?.employeeId && borrow.borrowerEmployeeId === empContext.employeeId)
+    const isCreator = Boolean(
+      (empContext?.employeeId && borrow.applicantEmployeeId === empContext.employeeId) ||
+      (session.user.id && borrow.createdById === session.user.id)
+    )
+
+    if (!isCreator && !isBorrower && !isSuperAdmin) {
+      return {
+        success: false,
+        message: 'Anda tidak memiliki hak untuk membatalkan pengajuan ini.',
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      // 1. Delete from hero_approvals
+      await tx.delete(approvals).where(eq(approvals.assetBorrowId, id))
+
+      // 2. Delete from hero_asset_borrow_histories
+      await tx.delete(assetBorrowHistories).where(eq(assetBorrowHistories.assetBorrowId, id))
+
+      // 3. Delete from hero_asset_borrows
+      await tx.delete(assetBorrows).where(eq(assetBorrows.id, id))
+    })
+
+    revalidatePath('/dashboard/assets/borrow')
+    revalidatePath('/dashboard/approval')
+
+    return {
+      success: true,
+      message: `Pengajuan peminjaman ${borrow.borrowNumber} telah berhasil dibatalkan dan dihapus dari sistem.`,
+    }
+  } catch (error: any) {
+    console.error('cancelAssetBorrow error:', error)
+    return { success: false, message: error?.message || 'Gagal membatalkan pengajuan' }
+  }
+}
+
+/**
+ * Permohonan Perpanjangan Waktu Peminjaman Aset (Loan Extension)
+ */
+export async function requestAssetBorrowExtension(params: {
+  borrowId: number
+  newExpectedReturnDate: string
+  extensionReason: string
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Unauthorized' }
+    }
+
+    const [borrow] = await db
+      .select()
+      .from(assetBorrows)
+      .where(eq(assetBorrows.id, params.borrowId))
+      .limit(1)
+
+    if (!borrow) {
+      return { success: false, message: 'Data peminjaman tidak ditemukan.' }
+    }
+
+    if (borrow.status !== 'borrowed') {
+      return { success: false, message: 'Perpanjangan hanya dapat diajukan untuk aset yang sedang dipinjam.' }
+    }
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isBorrower = Boolean(empContext?.employeeId && borrow.borrowerEmployeeId === empContext.employeeId)
+
+    if (!isBorrower && !isSuperAdmin) {
+      return { success: false, message: 'Hanya peminjam atau admin yang dapat mengajukan perpanjangan.' }
+    }
+
+    const newDate = new Date(params.newExpectedReturnDate)
+    if (isNaN(newDate.getTime()) || newDate.getTime() <= new Date(borrow.borrowDate).getTime()) {
+      return { success: false, message: 'Tanggal batas perpanjangan harus lebih besar dari tanggal mulai pinjam.' }
+    }
+
+    const now = new Date()
+    const formattedNewDate = new Intl.DateTimeFormat('id-ID', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(newDate)
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(assetBorrows)
+        .set({
+          expectedReturnDate: newDate,
+          updatedAt: now,
+        })
+        .where(eq(assetBorrows.id, params.borrowId))
+
+      await tx.insert(assetBorrowHistories).values({
+        assetBorrowId: params.borrowId,
+        action: 'extension_requested',
+        actorEmployeeId: empContext?.employeeId || borrow.borrowerEmployeeId,
+        actorName: (empContext as any)?.employeeName || (empContext as any)?.name || borrow.borrowerName,
+        actorRole: 'Peminjam',
+        note: `Perpanjangan waktu pengembalian diajukan sampai ${formattedNewDate}. Alasan: ${params.extensionReason}`,
+      })
+    })
+
+    // Notify Holder
+    const [holderEmp] = await db
+      .select({ email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, borrow.holderEmployeeId))
+      .limit(1)
+
+    if (holderEmp?.email) {
+      await sendAssetBorrowExtensionRequestedEmail({
+        holderEmail: holderEmp.email,
+        holderName: holderEmp.name,
+        borrowerName: borrow.borrowerName,
+        borrowNumber: borrow.borrowNumber,
+        assetName: borrow.assetName,
+        newExpectedDate: formattedNewDate,
+        extensionReason: params.extensionReason,
+        borrowId: params.borrowId,
+      }).catch((err) => console.error('[requestAssetBorrowExtension] Email error:', err))
+    }
+
+    await createNotificationEventForEmployee({
+      employeeId: borrow.holderEmployeeId,
+      eventType: 'asset_borrow_extension',
+      category: 'approval_requests',
+      title: `Perpanjangan Peminjaman: ${borrow.borrowNumber}`,
+      body: `${borrow.borrowerName} mengajukan perpanjangan batas pengembalian untuk aset "${borrow.assetName}" hingga ${formattedNewDate}.`,
+      url: '/dashboard/assets/borrow',
+    }).catch((err) => console.error('[requestAssetBorrowExtension] Bell notify error:', err))
+
+    revalidatePath('/dashboard/assets/borrow')
+
+    return {
+      success: true,
+      message: `Perpanjangan batas waktu hingga ${formattedNewDate} berhasil dicatat.`,
+    }
+  } catch (error: any) {
+    console.error('requestAssetBorrowExtension error:', error)
+    return { success: false, message: error?.message || 'Gagal mengajukan perpanjangan waktu' }
+  }
+}
+
+/**
+ * Fetch Asset Borrow Histories List with Date Range, Action Filter, Search, and Pagination
+ * Accessible by all logged in users.
+ */
+export async function getAssetBorrowHistoriesList(params?: {
+  startDate?: string
+  endDate?: string
+  action?: string
+  search?: string
+  page?: number
+  pageSize?: number
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return {
+        success: false,
+        message: 'Unauthorized',
+        items: [],
+        total: 0,
+      }
+    }
+
+    const search = params?.search?.trim() || ''
+    const actionFilter = params?.action?.trim() || ''
+    const page = Math.max(1, params?.page || 1)
+    const pageSize = Math.max(1, Math.min(200, params?.pageSize || 50))
+    const offset = (page - 1) * pageSize
+
+    const conditions = []
+
+    // Date range filter on createdAt
+    if (params?.startDate) {
+      const start = new Date(params.startDate)
+      if (!isNaN(start.getTime())) {
+        start.setHours(0, 0, 0, 0)
+        conditions.push(sql`${assetBorrowHistories.createdAt} >= ${start}`)
+      }
+    }
+
+    if (params?.endDate) {
+      const end = new Date(params.endDate)
+      if (!isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999)
+        conditions.push(sql`${assetBorrowHistories.createdAt} <= ${end}`)
+      }
+    }
+
+    if (actionFilter && actionFilter !== 'all') {
+      conditions.push(eq(assetBorrowHistories.action, actionFilter))
+    }
+
+    if (search) {
+      conditions.push(
+        or(
+          ilike(assetBorrows.borrowNumber, `%${search}%`),
+          ilike(assetBorrows.assetName, `%${search}%`),
+          ilike(assetBorrows.assetNumber, `%${search}%`),
+          ilike(assetBorrows.borrowerName, `%${search}%`),
+          ilike(assetBorrows.holderName, `%${search}%`),
+          ilike(assetBorrowHistories.actorName, `%${search}%`),
+          ilike(assetBorrowHistories.note, `%${search}%`)
+        )
+      )
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+    const rows = await db
+      .select({
+        id: assetBorrowHistories.id,
+        assetBorrowId: assetBorrowHistories.assetBorrowId,
+        action: assetBorrowHistories.action,
+        actorEmployeeId: assetBorrowHistories.actorEmployeeId,
+        actorName: assetBorrowHistories.actorName,
+        actorRole: assetBorrowHistories.actorRole,
+        note: assetBorrowHistories.note,
+        photoUrl: assetBorrowHistories.photoUrl,
+        signatureUrl: assetBorrowHistories.signatureUrl,
+        createdAt: assetBorrowHistories.createdAt,
+        borrowNumber: assetBorrows.borrowNumber,
+        assetName: assetBorrows.assetName,
+        assetNumber: assetBorrows.assetNumber,
+        serialNumber: assetBorrows.serialNumber,
+        borrowerName: assetBorrows.borrowerName,
+        holderName: assetBorrows.holderName,
+        status: assetBorrows.status,
+      })
+      .from(assetBorrowHistories)
+      .innerJoin(assetBorrows, eq(assetBorrowHistories.assetBorrowId, assetBorrows.id))
+      .where(whereClause)
+      .orderBy(desc(assetBorrowHistories.createdAt))
+      .limit(pageSize)
+      .offset(offset)
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(assetBorrowHistories)
+      .innerJoin(assetBorrows, eq(assetBorrowHistories.assetBorrowId, assetBorrows.id))
+      .where(whereClause)
+
+    return {
+      success: true,
+      items: rows,
+      total: count,
+    }
+  } catch (error: any) {
+    console.error('getAssetBorrowHistoriesList error:', error)
+    return {
+      success: false,
+      message: error?.message || 'Gagal memuat riwayat pengajuan peminjaman aset',
+      items: [],
+      total: 0,
+    }
   }
 }

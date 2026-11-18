@@ -396,7 +396,10 @@ export function AssetApprovalDialog({
 
   if (!item) return null
 
-  const shouldAllowRevert = allowRevert !== undefined ? allowRevert : item?.subType !== 'ASSET_TRANSFER'
+  const shouldAllowRevert =
+    allowRevert !== undefined
+      ? allowRevert
+      : item?.subType !== 'ASSET_TRANSFER' && item?.subType !== 'ASSET_BORROW'
   const isUsingProfileSig = sigMode === 'profile';
   const sigToUse = isUsingProfileSig && profileSig ? profileSig : liveSignatureUrl
   const busy = isSubmitting || isPending
@@ -524,6 +527,22 @@ export function AssetApprovalDialog({
                     <span className="font-bold text-emerald-700">
                       Rp {Number(docData.summary.totalAmount).toLocaleString('id-ID')}
                     </span>
+                  </>
+                )}
+                {item.subType === 'ASSET_BORROW' && (
+                  <>
+                    <span className="font-semibold text-slate-700">Nama Aset:</span>
+                    <span className="font-bold text-slate-900">{docData?.summary?.assetName || docData?.doc?.assetName || '-'}</span>
+                    <span className="font-semibold text-slate-700">No / SN Aset:</span>
+                    <span className="font-mono text-slate-800 text-[11px]">
+                      {docData?.summary?.assetNumber || docData?.doc?.assetNumber || '-'} / {docData?.summary?.serialNumber || docData?.doc?.serialNumber || '-'}
+                    </span>
+                    <span className="font-semibold text-slate-700">Holder Asal:</span>
+                    <span className="font-semibold text-blue-700">{docData?.summary?.holderName || docData?.doc?.holderName || '-'}</span>
+                    <span className="font-semibold text-slate-700">Tujuan:</span>
+                    <span className="text-slate-800 italic">{docData?.summary?.purpose || docData?.doc?.purpose || '-'}</span>
+                    <span className="font-semibold text-slate-700">Kelengkapan:</span>
+                    <span className="text-slate-700">{docData?.summary?.equipmentNotes || docData?.doc?.equipmentNotes || '-'}</span>
                   </>
                 )}
               </div>

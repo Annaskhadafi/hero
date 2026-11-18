@@ -168,16 +168,19 @@ const labelMap: Record<string, string> = {
 export function AdminStatusBadge({
   value,
   status,
+  label,
   customLabels,
 }: {
   value?: string | null;
   status?: string | null;
+  label?: string | null;
   customLabels?: Record<string, string>;
 }) {
   const actualValue = value ?? status ?? "";
   const key = normalize(actualValue);
   const className = toneMap[key] ?? "bg-slate-100 text-slate-800";
   const displayLabel =
+    label ??
     customLabels?.[key] ??
     labelMap[key] ??
     (actualValue ? actualValue.replaceAll("_", " ") : "-");
