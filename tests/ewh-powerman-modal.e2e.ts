@@ -6,8 +6,9 @@ test('verifies ewh powerman manpower list modal dialog across sites', async ({ a
   // 1. Login to HERO and go to EWH dashboard
   await loginToHero(app, screen, browser, '/dashboard/ewh')
 
-  // 2. Wait for EWH dashboard Powerman card to be visible
+  // 2. Wait for EWH dashboard Powerman card and Total Durasi Kerja column to be visible
   await expect(screen.getByTestId('powerman-card-btn', { visible: true })).toBeVisible()
+  await expect(screen.getByText(/Total Durasi Kerja/i, { visible: true })).toBeVisible()
   await app.screenshot('01-ewh-dashboard-loaded')
   await new Promise((r) => setTimeout(r, 800))
 

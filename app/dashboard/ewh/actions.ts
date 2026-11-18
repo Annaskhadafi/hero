@@ -1907,11 +1907,23 @@ export async function getEwhSiteMonthlyMatrixAction(
       let itemDuration = 60
       if (it.startedAt && it.endedAt) {
         const diff = (new Date(it.endedAt).getTime() - new Date(it.startedAt).getTime()) / 60000
-        if (diff > 0 && diff <= 720) itemDuration = diff
+        if (diff > 0 && diff <= 1440) itemDuration = diff
       } else if (it.actualPoints && it.actualPoints > 0) {
         itemDuration = it.actualPoints * 12
       }
-      calculatedMinutes += itemDuration
+
+      const sess = monthSessions.find((s) => s.id === it.sessionId)
+      let teamSize = 1
+      if (sess) {
+        const tmSet = sessionTeamMemberMap.get(sess.id)
+        if (tmSet && tmSet.size > 0) {
+          const validTms = Array.from(tmSet).filter((tmId) => targetEmployeeIdSet.has(tmId))
+          const authorIsTarget = targetEmployeeIdSet.has(sess.employeeId)
+          teamSize = (authorIsTarget ? 1 : 0) + validTms.length
+          if (teamSize < 1) teamSize = 1
+        }
+      }
+      calculatedMinutes += itemDuration * teamSize
     })
 
     const daySessions = monthSessions.filter((s) => {
@@ -1935,9 +1947,17 @@ export async function getEwhSiteMonthlyMatrixAction(
         let sessDuration = 60
         if (s.startedAt && s.submittedAt) {
           const diff = (new Date(s.submittedAt).getTime() - new Date(s.startedAt).getTime()) / 60000
-          if (diff > 0 && diff <= 720) sessDuration = diff
+          if (diff > 0 && diff <= 1440) sessDuration = diff
         }
-        calculatedMinutes += sessDuration
+        const tmSet = sessionTeamMemberMap.get(s.id)
+        let teamSize = 1
+        if (tmSet && tmSet.size > 0) {
+          const validTms = Array.from(tmSet).filter((tmId) => targetEmployeeIdSet.has(tmId))
+          const authorIsTarget = targetEmployeeIdSet.has(s.employeeId)
+          teamSize = (authorIsTarget ? 1 : 0) + validTms.length
+          if (teamSize < 1) teamSize = 1
+        }
+        calculatedMinutes += sessDuration * teamSize
       }
     })
 
@@ -1951,7 +1971,7 @@ export async function getEwhSiteMonthlyMatrixAction(
       let actDuration = 60
       if (act.startTime && act.endTime) {
         const diff = (new Date(act.endTime).getTime() - new Date(act.startTime).getTime()) / 60000
-        if (diff > 0 && diff <= 720) actDuration = diff
+        if (diff > 0 && diff <= 1440) actDuration = diff
       }
       calculatedMinutes += actDuration
     })
@@ -2125,18 +2145,29 @@ export async function getEwhSiteMonthlyMatrixAction(
       let dur = 60
       if (it.startedAt && it.endedAt) {
         const diff = (new Date(it.endedAt).getTime() - new Date(it.startedAt).getTime()) / 60000
-        if (diff > 0 && diff <= 720) dur = diff
+        if (diff > 0 && diff <= 1440) dur = diff
       } else if (it.actualPoints && it.actualPoints > 0) {
         dur = it.actualPoints * 12
       }
-      mMinutes += dur
+      const sess = mSessions.find((s) => s.id === it.sessionId)
+      let teamSize = 1
+      if (sess) {
+        const tmSet = sessionTeamMemberMap.get(sess.id)
+        if (tmSet && tmSet.size > 0) {
+          const validTms = Array.from(tmSet).filter((tmId) => targetEmployeeIdSet.has(tmId))
+          const authorIsTarget = targetEmployeeIdSet.has(sess.employeeId)
+          teamSize = (authorIsTarget ? 1 : 0) + validTms.length
+          if (teamSize < 1) teamSize = 1
+        }
+      }
+      mMinutes += dur * teamSize
     })
 
     mDirect.forEach((act) => {
       let dur = 60
       if (act.startTime && act.endTime) {
         const diff = (new Date(act.endTime).getTime() - new Date(act.startTime).getTime()) / 60000
-        if (diff > 0 && diff <= 720) dur = diff
+        if (diff > 0 && diff <= 1440) dur = diff
       }
       mMinutes += dur
     })
@@ -2147,9 +2178,17 @@ export async function getEwhSiteMonthlyMatrixAction(
         let dur = 60
         if (s.startedAt && s.submittedAt) {
           const diff = (new Date(s.submittedAt).getTime() - new Date(s.startedAt).getTime()) / 60000
-          if (diff > 0 && diff <= 720) dur = diff
+          if (diff > 0 && diff <= 1440) dur = diff
         }
-        mMinutes += dur
+        const tmSet = sessionTeamMemberMap.get(s.id)
+        let teamSize = 1
+        if (tmSet && tmSet.size > 0) {
+          const validTms = Array.from(tmSet).filter((tmId) => targetEmployeeIdSet.has(tmId))
+          const authorIsTarget = targetEmployeeIdSet.has(s.employeeId)
+          teamSize = (authorIsTarget ? 1 : 0) + validTms.length
+          if (teamSize < 1) teamSize = 1
+        }
+        mMinutes += dur * teamSize
       }
     })
 
@@ -2217,7 +2256,7 @@ export async function getEwhSiteMonthlyMatrixAction(
     { name: 'Clean Up/Day', shortName: 'Clean Up/Day', value: sumCounts.cleanUp, actKey: 'cleanUp' },
     { name: 'Maintenance Rim', shortName: 'Maintenance Rim', value: sumCounts.maintenanceRim, actKey: 'maintenanceRim' },
     { name: 'Retorque/Tire', shortName: 'Retorque/Tire', value: sumCounts.retorque, actKey: 'retorque' },
-    { name: 'Durasi Kerja/Hours', shortName: 'Durasi Kerja/Hours', value: monthlyEwhAverage, color: '#10b981', actKey: 'durasiKerjaHours' },
+    { name: 'Total Durasi Kerja', shortName: 'Total Durasi Kerja', value: monthlyEwhAverage, color: '#10b981', actKey: 'durasiKerjaHours' },
   ]
 
   return {

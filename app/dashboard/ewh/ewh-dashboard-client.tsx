@@ -694,7 +694,7 @@ export function EwhDashboardClient({
   // Radar Activity Composition Data (12 Aktivitas)
   const radarActivityData = useMemo(() => {
     return monthlyMatrixData.chartData
-      .filter((d) => d.name !== 'Durasi Kerja/Hours')
+      .filter((d) => d.name !== 'Durasi Kerja/Hours' && d.name !== 'Total Durasi Kerja')
       .map((d) => ({
         subject: d.shortName,
         value: d.value,
@@ -942,7 +942,7 @@ export function EwhDashboardClient({
       actKeyOrName.toLowerCase().includes('durasi')
 
     const actKey = foundCol ? foundCol.key : isDurasi ? 'durasiKerjaHours' : actKeyOrName
-    const title = options?.title || foundCol?.label || (isDurasi ? 'Durasi Kerja / Hours' : actKeyOrName)
+    const title = options?.title || foundCol?.label || (isDurasi ? 'Total Durasi Kerja' : actKeyOrName)
 
     let scopeLabel = options?.scopeLabel || `Bulan ${period}`
     if (options?.weekNumber) {
@@ -1521,7 +1521,7 @@ export function EwhDashboardClient({
       const headers = [
         'TGL', 'P5M/Safety Talk', 'Check Pressure/Day', 'Adjust Pressure/Tire', 'Reseal/Tire',
         'Assembly/Tire', 'Disassembly/Tire', 'Mounting/Tire', 'Dismounting/Tire', 'PM Check/Unit',
-        'Clean Up/Day', 'Maintenance Rim', 'Retorque/Tire', 'Durasi Kerja/Hours', 'EWH (Jam/Orang)', 'Efisiensi %',
+        'Clean Up/Day', 'Maintenance Rim', 'Retorque/Tire', 'Total Durasi Kerja', 'EWH (Jam/Orang)', 'Efisiensi %',
       ]
       wsData.push(headers)
 
@@ -2175,7 +2175,7 @@ export function EwhDashboardClient({
                             <th className="py-2.5 px-2 border-r border-slate-200 min-w-[90px]">Clean Up/Day</th>
                             <th className="py-2.5 px-2 border-r border-slate-200 min-w-[105px]">Maintenance Rim</th>
                             <th className="py-2.5 px-2 border-r border-slate-200 min-w-[95px]">Retorque/Tire</th>
-                            <th className="py-2.5 px-3 min-w-[110px] bg-slate-200/80 font-black text-slate-900">Durasi Kerja/Hours</th>
+                            <th className="py-2.5 px-3 min-w-[110px] bg-slate-200/80 font-black text-slate-900">Total Durasi Kerja</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-[11.5px]">
@@ -2236,7 +2236,7 @@ export function EwhDashboardClient({
                                   {renderDayHoverCard(
                                     row,
                                     dayWorkers,
-                                    { type: 'durasi', label: 'Durasi Jam Kerja', value: `${row.durasiKerjaHours.toFixed(2)}h` },
+                                    { type: 'durasi', label: 'Total Durasi Kerja', value: `${row.durasiKerjaHours.toFixed(2)}h` },
                                     <div className="w-full py-1.5 px-3 font-mono font-bold text-right flex items-center justify-end gap-1.5">
                                       <span>{hasData ? row.durasiKerjaHours.toFixed(2) : '—'}</span>
                                       {dayWorkers.length > 0 && (
