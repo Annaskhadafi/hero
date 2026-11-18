@@ -19,6 +19,7 @@ import {
   chitraLearningOnlineAssignmentQuestions,
   chitraLearningQuizQuestions,
   employees,
+  pointEvents,
   trainingRecords,
   sites,
 } from "@/db/schema/hero";
@@ -541,6 +542,7 @@ async function getCurrentEmployee() {
       name: employees.name,
       email: employees.email,
       employeeSn: employees.employeeSn,
+      totalPoints: employees.totalPoints,
     })
     .from(employees)
     .where(or(...conditions))
@@ -1338,12 +1340,37 @@ export async function submitInternalLmsQuizAction(formData: FormData) {
 
     // Award Gamification Points (100 pts) if passing for the first time
     if (passed && !enrollment.isPassed) {
+      const [empRecord] = await db
+        .select({ id: employees.id, totalPoints: employees.totalPoints })
+        .from(employees)
+        .where(eq(employees.id, employee.id))
+        .limit(1);
+
+      const currentPoints = empRecord?.totalPoints ?? 0;
+      const updatedBalance = currentPoints + 100;
+
       await db
         .update(employees)
         .set({
-          totalPoints: ((employee as any).totalPoints || 0) + 100
-        } as any)
+          totalPoints: updatedBalance,
+        })
         .where(eq(employees.id, employee.id));
+
+      await db.insert(pointEvents).values({
+        employeeId: employee.id,
+        transactionType: "reward",
+        sourceType: "lms_completion",
+        sourceId: courseId,
+        category: "ChitraLearning LMS",
+        label: `Lulus Pelatihan: ${course.title || "Materi LMS"}`,
+        points: 100,
+        balanceAfter: updatedBalance,
+        metadata: JSON.stringify({
+          courseId,
+          enrollmentId: enrollment.id,
+          score: finalScore,
+        }),
+      });
     }
 
     if (passed && course.certificateEnabled) {
