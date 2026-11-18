@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { classifyEwh, formatMinutesToHours, EWH_ACTIVITY_COLUMNS, parseDateYMD } from '@/lib/ewh/calculate-ewh'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -881,6 +881,24 @@ export function EwhDashboardClient({
             if (!item.activeDays.includes(day)) item.activeDays.push(day)
           }
         }
+      }
+    }
+
+    // Secondary fallback: if still empty and servicemen list exists, display servicemen
+    if (empMap.size === 0 && servicemenList.length > 0) {
+      for (const s of servicemenList) {
+        empMap.set(s.id, {
+          employeeId: s.id,
+          employeeName: s.name,
+          employeeSn: s.employeeSn,
+          section: s.section || 'General',
+          department: s.department,
+          count: 0,
+          hours: 0,
+          clockHours: 0,
+          ewhPercent: 0,
+          activeDays: [],
+        })
       }
     }
 
@@ -3872,9 +3890,8 @@ export function EwhDashboardClient({
                   const empActivityList = Object.entries(empActivitySums).sort((a, b) => b[1].count - a[1].count)
 
                   return (
-                    <>
+                    <Fragment key={emp.employeeId}>
                       <tr
-                        key={emp.employeeId}
                         onClick={() => setExpandedEmpId(isExpanded ? null : emp.employeeId)}
                         className={`hover:bg-blue-50/50 cursor-pointer transition-colors ${
                           isExpanded ? 'bg-blue-50/70 border-l-4 border-blue-600 font-medium' : ''
@@ -4066,7 +4083,7 @@ export function EwhDashboardClient({
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   )
                 })}
               </tbody>
