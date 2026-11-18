@@ -353,22 +353,32 @@ export function EwhDashboardClient({
     })
   }, [selectedDayDetail, rowsByDay, daySearchQuery, dayStatusFilter])
 
-  // Calculate live matrix: kolom durasiKerjaHours adalah total jam seluruh personil pada hari itu (jangan dibagi dulu).
+  // Calculate live matrix: kolom Total Durasi Kerja adalah total murni seluruh jam efektif (effectiveMinutes) seluruh personil pada hari itu.
   // Baris paling bawah baru memakai Formula Pembagi Kapasitas Standar Tambang (= SUM / 22 / Powerman).
   const liveMatrix = useMemo(() => {
     return monthlyMatrixData.matrix.map((r) => {
-      const effectiveWorkers = r.workerCount || currentPowerman || 1
-      const ewhHoursPerPerson = r.durasiKerjaHours > 0 && effectiveWorkers > 0
-        ? Math.round((r.durasiKerjaHours / effectiveWorkers) * 100) / 100
+      const dayWorkers = rowsByDay.get(r.day) || []
+      // Sesuai instruksi: jam efektif (effectiveMinutes) dijumlahkan murni tanpa perhitungan lain
+      let dayEffectiveHours = 0
+      if (dayWorkers.length > 0) {
+        const totalEffMinutes = dayWorkers.reduce((sum, w) => sum + (Number(w.effectiveMinutes) || 0), 0)
+        dayEffectiveHours = Math.round((totalEffMinutes / 60) * 100) / 100
+      }
+      const durasiKerjaHours = dayEffectiveHours > 0 ? dayEffectiveHours : r.durasiKerjaHours
+      const activeWorkersCount = dayWorkers.filter((w) => (w.effectiveMinutes || 0) > 0 || (w.clockDurationMinutes || 0) > 0).length || r.workerCount || currentPowerman || 1
+      const ewhHoursPerPerson = durasiKerjaHours > 0 && activeWorkersCount > 0
+        ? Math.round((durasiKerjaHours / activeWorkersCount) * 100) / 100
         : 0
       const ewhRatio = ewhHoursPerPerson > 0 ? Math.round((ewhHoursPerPerson / 8.0) * 10000) / 100 : 0
       return {
         ...r,
+        durasiKerjaHours,
         ewhHoursPerPerson,
         ewhRatioPercent: Math.round(ewhRatio * 100) / 100,
+        workerCount: activeWorkersCount,
       }
     })
-  }, [monthlyMatrixData.matrix, currentPowerman])
+  }, [monthlyMatrixData.matrix, rowsByDay, currentPowerman])
 
   // Total jam akumulasi bulanan: Total Durasi Aktivitas = SUM(Durasi Kerja 1..31)
   const totalDurasiHoursSum = useMemo(() => {
@@ -498,7 +508,7 @@ export function EwhDashboardClient({
     // 2. DURASI KERJA COLUMN CONTEXT
     if (columnInfo && columnInfo.type === 'durasi') {
       const activeWorkers = dayWorkers
-        .filter((w) => w.clockDurationMinutes > 0)
+        .filter((w) => (w.effectiveMinutes || 0) > 0 || (w.clockDurationMinutes || 0) > 0)
         .sort((a, b) => b.effectiveMinutes - a.effectiveMinutes)
 
       return (
@@ -527,7 +537,7 @@ export function EwhDashboardClient({
                   Tgl {row.day}
                 </span>
                 <span className="text-xs font-bold text-slate-900">
-                  Durasi Jam Kerja
+                  Total Durasi Kerja
                 </span>
               </div>
               <span className="text-[10px] font-mono font-bold text-slate-800 bg-white border border-slate-200 px-1.5 py-0.5 rounded">

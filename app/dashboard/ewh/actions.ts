@@ -1800,6 +1800,18 @@ export async function getEwhSiteMonthlyMatrixAction(
   const powerman = defaultPowerman
   const shiftHours = 22 // 2 Shift operasional sehari (22 Jam/Hari)
 
+  // Ambil summary EWH untuk mendapatkan Jam Efektif (effectiveMinutes) seluruh personil per hari
+  const summaryRes = await getEwhSummaryAction(activeSiteId, period, parsedDeptId)
+  const summaryRowsByDay = new Map<number, typeof summaryRes.rows>()
+  summaryRes.rows.forEach((r) => {
+    const p = parseDateYMD(r.workDate)
+    if (p && p.day > 0) {
+      const list = summaryRowsByDay.get(p.day) || []
+      list.push(r)
+      summaryRowsByDay.set(p.day, list)
+    }
+  })
+
   // 4. Build Matriks Harian (1..31) dari Data Riil Daily Activity & Attendance
   const matrix: EwhMatrixDayRow[] = []
   let totalDurasiHoursSum = 0
@@ -1981,7 +1993,17 @@ export async function getEwhSiteMonthlyMatrixAction(
       sumCounts[k] += dayCounts[k]
     })
 
-    const durasiKerjaHours = Math.round((calculatedMinutes / 60) * 100) / 100
+    const daySummaryRows = summaryRowsByDay.get(day) || []
+    daySummaryRows.forEach((r) => {
+      if ((r.effectiveMinutes || 0) > 0 || (r.clockDurationMinutes || 0) > 0) {
+        dayWorkers.add(r.employeeId)
+      }
+    })
+    const dayEffectiveMinutes = daySummaryRows.reduce((sum, r) => sum + (Number(r.effectiveMinutes) || 0), 0)
+    // Sesuai requirement: Total Durasi Kerja harian adalah total murni seluruh jam efektif (effectiveMinutes) personil pada hari itu:
+    const durasiKerjaHours = dayEffectiveMinutes > 0
+      ? Math.round((dayEffectiveMinutes / 60) * 100) / 100
+      : Math.round((calculatedMinutes / 60) * 100) / 100
 
     if (durasiKerjaHours > 0) {
       activeWorkDaysCount++
