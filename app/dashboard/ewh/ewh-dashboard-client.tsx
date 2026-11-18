@@ -1440,6 +1440,7 @@ export function EwhDashboardClient({
           {/* Powerman Metric (Master Data Serviceman) */}
           <button
             type="button"
+            data-testid="powerman-pill-btn"
             onClick={() => setIsPowermanModalOpen(true)}
             className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 transition-all cursor-pointer hover:bg-blue-50 hover:border-blue-300 text-left"
             title="Klik untuk melihat daftar nama manpower Powerman"
@@ -1532,6 +1533,7 @@ export function EwhDashboardClient({
           {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card
+              data-testid="powerman-card-btn"
               onClick={() => setIsPowermanModalOpen(true)}
               className="rounded-2xl border-slate-200/80 shadow-2xs hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group"
               title="Klik untuk melihat daftar nama manpower Powerman"
