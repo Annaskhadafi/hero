@@ -241,6 +241,8 @@ export function EwhDashboardClient({
     return monthlyMatrixData.servicemen || []
   }, [monthlyMatrixData.servicemen])
 
+  const isAllSites = !monthlyMatrixData.siteId || monthlyMatrixData.siteName.toLowerCase().includes('semua')
+
   const filteredServicemen = useMemo(() => {
     if (!powermanSearch.trim()) return servicemenList
     const q = powermanSearch.toLowerCase()
@@ -249,7 +251,8 @@ export function EwhDashboardClient({
         s.name.toLowerCase().includes(q) ||
         s.employeeSn.toLowerCase().includes(q) ||
         s.jobTitle.toLowerCase().includes(q) ||
-        s.section.toLowerCase().includes(q)
+        s.section.toLowerCase().includes(q) ||
+        (s.siteName && s.siteName.toLowerCase().includes(q))
     )
   }, [servicemenList, powermanSearch])
 
@@ -3676,6 +3679,9 @@ export function EwhDashboardClient({
                     <th className="py-2.5 px-3 text-center w-12 border-r border-slate-200">No</th>
                     <th className="py-2.5 px-3 text-left w-24 border-r border-slate-200">NIK / SN</th>
                     <th className="py-2.5 px-3 text-left border-r border-slate-200">Nama Karyawan</th>
+                    {isAllSites && (
+                      <th className="py-2.5 px-3 text-left border-r border-slate-200">Site / Lokasi</th>
+                    )}
                     <th className="py-2.5 px-3 text-left border-r border-slate-200">Jabatan</th>
                     <th className="py-2.5 px-3 text-left border-r border-slate-200">Seksi (Section)</th>
                     <th className="py-2.5 px-3 text-center w-24">Status</th>
@@ -3684,7 +3690,7 @@ export function EwhDashboardClient({
                 <tbody className="divide-y divide-slate-100">
                   {filteredServicemen.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-400">
+                      <td colSpan={isAllSites ? 7 : 6} className="text-center py-8 text-slate-400">
                         {servicemenList.length === 0
                           ? 'Daftar rincian manpower dapat dilihat pada tab "Rekap Individu Karyawan".'
                           : 'Tidak ada data karyawan yang cocok dengan pencarian.'}
@@ -3696,6 +3702,9 @@ export function EwhDashboardClient({
                         <td className="py-2 px-3 text-center text-slate-400 font-medium border-r border-slate-100">{i + 1}</td>
                         <td className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100">{emp.employeeSn || '-'}</td>
                         <td className="py-2 px-3 font-bold text-slate-900 border-r border-slate-100">{emp.name}</td>
+                        {isAllSites && (
+                          <td className="py-2 px-3 font-medium text-slate-700 border-r border-slate-100">{emp.siteName || '-'}</td>
+                        )}
                         <td className="py-2 px-3 text-slate-600 border-r border-slate-100">{emp.jobTitle}</td>
                         <td className="py-2 px-3 text-slate-600 border-r border-slate-100">{emp.section || '-'}</td>
                         <td className="py-2 px-3 text-center">

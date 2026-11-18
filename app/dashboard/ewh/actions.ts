@@ -1459,6 +1459,7 @@ export interface EwhServicemanInfo {
   jobTitle: string
   section: string
   department: string
+  siteName?: string
 }
 
 export interface EwhSiteMonthlyMatrixResult {
@@ -2222,14 +2223,18 @@ export async function getEwhSiteMonthlyMatrixAction(
     period,
     powerman,
     defaultPowerman,
-    servicemen: targetEmployees.map((e) => ({
-      id: e.id,
-      name: e.name,
-      employeeSn: e.employeeSn || '',
-      jobTitle: e.jobTitle || 'Serviceman',
-      section: e.section || '',
-      department: e.department || '',
-    })),
+    servicemen: (() => {
+      const siteMap = new Map(allSites.map((s) => [s.id, s.name]))
+      return targetEmployees.map((e) => ({
+        id: e.id,
+        name: e.name,
+        employeeSn: e.employeeSn || '',
+        jobTitle: e.jobTitle || 'Serviceman',
+        section: e.section || '',
+        department: e.department || '',
+        siteName: siteMap.get(e.siteId) || '',
+      }))
+    })(),
     shiftHours,
     matrix,
     weeklyBreakdown,
