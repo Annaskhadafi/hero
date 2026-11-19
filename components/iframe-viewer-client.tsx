@@ -7,7 +7,6 @@ import {
   Minimize2,
   Globe,
   Shield,
-  ShieldAlert,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,7 +33,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [showHelperBanner, setShowHelperBanner] = useState(false);
   const [disableSandbox, setDisableSandbox] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -48,16 +46,8 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
     return transformInfo.url;
   }, [useProxy, url, transformInfo.url]);
 
-  // Timer untuk memunculkan panduan jika loading lama (indikasi frame-blocking oleh situs luar)
   useEffect(() => {
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      if (!useProxy) {
-        setShowHelperBanner(true);
-      }
-    }, 4500);
-
-    return () => clearTimeout(timer);
   }, [activeUrl, useProxy, reloadKey]);
 
   // Handler fullscreen
@@ -157,7 +147,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
                 type="button"
                 onClick={() => {
                   setUseProxy(true);
-                  setShowHelperBanner(false);
                 }}
                 className={`px-2.5 py-1 rounded-md font-medium text-[11px] transition-all flex items-center gap-1 ${
                   useProxy
@@ -228,46 +217,6 @@ export function IframeViewerClient({ title, url }: IframeViewerClientProps) {
               : {})}
           />
         </div>
-
-        {/* Helper Banner Jika Terindikasi Diblokir oleh Situs Luar (X-Frame-Options) */}
-        {showHelperBanner && !useProxy && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-lg w-[92%] bg-slate-900/95 text-white backdrop-blur-md p-3.5 rounded-2xl shadow-2xl border border-slate-700/80 z-20 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="flex items-start gap-2.5 text-slate-300">
-              <ShieldAlert className="size-4 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-white">
-                  Konten belum muncul atau dibatasi?
-                </p>
-                <p className="text-[11px] text-slate-300 mt-0.5">
-                  Situs eksternal ini membatasi frame langsung. Silakan aktifkan mode Bypass Proxy.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  setUseProxy(true);
-                  setShowHelperBanner(false);
-                }}
-                className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white border-0 font-medium px-3"
-              >
-                <Shield className="size-3 mr-1" />
-                Aktifkan Proxy
-              </Button>
-              <button
-                type="button"
-                onClick={() => setShowHelperBanner(false)}
-                className="text-slate-400 hover:text-white text-xs px-2 py-0.5 ml-1"
-                title="Tutup pesan"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </TooltipProvider>
   );
