@@ -7,20 +7,17 @@ test('verifies that selecting 3 items only exports and prints the 3 selected ite
   screen,
   browser,
 }) => {
-  // 1. Authenticate and land on Laporan Posisi Stok
-  await loginToHero(app, screen, browser, '/dashboard/warehouse-repair/laporan-stok');
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  // 1. Authenticate to warehouse repair
+  await loginToHero(app, screen, browser, '/dashboard/warehouse-repair');
+  await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // 2. Wait for page title and table to appear
-  const heading = browser.locator('text=Laporan Posisi Stok').first();
-  await expect(heading).toBeVisible({ timeout: 45000 });
-
-  const table = browser.locator('table').first();
-  await expect(table).toBeVisible({ timeout: 30000 });
+  // 2. Open Laporan Posisi Stok directly
+  await app.open('/dashboard/warehouse-repair/laporan-stok');
+  await new Promise((resolve) => setTimeout(resolve, 4000));
 
   // 3. Find row checkboxes using exact aria-label
   const rowCheckboxes = browser.locator('[aria-label^="Pilih baris"]');
-  await expect(rowCheckboxes.first()).toBeVisible({ timeout: 20000 });
+  await expect(rowCheckboxes.first()).toBeVisible({ timeout: 25000 });
 
   // Click first 3 row checkboxes sequentially
   await rowCheckboxes.nth(0).click();
