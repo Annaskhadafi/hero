@@ -6,6 +6,7 @@ import { centralServiceAssets, centralServiceAssetHistories } from '@/db/schema/
 import { approvals, employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
 import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessContext, isSuperAdminRole } from '@/lib/hero-access'
+import { isSuperAdminUser } from '@/lib/role-utils'
 import { and, desc, eq, ilike, or, sql, asc } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { generateAssetDisposalPdf } from '@/lib/asset-disposal-pdf'
@@ -35,7 +36,8 @@ export async function getAssetDisposals(params?: {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
 
     const search = params?.search?.trim() || ''
     const statusFilter = params?.status?.trim() || ''
@@ -102,6 +104,7 @@ export async function getAssetDisposals(params?: {
           ...item,
           items: JSON.parse(item.items || '[]'),
           attachments: JSON.parse(item.attachments || '[]'),
+          submitterSignatureUrl: item.applicantSignatureUrl || null,
           canEditRevision: Boolean(item.status === 'needs_revision' && (isCreator || isSuperAdmin)),
         }
       }),
@@ -138,7 +141,8 @@ export async function getAssetDisposalDetail(id: number) {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
 
     const [disposal] = await db
       .select()
@@ -186,6 +190,8 @@ export async function getAssetDisposalDetail(id: number) {
         items: JSON.parse(disposal.items || '[]'),
         attachments: JSON.parse(disposal.attachments || '[]'),
         approvalSteps,
+        applicantSignatureUrl: disposal.applicantSignatureUrl || null,
+        submitterSignatureUrl: disposal.applicantSignatureUrl || null,
         canApprove,
         canCancel,
         canEditRevision,
@@ -597,6 +603,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         applicantEmployeeId,
         applicantName,
         applicantJobTitle,
+        applicantSignatureUrl: input.applicantSignatureUrl || null,
         createdById: session.user.id,
         status: 'pending',
         currentStepOrder: 1,
@@ -660,7 +667,8 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
 
     const [disposal] = await db
       .select()
@@ -861,7 +869,8 @@ export async function rejectAssetDisposal(id: number, rejectionNote: string) {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
 
     const [disposal] = await db
       .select()
@@ -933,7 +942,8 @@ export async function cancelAssetDisposal(id: number, cancellationReason?: strin
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
 
     const [disposal] = await db
       .select()
@@ -1001,7 +1011,8 @@ export async function revertAssetDisposalAction(id: number, revertReason: string
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
     const isCurrentApprover = Boolean(
       empContext?.employeeId && disposal.currentApproverEmployeeId === empContext.employeeId
     )
@@ -1112,7 +1123,8 @@ export async function resubmitAssetDisposalAction(input: {
     }
 
     const empContext = await getCurrentEmployeeAccessContext()
-    const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+    const isSuperAdmin =
+      isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
     const isCreator = Boolean(
       (empContext?.employeeId && disposal.applicantEmployeeId === empContext.employeeId) ||
       (session.user.id && disposal.createdById === session.user.id)

@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils'
 export interface HeroFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  title: string
+  title: React.ReactNode
   description?: string
   children: React.ReactNode
   onSubmit?: (e: React.FormEvent) => void
@@ -36,7 +36,9 @@ export interface HeroFormDialogProps {
   submitLabel?: string
   cancelLabel?: string
   isSubmitting?: boolean
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '5xl'
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '5xl' | '6xl' | '7xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | '5xl' | '6xl' | '7xl'
+  className?: string
 }
 
 export function HeroFormDialog({
@@ -50,8 +52,11 @@ export function HeroFormDialog({
   submitLabel = 'Simpan Data',
   cancelLabel = 'Batal',
   isSubmitting = false,
-  maxWidth = 'md',
+  maxWidth,
+  size,
+  className,
 }: HeroFormDialogProps) {
+  const chosenWidth = maxWidth || size || 'md'
   const maxClass = {
     sm: 'max-w-sm',
     md: 'max-w-md',
@@ -60,7 +65,9 @@ export function HeroFormDialog({
     '2xl': 'max-w-2xl',
     '4xl': 'max-w-4xl',
     '5xl': 'max-w-5xl',
-  }[maxWidth]
+    '6xl': 'max-w-6xl',
+    '7xl': 'max-w-7xl',
+  }[chosenWidth] || 'max-w-md'
 
   const handleCancel = () => {
     onCancel?.()
@@ -69,9 +76,16 @@ export function HeroFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn('p-6 overflow-hidden flex flex-col max-h-[90vh]', maxClass)}>
+      <DialogContent className={cn('p-6 overflow-hidden flex flex-col max-h-[90vh]', maxClass, className)}>
         <DialogHeader className="shrink-0">
-          <DialogTitle className="text-base font-bold text-slate-900">{title}</DialogTitle>
+          {typeof title === 'string' ? (
+            <DialogTitle className="text-base font-bold text-slate-900">{title}</DialogTitle>
+          ) : (
+            <div>
+              <DialogTitle className="sr-only">Form Dialog</DialogTitle>
+              {title}
+            </div>
+          )}
           {description && (
             <DialogDescription className="text-xs text-slate-500">
               {description}
@@ -124,9 +138,11 @@ export interface HeroConfirmDialogProps {
   confirmLabel?: string
   cancelLabel?: string
   tone?: HeroConfirmTone
+  variant?: HeroConfirmTone
   isProcessing?: boolean
+  loading?: boolean
   confirmDisabled?: boolean
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   onCancel?: () => void
   children?: React.ReactNode
 }
@@ -138,21 +154,26 @@ export function HeroConfirmDialog({
   description,
   confirmLabel = 'Konfirmasi',
   cancelLabel = 'Batal',
-  tone = 'destructive',
-  isProcessing = false,
+  tone,
+  variant,
+  isProcessing,
+  loading,
   confirmDisabled = false,
   onConfirm,
   onCancel,
   children,
 }: HeroConfirmDialogProps) {
+  const activeTone = tone || variant || 'destructive'
+  const isBusy = Boolean(isProcessing || loading)
+
   const icon = {
     destructive: <AlertCircle className="size-5 text-rose-600" />,
     warning: <AlertTriangle className="size-5 text-amber-600" />,
     primary: <HelpCircle className="size-5 text-blue-600" />,
     success: <CheckCircle2 className="size-5 text-emerald-600" />,
-  }[tone]
+  }[activeTone]
 
-  const buttonVariant = tone === 'destructive' ? 'destructive' : 'default'
+  const buttonVariant = activeTone === 'destructive' ? 'destructive' : 'default'
 
   const handleCancel = () => {
     onCancel?.()
@@ -181,7 +202,7 @@ export function HeroConfirmDialog({
             type="button"
             variant="outline"
             size="dense"
-            disabled={isProcessing}
+            disabled={isBusy}
             onClick={handleCancel}
             className="h-9 px-4 font-medium"
           >
@@ -191,14 +212,14 @@ export function HeroConfirmDialog({
             type="button"
             variant={buttonVariant}
             size="dense"
-            disabled={isProcessing || confirmDisabled}
+            disabled={isBusy || confirmDisabled}
             onClick={onConfirm}
             className={cn(
               'h-9 px-4 font-semibold',
-              tone === 'success' && 'bg-emerald-600 hover:bg-emerald-700 text-white'
+              activeTone === 'success' && 'bg-emerald-600 hover:bg-emerald-700 text-white'
             )}
           >
-            {isProcessing ? 'Memproses...' : confirmLabel}
+            {isBusy ? 'Memproses...' : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

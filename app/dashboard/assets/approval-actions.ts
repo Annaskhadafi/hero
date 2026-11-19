@@ -534,6 +534,7 @@ export async function getAssetManagementItemDetailAction({
           notes: assetDisposals.notes,
           items: assetDisposals.items,
           attachments: assetDisposals.attachments,
+          applicantSignatureUrl: assetDisposals.applicantSignatureUrl,
           submittedAt: assetDisposals.submittedAt,
           approvedAt: assetDisposals.approvedAt,
           createdAt: assetDisposals.createdAt,
@@ -595,6 +596,8 @@ export async function getAssetManagementItemDetailAction({
           notes: disposal.notes,
           items: JSON.parse(disposal.items || '[]'),
           attachments: JSON.parse(disposal.attachments || '[]'),
+          applicantSignatureUrl: disposal.applicantSignatureUrl || null,
+          submitterSignatureUrl: disposal.applicantSignatureUrl || null,
           submittedAt: disposal.submittedAt || disposal.createdAt,
           approvedAt: disposal.approvedAt,
           approvals: approvalRows.map((a) => ({

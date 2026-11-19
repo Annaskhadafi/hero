@@ -96,6 +96,7 @@ export async function GET(
       purchaseYear: disposal.purchaseYear,
       notes: disposal.notes,
       attachments: parsedAttachments,
+      applicantSignatureUrl: disposal.applicantSignatureUrl || null,
       submittedAt: disposal.submittedAt,
       approvedAt: disposal.approvedAt,
       approvals: approvalRows.map((app) => ({

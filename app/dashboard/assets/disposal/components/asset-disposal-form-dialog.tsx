@@ -32,19 +32,28 @@ import {
   X,
   Sparkles,
   Info,
+  PenLine,
+  Upload,
+  UserCheck,
+  PackageCheck,
 } from 'lucide-react'
 import { uploadFile } from '@/app/actions/upload'
+import { getUserSignatureAction } from '@/app/actions/user-signature'
+import { SignaturePad } from '@/components/signature-pad'
 import { createAssetDisposal, resubmitAssetDisposalAction } from '../actions'
 import { type DisposalApproverStep, type DisposalAttachment } from '../schema'
 
 export interface DisposalFormItem {
   id: string
-  assetId?: number | null
+  assetId: number | null
   assetName: string
   assetNumber: string
   purchaseYear: string
   notes: string
-  selectionMode: 'master' | 'manual'
+  serialNumber?: string | null
+  location?: string | null
+  section?: string | null
+  status?: string | null
 }
 
 interface AssetDisposalFormDialogProps {
@@ -94,7 +103,7 @@ export function AssetDisposalFormDialog({
   const [siteName, setSiteName] = React.useState<string>('')
   const [disposalDate, setDisposalDate] = React.useState<Date | undefined>(new Date())
 
-  // 2. Unit Items Repeater (Group 2 - Multi-Item Asset Disposal)
+  // 2. Unit Items Repeater (Group 2 - 100% Wajib Master Data HERO)
   const [items, setItems] = React.useState<DisposalFormItem[]>([
     {
       id: 'item-1',
@@ -103,7 +112,6 @@ export function AssetDisposalFormDialog({
       assetNumber: '',
       purchaseYear: '',
       notes: '',
-      selectionMode: 'master',
     },
   ])
 
@@ -115,11 +123,19 @@ export function AssetDisposalFormDialog({
   // 4. Approval Routing Steps (Group 4 - CER-style Flexible Approval Builder)
   const [approvers, setApprovers] = React.useState<DisposalApproverStep[]>([])
 
+  // 5. Applicant Digital Signature (Group 5 - SignaturePad / Upload / Profile)
+  const [sigMode, setSigMode] = React.useState<'profile' | 'draw' | 'upload'>('profile')
+  const [profileSig, setProfileSig] = React.useState<string | null>(null)
+  const [uploadedSigUrl, setUploadedSigUrl] = React.useState<string | null>(null)
+  const [submitterSig, setSubmitterSig] = React.useState<string | null>(null)
+  const [isUploadingSig, setIsUploadingSig] = React.useState(false)
+  const signatureFileInputRef = React.useRef<HTMLInputElement>(null)
+
   // Options for Master Assets Searchable Select
   const assetOptions = React.useMemo(() => {
     return assets.map((a) => ({
       value: String(a.id),
-      label: `${a.description} ${a.assetNumber ? `(No: ${a.assetNumber})` : ''} - ${a.location}`,
+      label: `${a.description} ${a.assetNumber ? `[${a.assetNumber}]` : ''} - ${a.location}`,
     }))
   }, [assets])
 
@@ -130,6 +146,28 @@ export function AssetDisposalFormDialog({
       label: `${e.name} ${e.employeeSn ? `(${e.employeeSn})` : ''} - ${e.jobTitle || 'Staff'}`,
     }))
   }, [allEmployees])
+
+  // Load User Signature from Profile
+  React.useEffect(() => {
+    async function loadSignature() {
+      try {
+        const res = await getUserSignatureAction()
+        if (res.success && res.signatureUrl) {
+          setProfileSig(res.signatureUrl)
+          setSubmitterSig(res.signatureUrl)
+          setSigMode('profile')
+        } else {
+          setSigMode('draw')
+        }
+      } catch (e) {
+        setSigMode('draw')
+      }
+    }
+
+    if (open) {
+      loadSignature()
+    }
+  }, [open])
 
   // Sync initial data or defaults on modal open
   React.useEffect(() => {
@@ -154,7 +192,6 @@ export function AssetDisposalFormDialog({
               assetNumber: it.assetNumber || '',
               purchaseYear: it.purchaseYear || '',
               notes: it.notes || '',
-              selectionMode: it.assetId ? 'master' : 'manual',
             }))
           )
         } else {
@@ -166,13 +203,18 @@ export function AssetDisposalFormDialog({
               assetNumber: initialData.assetNumber || '',
               purchaseYear: initialData.purchaseYear || '',
               notes: initialData.notes || '',
-              selectionMode: initialData.assetId ? 'master' : 'manual',
             },
           ])
         }
 
         setAttachments(initialData.attachments || [])
         setApprovers(defaultApprovers.length > 0 ? defaultApprovers : [])
+
+        if (initialData.applicantSignatureUrl || initialData.submitterSignatureUrl) {
+          const sig = initialData.applicantSignatureUrl || initialData.submitterSignatureUrl
+          setSubmitterSig(sig)
+          setUploadedSigUrl(sig)
+        }
       } else {
         // Create New Mode: Auto-fill from current employee profile
         if (currentEmployee) {
@@ -212,7 +254,6 @@ export function AssetDisposalFormDialog({
             assetNumber: '',
             purchaseYear: '',
             notes: '',
-            selectionMode: 'master',
           },
         ])
         setAttachments([])
@@ -232,7 +273,6 @@ export function AssetDisposalFormDialog({
         assetNumber: '',
         purchaseYear: '',
         notes: '',
-        selectionMode: 'master',
       },
     ])
   }
@@ -256,7 +296,17 @@ export function AssetDisposalFormDialog({
       setItems((prev) =>
         prev.map((it) =>
           it.id === id
-            ? { ...it, assetId: null, assetName: '', assetNumber: '', purchaseYear: '' }
+            ? {
+                ...it,
+                assetId: null,
+                assetName: '',
+                assetNumber: '',
+                purchaseYear: '',
+                serialNumber: null,
+                location: null,
+                section: null,
+                status: null,
+              }
             : it
         )
       )
@@ -280,6 +330,10 @@ export function AssetDisposalFormDialog({
                 assetName: found.description,
                 assetNumber: found.assetNumber || '',
                 purchaseYear: py,
+                serialNumber: found.serialNumber || null,
+                location: found.location || null,
+                section: found.section || null,
+                status: found.status || null,
               }
             : it
         )
@@ -326,6 +380,33 @@ export function AssetDisposalFormDialog({
 
   const handleRemoveAttachment = (idx: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  // --- SIGNATURE UPLOAD HANDLER ---
+  const handleSignatureImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsUploadingSig(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('prefix', 'signatures')
+
+      const res = await uploadFile(formData)
+      if (res.success && res.url) {
+        setUploadedSigUrl(res.url)
+        setSubmitterSig(res.url)
+        toast.success('Gambar tanda tangan berhasil diunggah.')
+      } else {
+        toast.error(res.message || 'Gagal mengunggah tanda tangan.')
+      }
+    } catch (err: any) {
+      toast.error('Gagal mengunggah tanda tangan: ' + (err?.message || ''))
+    } finally {
+      setIsUploadingSig(false)
+      if (signatureFileInputRef.current) signatureFileInputRef.current.value = ''
+    }
   }
 
   // --- APPROVAL ROUTING BUILDER HANDLERS (CER-STYLE) ---
@@ -405,7 +486,7 @@ export function AssetDisposalFormDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // 1. Validate Items
+    // 1. Validate Items (Wajib Master Data HERO)
     if (items.length === 0) {
       toast.error('Minimal harus mengisi 1 rincian aset.')
       return
@@ -413,8 +494,8 @@ export function AssetDisposalFormDialog({
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i]
-      if (!it.assetName.trim()) {
-        toast.error(`Nama aset pada Unit #${i + 1} wajib diisi.`)
+      if (!it.assetId) {
+        toast.error(`Unit #${i + 1} wajib memilih aset dari Master Data HERO.`)
         return
       }
       if (!it.notes.trim()) {
@@ -444,10 +525,16 @@ export function AssetDisposalFormDialog({
       return
     }
 
+    // 3. Validate Submitter Signature
+    if (!submitterSig) {
+      toast.error('Tanda tangan pemohon wajib dibubuhkan sebelum mengirimkan pengajuan.')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const formattedItems = items.map((it) => ({
-        assetId: it.assetId || null,
+        assetId: it.assetId,
         assetName: it.assetName.trim(),
         assetNumber: it.assetNumber.trim() || null,
         purchaseYear: it.purchaseYear.trim() || null,
@@ -483,6 +570,7 @@ export function AssetDisposalFormDialog({
           notes: formattedItems.map((it) => `${it.assetName}: ${it.notes}`).join('; '),
           attachments,
           applicantEmployeeId: currentEmployee?.id || null,
+          applicantSignatureUrl: submitterSig,
           customApprovers: approvers,
         }
 
@@ -507,26 +595,26 @@ export function AssetDisposalFormDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-            <Trash2 className="h-4 w-4" />
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-700 shadow-2xs">
+            <Trash2 className="h-5 w-5" />
           </div>
           <div>
             <h3 className="text-base font-bold text-slate-900">
               {initialData?.id ? 'Revisi Pengajuan Asset Disposal' : 'Formulir Pengajuan Asset Disposal'}
             </h3>
             <p className="text-xs text-slate-500 font-normal">
-              Penghapusan aset resmi dengan rincian unit multi-aset dan verifikasi Finance &amp; Accounting
+              Penghapusan aset resmi dengan rincian unit multi-aset master HERO dan verifikasi berjenjang
             </p>
           </div>
         </div>
       }
-      size="5xl"
+      maxWidth="6xl"
       isSubmitting={isSubmitting}
       onSubmit={handleSubmit}
       submitLabel={initialData?.id ? 'Kirim Ulang Revisi' : 'Kirim Pengajuan Disposal'}
     >
-      <div className="space-y-6 text-xs">
+      <div className="space-y-6 text-xs max-h-[76vh] overflow-y-auto pr-1">
         {/* GRUP 1: INFORMASI PEMOHON & UNIT KERJA (AUTO-FILL & READ-ONLY) */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3.5 shadow-2xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
@@ -606,7 +694,7 @@ export function AssetDisposalFormDialog({
           </div>
         </div>
 
-        {/* GRUP 2: RINCIAN ASET YANG DIHAPUS (MULTI-ITEM REPEATER DALAM 1 GRUP) */}
+        {/* GRUP 2: RINCIAN ASET YANG DIHAPUS (100% WAJIB MASTER DATA HERO) */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
@@ -618,7 +706,7 @@ export function AssetDisposalFormDialog({
                   2. Rincian Aset yang Dihapus (Disposal Unit)
                 </h4>
                 <p className="text-[11px] text-slate-500">
-                  Satukan nama aset, nomor aset, tahun pembelian, dan catatan alasan penghapusan dalam satu grup
+                  Seluruh unit aset wajib dipilih dari Master Data Central Service HERO (Tanpa Input Manual)
                 </p>
               </div>
             </div>
@@ -647,132 +735,124 @@ export function AssetDisposalFormDialog({
                     <span className="text-xs font-bold text-slate-900">
                       Rincian Aset #{idx + 1}
                     </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {/* Mode Selector for Item: Master vs Manual */}
-                    <div className="flex items-center bg-white rounded-lg border border-slate-200 p-0.5 text-[11px]">
-                      <button
-                        type="button"
-                        onClick={() => handleItemFieldChange(it.id, 'selectionMode', 'master')}
-                        className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                          it.selectionMode === 'master'
-                            ? 'bg-blue-50 text-blue-700 font-bold'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
+                    {it.assetId ? (
+                      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] font-semibold gap-1">
+                        <CheckCircle2 className="h-3 w-3" /> Master HERO Terhubung
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 text-[10px] font-medium">
                         Pilih Master Aset
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleItemFieldChange(it.id, 'selectionMode', 'manual')}
-                        className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                          it.selectionMode === 'manual'
-                            ? 'bg-blue-50 text-blue-700 font-bold'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Input Manual
-                      </button>
-                    </div>
-
-                    {items.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveItem(it.id)}
-                        className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 font-semibold"
-                      >
-                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Hapus
-                      </Button>
+                      </Badge>
                     )}
                   </div>
+
+                  {items.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveItem(it.id)}
+                      className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 font-semibold"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Hapus Unit
+                    </Button>
+                  )}
                 </div>
 
-                {/* If Master Selection Mode */}
-                {it.selectionMode === 'master' && (
-                  <HeroFormField
-                    label="Pilih Aset dari Master Central Service"
-                    helperText="Pilih aset yang terdaftar untuk mengisi nama, nomor aset, dan tahun beli otomatis"
-                  >
-                    <HeroSearchableSelect
-                      options={assetOptions}
-                      value={it.assetId ? String(it.assetId) : ''}
-                      onChange={(val) => handleSelectMasterAsset(it.id, val)}
-                      placeholder="Cari nama aset, nomor aset, atau lokasi..."
-                      searchPlaceholder="Ketik pencarian aset..."
-                    />
-                  </HeroFormField>
-                )}
+                {/* Pilih Aset dari Master HERO */}
+                <HeroFormField
+                  label="Pilih Aset dari Master Data HERO *"
+                  helperText="Ketik nama aset, nomor aset, atau lokasi untuk mencari unit master"
+                >
+                  <HeroSearchableSelect
+                    options={assetOptions}
+                    value={it.assetId ? String(it.assetId) : ''}
+                    onChange={(val) => handleSelectMasterAsset(it.id, val)}
+                    placeholder="Pilih aset dari Master Data HERO..."
+                    searchPlaceholder="Ketik pencarian nama atau nomor aset..."
+                  />
+                </HeroFormField>
 
-                {/* 4 Kolom Rincian Terpadu: Nama Aset, No. Aset, Tahun Pembelian, dan Alasan Penghapusan */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* 4 Kolom Terpadu: Nama Aset, No. Aset, Tahun Pembelian, dan Alasan Penghapusan */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="sm:col-span-2">
-                    <HeroFormField label="Nama Aset" required>
+                    <HeroFormField label="Nama Aset (Auto-filled)" required>
                       <HeroInput
                         value={it.assetName}
-                        onChange={(e) => handleItemFieldChange(it.id, 'assetName', e.target.value)}
-                        placeholder="Contoh: Laptop Dell Latitude 3420 / Pompa Kompresor"
-                        className="bg-white"
+                        disabled
+                        placeholder="Pilih aset master di atas..."
+                        className="bg-white font-medium text-slate-900"
                       />
                     </HeroFormField>
                   </div>
 
-                  <HeroFormField label="No. Aset (Asset Code / Tag)">
+                  <HeroFormField label="Nomor Aset">
                     <HeroInput
-                      value={it.assetNumber}
-                      onChange={(e) => handleItemFieldChange(it.id, 'assetNumber', e.target.value)}
-                      placeholder="Contoh: AST-2022-0045"
-                      className="bg-white font-mono"
+                      value={it.assetNumber || '-'}
+                      disabled
+                      placeholder="-"
+                      className="bg-white font-mono font-semibold text-slate-800"
                     />
                   </HeroFormField>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <HeroFormField label="Tahun Pembelian" helperText="Tahun perolehan fisik aset">
+                  <HeroFormField label="Tahun Pembelian">
                     <HeroInput
-                      value={it.purchaseYear}
+                      value={it.purchaseYear || '-'}
                       onChange={(e) => handleItemFieldChange(it.id, 'purchaseYear', e.target.value)}
                       placeholder="Contoh: 2021"
-                      className="bg-white font-mono"
+                      className="bg-white text-slate-800"
                     />
                   </HeroFormField>
-
-                  <div className="sm:col-span-3">
-                    <HeroFormField
-                      label="Catatan & Alasan Penghapusan Aset"
-                      required
-                      helperText="Jelaskan kondisi kerusakan fisik, biaya perbaikan vs ekonomis, atau alasan pemusnahan"
-                    >
-                      <HeroTextarea
-                        value={it.notes}
-                        onChange={(e) => handleItemFieldChange(it.id, 'notes', e.target.value)}
-                        placeholder="Contoh: Motherboard terbakar dan panel layar retak parah. Estimasi biaya perbaikan melebihi nilai buku unit..."
-                        rows={2}
-                        className="bg-white resize-none"
-                      />
-                    </HeroFormField>
-                  </div>
                 </div>
+
+                {/* Metadata Tambahan Aset */}
+                {it.assetId && (it.location || it.serialNumber) && (
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                    <PackageCheck className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    {it.location && (
+                      <span><strong>Lokasi:</strong> {it.location}</span>
+                    )}
+                    {it.serialNumber && (
+                      <span>• <strong>Serial Number:</strong> {it.serialNumber}</span>
+                    )}
+                    {it.status && (
+                      <span>• <strong>Status Master:</strong> {it.status}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Alasan / Catatan Penghapusan Aset */}
+                <HeroFormField
+                  label="Catatan &amp; Alasan Penghapusan Aset *"
+                  helperText="Wajib diisi: jelaskan secara detail kondisi teknis, tingkat kerusakan, atau alasan penghapusan aset ini"
+                  required
+                >
+                  <HeroTextarea
+                    rows={2}
+                    value={it.notes}
+                    onChange={(e) => handleItemFieldChange(it.id, 'notes', e.target.value)}
+                    placeholder="Contoh: Rusak total tidak dapat diperbaiki (kondisi fisik retak, biaya perbaikan melebihi nilai ekonomis)"
+                    className="bg-white"
+                  />
+                </HeroFormField>
               </div>
             ))}
           </div>
         </div>
 
-        {/* GRUP 3: DOKUMEN PENDUKUNG (ATTACHMENTS) */}
-        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+        {/* GRUP 3: DOKUMEN LAMPIRAN PENDUKUNG */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3.5 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
                 <Paperclip className="h-4 w-4" />
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  3. Dokumen Lampiran &amp; Bukti Fisik
+                  3. Dokumen Lampiran Pendukung
                 </h4>
                 <p className="text-[11px] text-slate-500">
-                  Unggah foto fisik kondisi aset rusak, form evaluasi teknis, atau dokumen relevan (PDF / JPG / PNG)
+                  Unggah foto kondisi aset, Berita Acara Kerusakan, estimasi biaya perbaikan, atau berkas pendukung lainnya
                 </p>
               </div>
             </div>
@@ -782,10 +862,10 @@ export function AssetDisposalFormDialog({
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="h-8 gap-1.5 text-xs font-semibold text-indigo-700 border-indigo-300 hover:bg-indigo-50 shadow-2xs"
+              className="h-8 gap-1.5 text-xs font-semibold text-indigo-700 border-indigo-300 hover:bg-indigo-50 self-start sm:self-auto shadow-2xs"
             >
               <UploadCloud className="h-3.5 w-3.5" />
-              {isUploading ? 'Mengunggah...' : 'Unggah Dokumen'}
+              {isUploading ? 'Mengunggah...' : 'Pilih Berkas'}
             </Button>
           </div>
 
@@ -1006,6 +1086,163 @@ export function AssetDisposalFormDialog({
             </div>
           </CardContent>
         </Card>
+
+        {/* GRUP 5: TANDA TANGAN DIGITAL PEMOHON (APPLICANT SIGNATURE) */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                <PenLine className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  5. Tanda Tangan Digital Pemohon (Applicant Signature) *
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Bubuhkan tanda tangan pemohon yang sah sebelum mengirimkan permohonan penghapusan aset
+                </p>
+              </div>
+            </div>
+            {submitterSig && (
+              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 text-[10px] font-semibold gap-1 self-start sm:self-auto">
+                <CheckCircle2 className="h-3 w-3" /> Tanda Tangan Siap
+              </Badge>
+            )}
+          </div>
+
+          {/* Mode Selector */}
+          <div className="flex items-center gap-2 bg-slate-100/80 p-1 rounded-lg border border-slate-200 max-w-md">
+            {profileSig && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSigMode('profile')
+                  setSubmitterSig(profileSig)
+                }}
+                className={`flex-1 py-1 px-3 rounded-md transition-all text-xs font-semibold ${
+                  sigMode === 'profile'
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                TTD Profil HERO
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setSigMode('draw')
+                if (sigMode === 'profile') setSubmitterSig(null)
+              }}
+              className={`flex-1 py-1 px-3 rounded-md transition-all text-xs font-semibold ${
+                sigMode === 'draw'
+                  ? 'bg-white text-blue-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Coretan Canvas
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSigMode('upload')
+                if (uploadedSigUrl) setSubmitterSig(uploadedSigUrl)
+                else if (sigMode === 'profile') setSubmitterSig(null)
+              }}
+              className={`flex-1 py-1 px-3 rounded-md transition-all text-xs font-semibold ${
+                sigMode === 'upload'
+                  ? 'bg-white text-blue-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Unggah Gambar
+            </button>
+          </div>
+
+          {/* Hidden File Input for Signature Upload */}
+          <input
+            ref={signatureFileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={handleSignatureImageUpload}
+          />
+
+          {/* Mode 1: Profil HERO */}
+          {sigMode === 'profile' && profileSig && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-4 flex flex-col items-center justify-center min-h-[120px] max-w-md relative">
+              <span className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-300">
+                <CheckCircle2 className="h-3 w-3" />
+                Terdaftar di Profil HERO
+              </span>
+              <img
+                src={profileSig}
+                alt="Tanda Tangan Pemohon"
+                className="max-h-20 object-contain my-1"
+              />
+              <p className="text-[11px] font-semibold text-slate-700 mt-1">
+                {currentEmployee?.name || 'Pemohon'}
+              </p>
+            </div>
+          )}
+
+          {/* Mode 2: SignaturePad Draw */}
+          {sigMode === 'draw' && (
+            <div className="max-w-md space-y-2">
+              <p className="text-[11px] text-slate-500">
+                Goreskan tanda tangan Anda pada area putih di bawah ini:
+              </p>
+              <SignaturePad
+                onDataUrlChange={(dataUrl) => setSubmitterSig(dataUrl)}
+                onSaveToProfile={(dataUrl) => {
+                  setProfileSig(dataUrl)
+                  setSigMode('profile')
+                  setSubmitterSig(dataUrl)
+                }}
+                height={120}
+              />
+            </div>
+          )}
+
+          {/* Mode 3: Signature Upload */}
+          {sigMode === 'upload' && (
+            <div className="max-w-md space-y-2">
+              {uploadedSigUrl ? (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4 flex flex-col items-center justify-center min-h-[120px] relative">
+                  <img
+                    src={uploadedSigUrl}
+                    alt="Unggahan Tanda Tangan"
+                    className="max-h-20 object-contain my-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => signatureFileInputRef.current?.click()}
+                    disabled={isUploadingSig}
+                    className="h-7 text-xs mt-2"
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-1" />
+                    {isUploadingSig ? 'Mengunggah...' : 'Ganti Gambar TTD'}
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  onClick={() => signatureFileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all text-center min-h-[110px]"
+                >
+                  <Upload className="h-5 w-5 text-indigo-600 mb-1" />
+                  <p className="text-xs font-bold text-slate-800">
+                    Klik untuk Unggah Gambar Tanda Tangan
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Format PNG, JPG, JPEG (Maks. 5 MB)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </HeroFormDialog>
   )

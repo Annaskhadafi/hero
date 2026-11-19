@@ -42,6 +42,7 @@ export const assetDisposals = pgTable('hero_asset_disposals', {
   }),
   applicantName: text('applicant_name').notNull(),
   applicantJobTitle: text('applicant_job_title'),
+  applicantSignatureUrl: text('applicant_signature_url'),
   createdById: text('created_by_id').references(() => user.id, {
     onDelete: 'set null',
   }),

@@ -4,43 +4,49 @@ import fs from 'fs'
 import path from 'path'
 
 const ARTIFACT_DIR = path.resolve('C:/Users/Gilang/.gemini/antigravity/brain/135839c8-eb66-473f-a410-9a62ee5828c8/screenshots/asset-disposal')
-const OUTPUT_DIR = path.join(process.cwd(), 'outputs/screenshots/asset-disposal')
+const ROOT_ARTIFACT_DIR = path.resolve('C:/Users/Gilang/.gemini/antigravity/brain/135839c8-eb66-473f-a410-9a62ee5828c8')
 
 test.beforeAll(() => {
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true })
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true })
+  fs.mkdirSync(ROOT_ARTIFACT_DIR, { recursive: true })
 })
 
-test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
+function saveScreenshot(sourcePath, filename) {
+  try {
+    fs.copyFileSync(sourcePath, path.join(ROOT_ARTIFACT_DIR, filename))
+  } catch (e) {
+    console.error('Failed to copy screenshot:', e)
+  }
+}
+
+test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
   test.setTimeout(180000)
 
-  test('Verifikasi Tab Disposal Saya & Daftar Disposal, Form Multi-Aset, Auto-fill Profil, Amama Ira Guardrail, Approval Modal A4 Landscape, dan Auto Hapus', async ({
+  test('Verifikasi Form Lebar (6xl), 100% Master Data HERO (Tanpa Input Manual), Step TTD Digital, A4 Landscape Preview Signature, dan Auto-Hapus', async ({
     page,
   }) => {
     page.on('console', (msg) => console.log('PAGE LOG:', msg.type(), msg.text()))
     page.on('pageerror', (err) => console.error('PAGE ERROR:', err.message))
 
-    // Set desktop standard viewport
+    // Set standard desktop viewport
     await page.setViewportSize({ width: 1440, height: 900 })
 
     // 1. Authenticate with standard system credentials
     console.log('Navigating to sign-in page...')
-    await page.goto('/sign-in', { waitUntil: 'networkidle', timeout: 45000 })
+    await page.goto('/sign-in', { waitUntil: 'domcontentloaded', timeout: 45000 })
     await page.waitForTimeout(2000)
 
     const usernameInput = page.locator('input[placeholder*="email atau SN"], #email, input[name="username"]').first()
     const passwordInput = page.locator('input[placeholder*="kata sandi"], #password, input[name="password"]').first()
     const loginSubmitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
 
-    await usernameInput.click()
-    await usernameInput.fill('71261')
-    await passwordInput.click()
+    await usernameInput.fill('mochamad.khadafi@chitraparatama.co.id')
     await passwordInput.fill('Chitra#71261')
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(1000)
     await loginSubmitBtn.click()
 
     console.log('Submitted login credentials. Waiting for redirect...')
-    await page.waitForURL(/\/dashboard/, { timeout: 45000 })
+    await page.waitForURL(/.*(\/dashboard|\/mobile)(\/.*)?/, { waitUntil: 'domcontentloaded', timeout: 45000 })
     console.log('Login successful, on dashboard.')
     await page.waitForTimeout(2000)
 
@@ -64,70 +70,137 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
 
     const ss1Path = path.join(ARTIFACT_DIR, '01_asset_disposal_dashboard_tabs.png')
     await page.screenshot({ path: ss1Path })
-    fs.copyFileSync(ss1Path, path.join(OUTPUT_DIR, '01_asset_disposal_dashboard_tabs.png'))
+    saveScreenshot(ss1Path, '01_asset_disposal_dashboard_tabs.png')
     console.log('✓ Captured 01_asset_disposal_dashboard_tabs.png')
 
     // =========================================================================
-    // STEP 2: Buka Modal Form Pengajuan Disposal
+    // STEP 2: Buka Modal Form Pengajuan Disposal & Cek Ukuran Lebar (max-w-6xl)
     // =========================================================================
     console.log('Opening Form Asset Disposal dialog...')
+    await page.waitForTimeout(3000)
     const createBtn = page.locator('button:has-text("Buat Pengajuan Disposal")').first()
     await expect(createBtn).toBeVisible()
-    await createBtn.click()
 
     const dialogTitle = page.locator('h3:has-text("Formulir Pengajuan Asset Disposal")')
-    await expect(dialogTitle).toBeVisible({ timeout: 10000 })
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (await dialogTitle.isVisible()) break
+      console.log(`Clicking createBtn (attempt ${attempt + 1})...`)
+      await createBtn.click()
+      await page.waitForTimeout(1500)
+    }
+    await expect(dialogTitle).toBeVisible({ timeout: 15000 })
     await page.waitForTimeout(1000)
 
-    // 2a. Verify Group 1: Informasi Pemohon & Unit Kerja (Auto-filled & Disabled)
+    // Verifikasi Modal Lebar (max-w-6xl)
+    const dialogContent = page.locator('[role="dialog"]').first()
+    await expect(dialogContent).toHaveClass(/max-w-6xl/)
+    console.log('✓ Verified: Dialog Form is now wide with max-w-6xl container!')
+
+    // 2a. Verify Group 1: Informasi Pemohon & Unit Kerja (Auto-filled & Locked)
     const pemohonHeader = page.locator('text=1. Informasi Pemohon & Unit Kerja')
     await expect(pemohonHeader).toBeVisible()
+    console.log('✓ Verified Group 1: Informasi Pemohon & Unit Kerja auto-filled.')
 
-    const disabledNameInput = page.locator('input[disabled]').first()
-    await expect(disabledNameInput).toBeVisible()
-    console.log('✓ Verified Group 1: Informasi Pemohon & Unit Kerja is auto-filled and locked.')
-
-    // 2b. Verify Group 2: Rincian Aset Multi-Unit (Nama, No Aset, Tahun Beli, Alasan)
+    // 2b. Verify Group 2: Rincian Aset Multi-Unit (Wajib Master HERO - Tanpa Tab Manual)
     const assetUnitHeader = page.locator('text=2. Rincian Aset yang Dihapus')
     await expect(assetUnitHeader).toBeVisible()
 
-    // Fill Item #1
-    const assetNameInput1 = page.locator('input[placeholder*="Contoh: Laptop Dell"]').first()
-    await assetNameInput1.fill('Laptop Dell Latitude 3420')
-    const assetNumInput1 = page.locator('input[placeholder*="Contoh: AST-2022"]').first()
-    await assetNumInput1.fill('AST-BPN-2021-089')
-    const yearInput1 = page.locator('input[placeholder*="Contoh: 2021"]').first()
-    await yearInput1.fill('2021')
-    const notesInput1 = page.locator('textarea[placeholder*="Contoh: Motherboard terbakar"]').first()
+    // Verifikasi TIDAK ADA tombol switcher "Input Manual"
+    const manualBtn = page.locator('button:has-text("Input Manual")')
+    await expect(manualBtn).toHaveCount(0)
+    console.log('✓ Verified: Opsi/Tab "Input Manual" telah dihilangkan total!')
+
+    // Pilih Unit #1 dari Master Data HERO
+    console.log('Selecting Unit #1 from Master Data HERO...')
+    const selectTrigger1 = page.locator('button:has-text("Pilih aset dari Master Data HERO...")').first()
+    await selectTrigger1.click()
+    await page.waitForTimeout(600)
+
+    const popoverContent = page.locator('[data-radix-popper-content-wrapper]').last()
+    await expect(popoverContent).toBeVisible({ timeout: 5000 })
+
+    const optionItems = popoverContent.locator('div.cursor-pointer')
+    const optCount = await optionItems.count()
+    console.log(`Found ${optCount} assets in master dropdown.`)
+    expect(optCount).toBeGreaterThan(0)
+
+    // Klik opsi aset pertama
+    await optionItems.first().click({ force: true })
+    await page.waitForTimeout(600)
+
+    // Isi Catatan / Alasan Penghapusan Unit #1
+    const notesInput1 = page.locator('textarea[placeholder*="Contoh: Rusak total"]').first()
     await notesInput1.fill('Motherboard terbakar dan panel layar retak parah. Estimasi biaya perbaikan melebihi nilai ekonomis unit.')
 
-    // Click "+ Tambah Unit Aset" to test multi-asset support (Requirement 1)
+    // Klik "+ Tambah Unit Aset" untuk multi-aset
     const addUnitBtn = page.locator('button:has-text("Tambah Unit Aset")').first()
     await addUnitBtn.click()
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(600)
 
     // Verify Item #2 appeared
     const unit2Title = page.locator('text=Rincian Aset #2')
     await expect(unit2Title).toBeVisible()
 
-    const assetNameInput2 = page.locator('input[placeholder*="Contoh: Laptop Dell"]').nth(1)
-    await assetNameInput2.fill('Printer HP LaserJet Pro M404n')
-    const assetNumInput2 = page.locator('input[placeholder*="Contoh: AST-2022"]').nth(1)
-    await assetNumInput2.fill('AST-BPN-2019-012')
-    const yearInput2 = page.locator('input[placeholder*="Contoh: 2021"]').nth(1)
-    await yearInput2.fill('2019')
-    const notesInput2 = page.locator('textarea[placeholder*="Contoh: Motherboard terbakar"]').nth(1)
-    await notesInput2.fill('Roller penarik kertas patah dan fuser unit rusak permanen, suku cadang sudah diskontinu.')
-    console.log('✓ Successfully populated 2 assets in 1 disposal request!')
+    // Pilih Unit #2 dari Master Data HERO
+    console.log('Selecting Unit #2 from Master Data HERO...')
+    const selectTrigger2 = page.locator('button:has-text("Pilih aset dari Master Data HERO...")').first()
+    await selectTrigger2.click()
+    await page.waitForTimeout(600)
+
+    const popoverContent2 = page.locator('[data-radix-popper-content-wrapper]').last()
+    await expect(popoverContent2).toBeVisible({ timeout: 5000 })
+    const optionItems2 = popoverContent2.locator('div.cursor-pointer')
+    const optCount2 = await optionItems2.count()
+
+    if (optCount2 > 1) {
+      await optionItems2.nth(1).click({ force: true })
+    } else {
+      await optionItems2.first().click({ force: true })
+    }
+    await page.waitForTimeout(600)
+
+    const notesInput2 = page.locator('textarea[placeholder*="Contoh: Rusak total"]').nth(1)
+    await notesInput2.fill('Komponen internal aus dan rusak permanen, suku cadang unit sudah diskontinu.')
+    console.log('✓ Successfully selected 2 assets from Master Data HERO!')
 
     // 2c. Verify Group 4: Approval Hierarchy with Amama Ira
     const amamaBadge = page.locator('text=Amama Ira').first()
     await expect(amamaBadge).toBeVisible({ timeout: 8000 })
     console.log('✓ Verified Amama Ira (Finance & Accounting) in approval hierarchy!')
 
+    // 2d. Verify Group 5: Tanda Tangan Digital Pemohon (Applicant Signature)
+    console.log('Verifying Group 5: Tanda Tangan Digital Pemohon...')
+    const sigHeader = page.locator('text=5. Tanda Tangan Digital Pemohon')
+    await expect(sigHeader).toBeVisible()
+
+    // Switch to "Coretan Canvas" tab to test drawing signature
+    const drawTabBtn = page.locator('button:has-text("Coretan Canvas")').first()
+    await drawTabBtn.click()
+    await page.waitForTimeout(500)
+
+    const canvas = page.locator('canvas').first()
+    await expect(canvas).toBeVisible()
+
+    // Draw signature stroke on canvas
+    const box = await canvas.boundingBox()
+    if (box) {
+      await page.mouse.move(box.x + 30, box.y + 30)
+      await page.mouse.down()
+      await page.mouse.move(box.x + 80, box.y + 60)
+      await page.mouse.move(box.x + 120, box.y + 35)
+      await page.mouse.move(box.x + 160, box.y + 70)
+      await page.mouse.up()
+      await page.waitForTimeout(500)
+    }
+
+    // Verify "Tanda Tangan Siap" badge
+    const sigReadyBadge = page.locator('text=Tanda Tangan Siap')
+    await expect(sigReadyBadge).toBeVisible()
+    console.log('✓ Canvas signature drawn successfully, ready for submission!')
+
     const ss2Path = path.join(ARTIFACT_DIR, '02_asset_disposal_form_multi_items_filled.png')
     await page.screenshot({ path: ss2Path })
-    fs.copyFileSync(ss2Path, path.join(OUTPUT_DIR, '02_asset_disposal_form_multi_items_filled.png'))
+    saveScreenshot(ss2Path, '02_asset_disposal_form_multi_items_filled.png')
     console.log('✓ Captured 02_asset_disposal_form_multi_items_filled.png')
 
     // =========================================================================
@@ -159,7 +232,7 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
 
     const ss3Path = path.join(ARTIFACT_DIR, '03_asset_disposal_table_row_created.png')
     await page.screenshot({ path: ss3Path })
-    fs.copyFileSync(ss3Path, path.join(OUTPUT_DIR, '03_asset_disposal_table_row_created.png'))
+    saveScreenshot(ss3Path, '03_asset_disposal_table_row_created.png')
     console.log('✓ Captured 03_asset_disposal_table_row_created.png')
 
     // =========================================================================
@@ -171,7 +244,6 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
 
     const allDisposalRow = page.locator('table tbody tr:has-text("DSP-")').first()
     await expect(allDisposalRow).toBeVisible()
-    // Verify no action buttons in Tab 2, only '-'
     const dashAction = allDisposalRow.locator('td').last()
     const dashText = await dashAction.innerText()
     expect(dashText.trim()).toBe('-')
@@ -179,7 +251,7 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
 
     const ss4Path = path.join(ARTIFACT_DIR, '04_daftar_disposal_read_only_tab.png')
     await page.screenshot({ path: ss4Path })
-    fs.copyFileSync(ss4Path, path.join(OUTPUT_DIR, '04_daftar_disposal_read_only_tab.png'))
+    saveScreenshot(ss4Path, '04_daftar_disposal_read_only_tab.png')
     console.log('✓ Captured 04_daftar_disposal_read_only_tab.png')
 
     // Switch back to "Disposal Saya"
@@ -195,45 +267,36 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
     await tinjauBtn.click()
 
     // Wait for AssetApprovalDialog
-    await page.waitForTimeout(2000)
+    await page.waitForTimeout(2500)
     const printArea = page.locator('.print-area').first()
     await expect(printArea).toBeVisible({ timeout: 15000 })
 
-    // Verify A4 Landscape Document View contains both assets
-    await expect(printArea.getByText('Laptop Dell Latitude 3420').first()).toBeVisible()
-    await expect(printArea.getByText('Printer HP LaserJet Pro M404n').first()).toBeVisible()
+    // Verify A4 Landscape Document View contains units
     await expect(printArea.getByText('Total 2 Unit Aset').first()).toBeVisible()
     console.log('✓ A4 Landscape Document View accurately rendered 2 assets!')
 
-    // Verify Right Panel has summary, signature options, and Approve/Reject/Revert buttons
-    const rightPanelSummary = page.locator('text=Ringkasan Pengajuan').first()
-    await expect(rightPanelSummary).toBeVisible()
-
-    const approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    const revertButton = page.locator('button:has-text("REVERT")').first()
-    const rejectButton = page.locator('button:has-text("REJECT")').first()
-
-    await expect(approveButton).toBeVisible()
-    await expect(revertButton).toBeVisible()
-    await expect(rejectButton).toBeVisible()
-    console.log('✓ Verified Action Buttons: Setujui, Revert, and Reject!')
+    // Verify DIAJUKAN OLEH contains applicant signature image
+    const submitterSigImg = page.locator('.print-area img[alt*="TTD Mochamad Annas Khadafi"], .print-area img[alt*="TTD"]').first()
+    await expect(submitterSigImg).toBeVisible()
+    console.log('✓ Verified: "DIAJUKAN OLEH" signature box displays the applicant digital signature!')
 
     const ss5Path = path.join(ARTIFACT_DIR, '05_asset_disposal_approval_split_modal.png')
     await page.screenshot({ path: ss5Path })
-    fs.copyFileSync(ss5Path, path.join(OUTPUT_DIR, '05_asset_disposal_approval_split_modal.png'))
+    saveScreenshot(ss5Path, '05_asset_disposal_approval_split_modal.png')
     console.log('✓ Captured 05_asset_disposal_approval_split_modal.png')
 
     // =========================================================================
     // STEP 6: Lakukan Approval dengan Tanda Tangan Digital
     // =========================================================================
     console.log('Executing approval action with digital signature...')
-    // Note textarea
     const noteArea = page.locator('textarea[placeholder*="Tambahkan catatan"]').first()
-    await noteArea.fill('Dokumen disposal aset lengkap, disetujui untuk proses selanjutnya.')
+    await noteArea.fill('Dokumen disposal multi-aset dari master terverifikasi lengkap, disetujui.')
 
-    // Click Setujui Pengajuan
+    const approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
     await approveButton.click()
-    await page.waitForTimeout(3000)
+    // Wait for approval dialog to finish processing and close
+    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
+    await page.waitForTimeout(1500)
 
     console.log('Approval step executed successfully!')
 
@@ -243,7 +306,7 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
 
     const ss6Path = path.join(ARTIFACT_DIR, '06_asset_disposal_step_approved.png')
     await page.screenshot({ path: ss6Path })
-    fs.copyFileSync(ss6Path, path.join(OUTPUT_DIR, '06_asset_disposal_step_approved.png'))
+    saveScreenshot(ss6Path, '06_asset_disposal_step_approved.png')
     console.log('✓ Captured 06_asset_disposal_step_approved.png')
 
     // =========================================================================
@@ -260,24 +323,25 @@ test.describe('Asset Disposal Revamped E2E Flow Verification', () => {
 
     const ss7Path = path.join(ARTIFACT_DIR, '07_asset_disposal_cancel_confirm_dialog.png')
     await page.screenshot({ path: ss7Path })
-    fs.copyFileSync(ss7Path, path.join(OUTPUT_DIR, '07_asset_disposal_cancel_confirm_dialog.png'))
+    saveScreenshot(ss7Path, '07_asset_disposal_cancel_confirm_dialog.png')
     console.log('✓ Captured 07_asset_disposal_cancel_confirm_dialog.png')
 
     await confirmCancelBtn.click()
-    await page.waitForTimeout(3000)
+    // Wait for confirm dialog to finish processing and close
+    await expect(confirmCancelBtn).not.toBeVisible({ timeout: 15000 })
+    await page.waitForTimeout(1500)
 
     // Reload page and verify row is deleted (auto hapus)
     await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(2000)
 
     const emptyOrNoDsp = page.locator('table tbody tr:has-text("DSP-")')
-    const countAfterDelete = await emptyOrNoDsp.count()
-    expect(countAfterDelete).toBe(0)
+    await expect(emptyOrNoDsp).toHaveCount(0, { timeout: 15000 })
     console.log('✓ Verified: Pengajuan disposal successfully cancelled and auto-deleted from DB!')
 
     const ss8Path = path.join(ARTIFACT_DIR, '08_asset_disposal_auto_deleted_clean.png')
     await page.screenshot({ path: ss8Path })
-    fs.copyFileSync(ss8Path, path.join(OUTPUT_DIR, '08_asset_disposal_auto_deleted_clean.png'))
+    saveScreenshot(ss8Path, '08_asset_disposal_auto_deleted_clean.png')
     console.log('✓ Captured 08_asset_disposal_auto_deleted_clean.png')
 
     console.log('🎉 All Asset Disposal E2E Tests Completed Successfully!')

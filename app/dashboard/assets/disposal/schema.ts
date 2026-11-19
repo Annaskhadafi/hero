@@ -42,6 +42,7 @@ export const assetDisposalInputSchema = z.object({
   notes: z.string().optional().nullable(),
   attachments: z.array(disposalAttachmentSchema).default([]),
   applicantEmployeeId: z.coerce.number().optional().nullable(),
+  applicantSignatureUrl: z.string().optional().nullable(),
   customApprovers: z.array(disposalApproverStepSchema).optional(),
 })
 
