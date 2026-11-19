@@ -10,7 +10,7 @@ import {
 import { EwhDashboardClient } from './ewh-dashboard-client'
 
 interface PageProps {
-  searchParams: Promise<{ siteId?: string; period?: string; departmentId?: string; tab?: string }>
+  searchParams: Promise<{ siteId?: string; period?: string; departmentId?: string; tab?: string; viewMode?: string }>
 }
 
 export const metadata = {
@@ -61,6 +61,7 @@ export default async function EwhDashboardPage({ searchParams }: PageProps) {
           allSites={matrixRes.allSites || []}
           allDepartments={matrixRes.allDepartments || []}
           initialTab={params.tab}
+          initialViewMode={params.viewMode || (params.tab === 'ytd' || params.tab === 'mtd' || params.tab === 'weekly' || params.tab === 'daily' ? params.tab : undefined)}
         />
       </Suspense>
     </div>

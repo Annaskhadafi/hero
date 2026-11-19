@@ -168,6 +168,7 @@ interface Props {
   allSites: { id: number; name: string }[]
   allDepartments: { id: number; code: string; name: string }[]
   initialTab?: string
+  initialViewMode?: string
 }
 
 const EWH_CLASS_CONFIG = {
@@ -189,6 +190,7 @@ export function EwhDashboardClient({
   allSites,
   allDepartments,
   initialTab,
+  initialViewMode,
 }: Props) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'matrix' | 'individual' | 'team'>(
@@ -196,7 +198,15 @@ export function EwhDashboardClient({
   )
 
   // Period / Analytics View Mode: Harian (Daily), Mingguan (Weekly), MTD (Month to Date), YTD (Year to Date)
-  const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'mtd' | 'ytd'>('daily')
+  const [viewMode, setViewMode] = useState<'daily' | 'weekly' | 'mtd' | 'ytd'>(
+    initialViewMode === 'ytd' || initialTab === 'ytd'
+      ? 'ytd'
+      : initialViewMode === 'weekly' || initialTab === 'weekly'
+      ? 'weekly'
+      : initialViewMode === 'mtd' || initialTab === 'mtd'
+      ? 'mtd'
+      : 'daily'
+  )
 
   // Chart Type: 'bar' | 'line' | 'composed' | 'radar'
   const [chartType, setChartType] = useState<'bar' | 'line' | 'composed' | 'radar'>('bar')
@@ -1169,10 +1179,12 @@ export function EwhDashboardClient({
   const YtdChartTooltip = ({ active, payload }: any) => {
     if (!active || !payload || !payload.length) return null
     const data = payload[0].payload
+    if (!data) return null
+    const ewhVal = Number(data.ewhAverage ?? data.monthlyEwhAverage ?? 0)
     return (
       <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-xl border border-slate-700/80 shadow-2xl max-w-xs text-xs z-50">
         <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 pb-1.5 mb-2">
-          <span className="font-bold text-slate-100">{data.monthName} ({data.period})</span>
+          <span className="font-bold text-slate-100">{data.monthName || 'Bulan'} ({data.period || '-'})</span>
           <span className="font-mono font-black text-indigo-400 text-[11px] shrink-0">
             {Number(data.totalHours || 0).toFixed(1)} Jam
           </span>
@@ -1184,7 +1196,7 @@ export function EwhDashboardClient({
           </div>
           <div className="bg-slate-800/80 p-1.5 rounded">
             <span className="text-slate-400 block">Rata-rata EWH:</span>
-            <span className="font-bold font-mono text-emerald-400">{Number(data.monthlyEwhAverage || 0).toFixed(1)}h/org</span>
+            <span className="font-bold font-mono text-emerald-400">{ewhVal.toFixed(1)}h/org</span>
           </div>
         </div>
         <div className="mt-2 pt-1.5 border-t border-slate-800 text-[10px] text-blue-300 flex items-center gap-1">
@@ -1212,8 +1224,11 @@ export function EwhDashboardClient({
 
   // Live YTD Months
   const liveYtdMonths = useMemo(() => {
-    return monthlyMatrixData.ytdSummary.months.map((m) => {
-      const mDays = new Date(monthlyMatrixData.ytdSummary.year, m.monthIndex, 0).getDate()
+    const ytd = monthlyMatrixData.ytdSummary
+    if (!ytd || !Array.isArray(ytd.months)) return []
+    const ytdYear = ytd.year || new Date().getFullYear()
+    return ytd.months.map((m) => {
+      const mDays = new Date(ytdYear, m.monthIndex, 0).getDate()
       const eff = currentPowerman > 0 && mDays > 0
         ? Math.round((m.totalHours / (22 * currentPowerman * mDays)) * 10000) / 100
         : 0
@@ -1223,6 +1238,8 @@ export function EwhDashboardClient({
         shortName: m.shortMonth,
         ewhAverage: ewhAvg,
         efficiencyPercent: eff,
+        monthlyEwhAverage: ewhAvg,
+        monthlyEfficiencyPercent: eff,
         targetEwh: 8.0,
       }
     })
@@ -1232,9 +1249,9 @@ export function EwhDashboardClient({
   const ytdRadarData = useMemo(() => {
     return liveYtdMonths.map((m) => ({
       subject: m.shortMonth,
-      value: Number(m.totalHours.toFixed(1)),
-      ewh: Number(m.ewhAverage.toFixed(1)),
-      fullMark: Math.max(...liveYtdMonths.map((ym) => ym.totalHours), 10),
+      value: Number((m.totalHours ?? 0).toFixed(1)),
+      ewh: Number((m.ewhAverage ?? 0).toFixed(1)),
+      fullMark: Math.max(...liveYtdMonths.map((ym) => ym.totalHours || 0), 10),
     }))
   }, [liveYtdMonths])
 
@@ -1620,8 +1637,11 @@ export function EwhDashboardClient({
       XLSX.writeFile(wb, `EWH_MTD_${cleanSiteName}_${period}.xlsx`)
     } else if (viewMode === 'ytd') {
       const wsData: any[][] = []
-      wsData.push([`REKAP EWH YEAR TO DATE (YTD ${monthlyMatrixData.ytdSummary.year}) - ${monthlyMatrixData.siteName.toUpperCase()}`])
-      wsData.push([`Tahun: ${monthlyMatrixData.ytdSummary.year} | Total Jam YTD: ${monthlyMatrixData.ytdSummary.ytdTotalHours.toFixed(1)} Jam | Rata-rata EWH: ${monthlyMatrixData.ytdSummary.ytdAverageEwh.toFixed(1)} Jam`])
+      const ytdYear = monthlyMatrixData.ytdSummary?.year ?? new Date().getFullYear()
+      const ytdTotal = (monthlyMatrixData.ytdSummary?.ytdTotalHours ?? 0).toFixed(1)
+      const ytdAvg = (monthlyMatrixData.ytdSummary?.ytdAverageEwh ?? 0).toFixed(1)
+      wsData.push([`REKAP EWH YEAR TO DATE (YTD ${ytdYear}) - ${(monthlyMatrixData.siteName || '').toUpperCase()}`])
+      wsData.push([`Tahun: ${ytdYear} | Total Jam YTD: ${ytdTotal} Jam | Rata-rata EWH: ${ytdAvg} Jam`])
       wsData.push([])
 
       const headers = ['Bulan', 'Periode', 'Total Jam Kerja', 'Powerman', 'Rata-rata EWH (Jam)', 'Efisiensi %', 'Total Aktivitas']
@@ -1637,7 +1657,7 @@ export function EwhDashboardClient({
       const ws = XLSX.utils.aoa_to_sheet(wsData)
       ws['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 18 }, { wch: 12 }, { wch: 20 }, { wch: 14 }, { wch: 16 }]
       XLSX.utils.book_append_sheet(wb, ws, 'EWH YTD')
-      XLSX.writeFile(wb, `EWH_YTD_${cleanSiteName}_${monthlyMatrixData.ytdSummary.year}.xlsx`)
+      XLSX.writeFile(wb, `EWH_YTD_${cleanSiteName}_${ytdYear}.xlsx`)
     }
     toast.success('File Excel EWH berhasil diunduh!')
   }
@@ -2071,6 +2091,7 @@ export function EwhDashboardClient({
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto">
               <button
                 type="button"
+                data-testid="daily-tab-btn"
                 onClick={() => setViewMode('daily')}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   viewMode === 'daily' ? 'bg-white text-[#003461] shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -2081,6 +2102,7 @@ export function EwhDashboardClient({
               </button>
               <button
                 type="button"
+                data-testid="weekly-tab-btn"
                 onClick={() => setViewMode('weekly')}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   viewMode === 'weekly' ? 'bg-white text-[#003461] shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -2091,6 +2113,7 @@ export function EwhDashboardClient({
               </button>
               <button
                 type="button"
+                data-testid="mtd-tab-btn"
                 onClick={() => setViewMode('mtd')}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   viewMode === 'mtd' ? 'bg-white text-[#003461] shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -2101,6 +2124,7 @@ export function EwhDashboardClient({
               </button>
               <button
                 type="button"
+                data-testid="ytd-tab-btn"
                 onClick={() => setViewMode('ytd')}
                 className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   viewMode === 'ytd' ? 'bg-white text-[#003461] shadow-xs' : 'text-slate-600 hover:text-slate-900'
@@ -2841,7 +2865,7 @@ export function EwhDashboardClient({
 
               {/* 1.4 YEAR TO DATE (YTD 12-BULAN) TABLE */}
               {viewMode === 'ytd' && (
-                <Card className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden bg-white">
+                <Card data-testid="ytd-table-card" className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden bg-white">
                   <CardHeader className="bg-slate-50/80 border-b border-slate-200 py-3.5 px-4 flex flex-row items-center justify-between">
                     <div>
                       <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
@@ -2872,70 +2896,77 @@ export function EwhDashboardClient({
                         <tbody className="divide-y divide-slate-100 text-[11.5px]">
                           {liveYtdMonths.map((m) => {
                             const isCurrent = m.period === period
+                            const totalHoursVal = (m.totalHours ?? 0).toFixed(2)
+                            const ewhAvgVal = (m.ewhAverage ?? m.monthlyEwhAverage ?? 0).toFixed(1)
+                            const effPercentVal = m.efficiencyPercent ?? m.monthlyEfficiencyPercent ?? 0
+
                             return (
-                              <HoverCard key={m.monthIndex} openDelay={40} closeDelay={100}>
-                                <HoverCardTrigger asChild>
-                                  <tr
-                                    onClick={() => setIsPowermanModalOpen(true)}
-                                    className={`hover:bg-blue-50/40 cursor-pointer transition-colors ${
-                                      isCurrent ? 'bg-amber-50/70 font-bold' : ''
-                                    }`}
-                                  >
-                                    <td className="py-2.5 px-4 text-left border-r border-slate-200 flex items-center justify-between">
-                                      <span className="text-slate-900 font-bold">{m.monthName}</span>
-                                      {isCurrent && (
-                                        <Badge className="bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0">
-                                          Bulan Ini
-                                        </Badge>
-                                      )}
-                                    </td>
-                                    <td className="py-2.5 px-3 border-r border-slate-200 font-mono text-slate-700">
-                                      {m.powerman || currentPowerman}
-                                    </td>
-                                    <td className="py-2.5 px-3 border-r border-slate-200 font-mono font-bold text-slate-900 text-right bg-slate-50/50">
-                                      {m.totalHours.toFixed(2)} Jam
-                                    </td>
-                                    <td className="py-2.5 px-3 border-r border-slate-200 font-mono font-bold text-emerald-800 text-right bg-emerald-50/50">
-                                      {m.monthlyEwhAverage.toFixed(1)} Jam
-                                    </td>
-                                    <td className="py-2.5 px-3 font-mono font-bold text-blue-800 text-right bg-blue-50/50">
-                                      {m.monthlyEfficiencyPercent}%
-                                    </td>
-                                  </tr>
-                                </HoverCardTrigger>
-                                <HoverCardContent
-                                  side="right"
-                                  align="start"
-                                  sideOffset={8}
-                                  className="w-72 sm:w-[320px] p-0 rounded-xl border border-slate-200/90 shadow-xl bg-white overflow-hidden z-50 text-left"
-                                >
-                                  <div className="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                                    <span className="text-xs font-bold text-slate-900">
-                                      {m.monthName} ({m.period})
-                                    </span>
-                                    <span className="text-[10px] font-mono font-bold text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
-                                      {m.powerman || currentPowerman} Powerman
-                                    </span>
-                                  </div>
-                                  <div className="p-3 text-xs space-y-1.5">
-                                    <div className="flex justify-between text-slate-600">
-                                      <span>Total Jam Kerja:</span>
-                                      <strong className="text-slate-900 font-mono">{m.totalHours.toFixed(1)} Jam</strong>
-                                    </div>
-                                    <div className="flex justify-between text-slate-600">
-                                      <span>Rata-rata EWH:</span>
-                                      <strong className="text-emerald-700 font-mono">{m.monthlyEwhAverage.toFixed(1)} Jam/Orang</strong>
-                                    </div>
-                                    <div className="flex justify-between text-slate-600">
-                                      <span>Efisiensi Shift:</span>
-                                      <strong className="text-blue-700 font-mono">{m.monthlyEfficiencyPercent}%</strong>
-                                    </div>
-                                  </div>
-                                  <div className="p-2 bg-slate-50 border-t border-slate-200 text-[10px] text-blue-600 font-medium text-center">
-                                    Klik untuk membuka daftar personil manpower
-                                  </div>
-                                </HoverCardContent>
-                              </HoverCard>
+                              <tr
+                                key={m.monthIndex}
+                                onClick={() => setIsPowermanModalOpen(true)}
+                                className={`hover:bg-blue-50/40 cursor-pointer transition-colors ${
+                                  isCurrent ? 'bg-amber-50/70 font-bold' : ''
+                                }`}
+                              >
+                                <td className="py-2.5 px-4 text-left border-r border-slate-200">
+                                  <HoverCard openDelay={40} closeDelay={100}>
+                                    <HoverCardTrigger asChild>
+                                      <div className="flex items-center justify-between cursor-pointer">
+                                        <span className="text-slate-900 font-bold">{m.monthName}</span>
+                                        {isCurrent && (
+                                          <Badge className="bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0">
+                                            Bulan Ini
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent
+                                      side="right"
+                                      align="start"
+                                      sideOffset={8}
+                                      className="w-72 sm:w-[320px] p-0 rounded-xl border border-slate-200/90 shadow-xl bg-white overflow-hidden z-50 text-left"
+                                    >
+                                      <div className="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                                        <span className="text-xs font-bold text-slate-900">
+                                          {m.monthName} ({m.period})
+                                        </span>
+                                        <span className="text-[10px] font-mono font-bold text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
+                                          {m.powerman || currentPowerman} Powerman
+                                        </span>
+                                      </div>
+                                      <div className="p-3 text-xs space-y-1.5">
+                                        <div className="flex justify-between text-slate-600">
+                                          <span>Total Jam Kerja:</span>
+                                          <strong className="text-slate-900 font-mono">{(m.totalHours ?? 0).toFixed(1)} Jam</strong>
+                                        </div>
+                                        <div className="flex justify-between text-slate-600">
+                                          <span>Rata-rata EWH:</span>
+                                          <strong className="text-emerald-700 font-mono">{ewhAvgVal} Jam/Orang</strong>
+                                        </div>
+                                        <div className="flex justify-between text-slate-600">
+                                          <span>Efisiensi Shift:</span>
+                                          <strong className="text-blue-700 font-mono">{effPercentVal}%</strong>
+                                        </div>
+                                      </div>
+                                      <div className="p-2 bg-slate-50 border-t border-slate-200 text-[10px] text-blue-600 font-medium text-center">
+                                        Klik untuk membuka daftar personil manpower
+                                      </div>
+                                    </HoverCardContent>
+                                  </HoverCard>
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-slate-200 font-mono text-slate-700">
+                                  {m.powerman || currentPowerman}
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-slate-200 font-mono font-bold text-slate-900 text-right bg-slate-50/50">
+                                  {totalHoursVal} Jam
+                                </td>
+                                <td className="py-2.5 px-3 border-r border-slate-200 font-mono font-bold text-emerald-800 text-right bg-emerald-50/50">
+                                  {ewhAvgVal} Jam
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-blue-800 text-right bg-blue-50/50">
+                                  {effPercentVal}%
+                                </td>
+                              </tr>
                             )
                           })}
 

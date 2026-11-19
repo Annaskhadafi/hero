@@ -1438,7 +1438,9 @@ export interface EwhYtdMonthItem {
   totalHours: number
   powerman: number
   ewhAverage: number
+  monthlyEwhAverage?: number
   efficiencyPercent: number
+  monthlyEfficiencyPercent?: number
   totalActivities: number
   isCurrentOrPast: boolean
 }
@@ -2232,7 +2234,9 @@ export async function getEwhSiteMonthlyMatrixAction(
       totalHours: mHours,
       powerman: mPowerman,
       ewhAverage: mEwh,
+      monthlyEwhAverage: mEwh,
       efficiencyPercent: mEff,
+      monthlyEfficiencyPercent: mEff,
       totalActivities: mActCount,
       isCurrentOrPast: isPastOrCurrent,
     })
