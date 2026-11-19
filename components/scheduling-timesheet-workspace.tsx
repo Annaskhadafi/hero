@@ -7675,7 +7675,10 @@ export function SchedulingTimesheetWorkspace({
             if (view === 'ovt') {
               const otInfo = isCurrentPeriod
                 ? calculateTotalDayOvertime(row.schedule, item.day, cell, row.employee.id, staff)
-                : calculateTotalDayOvertime([code], 1, cell, row.employee.id, staff)
+                : calculateTotalDayOvertime(
+                    Array.from({ length: 31 }, (_, index) => resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, index + 1, 'IN') as ScheduleCode),
+                    item.day, cell, row.employee.id, staff, itemPeriod
+                  )
               return otInfo.displayValue
             }
             if (view === 'ovt_spl') {
@@ -7744,7 +7747,10 @@ export function SchedulingTimesheetWorkspace({
             } else if (!staff) {
               const otInfo = isCurrentPeriod
                 ? calculateTotalDayOvertime(row.schedule, item.day, cell, row.employee.id, staff)
-                : calculateTotalDayOvertime([code], 1, cell, row.employee.id, staff)
+                : calculateTotalDayOvertime(
+                    Array.from({ length: 31 }, (_, index) => resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, index + 1, 'IN') as ScheduleCode),
+                    item.day, cell, row.employee.id, staff, itemPeriod
+                  )
               total += otInfo.totalOvertime
             }
           }
@@ -8811,7 +8817,8 @@ export function SchedulingTimesheetWorkspace({
     day: number,
     clockIn: string,
     clockOut: string,
-    rosterType: SiteRosterType = siteConfig.rosterType
+    rosterType: SiteRosterType = siteConfig.rosterType,
+    targetPeriod = period
   ) {
     const clockInMinutes = minutesFromTime(clockIn)
     const clockOutMinutes = minutesFromTime(clockOut)
@@ -8820,7 +8827,7 @@ export function SchedulingTimesheetWorkspace({
       (clockOutMinutes >= clockInMinutes
         ? clockOutMinutes - clockInMinutes
         : clockOutMinutes + 1440 - clockInMinutes) / 60
-    const dayType = classifyOvertimeDay(schedule, period, day - 1, rosterType, holidays)
+    const dayType = classifyOvertimeDay(schedule, targetPeriod, day - 1, rosterType, holidays)
     const configured = overtimeVariables.find(
       (item) =>
         item.roster === rosterType &&
@@ -8842,7 +8849,9 @@ export function SchedulingTimesheetWorkspace({
     employeeId: number,
     ignoreOverride = false,
     approvedSplOnly = false,
-    excludeSpl = false
+    excludeSpl = false,
+    targetPeriod = period,
+    targetCell?: ManualAttendanceCell
   ): OvertimeCalculationResult {
     const empSiteId =
       employees.find((e) => e.id === employeeId)?.siteId ?? (siteId === 'all' ? null : Number(siteId))
@@ -8857,7 +8866,7 @@ export function SchedulingTimesheetWorkspace({
       return legacyOvertimeResult(0)
     }
     const shiftCode = schedule[day - 1] ?? 'IN'
-    const cell = getAttendanceCell(employeeId, day, shiftCode)
+    const cell = targetCell ?? getAttendanceCell(employeeId, day, shiftCode)
     const cellStatus = cell.status
     const isOff =
       shiftCode === 'OFF' ||
@@ -8873,7 +8882,7 @@ export function SchedulingTimesheetWorkspace({
       cellStatus === 'field_break' ||
       cellStatus === 'standby' ||
       cellStatus === 'empty'
-    const isHol = isHoliday(period, day, holidays)
+    const isHol = isHoliday(targetPeriod, day, holidays)
     if (isOff) {
       if (!ignoreOverride) {
         const key = attendanceKey(employeeId, day)
@@ -8930,7 +8939,7 @@ export function SchedulingTimesheetWorkspace({
     const dayKey = classifyOvertimePolicyDay({
       schedule,
       dayIndex: day - 1,
-      isHoliday: isHoliday(period, day, holidays),
+      isHoliday: isHoliday(targetPeriod, day, holidays),
       rosterType: empSiteConfig.rosterType,
     })
     const activeConfig = {
@@ -8946,7 +8955,7 @@ export function SchedulingTimesheetWorkspace({
       config: activeConfig,
       dayKey,
       shiftCode: effectiveShiftCode,
-      workDate: `${period}-${String(day).padStart(2, '0')}`,
+      workDate: `${targetPeriod}-${String(day).padStart(2, '0')}`,
       clockIn: effectiveClockIn,
       clockOut: effectiveClockOut,
       splWindows: splList,
@@ -8955,7 +8964,8 @@ export function SchedulingTimesheetWorkspace({
         day,
         effectiveClockIn,
         effectiveClockOut,
-        empSiteConfig.rosterType
+        empSiteConfig.rosterType,
+        targetPeriod
       ),
     })
     return { ...calculated, totalHours: roundOvertimeHours(calculated.totalHours) }
@@ -9052,7 +9062,8 @@ export function SchedulingTimesheetWorkspace({
     day: number,
     cell: ManualAttendanceCell,
     employeeId: number,
-    staff: boolean
+    staff: boolean,
+    targetPeriod = period
   ): {
     lemburWajib: number
     lemburSpl: number
@@ -9067,7 +9078,7 @@ export function SchedulingTimesheetWorkspace({
     const isFieldBreakDay =
       scheduleCode === 'FB' ||
       cell.status === 'field_break' ||
-      (fieldBreakDaysByEmployee.get(employeeId)?.has(day) ?? false)
+      (targetPeriod === period && (fieldBreakDaysByEmployee.get(employeeId)?.has(day) ?? false))
     const isRosterOff =
       scheduleCode === 'OFF' ||
       scheduleCode === 'Libur' ||
@@ -9188,7 +9199,9 @@ export function SchedulingTimesheetWorkspace({
       employeeId,
       true, // ignoreOverride = true
       false, // approvedSplOnly = false
-      true // excludeSpl = true
+      true, // excludeSpl = true
+      targetPeriod,
+      cell
     )
     const autoWajib = mandatoryOvertimeHours(overtime)
 
@@ -9216,7 +9229,7 @@ export function SchedulingTimesheetWorkspace({
     const dayKey = classifyOvertimePolicyDay({
       schedule,
       dayIndex: day - 1,
-      isHoliday: isHoliday(period, day, holidays),
+      isHoliday: isHoliday(targetPeriod, day, holidays),
       rosterType: empSiteConfig.rosterType,
     })
     const shiftKey: OvertimeShiftKey = scheduleCode === 'NS' ? 'nightShift' : 'dayShift'
@@ -10063,6 +10076,23 @@ export function SchedulingTimesheetWorkspace({
             overtimeTotal += numericVal
           }
 
+          const summary = isCurrentPeriod
+            ? calculateTotalDayOvertime(row.schedule, day, cell, row.employee.id, staff)
+            : calculateTotalDayOvertime(
+                Array.from({ length: 31 }, (_, index) => resolveCrossPeriodScheduleCode(row.employee.id, itemPeriod, index + 1, 'IN') as ScheduleCode),
+                day, cell, row.employee.id, staff, itemPeriod
+              )
+          overtimeTotal += summary.totalOvertime - numericVal
+          numericVal = summary.totalOvertime
+          displayVal = summary.displayValue
+          if (numericVal > 0) cellType = 'ot'
+          else if (staff) cellType = 'staff'
+          else {
+            const statusTypes: Record<string, TimesheetDayData['cellType']> = {
+              FB: 'fb', ST: 'st', GD: 'gd', OFF: 'off', Sakit: 'sick', Izin: 'leave', Alpha: 'absent',
+            }
+            cellType = statusTypes[String(displayVal)] || 'dash'
+          }
           daysData.push({ day, displayVal, numericVal, cellType })
         } else if (targetTab === 'payroll_ovt') {
           let displayVal: string | number = '-'
