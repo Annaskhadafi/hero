@@ -2,6 +2,15 @@
 
 import React from 'react'
 
+export interface AssetDisposalItem {
+  id?: number | null
+  assetId?: number | null
+  assetName: string
+  assetNumber?: string | null
+  purchaseYear?: string | null
+  notes?: string | null
+}
+
 export interface AssetDisposalDocumentData {
   disposalNumber: string
   disposalDate: string | Date
@@ -16,6 +25,7 @@ export interface AssetDisposalDocumentData {
   assetNumber?: string | null
   purchaseYear?: string | null
   notes: string
+  items?: AssetDisposalItem[] | null
   attachments?: Array<{
     fileName: string
     fileUrl: string
@@ -231,45 +241,68 @@ export function AssetDisposalDocumentView({
 
         {/* Rincian Aset */}
         <div className="mt-3">
-          <p className="text-[10px] font-black uppercase tracking-wider text-slate-700 mb-1">
-            DETAIL ASET YANG DIHAPUS (DISPOSAL ASSET)
-          </p>
-          <div className="overflow-hidden rounded-lg border border-slate-300 bg-white">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-300 bg-slate-100/90 text-[10px] font-bold text-slate-700 uppercase">
-                  <th className="w-10 px-2.5 py-1.5 text-center">NO</th>
-                  <th className="px-2.5 py-1.5">NAMA ASET</th>
-                  <th className="px-2.5 py-1.5">NOMOR ASET</th>
-                  <th className="w-28 px-2.5 py-1.5 text-center">TAHUN BELI</th>
-                  <th className="px-2.5 py-1.5">DEPARTEMEN / LOKASI</th>
-                  <th className="px-2.5 py-1.5">KONDISI FISIK / ALASAN</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="hover:bg-slate-50/80">
-                  <td className="px-2.5 py-2 text-center font-medium text-slate-500">
-                    1
-                  </td>
-                  <td className="px-2.5 py-2 font-bold text-slate-900">
-                    {doc.assetName}
-                  </td>
-                  <td className="px-2.5 py-2 font-mono font-bold text-slate-900">
-                    {doc.assetNumber || '-'}
-                  </td>
-                  <td className="px-2.5 py-2 text-center font-mono text-slate-800">
-                    {doc.purchaseYear || '-'}
-                  </td>
-                  <td className="px-2.5 py-2 text-slate-800">
-                    {doc.departmentName} • {doc.siteName}
-                  </td>
-                  <td className="px-2.5 py-2 text-rose-800 font-medium text-[11px]">
-                    {doc.notes}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          {(() => {
+            const rawItems = doc.items && doc.items.length > 0
+              ? doc.items
+              : [
+                  {
+                    assetName: doc.assetName,
+                    assetNumber: doc.assetNumber,
+                    purchaseYear: doc.purchaseYear,
+                    notes: doc.notes,
+                  },
+                ]
+            return (
+              <>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-slate-700">
+                    DETAIL RINCIAN ASET YANG DIHAPUS (DISPOSAL ASSETS)
+                  </p>
+                  <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
+                    Total {rawItems.length} Unit Aset
+                  </span>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-slate-300 bg-white">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-300 bg-slate-100/90 text-[10px] font-bold text-slate-700 uppercase">
+                        <th className="w-10 px-2.5 py-1.5 text-center">NO</th>
+                        <th className="px-2.5 py-1.5">NAMA ASET</th>
+                        <th className="px-2.5 py-1.5">NOMOR ASET</th>
+                        <th className="w-24 px-2.5 py-1.5 text-center">TAHUN BELI</th>
+                        <th className="px-2.5 py-1.5">DEPARTEMEN / LOKASI</th>
+                        <th className="px-2.5 py-1.5">KONDISI FISIK / ALASAN PENGHAPUSAN</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rawItems.map((it, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/80 border-b border-slate-200 last:border-b-0">
+                          <td className="px-2.5 py-2 text-center font-medium text-slate-500">
+                            {idx + 1}
+                          </td>
+                          <td className="px-2.5 py-2 font-bold text-slate-900">
+                            {it.assetName}
+                          </td>
+                          <td className="px-2.5 py-2 font-mono font-bold text-slate-900">
+                            {it.assetNumber || '-'}
+                          </td>
+                          <td className="px-2.5 py-2 text-center font-mono text-slate-800">
+                            {it.purchaseYear || '-'}
+                          </td>
+                          <td className="px-2.5 py-2 text-slate-800">
+                            {doc.departmentName} • {doc.siteName}
+                          </td>
+                          <td className="px-2.5 py-2 text-rose-800 font-medium text-[11px]">
+                            {it.notes || doc.notes || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )
+          })()}
 
           <div className="mt-2.5 flex items-center justify-between rounded-md border border-amber-300 bg-[#ffd700] px-3.5 py-1.5 text-xs font-bold text-slate-950 shadow-xs">
             <span className="text-[10px] tracking-wide uppercase">

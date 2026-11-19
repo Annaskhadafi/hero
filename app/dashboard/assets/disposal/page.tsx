@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/auth-session'
-import { getCurrentMenuPermission } from '@/lib/hero-access'
+import { getCurrentEmployeeAccessContext, getCurrentMenuPermission, isSuperAdminRole } from '@/lib/hero-access'
 import { db } from '@/db'
 import { employees } from '@/db/schema/hero'
-import { eq } from 'drizzle-orm'
+import { eq, asc } from 'drizzle-orm'
 import { getAssetDisposals, getDisposalFormData } from './actions'
 import { AssetDisposalDashboard } from './components/asset-disposal-dashboard'
 
@@ -26,6 +26,9 @@ export default async function AssetDisposalPage() {
     redirect('/dashboard')
   }
 
+  const empContext = await getCurrentEmployeeAccessContext()
+  const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
+
   const [disposalsRes, formDataRes, allEmployees] = await Promise.all([
     getAssetDisposals(),
     getDisposalFormData(),
@@ -37,9 +40,9 @@ export default async function AssetDisposalPage() {
         jobTitle: employees.jobTitle,
       })
       .from(employees)
-      .where(eq(employees.employmentStatus, 'active'))
-      .orderBy(employees.name)
-      .limit(300),
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
+      .limit(500),
   ])
 
   return (
@@ -49,6 +52,16 @@ export default async function AssetDisposalPage() {
           initialItems={disposalsRes.items || []}
           totalItems={disposalsRes.total || 0}
           kpiStats={disposalsRes.kpi}
+          initialData={{
+            items: disposalsRes.items || [],
+            total: disposalsRes.total || 0,
+            kpi: disposalsRes.kpi,
+            currentAuth: {
+              userId: session.user.id,
+              employeeId: formDataRes.currentEmployee?.id || empContext?.employeeId || null,
+              isSuperAdmin,
+            },
+          }}
           sites={formDataRes.sites || []}
           departments={formDataRes.departments || []}
           sections={formDataRes.sections || []}

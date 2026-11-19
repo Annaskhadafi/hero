@@ -15,9 +15,21 @@ export const disposalApproverStepSchema = z.object({
   jobTitle: z.string().optional().nullable(),
 })
 
-export const assetDisposalInputSchema = z.object({
+export const disposalItemInputSchema = z.object({
+  id: z.coerce.number().optional().nullable(),
   assetId: z.coerce.number().optional().nullable(),
   assetName: z.string().min(2, 'Nama aset wajib diisi minimal 2 karakter'),
+  assetNumber: z.string().optional().nullable(),
+  purchaseYear: z.string().optional().nullable(),
+  notes: z.string().min(3, 'Catatan / alasan penghapusan aset wajib diisi minimal 3 karakter'),
+})
+
+export const assetDisposalInputSchema = z.object({
+  // Items array: supports multiple assets in 1 disposal
+  items: z.array(disposalItemInputSchema).min(1, 'Minimal harus mengisi 1 rincian aset untuk diajukan disposal'),
+  // Fallback single asset fields
+  assetId: z.coerce.number().optional().nullable(),
+  assetName: z.string().optional().nullable(),
   assetNumber: z.string().optional().nullable(),
   purchaseYear: z.string().optional().nullable(),
   departmentId: z.coerce.number().optional().nullable(),
@@ -27,12 +39,13 @@ export const assetDisposalInputSchema = z.object({
   siteId: z.coerce.number().min(1, 'Cabang / Site wajib dipilih'),
   siteName: z.string().min(1, 'Nama Cabang / Site wajib diisi'),
   disposalDate: z.string().min(1, 'Tanggal pengajuan disposal wajib diisi'),
-  notes: z.string().min(5, 'Catatan / alasan penghapusan aset wajib diisi minimal 5 karakter'),
+  notes: z.string().optional().nullable(),
   attachments: z.array(disposalAttachmentSchema).default([]),
   applicantEmployeeId: z.coerce.number().optional().nullable(),
   customApprovers: z.array(disposalApproverStepSchema).optional(),
 })
 
 export type AssetDisposalInput = z.infer<typeof assetDisposalInputSchema>
+export type DisposalItemInput = z.infer<typeof disposalItemInputSchema>
 export type DisposalAttachment = z.infer<typeof disposalAttachmentSchema>
 export type DisposalApproverStep = z.infer<typeof disposalApproverStepSchema>

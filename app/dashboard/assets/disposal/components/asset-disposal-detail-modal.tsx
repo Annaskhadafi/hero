@@ -325,39 +325,72 @@ export function AssetDisposalDetailModal({
             </div>
           </div>
 
-          {/* 2. SPESIFIKASI ASET */}
-          <div className="bg-card p-4 rounded-xl border border-border">
-            <h4 className="font-bold text-foreground text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <FileText className="size-4 text-primary" />
-              2. Data Aset yang Dihapus
-            </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Nama Aset</span>
-                <span className="font-bold text-foreground text-sm">{item.assetName}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Nomor Aset</span>
-                <span className="font-semibold text-foreground">{item.assetNumber || '-'}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Tahun Pembelian</span>
-                <span className="font-semibold text-foreground">{item.purchaseYear || '-'}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-[11px]">Status Master Aset</span>
-                <Badge
-                  variant="outline"
-                  className={
-                    item.status === 'approved'
-                      ? 'border-emerald-500 text-emerald-600 bg-emerald-50'
-                      : 'border-slate-300 text-slate-600'
-                  }
-                >
-                  {item.status === 'approved' ? 'DISPOSED' : 'PENDING DISPOSAL'}
-                </Badge>
-              </div>
+          {/* 2. SPESIFIKASI & RINCIAN ASET */}
+          <div className="bg-card p-4 rounded-xl border border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-foreground text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="size-4 text-primary" />
+                2. Data Aset yang Dihapus (Disposal Assets)
+              </h4>
+              <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-800 border-slate-300">
+                {item.items && Array.isArray(item.items) ? `${item.items.length} Unit Aset` : '1 Unit Aset'}
+              </Badge>
             </div>
+
+            {item.items && Array.isArray(item.items) && item.items.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border bg-white">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-border bg-slate-50 text-[10px] font-bold text-slate-700 uppercase">
+                      <th className="w-10 px-3 py-2 text-center">No</th>
+                      <th className="px-3 py-2">Nama Aset</th>
+                      <th className="px-3 py-2">Nomor Aset</th>
+                      <th className="w-24 px-3 py-2 text-center">Tahun Beli</th>
+                      <th className="px-3 py-2">Alasan Penghapusan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {item.items.map((it: any, idx: number) => (
+                      <tr key={idx} className="border-b border-border/60 last:border-b-0 hover:bg-slate-50/50">
+                        <td className="px-3 py-2 text-center font-medium text-slate-500">{idx + 1}</td>
+                        <td className="px-3 py-2 font-semibold text-slate-900">{it.assetName}</td>
+                        <td className="px-3 py-2 font-mono text-slate-800">{it.assetNumber || '-'}</td>
+                        <td className="px-3 py-2 text-center font-mono text-slate-700">{it.purchaseYear || '-'}</td>
+                        <td className="px-3 py-2 text-rose-800 text-[11px] font-medium">{it.notes || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Nama Aset</span>
+                  <span className="font-bold text-foreground text-sm">{item.assetName}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Nomor Aset</span>
+                  <span className="font-semibold text-foreground">{item.assetNumber || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Tahun Pembelian</span>
+                  <span className="font-semibold text-foreground">{item.purchaseYear || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Status Master Aset</span>
+                  <Badge
+                    variant="outline"
+                    className={
+                      item.status === 'approved'
+                        ? 'border-emerald-500 text-emerald-600 bg-emerald-50'
+                        : 'border-slate-300 text-slate-600'
+                    }
+                  >
+                    {item.status === 'approved' ? 'DISPOSED' : 'PENDING DISPOSAL'}
+                  </Badge>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 3. ALASAN & JUSTIFIKASI TEKNIS */}

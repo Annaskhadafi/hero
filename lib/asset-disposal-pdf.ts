@@ -26,6 +26,7 @@ export interface DisposalPdfData {
   assetNumber?: string | null
   purchaseYear?: string | null
   notes: string
+  items?: Array<{ assetName: string; assetNumber?: string | null; purchaseYear?: string | null; notes?: string | null }>
   attachments?: Array<{ fileName: string; fileUrl: string; fileSize?: number; mimeType?: string }>
   submittedAt?: Date | string | null
   approvedAt?: Date | string | null
@@ -240,31 +241,38 @@ export async function generateAssetDisposalPdf(data: DisposalPdfData): Promise<U
 
   curY -= thH
 
-  const rowH = 22
-  page.drawRectangle({
-    x: marginX,
-    y: curY - rowH,
-    width: contentW,
-    height: rowH,
-    color: rgb(1, 1, 1),
-    borderColor: borderGray,
-    borderWidth: 0.5,
-  })
+  const pdfItems = data.items && data.items.length > 0
+    ? data.items
+    : [{ assetName: data.assetName, assetNumber: data.assetNumber, purchaseYear: data.purchaseYear, notes: data.notes }]
 
-  let cellX = marginX
-  page.drawText('1', { x: cellX + 12, y: curY - 14, size: 7, font: fontRegular, color: textGray })
-  cellX += cols[0].w
-  page.drawText(data.assetName.substring(0, 36), { x: cellX + 6, y: curY - 14, size: 7.5, font: fontBold, color: textDark })
-  cellX += cols[1].w
-  page.drawText(data.assetNumber || '-', { x: cellX + 6, y: curY - 14, size: 7.5, font: fontBold, color: darkNavy })
-  cellX += cols[2].w
-  page.drawText(data.purchaseYear || '-', { x: cellX + 28, y: curY - 14, size: 7, font: fontRegular, color: textDark })
-  cellX += cols[3].w
-  page.drawText(`${data.departmentName} • ${data.siteName}`, { x: cellX + 6, y: curY - 14, size: 7, font: fontRegular, color: textDark })
-  cellX += cols[4].w
-  page.drawText(data.notes.substring(0, 38), { x: cellX + 6, y: curY - 14, size: 6.5, font: fontRegular, color: rgb(0.65, 0.1, 0.1) })
+  const rowH = 20
+  for (let idx = 0; idx < Math.min(pdfItems.length, 5); idx++) {
+    const item = pdfItems[idx]
+    page.drawRectangle({
+      x: marginX,
+      y: curY - rowH,
+      width: contentW,
+      height: rowH,
+      color: rgb(1, 1, 1),
+      borderColor: borderGray,
+      borderWidth: 0.5,
+    })
 
-  curY -= rowH
+    let cellX = marginX
+    page.drawText(String(idx + 1), { x: cellX + 12, y: curY - 13, size: 7, font: fontRegular, color: textGray })
+    cellX += cols[0].w
+    page.drawText((item.assetName || '').substring(0, 36), { x: cellX + 6, y: curY - 13, size: 7.5, font: fontBold, color: textDark })
+    cellX += cols[1].w
+    page.drawText(item.assetNumber || '-', { x: cellX + 6, y: curY - 13, size: 7.5, font: fontBold, color: darkNavy })
+    cellX += cols[2].w
+    page.drawText(item.purchaseYear || '-', { x: cellX + 28, y: curY - 13, size: 7, font: fontRegular, color: textDark })
+    cellX += cols[3].w
+    page.drawText(`${data.departmentName} • ${data.siteName}`, { x: cellX + 6, y: curY - 13, size: 7, font: fontRegular, color: textDark })
+    cellX += cols[4].w
+    page.drawText((item.notes || data.notes || '').substring(0, 38), { x: cellX + 6, y: curY - 13, size: 6.5, font: fontRegular, color: rgb(0.65, 0.1, 0.1) })
+
+    curY -= rowH
+  }
 
   // 4. Yellow Bar
   curY -= 6

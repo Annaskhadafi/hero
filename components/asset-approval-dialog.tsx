@@ -35,7 +35,10 @@ import {
   Barcode,
   Sparkles,
   Layers,
+  Paperclip,
+  ExternalLink,
 } from 'lucide-react'
+import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { toast } from 'sonner'
 
 export interface AssetApprovalDialogTarget {
@@ -567,6 +570,37 @@ export function AssetApprovalDialog({
                 {docData?.summary?.lastNote || 'Belum ada catatan approval sebelumnya.'}
               </p>
             </div>
+
+            {/* Lampiran Dokumen Pendukung */}
+            {docData?.doc?.attachments && docData.doc.attachments.length > 0 && (
+              <div className="rounded-xl bg-slate-50 p-3 text-xs border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Paperclip className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Lampiran Dokumen ({docData.doc.attachments.length})</span>
+                  </p>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {docData.doc.attachments.map((att: any, idx: number) => {
+                    const resolvedUrl = resolveUploadUrl(att.fileUrl)
+                    return (
+                      <a
+                        key={idx}
+                        href={resolvedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 transition-colors text-slate-700 hover:text-blue-700 group shadow-2xs"
+                      >
+                        <span className="truncate max-w-[200px] font-medium text-[11px]">
+                          {att.fileName}
+                        </span>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-400 group-hover:text-blue-600 ml-1.5" />
+                      </a>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* AREA KHUSUS ASSET TAGGING vs TANDA TANGAN DIGITAL BIASA */}
             {isAssetTaggingStep ? (

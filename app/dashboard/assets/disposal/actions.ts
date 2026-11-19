@@ -100,6 +100,7 @@ export async function getAssetDisposals(params?: {
           (currentEmpId && item.applicantEmployeeId === currentEmpId)
         return {
           ...item,
+          items: JSON.parse(item.items || '[]'),
           attachments: JSON.parse(item.attachments || '[]'),
           canEditRevision: Boolean(item.status === 'needs_revision' && (isCreator || isSuperAdmin)),
         }
@@ -182,6 +183,7 @@ export async function getAssetDisposalDetail(id: number) {
       success: true,
       data: {
         ...disposal,
+        items: JSON.parse(disposal.items || '[]'),
         attachments: JSON.parse(disposal.attachments || '[]'),
         approvalSteps,
         canApprove,
@@ -431,6 +433,20 @@ export async function getDisposalFormData() {
     // 6. Fetch default approvers
     const approversRes = await getDisposalDefaultApprovers(currentEmployee?.id)
 
+    // 7. Fetch active employees for custom approver selection
+    const allEmployees = await db
+      .select({
+        id: employees.id,
+        employeeSn: employees.employeeSn,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+        department: employees.department,
+        workLocation: employees.workLocation,
+      })
+      .from(employees)
+      .where(eq(employees.isActive, true))
+      .orderBy(asc(employees.name))
+
     return {
       success: true,
       currentEmployee,
@@ -439,6 +455,7 @@ export async function getDisposalFormData() {
       sections: secList,
       assets: assetList,
       defaultApprovers: approversRes.approvers || [],
+      allEmployees,
     }
   } catch (error: any) {
     console.error('[getDisposalFormData] Error:', error)
@@ -544,15 +561,29 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
 
     const firstApprover = approvalChain[0]
 
-    // 4. Insert into hero_asset_disposals
+    // 4. Resolve multi-item summary fields
+    const items = input.items && input.items.length > 0 ? input.items : []
+    const firstItem = items[0]
+    const topAssetName = firstItem
+      ? items.length > 1
+        ? `${firstItem.assetName} (+${items.length - 1} aset lainnya)`
+        : firstItem.assetName
+      : input.assetName || 'Disposal Aset'
+    const topAssetNumber =
+      items.map((i) => i.assetNumber).filter(Boolean).join(', ') || input.assetNumber || null
+    const topPurchaseYear = firstItem?.purchaseYear || input.purchaseYear || null
+    const topNotes =
+      input.notes || items.map((i) => `${i.assetName}: ${i.notes}`).join('; ')
+
+    // 5. Insert into hero_asset_disposals
     const [newDisposal] = await db
       .insert(assetDisposals)
       .values({
         disposalNumber,
-        assetId: input.assetId || null,
-        assetName: input.assetName,
-        assetNumber: input.assetNumber || null,
-        purchaseYear: input.purchaseYear || null,
+        assetId: firstItem?.assetId || input.assetId || null,
+        assetName: topAssetName,
+        assetNumber: topAssetNumber,
+        purchaseYear: topPurchaseYear,
         departmentId: input.departmentId || null,
         departmentName: input.departmentName,
         sectionId: input.sectionId || null,
@@ -560,7 +591,8 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         siteId: input.siteId,
         siteName: input.siteName,
         disposalDate: input.disposalDate,
-        notes: input.notes,
+        notes: topNotes,
+        items: JSON.stringify(items),
         attachments: JSON.stringify(input.attachments || []),
         applicantEmployeeId,
         applicantName,
@@ -755,6 +787,7 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
           assetNumber: disposal.assetNumber,
           purchaseYear: disposal.purchaseYear,
           notes: disposal.notes || '-',
+          items: JSON.parse(disposal.items || '[]'),
           attachments,
           submittedAt: disposal.submittedAt,
           approvedAt: now,
@@ -920,34 +953,22 @@ export async function cancelAssetDisposal(id: number, cancellationReason?: strin
       return { success: false, message: 'Anda hanya dapat membatalkan permohonan yang anda buat sendiri.' }
     }
 
-    if (disposal.status !== 'pending') {
-      return { success: false, message: 'Hanya permohonan berstatus pending yang dapat dibatalkan.' }
+    if (disposal.status === 'approved') {
+      return { success: false, message: 'Permohonan yang sudah disetujui penuh tidak dapat dibatalkan/dihapus.' }
     }
 
-    const now = new Date()
-
-    // Mark active/draft approvals as Cancelled
-    await db
-      .update(approvals)
-      .set({ status: 'Cancelled' })
-      .where(eq(approvals.assetDisposalId, id))
-
-    await db
-      .update(assetDisposals)
-      .set({
-        status: 'cancelled',
-        cancelledAt: now,
-        cancellationReason: cancellationReason || 'Dibatalkan oleh pembuat permohonan.',
-        updatedAt: now,
-      })
-      .where(eq(assetDisposals.id, id))
+    // Auto-hapus data approval dan permohonan disposal dari database
+    await db.transaction(async (tx) => {
+      await tx.delete(approvals).where(eq(approvals.assetDisposalId, id))
+      await tx.delete(assetDisposals).where(eq(assetDisposals.id, id))
+    })
 
     revalidatePath('/dashboard/assets/disposal')
     revalidatePath('/dashboard/approval')
 
     return {
       success: true,
-      message: `Permohonan ${disposal.disposalNumber} berhasil dibatalkan.`,
+      message: `Permohonan ${disposal.disposalNumber} berhasil dibatalkan dan dihapus.`,
     }
   } catch (error: any) {
     console.error('[cancelAssetDisposal] Error:', error)
@@ -1071,6 +1092,7 @@ export async function revertAssetDisposalAction(id: number, revertReason: string
 export async function resubmitAssetDisposalAction(input: {
   id: number
   notes?: string
+  items?: any[]
   attachments?: Array<{ fileName: string; fileUrl: string; fileSize?: number }>
 }) {
   try {
@@ -1112,10 +1134,29 @@ export async function resubmitAssetDisposalAction(input: {
       .where(and(eq(approvals.assetDisposalId, input.id), eq(approvals.level, targetStepLevel)))
       .limit(1)
 
+    const items = input.items && input.items.length > 0 ? input.items : undefined
+    let topAssetName = disposal.assetName
+    let topAssetNumber = disposal.assetNumber
+    let topPurchaseYear = disposal.purchaseYear
+    if (items) {
+      const firstItem = items[0]
+      topAssetName = firstItem
+        ? items.length > 1
+          ? `${firstItem.assetName} (+${items.length - 1} aset lainnya)`
+          : firstItem.assetName
+        : disposal.assetName
+      topAssetNumber = items.map((i: any) => i.assetNumber).filter(Boolean).join(', ') || null
+      topPurchaseYear = firstItem?.purchaseYear || null
+    }
+
     await db.transaction(async (tx) => {
       await tx
         .update(assetDisposals)
         .set({
+          assetName: topAssetName,
+          assetNumber: topAssetNumber,
+          purchaseYear: topPurchaseYear,
+          items: items ? JSON.stringify(items) : disposal.items,
           notes: input.notes !== undefined ? input.notes : disposal.notes,
           attachments: input.attachments ? JSON.stringify(input.attachments) : disposal.attachments,
           status: 'pending',

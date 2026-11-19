@@ -11,6 +11,7 @@ import {
 } from '@/components/templates'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { toast } from 'sonner'
 import {
   Trash2,
@@ -28,10 +29,23 @@ import {
   MapPin,
   ChevronUp,
   ChevronDown,
+  X,
+  Sparkles,
+  Info,
 } from 'lucide-react'
 import { uploadFile } from '@/app/actions/upload'
-import { createAssetDisposal } from '../actions'
+import { createAssetDisposal, resubmitAssetDisposalAction } from '../actions'
 import { type DisposalApproverStep, type DisposalAttachment } from '../schema'
+
+export interface DisposalFormItem {
+  id: string
+  assetId?: number | null
+  assetName: string
+  assetNumber: string
+  purchaseYear: string
+  notes: string
+  selectionMode: 'master' | 'manual'
+}
 
 interface AssetDisposalFormDialogProps {
   open: boolean
@@ -53,6 +67,7 @@ interface AssetDisposalFormDialogProps {
   currentEmployee: any | null
   defaultApprovers: DisposalApproverStep[]
   allEmployees?: Array<{ id: number; employeeSn: string; name: string; jobTitle: string | null }>
+  initialData?: any | null // For revision / edit mode
 }
 
 export function AssetDisposalFormDialog({
@@ -66,131 +81,213 @@ export function AssetDisposalFormDialog({
   currentEmployee,
   defaultApprovers,
   allEmployees = [],
+  initialData,
 }: AssetDisposalFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
-  // Selection mode: 'master' | 'manual'
-  const [selectionMode, setSelectionMode] = React.useState<'master' | 'manual'>('master')
-  const [selectedAssetId, setSelectedAssetId] = React.useState<string>('')
-
-  // Form Fields
-  const [assetName, setAssetName] = React.useState<string>('')
-  const [assetNumber, setAssetNumber] = React.useState<string>('')
-  const [purchaseYear, setPurchaseYear] = React.useState<string>('')
-
+  // 1. Applicant & Org Master Data (Group 1 - Auto-fill & Read-only)
   const [departmentId, setDepartmentId] = React.useState<string>('')
   const [departmentName, setDepartmentName] = React.useState<string>('')
   const [sectionId, setSectionId] = React.useState<string>('')
   const [sectionName, setSectionName] = React.useState<string>('')
   const [siteId, setSiteId] = React.useState<string>('')
   const [siteName, setSiteName] = React.useState<string>('')
-
   const [disposalDate, setDisposalDate] = React.useState<Date | undefined>(new Date())
-  const [notes, setNotes] = React.useState<string>('')
 
-  // Attachments
+  // 2. Unit Items Repeater (Group 2 - Multi-Item Asset Disposal)
+  const [items, setItems] = React.useState<DisposalFormItem[]>([
+    {
+      id: 'item-1',
+      assetId: null,
+      assetName: '',
+      assetNumber: '',
+      purchaseYear: '',
+      notes: '',
+      selectionMode: 'master',
+    },
+  ])
+
+  // 3. Attachments
   const [attachments, setAttachments] = React.useState<DisposalAttachment[]>([])
   const [isUploading, setIsUploading] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  // Dynamic Approver Steps
+  // 4. Approval Routing Steps (Group 4 - CER-style Flexible Approval Builder)
   const [approvers, setApprovers] = React.useState<DisposalApproverStep[]>([])
 
-  // Initialize defaults from current user & default approvers
+  // Options for Master Assets Searchable Select
+  const assetOptions = React.useMemo(() => {
+    return assets.map((a) => ({
+      value: String(a.id),
+      label: `${a.description} ${a.assetNumber ? `(No: ${a.assetNumber})` : ''} - ${a.location}`,
+    }))
+  }, [assets])
+
+  // Options for Employee Searchable Select in Approver Routing
+  const employeeOptions = React.useMemo(() => {
+    return allEmployees.map((e) => ({
+      value: String(e.id),
+      label: `${e.name} ${e.employeeSn ? `(${e.employeeSn})` : ''} - ${e.jobTitle || 'Staff'}`,
+    }))
+  }, [allEmployees])
+
+  // Sync initial data or defaults on modal open
   React.useEffect(() => {
     if (open) {
-      if (currentEmployee) {
-        if (currentEmployee.departmentId) {
-          setDepartmentId(String(currentEmployee.departmentId))
-          const dept = departments.find((d) => d.id === currentEmployee.departmentId)
-          if (dept) setDepartmentName(dept.name)
+      if (initialData) {
+        // Revision / Resubmit Mode
+        if (initialData.departmentId) setDepartmentId(String(initialData.departmentId))
+        setDepartmentName(initialData.departmentName || '')
+        if (initialData.sectionId) setSectionId(String(initialData.sectionId))
+        setSectionName(initialData.sectionName || '')
+        if (initialData.siteId) setSiteId(String(initialData.siteId))
+        setSiteName(initialData.siteName || '')
+        if (initialData.disposalDate) setDisposalDate(new Date(initialData.disposalDate))
+
+        // Prepopulate items
+        if (initialData.items && Array.isArray(initialData.items) && initialData.items.length > 0) {
+          setItems(
+            initialData.items.map((it: any, idx: number) => ({
+              id: `item-${idx + 1}-${Date.now()}`,
+              assetId: it.assetId || null,
+              assetName: it.assetName || '',
+              assetNumber: it.assetNumber || '',
+              purchaseYear: it.purchaseYear || '',
+              notes: it.notes || '',
+              selectionMode: it.assetId ? 'master' : 'manual',
+            }))
+          )
+        } else {
+          setItems([
+            {
+              id: 'item-1',
+              assetId: initialData.assetId || null,
+              assetName: initialData.assetName || '',
+              assetNumber: initialData.assetNumber || '',
+              purchaseYear: initialData.purchaseYear || '',
+              notes: initialData.notes || '',
+              selectionMode: initialData.assetId ? 'master' : 'manual',
+            },
+          ])
         }
-        if (currentEmployee.sectionId) {
-          setSectionId(String(currentEmployee.sectionId))
-          const sec = sections.find((s) => s.id === currentEmployee.sectionId)
-          if (sec) setSectionName(sec.name)
+
+        setAttachments(initialData.attachments || [])
+        setApprovers(defaultApprovers.length > 0 ? defaultApprovers : [])
+      } else {
+        // Create New Mode: Auto-fill from current employee profile
+        if (currentEmployee) {
+          if (currentEmployee.departmentId) {
+            setDepartmentId(String(currentEmployee.departmentId))
+            const dept = departments.find((d) => d.id === currentEmployee.departmentId)
+            if (dept) setDepartmentName(dept.name)
+            else if (currentEmployee.department) setDepartmentName(currentEmployee.department)
+          } else if (currentEmployee.department) {
+            setDepartmentName(currentEmployee.department)
+          }
+
+          if (currentEmployee.sectionId) {
+            setSectionId(String(currentEmployee.sectionId))
+            const sec = sections.find((s) => s.id === currentEmployee.sectionId)
+            if (sec) setSectionName(sec.name)
+          }
+
+          if (currentEmployee.siteId) {
+            setSiteId(String(currentEmployee.siteId))
+            const st = sites.find((s) => s.id === currentEmployee.siteId)
+            if (st) setSiteName(st.name)
+          } else if (sites.length > 0) {
+            setSiteId(String(sites[0].id))
+            setSiteName(sites[0].name)
+          }
+        } else if (sites.length > 0) {
+          setSiteId(String(sites[0].id))
+          setSiteName(sites[0].name)
         }
-        if (currentEmployee.siteId) {
-          setSiteId(String(currentEmployee.siteId))
-          const st = sites.find((s) => s.id === currentEmployee.siteId)
-          if (st) setSiteName(st.name)
-        }
-      } else if (sites.length > 0 && !siteId) {
-        setSiteId(String(sites[0].id))
-        setSiteName(sites[0].name)
+
+        setItems([
+          {
+            id: 'item-1',
+            assetId: null,
+            assetName: '',
+            assetNumber: '',
+            purchaseYear: '',
+            notes: '',
+            selectionMode: 'master',
+          },
+        ])
+        setAttachments([])
+        setApprovers(defaultApprovers.length > 0 ? defaultApprovers : [])
       }
-
-      setApprovers(defaultApprovers.length > 0 ? defaultApprovers : [])
     }
-  }, [open, currentEmployee, defaultApprovers, departments, sections, sites])
+  }, [open, initialData, currentEmployee, defaultApprovers, departments, sections, sites])
 
-  // Handle master asset selection
-  const handleSelectAsset = (val: string) => {
-    setSelectedAssetId(val)
-    if (!val) {
-      setAssetName('')
-      setAssetNumber('')
-      setPurchaseYear('')
+  // --- ITEM REPEATER HANDLERS ---
+  const handleAddItem = () => {
+    setItems((prev) => [
+      ...prev,
+      {
+        id: `item-${Date.now()}`,
+        assetId: null,
+        assetName: '',
+        assetNumber: '',
+        purchaseYear: '',
+        notes: '',
+        selectionMode: 'master',
+      },
+    ])
+  }
+
+  const handleRemoveItem = (id: string) => {
+    if (items.length <= 1) {
+      toast.error('Minimal harus mengisi 1 rincian aset.')
+      return
+    }
+    setItems((prev) => prev.filter((it) => it.id !== id))
+  }
+
+  const handleItemFieldChange = (id: string, field: keyof DisposalFormItem, val: any) => {
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, [field]: val } : it))
+    )
+  }
+
+  const handleSelectMasterAsset = (id: string, assetIdStr: string) => {
+    if (!assetIdStr) {
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === id
+            ? { ...it, assetId: null, assetName: '', assetNumber: '', purchaseYear: '' }
+            : it
+        )
+      )
       return
     }
 
-    const found = assets.find((a) => String(a.id) === val)
+    const found = assets.find((a) => String(a.id) === assetIdStr)
     if (found) {
-      setAssetName(found.description)
-      setAssetNumber(found.assetNumber || '')
-
+      let py = ''
       if (found.purchaseDate) {
         const d = new Date(found.purchaseDate)
-        if (!isNaN(d.getTime())) {
-          setPurchaseYear(String(d.getFullYear()))
-        }
+        if (!isNaN(d.getTime())) py = String(d.getFullYear())
       }
 
-      // Auto-match site if found location matches
-      if (found.location) {
-        const matchedSite = sites.find(
-          (s) =>
-            s.name.toLowerCase().includes(found.location.toLowerCase()) ||
-            found.location.toLowerCase().includes(s.name.toLowerCase())
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === id
+            ? {
+                ...it,
+                assetId: found.id,
+                assetName: found.description,
+                assetNumber: found.assetNumber || '',
+                purchaseYear: py,
+              }
+            : it
         )
-        if (matchedSite) {
-          setSiteId(String(matchedSite.id))
-          setSiteName(matchedSite.name)
-        }
-      }
+      )
     }
   }
 
-  // Handle department change
-  const handleDepartmentChange = (val: string) => {
-    setDepartmentId(val)
-    const dept = departments.find((d) => String(d.id) === val)
-    setDepartmentName(dept ? dept.name : '')
-    setSectionId('')
-    setSectionName('')
-  }
-
-  // Filter sections by department
-  const filteredSections = React.useMemo(() => {
-    if (!departmentId) return sections
-    return sections.filter((s) => String(s.departmentId) === departmentId)
-  }, [departmentId, sections])
-
-  // Handle section change
-  const handleSectionChange = (val: string) => {
-    setSectionId(val)
-    const sec = sections.find((s) => String(s.id) === val)
-    setSectionName(sec ? sec.name : '')
-  }
-
-  // Handle site change
-  const handleSiteChange = (val: string) => {
-    setSiteId(val)
-    const st = sites.find((s) => String(s.id) === val)
-    setSiteName(st ? st.name : '')
-  }
-
-  // File upload handler
+  // --- ATTACHMENTS HANDLERS ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -199,11 +296,11 @@ export function AssetDisposalFormDialog({
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
-        const fd = new FormData()
-        fd.append('file', file)
-        fd.append('uploadTarget', 'asset-disposals')
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('prefix', 'asset-disposal')
 
-        const res = await uploadFile(fd)
+        const res = await uploadFile(formData)
         if (res.success && res.url) {
           setAttachments((prev) => [
             ...prev,
@@ -214,13 +311,13 @@ export function AssetDisposalFormDialog({
               mimeType: file.type,
             },
           ])
-          toast.success(`Berkas "${file.name}" berhasil diunggah.`)
+          toast.success(`Berhasil mengunggah: ${file.name}`)
         } else {
-          toast.error(res.error || `Gagal mengunggah berkas ${file.name}`)
+          toast.error(res.message || `Gagal mengunggah: ${file.name}`)
         }
       }
     } catch (err: any) {
-      toast.error('Gagal mengunggah berkas: ' + (err?.message || ''))
+      toast.error('Terjadi kesalahan saat mengunggah berkas: ' + (err?.message || ''))
     } finally {
       setIsUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -231,150 +328,172 @@ export function AssetDisposalFormDialog({
     setAttachments((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  // Approver Chain Manipulation
+  // --- APPROVAL ROUTING BUILDER HANDLERS (CER-STYLE) ---
   const handleMoveApprover = (idx: number, direction: 'up' | 'down') => {
-    if (direction === 'up' && idx === 0) return
-    if (direction === 'down' && idx === approvers.length - 1) return
-
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1
-    const newArr = [...approvers]
-    const temp = newArr[idx]
-    newArr[idx] = newArr[targetIdx]
-    newArr[targetIdx] = temp
+    if (targetIdx < 0 || targetIdx >= approvers.length) return
 
-    // Re-index levels
-    const reindexed = newArr.map((item, i) => ({
-      ...item,
+    const newChain = [...approvers]
+    const temp = newChain[idx]
+    newChain[idx] = newChain[targetIdx]
+    newChain[targetIdx] = temp
+
+    // Recalculate level step order
+    const updated = newChain.map((s, i) => ({
+      ...s,
       level: i + 1,
     }))
-    setApprovers(reindexed)
+    setApprovers(updated)
+  }
+
+  const handleApproverEmployeeChange = (idx: number, empIdStr: string) => {
+    const emp = allEmployees.find((e) => String(e.id) === empIdStr)
+    if (!emp) return
+
+    setApprovers((prev) =>
+      prev.map((s, i) =>
+        i === idx
+          ? {
+              ...s,
+              approverEmployeeId: emp.id,
+              approverName: emp.name,
+              jobTitle: emp.jobTitle || 'Staff',
+            }
+          : s
+      )
+    )
+  }
+
+  const handleAddApprover = () => {
+    if (allEmployees.length === 0) {
+      toast.error('Data personil karyawan tidak tersedia.')
+      return
+    }
+    const defaultEmp = allEmployees[0]
+    const newStep: DisposalApproverStep = {
+      level: approvers.length + 1,
+      title: `Step ${approvers.length + 1}: Tambahan Otorisasi`,
+      approverEmployeeId: defaultEmp.id,
+      approverName: defaultEmp.name,
+      jobTitle: defaultEmp.jobTitle || 'Staff',
+    }
+    setApprovers((prev) => [...prev, newStep])
+    toast.success('Tahapan approval baru ditambahkan. Silakan pilih personil yang sesuai.')
   }
 
   const handleRemoveApprover = (idx: number) => {
-    const target = approvers[idx]
+    const step = approvers[idx]
     // Guard: Prevent removing Amama Ira
     if (
-      target.approverEmployeeId === 1341 ||
-      target.approverName.toLowerCase().includes('amama ira')
+      step.approverEmployeeId === 1341 ||
+      step.approverName.toLowerCase().includes('amama ira')
     ) {
       toast.error('Verifikasi Finance & Accounting (Amama Ira) tidak boleh dihapus dari alur persetujuan.')
       return
     }
 
-    if (approvers.length <= 3) {
-      toast.error('Alur approval minimal harus memiliki 3 tahapan.')
+    if (approvers.length <= 1) {
+      toast.error('Minimal harus ada 1 approver.')
       return
     }
 
-    const filtered = approvers.filter((_, i) => i !== idx)
-    setApprovers(filtered.map((item, i) => ({ ...item, level: i + 1 })))
+    const newChain = approvers.filter((_, i) => i !== idx).map((s, i) => ({ ...s, level: i + 1 }))
+    setApprovers(newChain)
   }
 
-  const handleAddApprover = () => {
-    const newStep: DisposalApproverStep = {
-      level: approvers.length + 1,
-      title: `Step ${approvers.length + 1}: Reviewer Tambahan`,
-      approverEmployeeId: 1008,
-      approverName: 'Andana Gustafianto',
-      jobTitle: 'Reviewer Teknis',
-    }
-    // Insert before Amama Ira or at appropriate slot
-    setApprovers([...approvers, newStep])
-  }
+  // --- SUBMIT HANDLER ---
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
 
-  const handleApproverEmployeeChange = (stepIdx: number, empIdStr: string) => {
-    const empId = parseInt(empIdStr, 10)
-    if (!empId) return
-
-    const emp = allEmployees.find((e) => e.id === empId)
-    if (!emp) return
-
-    setApprovers((prev) =>
-      prev.map((step, i) => {
-        if (i === stepIdx) {
-          return {
-            ...step,
-            approverEmployeeId: emp.id,
-            approverName: emp.name,
-            jobTitle: emp.jobTitle || 'Approver',
-          }
-        }
-        return step
-      })
-    )
-  }
-
-  // Form submission
-  const handleSubmit = async () => {
-    if (!assetName.trim()) {
-      toast.error('Nama aset wajib diisi.')
+    // 1. Validate Items
+    if (items.length === 0) {
+      toast.error('Minimal harus mengisi 1 rincian aset.')
       return
     }
 
-    if (!siteId) {
-      toast.error('Cabang / Site wajib dipilih.')
-      return
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      if (!it.assetName.trim()) {
+        toast.error(`Nama aset pada Unit #${i + 1} wajib diisi.`)
+        return
+      }
+      if (!it.notes.trim()) {
+        toast.error(`Catatan / alasan penghapusan aset pada Unit #${i + 1} wajib diisi.`)
+        return
+      }
     }
 
-    if (!departmentName.trim()) {
-      toast.error('Departemen wajib diisi.')
-      return
-    }
-
-    if (!notes.trim() || notes.trim().length < 5) {
-      toast.error('Alasan / justifikasi penghapusan aset minimal 5 karakter.')
-      return
-    }
-
-    // Validate Amama Ira is in the chain
-    const amamaIdx = approvers.findIndex(
+    // 2. Validate Approvers & Guardrail Amama Ira
+    const amamaIndex = approvers.findIndex(
       (s) =>
         s.approverEmployeeId === 1341 ||
         s.approverName.toLowerCase().includes('amama ira')
     )
-    if (amamaIdx === -1) {
+    if (amamaIndex === -1) {
       toast.error('Verifikasi Finance & Accounting (Amama Ira) wajib ada di dalam alur persetujuan.')
       return
     }
 
-    const gmIdx = approvers.findIndex(
+    const gmIndex = approvers.findIndex(
       (s) =>
         s.approverEmployeeId === 940 ||
         (s.jobTitle && s.jobTitle.toLowerCase().includes('general manager'))
     )
-    if (gmIdx !== -1 && amamaIdx > gmIdx) {
-      toast.error('Verifikasi Amama Ira wajib diposisikan sebelum General Manager.')
+    if (gmIndex !== -1 && amamaIndex > gmIndex) {
+      toast.error('Verifikasi Finance & Accounting (Amama Ira) wajib diposisikan SEBELUM General Manager.')
       return
     }
 
     setIsSubmitting(true)
     try {
-      const formattedDate = disposalDate ? disposalDate.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+      const formattedItems = items.map((it) => ({
+        assetId: it.assetId || null,
+        assetName: it.assetName.trim(),
+        assetNumber: it.assetNumber.trim() || null,
+        purchaseYear: it.purchaseYear.trim() || null,
+        notes: it.notes.trim(),
+      }))
 
-      const res = await createAssetDisposal({
-        assetId: selectionMode === 'master' && selectedAssetId ? parseInt(selectedAssetId, 10) : null,
-        assetName: assetName.trim(),
-        assetNumber: assetNumber.trim() || null,
-        purchaseYear: purchaseYear.trim() || null,
-        departmentId: departmentId ? parseInt(departmentId, 10) : null,
-        departmentName: departmentName.trim(),
-        sectionId: sectionId ? parseInt(sectionId, 10) : null,
-        sectionName: sectionName.trim() || null,
-        siteId: parseInt(siteId, 10),
-        siteName: siteName.trim(),
-        disposalDate: formattedDate,
-        notes: notes.trim(),
-        attachments,
-        applicantEmployeeId: currentEmployee?.id || null,
-        customApprovers: approvers,
-      })
-
-      if (res.success) {
-        toast.success(res.message || 'Permohonan Asset Disposal berhasil diajukan!')
-        onOpenChange(false)
-        onSuccess()
+      if (initialData?.id) {
+        // Resubmit / Revision Mode
+        const res = await resubmitAssetDisposalAction({
+          id: initialData.id,
+          items: formattedItems,
+          notes: formattedItems.map((it) => `${it.assetName}: ${it.notes}`).join('; '),
+          attachments,
+        })
+        if (res.success) {
+          toast.success(res.message || 'Revisi permohonan berhasil dikirim ulang.')
+          onOpenChange(false)
+          onSuccess()
+        } else {
+          toast.error(res.message || 'Gagal mengirim ulang permohonan.')
+        }
       } else {
-        toast.error(res.message || 'Gagal mengajukan Asset Disposal.')
+        // Create New Mode
+        const payload = {
+          items: formattedItems,
+          departmentId: departmentId ? Number(departmentId) : null,
+          departmentName: departmentName || 'Departemen',
+          sectionId: sectionId ? Number(sectionId) : null,
+          sectionName: sectionName || null,
+          siteId: siteId ? Number(siteId) : Number(sites[0]?.id || 1),
+          siteName: siteName || sites[0]?.name || 'Balikpapan (Head Office)',
+          disposalDate: disposalDate ? disposalDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          notes: formattedItems.map((it) => `${it.assetName}: ${it.notes}`).join('; '),
+          attachments,
+          applicantEmployeeId: currentEmployee?.id || null,
+          customApprovers: approvers,
+        }
+
+        const res = await createAssetDisposal(payload)
+        if (res.success) {
+          toast.success(res.message || 'Pengajuan Asset Disposal berhasil dibuat!')
+          onOpenChange(false)
+          onSuccess()
+        } else {
+          toast.error(res.message || 'Gagal membuat pengajuan Asset Disposal.')
+        }
       }
     } catch (err: any) {
       toast.error('Terjadi kesalahan: ' + (err?.message || ''))
@@ -383,297 +502,336 @@ export function AssetDisposalFormDialog({
     }
   }
 
-  // Options for Master Asset Searchable Select
-  const assetOptions = React.useMemo(() => {
-    return assets.map((a) => ({
-      value: String(a.id),
-      label: `${a.description} ${a.assetNumber ? `(${a.assetNumber})` : ''}`,
-      category: a.location || 'Central Service',
-    }))
-  }, [assets])
-
-  // Options for Department Select
-  const deptOptions = React.useMemo(() => {
-    return departments.map((d) => ({
-      value: String(d.id),
-      label: d.name,
-      category: d.code || 'Dept',
-    }))
-  }, [departments])
-
-  // Options for Section Select
-  const secOptions = React.useMemo(() => {
-    return filteredSections.map((s) => ({
-      value: String(s.id),
-      label: s.name,
-    }))
-  }, [filteredSections])
-
-  // Options for Site Select
-  const siteOptions = React.useMemo(() => {
-    return sites.map((s) => ({
-      value: String(s.id),
-      label: s.name,
-      category: s.location || 'Site',
-    }))
-  }, [sites])
-
-  // Options for Approver Employee Select
-  const employeeOptions = React.useMemo(() => {
-    return allEmployees.map((e) => ({
-      value: String(e.id),
-      label: `${e.name} (${e.employeeSn})`,
-      category: e.jobTitle || 'Staff',
-    }))
-  }, [allEmployees])
-
   return (
     <HeroFormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Formulir Pengajuan Asset Disposal"
-      description="Ajukan permohonan penghapusan/disposal aset dengan verifikasi Finance & Accounting dan otorisasi manajemen."
-      maxWidth="4xl"
-      submitLabel="Ajukan Permohonan Disposal"
+      title={
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+            <Trash2 className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900">
+              {initialData?.id ? 'Revisi Pengajuan Asset Disposal' : 'Formulir Pengajuan Asset Disposal'}
+            </h3>
+            <p className="text-xs text-slate-500 font-normal">
+              Penghapusan aset resmi dengan rincian unit multi-aset dan verifikasi Finance &amp; Accounting
+            </p>
+          </div>
+        </div>
+      }
+      size="5xl"
       isSubmitting={isSubmitting}
       onSubmit={handleSubmit}
+      submitLabel={initialData?.id ? 'Kirim Ulang Revisi' : 'Kirim Pengajuan Disposal'}
     >
-      <div className="space-y-6 py-2">
-        {/* 1. SECTION: Informasi Pemohon */}
-        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-border/80">
-          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/60">
-            <User className="size-4 text-primary" />
-            <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-              1. Dibuat Oleh (Informasi Pemohon)
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div>
-              <span className="text-muted-foreground block text-[11px]">Nama Lengkap</span>
-              <span className="font-semibold text-foreground text-xs">
-                {currentEmployee?.name || 'User Aktif'}
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-[11px]">NIK / SN</span>
-              <span className="font-semibold text-foreground text-xs">
-                {currentEmployee?.employeeSn || '-'}
-              </span>
-            </div>
-            <div>
-              <span className="text-muted-foreground block text-[11px]">Jabatan / Role</span>
-              <span className="font-semibold text-foreground text-xs">
-                {currentEmployee?.jobTitle || 'Staff Operasional'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. SECTION: Unit Kerja & Lokasi */}
-        <div>
-          <div className="flex items-center gap-2 mb-3 pb-1 border-b border-border/60">
-            <Building2 className="size-4 text-primary" />
-            <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-              2. Unit Kerja & Lokasi Aset
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <HeroFormField label="Departemen" required>
-              <HeroSearchableSelect
-                options={deptOptions}
-                value={departmentId}
-                onChange={handleDepartmentChange}
-                placeholder="Pilih Departemen"
-                searchPlaceholder="Cari departemen..."
-              />
-            </HeroFormField>
-
-            <HeroFormField label="Section">
-              <HeroSearchableSelect
-                options={secOptions}
-                value={sectionId}
-                onChange={handleSectionChange}
-                placeholder="Pilih Section"
-                searchPlaceholder="Cari section..."
-                disabled={!departmentId && filteredSections.length === 0}
-              />
-            </HeroFormField>
-
-            <HeroFormField label="Cabang / Site" required>
-              <HeroSearchableSelect
-                options={siteOptions}
-                value={siteId}
-                onChange={handleSiteChange}
-                placeholder="Pilih Cabang / Site"
-                searchPlaceholder="Cari site..."
-              />
-            </HeroFormField>
-
-            <HeroFormField label="Tanggal Pengajuan" required>
-              <HeroDatePicker
-                value={disposalDate}
-                onChange={setDisposalDate}
-                placeholder="Pilih tanggal"
-              />
-            </HeroFormField>
-          </div>
-        </div>
-
-        {/* 3. SECTION: Spesifikasi Aset (Hybrid Selection) */}
-        <div>
-          <div className="flex items-center justify-between mb-3 pb-1 border-b border-border/60">
+      <div className="space-y-6 text-xs">
+        {/* GRUP 1: INFORMASI PEMOHON & UNIT KERJA (AUTO-FILL & READ-ONLY) */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3.5 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
             <div className="flex items-center gap-2">
-              <Layers className="size-4 text-primary" />
-              <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                3. Spesifikasi Aset yang Dihapus
-              </span>
+              <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
+                <User className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  1. Informasi Pemohon &amp; Unit Kerja
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Data diambil otomatis dari profil master data HERO aktif dan terkunci secara aman
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg border border-border">
-              <button
-                type="button"
-                onClick={() => setSelectionMode('master')}
-                className={`text-[11px] px-2.5 py-1 rounded-md font-medium transition-colors ${
-                  selectionMode === 'master'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Dari Master Aset
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectionMode('manual')
-                  setSelectedAssetId('')
-                }}
-                className={`text-[11px] px-2.5 py-1 rounded-md font-medium transition-colors ${
-                  selectionMode === 'manual'
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Input Manual
-              </button>
-            </div>
+            <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 self-start sm:self-auto font-semibold">
+              ✓ Auto-filled dari Master Data HERO
+            </Badge>
           </div>
 
-          {selectionMode === 'master' && (
-            <div className="mb-4 bg-blue-50/60 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-900/40">
-              <HeroFormField label="Pilih Aset dari Master Central Service" required>
-                <HeroSearchableSelect
-                  options={assetOptions}
-                  value={selectedAssetId}
-                  onChange={handleSelectAsset}
-                  placeholder="Ketik nama atau nomor aset..."
-                  searchPlaceholder="Pencarian aset master..."
-                />
-              </HeroFormField>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <HeroFormField label="Nama Aset" required>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <HeroFormField label="Nama Pemohon">
               <HeroInput
-                value={assetName}
-                onChange={(e) => setAssetName(e.target.value)}
-                placeholder="Contoh: Forklift Komatsu FD30"
+                value={currentEmployee?.name || 'Staff Pemohon'}
+                disabled
+                className="bg-slate-100/90 font-semibold text-slate-800"
               />
             </HeroFormField>
 
-            <HeroFormField label="Nomor Aset / Asset Tag">
+            <HeroFormField label="NIK / Employee SN">
               <HeroInput
-                value={assetNumber}
-                onChange={(e) => setAssetNumber(e.target.value)}
-                placeholder="Contoh: AST-FL-002"
+                value={currentEmployee?.employeeSn || '-'}
+                disabled
+                className="bg-slate-100/90 font-mono text-slate-800 font-semibold"
               />
             </HeroFormField>
 
-            <HeroFormField label="Tahun Pembelian">
+            <HeroFormField label="Jabatan / Job Title">
               <HeroInput
-                value={purchaseYear}
-                onChange={(e) => setPurchaseYear(e.target.value)}
-                placeholder="Contoh: 2018"
+                value={currentEmployee?.jobTitle || '-'}
+                disabled
+                className="bg-slate-100/90 text-slate-800"
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Departemen">
+              <HeroInput
+                value={departmentName || currentEmployee?.department || '-'}
+                disabled
+                className="bg-slate-100/90 text-slate-800"
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Section / Seksi">
+              <HeroInput
+                value={sectionName || '-'}
+                disabled
+                className="bg-slate-100/90 text-slate-800"
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Cabang / Site Lokasi">
+              <HeroInput
+                value={siteName || '-'}
+                disabled
+                className="bg-slate-100/90 text-slate-800 font-medium"
               />
             </HeroFormField>
           </div>
-        </div>
 
-        {/* 4. SECTION: Alasan & Catatan Disposal */}
-        <div>
-          <div className="flex items-center gap-2 mb-2 pb-1 border-b border-border/60">
-            <Trash2 className="size-4 text-destructive" />
-            <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-              4. Catatan & Alasan Penghapusan Aset
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pt-1">
+            <Info className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+            <span>
+              Jika terdapat mutasi atau pembaruan master data pegawai, riwayat profil ini akan tersinkron otomatis kedepannya.
             </span>
           </div>
-          <HeroFormField label="Alasan / Justifikasi Teknis Kerusakan" required>
-            <HeroTextarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Deskripsikan kondisi fisik aset, estimasi biaya perbaikan yang melebihi nilai ekonomis, atau alasan penghapusan lainnya..."
-              rows={3}
-              showCount
-              maxLength={500}
-            />
-          </HeroFormField>
         </div>
 
-        {/* 5. SECTION: Lampiran Berkas (Berita Acara, Inspection, Foto) */}
-        <div>
-          <div className="flex items-center justify-between mb-2 pb-1 border-b border-border/60">
+        {/* GRUP 2: RINCIAN ASET YANG DIHAPUS (MULTI-ITEM REPEATER DALAM 1 GRUP) */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-2">
-              <Paperclip className="size-4 text-primary" />
-              <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                5. Berkas Lampiran Pendukung (Berita Acara / Inspeksi)
-              </span>
+              <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  2. Rincian Aset yang Dihapus (Disposal Unit)
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Satukan nama aset, nomor aset, tahun pembelian, dan catatan alasan penghapusan dalam satu grup
+                </p>
+              </div>
             </div>
-            <span className="text-[11px] text-muted-foreground">Maksimal 10MB per berkas (PDF, JPG, PNG)</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="application/pdf,image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={isUploading}
-              onClick={() => fileInputRef.current?.click()}
-              className="h-9 gap-1.5 text-xs border-dashed border-primary/50 text-primary hover:bg-primary/5"
+              onClick={handleAddItem}
+              className="h-8 gap-1.5 text-xs font-semibold text-blue-700 border-blue-300 hover:bg-blue-50 self-start sm:self-auto shadow-2xs"
             >
-              <UploadCloud className="size-4" />
-              {isUploading ? 'Mengunggah Berkas...' : 'Unggah Berkas / Dokumen'}
+              <Plus className="h-3.5 w-3.5" /> Tambah Unit Aset
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {attachments.length} berkas terlampir
-            </span>
           </div>
 
-          {attachments.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+          <div className="space-y-4">
+            {items.map((it, idx) => (
+              <div
+                key={it.id}
+                className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3.5 relative transition-all hover:border-slate-300"
+              >
+                <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
+                      {idx + 1}
+                    </span>
+                    <span className="text-xs font-bold text-slate-900">
+                      Rincian Aset #{idx + 1}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Mode Selector for Item: Master vs Manual */}
+                    <div className="flex items-center bg-white rounded-lg border border-slate-200 p-0.5 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => handleItemFieldChange(it.id, 'selectionMode', 'master')}
+                        className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                          it.selectionMode === 'master'
+                            ? 'bg-blue-50 text-blue-700 font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Pilih Master Aset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleItemFieldChange(it.id, 'selectionMode', 'manual')}
+                        className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                          it.selectionMode === 'manual'
+                            ? 'bg-blue-50 text-blue-700 font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Input Manual
+                      </button>
+                    </div>
+
+                    {items.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveItem(it.id)}
+                        className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 font-semibold"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Hapus
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* If Master Selection Mode */}
+                {it.selectionMode === 'master' && (
+                  <HeroFormField
+                    label="Pilih Aset dari Master Central Service"
+                    helperText="Pilih aset yang terdaftar untuk mengisi nama, nomor aset, dan tahun beli otomatis"
+                  >
+                    <HeroSearchableSelect
+                      options={assetOptions}
+                      value={it.assetId ? String(it.assetId) : ''}
+                      onChange={(val) => handleSelectMasterAsset(it.id, val)}
+                      placeholder="Cari nama aset, nomor aset, atau lokasi..."
+                      searchPlaceholder="Ketik pencarian aset..."
+                    />
+                  </HeroFormField>
+                )}
+
+                {/* 4 Kolom Rincian Terpadu: Nama Aset, No. Aset, Tahun Pembelian, dan Alasan Penghapusan */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <HeroFormField label="Nama Aset" required>
+                      <HeroInput
+                        value={it.assetName}
+                        onChange={(e) => handleItemFieldChange(it.id, 'assetName', e.target.value)}
+                        placeholder="Contoh: Laptop Dell Latitude 3420 / Pompa Kompresor"
+                        className="bg-white"
+                      />
+                    </HeroFormField>
+                  </div>
+
+                  <HeroFormField label="No. Aset (Asset Code / Tag)">
+                    <HeroInput
+                      value={it.assetNumber}
+                      onChange={(e) => handleItemFieldChange(it.id, 'assetNumber', e.target.value)}
+                      placeholder="Contoh: AST-2022-0045"
+                      className="bg-white font-mono"
+                    />
+                  </HeroFormField>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <HeroFormField label="Tahun Pembelian" helperText="Tahun perolehan fisik aset">
+                    <HeroInput
+                      value={it.purchaseYear}
+                      onChange={(e) => handleItemFieldChange(it.id, 'purchaseYear', e.target.value)}
+                      placeholder="Contoh: 2021"
+                      className="bg-white font-mono"
+                    />
+                  </HeroFormField>
+
+                  <div className="sm:col-span-3">
+                    <HeroFormField
+                      label="Catatan & Alasan Penghapusan Aset"
+                      required
+                      helperText="Jelaskan kondisi kerusakan fisik, biaya perbaikan vs ekonomis, atau alasan pemusnahan"
+                    >
+                      <HeroTextarea
+                        value={it.notes}
+                        onChange={(e) => handleItemFieldChange(it.id, 'notes', e.target.value)}
+                        placeholder="Contoh: Motherboard terbakar dan panel layar retak parah. Estimasi biaya perbaikan melebihi nilai buku unit..."
+                        rows={2}
+                        className="bg-white resize-none"
+                      />
+                    </HeroFormField>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* GRUP 3: DOKUMEN PENDUKUNG (ATTACHMENTS) */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-2xs">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg">
+                <Paperclip className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                  3. Dokumen Lampiran &amp; Bukti Fisik
+                </h4>
+                <p className="text-[11px] text-slate-500">
+                  Unggah foto fisik kondisi aset rusak, form evaluasi teknis, atau dokumen relevan (PDF / JPG / PNG)
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="h-8 gap-1.5 text-xs font-semibold text-indigo-700 border-indigo-300 hover:bg-indigo-50 shadow-2xs"
+            >
+              <UploadCloud className="h-3.5 w-3.5" />
+              {isUploading ? 'Mengunggah...' : 'Unggah Dokumen'}
+            </Button>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+
+          {attachments.length === 0 ? (
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all text-center min-h-[90px]"
+            >
+              <UploadCloud className="h-6 w-6 text-slate-400 mb-1" />
+              <p className="text-xs font-semibold text-slate-700">
+                Klik di sini untuk memilih dan mengunggah dokumen pendukung
+              </p>
+              <p className="text-[10px] text-slate-500">
+                Format: PDF, PNG, JPG (Maks 10 MB per berkas)
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {attachments.map((att, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-card text-xs"
+                  className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50/70"
                 >
-                  <div className="flex items-center gap-2 truncate pr-2">
-                    <FileText className="size-4 text-primary shrink-0" />
-                    <span className="truncate font-medium text-foreground">{att.fileName}</span>
+                  <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
+                    <FileText className="h-4 w-4 text-indigo-600 shrink-0" />
+                    <span className="truncate text-xs font-medium text-slate-800" title={att.fileName}>
+                      {att.fileName}
+                    </span>
                   </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-7 text-muted-foreground hover:text-destructive shrink-0"
                     onClick={() => handleRemoveAttachment(idx)}
+                    className="h-6 w-6 text-slate-400 hover:text-rose-600"
                   >
-                    <Trash2 className="size-3.5" />
+                    <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               ))}
@@ -681,136 +839,173 @@ export function AssetDisposalFormDialog({
           )}
         </div>
 
-        {/* 6. SECTION: Dynamic Approval Routing Builder */}
-        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-border/80">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-border/60">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="size-4 text-emerald-600" />
-              <span className="text-xs font-bold text-foreground uppercase tracking-wider">
-                6. Alur Otorisasi & Rantai Approval (Hirarki Lengkap s/d Director)
-              </span>
-            </div>
-            {allEmployees.length > 0 && (
+        {/* GRUP 4: RANTAI PERSETUJUAN BERJENJANG HINGGA DIREKTUR DENGAN AMAMA IRA (CER STYLE) */}
+        <Card className="border-slate-200 bg-white shadow-2xs">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50 py-3 px-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <CardTitle className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-blue-600" />
+                  4. Rantai Persetujuan &amp; Otorisasi Berjenjang (Approval Routing)
+                </CardTitle>
+                <CardDescription className="text-[11px] text-slate-500">
+                  Dikonfigurasi otomatis hingga Direktur sesuai struktur master data HERO. Terdapat tahapan verifikasi wajib oleh Finance &amp; Accounting (Amama Ira) sebelum ke General Manager &amp; Director.
+                </CardDescription>
+              </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={handleAddApprover}
-                className="h-7 text-[11px] gap-1 text-primary border-primary/40 hover:bg-primary/5"
+                className="h-8 gap-1 border-blue-600 text-xs font-semibold text-blue-700 hover:bg-blue-50 self-start sm:self-auto shadow-2xs"
               >
-                <Plus className="size-3" />
-                Tambah Approver
+                <Plus className="h-3.5 w-3.5" /> Tambah Approver
               </Button>
-            )}
-          </div>
+            </div>
+          </CardHeader>
 
-          <div className="space-y-2">
-            {approvers.map((step, idx) => {
-              const isAmamaIra =
-                step.approverEmployeeId === 1341 ||
-                step.approverName.toLowerCase().includes('amama ira')
-              const isGM =
-                step.approverEmployeeId === 940 ||
-                (step.jobTitle && step.jobTitle.toLowerCase().includes('general manager'))
-              const isDirector =
-                step.approverEmployeeId === 10 ||
-                (step.jobTitle && step.jobTitle.toLowerCase().includes('director'))
+          <CardContent className="p-4 space-y-3">
+            {approvers && approvers.length > 0 ? (
+              <div className="space-y-2.5">
+                {approvers.map((s, idx) => {
+                  const isAmama =
+                    s.approverEmployeeId === 1341 ||
+                    s.approverName.toLowerCase().includes('amama ira')
+                  const isGM =
+                    s.approverEmployeeId === 940 ||
+                    (s.jobTitle && s.jobTitle.toLowerCase().includes('general manager'))
+                  const isDirector =
+                    s.approverEmployeeId === 10 ||
+                    (s.jobTitle && s.jobTitle.toLowerCase().includes('director'))
 
-              return (
-                <div
-                  key={idx}
-                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg border text-xs gap-2 transition-all ${
-                    isAmamaIra
-                      ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30'
-                      : isDirector || isGM
-                      ? 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20'
-                      : 'border-border bg-card'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] font-bold px-1.5 py-0.5 ${
-                        isAmamaIra
-                          ? 'border-emerald-500 text-emerald-700 dark:text-emerald-300 bg-emerald-100/50'
-                          : 'border-slate-300 text-slate-700 dark:text-slate-300'
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border text-xs gap-2 transition-all ${
+                        isAmama
+                          ? 'border-indigo-300 bg-indigo-50/70 shadow-2xs'
+                          : isDirector || isGM
+                          ? 'border-blue-200 bg-blue-50/40'
+                          : 'border-slate-200 bg-slate-50/50'
                       }`}
                     >
-                      Step {step.level}
-                    </Badge>
-                    <div>
-                      <span className="font-semibold text-foreground block">
-                        {step.approverName}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground block">
-                        {step.jobTitle || 'Approver'} &bull; {step.title}
-                      </span>
-                    </div>
-                  </div>
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-bold px-2 py-0.5 shrink-0 ${
+                            isAmama
+                              ? 'border-indigo-400 bg-indigo-100 text-indigo-900 font-extrabold'
+                              : isDirector || isGM
+                              ? 'border-blue-400 bg-blue-100 text-blue-800'
+                              : 'border-slate-300 text-slate-700 bg-white'
+                          }`}
+                        >
+                          Tahap {s.level}
+                        </Badge>
 
-                  <div className="flex items-center gap-1.5 self-end sm:self-center">
-                    {/* Reorder Buttons */}
-                    <div className="flex items-center">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-6 text-muted-foreground hover:text-foreground"
-                        disabled={idx === 0}
-                        onClick={() => handleMoveApprover(idx, 'up')}
-                      >
-                        <ChevronUp className="size-3" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-6 text-muted-foreground hover:text-foreground"
-                        disabled={idx === approvers.length - 1}
-                        onClick={() => handleMoveApprover(idx, 'down')}
-                      >
-                        <ChevronDown className="size-3" />
-                      </Button>
-                    </div>
-
-                    {/* Change employee dropdown if custom */}
-                    {allEmployees.length > 0 && !isAmamaIra && !isDirector && (
-                      <div className="w-48">
-                        <HeroSearchableSelect
-                          options={employeeOptions}
-                          value={String(step.approverEmployeeId)}
-                          onChange={(val) => handleApproverEmployeeChange(idx, val)}
-                          placeholder="Ganti approver..."
-                          searchPlaceholder="Cari approver..."
-                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-900 truncate">
+                              {s.approverName}
+                            </span>
+                            {isAmama && (
+                              <Badge className="bg-indigo-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
+                                Special Verification: Finance &amp; Accounting
+                              </Badge>
+                            )}
+                            {isGM && (
+                              <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
+                                Otorisasi GM
+                              </Badge>
+                            )}
+                            {isDirector && (
+                              <Badge className="bg-blue-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
+                                Direksi Final
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-slate-600 truncate block">
+                            {s.jobTitle || s.title}
+                          </span>
+                        </div>
                       </div>
-                    )}
 
-                    {/* Delete button (except Amama Ira) */}
-                    {!isAmamaIra && !isDirector && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleRemoveApprover(idx)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        {/* Reorder Buttons */}
+                        <div className="flex items-center border border-slate-200 rounded-md bg-white">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-500 hover:text-slate-900"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveApprover(idx, 'up')}
+                            title="Geser ke Atas"
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-500 hover:text-slate-900"
+                            disabled={idx === approvers.length - 1}
+                            onClick={() => handleMoveApprover(idx, 'down')}
+                            title="Geser ke Bawah"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
 
-          <div className="mt-3 flex items-start gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-100/50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-200 dark:border-emerald-800">
-            <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
-            <span>
-              <strong>Guardrail Terpasang:</strong> Tahapan verifikasi oleh Finance & Accounting (Amama Ira) telah terkunci dan diposisikan sebelum persetujuan General Manager & Director.
-            </span>
-          </div>
-        </div>
+                        {/* Searchable Select to change employee */}
+                        {employeeOptions.length > 0 && !isAmama && (
+                          <div className="w-52">
+                            <HeroSearchableSelect
+                              options={employeeOptions}
+                              value={String(s.approverEmployeeId || '')}
+                              onChange={(val) => handleApproverEmployeeChange(idx, val)}
+                              placeholder="Ganti approver..."
+                              searchPlaceholder="Cari personil..."
+                            />
+                          </div>
+                        )}
+
+                        {/* Delete Button (Except Amama Ira) */}
+                        {!isAmama ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                            onClick={() => handleRemoveApprover(idx)}
+                            title="Hapus Step Ini"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : (
+                          <span className="text-[10px] text-indigo-700 font-bold px-2 py-0.5 rounded bg-indigo-100/70 border border-indigo-200">
+                            Wajib Terpasang
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic py-2">
+                Tidak ada rantai approver yang terpasang. Klik tombol &quot;Tambah Approver&quot; di atas.
+              </p>
+            )}
+
+            <div className="rounded-lg bg-indigo-50/80 border border-indigo-200 p-2.5 text-[11px] text-indigo-950 flex items-start gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Aturan Validasi:</strong> Tahapan verifikasi oleh <strong>Finance &amp; Accounting (Amama Ira)</strong> wajib terpasang dan diposisikan sebelum otorisasi General Manager &amp; Director.
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </HeroFormDialog>
   )
