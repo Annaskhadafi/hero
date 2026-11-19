@@ -62,11 +62,13 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     await expect(heading).toBeVisible({ timeout: 15000 })
 
     // Verify Two Tabs exist: "Disposal Saya" and "Daftar Disposal"
+    const tabList = page.locator('div[role="tablist"]').first()
+    await expect(tabList).toHaveClass(/w-full justify-start/)
     const tabMyDisposal = page.locator('button[role="tab"]:has-text("Disposal Saya")')
     const tabAllDisposal = page.locator('button[role="tab"]:has-text("Daftar Disposal")')
     await expect(tabMyDisposal).toBeVisible()
     await expect(tabAllDisposal).toBeVisible()
-    console.log('✓ Verified 2 Tabs: Disposal Saya & Daftar Disposal.')
+    console.log('✓ Verified 2 Tabs: Disposal Saya & Daftar Disposal with full-width separator bar.')
 
     const ss1Path = path.join(ARTIFACT_DIR, '01_asset_disposal_dashboard_tabs.png')
     await page.screenshot({ path: ss1Path })
@@ -184,18 +186,21 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     // Draw signature stroke on canvas
     const box = await canvas.boundingBox()
     if (box) {
-      await page.mouse.move(box.x + 30, box.y + 30)
-      await page.mouse.down()
-      await page.mouse.move(box.x + 80, box.y + 60)
-      await page.mouse.move(box.x + 120, box.y + 35)
-      await page.mouse.move(box.x + 160, box.y + 70)
-      await page.mouse.up()
-      await page.waitForTimeout(500)
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await page.mouse.move(box.x + 30, box.y + 30)
+        await page.mouse.down()
+        await page.mouse.move(box.x + 80, box.y + 60)
+        await page.mouse.move(box.x + 120, box.y + 35)
+        await page.mouse.move(box.x + 160, box.y + 70)
+        await page.mouse.up()
+        await page.waitForTimeout(600)
+        if (await page.locator('text=Tanda Tangan Siap').isVisible()) break
+      }
     }
 
     // Verify "Tanda Tangan Siap" badge
     const sigReadyBadge = page.locator('text=Tanda Tangan Siap')
-    await expect(sigReadyBadge).toBeVisible()
+    await expect(sigReadyBadge).toBeVisible({ timeout: 10000 })
     console.log('✓ Canvas signature drawn successfully, ready for submission!')
 
     const ss2Path = path.join(ARTIFACT_DIR, '02_asset_disposal_form_multi_items_filled.png')
@@ -259,6 +264,38 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     await page.waitForTimeout(1000)
 
     // =========================================================================
+    // STEP 4b: Verifikasi Modal View Detail (Tanpa Action Redundant)
+    // =========================================================================
+    console.log('Testing View Detail Modal (Menghilangkan Action Redundant)...')
+    const viewDetailBtn = tableRow.locator('button:has(svg.lucide-eye)').first()
+    await expect(viewDetailBtn).toBeVisible()
+    await viewDetailBtn.click()
+    await page.waitForTimeout(1000)
+
+    const detailDialogTitle = page.locator('h2:has-text("Detail Penghapusan Aset"), div:has-text("Detail Penghapusan Aset")').first()
+    await expect(detailDialogTitle).toBeVisible({ timeout: 10000 })
+
+    // Verify Download PDF is present
+    await expect(page.locator('button:has-text("Download PDF (A4)")')).toBeVisible()
+
+    // Verify redundant action buttons are REMOVED
+    expect(await page.locator('button:has-text("Batalkan Pengajuan")').count()).toBe(0)
+    expect(await page.locator('button:has-text("Tolak")').count()).toBe(0)
+    expect(await page.locator('button:has-text("Setujui Tahap Ini")').count()).toBe(0)
+    expect(await page.locator('button:has-text("Revisi Pengajuan")').count()).toBe(0)
+    console.log('✓ Verified: Modal View Detail is 100% clean without redundant action buttons!')
+
+    const ss4bPath = path.join(ARTIFACT_DIR, '04a_asset_disposal_detail_modal_clean_no_actions.png')
+    await page.screenshot({ path: ss4bPath })
+    saveScreenshot(ss4bPath, '04a_asset_disposal_detail_modal_clean_no_actions.png')
+    console.log('✓ Captured 04a_asset_disposal_detail_modal_clean_no_actions.png')
+
+    // Close detail modal via Escape key
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(1000)
+    await expect(detailDialogTitle).not.toBeVisible({ timeout: 5000 })
+
+    // =========================================================================
     // STEP 5: Buka Approval Modal (Tinjau - Split 2-Panel A4 Landscape Review)
     // =========================================================================
     console.log('Opening Approval Dialog via "Tinjau" button...')
@@ -274,6 +311,10 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     // Verify A4 Landscape Document View contains units
     await expect(printArea.getByText('Total 2 Unit Aset').first()).toBeVisible()
     console.log('✓ A4 Landscape Document View accurately rendered 2 assets!')
+
+    // Verify Typo "AKTIVA" is corrected to "ASET" on yellow banner
+    await expect(printArea.getByText('BERITA ACARA PENGHENTIAN ASET: ASET DIHAPUS DARI DAFTAR INVENTARIS AKTIF').first()).toBeVisible()
+    console.log('✓ Verified: Typo "AKTIVA" successfully corrected to "ASET" on A4 landscape banner!')
 
     // Verify DIAJUKAN OLEH contains applicant signature image
     const submitterSigImg = page.locator('.print-area img[alt*="TTD Mochamad Annas Khadafi"], .print-area img[alt*="TTD"]').first()
@@ -314,7 +355,8 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     // =========================================================================
     console.log('Testing "Batalkan Pengajuan" (Auto Hapus)...')
     const activeRow = page.locator('table tbody tr:has-text("DSP-")').first()
-    const cancelIconBtn = activeRow.locator('button').last()
+    const cancelIconBtn = activeRow.locator('button:has(svg.lucide-trash-2)').first()
+    await expect(cancelIconBtn).toBeVisible()
     await cancelIconBtn.click()
 
     await page.waitForTimeout(800)

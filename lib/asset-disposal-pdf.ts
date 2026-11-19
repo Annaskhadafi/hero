@@ -287,7 +287,7 @@ export async function generateAssetDisposalPdf(data: DisposalPdfData): Promise<U
     borderWidth: 1,
   })
 
-  page.drawText('STATUS: PENGHENTIAN OPERASIONAL & PENGHAPUSAN AKTIVA TETAP', {
+  page.drawText('STATUS: PENGHENTIAN OPERASIONAL & PENGHAPUSAN ASET TETAP', {
     x: marginX + 12,
     y: curY - 13,
     size: 7.5,

@@ -306,7 +306,7 @@ export function AssetDisposalDocumentView({
 
           <div className="mt-2.5 flex items-center justify-between rounded-md border border-amber-300 bg-[#ffd700] px-3.5 py-1.5 text-xs font-bold text-slate-950 shadow-xs">
             <span className="text-[10px] tracking-wide uppercase">
-              BERITA ACARA PENGHENTIAN AKTIVA: ASET DIHAPUS DARI DAFTAR INVENTARIS AKTIF
+              BERITA ACARA PENGHENTIAN ASET: ASET DIHAPUS DARI DAFTAR INVENTARIS AKTIF
             </span>
             <span className="text-[10px] font-semibold text-slate-900 italic">
               Disetujui berjenjang hingga Direksi &amp; diverifikasi oleh Tim Finance &amp; Accounting

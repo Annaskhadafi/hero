@@ -394,7 +394,7 @@ export function AssetDisposalDashboard({
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Penghapusan aktiva dan aset inventaris dengan verifikasi Finance &amp; Accounting serta otorisasi bertingkat hingga Direksi.
+            Penghapusan aset dan inventaris dengan verifikasi Finance &amp; Accounting serta otorisasi bertingkat hingga Direksi.
           </p>
         </div>
 
@@ -462,7 +462,7 @@ export function AssetDisposalDashboard({
         onValueChange={(val) => setActiveTab(val as 'my_disposals' | 'all_disposals')}
         className="space-y-4"
       >
-        <TabsList className="bg-muted/70 p-1 rounded-lg h-10 border border-border/40">
+        <TabsList className="h-10 w-full justify-start rounded-lg border border-border/80 bg-muted/60 p-1 text-muted-foreground">
           <TabsTrigger
             value="my_disposals"
             className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"

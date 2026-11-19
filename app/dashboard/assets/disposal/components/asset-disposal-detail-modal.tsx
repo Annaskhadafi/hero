@@ -4,80 +4,33 @@ import * as React from 'react'
 import {
   HeroDetailModal,
   HeroStatusBadge,
-  HeroConfirmDialog,
-  HeroFormField,
-  HeroTextarea,
 } from '@/components/templates'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { toast } from 'sonner'
 import {
   Download,
-  CheckCircle2,
-  XCircle,
   FileText,
   User,
   Clock,
   Building2,
-  Trash2,
-  AlertTriangle,
   Paperclip,
   ShieldCheck,
-  Ban,
+  Trash2,
 } from 'lucide-react'
-import {
-  approveAssetDisposal,
-  rejectAssetDisposal,
-  cancelAssetDisposal,
-  resubmitAssetDisposalAction,
-} from '../actions'
 
 interface AssetDisposalDetailModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: any | null
-  onSuccess: () => void
+  onSuccess?: () => void
 }
 
 export function AssetDisposalDetailModal({
   open,
   onOpenChange,
   item,
-  onSuccess,
 }: AssetDisposalDetailModalProps) {
-  // Confirm Dialog states
-  const [isApproveOpen, setIsApproveOpen] = React.useState(false)
-  const [isRejectOpen, setIsRejectOpen] = React.useState(false)
-  const [isCancelOpen, setIsCancelOpen] = React.useState(false)
-  const [isResubmitOpen, setIsResubmitOpen] = React.useState(false)
-
-  const [decisionNote, setDecisionNote] = React.useState('')
-  const [resubmitNotes, setResubmitNotes] = React.useState('')
-  const [isProcessing, setIsProcessing] = React.useState(false)
-
   if (!item) return null
-
-  const handleResubmit = async () => {
-    setIsProcessing(true)
-    try {
-      const res = await resubmitAssetDisposalAction({
-        id: item.id,
-        notes: resubmitNotes.trim() || undefined,
-      })
-      if (res.success) {
-        toast.success(res.message || 'Revisi berhasil dikirim ulang.')
-        setIsResubmitOpen(false)
-        onOpenChange(false)
-        onSuccess()
-      } else {
-        toast.error(res.message || 'Gagal mengirim ulang revisi.')
-      }
-    } catch (err: any) {
-      toast.error('Terjadi kesalahan: ' + (err?.message || ''))
-    } finally {
-      setIsProcessing(false)
-    }
-  }
 
   const formatDateTime = (val?: string | Date | null) => {
     if (!val) return '-'
@@ -112,176 +65,38 @@ export function AssetDisposalDetailModal({
     window.open(`/api/assets/disposal/${item.id}/pdf`, '_blank')
   }
 
-  const handleApprove = async () => {
-    if (!decisionNote.trim()) {
-      toast.error('Catatan persetujuan wajib diisi.')
-      return
-    }
-
-    setIsProcessing(true)
-    try {
-      const res = await approveAssetDisposal(item.id, decisionNote.trim())
-      if (res.success) {
-        toast.success(res.message || 'Persetujuan berhasil dicatat!')
-        setIsApproveOpen(false)
-        setDecisionNote('')
-        onOpenChange(false)
-        onSuccess()
-      } else {
-        toast.error(res.message || 'Gagal memproses persetujuan.')
-      }
-    } catch (err: any) {
-      toast.error('Terjadi kesalahan: ' + (err?.message || ''))
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleReject = async () => {
-    if (!decisionNote.trim()) {
-      toast.error('Alasan penolakan wajib diisi.')
-      return
-    }
-
-    setIsProcessing(true)
-    try {
-      const res = await rejectAssetDisposal(item.id, decisionNote.trim())
-      if (res.success) {
-        toast.success(res.message || 'Permohonan berhasil ditolak.')
-        setIsRejectOpen(false)
-        setDecisionNote('')
-        onOpenChange(false)
-        onSuccess()
-      } else {
-        toast.error(res.message || 'Gagal menolak permohonan.')
-      }
-    } catch (err: any) {
-      toast.error('Terjadi kesalahan: ' + (err?.message || ''))
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleCancel = async () => {
-    setIsProcessing(true)
-    try {
-      const res = await cancelAssetDisposal(item.id, decisionNote.trim() || undefined)
-      if (res.success) {
-        toast.success(res.message || 'Permohonan berhasil dibatalkan.')
-        setIsCancelOpen(false)
-        setDecisionNote('')
-        onOpenChange(false)
-        onSuccess()
-      } else {
-        toast.error(res.message || 'Gagal membatalkan permohonan.')
-      }
-    } catch (err: any) {
-      toast.error('Terjadi kesalahan: ' + (err?.message || ''))
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
   const statusTone = getStatusTone(item.status)
   const approvalSteps = item.approvalSteps || []
 
   return (
-    <>
-      <HeroDetailModal
-        open={open}
-        onOpenChange={onOpenChange}
-        title={`Detail Penghapusan Aset: ${item.disposalNumber}`}
-        subtitle={`Diajukan pada ${formatDateTime(item.submittedAt || item.createdAt)}`}
-        maxWidth="4xl"
-        statusBadge={
-          <HeroStatusBadge
-            status={statusTone.status}
-            label={statusTone.label}
-          />
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            {/* Download PDF Button */}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleDownloadPdf}
-              className="h-9 gap-1.5 text-xs text-primary border-primary/40 hover:bg-primary/5"
-            >
-              <Download className="size-4" />
-              Download PDF (A4)
-            </Button>
-
-            {/* Resubmit Button (if needs_revision) */}
-            {item.canEditRevision && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  setResubmitNotes(item.notes || '')
-                  setIsResubmitOpen(true)
-                }}
-                className="h-9 gap-1.5 text-xs bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
-              >
-                <Clock className="size-4" />
-                Revisi Pengajuan
-              </Button>
-            )}
-
-            {/* Cancel Button (if authorized) */}
-            {item.canCancel && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setDecisionNote('')
-                  setIsCancelOpen(true)
-                }}
-                className="h-9 gap-1.5 text-xs text-rose-600 border-rose-300 hover:bg-rose-50"
-              >
-                <Ban className="size-4" />
-                Batalkan Pengajuan
-              </Button>
-            )}
-
-            {/* Reject Button (if approver) */}
-            {item.canApprove && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setDecisionNote('')
-                  setIsRejectOpen(true)
-                }}
-                className="h-9 gap-1.5 text-xs text-rose-600 border-rose-300 hover:bg-rose-50"
-              >
-                <XCircle className="size-4" />
-                Tolak
-              </Button>
-            )}
-
-            {/* Approve Button (if approver) */}
-            {item.canApprove && (
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={() => {
-                  setDecisionNote('')
-                  setIsApproveOpen(true)
-                }}
-                className="h-9 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-              >
-                <CheckCircle2 className="size-4" />
-                Setujui Tahap Ini
-              </Button>
-            )}
-          </div>
-        }
-      >
+    <HeroDetailModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Detail Penghapusan Aset: ${item.disposalNumber}`}
+      subtitle={`Diajukan pada ${formatDateTime(item.submittedAt || item.createdAt)}`}
+      maxWidth="4xl"
+      statusBadge={
+        <HeroStatusBadge
+          status={statusTone.status}
+          label={statusTone.label}
+        />
+      }
+      actions={
+        <div className="flex items-center gap-2">
+          {/* Download PDF Button */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadPdf}
+            className="h-9 gap-1.5 text-xs text-primary border-primary/40 hover:bg-primary/5"
+          >
+            <Download className="size-4" />
+            Download PDF (A4)
+          </Button>
+        </div>
+      }
+    >
         <div className="space-y-6 text-xs">
           {/* BANNER PERMINTAAN REVISI */}
           {item.status === 'needs_revision' && (
@@ -515,103 +330,5 @@ export function AssetDisposalDetailModal({
           </div>
         </div>
       </HeroDetailModal>
-
-      {/* CONFIRM DIALOG: APPROVE */}
-      <HeroConfirmDialog
-        open={isApproveOpen}
-        onOpenChange={setIsApproveOpen}
-        title="Konfirmasi Persetujuan Tahap Disposal"
-        description="Apakah anda yakin menyetujui permohonan Asset Disposal ini? Berikan catatan review atau otorisasi anda."
-        confirmLabel="Ya, Setujui"
-        cancelLabel="Batal"
-        tone="success"
-        isLoading={isProcessing}
-        onConfirm={handleApprove}
-      >
-        <div className="mt-2">
-          <HeroFormField label="Catatan Persetujuan (Wajib)" required>
-            <HeroTextarea
-              value={decisionNote}
-              onChange={(e) => setDecisionNote(e.target.value)}
-              placeholder="Contoh: Telah diverifikasi, unit memenuhi kriteria penghapusan aset..."
-              rows={3}
-            />
-          </HeroFormField>
-        </div>
-      </HeroConfirmDialog>
-
-      {/* CONFIRM DIALOG: REJECT */}
-      <HeroConfirmDialog
-        open={isRejectOpen}
-        onOpenChange={setIsRejectOpen}
-        title="Konfirmasi Penolakan Asset Disposal"
-        description="Apakah anda yakin ingin menolak permohonan Asset Disposal ini? Permohonan yang ditolak tidak dapat diproses lebih lanjut."
-        confirmLabel="Ya, Tolak Permohonan"
-        cancelLabel="Batal"
-        tone="destructive"
-        isLoading={isProcessing}
-        onConfirm={handleReject}
-      >
-        <div className="mt-2">
-          <HeroFormField label="Alasan Penolakan (Wajib)" required>
-            <HeroTextarea
-              value={decisionNote}
-              onChange={(e) => setDecisionNote(e.target.value)}
-              placeholder="Sebutkan alasan penolakan atau perbaikan yang dibutuhkan..."
-              rows={3}
-            />
-          </HeroFormField>
-        </div>
-      </HeroConfirmDialog>
-
-      {/* CONFIRM DIALOG: CANCEL */}
-      <HeroConfirmDialog
-        open={isCancelOpen}
-        onOpenChange={setIsCancelOpen}
-        title="Konfirmasi Pembatalan Pengajuan"
-        description="Apakah anda yakin ingin membatalkan pengajuan Asset Disposal ini? Pengajuan akan berstatus Dibatalkan."
-        confirmLabel="Ya, Batalkan Pengajuan"
-        cancelLabel="Kembali"
-        tone="warning"
-        isLoading={isProcessing}
-        onConfirm={handleCancel}
-      >
-        <div className="mt-2">
-          <HeroFormField label="Alasan Pembatalan (Opsional)">
-            <HeroTextarea
-              value={decisionNote}
-              onChange={(e) => setDecisionNote(e.target.value)}
-              placeholder="Alasan pembatalan oleh pembuat..."
-              rows={2}
-            />
-          </HeroFormField>
-        </div>
-      </HeroConfirmDialog>
-
-      {/* CONFIRM DIALOG: RESUBMIT REVISION */}
-      <HeroConfirmDialog
-        open={isResubmitOpen}
-        onOpenChange={setIsResubmitOpen}
-        title="Kirim Ulang Revisi Asset Disposal"
-        description={`Perbarui catatan atau keterangan permohonan Asset Disposal ${item.disposalNumber}. Setelah dikirim ulang, persetujuan akan langsung kembali ke meja Last Approver.`}
-        confirmLabel={isProcessing ? 'Mengirim...' : 'Kirim Ulang Revisi'}
-        cancelLabel="Batal"
-        tone="warning"
-        confirmDisabled={isProcessing}
-        isLoading={isProcessing}
-        onConfirm={handleResubmit}
-      >
-        <div className="mt-2 text-left">
-          <HeroFormField label="Catatan / Keterangan Penjelasan Baru">
-            <HeroTextarea
-              value={resubmitNotes}
-              onChange={(e) => setResubmitNotes(e.target.value)}
-              placeholder="Perbarui alasan atau justifikasi penghapusan aset..."
-              rows={3}
-            />
-          </HeroFormField>
-        </div>
-      </HeroConfirmDialog>
-    </>
   )
 }
