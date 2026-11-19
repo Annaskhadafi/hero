@@ -429,10 +429,7 @@ export async function exportAttendanceGridToExcel({
       dCell.alignment = { vertical: 'middle', indent: 2 }
 
       const sortedRows = deptRows.slice().sort((a, b) => {
-        const snA = a.employee.employeeSn || ''
-        const snB = b.employee.employeeSn || ''
-        if (snA && snB) return snA.localeCompare(snB, undefined, { numeric: true })
-        return a.employee.name.localeCompare(b.employee.name)
+        return a.employee.name.localeCompare(b.employee.name, 'id', { sensitivity: 'base' })
       })
 
       sortedRows.forEach((row) => {
@@ -1422,10 +1419,7 @@ export function buildTimesheetWorksheet(
       dCell.alignment = { vertical: 'middle', indent: 2 }
 
       const sortedRows = deptRows.slice().sort((a, b) => {
-        const snA = a.employee.employeeSn || ''
-        const snB = b.employee.employeeSn || ''
-        if (snA && snB) return snA.localeCompare(snB, undefined, { numeric: true })
-        return a.employee.name.localeCompare(b.employee.name)
+        return a.employee.name.localeCompare(b.employee.name, 'id', { sensitivity: 'base' })
       })
 
       sortedRows.forEach((row) => {
