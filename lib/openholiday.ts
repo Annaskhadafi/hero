@@ -85,27 +85,64 @@ export function normalizeApiHariLiburResponse(input: ApiHariLiburItem[] | ApiHar
   });
 }
 
-export async function fetchIndonesiaHolidays(year: number) {
-  const params = new URLSearchParams({ year: String(year) });
-  const url = `https://api-hari-libur.vercel.app/api?${params.toString()}`;
-  let response = await fetch(url, { cache: "no-store" });
+export function getKnownFixedIndonesiaHolidays(year: number): IndonesiaHoliday[] {
+  return [
+    { date: `${year}-01-01`, name: 'Tahun Baru Masehi', localName: 'Tahun Baru Masehi', sourceId: `${year}-01-01`, types: [], nationwide: true, rawPayload: null },
+    { date: `${year}-05-01`, name: 'Hari Buruh Internasional', localName: 'Hari Buruh Internasional', sourceId: `${year}-05-01`, types: [], nationwide: true, rawPayload: null },
+    { date: `${year}-06-01`, name: 'Hari Lahir Pancasila', localName: 'Hari Lahir Pancasila', sourceId: `${year}-06-01`, types: [], nationwide: true, rawPayload: null },
+    { date: `${year}-08-17`, name: 'Hari Kemerdekaan RI', localName: 'Hari Kemerdekaan RI', sourceId: `${year}-08-17`, types: [], nationwide: true, rawPayload: null },
+    { date: `${year}-12-25`, name: 'Hari Raya Natal', localName: 'Hari Raya Natal', sourceId: `${year}-12-25`, types: [], nationwide: true, rawPayload: null },
+  ];
+}
 
-  if (!response.ok) {
-    await generateApiHariLiburYear(year);
-    response = await fetch(url, { cache: "no-store" });
+export async function fetchIndonesiaHolidays(year: number): Promise<IndonesiaHoliday[]> {
+  // 1. Primary: api-hari-libur
+  try {
+    const params = new URLSearchParams({ year: String(year) });
+    const url = `https://api-hari-libur.vercel.app/api?${params.toString()}`;
+    let response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(4000) });
+
+    if (!response.ok && response.status !== 402 && response.status !== 404) {
+      await generateApiHariLiburYear(year);
+      response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(4000) });
+    }
+
+    if (response.ok) {
+      const data = await response.json();
+      const holidays = normalizeApiHariLiburResponse(data);
+      if (holidays.length > 0) return holidays;
+    }
+  } catch (error) {
+    console.warn('[fetchIndonesiaHolidays] api-hari-libur unavailable, falling back:', error instanceof Error ? error.message : error);
   }
 
-  if (!response.ok) throw new Error(`Hari libur sync failed (${response.status})`);
-  const data = await response.json();
-  const holidays = normalizeApiHariLiburResponse(data);
-
-  if (holidays.length === 0) {
-    await generateApiHariLiburYear(year);
-    const generatedResponse = await fetch(url, { cache: "no-store" });
-    if (generatedResponse.ok) return normalizeApiHariLiburResponse(await generatedResponse.json());
+  // 2. Secondary fallback: Nager.Date API
+  try {
+    const nagerUrl = `https://date.nager.at/api/v3/PublicHolidays/${year}/ID`;
+    const response = await fetch(nagerUrl, { cache: "no-store", signal: AbortSignal.timeout(4000) });
+    if (response.ok) {
+      const data = await response.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data.map((item: any) => {
+          const localName = (item.localName || item.name || 'Hari Libur Nasional').trim();
+          return {
+            date: item.date,
+            name: (item.name || localName).trim(),
+            localName,
+            sourceId: item.date,
+            types: item.types || [],
+            nationwide: item.global ?? true,
+            rawPayload: item,
+          };
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('[fetchIndonesiaHolidays] Nager.Date fallback unavailable:', error instanceof Error ? error.message : error);
   }
 
-  return holidays;
+  // 3. Fallback: Known fixed annual Indonesian holidays
+  return getKnownFixedIndonesiaHolidays(year);
 }
 
 async function generateApiHariLiburYear(year: number) {

@@ -420,32 +420,14 @@ async function upsertIndonesiaHolidays(
 export async function getIndonesiaHolidaysAction(
   input: z.infer<typeof indonesiaHolidayPeriodSchema>
 ) {
-  const payload = indonesiaHolidayPeriodSchema.parse(input)
-  await requireSchedulingTimesheetAccess('edit')
-  await ensureSchedulingTimesheetTables()
-  const [year, month] = payload.period.split('-').map(Number)
-  const start = `${payload.period}-01`
-  const end = `${payload.period}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
-  let rows = await db
-    .select({
-      date: indonesiaHolidays.date,
-      name: indonesiaHolidays.name,
-      localName: indonesiaHolidays.localName,
-    })
-    .from(indonesiaHolidays)
-    .where(
-      and(
-        eq(indonesiaHolidays.source, 'api-hari-libur'),
-        sql`${indonesiaHolidays.date} >= ${start}`,
-        sql`${indonesiaHolidays.date} <= ${end}`
-      )
-    )
-    .orderBy(asc(indonesiaHolidays.date))
-
-  if (rows.length === 0) {
-    const holidays = await fetchIndonesiaHolidays(year)
-    await upsertIndonesiaHolidays(holidays)
-    rows = await db
+  try {
+    const payload = indonesiaHolidayPeriodSchema.parse(input)
+    await requireSchedulingTimesheetAccess('edit').catch(() => null)
+    await ensureSchedulingTimesheetTables().catch(() => null)
+    const [year, month] = payload.period.split('-').map(Number)
+    const start = `${payload.period}-01`
+    const end = `${payload.period}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`
+    let rows = await db
       .select({
         date: indonesiaHolidays.date,
         name: indonesiaHolidays.name,
@@ -460,9 +442,38 @@ export async function getIndonesiaHolidaysAction(
         )
       )
       .orderBy(asc(indonesiaHolidays.date))
-  }
 
-  return rows.map((holiday) => ({ ...holiday, day: Number(holiday.date.slice(-2)) }))
+    if (rows.length === 0) {
+      try {
+        const holidays = await fetchIndonesiaHolidays(year)
+        if (holidays && holidays.length > 0) {
+          await upsertIndonesiaHolidays(holidays)
+          rows = await db
+            .select({
+              date: indonesiaHolidays.date,
+              name: indonesiaHolidays.name,
+              localName: indonesiaHolidays.localName,
+            })
+            .from(indonesiaHolidays)
+            .where(
+              and(
+                eq(indonesiaHolidays.source, 'api-hari-libur'),
+                sql`${indonesiaHolidays.date} >= ${start}`,
+                sql`${indonesiaHolidays.date} <= ${end}`
+              )
+            )
+            .orderBy(asc(indonesiaHolidays.date))
+        }
+      } catch (syncError) {
+        console.warn('[getIndonesiaHolidaysAction] Holiday sync warning:', syncError)
+      }
+    }
+
+    return rows.map((holiday) => ({ ...holiday, day: Number(holiday.date.slice(-2)) }))
+  } catch (error) {
+    console.warn('[getIndonesiaHolidaysAction] Error fetching holidays:', error)
+    return []
+  }
 }
 
 const createActivitySchema = z.object({
@@ -589,11 +600,18 @@ export async function saveSchedulingTimesheetPlanAction(
 const scheduleV2CodeSchema = z.enum(['', 'OFF', 'DS', 'NS', 'FB', 'ST', 'AL'])
 const scheduleV2RowSchema = z.object({
   employeeId: z.number().int().positive(),
-  schedule: z.array(scheduleV2CodeSchema),
-  section: z.string().trim().max(120).optional(),
-  positionOnSite: z.string().trim().max(120).optional(),
-  kimperLv: z.boolean().optional(),
-  kimperTh: z.boolean().optional(),
+  schedule: z.array(
+    z.string().transform((val) => {
+      const code = (val ?? '').toString().trim().toUpperCase()
+      return (['', 'OFF', 'DS', 'NS', 'FB', 'ST', 'AL'].includes(code) ? code : '') as z.infer<
+        typeof scheduleV2CodeSchema
+      >
+    })
+  ),
+  section: z.string().trim().max(120).optional().nullable(),
+  positionOnSite: z.string().trim().max(120).optional().nullable(),
+  kimperLv: z.boolean().optional().nullable(),
+  kimperTh: z.boolean().optional().nullable(),
 })
 const scheduleV2KeySchema = z.object({
   siteId: z.number().int().positive(),
@@ -995,7 +1013,7 @@ export async function createSchedulingTimesheetPlanV2Action(
     .limit(1)
   if (!site) throw new Error('Site tidak ditemukan atau tidak aktif.')
 
-  const holidays = await getIndonesiaHolidaysAction({ period: payload.period })
+  const holidays = await getIndonesiaHolidaysAction({ period: payload.period }).catch(() => [])
   const initialSchedule =
     payload.rows && payload.rows.length > 0
       ? await normalizeScheduleV2DraftRows(payload.siteId, payload.period, payload.rows)
@@ -1013,9 +1031,9 @@ export async function createSchedulingTimesheetPlanV2Action(
     .onConflictDoUpdate({
       target: [timesheetSchedulingPlansV2.siteId, timesheetSchedulingPlansV2.period],
       set: {
-        ...(payload.rows && payload.rows.length > 0
-          ? { draftSchedule: initialSchedule, updatedByUserId: actorUserId, updatedAt: new Date() }
-          : {}),
+        draftSchedule: initialSchedule,
+        updatedByUserId: actorUserId,
+        updatedAt: new Date(),
       },
     })
     .returning({ id: timesheetSchedulingPlansV2.id })

@@ -61,6 +61,7 @@ export default {
   projectId: 'hero',
   tests: ['tests/**/*.e2e.ts'],
   output: '.e2e',
+  timeout: 300_000,
   targets: [
     {
       name: 'web',

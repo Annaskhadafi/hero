@@ -267,6 +267,17 @@ function announceFieldBreakSync(siteId: number, period: string) {
   channel.close()
 }
 
+function cleanErrorMessage(error: unknown, fallback = 'Terjadi kesalahan sistem'): string {
+  if (error instanceof Error) {
+    const msg = error.message || ''
+    if (msg.includes('Minified React error') || msg.includes('react.dev/errors')) {
+      return 'Terjadi kendala pada server saat memproses data. Silakan coba kembali beberapa saat lagi.'
+    }
+    return msg || fallback
+  }
+  return fallback
+}
+
 const toolOptions: Array<{ code: ScheduleV2Code; label: string }> = [
   { code: 'OFF', label: 'OFF' },
   { code: 'DS', label: 'DS' },
@@ -767,7 +778,7 @@ export function ScheduleV2Workspace({
         router.refresh()
       } catch (error) {
         toast.error('Gagal menyinkronkan profil site', {
-          description: error instanceof Error ? error.message : 'Unknown error',
+          description: cleanErrorMessage(error),
         })
       }
     })
@@ -816,7 +827,7 @@ export function ScheduleV2Workspace({
         router.refresh()
       } catch (error) {
         toast.error('Gagal menambahkan user ke site', {
-          description: error instanceof Error ? error.message : 'Unknown error',
+          description: cleanErrorMessage(error),
         })
       }
     })
@@ -899,7 +910,7 @@ export function ScheduleV2Workspace({
       setSaveStatus('error')
       if (isManual) {
         toast.error('Gagal menyimpan draft ke database', {
-          description: error instanceof Error ? error.message : 'Unknown error',
+          description: cleanErrorMessage(error),
         })
       }
     }
@@ -1115,8 +1126,9 @@ export function ScheduleV2Workspace({
         if (saved) announceFieldBreakSync(numericSiteId, period)
         toast.success('Schedule berhasil dibuat dan tersimpan di database.')
       } catch (error) {
+        console.error('[ScheduleV2Workspace:createPlan]', error)
         toast.error('Gagal membuat Schedule V2', {
-          description: error instanceof Error ? error.message : 'Unknown error',
+          description: cleanErrorMessage(error),
         })
       }
     })
@@ -1158,7 +1170,7 @@ export function ScheduleV2Workspace({
         announceFieldBreakSync(editorPlan.siteId, editorPlan.period)
       } catch (error) {
         toast.error('Schedule belum dapat diaktifkan', {
-          description: error instanceof Error ? error.message : 'Unknown error',
+          description: cleanErrorMessage(error),
         })
       }
     })
@@ -1181,7 +1193,7 @@ export function ScheduleV2Workspace({
         announceFieldBreakSync(target.siteId, target.period)
       } catch (error) {
         toast.error('Gagal menghapus Schedule V2', {
-          description: error instanceof Error ? error.message : 'Unknown error',
+          description: cleanErrorMessage(error),
         })
       }
     })

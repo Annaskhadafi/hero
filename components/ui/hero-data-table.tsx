@@ -25,6 +25,7 @@ import {
   X,
 } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -203,8 +204,16 @@ export function HeroDataTable<T extends Record<string, any>>({
   const [currentPage, setCurrentPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(defaultPageSize)
 
-  // PDF Preview Dialog State
+  // PDF Preview Dialog State & Print Scope
   const [showPdfModal, setShowPdfModal] = React.useState(false)
+  const [printScope, setPrintScope] = React.useState<'selected' | 'all'>('selected')
+
+  // Synchronize print scope whenever dialog opens or selected items change
+  React.useEffect(() => {
+    if (showPdfModal) {
+      setPrintScope(selectedIds.size > 0 ? 'selected' : 'all')
+    }
+  }, [showPdfModal, selectedIds.size])
 
   // Reset pagination on search or filter change
   React.useEffect(() => {
@@ -332,8 +341,20 @@ export function HeroDataTable<T extends Record<string, any>>({
   }
 
   const selectedRows = React.useMemo(() => {
+    if (selectedIds.size === 0) return []
+    // Preserve current sorted & filtered order for selected items
+    const inFiltered = filteredData.filter((row, idx) => selectedIds.has(getRowId(row, idx)))
+    if (inFiltered.length > 0) return inFiltered
     return data.filter((row, idx) => selectedIds.has(getRowId(row, idx)))
-  }, [data, selectedIds, getRowId])
+  }, [data, filteredData, selectedIds, getRowId])
+
+  // Data targeted for PDF Export / Print
+  const printData = React.useMemo(() => {
+    if (printScope === 'selected' && selectedIds.size > 0) {
+      return selectedRows
+    }
+    return filteredData
+  }, [printScope, selectedIds.size, selectedRows, filteredData])
 
   // Sorting Handler
   const handleSort = (key: string) => {
@@ -348,12 +369,13 @@ export function HeroDataTable<T extends Record<string, any>>({
     })
   }
 
-  // Export to Excel Handler (.xlsx)
+  // Export to Excel Handler (.xlsx) - respects active row selection
   const handleExportExcel = async () => {
     try {
       const XLSX = await import('xlsx')
+      const targetData = selectedIds.size > 0 ? selectedRows : filteredData
       const exportCols = columns.map((c) => c.header)
-      const exportRows = filteredData.map((row) => {
+      const exportRows = targetData.map((row) => {
         return columns.map((c) => {
           if (c.exportValue) return c.exportValue(row)
           return row[c.key] ?? ''
@@ -376,11 +398,244 @@ export function HeroDataTable<T extends Record<string, any>>({
       ws['!cols'] = colWidths
 
       XLSX.utils.book_append_sheet(wb, ws, 'Data')
-      XLSX.writeFile(wb, `${exportFileName}-${new Date().toISOString().slice(0, 10)}.xlsx`)
+      const suffix = selectedIds.size > 0 ? `-${selectedIds.size}-item-terpilih` : ''
+      XLSX.writeFile(wb, `${exportFileName}${suffix}-${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch (err) {
       console.error('Export Excel failed:', err)
     }
   }
+
+  // Handle printing document in isolated iframe to prevent dialog clipping or background bleed
+  const handlePrintDocument = React.useCallback(() => {
+    const dataToPrint = printData
+
+    if (dataToPrint.length === 0) return
+
+    // Create an isolated iframe for clean, full-fidelity printing
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    iframe.setAttribute('aria-hidden', 'true')
+    document.body.appendChild(iframe)
+
+    const iframeDoc = iframe.contentWindow?.document
+    if (!iframeDoc) return
+
+    const escapeHtml = (val: unknown) =>
+      String(val ?? '-')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+
+    const isLandscape = columns.length > 5
+
+    const rowsHtml = dataToPrint
+      .map(
+        (row, idx) => `
+        <tr>
+          <td style="text-align: center; color: #64748b; width: 40px;">${idx + 1}</td>
+          ${columns
+            .map((col) => {
+              const val = col.exportValue ? col.exportValue(row) : (row[col.key] ?? '-')
+              const align = col.align || 'left'
+              return `<td style="text-align: ${align};">${escapeHtml(val)}</td>`
+            })
+            .join('')}
+        </tr>`
+      )
+      .join('')
+
+    const headersHtml = columns
+      .map((col) => {
+        const align = col.align || 'left'
+        return `<th style="text-align: ${align};">${escapeHtml(col.header)}</th>`
+      })
+      .join('')
+
+    const currentDateStr = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+
+    const isSelectedMode = printScope === 'selected' && selectedIds.size > 0
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(pdfTitle)}</title>
+          <style>
+            @page {
+              size: ${isLandscape ? 'A4 landscape' : 'A4 portrait'};
+              margin: 10mm 12mm;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              margin: 0;
+              padding: 0;
+              color: #0f172a;
+              background: #ffffff;
+              font-size: 10px;
+              line-height: 1.4;
+            }
+            .header-container {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 10px;
+              margin-bottom: 12px;
+            }
+            .company-name {
+              font-size: 15px;
+              font-weight: 800;
+              letter-spacing: 0.5px;
+              color: #0f172a;
+              margin: 0 0 2px 0;
+            }
+            .system-name {
+              font-size: 10px;
+              color: #475569;
+              margin: 0;
+            }
+            .doc-title {
+              font-size: 13px;
+              font-weight: 700;
+              color: #0369a1;
+              margin: 4px 0 0 0;
+            }
+            .meta-box {
+              text-align: right;
+              font-size: 9.5px;
+              color: #475569;
+            }
+            .meta-box p {
+              margin: 2px 0;
+            }
+            .badge-selected {
+              display: inline-block;
+              background-color: #ecfdf5;
+              color: #047857;
+              border: 1px solid #a7f3d0;
+              padding: 2px 6px;
+              border-radius: 4px;
+              font-weight: 600;
+              font-size: 9px;
+              margin-top: 2px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 9.5px;
+            }
+            thead {
+              display: table-header-group;
+            }
+            tr {
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            th {
+              background-color: #f1f5f9;
+              color: #0f172a;
+              font-weight: 700;
+              border-top: 1px solid #cbd5e1;
+              border-bottom: 2px solid #334155;
+              padding: 6px 8px;
+              white-space: nowrap;
+            }
+            td {
+              border-bottom: 1px solid #e2e8f0;
+              padding: 5.5px 8px;
+              color: #1e293b;
+              vertical-align: middle;
+            }
+            tbody tr:nth-child(even) td {
+              background-color: #f8fafc;
+            }
+            .footer-info {
+              margin-top: 16px;
+              padding-top: 8px;
+              border-top: 1px solid #e2e8f0;
+              display: flex;
+              justify-content: space-between;
+              font-size: 8.5px;
+              color: #94a3b8;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header-container">
+            <div>
+              <h1 class="company-name">PT CHITRA PARATAMA</h1>
+              <p class="system-name">HERO Operations Management System &bull; Dokumen Cetak Resmi</p>
+              <h2 class="doc-title">${escapeHtml(pdfTitle)}</h2>
+            </div>
+            <div class="meta-box">
+              <p><strong>Tanggal Cetak:</strong> ${escapeHtml(currentDateStr)}</p>
+              <p><strong>Total Data:</strong> ${dataToPrint.length} baris</p>
+              ${
+                isSelectedMode
+                  ? `<div class="badge-selected">&check; Mode Item Terpilih (${dataToPrint.length} item)</div>`
+                  : ''
+              }
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align: center; width: 40px;">No</th>
+                ${headersHtml}
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer-info">
+            <span>Dicetak secara otomatis dari Platform HERO Desktop</span>
+            <span>Waktu Cetak: ${new Date().toLocaleTimeString('id-ID')} WIB</span>
+          </div>
+        </body>
+      </html>
+    `
+
+    iframeDoc.open()
+    iframeDoc.write(htmlContent)
+    iframeDoc.close()
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+      } catch (err) {
+        console.error('Iframe print failed, falling back to window.print():', err)
+        window.print()
+      } finally {
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe)
+          }
+        }, 1500)
+      }
+    }, 250)
+  }, [printData, columns, pdfTitle, printScope, selectedIds.size])
 
   // Active filters count
   const activeFiltersCount = Object.values(activeFilters).reduce((acc, val) => {
@@ -477,9 +732,10 @@ export function HeroDataTable<T extends Record<string, any>>({
                 size="dense"
                 onClick={handleExportExcel}
                 className="h-9 gap-1.5 font-medium"
+                title={selectedIds.size > 0 ? `Export ${selectedIds.size} data terpilih ke Excel (.xlsx)` : 'Export ke Excel (.xlsx)'}
               >
                 <FileSpreadsheet className="text-emerald-600 size-3.5" />
-                Excel
+                Excel{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
               </Button>
 
               {/* Export PDF Button */}
@@ -487,11 +743,15 @@ export function HeroDataTable<T extends Record<string, any>>({
                 type="button"
                 variant="outline"
                 size="dense"
-                onClick={() => setShowPdfModal(true)}
+                onClick={() => {
+                  setPrintScope(selectedIds.size > 0 ? 'selected' : 'all')
+                  setShowPdfModal(true)
+                }}
                 className="h-9 gap-1.5 font-medium"
+                title={selectedIds.size > 0 ? `Cetak ${selectedIds.size} data terpilih ke PDF` : 'Cetak Dokumen PDF'}
               >
                 <FileText className="text-rose-600 size-3.5" />
-                PDF
+                PDF{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
               </Button>
             </>
           )}
@@ -514,6 +774,36 @@ export function HeroDataTable<T extends Record<string, any>>({
           </div>
 
           <div className="flex items-center gap-2">
+            {enableExport && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="dense"
+                  onClick={handleExportExcel}
+                  className="h-9 gap-1.5 bg-white font-medium shadow-none"
+                  title="Export data terpilih ke Excel"
+                >
+                  <FileSpreadsheet className="size-3.5 text-emerald-600" />
+                  Excel ({selectedIds.size})
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="dense"
+                  onClick={() => {
+                    setPrintScope('selected')
+                    setShowPdfModal(true)
+                  }}
+                  className="h-9 gap-1.5 bg-white font-medium shadow-none"
+                  title="Cetak data terpilih ke PDF"
+                >
+                  <FileText className="size-3.5 text-rose-600" />
+                  PDF ({selectedIds.size})
+                </Button>
+              </>
+            )}
+
             {onBulkEdit && (
               <Button
                 type="button"
@@ -809,34 +1099,88 @@ export function HeroDataTable<T extends Record<string, any>>({
       <Dialog open={showPdfModal} onOpenChange={setShowPdfModal}>
         <DialogContent className="max-w-4xl p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{pdfTitle}</span>
-              <Button
-                type="button"
-                variant="default"
-                size="dense"
-                onClick={() => window.print()}
-                className="h-9 gap-1.5"
-              >
-                <Printer className="size-3.5" />
-                Cetak Dokumen
-              </Button>
-            </DialogTitle>
-            <DialogDescription>
-              Pratinjau cetak resmi standar format dokumen A4 HERO.
-            </DialogDescription>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <DialogTitle className="text-base font-bold text-slate-900">
+                  {pdfTitle}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  {selectedIds.size > 0 && printScope === 'selected'
+                    ? `Menyiapkan ${printData.length} baris data terpilih untuk dicetak dalam standar format resmi A4 HERO.`
+                    : `Pratinjau cetak resmi standar format dokumen A4 HERO (${printData.length} baris data).`}
+                </DialogDescription>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="dense"
+                  onClick={handlePrintDocument}
+                  className="h-9 gap-1.5 font-semibold shadow-xs"
+                >
+                  <Printer className="size-3.5" />
+                  Cetak Dokumen
+                </Button>
+              </div>
+            </div>
+
+            {/* Scope Selection Pill when rows are selected */}
+            {selectedIds.size > 0 && (
+              <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground font-medium">Cakupan Cetak:</span>
+                  <div className="inline-flex rounded-lg border border-border/80 p-0.5 bg-slate-100 dark:bg-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setPrintScope('selected')}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                        printScope === 'selected'
+                          ? "bg-white text-slate-900 shadow-xs font-semibold dark:bg-slate-900 dark:text-white"
+                          : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
+                      )}
+                    >
+                      Hanya {selectedIds.size} Data Terpilih
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPrintScope('all')}
+                      className={cn(
+                        "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                        printScope === 'all'
+                          ? "bg-white text-slate-900 shadow-xs font-semibold dark:bg-slate-900 dark:text-white"
+                          : "text-slate-600 hover:text-slate-900 dark:text-slate-400"
+                      )}
+                    >
+                      Semua Data ({filteredData.length})
+                    </button>
+                  </div>
+                </div>
+
+                <Badge variant={printScope === 'selected' ? "default" : "outline"} className="text-[11px]">
+                  {printScope === 'selected' ? `${printData.length} Item Terpilih` : `${printData.length} Total Data`}
+                </Badge>
+              </div>
+            )}
           </DialogHeader>
 
           {/* Printable Layout Wrapper */}
-          <div className="pdf-wrapper border-border/80 max-h-[60vh] overflow-y-auto rounded-lg border bg-white p-6 shadow-inner">
+          <div className="pdf-wrapper border-border/80 max-h-[55vh] overflow-y-auto rounded-lg border bg-white p-6 shadow-inner">
             <div className="mb-4 flex items-center justify-between border-b pb-3">
               <div>
-                <h2 className="text-lg font-bold tracking-tight text-slate-900">PT CHITRA PARATAMA</h2>
-                <p className="text-xs text-slate-500">Sistem Operasional HERO Desktop - Cetak Laporan</p>
+                <h2 className="text-base font-black tracking-tight text-slate-900 uppercase">PT CHITRA PARATAMA</h2>
+                <p className="text-xs text-slate-500">Sistem Operasional HERO Desktop - Cetak Laporan Resmi</p>
+                <p className="text-xs font-semibold text-primary mt-0.5">{pdfTitle}</p>
               </div>
               <div className="text-right text-xs text-slate-500">
                 <p>Tanggal: {new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
-                <p>Total Data: {filteredData.length} baris</p>
+                <p>
+                  Total Data: <span className="font-semibold text-slate-800">{printData.length} baris</span>
+                  {selectedIds.size > 0 && printScope === 'selected' && (
+                    <span className="ml-1 text-emerald-600 font-semibold">(Item Terpilih)</span>
+                  )}
+                </p>
               </div>
             </div>
 
@@ -845,18 +1189,18 @@ export function HeroDataTable<T extends Record<string, any>>({
                 <tr className="border-b-2 border-slate-800 bg-slate-100">
                   <th className="p-2 text-center w-10">No</th>
                   {columns.map((col) => (
-                    <th key={col.key} className="p-2 font-semibold text-slate-800">
+                    <th key={col.key} className="p-2 font-semibold text-slate-800" style={{ textAlign: col.align || 'left' }}>
                       {col.header}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredData.slice(0, 50).map((row, idx) => (
-                  <tr key={idx} className="border-b border-slate-200">
+                {printData.slice(0, 50).map((row, idx) => (
+                  <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50/50">
                     <td className="p-2 text-center text-slate-500">{idx + 1}</td>
                     {columns.map((col) => (
-                      <td key={col.key} className="p-2 text-slate-700">
+                      <td key={col.key} className="p-2 text-slate-700" style={{ textAlign: col.align || 'left' }}>
                         {col.exportValue ? col.exportValue(row) : String(row[col.key] ?? '-')}
                       </td>
                     ))}
@@ -865,23 +1209,38 @@ export function HeroDataTable<T extends Record<string, any>>({
               </tbody>
             </table>
 
-            {filteredData.length > 50 && (
-              <p className="mt-3 text-center text-xs italic text-slate-400">
-                (Menampilkan 50 data pertama untuk pratinjau cetak...)
+            {printData.length > 50 && (
+              <p className="mt-3 text-center text-xs italic text-slate-500 bg-slate-50 py-1.5 rounded border border-dashed border-slate-200">
+                (Menampilkan 50 data pertama untuk pratinjau modal. Seluruh {printData.length} baris akan dicetak penuh saat menekan tombol &ldquo;Cetak Dokumen&rdquo;.)
               </p>
             )}
           </div>
 
-          <DialogFooter className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="dense"
-              onClick={() => setShowPdfModal(false)}
-              className="h-9"
-            >
-              Tutup
-            </Button>
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-xs text-muted-foreground">
+              Format cetak resmi otomatis A4 {columns.length > 5 ? 'Landscape' : 'Portrait'}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="dense"
+                onClick={() => setShowPdfModal(false)}
+                className="h-9 text-xs"
+              >
+                Tutup
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="dense"
+                onClick={handlePrintDocument}
+                className="h-9 gap-1.5 text-xs font-semibold"
+              >
+                <Printer className="size-3.5" />
+                Cetak ({printData.length})
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

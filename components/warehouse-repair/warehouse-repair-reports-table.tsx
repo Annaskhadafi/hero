@@ -119,6 +119,7 @@ export function WarehouseRepairReportsTable({
           )}
         </div>
       ),
+      exportValue: (row) => (row.materialDesc ? `${row.itemName || ""} (${row.materialDesc})` : (row.itemName || "-")),
     },
     {
       key: "typeName",
@@ -145,6 +146,10 @@ export function WarehouseRepairReportsTable({
           <span className="text-[10px] text-muted-foreground block">{row.storageLocationDesc || "Balikpapan"}</span>
         </div>
       ),
+      exportValue: (row) =>
+        row.storageLocationDesc
+          ? `${row.storageLocation || "RS01"} - ${row.storageLocationDesc}`
+          : row.storageLocation || "RS01",
     },
     {
       key: "stock",
@@ -160,6 +165,7 @@ export function WarehouseRepairReportsTable({
           </Badge>
         )
       },
+      exportValue: (row) => `${row.stock} ${row.unitName || ""}`.trim(),
     },
     {
       key: "minimumStock",
@@ -168,6 +174,7 @@ export function WarehouseRepairReportsTable({
       align: "center",
       width: "90px",
       render: (row) => <span className="text-xs font-semibold text-muted-foreground">{row.minimumStock}</span>,
+      exportValue: (row) => `${row.minimumStock} ${row.unitName || ""}`.trim(),
     },
     {
       key: "stockHealth",
@@ -183,6 +190,8 @@ export function WarehouseRepairReportsTable({
           </Badge>
         )
       },
+      exportValue: (row) =>
+        Number(row.stock || 0) <= Number(row.minimumStock || 0) ? "Low Stock Alert" : "Stok Aman",
     },
   ]
 
@@ -205,6 +214,7 @@ export function WarehouseRepairReportsTable({
           {new Date(row.transactionDate).toLocaleDateString("id-ID")}
         </span>
       ),
+      exportValue: (row) => new Date(row.transactionDate).toLocaleDateString("id-ID"),
     },
     {
       key: "itemCode",
@@ -223,6 +233,7 @@ export function WarehouseRepairReportsTable({
           {row.materialDesc && <div className="text-[11px] text-muted-foreground truncate max-w-[220px]">{row.materialDesc}</div>}
         </div>
       ),
+      exportValue: (row) => (row.materialDesc ? `${row.itemName || ""} (${row.materialDesc})` : (row.itemName || "-")),
     },
     {
       key: "targetSLoc",
@@ -235,6 +246,10 @@ export function WarehouseRepairReportsTable({
           <span className="text-[10px] text-muted-foreground block">{row.targetSLocDesc || row.storageLocationDesc || "Balikpapan"}</span>
         </div>
       ),
+      exportValue: (row) =>
+        row.targetSLocDesc || row.storageLocationDesc
+          ? `${row.targetSLoc || row.storageLocation || "RS01"} - ${row.targetSLocDesc || row.storageLocationDesc}`
+          : row.targetSLoc || row.storageLocation || "RS01",
     },
     {
       key: "quantity",
@@ -247,6 +262,7 @@ export function WarehouseRepairReportsTable({
           +{row.quantity} {row.unitName || ""}
         </Badge>
       ),
+      exportValue: (row) => `+${row.quantity} ${row.unitName || ""}`.trim(),
     },
     {
       key: "note",
@@ -274,6 +290,7 @@ export function WarehouseRepairReportsTable({
           {new Date(row.transactionDate).toLocaleDateString("id-ID")}
         </span>
       ),
+      exportValue: (row) => new Date(row.transactionDate).toLocaleDateString("id-ID"),
     },
     {
       key: "itemCode",
@@ -292,6 +309,7 @@ export function WarehouseRepairReportsTable({
           {row.materialDesc && <div className="text-[11px] text-muted-foreground truncate max-w-[220px]">{row.materialDesc}</div>}
         </div>
       ),
+      exportValue: (row) => (row.materialDesc ? `${row.itemName || ""} (${row.materialDesc})` : (row.itemName || "-")),
     },
     {
       key: "storageLocation",
@@ -322,6 +340,10 @@ export function WarehouseRepairReportsTable({
           {row.destinationSLocDesc && <span className="text-[10px] text-muted-foreground block">{row.destinationSLocDesc}</span>}
         </div>
       ),
+      exportValue: (row) =>
+        row.destinationSLocDesc
+          ? `${row.destinationSLoc || "-"} - ${row.destinationSLocDesc}`
+          : row.destinationSLoc || "-",
     },
     {
       key: "quantity",
@@ -334,6 +356,7 @@ export function WarehouseRepairReportsTable({
           -{row.quantity} {row.unitName || ""}
         </Badge>
       ),
+      exportValue: (row) => `-${row.quantity} ${row.unitName || ""}`.trim(),
     },
     {
       key: "note",
