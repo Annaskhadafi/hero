@@ -2163,6 +2163,17 @@ const RAW_SIDEBAR_MENU_SEEDS = [
     openInNewTab: false,
   },
   {
+    menuArea: 'secondary',
+    section: 'Pengaturan',
+    title: 'Pengaturan Halaman Login',
+    url: '/dashboard/settings/login-page',
+    iconName: 'pencil',
+    resource: 'settings_login_page',
+    sortOrder: 9,
+    isVisible: true,
+    openInNewTab: false,
+  },
+  {
     menuArea: 'main',
     section: 'Command Center',
     title: 'Command Center',

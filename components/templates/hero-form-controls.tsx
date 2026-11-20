@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 // ==========================================
 export interface HeroFormFieldProps {
   label?: string
+  htmlFor?: string
   required?: boolean
   tooltip?: string
   helperText?: string
@@ -30,6 +31,7 @@ export interface HeroFormFieldProps {
 
 export function HeroFormField({
   label,
+  htmlFor,
   required,
   tooltip,
   helperText,
@@ -41,7 +43,7 @@ export function HeroFormField({
     <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
         <div className="flex items-center gap-1.5">
-          <Label className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+          <Label htmlFor={htmlFor} className="text-xs font-semibold uppercase tracking-wider text-slate-700">
             {label}
             {required && <span className="ml-1 text-rose-500">*</span>}
           </Label>

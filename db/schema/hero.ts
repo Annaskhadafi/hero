@@ -4884,3 +4884,46 @@ export const biometricConsents = pgTable('hero_biometric_consents', {
 
 export type BiometricConsent = typeof biometricConsents.$inferSelect
 export type NewBiometricConsent = typeof biometricConsents.$inferInsert
+
+/**
+ * Custom Login Page Settings
+ * Allows Administrator to customize the HERO Sign-in page:
+ * - Banner image & overlay color
+ * - Hero headline, eyebrow, subtitle/summary
+ * - Login form eyebrow, title, description, help texts
+ * - Logo URL
+ * - Page background styling & footer copyright
+ * - Feature highlights cards
+ */
+export const heroLoginPageSettings = pgTable('hero_login_page_settings', {
+  id: serial('id').primaryKey(),
+  heroTitle: text('hero_title').notNull().default('Kerja hebat,\ndimulai di sini.'),
+  heroSubtitle: text('hero_subtitle').notNull().default('Satu tempat untuk aktivitas, pelaporan,\ndan operasional Anda.'),
+  heroEyebrow: text('hero_eyebrow').notNull().default('PT CHITRA PARATAMA'),
+  bannerImageUrl: text('banner_image_url').notNull().default('/Hero%20Logo/bg%20hero.png'),
+  bannerOverlayColor: text('banner_overlay_color').notNull().default('#0860ee'),
+  logoUrl: text('logo_url').notNull().default('/logo-hero.png?v=hero-cat-20261012'),
+  formEyebrow: text('form_eyebrow').notNull().default('AKUN KARYAWAN'),
+  formTitle: text('form_title').notNull().default('Selamat datang kembali'),
+  formDescription: text('form_description').notNull().default('Masuk ke HERO dengan akun kerja Anda.'),
+  pageBackgroundType: text('page_background_type').notNull().default('default'), // 'default' | 'solid' | 'gradient' | 'image'
+  pageBackgroundColor: text('page_background_color').notNull().default('#edf7ff'),
+  pageBackgroundImageUrl: text('page_background_image_url'),
+  footerCopyright: text('footer_copyright').notNull().default('PT Chitra Paratama'),
+  footerTagline: text('footer_tagline').notNull().default('Hub for Employee Reporting & Operations'),
+  helpText: text('help_text').notNull().default('Butuh bantuan?'),
+  helpDetails: text('help_details').notNull().default('Gunakan email atau SN karyawan yang terdaftar. Untuk pemulihan kata sandi, pilih “Lupa kata sandi?”. Jika akun belum tersedia atau dinonaktifkan, hubungi tim HR atau admin HERO.'),
+  featuresJson: jsonb('features_json').notNull().default([
+    { icon: "CalendarDays", title: "Presensi", description: "Catat setiap kehadiran Anda." },
+    { icon: "FileText", title: "Pelaporan", description: "Setiap prestasi dihargai." },
+    { icon: "Settings", title: "Operasional", description: "Dukung keputusan berbasis data." },
+  ]),
+  isActive: boolean('is_active').notNull().default(true),
+  updatedBy: text('updated_by'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export type HeroLoginPageSetting = typeof heroLoginPageSettings.$inferSelect
+export type NewHeroLoginPageSetting = typeof heroLoginPageSettings.$inferInsert
+
