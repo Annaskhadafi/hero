@@ -384,6 +384,7 @@ export function SignInContent({ initialSettings }: { initialSettings?: LoginPage
                                         onChange={(e) => setEmail(e.target.value)}
                                         required
                                         disabled={isDisabled}
+                                        className="!bg-[#f8fbff] !text-[#17305c] placeholder:!text-[#7185a8]"
                                     />
                                 </div>
                                 {resolvedName ? <p className="text-xs text-blue-700">Ditemukan: {resolvedName} ({displayEmail})</p> : null}
@@ -403,6 +404,7 @@ export function SignInContent({ initialSettings }: { initialSettings?: LoginPage
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
                                         disabled={isDisabled}
+                                        className="!bg-[#f8fbff] !text-[#17305c] placeholder:!text-[#7185a8]"
                                     />
                                     <button
                                         type="button"

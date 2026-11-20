@@ -31,11 +31,20 @@
 .field { display: grid; gap: 10px; }
 .field label { color: #17305c; font-size: 14px; font-weight: 600; }
 .inputWrap { position: relative; }
-.inputIcon { position: absolute; z-index: 1; left: 16px; top: 50%; width: 20px; height: 20px; transform: translateY(-50%); color: #718bb7; pointer-events: none; }
-.inputWrap input { height: 54px; padding-inline: 48px; border: 1px solid #c4d9ff; border-radius: 9px; background: #f8fbff; color: #17305c; font-size: 16px; box-shadow: none; }
-.inputWrap input::placeholder { color: #7185a8; }
-.inputWrap input:focus-visible { border-color: #0753e7; background: #fff; box-shadow: 0 0 0 3px #0753e71a; }
-.passwordToggle { position: absolute; inset: 3px 3px 3px auto; display: grid; place-items: center; width: 46px; border-radius: 6px; color: #718bb7; }
+.inputIcon { position: absolute; z-index: 10; left: 16px; top: 50%; width: 20px; height: 20px; transform: translateY(-50%); color: #718bb7; pointer-events: none; }
+.inputWrap input { height: 54px; padding-inline: 48px; border: 1px solid #c4d9ff; border-radius: 9px; background-color: #f8fbff !important; color: #17305c !important; font-size: 16px; box-shadow: none; }
+.inputWrap input::placeholder { color: #7185a8 !important; }
+.inputWrap input:focus-visible { border-color: #0753e7; background-color: #fff !important; box-shadow: 0 0 0 3px #0753e71a; }
+.inputWrap input:-webkit-autofill,
+.inputWrap input:-webkit-autofill:hover,
+.inputWrap input:-webkit-autofill:focus,
+.inputWrap input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #f8fbff inset !important;
+  -webkit-text-fill-color: #17305c !important;
+  caret-color: #17305c;
+  transition: background-color 9999s ease-out;
+}
+.passwordToggle { position: absolute; z-index: 10; inset: 3px 3px 3px auto; display: grid; place-items: center; width: 46px; border-radius: 6px; color: #718bb7; }
 .passwordToggle:hover { color: #0753e7; background: #eaf3ff; }
 .passwordToggle:focus-visible { outline: 2px solid #0753e7; }
 .options { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }
