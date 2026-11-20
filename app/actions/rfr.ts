@@ -20,10 +20,59 @@ import { randomUUID } from 'crypto'
 import { sendEmailViaSmtp, type EmailTransportSettings } from '@/lib/email-delivery'
 import { getEmailAppUrl, isLocalAppOrigin } from '@/lib/auth-config'
 import { headers } from 'next/headers'
+import { getServerSession } from '@/lib/auth-session'
 import { getHumanCapitalPolicyCcRecipients } from '@/lib/human-capital-email'
 import { resolveWorkflowTemplateContent } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { generateRfrPdf, type RfrPdfData } from '@/lib/rfr-pdf'
+
+async function verifyRfrApproverAuthorization(
+  approval: typeof hcRfrApprovals.$inferSelect
+): Promise<{ authorized: boolean; reason?: string }> {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      // Akses via link publik email tanpa login tetap diperbolehkan selama token valid
+      return { authorized: true }
+    }
+
+    const userEmail = (session.user.email || '').trim().toLowerCase()
+    const approverEmail = (approval.approverEmail || '').trim().toLowerCase()
+
+    // Privileged Super Admin selalu berwenang
+    const isSuperAdmin =
+      userEmail === 'andirivlni@gmail.com' ||
+      userEmail === 'mochamad.khadafi@chitraparatama.co.id' ||
+      (session.user as any)?.role === 'super_admin' ||
+      (session.user as any)?.role === 'admin'
+
+    if (isSuperAdmin) {
+      return { authorized: true }
+    }
+
+    // Cocok email langsung
+    if (userEmail && approverEmail && userEmail === approverEmail) {
+      return { authorized: true }
+    }
+
+    // Cocok Employee ID langsung
+    const userEmployeeId = (session.user as any)?.employeeId
+    if (
+      userEmployeeId &&
+      approval.approverEmployeeId &&
+      Number(userEmployeeId) === Number(approval.approverEmployeeId)
+    ) {
+      return { authorized: true }
+    }
+
+    return {
+      authorized: false,
+      reason: `Tahap persetujuan ini ditujukan untuk "${approval.roleLabel}" (${approval.approverName}). Anda saat ini login sebagai ${session.user.name || userEmail}. Silakan gunakan akun yang sesuai.`,
+    }
+  } catch {
+    return { authorized: true }
+  }
+}
 
 async function getBaseUrl(): Promise<string> {
   const envUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -513,11 +562,9 @@ async function sendRfrApprovalEmail(params: {
   }
 
   try {
-    const hcPolicyCc = await getHumanCapitalPolicyCcRecipients()
-    const allCc = Array.from(new Set([...(hcPolicyCc || []), ...(params.additionalCc || [])].filter(Boolean)))
     const resolvedTemplate = await resolveWorkflowTemplateContent({
       templateCode: 'rfr_approver_notification',
-      cc: allCc,
+      cc: [],
       variables: {
         approverName: params.approverName,
         approvalStep: params.approvalStep,
@@ -539,7 +586,7 @@ async function sendRfrApprovalEmail(params: {
     if (params.to && params.to.trim()) {
       await sendEmailViaSmtp(smtpSettings, {
         to: params.to.trim(),
-        cc: resolvedTemplate.ccList,
+        cc: [], // Keamanan: Token approval hanya dikirimkan khusus kepada pejabat approver yang bertugas
         subject: resolvedTemplate.subject,
         text: resolvedTemplate.text,
         html: resolvedTemplate.html,
@@ -1113,6 +1160,11 @@ export async function approveRfrStep(
       return { success: false, error: 'Token approval RFR tidak ditemukan.' }
     }
 
+    const authCheck = await verifyRfrApproverAuthorization(approval)
+    if (!authCheck.authorized) {
+      return { success: false, error: authCheck.reason || 'Anda tidak berwenang menyetujui tahap ini.' }
+    }
+
     if (approval.status === 'approved') {
       return { success: true, message: 'Langkah ini sudah disetujui sebelumnya.' }
     }
@@ -1284,6 +1336,11 @@ export async function rejectRfrStep(tokenOrId: string | number, remarks: string)
 
     if (!approval) return { success: false, error: 'Token approval tidak valid.' }
 
+    const authCheck = await verifyRfrApproverAuthorization(approval)
+    if (!authCheck.authorized) {
+      return { success: false, error: authCheck.reason || 'Anda tidak berwenang menolak tahap ini.' }
+    }
+
     await db
       .update(hcRfrApprovals)
       .set({
@@ -1297,8 +1354,10 @@ export async function rejectRfrStep(tokenOrId: string | number, remarks: string)
       .update(hcRfrRequests)
       .set({
         status: 'rejected',
-        rejectionReason: remarks || 'Permohonan Ditolak',
+        currentStepOrder: approval.stepOrder,
+        rejectionReason: `Penolakan dari ${approval.roleLabel} (${approval.approverName}): ${remarks || 'Permohonan Ditolak'}`,
       })
+      .where(eq(hcRfrRequests.id, approval.rfrId))
     const [rfrDetail] = await db
       .select()
       .from(hcRfrRequests)
@@ -1373,6 +1432,11 @@ export async function revertRfrStep(tokenOrId: string | number, remarks: string)
     }
 
     if (!approval) return { success: false, error: 'Token approval tidak valid.' }
+
+    const authCheck = await verifyRfrApproverAuthorization(approval)
+    if (!authCheck.authorized) {
+      return { success: false, error: authCheck.reason || 'Anda tidak berwenang mengembalikan tahap ini.' }
+    }
 
     const prevStepOrder = 1
     if (approval.stepOrder === 1) {
@@ -1571,75 +1635,78 @@ export async function resubmitRfrRequest(
         .where(eq(hcRfrApprovals.id, requestorApproval.id))
     }
 
-    const requestorStepOrder = requestorApproval?.stepOrder ?? 1
+    // 3. Reset seluruh tahap persetujuan berikutnya (Step 2 dst) karena berkas telah diubah/direvisi.
+    // Hal ini menjamin:
+    // - Tidak ada TTD lama / asing yang tertinggal.
+    // - Alur persetujuan berjalan urut: Step 2 (HC Verification) -> Step 3 (Leader HR) -> Step 4 (HC SPV - Muhammad Iqbal) -> Step 5 (Manager Dept - Romy Hidayat) -> Step 6 (General Manager - Person Sihaloho).
+    // - Pak Iqbal akan selalu menerima notifikasi pada Step 4, SEBELUM Pak Romy di Step 5.
+    for (const step of allApprovals.filter((a) => a.stepOrder > 1)) {
+      await db
+        .update(hcRfrApprovals)
+        .set({
+          status: 'pending',
+          signatureDataUrl: null,
+          remarks: '',
+          signedAt: null,
+          approvalToken: randomUUID(), // Invalidate token lama agar link lama di email tidak dapat disalahgunakan
+        })
+        .where(eq(hcRfrApprovals.id, step.id))
+    }
 
-    // 3. Find the first pending step after the requestor step (e.g. Step 3 that reverted, jumping over already approved Step 2)
-    const nextPendingApproval = allApprovals.find(
-      (a) => a.stepOrder > requestorStepOrder && a.status === 'pending'
-    )
+    // Ambil daftar approval terbaru yang sudah di-reset
+    const refreshedApprovals = await db
+      .select()
+      .from(hcRfrApprovals)
+      .where(eq(hcRfrApprovals.rfrId, id))
+      .orderBy(asc(hcRfrApprovals.stepOrder))
 
-    if (nextPendingApproval) {
-      const targetStepOrder = nextPendingApproval.stepOrder
-      // Update request currentStepOrder and clear rejection reason
+    // Tahap pertama yang harus menyetujui setelah pemohon adalah Step 2 (HC Verification)
+    const firstPendingStep =
+      refreshedApprovals.find((a) => a.stepOrder === 2) ||
+      refreshedApprovals.find((a) => a.stepOrder > 1 && a.status === 'pending')
+
+    if (firstPendingStep) {
+      const targetStepOrder = firstPendingStep.stepOrder
+      // Update request currentStepOrder dan bersihkan rejectionReason lama
       await db
         .update(hcRfrRequests)
         .set({
           currentStepOrder: targetStepOrder,
           rejectionReason: '',
+          status: 'in_progress',
         })
         .where(eq(hcRfrRequests.id, id))
 
-      // Collect emails of all prior approvers (steps between Step 1 and targetStepOrder) who already approved
-      const priorApprovedEmails = allApprovals
-        .filter((a) => a.stepOrder > 1 && a.stepOrder < targetStepOrder && a.status === 'approved' && a.approverEmail)
-        .map((a) => a.approverEmail.trim())
-
-      // Trigger notification & email to that pending step with CC to all prior approvers
+      // Kirim email & notifikasi khusus ke step pending pertama (Step 2)
       await sendRfrApprovalEmail({
-        to: nextPendingApproval.approverEmail,
-        approverName: nextPendingApproval.approverName,
-        approvalStep: `${nextPendingApproval.roleLabel} (Langkah ${targetStepOrder}/${totalSteps})`,
+        to: firstPendingStep.approverEmail,
+        approverName: firstPendingStep.approverName,
+        approvalStep: `${firstPendingStep.roleLabel} (Langkah ${targetStepOrder}/${totalSteps})`,
         rfr: updatedRfr,
-        approvals: allApprovals,
-        approvalToken: nextPendingApproval.approvalToken,
-        additionalCc: priorApprovedEmails,
+        approvals: refreshedApprovals,
+        approvalToken: firstPendingStep.approvalToken,
         isResubmit: true,
       })
 
-      // Bell notification to next step approver
-      if (nextPendingApproval.approverEmail) {
+      // Bell notification ke approver step pertama (HC Verification)
+      if (firstPendingStep.approverEmail) {
         const baseUrl = await getBaseUrl()
         notifyWorkflowBellRecipients({
-          recipientEmails: [nextPendingApproval.approverEmail],
+          recipientEmails: [firstPendingStep.approverEmail],
           eventType: 'rfr_approval_request',
           category: 'approval_requests',
-          title: `RFR ${updatedRfr.rfrNumber} — Tahap ${nextPendingApproval.roleLabel}`,
-          body: `RFR ${updatedRfr.rfrNumber} (${updatedRfr.positionTitle}) telah diresubmit oleh pemohon. Menunggu persetujuan Anda di tahap ${nextPendingApproval.roleLabel}.`,
-          url: `${baseUrl}/review/rfr/${nextPendingApproval.approvalToken}`,
-          tagPrefix: 'rfr',
-          metadata: { rfrNumber: updatedRfr.rfrNumber, positionTitle: updatedRfr.positionTitle, sectionDepartment: updatedRfr.sectionDepartment },
-        })
-      }
-
-      // Bell notification to prior approvers
-      if (priorApprovedEmails.length > 0) {
-        const baseUrl = await getBaseUrl()
-        notifyWorkflowBellRecipients({
-          recipientEmails: priorApprovedEmails,
-          eventType: 'rfr_approval_request',
-          category: 'approval_requests',
-          title: `RFR ${updatedRfr.rfrNumber} Telah Diresubmit`,
-          body: `RFR ${updatedRfr.rfrNumber} (${updatedRfr.positionTitle}) telah selesai direvisi dan diresubmit oleh pemohon ke tahap ${nextPendingApproval.roleLabel}.`,
-          url: `${baseUrl}/dashboard/hc/rfr`,
+          title: `RFR ${updatedRfr.rfrNumber} — Tahap ${firstPendingStep.roleLabel}`,
+          body: `RFR ${updatedRfr.rfrNumber} (${updatedRfr.positionTitle}) telah diresubmit oleh pemohon setelah revisi. Menunggu verifikasi Anda di tahap ${firstPendingStep.roleLabel}.`,
+          url: `${baseUrl}/review/rfr/${firstPendingStep.approvalToken}`,
           tagPrefix: 'rfr',
           metadata: { rfrNumber: updatedRfr.rfrNumber, positionTitle: updatedRfr.positionTitle, sectionDepartment: updatedRfr.sectionDepartment },
         })
       }
     } else {
-      // In case there are no pending steps (should not happen normally)
+      // Jika tidak ada step berikutnya (fallback)
       await db
         .update(hcRfrRequests)
-        .set({ status: 'approved', currentStepOrder: 6 })
+        .set({ status: 'approved', currentStepOrder: totalSteps })
         .where(eq(hcRfrRequests.id, id))
 
       await autoCreateRecruitmentFromRfr(updatedRfr)

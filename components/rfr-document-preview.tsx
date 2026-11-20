@@ -346,13 +346,22 @@ export function RfrDocumentPreview({
         </div>
         <div className="grid grid-cols-6 gap-2 text-center text-[8pt]">
           {approvals.map((app, idx) => {
-            const isFirst = idx === 0
-            const sigUrl = isFirst && liveSignatureUrl ? liveSignatureUrl : app.signatureDataUrl
+            const isCurrentStep = Boolean(
+              currentStepOrder ? app.stepOrder === currentStepOrder : idx === 0
+            )
+            const sigUrl = isCurrentStep && liveSignatureUrl ? liveSignatureUrl : app.signatureDataUrl
+            const approverRemark =
+              app.remarks &&
+              !['Resubmitted after revision', 'Submitted', 'Reverted', 'Approved', 'approved'].includes(
+                app.remarks.trim()
+              )
+                ? app.remarks.trim()
+                : ''
 
             return (
               <div
                 key={idx}
-                className="flex h-36 flex-col justify-between rounded border border-gray-300 bg-gray-50/50 p-1"
+                className="flex min-h-[144px] h-auto flex-col justify-between rounded border border-gray-300 bg-gray-50/50 p-1"
               >
                 <div
                   className="truncate border-b pb-1 text-[7.5pt] font-semibold text-gray-700"
@@ -374,7 +383,7 @@ export function RfrDocumentPreview({
                     </span>
                   ) : app.status === 'rejected' ? (
                     <span className="rounded border border-rose-200 bg-rose-50 px-1 py-0.5 text-[7pt] font-bold text-rose-700">
-                      Rejected
+                      Ditolak
                     </span>
                   ) : (
                     <span className="text-[7pt] text-gray-400 italic">Pending</span>
@@ -388,6 +397,14 @@ export function RfrDocumentPreview({
                   <div className="truncate text-[6.5pt] text-gray-500" title={app.approverTitle}>
                     {app.approverTitle || '-'}
                   </div>
+                  {approverRemark && (
+                    <div
+                      className="mt-0.5 text-[5.5pt] text-rose-600 dark:text-rose-400 font-medium italic break-words line-clamp-2"
+                      title={approverRemark}
+                    >
+                      Catatan: {approverRemark}
+                    </div>
+                  )}
                 </div>
               </div>
             )

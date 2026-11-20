@@ -5,7 +5,7 @@ import { approveRfrStep, rejectRfrStep } from '@/app/actions/rfr'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { CheckCircle2, XCircle, FileCheck, Download, Printer } from 'lucide-react'
+import { CheckCircle2, XCircle, FileCheck, Download, Printer, AlertCircle } from 'lucide-react'
 import { RfrDocumentPreview } from '@/components/rfr-document-preview'
 import { SignaturePad } from '@/components/signature-pad'
 
@@ -14,15 +14,38 @@ type RfrPublicApprovalProps = {
   approval: any
   rfr: any
   approvals: any[]
+  currentUser?: {
+    name: string
+    email: string
+    role: string
+    employeeId: number | null
+  } | null
 }
 
-export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublicApprovalProps) {
+export function RfrPublicApproval({ token, approval, rfr, approvals, currentUser }: RfrPublicApprovalProps) {
   const [remarks, setRemarks] = useState(approval.remarks || '')
   const [error, setError] = useState('')
   const [done, setDone] = useState(approval.status === 'approved')
   const [rejected, setRejected] = useState(approval.status === 'rejected')
   const [liveSignatureUrl, setLiveSignatureUrl] = useState<string | null>(approval.signatureDataUrl || null)
   const [isPending, startTransition] = useTransition()
+
+  // Verifikasi apakah pengguna yang sedang login berwenang untuk tahap ini
+  const isPrivilegedAdmin =
+    currentUser?.email === 'andirivlni@gmail.com' ||
+    currentUser?.email === 'mochamad.khadafi@chitraparatama.co.id' ||
+    currentUser?.role === 'super_admin' ||
+    currentUser?.role === 'admin'
+
+  const userEmail = (currentUser?.email || '').toLowerCase().trim()
+  const approverEmail = (approval?.approverEmail || '').toLowerCase().trim()
+  const emailMatches = Boolean(userEmail && approverEmail && userEmail === approverEmail)
+  const employeeMatches = Boolean(
+    currentUser?.employeeId &&
+      approval?.approverEmployeeId &&
+      Number(currentUser.employeeId) === Number(approval.approverEmployeeId)
+  )
+  const isApproverAuthorized = !currentUser || isPrivilegedAdmin || emailMatches || employeeMatches
 
   function handleApprove() {
     setError('')
@@ -93,7 +116,7 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
               {approval.roleLabel} — {approval.approverName}
             </div>
             <div className="text-xs text-blue-200">{approval.approverTitle}</div>
-            <div className="text-xs text-blue-300 mt-1">
+            <div className="text-xs text-blue-300 mt-1" suppressHydrationWarning>
               {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} WITA — {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
           </div>
@@ -142,7 +165,22 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
 
           {/* Right: Action Panel for Digital Signature & Remarks */}
           <div className="w-full order-1 lg:order-2 space-y-4 lg:sticky lg:top-8">
-            {!done && !rejected ? (
+            {!isApproverAuthorized && currentUser && (
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 p-5 rounded-xl shadow-xs space-y-2 text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-800 dark:text-amber-300">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <span>Peringatan Otorisasi Akun</span>
+                </div>
+                <p className="text-xs leading-relaxed">
+                  Tahap persetujuan ini ditujukan khusus untuk <strong>{approval.roleLabel} ({approval.approverName})</strong>.
+                </p>
+                <p className="text-xs leading-relaxed">
+                  Anda saat ini sedang login sebagai <strong>{currentUser.name} ({currentUser.email})</strong>. Mode diaktifkan ke Pratinjau Dokumen (View-Only). Tindakan persetujuan atau penolakan hanya dapat dilakukan oleh pejabat yang bersangkutan.
+                </p>
+              </div>
+            )}
+
+            {!done && !rejected && isApproverAuthorized ? (
               <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border shadow-sm space-y-4">
                 <h3 className="font-bold text-slate-900 dark:text-white border-b pb-2 text-base">
                   Bubuhkan Tanda Tangan Digital
@@ -152,7 +190,7 @@ export function RfrPublicApproval({ token, approval, rfr, approvals }: RfrPublic
                     label="Canvas Tanda Tangan Digital"
                     defaultDataUrl={liveSignatureUrl}
                     onDataUrlChange={setLiveSignatureUrl}
-                    autoUseProfileSignature={false}
+                    autoUseProfileSignature={true}
                     height={150}
                   />
                 </div>

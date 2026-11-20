@@ -603,6 +603,14 @@ export async function generateRfrPdf(data: RfrPdfData): Promise<Buffer> {
         font: fontRegular,
         color: rgb(0.1, 0.5, 0.2),
       })
+    } else if (appData && appData.status === 'rejected') {
+      page.drawText('[ Ditolak ]', {
+        x: colX + (colWidth - fontBold.widthOfTextAtSize('[ Ditolak ]', 6.5)) / 2,
+        y: gridY - 42,
+        size: 6.5,
+        font: fontBold,
+        color: rgb(0.8, 0.15, 0.15),
+      })
     } else {
       page.drawText('( Pending TTD )', {
         x: colX + (colWidth - fontRegular.widthOfTextAtSize('( Pending TTD )', 6)) / 2,
