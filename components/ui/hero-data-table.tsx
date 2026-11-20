@@ -13,9 +13,11 @@ import {
   ChevronsRight,
   Download,
   Edit3,
+  ExternalLink,
   FileSpreadsheet,
   FileText,
   Filter,
+  Loader2,
   Plus,
   Printer,
   RefreshCw,
@@ -207,13 +209,14 @@ export function HeroDataTable<T extends Record<string, any>>({
   // PDF Preview Dialog State & Print Scope
   const [showPdfModal, setShowPdfModal] = React.useState(false)
   const [printScope, setPrintScope] = React.useState<'selected' | 'all'>('selected')
+  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false)
 
   // Synchronize print scope whenever dialog opens or selected items change
   React.useEffect(() => {
-    if (showPdfModal) {
-      setPrintScope(selectedIds.size > 0 ? 'selected' : 'all')
+    if (showPdfModal && selectedIds.size === 0 && printScope === 'selected') {
+      setPrintScope('all')
     }
-  }, [showPdfModal, selectedIds.size])
+  }, [showPdfModal, selectedIds.size, printScope])
 
   // Reset pagination on search or filter change
   React.useEffect(() => {
@@ -342,10 +345,36 @@ export function HeroDataTable<T extends Record<string, any>>({
 
   const selectedRows = React.useMemo(() => {
     if (selectedIds.size === 0) return []
-    // Preserve current sorted & filtered order for selected items
-    const inFiltered = filteredData.filter((row, idx) => selectedIds.has(getRowId(row, idx)))
-    if (inFiltered.length > 0) return inFiltered
-    return data.filter((row, idx) => selectedIds.has(getRowId(row, idx)))
+    // Fast O(1) map of all original data by row ID to prevent losing selected rows during search/filtering
+    const rowMap = new Map<string, T>()
+    for (let i = 0; i < data.length; i++) {
+      rowMap.set(getRowId(data[i], i), data[i])
+    }
+
+    // Preserve order: first prioritize rows that are in the current filteredData
+    const result: T[] = []
+    const addedIds = new Set<string>()
+
+    for (let i = 0; i < filteredData.length; i++) {
+      const id = getRowId(filteredData[i], i)
+      if (selectedIds.has(id)) {
+        result.push(filteredData[i])
+        addedIds.add(id)
+      }
+    }
+
+    // Then immediately append all other selected items from master data (e.g. filtered out by search query)
+    selectedIds.forEach((id) => {
+      if (!addedIds.has(id)) {
+        const item = rowMap.get(id)
+        if (item) {
+          result.push(item)
+          addedIds.add(id)
+        }
+      }
+    })
+
+    return result
   }, [data, filteredData, selectedIds, getRowId])
 
   // Data targeted for PDF Export / Print
@@ -636,6 +665,245 @@ export function HeroDataTable<T extends Record<string, any>>({
       }
     }, 250)
   }, [printData, columns, pdfTitle, printScope, selectedIds.size])
+
+  // Builds official high-fidelity vector PDF document using jsPDF
+  const buildPdfDocument = React.useCallback(async () => {
+    const dataToPrint = printData
+    if (dataToPrint.length === 0) return null
+
+    const { jsPDF } = await import('jspdf')
+    const isLandscape = columns.length > 5
+    const doc = new jsPDF({
+      orientation: isLandscape ? 'landscape' : 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    })
+
+    const pageW = doc.internal.pageSize.getWidth()
+    const pageH = doc.internal.pageSize.getHeight()
+    const marginX = 12
+    const marginY = 12
+    const printableW = pageW - 2 * marginX
+    const bottomLimit = pageH - 14
+
+    // Calculate column widths
+    const noColWidth = 10
+    const remainingW = printableW - noColWidth
+
+    const colWeights = columns.map((c) => {
+      if (c.width) {
+        const parsed = parseInt(c.width, 10)
+        if (!isNaN(parsed) && parsed > 0) return parsed
+      }
+      return 100
+    })
+    const totalWeight = colWeights.reduce((a, b) => a + b, 0)
+    const colWidths = colWeights.map((w) => (w / totalWeight) * remainingW)
+
+    const isSelectedMode = printScope === 'selected' && selectedIds.size > 0
+    const currentDateStr = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+
+    let currentY = marginY
+
+    const drawPageHeader = (isFirstPage: boolean) => {
+      if (isFirstPage) {
+        // PT CHITRA PARATAMA Header
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(13)
+        doc.setTextColor(15, 23, 42)
+        doc.text('PT CHITRA PARATAMA', marginX, currentY + 4)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(71, 85, 105)
+        doc.text('HERO Desktop Operations • Dokumen Cetak & Ekspor Resmi', marginX, currentY + 8.5)
+
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(10.5)
+        doc.setTextColor(7, 83, 231)
+        doc.text(pdfTitle, marginX, currentY + 14)
+
+        // Metadata on top-right
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8)
+        doc.setTextColor(71, 85, 105)
+        const dateText = `Tanggal: ${currentDateStr}`
+        const totalText = `Total: ${dataToPrint.length} baris ${isSelectedMode ? '(Item Terpilih)' : ''}`
+        doc.text(dateText, pageW - marginX, currentY + 4, { align: 'right' })
+        doc.text(totalText, pageW - marginX, currentY + 8.5, { align: 'right' })
+
+        // Accent line
+        doc.setDrawColor(7, 83, 231)
+        doc.setLineWidth(0.6)
+        doc.line(marginX, currentY + 16.5, pageW - marginX, currentY + 16.5)
+
+        currentY += 19
+      } else {
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(8.5)
+        doc.setTextColor(15, 23, 42)
+        doc.text(`${pdfTitle} (Lanjutan)`, marginX, currentY + 3)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7.5)
+        doc.setTextColor(100, 116, 139)
+        doc.text('PT Chitra Paratama', pageW - marginX, currentY + 3, { align: 'right' })
+
+        doc.setDrawColor(203, 213, 225)
+        doc.setLineWidth(0.3)
+        doc.line(marginX, currentY + 5, pageW - marginX, currentY + 5)
+
+        currentY += 7
+      }
+
+      // Draw Table Header
+      const headerH = 7.5
+      doc.setFillColor(241, 245, 249)
+      doc.rect(marginX, currentY, printableW, headerH, 'F')
+
+      doc.setDrawColor(51, 65, 85)
+      doc.setLineWidth(0.3)
+      doc.line(marginX, currentY + headerH, pageW - marginX, currentY + headerH)
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(7.5)
+      doc.setTextColor(15, 23, 42)
+
+      // Column 'No'
+      doc.text('No', marginX + noColWidth / 2, currentY + 5, { align: 'center' })
+
+      let xPos = marginX + noColWidth
+      columns.forEach((col, idx) => {
+        const cWidth = colWidths[idx]
+        const align = col.align || 'left'
+        let textX = xPos + 1.5
+        if (align === 'center') textX = xPos + cWidth / 2
+        else if (align === 'right') textX = xPos + cWidth - 1.5
+
+        const headerStr = doc.splitTextToSize(col.header, cWidth - 3)[0] || col.header
+        doc.text(headerStr, textX, currentY + 5, { align })
+        xPos += cWidth
+      })
+
+      currentY += headerH
+    }
+
+    const drawFooters = () => {
+      const totalPages = doc.getNumberOfPages()
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p)
+        doc.setDrawColor(226, 232, 240)
+        doc.setLineWidth(0.2)
+        doc.line(marginX, pageH - 9, pageW - marginX, pageH - 9)
+
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.setTextColor(148, 163, 184)
+        doc.text('Dokumen Resmi HERO Desktop • PT Chitra Paratama', marginX, pageH - 5.5)
+        doc.text(`Halaman ${p} dari ${totalPages}`, pageW - marginX, pageH - 5.5, { align: 'right' })
+      }
+    }
+
+    drawPageHeader(true)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+
+    for (let rIdx = 0; rIdx < dataToPrint.length; rIdx++) {
+      const row = dataToPrint[rIdx]
+
+      let maxLines = 1
+      const cellTexts: string[][] = columns.map((col, idx) => {
+        const rawVal = col.exportValue ? col.exportValue(row) : (row[col.key] ?? '-')
+        const valStr = String(rawVal ?? '-')
+        const lines = doc.splitTextToSize(valStr, colWidths[idx] - 3)
+        if (lines.length > maxLines) maxLines = lines.length
+        return lines
+      })
+
+      const rowH = Math.max(6.5, maxLines * 3.5 + 2.5)
+
+      if (currentY + rowH > bottomLimit) {
+        doc.addPage()
+        currentY = marginY
+        drawPageHeader(false)
+      }
+
+      if (rIdx % 2 === 1) {
+        doc.setFillColor(248, 250, 252)
+        doc.rect(marginX, currentY, printableW, rowH, 'F')
+      }
+
+      doc.setDrawColor(226, 232, 240)
+      doc.setLineWidth(0.15)
+      doc.line(marginX, currentY + rowH, pageW - marginX, currentY + rowH)
+
+      doc.setTextColor(100, 116, 139)
+      doc.text(String(rIdx + 1), marginX + noColWidth / 2, currentY + 4, { align: 'center' })
+
+      doc.setTextColor(30, 41, 59)
+      let xPos = marginX + noColWidth
+
+      columns.forEach((col, idx) => {
+        const cWidth = colWidths[idx]
+        const align = col.align || 'left'
+        let textX = xPos + 1.5
+        if (align === 'center') textX = xPos + cWidth / 2
+        else if (align === 'right') textX = xPos + cWidth - 1.5
+
+        const lines = cellTexts[idx]
+        lines.forEach((lineText, lineIdx) => {
+          doc.text(lineText, textX, currentY + 4 + lineIdx * 3.4, { align })
+        })
+
+        xPos += cWidth
+      })
+
+      currentY += rowH
+    }
+
+    drawFooters()
+    return doc
+  }, [printData, columns, pdfTitle, printScope, selectedIds.size])
+
+  // Download PDF file directly (.pdf) without physical printing
+  const handleDownloadPdf = React.useCallback(async () => {
+    try {
+      setIsGeneratingPdf(true)
+      const doc = await buildPdfDocument()
+      if (!doc) return
+
+      const suffix = selectedIds.size > 0 && printScope === 'selected' ? `-${printData.length}-item-terpilih` : ''
+      const fileName = `${effectiveExportFileName}${suffix}-${new Date().toISOString().slice(0, 10)}.pdf`
+      doc.save(fileName)
+    } catch (err) {
+      console.error('Download PDF failed:', err)
+    } finally {
+      setIsGeneratingPdf(false)
+    }
+  }, [buildPdfDocument, effectiveExportFileName, printData.length, printScope, selectedIds.size])
+
+  // Preview PDF directly in new browser tab
+  const handlePreviewPdfNewTab = React.useCallback(async () => {
+    try {
+      setIsGeneratingPdf(true)
+      const doc = await buildPdfDocument()
+      if (!doc) return
+
+      const blob = doc.output('blob')
+      const blobUrl = URL.createObjectURL(blob)
+      window.open(blobUrl, '_blank')
+    } catch (err) {
+      console.error('Preview PDF in new tab failed:', err)
+    } finally {
+      setIsGeneratingPdf(false)
+    }
+  }, [buildPdfDocument])
 
   // Active filters count
   const activeFiltersCount = Object.values(activeFilters).reduce((acc, val) => {
@@ -1111,16 +1379,29 @@ export function HeroDataTable<T extends Record<string, any>>({
                 </DialogDescription>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="dense"
+                  onClick={handlePrintDocument}
+                  className="h-9 gap-1.5 text-xs font-medium"
+                  title="Buka dialog print fisik printer"
+                >
+                  <Printer className="size-3.5 text-slate-600" />
+                  Cetak Dokumen
+                </Button>
                 <Button
                   type="button"
                   variant="default"
                   size="dense"
-                  onClick={handlePrintDocument}
-                  className="h-9 gap-1.5 font-semibold shadow-xs"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  className="h-9 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                  title="Download file PDF resmi ke komputer"
                 >
-                  <Printer className="size-3.5" />
-                  Cetak Dokumen
+                  {isGeneratingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                  Download PDF
                 </Button>
               </div>
             </div>
@@ -1165,62 +1446,69 @@ export function HeroDataTable<T extends Record<string, any>>({
             )}
           </DialogHeader>
 
-          {/* Printable Layout Wrapper */}
-          <div className="pdf-wrapper border-border/80 max-h-[55vh] overflow-y-auto rounded-lg border bg-white p-6 shadow-inner">
-            <div className="mb-4 flex items-center justify-between border-b pb-3">
-              <div>
-                <h2 className="text-base font-black tracking-tight text-slate-900 uppercase">PT CHITRA PARATAMA</h2>
-                <p className="text-xs text-slate-500">Sistem Operasional HERO Desktop - Cetak Laporan Resmi</p>
-                <p className="text-xs font-semibold text-primary mt-0.5">{pdfTitle}</p>
+          {/* Printable Layout Wrapper - authentic document sheet */}
+          <div className="pdf-wrapper border-border/80 max-h-[55vh] overflow-y-auto rounded-lg border bg-slate-100/70 p-4 shadow-inner">
+            <div className="bg-white rounded-md shadow-sm border border-slate-200/90 p-5 sm:p-6 text-slate-900 min-w-[620px]">
+              <div className="mb-4 flex items-start justify-between border-b-2 border-slate-800 pb-3">
+                <div>
+                  <h2 className="text-base font-black tracking-tight text-slate-900 uppercase">PT CHITRA PARATAMA</h2>
+                  <p className="text-xs text-slate-500">Sistem Operasional HERO Desktop - Cetak Laporan Resmi</p>
+                  <p className="text-xs font-bold text-primary mt-0.5">{pdfTitle}</p>
+                </div>
+                <div className="text-right text-xs text-slate-500">
+                  <p>Tanggal: {new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
+                  <p>
+                    Total Data: <span className="font-semibold text-slate-800">{printData.length} baris</span>
+                    {selectedIds.size > 0 && printScope === 'selected' && (
+                      <span className="ml-1 text-emerald-600 font-semibold">(Item Terpilih)</span>
+                    )}
+                  </p>
+                </div>
               </div>
-              <div className="text-right text-xs text-slate-500">
-                <p>Tanggal: {new Date().toLocaleDateString('id-ID', { dateStyle: 'full' })}</p>
-                <p>
-                  Total Data: <span className="font-semibold text-slate-800">{printData.length} baris</span>
-                  {selectedIds.size > 0 && printScope === 'selected' && (
-                    <span className="ml-1 text-emerald-600 font-semibold">(Item Terpilih)</span>
-                  )}
-                </p>
-              </div>
-            </div>
 
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="border-b-2 border-slate-800 bg-slate-100">
-                  <th className="p-2 text-center w-10">No</th>
-                  {columns.map((col) => (
-                    <th key={col.key} className="p-2 font-semibold text-slate-800" style={{ textAlign: col.align || 'left' }}>
-                      {col.header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {printData.slice(0, 50).map((row, idx) => (
-                  <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50/50">
-                    <td className="p-2 text-center text-slate-500">{idx + 1}</td>
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="border-b-2 border-slate-800 bg-slate-100">
+                    <th className="p-2 text-center w-10 font-bold text-slate-800">No</th>
                     {columns.map((col) => (
-                      <td key={col.key} className="p-2 text-slate-700" style={{ textAlign: col.align || 'left' }}>
-                        {col.exportValue ? col.exportValue(row) : String(row[col.key] ?? '-')}
-                      </td>
+                      <th key={col.key} className="p-2 font-bold text-slate-800" style={{ textAlign: col.align || 'left' }}>
+                        {col.header}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {printData.slice(0, 50).map((row, idx) => (
+                    <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50/50">
+                      <td className="p-2 text-center text-slate-500">{idx + 1}</td>
+                      {columns.map((col) => (
+                        <td key={col.key} className="p-2 text-slate-700" style={{ textAlign: col.align || 'left' }}>
+                          {col.exportValue ? col.exportValue(row) : String(row[col.key] ?? '-')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            {printData.length > 50 && (
-              <p className="mt-3 text-center text-xs italic text-slate-500 bg-slate-50 py-1.5 rounded border border-dashed border-slate-200">
-                (Menampilkan 50 data pertama untuk pratinjau modal. Seluruh {printData.length} baris akan dicetak penuh saat menekan tombol &ldquo;Cetak Dokumen&rdquo;.)
-              </p>
-            )}
+              {printData.length > 50 && (
+                <p className="mt-3 text-center text-xs italic text-slate-500 bg-slate-50 py-1.5 rounded border border-dashed border-slate-200">
+                  (Menampilkan 50 data pertama untuk pratinjau modal. Seluruh {printData.length} baris akan diunduh/dicetak penuh saat menekan tombol &ldquo;Download PDF&rdquo; atau &ldquo;Cetak Dokumen&rdquo;.)
+                </p>
+              )}
+
+              <div className="mt-4 pt-2.5 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-400">
+                <span>Dokumen Resmi HERO Desktop • PT Chitra Paratama</span>
+                <span>Standar Dokumen A4 {columns.length > 5 ? 'Landscape' : 'Portrait'}</span>
+              </div>
+            </div>
           </div>
 
           <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs text-muted-foreground">
               Format cetak resmi otomatis A4 {columns.length > 5 ? 'Landscape' : 'Portrait'}
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -1232,13 +1520,38 @@ export function HeroDataTable<T extends Record<string, any>>({
               </Button>
               <Button
                 type="button"
-                variant="default"
+                variant="outline"
+                size="dense"
+                onClick={handlePreviewPdfNewTab}
+                disabled={isGeneratingPdf}
+                className="h-9 gap-1.5 text-xs font-medium"
+                title="Buka pratinjau PDF langsung di tab baru browser"
+              >
+                <ExternalLink className="size-3.5" />
+                Lihat di Tab Baru
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
                 size="dense"
                 onClick={handlePrintDocument}
                 className="h-9 gap-1.5 text-xs font-semibold"
+                title="Buka dialog cetak printer fisik"
               >
                 <Printer className="size-3.5" />
-                Cetak ({printData.length})
+                Cetak Fisik
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="dense"
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="h-9 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                title="Download file PDF langsung ke komputer"
+              >
+                {isGeneratingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                Download PDF ({printData.length})
               </Button>
             </div>
           </DialogFooter>

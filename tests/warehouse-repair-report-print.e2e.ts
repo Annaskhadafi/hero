@@ -73,17 +73,70 @@ test('verifies that selecting 3 items only exports and prints the 3 selected ite
   await new Promise((resolve) => setTimeout(resolve, 800));
   expect(await browser.locator('[role="dialog"] .pdf-wrapper tbody tr').count()).toBe(3);
 
-  // 10. Click Cetak Dokumen to trigger printing pipeline
+  // 10. Verify Download PDF button is visible and active
+  const downloadPdfBtn = browser.locator('[role="dialog"] button:has-text("Download PDF")').first();
+  await expect(downloadPdfBtn).toBeVisible({ timeout: 5000 });
+
+  // 11. Click Download PDF button
+  await downloadPdfBtn.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  // 12. Click Cetak Dokumen to trigger printing pipeline
   const cetakBtn = browser.locator('[role="dialog"] button:has-text("Cetak Dokumen")').first();
   await expect(cetakBtn).toBeVisible({ timeout: 5000 });
   await cetakBtn.click();
   await new Promise((resolve) => setTimeout(resolve, 1000));
 
-  // 11. Screenshot 2: Completed verification of print modal and scope
+  // 13. Screenshot 2: Completed verification of print modal, Download PDF and scope
   await app.screenshot('02-laporan-stok-print-executed-successfully');
 
   // Close dialog
   const closeBtn = browser.locator('[role="dialog"] button:has-text("Tutup")').first();
   await closeBtn.click();
   await new Promise((resolve) => setTimeout(resolve, 1000));
+
+  // 14. Specific verification for user scenario: Search while items are selected
+  // Clear any existing selection first
+  const cancelBtn = browser.locator('button:has-text("Batalkan")').first();
+  if (await cancelBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await cancelBtn.click();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+  }
+
+  // Select 2 items
+  await rowCheckboxes.nth(0).click();
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  await rowCheckboxes.nth(1).click();
+  await new Promise((resolve) => setTimeout(resolve, 800));
+
+  // Verify bulk actions bar shows "2 baris data dipilih"
+  await expect(browser.locator('text=2 baris data dipilih').first()).toBeVisible({ timeout: 5000 });
+
+  // Now type a search query that only matches the first item (e.g. search input)
+  const searchInput = browser.locator('input[placeholder*="Cari part code"]').first();
+  await searchInput.fill('cushi');
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
+  // Open PDF modal while search query is active
+  const pdfBtn2 = browser.locator('button:has-text("PDF (2)")').first();
+  await expect(pdfBtn2).toBeVisible({ timeout: 5000 });
+  await pdfBtn2.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  // CRITICAL VERIFICATION: Both selected items MUST appear in the preview, NOT just 1!
+  const rowsInFilteredPreview = browser.locator('[role="dialog"] .pdf-wrapper tbody tr');
+  const countInFiltered = await rowsInFilteredPreview.count();
+  console.log('Row count in PDF preview while search is active:', countInFiltered);
+  expect(countInFiltered).toBe(2);
+
+  // Verify Download PDF (2) button in modal footer
+  const modalDownloadPdf = browser.locator('[role="dialog"] button:has-text("Download PDF (2)")').first();
+  await expect(modalDownloadPdf).toBeVisible({ timeout: 5000 });
+
+  // Screenshot 3: User scenario verified - 2 selected items stay in preview even with active search
+  await app.screenshot('03-laporan-stok-search-filtered-selection-preserved');
+
+  // Close modal
+  await browser.locator('[role="dialog"] button:has-text("Tutup")').first().click();
+  await new Promise((resolve) => setTimeout(resolve, 800));
 });
