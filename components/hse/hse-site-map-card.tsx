@@ -358,13 +358,19 @@ export function HseSiteMapCard({
           </div>
 
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1" title="Total tenaga kerja aktif seluruh site">
               <Users className="size-3.5 text-slate-500" />
               Manpower: <strong className="text-foreground">{new Intl.NumberFormat('id-ID').format(stats.totalManpower)}</strong>
             </span>
-            <span className="flex items-center gap-1">
+            <span
+              className="flex items-center gap-1"
+              title={`Total jam kerja aman seluruh site untuk periode ${selectedMonthLabel}`}
+            >
               <Clock className="size-3.5 text-slate-500" />
-              Total Jam Kerja Aman: <strong className="text-foreground">{new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(stats.totalManHours)} Jam</strong>
+              Jam Kerja Aman ({selectedMonthLabel}):{' '}
+              <strong className="text-foreground">
+                {new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(stats.totalManHours)} Jam
+              </strong>
             </span>
           </div>
         </div>
