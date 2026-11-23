@@ -685,7 +685,7 @@ export async function exportAttendanceGridVisualXlsx({
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'HERO Timesheet System'
   const sheet = workbook.addWorksheet('Attendance Grid', {
-    views: [{ state: 'frozen', xSplit: 2, ySplit: 5 }],
+    views: [{ state: 'frozen', xSplit: 3, ySplit: 5 }],
   })
 
   // Title block
@@ -698,6 +698,7 @@ export async function exportAttendanceGridVisualXlsx({
   const headerRow = [
     'No',
     'Nama Karyawan',
+    'SN',
     ...days.map((d) => `Tgl ${d}`),
     'Total Masuk',
     'Total Sakit',
@@ -721,7 +722,7 @@ export async function exportAttendanceGridVisualXlsx({
     let iCount = 0
     let oCount = 0
 
-    const rowData: any[] = [index + 1, emp.name]
+    const rowData: any[] = [index + 1, emp.name, emp.employeeSn || '-']
 
     days.forEach((d) => {
       const cellVal = emp.dailyAttendance[d]
@@ -745,12 +746,16 @@ export async function exportAttendanceGridVisualXlsx({
     const r = sheet.addRow(rowData)
     r.height = 19
 
+    r.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' }
+    r.getCell(2).alignment = { vertical: 'middle', horizontal: 'left' }
+    r.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' }
+
     // Formatting
     days.forEach((d, dIdx) => {
       const cellVal = emp.dailyAttendance[d]
       const rawStatus = typeof cellVal === 'string' ? cellVal : cellVal?.status || '-'
       const style = getStatusStyle(rawStatus)
-      const c = r.getCell(2 + dIdx + 1)
+      const c = r.getCell(3 + dIdx + 1)
       if (style.bg !== 'FFFFFFFF') {
         c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.bg } }
         c.font = { name: 'Calibri', size: 9, bold: true, color: { argb: style.text } }
@@ -762,13 +767,14 @@ export async function exportAttendanceGridVisualXlsx({
   // Auto-fit widths
   sheet.getColumn(1).width = 6
   sheet.getColumn(2).width = 28
+  sheet.getColumn(3).width = 12
   days.forEach((_, i) => {
-    sheet.getColumn(3 + i).width = 7.5
+    sheet.getColumn(4 + i).width = 7.5
   })
-  sheet.getColumn(3 + days.length).width = 13
   sheet.getColumn(4 + days.length).width = 13
   sheet.getColumn(5 + days.length).width = 13
   sheet.getColumn(6 + days.length).width = 13
+  sheet.getColumn(7 + days.length).width = 13
 
   const buffer = await workbook.xlsx.writeBuffer()
   const blob = new Blob([buffer], {
@@ -1147,6 +1153,10 @@ export function buildTimesheetWorksheet(
   const isOvertime = tab === 'ovt'
   const isPayrollOvertime = tab === 'payroll_ovt'
 
+  // ── TABLE HEADERS (ROWS 6 & 7) ──
+  const baseHeaders = ['No', 'Nama Karyawan', 'SN', 'Manpower', 'Section / Role', 'Departemen']
+  const totalBaseCols = baseHeaders.length // 6
+
   const sheet = workbook.addWorksheet(sheetName, {
     pageSetup: {
       orientation: 'landscape',
@@ -1155,7 +1165,7 @@ export function buildTimesheetWorksheet(
       fitToHeight: 0,
       paperSize: 9, // A4
     },
-    views: [{ state: 'frozen', xSplit: 5, ySplit: 7 }],
+    views: [{ state: 'frozen', xSplit: totalBaseCols, ySplit: 7 }],
   })
 
   // ── ROW 1-4: TITLE & BANNER ──
@@ -1187,10 +1197,6 @@ export function buildTimesheetWorksheet(
 
   sheet.addRow([]) // Row 5: empty spacing row
 
-  // ── TABLE HEADERS (ROWS 6 & 7) ──
-  const baseHeaders = ['No', 'Nama Karyawan', 'Manpower', 'Section / Role', 'Departemen']
-  const totalBaseCols = baseHeaders.length // 5
-
   const colDateCount = options.dateHeaders && options.dateHeaders.length > 0 ? options.dateHeaders.length : days.length
   const topHeaderRow = [...baseHeaders]
   if (options.dateHeaders && options.dateHeaders.length > 0) {
@@ -1220,7 +1226,7 @@ export function buildTimesheetWorksheet(
   const header1 = sheet.addRow(topHeaderRow)
   header1.height = 22
 
-  const subHeaderRow = ['', '', '', '', '']
+  const subHeaderRow = new Array(totalBaseCols).fill('')
   if (options.dateHeaders && options.dateHeaders.length > 0) {
     options.dateHeaders.forEach((dh) => {
       subHeaderRow.push(dh.subHeader)
@@ -1427,6 +1433,7 @@ export function buildTimesheetWorksheet(
         const rowData: any[] = [
           rowCounter++,
           emp.name,
+          emp.employeeSn?.trim() || (emp.id ? String(emp.id) : '-'),
           emp.manpower?.trim() || 'Lokal',
           emp.section || emp.role || '-',
           emp.department || '-',
@@ -1815,11 +1822,19 @@ export function buildTimesheetWorksheet(
             }
           } else if (c === 3) {
             currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
+            currentCell.font = {
+              name: 'Calibri',
+              size: 9,
+              bold: true,
+              color: { argb: 'FF0F172A' },
+            }
+          } else if (c === 4) {
+            currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
             currentCell.font = { name: 'Calibri', size: 8.5, color: { argb: 'FF475569' } }
-          } else if (c === 4 || c === 5) {
+          } else if (c === 5 || c === 6) {
             currentCell.alignment = { vertical: 'middle', horizontal: 'left' }
             currentCell.font = { name: 'Calibri', size: 8.5, color: { argb: 'FF475569' } }
-          } else if (c > totalBaseCols + days.length) {
+          } else if (c > totalBaseCols + colDateCount) {
             // Summary column(s)
             if (isAllowance) {
               currentCell.alignment = { vertical: 'middle', horizontal: 'right' }
@@ -1850,7 +1865,7 @@ export function buildTimesheetWorksheet(
               }
               currentCell.numFmt = '0.0 "Jam"'
             } else if (isPayrollOvertime) {
-              const summaryOffset = c - (totalBaseCols + days.length)
+              const summaryOffset = c - (totalBaseCols + colDateCount)
               currentCell.alignment = { vertical: 'middle', horizontal: 'center' }
               if (summaryOffset === 1 || summaryOffset === 2) {
                 // Separate mandatory and SPL hours
@@ -1937,10 +1952,10 @@ export function buildTimesheetWorksheet(
   })
 
   // ── GRAND TOTAL SUMMARY ROW AT BOTTOM ──
-  const summaryRowData: any[] = ['TOTAL KESELURUHAN', '', '', '', '']
-  days.forEach((_, idx) => {
-    summaryRowData.push(dailySums[idx])
-  })
+  const summaryRowData: any[] = ['TOTAL KESELURUHAN', ...new Array(totalBaseCols - 1).fill('')]
+  for (let idx = 0; idx < colDateCount; idx++) {
+    summaryRowData.push(dailySums[idx] ?? 0)
+  }
 
   if (isAttendance) {
     summaryRowData.push(
@@ -1992,10 +2007,10 @@ export function buildTimesheetWorksheet(
     if (isAllowance && c > totalBaseCols) {
       cell.numFmt = '"Rp "#,##0'
       cell.alignment = { vertical: 'middle', horizontal: 'right' }
-    } else if (isOvertime && c > totalBaseCols + days.length) {
+    } else if (isOvertime && c > totalBaseCols + colDateCount) {
       cell.numFmt = '0.0 "Jam"'
-    } else if (isPayrollOvertime && c > totalBaseCols + days.length) {
-      const summaryOffset = c - (totalBaseCols + days.length)
+    } else if (isPayrollOvertime && c > totalBaseCols + colDateCount) {
+      const summaryOffset = c - (totalBaseCols + colDateCount)
       if (summaryOffset <= 3) {
         cell.numFmt = '0.0'
       } else {
@@ -2012,10 +2027,12 @@ export function buildTimesheetWorksheet(
     } else if (colNumber === 2) {
       col.width = 27 // Nama Karyawan
     } else if (colNumber === 3) {
-      col.width = 14 // Manpower
+      col.width = 12 // SN
     } else if (colNumber === 4) {
-      col.width = 22 // Section / Role
+      col.width = 14 // Manpower
     } else if (colNumber === 5) {
+      col.width = 22 // Section / Role
+    } else if (colNumber === 6) {
       col.width = 20 // Departemen
     } else if (colNumber <= totalBaseCols + colDateCount) {
       col.width = isAttendance ? 13 : isAllowance ? 11 : 8.5

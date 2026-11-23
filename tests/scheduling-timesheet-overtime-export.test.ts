@@ -58,9 +58,10 @@ test('overtime export honors manual overtime override (Benni Day 18 11h override
 
   const row = sheet.getRows(1, sheet.rowCount)?.find((candidate) => candidate.getCell(2).value === 'Benni Sianipar')
   expect(row).toBeDefined()
-  // Col 1: No (1), Col 2: Name (Benni Sianipar), Col 3: Manpower, Col 4: Section, Col 5: Dept
-  // Col 6: Tgl 17 (6), Col 7: Tgl 18 (11), Col 8: Tgl 19 (4)
-  expect(row?.getCell(6).value).toBe(6)
-  expect(row?.getCell(7).value).toBe(11)
-  expect(row?.getCell(8).value).toBe(4)
+  // Col 1: No (1), Col 2: Name (Benni Sianipar), Col 3: SN (62317), Col 4: Manpower, Col 5: Section, Col 6: Dept
+  // Col 7: Tgl 17 (6), Col 8: Tgl 18 (11), Col 9: Tgl 19 (4)
+  expect(row?.getCell(3).value).toBe('62317')
+  expect(row?.getCell(7).value).toBe(6)
+  expect(row?.getCell(8).value).toBe(11)
+  expect(row?.getCell(9).value).toBe(4)
 })

@@ -54,12 +54,28 @@ describe('Attendance Excel Export with CK Cut-off (16 - 15)', () => {
     const row3Text = sheet.getRow(3).getCell(1).value as string
     expect(row3Text).toContain('Cut-off Tagihan CK (16 Sep - 15 Okt 2026)')
 
-    // Row 6 (Top Header): Col 1 to 5 are base headers, Col 6 is first date column (16 Sep)
+    // Row 6 (Top Header): Col 1 to 6 are base headers (No, Nama Karyawan, SN, Manpower, Section / Role, Departemen), Col 7 is first date column (16 Sep)
     const headerRow = sheet.getRow(6)
-    expect(headerRow.getCell(6).value).toBe('16 Sep')
-    expect(headerRow.getCell(20).value).toBe('30 Sep')
-    expect(headerRow.getCell(21).value).toBe('01 Okt')
-    expect(headerRow.getCell(35).value).toBe('15 Okt')
+    expect(headerRow.getCell(1).value).toBe('No')
+    expect(headerRow.getCell(2).value).toBe('Nama Karyawan')
+    expect(headerRow.getCell(3).value).toBe('SN')
+    expect(headerRow.getCell(4).value).toBe('Manpower')
+    expect(headerRow.getCell(5).value).toBe('Section / Role')
+    expect(headerRow.getCell(6).value).toBe('Departemen')
+    expect(headerRow.getCell(7).value).toBe('16 Sep')
+    expect(headerRow.getCell(21).value).toBe('30 Sep')
+    expect(headerRow.getCell(22).value).toBe('01 Okt')
+    expect(headerRow.getCell(36).value).toBe('15 Okt')
+
+    // Verify employee data row has SN in column 3
+    const foundEmpRow = sheet.getRows(1, sheet.rowCount)?.find((r) => r.getCell(2).value === 'Test Karyawan CK')
+    expect(foundEmpRow).toBeDefined()
+    expect(foundEmpRow?.getCell(1).value).toBe(1)
+    expect(foundEmpRow?.getCell(2).value).toBe('Test Karyawan CK')
+    expect(foundEmpRow?.getCell(3).value).toBe('71001')
+    expect(foundEmpRow?.getCell(4).value).toBe('Lokal')
+    expect(foundEmpRow?.getCell(5).value).toBe('Service Operation')
+    expect(foundEmpRow?.getCell(6).value).toBe('Central Services')
   })
 
   test('exportAttendanceGridToExcel properly formats dateHeaders for checkin-checkout and attendance modes', async () => {
