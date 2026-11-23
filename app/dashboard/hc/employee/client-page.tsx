@@ -74,6 +74,7 @@ type Employee = {
   workLocationId: number | null;
   positionId: number | null;
   manpower: string | null;
+  costCenter?: string | null;
   lastMcuDate: string | null;
 };
 
@@ -130,6 +131,7 @@ type EmployeeFormData = {
   expMinePermit: string;
   lastMcuDate: string;
   manpower: string;
+  costCenter: string;
   locationChangeReason?: string;
 };
 
@@ -490,6 +492,7 @@ function emptyFormData(): EmployeeFormData {
     expMinePermit: "",
     lastMcuDate: "",
     manpower: "Lokal",
+    costCenter: "",
     locationChangeReason: "Pemindahan Lokasi",
   };
 }
@@ -519,6 +522,7 @@ function employeeToFormData(emp: Employee): EmployeeFormData {
     expMinePermit: toInputDate(emp.expMinePermit),
     lastMcuDate: toInputDate(emp.lastMcuDate),
     manpower: emp.manpower || "Lokal",
+    costCenter: emp.costCenter ?? "",
     locationChangeReason: "Pemindahan Lokasi",
   };
 }
@@ -556,6 +560,7 @@ export function EmployeeClientPage({
     expMinePermit: "",
     lastMcuDate: "",
     manpower: "",
+    costCenter: "",
   });
 
   const handleSelectAll = (checked: boolean) => {
@@ -763,6 +768,7 @@ export function EmployeeClientPage({
         expMinePermit: formData.expMinePermit || undefined,
         lastMcuDate: formData.lastMcuDate || undefined,
         manpower: formData.manpower || "Lokal",
+        costCenter: formData.costCenter ? formData.costCenter.trim() : null,
         locationChangeReason: formData.locationChangeReason || "Pemindahan Lokasi",
       };
 
@@ -783,6 +789,7 @@ export function EmployeeClientPage({
                   departmentId: payload.departmentId ?? null,
                   sectionId: payload.sectionId ?? null,
                   workLocationId: payload.workLocationId ?? null,
+                  costCenter: payload.costCenter ?? null,
                   positionId: payload.positionId ?? null,
                   joinDate: payload.joinDate ?? null,
                   contractStart: payload.contractStart ?? null,
@@ -830,6 +837,7 @@ export function EmployeeClientPage({
             departmentId: formData.departmentId ? Number(formData.departmentId) : null,
             sectionId: formData.sectionId ? Number(formData.sectionId) : null,
             workLocationId: formData.workLocationId ? Number(formData.workLocationId) : null,
+            costCenter: payload.costCenter ?? null,
             positionId: formData.positionId ? Number(formData.positionId) : null,
             manpower: formData.manpower || "Lokal",
           };
@@ -984,6 +992,7 @@ export function EmployeeClientPage({
               <TableHead>Manpower</TableHead>
               <TableHead>Departemen</TableHead>
               <TableHead>Section</TableHead>
+              <TableHead>Cost Center</TableHead>
               <TableHead>Job Title</TableHead>
               <TableHead>Lokasi</TableHead>
               <TableHead className="text-center">Tgl Masuk</TableHead>
@@ -999,7 +1008,7 @@ export function EmployeeClientPage({
             {data.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={14}
+                  colSpan={17}
                   className="py-12 text-center text-muted-foreground"
                 >
                   <Users className="mx-auto mb-3 size-10 opacity-20" />
@@ -1064,6 +1073,9 @@ export function EmployeeClientPage({
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {emp.sectionName ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground font-mono text-xs">
+                      {emp.costCenter || "-"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {emp.jobTitle ?? "-"}
@@ -1336,6 +1348,20 @@ export function EmployeeClientPage({
               />
             </div>
 
+            {/* Cost Center */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Cost Center
+              </label>
+              <input
+                type="text"
+                value={formData.costCenter}
+                onChange={(e) => updateFormField("costCenter", e.target.value)}
+                placeholder="Contoh: CC-101 / 2100 (opsional)"
+                className="flex h-9 w-full rounded-lg border border-border/70 bg-white px-3 text-sm shadow-none placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+
             {/* Row 4: Site & Location */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
@@ -1541,6 +1567,7 @@ export function EmployeeClientPage({
                 value={viewingEmployee.departmentName}
               />
               <DetailRow label="Section" value={viewingEmployee.sectionName} />
+              <DetailRow label="Cost Center" value={viewingEmployee.costCenter || "-"} />
               <DetailRow label="Job Title" value={viewingEmployee.jobTitle} />
               <DetailRow label="Level" value={viewingEmployee.levelName} />
               <DetailRow label="Lokasi Kerja" value={viewingEmployee.location} />
@@ -1738,6 +1765,16 @@ export function EmployeeClientPage({
               value={bulkFormData.lastMcuDate}
               onChange={(e) => setBulkFormData({ ...bulkFormData, lastMcuDate: e.target.value })}
               className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Cost Center</label>
+            <input
+              type="text"
+              placeholder="-- Tidak Diubah / Masukkan Cost Center --"
+              value={bulkFormData.costCenter}
+              onChange={(e) => setBulkFormData({ ...bulkFormData, costCenter: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
         </EnterpriseFormGrid>

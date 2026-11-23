@@ -31,6 +31,7 @@ export async function getEmployeesForContract(filters?: {
 
   try {
     await db.execute(sql`ALTER TABLE hero_employees ADD COLUMN IF NOT EXISTS direct_manager_ids text DEFAULT '[]';`);
+    await db.execute(sql`ALTER TABLE hero_employees ADD COLUMN IF NOT EXISTS cost_center text;`);
   } catch {}
 
   const rows = await db
@@ -56,6 +57,7 @@ export async function getEmployeesForContract(filters?: {
       siteName: sites.name,
       location: sites.location,
       workLocationId: employees.siteId,
+      costCenter: employees.costCenter,
       directManagerId: employees.directManagerId,
       directManagerIds: employees.directManagerIds,
       directManagerName: sql<string | null>`(
@@ -174,6 +176,7 @@ export async function createEmployee(data: {
   expMinePermit?: string | null;
   accountStatus?: string;
   manpower?: string;
+  costCenter?: string | null;
   lastMcuDate?: string | null;
 }) {
   const session = await getServerSession();
@@ -207,6 +210,7 @@ export async function createEmployee(data: {
     departmentId: data.departmentId,
     sectionId: data.sectionId,
     siteId: data.siteId,
+    costCenter: data.costCenter ? data.costCenter.trim() : null,
     positionId: data.positionId,
     joinDate: data.joinDate,
     contractDurationStart: data.contractStart,
@@ -281,6 +285,7 @@ export async function updateEmployee(id: number, data: {
   expMinePermit?: string | null;
   accountStatus?: string;
   manpower?: string;
+  costCenter?: string | null;
   lastMcuDate?: string | null;
   locationChangeReason?: string;
 }) {
@@ -312,6 +317,7 @@ export async function updateEmployee(id: number, data: {
   if (data.departmentId !== undefined) setData.departmentId = data.departmentId;
   if (data.sectionId !== undefined) setData.sectionId = data.sectionId;
   if (data.siteId !== undefined) setData.siteId = data.siteId;
+  if (data.costCenter !== undefined) setData.costCenter = data.costCenter ? data.costCenter.trim() : null;
   if (data.positionId !== undefined) setData.positionId = data.positionId;
   if (data.joinDate !== undefined) setData.joinDate = data.joinDate;
   if (data.contractStart !== undefined) setData.contractDurationStart = data.contractStart;
@@ -437,6 +443,7 @@ export async function bulkUpdateEmployees(ids: number[], data: Record<string, an
   if (data.positionId !== undefined && data.positionId !== "") setData.positionId = Number(data.positionId);
   if (data.expMinePermit !== undefined && data.expMinePermit !== "") setData.expMinePermit = data.expMinePermit;
   if (data.manpower !== undefined && data.manpower !== "") setData.manpower = data.manpower;
+  if (data.costCenter !== undefined && data.costCenter !== "") setData.costCenter = data.costCenter.trim();
   
   if (Object.keys(setData || {}).length > 0) {
     await db.update(employees).set(setData).where(inArray(employees.id, ids));

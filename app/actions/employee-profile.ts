@@ -113,6 +113,7 @@ export async function getEmployeeFullProfile(hrEmployeeId: number) {
       departmentId: employees.departmentId,
       departmentName: masterDepartments.name,
       sectionName: masterSections.name,
+      costCenter: employees.costCenter,
       siteName: sites.name,
       location: sites.location,
       siteId: employees.siteId,

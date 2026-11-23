@@ -609,6 +609,10 @@ export function EmployeeProfileClientPage({
                     <span className="font-semibold text-foreground text-right">{emp.sectionName || "-"}</span>
                   </div>
                   <div className="grid grid-cols-2 py-2 border-b border-border/50">
+                    <span className="text-muted-foreground">Cost Center</span>
+                    <span className="font-semibold text-foreground text-right">{(emp as any).costCenter || "-"}</span>
+                  </div>
+                  <div className="grid grid-cols-2 py-2 border-b border-border/50">
                     <span className="text-muted-foreground">Mulai Kontrak</span>
                     <span className="font-semibold text-foreground text-right">{formatDate(emp.contractStart)}</span>
                   </div>
