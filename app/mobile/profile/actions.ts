@@ -137,6 +137,35 @@ export async function updateMobileProfileAction(
   };
 }
 
+export async function toggleBusinessCardSharingAction(enabled: boolean): Promise<MobileProfileActionState & { token?: string }> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user?.email) return { ok: false, message: "Session tidak valid." };
+
+  const employee = await getCurrentUserManagementEmployee(session.user);
+  if (!employee) return { ok: false, message: "Data karyawan tidak ditemukan." };
+
+  const [current] = await db
+    .select({ token: employees.businessCardPublicToken })
+    .from(employees)
+    .where(eq(employees.id, employee.id))
+    .limit(1);
+
+  if (!enabled) {
+    await db.update(employees)
+      .set({ businessCardPublicEnabled: false })
+      .where(eq(employees.id, employee.id));
+    revalidatePath("/mobile/profile");
+    return { ok: true, message: "Kartu kontak publik dinonaktifkan." };
+  }
+
+  const token = current?.token ?? `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+  await db.update(employees)
+    .set({ businessCardPublicEnabled: true, businessCardPublicToken: token })
+    .where(eq(employees.id, employee.id));
+  revalidatePath("/mobile/profile");
+  return { ok: true, message: "Kartu kontak publik diaktifkan.", token };
+}
+
 export async function updateMobileEmailAction(
   _previousState: MobileProfileActionState = emptyState,
   formData: FormData,

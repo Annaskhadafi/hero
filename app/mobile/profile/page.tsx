@@ -8,6 +8,7 @@ import {
 
 import { ExpandableList } from "@/components/expandable-list";
 import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settings";
+import { MobileBusinessCard } from "@/components/mobile/mobile-business-card";
 import { MobileSignatureSection } from "@/components/mobile/mobile-signature-section";
 import { CollapsibleSection } from "@/components/mobile/collapsible-section";
 import { MobileRewardStoreSection } from "@/components/mobile/mobile-reward-store-section";
@@ -93,12 +94,30 @@ export default async function MobileProfilePage() {
 
   const [emp] = authUser?.id
     ? await db
-        .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
+        .select({
+          id: employees.id,
+          authUserId: employees.authUserId,
+          email: employees.email,
+          businessCardPublicEnabled: employees.businessCardPublicEnabled,
+          businessCardPublicToken: employees.businessCardPublicToken,
+          phoneNumber: employees.phoneNumber,
+          jobTitle: employees.jobTitle,
+          role: employees.role,
+        })
         .from(employees)
         .where(eq(employees.authUserId, authUser.id))
         .limit(1)
     : await db
-        .select({ id: employees.id, authUserId: employees.authUserId, email: employees.email })
+        .select({
+          id: employees.id,
+          authUserId: employees.authUserId,
+          email: employees.email,
+          businessCardPublicEnabled: employees.businessCardPublicEnabled,
+          businessCardPublicToken: employees.businessCardPublicToken,
+          phoneNumber: employees.phoneNumber,
+          jobTitle: employees.jobTitle,
+          role: employees.role,
+        })
         .from(employees)
         .where(sql`lower(${employees.email}) = ${normalizedSessionEmail}`)
         .limit(1);
@@ -205,6 +224,15 @@ export default async function MobileProfilePage() {
           </div>
         </div>
       </section>
+
+      <MobileBusinessCard
+        name={data.employee.name}
+        title={emp?.jobTitle || emp?.role || data.employee.role}
+        email={userManagementEmail}
+        phone={emp?.phoneNumber || data.employee.phoneNumber || ""}
+        enabled={emp?.businessCardPublicEnabled ?? false}
+        token={emp?.businessCardPublicToken ?? null}
+      />
 
       {/* ── Stats ────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
