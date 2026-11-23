@@ -79,7 +79,18 @@ export interface MobileTroubleshootDashboardData {
   categoryStats: CategoryStatItem[]
   siteSummary: SiteSummaryItem[]
   sites: Array<{ id: number; name: string }>
-  categories: Array<{ id: number; code: string; name: string; color: string; default_sla_hours: number }>
+  categories: Array<{
+    id: number
+    code: string
+    name: string
+    color: string
+    default_sla_hours: number
+    target_department_id?: number | null
+    default_assigned_employees?: any[]
+    default_priority?: string
+  }>
+  departments?: Array<{ id: number; name: string }>
+  employees?: Array<{ id: number; name: string; employee_sn?: string; role?: string; department_id?: number | null }>
 }
 
 interface MobileTroubleshootClientProps {
@@ -96,6 +107,8 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
     siteSummary: initialData?.siteSummary || [],
     sites: initialData?.sites || [],
     categories: initialData?.categories || [],
+    departments: initialData?.departments || [],
+    employees: initialData?.employees || [],
   })
 
   const [activeTab, setActiveTab] = useState<'tickets' | 'categories' | 'sites'>('tickets')
@@ -133,11 +146,46 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
     priority: 'tinggi' as 'kritis' | 'tinggi' | 'sedang' | 'rendah',
     categoryName: data.categories[0]?.name || 'Timesheet & Roster Kerja',
     sourceDetail: 'Pelaporan Pengguna Mobile',
+    targetDepartmentId: '',
+    assignedEmployeeId: '',
+    isCustomCategory: false,
+    customCategoryName: '',
   })
   const [formAttachments, setFormAttachments] = useState<Array<{ url: string; name: string; size: number; type: string }>>([])
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
+
+  // Auto-fill target department and assigned PIC when category changes
+  const handleCategoryChange = (val: string) => {
+    if (val === '__custom__') {
+      setCreateForm((prev) => ({
+        ...prev,
+        categoryName: '__custom__',
+        isCustomCategory: true,
+      }))
+      return
+    }
+    const match = (data.categories || []).find((c) => c.name === val)
+    setCreateForm((prev) => ({
+      ...prev,
+      categoryName: val,
+      isCustomCategory: false,
+      targetDepartmentId: match?.target_department_id ? String(match.target_department_id) : prev.targetDepartmentId,
+      assignedEmployeeId: (Array.isArray(match?.default_assigned_employees) && match?.default_assigned_employees.length > 0)
+        ? String(match.default_assigned_employees[0].id)
+        : prev.assignedEmployeeId,
+      priority: (match?.default_priority as any) || prev.priority,
+    }))
+  }
+
+  const filteredEmployees = useMemo(() => {
+    const list = data.employees || []
+    if (!createForm.targetDepartmentId) return list
+    const deptId = parseInt(createForm.targetDepartmentId, 10)
+    const inDept = list.filter((e) => e.department_id === deptId)
+    return inDept.length > 0 ? inDept : list
+  }, [data.employees, createForm.targetDepartmentId])
 
   // Load activities when selected ticket changes
   useEffect(() => {
@@ -271,14 +319,26 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
       return
     }
 
+    const finalCat = createForm.isCustomCategory ? createForm.customCategoryName.trim() : createForm.categoryName
+    if (!finalCat) {
+      toast.error('Kategori kendala wajib diisi')
+      return
+    }
+
+    const selectedEmp = (data.employees || []).find((e) => String(e.id) === createForm.assignedEmployeeId)
+
     startTransition(async () => {
       try {
         const res = await createTroubleshootTicket({
-          title: createForm.title,
-          findingDescription: createForm.description,
+          title: createForm.title.trim(),
+          findingDescription: createForm.description.trim(),
           unitCode: createForm.unitCode.trim() || undefined,
           siteId: parseInt(createForm.siteId, 10),
-          categoryName: createForm.categoryName,
+          categoryName: finalCat,
+          targetDepartmentId: createForm.targetDepartmentId ? parseInt(createForm.targetDepartmentId, 10) : undefined,
+          assignedEmployeeId: createForm.assignedEmployeeId ? parseInt(createForm.assignedEmployeeId, 10) : undefined,
+          assignedEmployeeName: selectedEmp?.name,
+          assignedRole: selectedEmp?.role,
           priority: createForm.priority,
           attachments: formAttachments,
           sourceDetail: createForm.sourceDetail,
@@ -296,6 +356,10 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
             priority: 'tinggi',
             categoryName: data.categories[0]?.name || 'Timesheet & Roster Kerja',
             sourceDetail: 'Pelaporan Pengguna Mobile',
+            targetDepartmentId: '',
+            assignedEmployeeId: '',
+            isCustomCategory: false,
+            customCategoryName: '',
           })
           await refreshData()
         } else {
@@ -1178,12 +1242,13 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
                 </label>
                 <select
                   value={createForm.categoryName}
-                  onChange={(e) => setCreateForm({ ...createForm, categoryName: e.target.value })}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
                   className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
                 >
                   {(data.categories || []).map((c) => (
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}
+                  <option value="__custom__">✨ + Kategori Kustom / Lainnya...</option>
                 </select>
               </div>
               <div>
@@ -1199,6 +1264,61 @@ export function MobileTroubleshootClient({ initialData }: MobileTroubleshootClie
                   <option value="tinggi">Tinggi (SLA 8 Jam)</option>
                   <option value="sedang">Sedang (SLA 24 Jam)</option>
                   <option value="rendah">Rendah (SLA 48 Jam)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Custom Category Input */}
+            {createForm.isCustomCategory && (
+              <div className="p-2 rounded-lg border border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20">
+                <label className="font-semibold block mb-1 text-blue-800 dark:text-blue-300 text-xs">
+                  Nama Kategori Kustom <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  placeholder="Contoh: Kerusakan AC Kantor / Kabel Jaringan Terputus"
+                  value={createForm.customCategoryName}
+                  onChange={(e) => setCreateForm({ ...createForm, customCategoryName: e.target.value })}
+                  className="h-9 text-xs bg-white dark:bg-slate-900"
+                  required
+                />
+              </div>
+            )}
+
+            {/* Departemen Tujuan & Ditujukan Kepada (PIC) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="font-semibold block mb-1 text-slate-700 dark:text-slate-300">
+                  Departemen Tujuan <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={createForm.targetDepartmentId}
+                  onChange={(e) => setCreateForm({ ...createForm, targetDepartmentId: e.target.value })}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                  required
+                >
+                  <option value="">-- Pilih Departemen --</option>
+                  {(data.departments || []).map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="font-semibold block mb-1 text-slate-700 dark:text-slate-300">
+                  Ditujukan Kepada (PIC)
+                </label>
+                <select
+                  value={createForm.assignedEmployeeId}
+                  onChange={(e) => setCreateForm({ ...createForm, assignedEmployeeId: e.target.value })}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                >
+                  <option value="">-- Otomatis / Antrean Dept --</option>
+                  {filteredEmployees.map((emp) => (
+                    <option key={emp.id} value={String(emp.id)}>
+                      {emp.name} {emp.role ? `(${emp.role})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

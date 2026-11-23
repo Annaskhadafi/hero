@@ -44,7 +44,11 @@ import {
   createProblemTemplateAction,
   updateProblemTemplateAction,
   deleteProblemTemplateAction,
+  createServiceDeskCategoryAction,
+  updateServiceDeskCategoryAction,
+  deleteServiceDeskCategoryAction,
   type CreateTemplateInput,
+  type CreateCategoryInput,
 } from '@/app/actions/service-desk-settings'
 
 interface SettingsClientProps {
@@ -92,6 +96,19 @@ export function ServiceDeskSettingsClient({
   const [deleteTemplateOpen, setDeleteTemplateOpen] = useState(false)
   const [templateToDelete, setTemplateToDelete] = useState<ServiceDeskTemplateItem | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Create Category Modal
+  const [createCategoryModalOpen, setCreateCategoryModalOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatDesc, setNewCatDesc] = useState('')
+  const [newCatDeptId, setNewCatDeptId] = useState<string>('none')
+  const [newCatPriority, setNewCatPriority] = useState<'kritis' | 'tinggi' | 'sedang' | 'rendah'>('sedang')
+  const [newCatSlaHours, setNewCatSlaHours] = useState<number>(24)
+  const [newCatPicIds, setNewCatPicIds] = useState<string[]>([])
+
+  // Delete Category Confirmation Modal
+  const [deleteCategoryOpen, setDeleteCategoryOpen] = useState(false)
+  const [categoryToDelete, setCategoryToDelete] = useState<ServiceDeskCategorySetting | null>(null)
 
   // Map employees to HeroSearchableSelect options (Prioritize Admin Mochamad Annas Khadafi)
   const employeeOptions: HeroSearchableSelectOption[] = useMemo(() => {
@@ -284,6 +301,85 @@ export function ServiceDeskSettingsClient({
     }
   }
 
+  // Open Create Category Modal
+  const handleOpenCreateCategory = () => {
+    setNewCatName('')
+    setNewCatDesc('')
+    setNewCatDeptId('none')
+    setNewCatPriority('sedang')
+    setNewCatSlaHours(24)
+    setNewCatPicIds([])
+    setCreateCategoryModalOpen(true)
+  }
+
+  // Save New Category
+  const handleSaveNewCategory = async () => {
+    if (!newCatName.trim()) {
+      toast.error('Mohon isi nama kategori kendala.')
+      return
+    }
+
+    const assignedObjs = newCatPicIds
+      .map((id) => {
+        const emp = employees.find((e) => String(e.id) === id)
+        return emp ? { id: emp.id, name: emp.name, employeeSn: emp.employee_sn, role: emp.role } : null
+      })
+      .filter(Boolean) as Array<{ id: number; name: string; employeeSn?: string; role?: string }>
+
+    startTransition(async () => {
+      const res = await createServiceDeskCategoryAction({
+        name: newCatName.trim(),
+        description: newCatDesc.trim(),
+        defaultSlaHours: Number(newCatSlaHours),
+        defaultPriority: newCatPriority,
+        targetDepartmentId: newCatDeptId !== 'none' ? parseInt(newCatDeptId, 10) : null,
+        defaultAssignedEmployees: assignedObjs,
+      })
+
+      if (res.success) {
+        toast.success(res.message || 'Kategori baru berhasil ditambahkan.')
+        const targetDept = departments.find((d) => String(d.id) === newCatDeptId)
+        const newCat: ServiceDeskCategorySetting = {
+          id: res.categoryId || Date.now(),
+          code: `CAT_${Date.now().toString(36).toUpperCase()}`,
+          name: newCatName.trim(),
+          description: newCatDesc.trim(),
+          color: '#0753e7',
+          icon: 'Folder',
+          defaultSlaHours: Number(newCatSlaHours),
+          defaultPriority: newCatPriority,
+          defaultAssignedEmployees: assignedObjs,
+          targetDepartmentId: newCatDeptId !== 'none' ? parseInt(newCatDeptId, 10) : null,
+          targetDepartmentName: targetDept?.name || null,
+          isActive: true,
+        }
+        setCategories((prev) => [...prev, newCat])
+        setCreateCategoryModalOpen(false)
+      } else {
+        toast.error(res.error || 'Gagal menambahkan kategori.')
+      }
+    })
+  }
+
+  // Confirm Delete / Deactivate Category
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return
+    setIsDeleting(true)
+    try {
+      const res = await deleteServiceDeskCategoryAction(categoryToDelete.id)
+      if (res.success) {
+        toast.success(`Kategori "${categoryToDelete.name}" berhasil dinonaktifkan.`)
+        setCategories((prev) => prev.filter((c) => c.id !== categoryToDelete.id))
+        setDeleteCategoryOpen(false)
+        setCategoryToDelete(null)
+      } else {
+        toast.error(res.error || 'Gagal menonaktifkan kategori.')
+      }
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 max-w-[1600px] mx-auto w-full">
       {/* ─── Top Header Navigation ────────────────────────────────────────── */}
@@ -315,6 +411,16 @@ export function ServiceDeskSettingsClient({
         </div>
 
         <div className="flex items-center gap-2">
+          {activeTab === 'routing' && isAdmin && (
+            <Button
+              onClick={handleOpenCreateCategory}
+              size="sm"
+              className="h-9 gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-xs"
+            >
+              <IconPlus className="size-4" />
+              + Tambah Kategori Baru
+            </Button>
+          )}
           {activeTab === 'templates' && (
             <Button
               onClick={handleOpenCreateTemplate}
@@ -458,15 +564,31 @@ export function ServiceDeskSettingsClient({
                           )}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenCategoryEdit(cat)}
-                            className="h-8 text-xs font-semibold gap-1 text-blue-700 bg-blue-50/50 border-blue-200 hover:bg-blue-100"
-                          >
-                            <IconPencil className="size-3.5" />
-                            Atur PIC &amp; SLA
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenCategoryEdit(cat)}
+                              className="h-8 text-xs font-semibold gap-1 text-blue-700 bg-blue-50/50 border-blue-200 hover:bg-blue-100"
+                            >
+                              <IconPencil className="size-3.5" />
+                              Atur PIC &amp; SLA
+                            </Button>
+                            {isAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setCategoryToDelete(cat)
+                                  setDeleteCategoryOpen(true)
+                                }}
+                                className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                title="Nonaktifkan Kategori"
+                              >
+                                <IconTrash className="size-3.5" />
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
@@ -805,6 +927,116 @@ export function ServiceDeskSettingsClient({
         tone="destructive"
         isProcessing={isDeleting}
         onConfirm={handleConfirmDeleteTemplate}
+      />
+
+      {/* ─── MODAL: TAMBAH KATEGORI BARU ──────────────────────────────────── */}
+      <HeroFormDialog
+        open={createCategoryModalOpen}
+        onOpenChange={setCreateCategoryModalOpen}
+        title="Tambah Kategori Kendala Baru"
+        description="Daftarkan master kategori baru lengkap dengan departemen penanggungjawab & PIC default."
+        submitLabel="Simpan Kategori Baru"
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleSaveNewCategory()
+        }}
+        isSubmitting={isPending}
+        maxWidth="lg"
+      >
+        <div className="flex flex-col gap-3 py-2 text-xs">
+          <HeroFormField label="Nama Kategori *" description="Contoh: Infrastruktur Jaringan Fiber / Kerusakan AC Ruangan">
+            <HeroInput
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder="Contoh: Kerusakan AC & Pendingin Server"
+              required
+            />
+          </HeroFormField>
+
+          <HeroFormField label="Deskripsi / Cakupan Masalah">
+            <HeroTextarea
+              value={newCatDesc}
+              onChange={(e) => setNewCatDesc(e.target.value)}
+              placeholder="Jelaskan jenis-jenis kendala yang masuk ke dalam kategori ini..."
+              rows={2}
+            />
+          </HeroFormField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <HeroFormField label="SLA Default (Jam) *">
+              <HeroInput
+                type="number"
+                value={newCatSlaHours}
+                onChange={(e) => setNewCatSlaHours(parseInt(e.target.value, 10) || 24)}
+                placeholder="24"
+                required
+              />
+            </HeroFormField>
+
+            <HeroFormField label="Prioritas Default *">
+              <Select value={newCatPriority} onValueChange={(v: any) => setNewCatPriority(v)}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="kritis">Kritis</SelectItem>
+                  <SelectItem value="tinggi">Tinggi</SelectItem>
+                  <SelectItem value="sedang">Sedang</SelectItem>
+                  <SelectItem value="rendah">Rendah</SelectItem>
+                </SelectContent>
+              </Select>
+            </HeroFormField>
+          </div>
+
+          <HeroFormField label="Departemen Penanggungjawab (Opsional)">
+            <Select value={newCatDeptId} onValueChange={setNewCatDeptId}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Pilih Departemen..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Umum / Lintas Departemen</SelectItem>
+                {departments.map((d) => (
+                  <SelectItem key={d.id} value={String(d.id)}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </HeroFormField>
+
+          {/* Multi-User PIC Select */}
+          <HeroFormField
+            label="Teknisi / PIC Penanggungjawab Otomatis (Multi-User)"
+            description="Pilih satu atau beberapa personil yang otomatis terpilih di formulir tiket saat kategori ini dipilih"
+          >
+            <HeroSearchableSelect
+              options={employeeOptions}
+              value={newCatPicIds}
+              onChange={(val) => setNewCatPicIds(val)}
+              isMulti={true}
+              placeholder="Pilih teknisi/karyawan penanggungjawab..."
+              width="w-full"
+            />
+          </HeroFormField>
+        </div>
+      </HeroFormDialog>
+
+      {/* ─── MODAL: HAPUS / NONAKTIFKAN KATEGORI CONFIRM ───────────────────── */}
+      <HeroConfirmDialog
+        open={deleteCategoryOpen}
+        onOpenChange={setDeleteCategoryOpen}
+        title="Nonaktifkan Kategori Kendala?"
+        description={
+          <span>
+            Kategori <strong className="text-slate-900">{categoryToDelete?.name}</strong> akan dinonaktifkan dari sistem
+            sehingga tidak dapat dipilih lagi saat membuat tiket baru. Riwayat tiket terdahulu tetap terjaga aman.
+          </span>
+        }
+        confirmLabel="Ya, Nonaktifkan Kategori"
+        cancelLabel="Batal"
+        tone="destructive"
+        isProcessing={isDeleting}
+        onConfirm={handleConfirmDeleteCategory}
       />
     </div>
   )

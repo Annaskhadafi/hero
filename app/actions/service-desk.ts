@@ -321,14 +321,14 @@ export async function getTroubleshootDashboardData(filter?: {
       mttrAvgHours: row.avg_mttr ? parseFloat(row.avg_mttr) : null,
     }))
 
-    // 5. Fetch Master Filters (Sites, Categories, Technicians, Templates)
-    const [sitesList, categoriesList, employeesList, templatesList] = await Promise.all([
+    // 5. Fetch Master Filters (Sites, Categories, Technicians, Templates, Departments)
+    const [sitesList, categoriesList, employeesList, templatesList, departmentsList] = await Promise.all([
       c.query('SELECT id, name FROM hero_sites ORDER BY name ASC'),
       c.query(
-        'SELECT id, code, name, color, default_sla_hours, default_priority, default_assigned_employees FROM hero_service_desk_categories WHERE is_active = true ORDER BY name ASC'
+        'SELECT id, code, name, color, default_sla_hours, default_priority, default_assigned_employees, target_department_id FROM hero_service_desk_categories WHERE is_active = true ORDER BY name ASC'
       ),
       c.query(
-        'SELECT id, name, employee_sn, role, email FROM hero_employees WHERE (is_active = true OR is_active IS NULL) ORDER BY name ASC'
+        'SELECT id, name, employee_sn, role, department_id, email FROM hero_employees WHERE (is_active = true OR is_active IS NULL) ORDER BY name ASC'
       ),
       c.query(`
         SELECT t.*, c.name as category_name
@@ -337,6 +337,7 @@ export async function getTroubleshootDashboardData(filter?: {
         WHERE t.is_active = true
         ORDER BY t.template_name ASC
       `),
+      c.query('SELECT id, name FROM hero_master_departments WHERE is_active = true ORDER BY name ASC'),
     ])
 
     return {
@@ -357,6 +358,7 @@ export async function getTroubleshootDashboardData(filter?: {
       categories: categoriesList.rows,
       employees: employeesList.rows,
       templates: templatesList.rows,
+      departments: departmentsList.rows,
     }
   } catch (error: any) {
     console.error('Error fetching troubleshoot dashboard data:', error)
@@ -371,6 +373,7 @@ export async function getTroubleshootDashboardData(filter?: {
       sites: [],
       categories: [],
       employees: [],
+      departments: [],
     }
   } finally {
     c.release()
@@ -408,7 +411,9 @@ export async function createTroubleshootTicket(payload: {
   unitCode?: string
   systemModule?: string
   siteId: number
+  categoryId?: number
   categoryName: string
+  targetDepartmentId?: number
   title: string
   findingDescription: string
   sourceType?: string
@@ -432,6 +437,34 @@ export async function createTroubleshootTicket(payload: {
     const slaHours = payload.slaHours || (payload.priority === 'kritis' ? 6 : payload.priority === 'tinggi' ? 12 : 24)
     const targetSlaAt = new Date(Date.now() + slaHours * 3600 * 1000)
 
+    let categoryId = payload.categoryId || null
+    let categoryName = (payload.categoryName || '').trim()
+    let targetDeptId = payload.targetDepartmentId || null
+
+    // Check or create category if custom/new
+    if (categoryName) {
+      const catCheck = await c.query(
+        'SELECT id, name, is_system_issue, code, default_assigned_employees, target_department_id FROM hero_service_desk_categories WHERE LOWER(name) = LOWER($1)',
+        [categoryName]
+      )
+      if (catCheck.rows.length > 0) {
+        categoryId = catCheck.rows[0].id
+        categoryName = catCheck.rows[0].name
+        if (!targetDeptId && catCheck.rows[0].target_department_id) {
+          targetDeptId = catCheck.rows[0].target_department_id
+        }
+      } else {
+        const catCode = `CAT_${Date.now().toString(36).toUpperCase()}`
+        const newCatRes = await c.query(
+          `INSERT INTO hero_service_desk_categories (code, name, description, color, default_sla_hours, target_department_id, is_system_issue, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, false, true)
+           RETURNING id`,
+          [catCode, categoryName, 'Kategori kustom dibuat dari tiket', '#0753e7', slaHours, targetDeptId]
+        )
+        categoryId = newCatRes.rows[0].id
+      }
+    }
+
     let assignedList = Array.isArray(payload.assignedEmployees) && payload.assignedEmployees.length > 0
       ? payload.assignedEmployees
       : payload.assignedEmployeeName
@@ -442,13 +475,16 @@ export async function createTroubleshootTicket(payload: {
     if (assignedList.length === 0) {
       // 1. Check category routing from database
       const catCheck = await c.query(
-        'SELECT is_system_issue, code, default_assigned_employees FROM hero_service_desk_categories WHERE name = $1',
-        [payload.categoryName]
+        'SELECT is_system_issue, code, default_assigned_employees, target_department_id FROM hero_service_desk_categories WHERE id = $1 OR name = $2',
+        [categoryId, categoryName]
       )
       if (catCheck.rows.length > 0 && Array.isArray(catCheck.rows[0].default_assigned_employees) && catCheck.rows[0].default_assigned_employees.length > 0) {
         assignedList = catCheck.rows[0].default_assigned_employees
+        if (!targetDeptId && catCheck.rows[0].target_department_id) {
+          targetDeptId = catCheck.rows[0].target_department_id
+        }
       } else {
-        const textToCheck = `${payload.categoryName || ''} ${payload.systemModule || ''} ${payload.title || ''}`.toLowerCase()
+        const textToCheck = `${categoryName || ''} ${payload.systemModule || ''} ${payload.title || ''}`.toLowerCase()
         const isHeroRelated =
           catCheck.rows[0]?.is_system_issue ||
           catCheck.rows[0]?.code?.startsWith('HERO_') ||
@@ -482,17 +518,19 @@ export async function createTroubleshootTicket(payload: {
 
     const insertRes = await c.query(
       `INSERT INTO hero_service_desk_tickets
-       (ticket_number, unit_code, system_module, site_id, category_name, reporter_employee_id, source_department_id, title, finding_description, source_type, source_detail, priority, status, assigned_employee_id, assigned_employee_name, assigned_role, assigned_employees, target_sla_at, attachments)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19)
+       (ticket_number, unit_code, system_module, site_id, category_id, category_name, reporter_employee_id, source_department_id, target_department_id, title, finding_description, source_type, source_detail, priority, status, assigned_employee_id, assigned_employee_name, assigned_role, assigned_employees, target_sla_at, attachments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20, $21)
        RETURNING id`,
       [
         ticketNumber,
         payload.unitCode || null,
         payload.systemModule || 'General',
         payload.siteId,
-        payload.categoryName,
+        categoryId,
+        categoryName,
         currentEmp?.id || null,
         currentEmp?.department_id || null,
+        targetDeptId,
         payload.title,
         payload.findingDescription,
         payload.sourceType || 'user_report',
@@ -779,7 +817,17 @@ export interface MobileDashboardTroubleshootResult {
   userDepartmentName: string
   tickets: TroubleshootTicketItem[]
   sites: Array<{ id: number; name: string }>
-  categories: Array<{ id: number; code: string; name: string; default_sla_hours: number }>
+  categories: Array<{
+    id: number
+    code: string
+    name: string
+    default_sla_hours: number
+    target_department_id?: number | null
+    default_assigned_employees?: Array<{ id: number; name: string; employeeSn?: string; role?: string }>
+    default_priority?: string
+  }>
+  departments?: Array<{ id: number; name: string }>
+  employees?: Array<{ id: number; name: string; employee_sn?: string; role?: string; department_id?: number | null }>
   error?: string
 }
 
@@ -928,9 +976,21 @@ export async function getMobileDashboardTroubleshootData(
       }
     })
 
-    const [sitesRes, catRes] = await Promise.all([
+    const [sitesRes, catRes, deptsRes, empsRes] = await Promise.all([
       c.query('SELECT id, name FROM hero_sites WHERE is_active = true ORDER BY name ASC'),
-      c.query('SELECT id, code, name, default_sla_hours FROM hero_service_desk_categories WHERE is_active = true ORDER BY name ASC'),
+      c.query(`
+        SELECT id, code, name, default_sla_hours, target_department_id, default_assigned_employees, default_priority
+        FROM hero_service_desk_categories
+        WHERE is_active = true
+        ORDER BY name ASC
+      `),
+      c.query('SELECT id, name FROM hero_master_departments WHERE is_active = true ORDER BY name ASC'),
+      c.query(`
+        SELECT id, name, employee_sn, role, department_id
+        FROM hero_employees
+        WHERE (is_active = true OR is_active IS NULL)
+        ORDER BY name ASC
+      `),
     ])
 
     return {
@@ -942,6 +1002,8 @@ export async function getMobileDashboardTroubleshootData(
       tickets,
       sites: sitesRes.rows,
       categories: catRes.rows,
+      departments: deptsRes.rows,
+      employees: empsRes.rows,
     }
   } catch (error: any) {
     console.error('Error fetching mobile dashboard troubleshoot data:', error)
@@ -954,6 +1016,8 @@ export async function getMobileDashboardTroubleshootData(
       tickets: [],
       sites: [],
       categories: [],
+      departments: [],
+      employees: [],
       error: error.message || 'Gagal memuat data tiket mobile dashboard',
     }
   } finally {

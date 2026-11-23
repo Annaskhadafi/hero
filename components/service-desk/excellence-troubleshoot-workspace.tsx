@@ -126,7 +126,8 @@ interface WorkspaceProps {
     category_id: number
     category_name: string
   }>
-  employees: Array<{ id: number; name: string; employee_sn: string; role: string }>
+  employees: Array<{ id: number; name: string; employee_sn: string; role: string; department_id?: number | null }>
+  departments?: Array<{ id: number; name: string }>
   currentEmployee: { id: number; name: string; email: string; role?: string }
   isAdmin?: boolean
   analytics?: {
@@ -168,6 +169,7 @@ export function ExcellenceTroubleshootWorkspace({
   categories,
   templates = [],
   employees,
+  departments = [],
   currentEmployee,
   isAdmin = false,
   analytics,
@@ -225,6 +227,11 @@ export function ExcellenceTroubleshootWorkspace({
   const [formUnitCode, setFormUnitCode] = useState('')
   const [formSiteId, setFormSiteId] = useState<string>(sites[0]?.id ? String(sites[0].id) : '1')
   const [formCategory, setFormCategory] = useState<string>(categories[0]?.name || 'Timesheet & Roster Kerja')
+  const [isCustomCategory, setIsCustomCategory] = useState(false)
+  const [customCategoryName, setCustomCategoryName] = useState('')
+  const [formTargetDeptId, setFormTargetDeptId] = useState<string>(
+    categories[0]?.target_department_id ? String(categories[0].target_department_id) : ''
+  )
   const [formPriority, setFormPriority] = useState<'kritis' | 'tinggi' | 'sedang' | 'rendah'>('tinggi')
   const [formTitle, setFormTitle] = useState('')
   const [formDescription, setFormDescription] = useState('')
@@ -431,8 +438,17 @@ export function ExcellenceTroubleshootWorkspace({
 
   // Category change handler with auto-fill routing & Admin Khadafi matching for HERO issues
   const handleCategoryChange = (catName: string) => {
+    if (catName === '__custom__') {
+      setIsCustomCategory(true)
+      setFormCategory('__custom__')
+      return
+    }
+    setIsCustomCategory(false)
     setFormCategory(catName)
     const cat = categories.find((c) => c.name === catName)
+    if (cat?.target_department_id) {
+      setFormTargetDeptId(String(cat.target_department_id))
+    }
     const isHeroRelated =
       cat?.code?.startsWith('HERO_') ||
       (cat as any)?.is_system_issue === true ||
@@ -500,6 +516,12 @@ export function ExcellenceTroubleshootWorkspace({
       return
     }
 
+    const finalCategory = isCustomCategory ? customCategoryName.trim() : formCategory
+    if (!finalCategory) {
+      toast.error('Kategori kendala wajib diisi')
+      return
+    }
+
     const assignedObjs = formAssignedPicIds
       .map((id) => {
         const emp = employees.find((e) => String(e.id) === id)
@@ -511,7 +533,8 @@ export function ExcellenceTroubleshootWorkspace({
       const res = await createTroubleshootTicket({
         unitCode: formUnitCode.trim() || undefined,
         siteId: parseInt(formSiteId, 10),
-        categoryName: formCategory,
+        categoryName: finalCategory,
+        targetDepartmentId: formTargetDeptId ? parseInt(formTargetDeptId, 10) : undefined,
         priority: formPriority,
         title: formTitle,
         findingDescription: formDescription,
@@ -526,6 +549,8 @@ export function ExcellenceTroubleshootWorkspace({
         setFormTitle('')
         setFormDescription('')
         setFormUnitCode('')
+        setCustomCategoryName('')
+        setIsCustomCategory(false)
         setFormAssignedPicIds([])
         setFormAttachments([])
 
@@ -1790,6 +1815,7 @@ export function ExcellenceTroubleshootWorkspace({
                       {c.name}
                     </SelectItem>
                   ))}
+                  <SelectItem value="__custom__">✨ + Kategori Kustom / Lainnya...</SelectItem>
                 </SelectContent>
               </Select>
             </HeroFormField>
@@ -1809,6 +1835,47 @@ export function ExcellenceTroubleshootWorkspace({
             </HeroFormField>
           </div>
 
+          {/* Custom Category input */}
+          {isCustomCategory && (
+            <HeroFormField
+              label="Nama Kategori Kustom *"
+              description="Ketik kategori temuan baru bila belum tercantum di daftar"
+            >
+              <HeroInput
+                value={customCategoryName}
+                onChange={(e) => setCustomCategoryName(e.target.value)}
+                placeholder="Contoh: Kerusakan AC Ruang Server / Kabel Fiber Optik Putus"
+                required
+              />
+            </HeroFormField>
+          )}
+
+          {/* Departemen Tujuan */}
+          <div className="grid grid-cols-2 gap-3">
+            <HeroFormField label="Departemen Tujuan *" description="Unit / bagian yang menangani tiket">
+              <Select value={formTargetDeptId} onValueChange={setFormTargetDeptId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Pilih Departemen Tujuan..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {departments.map((d) => (
+                    <SelectItem key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </HeroFormField>
+
+            <HeroFormField label="Kode Unit / Modul (Opsional)">
+              <HeroInput
+                value={formUnitCode}
+                onChange={(e) => setFormUnitCode(e.target.value)}
+                placeholder="Contoh: C02345 / Timesheet"
+              />
+            </HeroFormField>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <HeroFormField label="Lokasi Site *">
               <Select value={formSiteId} onValueChange={setFormSiteId}>
@@ -1823,14 +1890,6 @@ export function ExcellenceTroubleshootWorkspace({
                   ))}
                 </SelectContent>
               </Select>
-            </HeroFormField>
-
-            <HeroFormField label="Kode Unit / Modul (Opsional)">
-              <HeroInput
-                value={formUnitCode}
-                onChange={(e) => setFormUnitCode(e.target.value)}
-                placeholder="Contoh: C02345 / Timesheet"
-              />
             </HeroFormField>
           </div>
 

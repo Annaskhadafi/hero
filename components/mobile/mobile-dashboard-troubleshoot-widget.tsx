@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition, useRef } from 'react'
+import React, { useState, useTransition, useRef, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import {
   AlertTriangle,
@@ -94,11 +94,60 @@ export function MobileDashboardTroubleshootWidget({
   const [formCategory, setFormCategory] = useState<string>(
     initialData.categories?.[0]?.name || 'Timesheet & Roster Kerja'
   )
+  const [isCustomCategory, setIsCustomCategory] = useState(false)
+  const [customCategoryName, setCustomCategoryName] = useState('')
+  const [formTargetDeptId, setFormTargetDeptId] = useState<string>('')
+  const [formAssignedEmployeeId, setFormAssignedEmployeeId] = useState<string>('')
   const [formPriority, setFormPriority] = useState<'kritis' | 'tinggi' | 'sedang' | 'rendah'>('tinggi')
   const [formDescription, setFormDescription] = useState('')
   const [formAttachments, setFormAttachments] = useState<AttachmentItem[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-fill default target dept and PIC from initial category
+  useEffect(() => {
+    if (data.categories && data.categories.length > 0 && !formTargetDeptId) {
+      const match = data.categories.find((c) => c.name === formCategory) || data.categories[0]
+      if (match.target_department_id) {
+        setFormTargetDeptId(String(match.target_department_id))
+      }
+      if (Array.isArray(match.default_assigned_employees) && match.default_assigned_employees.length > 0) {
+        setFormAssignedEmployeeId(String(match.default_assigned_employees[0].id))
+      }
+    }
+  }, [data.categories, formCategory, formTargetDeptId])
+
+  // Category change with intelligent auto-fill
+  const handleCategoryChange = (val: string) => {
+    if (val === '__custom__') {
+      setIsCustomCategory(true)
+      setFormCategory('__custom__')
+      return
+    }
+    setIsCustomCategory(false)
+    setFormCategory(val)
+    const match = (data.categories || []).find((c) => c.name === val)
+    if (match) {
+      if (match.target_department_id) {
+        setFormTargetDeptId(String(match.target_department_id))
+      }
+      if (Array.isArray(match.default_assigned_employees) && match.default_assigned_employees.length > 0) {
+        setFormAssignedEmployeeId(String(match.default_assigned_employees[0].id))
+      }
+      if (match.default_priority) {
+        setFormPriority(match.default_priority as any)
+      }
+    }
+  }
+
+  // Filtered employee options based on selected target department
+  const filteredEmployees = useMemo(() => {
+    const list = data.employees || []
+    if (!formTargetDeptId) return list
+    const deptIdNum = parseInt(formTargetDeptId, 10)
+    const inDept = list.filter((emp) => emp.department_id === deptIdNum)
+    return inDept.length > 0 ? inDept : list
+  }, [data.employees, formTargetDeptId])
 
   // Status & Note Dialog states
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false)
@@ -186,6 +235,14 @@ export function MobileDashboardTroubleshootWidget({
       return
     }
 
+    const finalCategory = isCustomCategory ? customCategoryName.trim() : formCategory
+    if (!finalCategory) {
+      toast.error('Kategori kendala wajib diisi')
+      return
+    }
+
+    const selectedEmp = (data.employees || []).find((emp) => String(emp.id) === formAssignedEmployeeId)
+
     startTransition(async () => {
       try {
         const res = await createTroubleshootTicket({
@@ -193,7 +250,11 @@ export function MobileDashboardTroubleshootWidget({
           findingDescription: formDescription.trim(),
           unitCode: formUnitCode.trim() || undefined,
           siteId: parseInt(formSiteId, 10),
-          categoryName: formCategory,
+          categoryName: finalCategory,
+          targetDepartmentId: formTargetDeptId ? parseInt(formTargetDeptId, 10) : undefined,
+          assignedEmployeeId: formAssignedEmployeeId ? parseInt(formAssignedEmployeeId, 10) : undefined,
+          assignedEmployeeName: selectedEmp?.name,
+          assignedRole: selectedEmp?.role,
           priority: formPriority,
           attachments: formAttachments,
           sourceDetail: 'Mobile Dashboard Quick Report',
@@ -206,6 +267,8 @@ export function MobileDashboardTroubleshootWidget({
           setFormTitle('')
           setFormDescription('')
           setFormUnitCode('')
+          setCustomCategoryName('')
+          setIsCustomCategory(false)
           setFormAttachments([])
           // Refresh list
           const refreshed = await getMobileDashboardTroubleshootData(scope)
@@ -494,7 +557,7 @@ export function MobileDashboardTroubleshootWidget({
                 </label>
                 <select
                   value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
                   className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
                 >
                   {(data.categories || []).map((c) => (
@@ -502,6 +565,7 @@ export function MobileDashboardTroubleshootWidget({
                       {c.name}
                     </option>
                   ))}
+                  <option value="__custom__">✨ + Kategori Kustom / Lainnya...</option>
                 </select>
               </div>
 
@@ -518,6 +582,62 @@ export function MobileDashboardTroubleshootWidget({
                   <option value="tinggi">Tinggi (SLA 8 Jam)</option>
                   <option value="sedang">Sedang (SLA 24 Jam)</option>
                   <option value="rendah">Rendah (SLA 48 Jam)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Custom Category input if chosen */}
+            {isCustomCategory && (
+              <div className="p-2 rounded-lg border border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20">
+                <label className="font-semibold block mb-1 text-rose-800 dark:text-rose-300 text-xs">
+                  Nama Kategori Kustom <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  placeholder="Contoh: Kerusakan AC Kantor / Kabel Jaringan Terputus"
+                  value={customCategoryName}
+                  onChange={(e) => setCustomCategoryName(e.target.value)}
+                  className="h-9 text-xs bg-white dark:bg-slate-900"
+                  required
+                />
+              </div>
+            )}
+
+            {/* Departemen Tujuan & Ditujukan Kepada (PIC) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="font-semibold block mb-1 text-slate-700 dark:text-slate-300">
+                  Departemen Tujuan <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formTargetDeptId}
+                  onChange={(e) => setFormTargetDeptId(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                  required
+                >
+                  <option value="">-- Pilih Departemen --</option>
+                  {(data.departments || []).map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1 text-slate-700 dark:text-slate-300">
+                  Ditujukan Kepada (PIC)
+                </label>
+                <select
+                  value={formAssignedEmployeeId}
+                  onChange={(e) => setFormAssignedEmployeeId(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs"
+                >
+                  <option value="">-- Otomatis / Antrean Dept --</option>
+                  {filteredEmployees.map((emp) => (
+                    <option key={emp.id} value={String(emp.id)}>
+                      {emp.name} {emp.role ? `(${emp.role})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

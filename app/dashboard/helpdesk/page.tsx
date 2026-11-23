@@ -99,6 +99,7 @@ export default async function HeroHelpdeskPage({ searchParams }: PageProps) {
             categories={troubleshootData.categories}
             templates={(troubleshootData as any).templates || []}
             employees={troubleshootData.employees}
+            departments={(troubleshootData as any).departments || []}
             currentEmployee={{
               id: currentEmployee.id,
               name: currentEmployee.name,

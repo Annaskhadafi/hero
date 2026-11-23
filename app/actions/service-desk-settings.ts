@@ -299,3 +299,142 @@ export async function deleteProblemTemplateAction(templateId: number) {
     c.release()
   }
 }
+
+export interface CreateCategoryInput {
+  name: string
+  description?: string
+  color?: string
+  icon?: string
+  targetDepartmentId?: number | null
+  defaultSlaHours?: number
+  defaultPriority?: 'kritis' | 'tinggi' | 'sedang' | 'rendah'
+  defaultAssignedEmployees?: Array<{ id: number; name: string; employeeSn?: string; role?: string }>
+}
+
+export async function createServiceDeskCategoryAction(payload: CreateCategoryInput) {
+  const currentEmp = await getCurrentEmployee()
+  if (!currentEmp || !isUserAdmin(currentEmp)) {
+    return { success: false, error: 'Akses ditolak: Hanya Admin yang dapat menambah kategori.' }
+  }
+
+  const name = payload.name.trim()
+  if (!name) {
+    return { success: false, error: 'Nama kategori wajib diisi.' }
+  }
+
+  const c = await pool.connect()
+  try {
+    const existing = await c.query('SELECT id FROM hero_service_desk_categories WHERE LOWER(name) = LOWER($1)', [name])
+    if (existing.rows.length > 0) {
+      return { success: false, error: 'Kategori dengan nama tersebut sudah ada.' }
+    }
+
+    const code = `CAT_${Date.now().toString(36).toUpperCase()}`
+    const res = await c.query(
+      `INSERT INTO hero_service_desk_categories
+       (code, name, description, color, icon, target_department_id, default_sla_hours, default_priority, default_assigned_employees, is_system_issue, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, false, true)
+       RETURNING id`,
+      [
+        code,
+        name,
+        payload.description?.trim() || '',
+        payload.color || '#0753e7',
+        payload.icon || 'Folder',
+        payload.targetDepartmentId || null,
+        payload.defaultSlaHours || 24,
+        payload.defaultPriority || 'sedang',
+        JSON.stringify(payload.defaultAssignedEmployees || []),
+      ]
+    )
+
+    revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/dashboard/helpdesk/settings')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
+    return { success: true, categoryId: res.rows[0].id, message: 'Kategori baru berhasil ditambahkan.' }
+  } catch (error: any) {
+    console.error('Error creating service desk category:', error)
+    return { success: false, error: error.message || 'Gagal menambahkan kategori.' }
+  } finally {
+    c.release()
+  }
+}
+
+export async function updateServiceDeskCategoryAction(
+  categoryId: number,
+  payload: CreateCategoryInput
+) {
+  const currentEmp = await getCurrentEmployee()
+  if (!currentEmp || !isUserAdmin(currentEmp)) {
+    return { success: false, error: 'Akses ditolak: Hanya Admin yang dapat mengubah kategori.' }
+  }
+
+  const name = payload.name.trim()
+  if (!name) {
+    return { success: false, error: 'Nama kategori wajib diisi.' }
+  }
+
+  const c = await pool.connect()
+  try {
+    await c.query(
+      `UPDATE hero_service_desk_categories
+       SET name = $1,
+           description = $2,
+           color = COALESCE($3, color),
+           icon = COALESCE($4, icon),
+           target_department_id = $5,
+           default_sla_hours = $6,
+           default_priority = $7,
+           default_assigned_employees = $8::jsonb,
+           updated_at = NOW()
+       WHERE id = $9`,
+      [
+        name,
+        payload.description?.trim() || '',
+        payload.color || null,
+        payload.icon || null,
+        payload.targetDepartmentId || null,
+        payload.defaultSlaHours || 24,
+        payload.defaultPriority || 'sedang',
+        JSON.stringify(payload.defaultAssignedEmployees || []),
+        categoryId,
+      ]
+    )
+
+    revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/dashboard/helpdesk/settings')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
+    return { success: true, message: 'Kategori berhasil diperbarui.' }
+  } catch (error: any) {
+    console.error('Error updating service desk category:', error)
+    return { success: false, error: error.message || 'Gagal memperbarui kategori.' }
+  } finally {
+    c.release()
+  }
+}
+
+export async function deleteServiceDeskCategoryAction(categoryId: number) {
+  const currentEmp = await getCurrentEmployee()
+  if (!currentEmp || !isUserAdmin(currentEmp)) {
+    return { success: false, error: 'Akses ditolak: Hanya Admin yang dapat menghapus kategori.' }
+  }
+
+  const c = await pool.connect()
+  try {
+    // Soft-deactivate so historical tickets don't break
+    await c.query('UPDATE hero_service_desk_categories SET is_active = false, updated_at = NOW() WHERE id = $1', [categoryId])
+
+    revalidatePath('/dashboard/helpdesk')
+    revalidatePath('/dashboard/helpdesk/settings')
+    revalidatePath('/mobile/dashboard')
+    revalidatePath('/mobile/helpdesk')
+    return { success: true, message: 'Kategori berhasil dinonaktifkan.' }
+  } catch (error: any) {
+    console.error('Error deactivating category:', error)
+    return { success: false, error: error.message || 'Gagal menonaktifkan kategori.' }
+  } finally {
+    c.release()
+  }
+}
