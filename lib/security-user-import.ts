@@ -5,6 +5,7 @@ export const USER_IMPORT_FIELDS = [
   { key: "department", label: "Department", required: true, aliases: ["department", "departemen", "departement", "dept"] },
   { key: "section", label: "Section", required: true, aliases: ["section", "seksi"] },
   { key: "jobTitle", label: "Job Title", required: true, aliases: ["job title", "jabatan", "position", "title"] },
+  { key: "costCenter", label: "Cost Center", required: false, aliases: ["cost center", "cost_center", "cc", "kode cost center", "cost_centre"] },
   { key: "levelName", label: "Level Staff", required: false, aliases: ["level staff", "level", "level_name", "tingkatan"] },
   { key: "workLocation", label: "Lokasi Site", required: true, aliases: ["lokasi site", "work location", "lokasi kerja", "site", "lokasi"] },
   { key: "accessRole", label: "Peran", required: false, aliases: ["peran", "access role", "access_role", "role"] },

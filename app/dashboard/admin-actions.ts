@@ -3983,6 +3983,7 @@ const manageSecurityUserSchema = z.object({
   section: optionalFormString,
   department: optionalFormString,
   jobTitle: optionalFormString,
+  costCenter: optionalFormString,
   workLocation: optionalFormString,
   phoneNumber: optionalFormString,
   email: optionalFormString,
@@ -7786,6 +7787,7 @@ export async function importSecurityUsersAction(
       const department = getMappedValue(record, headers, mapping, 'department') || 'General'
       const section = getMappedValue(record, headers, mapping, 'section') || department
       const jobTitle = getMappedValue(record, headers, mapping, 'jobTitle') || 'Staff'
+      const costCenter = getMappedValue(record, headers, mapping, 'costCenter') || ''
       const levelName = getMappedValue(record, headers, mapping, 'levelName') || 'Rookie'
       const workLocation = getMappedValue(record, headers, mapping, 'workLocation') || ''
       const resolvedSite = resolveSiteFromImportedLocation(workLocation, siteRows, defaultSite)
@@ -7852,6 +7854,8 @@ export async function importSecurityUsersAction(
         name: fullName,
         email,
         role: jobTitle,
+        jobTitle,
+        costCenter,
         department,
         workLocation: resolvedWorkLocation,
         siteId: resolvedSite.id,
@@ -7925,6 +7929,7 @@ const IMPORT_UPDATE_HEADERS = [
   'Department',
   'Section',
   'Job Title',
+  'Cost Center',
   'Level Staff',
   'Peran',
   'Lokasi Site',
@@ -8174,6 +8179,7 @@ export async function importUpdateUsersAction(
         const deptIdx = col('department')
         const sectionIdx = col('section')
         const jobTitleIdx = col('job title')
+        const costCenterIdx = col('cost center')
         const levelNameIdx = col('level staff')
         const peranIdx = col('peran')
         const lokasiSiteIdx = col('lokasi site')
@@ -8228,6 +8234,7 @@ export async function importUpdateUsersAction(
           department: getValue(deptIdx) || '',
           section: getValue(sectionIdx) || '',
           jobTitle: getValue(jobTitleIdx) || '',
+          costCenter: getValue(costCenterIdx) || '',
           levelName: getValue(levelNameIdx) || '',
           accessRole: getValue(peranIdx) || 'Site Admin',
           workLocation: lokasiVal || '',
@@ -8262,6 +8269,7 @@ export async function importUpdateUsersAction(
       const deptIdx = col('department')
       const sectionIdx = col('section')
       const jobTitleIdx = col('job title')
+      const costCenterIdx = col('cost center')
       const levelNameIdx = col('level staff')
       const peranIdx = col('peran')
       const lokasiSiteIdx = col('lokasi site')
@@ -8304,6 +8312,10 @@ export async function importUpdateUsersAction(
       if (jobTitleIdx !== undefined && isColumnSelected(headers[jobTitleIdx])) {
         const v = getValue(jobTitleIdx)
         if (v) employeeUpdate.jobTitle = v
+      }
+      if (costCenterIdx !== undefined && isColumnSelected(headers[costCenterIdx])) {
+        const v = getValue(costCenterIdx)
+        if (v !== undefined) employeeUpdate.costCenter = v
       }
       if (levelNameIdx !== undefined && isColumnSelected(headers[levelNameIdx])) {
         const v = getValue(levelNameIdx)
@@ -8466,6 +8478,7 @@ export async function manageSecurityUserAction(
       section: formData.get('section'),
       department: formData.get('department'),
       jobTitle: formData.get('jobTitle'),
+      costCenter: formData.get('costCenter'),
       workLocation: formData.get('workLocation'),
       phoneNumber: formData.get('phoneNumber'),
       email: formData.get('email'),
@@ -8714,6 +8727,7 @@ export async function manageSecurityUserAction(
             department: finalDepartmentName,
             role: jobTitle,
             jobTitle,
+            costCenter: payload.costCenter?.trim() || '',
             workLocation: defaultSite.name,
             phoneNumber: payload.phoneNumber?.trim() || '',
             employmentStatus: normalizedStatus.status,
@@ -8748,6 +8762,7 @@ export async function manageSecurityUserAction(
             department: finalDepartmentName,
             role: jobTitle,
             jobTitle,
+            costCenter: payload.costCenter?.trim() || '',
             workLocation: defaultSite.name,
             phoneNumber: payload.phoneNumber?.trim() || '',
             employmentStatus: normalizedStatus.status,
@@ -8972,6 +8987,7 @@ export async function manageSecurityUserAction(
           department: finalDepartmentName,
           role: jobTitle,
           jobTitle,
+          costCenter: payload.costCenter?.trim() ?? employee.costCenter ?? '',
           levelName,
           gender,
           religion,
