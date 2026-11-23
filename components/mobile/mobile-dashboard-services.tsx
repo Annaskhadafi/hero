@@ -62,6 +62,7 @@ import {
   IconReport,
   IconSettings,
   IconShieldHalfFilled,
+  IconSparkles,
   IconUsers,
 } from '@tabler/icons-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
@@ -86,6 +87,7 @@ const iconMap = {
   settings: IconSettings,
   shield: IconShieldHalfFilled,
   'shield-alert': IconShieldHalfFilled,
+  sparkles: IconSparkles,
   users: IconUsers,
 } as const
 
@@ -164,8 +166,10 @@ function resolveServiceCategory(item: { section?: string; title: string }): Cate
     s.includes('standar') ||
     s.includes('pengembangan') ||
     s.includes('learning') ||
+    s.includes('marketing') ||
     t.includes('sop') ||
-    t.includes('genius')
+    t.includes('genius') ||
+    t.includes('instagram')
   ) {
     return 'Standar & AI'
   }
@@ -598,6 +602,14 @@ export function MobileDashboardServices({
       bg: 'bg-violet-500/10 text-violet-600',
       section: 'Umum',
       description: 'Buat foto & video frame twibbon IG',
+    },
+    {
+      title: 'Instagram Generator',
+      href: '/mobile/instagram-generator',
+      icon: Sparkles,
+      bg: 'bg-gradient-to-tr from-pink-500/20 via-purple-500/20 to-amber-500/20 text-pink-600',
+      section: 'Marketing',
+      description: 'AI generator konten & gambar Instagram',
     },
     {
       title: 'Wellness',

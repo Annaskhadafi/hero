@@ -35,6 +35,8 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/ga/vehicles',
   '/mobile/training/pengajuan',
   '/mobile/twibbon',
+  '/mobile/instagram-generator',
+  '/mobile/iframe',
   '/mobile/helpdesk',
   '/mobile/troubleshoot',
 ] as const
@@ -165,6 +167,10 @@ export function getMobileUrlForDesktopUrl(desktopUrl: string): string | null {
   if (desktopUrl.startsWith('/mobile')) return desktopUrl.split('?')[0]
 
   const cleanUrl = desktopUrl.split('?')[0]
+  if (cleanUrl.startsWith('/dashboard/iframe/')) {
+    return cleanUrl.replace('/dashboard/iframe/', '/mobile/iframe/')
+  }
+
   const matchedRoute = desktopToMobileRoutes.find(
     (route) => cleanUrl === route.desktop || cleanUrl.startsWith(`${route.desktop}/`)
   )
@@ -199,6 +205,8 @@ export function buildMobileAllowedLinks(items: MobileSidebarItem[]): MobileAllow
 export function isMobileHrefAllowed(href: string, allowedLinks: MobileAllowedLink[]) {
   const targetPath = href.split('?')[0]
   if (MOBILE_ALWAYS_ALLOWED_HREFS.some((allowedHref) => targetPath === allowedHref)) return true
+  if (targetPath.startsWith('/mobile/iframe/')) return true
+  if (targetPath === '/mobile/instagram-generator') return true
 
   return allowedLinks.some((link) => {
     const allowedPath = link.href.split('?')[0]
