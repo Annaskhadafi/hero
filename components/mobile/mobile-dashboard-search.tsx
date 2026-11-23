@@ -12,6 +12,7 @@ import {
   Folder,
 } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { HeroInput } from '@/components/templates/hero-form-controls'
 import { cn } from '@/lib/utils'
 
 export type SearchableMenuItem = {
@@ -39,17 +40,31 @@ export function MobileDashboardSearch({
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('Semua')
+  const [visibleViewport, setVisibleViewport] = useState<{ height: number; bottom: number }>()
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (open) {
-      const timer = setTimeout(() => {
-        inputRef.current?.focus()
-      }, 150)
-      return () => clearTimeout(timer)
-    } else {
+    if (!open) {
       setSearchQuery('')
       setSelectedCategory('Semua')
+    }
+  }, [open])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!open || !viewport) return
+
+    // The keyboard can resize the visual viewport without moving a fixed sheet.
+    const syncViewport = () => setVisibleViewport({
+      height: viewport.height,
+      bottom: Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop),
+    })
+    syncViewport()
+    viewport.addEventListener('resize', syncViewport)
+    viewport.addEventListener('scroll', syncViewport)
+    return () => {
+      viewport.removeEventListener('resize', syncViewport)
+      viewport.removeEventListener('scroll', syncViewport)
     }
   }, [open])
 
@@ -127,12 +142,21 @@ export function MobileDashboardSearch({
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="bottom"
-          className="max-h-[90vh] space-y-4 rounded-t-[2.2rem] border-t border-slate-100/90 bg-[#f8fbfe] px-5 pt-3 pb-8 shadow-[0_-20px_50px_rgba(8,32,51,0.15)]"
+          hideCloseButton
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            inputRef.current?.focus({ preventScroll: true })
+          }}
+          style={visibleViewport && {
+            bottom: visibleViewport.bottom,
+            maxHeight: Math.max(0, visibleViewport.height - 8),
+          }}
+          className="max-h-[calc(100vh-0.5rem)] gap-3 overflow-y-auto overscroll-contain rounded-t-[2.2rem] border-t border-slate-100/90 bg-[#f8fbfe] px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-20px_50px_rgba(8,32,51,0.15)] supports-[height:100dvh]:max-h-[calc(100dvh-0.5rem)]"
         >
           {/* Top Grabber Indicator */}
-          <div className="mx-auto h-1.5 w-12 rounded-full bg-slate-200" />
+          <div className="mx-auto h-1.5 w-12 shrink-0 rounded-full bg-slate-200" />
 
-          <SheetHeader className="text-left space-y-1">
+          <SheetHeader className="shrink-0 p-0 text-left">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#003f78]">
@@ -144,8 +168,9 @@ export function MobileDashboardSearch({
               </div>
               <button
                 type="button"
+                aria-label="Tutup pencarian"
                 onClick={() => setOpen(false)}
-                className="flex size-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition active:scale-95"
+                className="flex size-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition active:scale-95"
               >
                 <X className="size-4" />
               </button>
@@ -153,31 +178,23 @@ export function MobileDashboardSearch({
           </SheetHeader>
 
           {/* Interactive Search Input */}
-          <div className="relative">
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
-              <Search className="size-4 text-[#003f78]" />
-            </div>
-            <input
+          <div className="shrink-0">
+            <HeroInput
               ref={inputRef}
               type="text"
+              aria-label="Cari menu HERO"
+              prefixIcon={<Search className="text-[#003f78]" />}
+              clearable
+              onClear={() => setSearchQuery('')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Ketik nama menu, misal: SPL, Kerusakan Ban, HSE..."
-              className="h-12 w-full rounded-2xl border border-slate-200 bg-white pr-10 pl-10 text-sm font-semibold text-[#082033] shadow-[0_4px_16px_rgba(8,32,51,0.04)] placeholder:text-slate-400 focus:border-[#003f78] focus:ring-2 focus:ring-[#003f78]/20 focus:outline-hidden"
+              className="rounded-2xl border-slate-200 text-base font-semibold text-[#082033]"
             />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
-              >
-                <X className="size-4" />
-              </button>
-            )}
           </div>
 
           {/* Category Chips Horizontal Scroll */}
-          <div className="no-scrollbar -mx-5 flex gap-1.5 overflow-x-auto px-5 py-1">
+          <div className="no-scrollbar -mx-5 flex shrink-0 gap-1.5 overflow-x-auto px-5 py-1">
             {categories.map((category) => (
               <button
                 key={category}
@@ -196,7 +213,7 @@ export function MobileDashboardSearch({
           </div>
 
           {/* Results List */}
-          <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+          <div className="shrink-0 space-y-2 pr-1">
             {filteredResults.length > 0 ? (
               <div className="grid grid-cols-1 gap-2">
                 {filteredResults.map((item, index) => {
