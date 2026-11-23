@@ -100,9 +100,20 @@ playwright-report/
 !/public/uploads/upload/
 !/public/uploads/**/.gitkeep
 
-# root scratch / test scripts
-test-*.ts
-test-*.js
+# root scratch / test scripts / temporary debug & logs
+scratch*
+scratch/*
+test-*
+test2*
+test.*
+temp-*
+*.log
+tsc-check.log
+.playwright-cli/
+build-output.log
+dev-restart.log
+dev-server*.log
+.next-dev.log
 sync-data.ts
 test-action.ts
 test-queries.ts

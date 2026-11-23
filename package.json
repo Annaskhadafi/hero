@@ -37,7 +37,7 @@
     "db:seed:tire-presets": "tsx scripts/seed-tire-presets.ts",
     "db:sync:maestro": "tsx scripts/sync-maestro-foundation.ts",
     "db:create:tire-tables": "tsx scripts/create-tire-pattern-tables.ts",
-    "db:migrate:hse": "tsx scratch/migrate-hse-inventories.ts",
+    "db:migrate:hse": "tsx scripts/migrate-hse-inventories.ts",
     "db:up": "docker compose up postgres -d",
     "db:down": "docker compose down postgres",
     "db:dev": "docker compose --profile dev up postgres-dev -d",

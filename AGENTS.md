@@ -1,3 +1,28 @@
+# Standar Kebersihan Repository & Pencegahan Kebocoran Kredensial / Data (MANDATORI - SECURITY & REPO HYGIENE)
+
+## 🛡️ Aturan Wajib Anti-Kebocoran, Larangan Scratch di Root & Perlindungan File Tes
+
+Untuk mencegah kebocoran kredensial, token rahasia, struktur query database internal, dan menjaga repository GitHub tetap bersih dan profesional:
+
+### 1. DILARANG KERAS Menaruh File Scratch / Debug / Test Ad-Hoc di Root
+* **DILARANG KERAS** membuat, mengunggah, atau melakukan commit berkas scratch atau debug ad-hoc langsung di root project (misalnya: scratch*.ts, scratch*.js, 	est-*.txt, 	est-*.ts, 	est-*.js, 	est2.ts, 	emp-*.txt, *.log, 	sc-check.log).
+* Semua script uji coba temporer WAJIB disimpan di folder internal agent (<appDataDir>\\brain\\<conversation-id>/scratch/) atau dalam folder yang terdaftar di .gitignore.
+* Semua script utilitas database / migrasi resmi wajib disimpan secara terstruktur di folder scripts/ (misalnya: scripts/migrate-*.ts).
+
+### 2. Larangan Mutlak Commit Kredensial / Secret / Raw Token
+* **DILARANG KERAS** melakukan hardcode atau commit kredensial asli (API keys, password database, token S3, username/password admin production) ke dalam berkas repositori mana pun, termasuk file teks atau script pengetesan.
+* Seluruh konfigurasi rahasia WAJIB dibaca secara dinamis dari environment variables (.env, .env.local, .env.e2e.local) yang SUDAH terdaftar di .gitignore.
+
+### 3. Batasan Folder 	ests/ Resmi vs Artefak Pengujian
+* Folder 	ests/ hanya boleh memuat **kode skenario pengujian resmi** (*.e2e.ts, *.test.ts, *.spec.ts, helper 2e-auth-helper.ts).
+* Kredensial akun pengujian otomatis wajib menggunakan default fallback aman untuk local dev (71261), bukan akun personal/production.
+* Seluruh output, trace, video, tangkapan layar, dan cache pengetesan (.e2e/, 	est-results/, playwright-report/) **WAJIB di-ignore** dan dilarang masuk git commit.
+
+### 4. Pemeriksaan Pra-Commit (Pre-Commit Cleanliness Check)
+* Sebelum mengeksekusi git commit, Agent **WAJIB** memeriksa git status dan memastikan tidak ada file *.log, file *.txt liar di root, file scratch, atau file data mentah (*.csv, *.xlsx) yang tidak sengaja masuk staging (git add).
+
+---
+
 # Standar Upload File, Penyimpanan S3 & Resolusi URL (MANDATORI - PALING ATAS)
 
 ## 📁 Aturan Wajib Upload & Penayangan Berkas (File / Dokumen / Foto)
