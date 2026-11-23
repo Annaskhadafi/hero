@@ -112,6 +112,7 @@ export const employees = pgTable('hero_employees', {
   role: text('role').notNull(),
   department: text('department').notNull(),
   jobTitle: text('job_title').notNull().default(''),
+  costCenter: text('cost_center').default(''),
   workLocation: text('work_location').notNull().default(''),
   phoneNumber: text('phone_number').notNull().default(''),
   employmentStatus: text('employment_status').notNull().default('active'),

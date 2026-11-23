@@ -290,6 +290,11 @@ export function SecurityUserCreateDialog({
             </div>
 
             <label className="grid gap-2">
+              <Label>Cost Center</Label>
+              <Input name="costCenter" placeholder="Contoh: 1000-OPS / CC-01" />
+            </label>
+
+            <label className="grid gap-2">
               <Label>Lokasi Site</Label>
               <Select value={selectedSiteId} onValueChange={setSelectedSiteId} disabled={sites.length === 0}>
                 <SelectTrigger>

@@ -425,6 +425,11 @@ export function SecurityUserRowActions({
                   </label>
 
                   <label className="grid min-w-0 gap-2">
+                    <span className="text-muted-foreground text-xs font-medium">Cost Center</span>
+                    <Input name="costCenter" defaultValue={user.costCenter || ''} placeholder="Contoh: 1000-OPS / CC-01" />
+                  </label>
+
+                  <label className="grid min-w-0 gap-2">
                     <span className="text-muted-foreground text-xs font-medium">Level Staff</span>
                     <Input name="levelName" defaultValue={user.levelName || ''} placeholder="e.g. Staff, Supervisor" />
                   </label>

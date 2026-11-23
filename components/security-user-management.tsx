@@ -101,6 +101,7 @@ const COLUMNS_DEF = [
   { key: 'department', id: 'Departemen', en: 'Department' },
   { key: 'section', id: 'Seksi', en: 'Section' },
   { key: 'jobTitle', id: 'Jabatan', en: 'Job Title' },
+  { key: 'costCenter', id: 'Cost Center', en: 'Cost Center' },
   { key: 'levelStaff', id: 'Level Staff', en: 'Staff Level' },
   { key: 'peran', id: 'Peran', en: 'Role' },
   { key: 'lokasiSite', id: 'Lokasi Site', en: 'Site Location' },
@@ -317,7 +318,7 @@ export function SecurityUserManagement({
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
-    name: true, sn: true, department: true, section: true, jobTitle: true,
+    name: true, sn: true, department: true, section: true, jobTitle: true, costCenter: true,
     levelStaff: false, peran: true, lokasiSite: true, tipeStatus: false,
     gender: false, agama: false, pendidikan: false, maritalStatus: false,
     poh: false, joinDate: false, contractStart: false, contractEnd: false,
@@ -507,6 +508,7 @@ export function SecurityUserManagement({
         user.section,
         user.department,
         user.jobTitle,
+        user.costCenter ?? '',
         user.accessRole,
         user.siteName,
         user.workLocation,
@@ -541,6 +543,7 @@ export function SecurityUserManagement({
         case 'department': return u.department
         case 'section': return u.section
         case 'jobTitle': return u.jobTitle
+        case 'costCenter': return u.costCenter ?? ''
         case 'levelStaff': return u.levelName
         case 'peran': return u.accessRole
         case 'lokasiSite': return getSiteDisplayName(u)
@@ -1824,6 +1827,17 @@ export function SecurityUserManagement({
                               </Badge>
                             </TableCell>
                           ) : null}
+                          {columnVisibility.costCenter ? (
+                            <TableCell className="py-3.5">
+                              {user.costCenter ? (
+                                <Badge variant="outline" className="bg-surface-container-lowest font-mono font-semibold text-foreground rounded-full border-0 px-3 py-1 text-[11px] shadow-[inset_0_0_0_1px_rgba(66,71,80,0.08)]">
+                                  {user.costCenter}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground px-3 py-1 text-[11px]">-</span>
+                              )}
+                            </TableCell>
+                          ) : null}
                           {columnVisibility.levelStaff ? (
                             <TableCell className="text-foreground/85 py-3.5 text-sm">{user.levelName || '-'}</TableCell>
                           ) : null}
@@ -1958,6 +1972,8 @@ export function SecurityUserManagement({
                                     <span className="font-medium text-foreground">{user.employeeStatusType || '-'}</span>
                                     <span className="text-muted-foreground">Level Staff:</span>
                                     <span className="font-medium text-foreground">{user.levelName || '-'}</span>
+                                    <span className="text-muted-foreground">Cost Center:</span>
+                                    <span className="font-medium text-foreground font-mono">{user.costCenter || '-'}</span>
                                     <span className="text-muted-foreground">POH (Point of Hire):</span>
                                     <span className="font-medium text-foreground">{user.pointOfHire || '-'}</span>
                                     <span className="text-muted-foreground">Seksi (Section):</span>

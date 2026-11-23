@@ -169,6 +169,7 @@ export type SecurityUserRecord = {
   department: string
   departmentId: number | null
   jobTitle: string
+  costCenter?: string | null
   workLocation: string
   phoneNumber: string
   email: string
@@ -9023,6 +9024,7 @@ export async function getSecurityUsersData() {
       jobTitle: sql<string>`coalesce(${hrPositions.rankName}, ${employees.jobTitle}, '')`.as(
         'job_title'
       ),
+      costCenter: sql<string>`coalesce(${employees.costCenter}, '')`.as('cost_center'),
       workLocation:
         sql<string>`coalesce(${hrOrgNodes.name}, ${sites.name}, ${employees.workLocation}, '')`.as(
           'work_location'
@@ -9095,6 +9097,7 @@ export async function getSecurityUsersData() {
     department: row.department ?? '',
     departmentId: row.departmentId ?? null,
     jobTitle: row.jobTitle ?? '',
+    costCenter: row.costCenter ?? '',
     workLocation: row.workLocation ?? '',
     employeeStatusType: row.employeeStatusType ?? '',
     phoneNumber: row.phoneNumber ?? '',
