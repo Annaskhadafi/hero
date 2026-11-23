@@ -16,6 +16,8 @@ import { getDashboardRoutePermission } from '@/lib/hero-access'
 import { getRecipientUnreadNotificationCount } from '@/lib/notification-feed'
 import { FaceRegistrationReminderPopup } from '@/components/face-registration-reminder-popup'
 import { FloatingGeniusChatClient } from '@/components/hero-genius/floating-genius-chat-client'
+import { BirthdayCelebrationPopup } from '@/components/birthday-celebration-popup'
+import { getTodayBirthdayData } from '@/lib/birthday-service'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 
 import '@/app/dashboard/theme.css'
@@ -53,8 +55,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/mobile')
   }
 
-  const routePermission = await getDashboardRoutePermission(dashboardPath)
-  if (dashboardPath !== '/dashboard' && routePermission && !routePermission.canView) {
+  const cleanPathname = dashboardPath.split('?')[0]
+  const routePermission = await getDashboardRoutePermission(cleanPathname)
+  if (cleanPathname !== '/dashboard' && routePermission && !routePermission.canView) {
     redirect('/dashboard')
  }
 
@@ -62,7 +65,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const defaultOpen = cookieStore.get('sidebar_state')?.value === 'true'
   const sidebarModeCookie = cookieStore.get('hero_sidebar_layout_mode')?.value
   const initialSidebarMode = sidebarModeCookie === 'modern' ? 'modern' : 'classic'
-  const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications, groupLabelColor] = await Promise.all([
+  const previewBirthday = dashboardPath.includes('preview_birthday=self')
+    ? 'self'
+    : dashboardPath.includes('preview_birthday=colleagues')
+      ? 'colleagues'
+      : null
+  const [sidebarData, navbarSettings, employeeDisplay, unreadNotifications, groupLabelColor, birthdayData] = await Promise.all([
     getSidebarDataForUser(session.user.email),
     getNavbarSettingsData(),
     getEmployeeDisplayDataByEmail(session.user.email, session.user.id),
@@ -71,6 +79,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       return 0
     }),
     getGroupLabelStyles(),
+    getTodayBirthdayData(session.user.email, session.user.id, previewBirthday).catch((error) => {
+      console.error('[dashboard] failed to fetch birthday data', error)
+      return null
+    }),
   ])
 
   if (employeeDisplay && (employeeDisplay.isActive === false || employeeDisplay.employmentStatus === 'inactive')) {
@@ -116,6 +128,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         />
         <div className="flex flex-1 flex-col">{children}</div>
         <FloatingGeniusChatClient />
+        <BirthdayCelebrationPopup data={birthdayData} currentUserId={session.user.id} />
       </SidebarInset>
     </SidebarProvider>
   )

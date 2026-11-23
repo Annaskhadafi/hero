@@ -47,6 +47,10 @@ import {
 } from "lucide-react"
 import type { IndividualDashboardData } from "@/lib/analytics-dashboard-data"
 import { cn } from "@/lib/utils"
+import { AdminPageShell } from "@/components/admin-page-shell"
+import { Button } from "@/components/ui/button"
+import { HeroFormField, HeroInput, HeroKpiCard, HeroStatusBadge } from "@/components/templates"
+import { resolveUploadUrl } from "@/lib/resolve-upload-url"
 import { submitAttendance } from "@/app/actions/attendance"
 import { verifyAndSubmitFaceAttendanceAction } from "@/app/actions/face-attendance-actions"
 import { FaceAttendanceV2Client } from "@/app/mobile/attendance/face-v2/face-v2-client"
@@ -56,10 +60,14 @@ import { changeMyPasswordDirectAction } from "@/app/dashboard/profile/actions"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+
+const quickActionButtonClassName =
+  "flex h-auto min-h-[4.5rem] w-full flex-col gap-1.5 rounded-xl border border-border/70 bg-white px-2.5 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-700 shadow-none hover:bg-muted/35 hover:text-primary focus-visible:ring-2 focus-visible:ring-[#0753e7]/40 dark:bg-slate-900 dark:text-slate-200"
+const quickActionIconClassName =
+  "flex size-8 items-center justify-center rounded-lg bg-[#0753e7] text-white shadow-xs transition group-hover:scale-105 [&_svg]:size-4"
 
 function DesktopFaceRegisterView({
   employeeId,
@@ -153,7 +161,7 @@ function DesktopFaceRegisterView({
   return (
     <div className="p-6 text-white space-y-5 text-center">
       {regState === "success" ? (
-        <div className="p-8 rounded-3xl bg-emerald-950/80 border-2 border-emerald-500 space-y-4">
+        <div className="p-8 rounded-2xl bg-emerald-950/80 border-2 border-emerald-500 space-y-4">
           <div className="h-20 w-20 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
             <Check className="h-10 w-10 stroke-[3]" />
           </div>
@@ -163,16 +171,16 @@ function DesktopFaceRegisterView({
           <p className="text-xs text-emerald-200">
             Wajah <span className="font-bold text-white">{employeeName}</span> (SN: <span className="font-mono font-bold">{employeeSn}</span>) telah terdaftar di database biometrik Raray Vision V2.
           </p>
-          <button
+          <Button type="button" variant="outline" size="dense"
             onClick={onClose}
-            className="px-8 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black shadow-lg transition"
+            className="h-9 rounded-md border-emerald-200 text-emerald-700 hover:bg-emerald-50"
           >
             Selesai & Tutup Popup
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-4 max-w-md mx-auto">
-          <div className="relative w-full aspect-[4/3] rounded-3xl bg-black border-2 border-cyan-500/50 overflow-hidden shadow-2xl flex items-center justify-center">
+          <div className="relative w-full aspect-[4/3] rounded-2xl bg-black border-2 border-cyan-500/50 overflow-hidden shadow-2xl flex items-center justify-center">
             <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover mirror" />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="w-44 h-56 rounded-[50%] border-4 border-dashed border-cyan-400 animate-pulse flex items-center justify-center">
@@ -187,13 +195,13 @@ function DesktopFaceRegisterView({
           <p className="text-xs font-medium text-cyan-200">{statusMsg}</p>
           {errorMsg && <p className="text-xs font-bold text-rose-400">{errorMsg}</p>}
 
-          <button
+          <Button type="button" variant="default" size="dense"
             onClick={captureAndRegister}
             disabled={regState === "processing"}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white text-xs font-black shadow-lg shadow-cyan-500/25 transition active:scale-[0.98] disabled:opacity-50"
+            className="h-9 w-full rounded-md bg-[#0753e7] text-xs font-semibold text-white shadow-none hover:bg-[#0645c4] disabled:opacity-50"
           >
             {regState === "processing" ? "Memproses Registrasi V2..." : "📸 DAFTARKAN WAJAH BIOMETRIK V2"}
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -252,11 +260,11 @@ function DesktopEditPhotoView({
   return (
     <div className="p-8 bg-slate-50/80 dark:bg-slate-900 text-slate-800 dark:text-white text-center space-y-5 max-w-md mx-auto">
       {success ? (
-        <div className="space-y-4 p-6 rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
+        <div className="space-y-4 p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800">
           <div className="h-16 w-16 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center text-2xl font-bold shadow-md">✓</div>
           <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-200">Foto Profil Berhasil Diperbarui!</h4>
           <p className="text-xs text-emerald-600 dark:text-emerald-300">Foto profil baru Anda telah tersimpan dan diperbarui di layar.</p>
-          <button onClick={onClose} className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">Selesai & Tutup</button>
+          <Button type="button" variant="outline" size="dense" onClick={onClose} className="h-9 rounded-md border-emerald-200 text-emerald-700 hover:bg-emerald-50">Selesai & Tutup</Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -269,29 +277,29 @@ function DesktopEditPhotoView({
           <div className="relative h-32 w-32 mx-auto rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-3xl font-black shadow-xl overflow-hidden ring-4 ring-white dark:ring-slate-800">
             {photoPreview ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={photoPreview} alt="Preview" className="h-full w-full object-cover" />
+              <img src={resolveUploadUrl(photoPreview)} alt="Profile photo preview" className="h-full w-full object-cover" />
             ) : (
               <User className="h-16 w-16 opacity-70" />
             )}
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300">Pilih Foto Baru (JPG, PNG, WebP)</label>
+          <HeroFormField label="Pilih Foto Baru (JPG, PNG, WebP)" htmlFor="profile-photo">
             <input
+              id="profile-photo"
               type="file"
               accept="image/*"
               onChange={handleFileChange}
-              className="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
+              className="block w-full rounded-lg border border-border/70 bg-white px-3 py-2 text-xs text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#0753e7] hover:file:bg-blue-100"
             />
-          </div>
+          </HeroFormField>
 
-          <button
+          <Button variant="default" size="dense"
             type="submit"
             disabled={submitting || !file}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-black shadow-lg shadow-emerald-500/20 transition disabled:opacity-50"
+            className="h-9 w-full rounded-md bg-[#0753e7] text-xs font-semibold text-white shadow-none hover:bg-[#0645c4] disabled:opacity-50"
           >
             {submitting ? "Mengunggah Foto..." : "📸 SIMPAN FOTO PROFIL"}
-          </button>
+          </Button>
         </form>
       )}
     </div>
@@ -354,11 +362,11 @@ function DesktopChangePasswordView({ onClose }: { onClose: () => void }) {
   return (
     <div className="p-6 bg-slate-50/80 dark:bg-slate-900 text-slate-800 dark:text-white space-y-4 max-w-md mx-auto text-left">
       {success ? (
-        <div className="space-y-4 p-6 text-center rounded-3xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 animate-in fade-in zoom-in-95">
+        <div className="space-y-4 p-6 text-center rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 animate-in fade-in zoom-in-95">
           <div className="h-16 w-16 mx-auto rounded-full bg-emerald-500 text-white flex items-center justify-center text-2xl font-bold shadow-md">✓</div>
           <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-200">Password Berhasil Diubah!</h4>
           <p className="text-xs text-emerald-600 dark:text-emerald-300">Password akun Anda telah berhasil diperbarui. Silakan gunakan password baru ini saat login berikutnya.</p>
-          <button onClick={onClose} className="px-6 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md hover:bg-emerald-700 transition">Selesai & Tutup</button>
+          <Button type="button" variant="outline" size="dense" onClick={onClose} className="h-9 rounded-md border-emerald-200 text-emerald-700 hover:bg-emerald-50">Selesai & Tutup</Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -369,77 +377,86 @@ function DesktopChangePasswordView({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Password Saat Ini</label>
+          <HeroFormField label="Password Saat Ini" htmlFor="current-password" required>
             <div className="relative">
-              <input
+              <HeroInput
+                id="current-password"
                 type={showOld ? "text" : "password"}
                 required
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 placeholder="Masukkan password saat ini"
-                className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                className="pr-10"
               />
-              <button
+              <Button variant="ghost"
+                size="denseIcon"
                 type="button"
                 onClick={() => setShowOld(!showOld)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-1 top-1/2 size-9 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label={showOld ? "Sembunyikan password saat ini" : "Tampilkan password saat ini"}
+                aria-pressed={showOld}
               >
                 {showOld ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
+              </Button>
             </div>
-          </div>
+          </HeroFormField>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Password Baru</label>
+          <HeroFormField label="Password Baru" htmlFor="new-password" required>
             <div className="relative">
-              <input
+              <HeroInput
+                id="new-password"
                 type={showNew ? "text" : "password"}
                 required
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Masukkan password baru (min. 6 karakter)"
-                className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                className="pr-10"
               />
-              <button
+              <Button variant="ghost"
+                size="denseIcon"
                 type="button"
                 onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-1 top-1/2 size-9 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label={showNew ? "Sembunyikan password baru" : "Tampilkan password baru"}
+                aria-pressed={showNew}
               >
                 {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
+              </Button>
             </div>
-          </div>
+          </HeroFormField>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Konfirmasi Password Baru</label>
+          <HeroFormField label="Konfirmasi Password Baru" htmlFor="confirm-password" required>
             <div className="relative">
-              <input
+              <HeroInput
+                id="confirm-password"
                 type={showConfirm ? "text" : "password"}
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Ketik ulang password baru"
-                className="w-full pl-4 pr-10 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                className="pr-10"
               />
-              <button
+              <Button variant="ghost"
+                size="denseIcon"
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-1 top-1/2 size-9 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                aria-label={showConfirm ? "Sembunyikan konfirmasi password" : "Tampilkan konfirmasi password"}
+                aria-pressed={showConfirm}
               >
                 {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
+              </Button>
             </div>
-          </div>
+          </HeroFormField>
 
-          <button
+          <Button variant="default" size="dense"
             type="submit"
             disabled={submitting || !oldPassword || !newPassword || !confirmPassword}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white text-xs font-black shadow-lg shadow-amber-500/20 transition disabled:opacity-50 flex items-center justify-center gap-2"
+            className="h-9 w-full rounded-md bg-[#0753e7] text-xs font-semibold text-white shadow-none hover:bg-[#0645c4] disabled:opacity-50"
           >
             <Key className="size-4" />
             {submitting ? "Memproses Perubahan..." : "SIMPAN PASSWORD BARU"}
-          </button>
+          </Button>
         </form>
       )}
     </div>
@@ -721,92 +738,89 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
   }
 
   return (
-    <div className="space-y-6 pb-12 font-sans text-slate-800 dark:text-slate-100">
-      {/* Colorful Aesthetic Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 p-6 sm:p-7 text-white shadow-xl shadow-teal-500/20 border border-teal-400/30">
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="rounded-full bg-white/20 px-3.5 py-1 text-xs font-bold text-white backdrop-blur-md border border-white/20">
-                Dashboard Individu
-              </span>
-              <span className="rounded-full bg-slate-900/20 px-3 py-1 text-xs font-mono font-bold text-emerald-100 backdrop-blur-md">
-                SN: {userProfile.employeeSn}
-              </span>
-            </div>
-            <h1 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-white">
-              Halo, {userProfile.name}! 👋
-            </h1>
-            <p className="text-xs sm:text-sm text-teal-50 font-medium max-w-xl mt-1 leading-relaxed">
-              {userProfile.jobTitle} • {userProfile.department} • {userProfile.siteName}
-            </p>
-          </div>
-        </div>
-
-        <div className="absolute -right-12 -bottom-12 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-      </div>
-
-      {/* Main 3-Column Bento Grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 items-stretch">
+    <AdminPageShell
+      title="Dashboard Individu"
+      description={`Ringkasan presensi dan aktivitas ${userProfile.name}, ${userProfile.jobTitle}, ${userProfile.department}.`}
+      actions={
+        <span className="inline-flex h-9 items-center gap-2 rounded-md border border-border/70 bg-card px-3 text-xs font-medium text-muted-foreground">
+          <MapPin className="size-3.5 text-[#0753e7]" />
+          {userProfile.siteName}
+        </span>
+      }
+    >
+      <div className="mx-auto w-full max-w-[1600px] space-y-4 pb-6 font-sans text-slate-800 dark:text-slate-100">
+      {/* Main 3-Column Dashboard Grid */}
+      <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-12">
         {/* Left Column: Profile Biodata & Score Card */}
-        <div className="lg:col-span-4 flex flex-col justify-between space-y-6">
+        <div className="flex flex-col justify-between space-y-4 lg:col-span-4">
           {/* Profile & Biodata Card */}
-          <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 space-y-5 flex-1 flex flex-col justify-between">
+          <div className="flex flex-1 flex-col justify-between space-y-5 rounded-2xl border border-border/70 bg-card p-5 shadow-xs">
             <div>
               <div className="flex items-center justify-between mb-4">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Biodata Karyawan</span>
                 <div className="flex items-center gap-1.5">
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="denseIcon"
                     onClick={() => handleOpenAttendanceModal("edit-photo")}
-                    className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition shadow-xs"
+                    className="size-9 rounded-lg bg-muted/50 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
                     title="Edit Foto Profil"
+                    aria-label="Edit Foto Profil"
                   >
-                    <Camera className="h-3.5 w-3.5" />
-                  </button>
-                  <button
+                    <Camera className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="denseIcon"
                     onClick={() => handleOpenAttendanceModal("edit-profile")}
-                    className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition shadow-xs"
+                    className="size-9 rounded-lg bg-muted/50 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
                     title="Edit Profil Karyawan"
+                    aria-label="Edit Profil Karyawan"
                   >
-                    <Edit3 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
+                    <Edit3 className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="denseIcon"
                     onClick={() => handleOpenAttendanceModal("change-password")}
-                    className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition shadow-xs"
+                    className="size-9 rounded-lg bg-muted/50 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
                     title="Ganti Password Akun"
+                    aria-label="Ganti Password Akun"
                   >
-                    <Lock className="h-3.5 w-3.5" />
-                  </button>
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-extrabold ml-1",
-                      (userProfile.isActive !== false && userProfile.employmentStatus !== 'inactive')
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400"
-                        : "bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-400"
-                    )}
-                  >
-                    Status: {(userProfile.isActive !== false && userProfile.employmentStatus !== 'inactive') ? "Aktif" : "Nonaktif"}
-                  </span>
+                    <Lock className="size-4" />
+                  </Button>
+                  <HeroStatusBadge
+                    status={userProfile.isActive !== false && userProfile.employmentStatus !== 'inactive' ? 'approved' : 'rejected'}
+                    label={userProfile.isActive !== false && userProfile.employmentStatus !== 'inactive' ? 'Aktif' : 'Nonaktif'}
+                    className="ml-1"
+                  />
                 </div>
               </div>
 
               {/* Profile Avatar */}
               <div className="flex items-center gap-4 mb-4">
-                <div className="relative group/avatar h-20 w-20 shrink-0 rounded-2xl bg-gradient-to-tr from-emerald-400 via-teal-500 to-cyan-500 flex items-center justify-center text-white text-2xl font-black shadow-md overflow-hidden ring-4 ring-emerald-50 dark:ring-slate-800">
+                <div className="group/avatar relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[#0753e7] text-2xl font-black text-white ring-4 ring-blue-50 dark:ring-slate-800">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt={userProfile.name} className="h-full w-full object-cover" />
+                    <img src={resolveUploadUrl(avatarUrl)} alt={userProfile.name} className="h-full w-full object-cover" />
                   ) : (
                     userProfile.name.slice(0, 2).toUpperCase()
                   )}
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="dense"
                     onClick={() => handleOpenAttendanceModal("edit-photo")}
-                    className="absolute inset-0 bg-black/50 opacity-0 group-hover/avatar:opacity-100 flex flex-col items-center justify-center text-white text-[9px] font-bold transition duration-200"
+                    className="absolute inset-0 h-full w-full flex-col rounded-none bg-black/50 text-[9px] font-bold text-white opacity-0 transition duration-200 hover:bg-black/50 hover:text-white group-hover/avatar:opacity-100 focus-visible:opacity-100"
                     title="Klik untuk Edit Foto Profil"
+                    aria-label="Klik untuk Edit Foto Profil"
                   >
                     <Camera className="h-4 w-4 mb-0.5" />
                     Edit Foto
-                  </button>
+                  </Button>
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate">{userProfile.name}</h3>
@@ -838,73 +852,73 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
 
               {/* Quick Attendance & Face Registration Buttons */}
               <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aksi Presensi, Wajah & Modul</p>
+                <p className="text-xs font-semibold text-muted-foreground">Aksi cepat</p>
                 {/* Row 1: 3 Main Biometric Actions */}
                 <div className="grid grid-cols-3 gap-2">
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("check-in")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Check In Desktop"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <LogIn className="h-4 w-4" />
                     </div>
                     <span className="text-[11px] font-extrabold">Check In</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("check-out")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Check Out Desktop"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-amber-500 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <LogOut className="h-4 w-4" />
                     </div>
                     <span className="text-[11px] font-extrabold">Check Out</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("face-reg")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200/80 dark:border-cyan-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Registrasi Wajah Biometrik V2 Popup"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-cyan-500 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <UserCheck className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Registrasi Wajah</span>
-                  </button>
+                  </Button>
                 </div>
 
                 {/* Row 2: 3 Module, Overtime & Permission Actions */}
                 <div className="grid grid-cols-3 gap-2 pt-0.5">
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("permission")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Pengajuan Izin / Sakit"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-rose-500 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <FileText className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Izin Sakit</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("overtime")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/60 dark:hover:bg-purple-900/80 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Form Pengajuan Lembur SPL Mobile"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-purple-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <Clock3 className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengajuan Lembur</span>
-                  </button>
+                  </Button>
 
                   <Link
                     href="/dashboard/chitralearning-lms"
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Platform Learning Management System Chitra LMS"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <GraduationCap className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Chitra LMS</span>
@@ -913,74 +927,74 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
 
                 {/* Row 3: 3 Reporting, Info & HR Complaint Actions */}
                 <div className="grid grid-cols-3 gap-2 pt-0.5">
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("progress")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/60 dark:hover:bg-teal-900/80 text-teal-700 dark:text-teal-300 border border-teal-200/80 dark:border-teal-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Form Input Progress Harian"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-teal-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <Activity className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Input Progress</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("ho-info")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/80 text-sky-700 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Informasi Head Office (HO)"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-sky-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <Building2 className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Informasi HO</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("hr-complaint")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/60 dark:hover:bg-pink-900/80 text-pink-700 dark:text-pink-300 border border-pink-200/80 dark:border-pink-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Form Pengaduan HR (Curhat HR)"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-pink-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <MessageSquareHeart className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengaduan HR</span>
-                  </button>
+                  </Button>
                 </div>
 
                 {/* Row 4: APD, Leaderboard & Wellness Actions */}
                 <div className="grid grid-cols-3 gap-2 pt-0.5">
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("apd")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/80 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Form Pengajuan APD Mobile"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-amber-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <ShieldCheck className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengajuan APD</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("leaderboard")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/60 dark:hover:bg-yellow-900/80 text-yellow-700 dark:text-yellow-300 border border-yellow-200/80 dark:border-yellow-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Leaderboard & Gamifikasi Mobile"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-yellow-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <Trophy className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Leaderboard</span>
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button type="button" variant="ghost"
                     onClick={() => handleOpenAttendanceModal("wellness")}
-                    className="flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 transition group shadow-sm"
+                    className={quickActionButtonClassName}
                     title="Buka Popup Program Wellness Karyawan Mobile"
                   >
-                    <div className="h-8 w-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center group-hover:scale-105 transition shadow-sm">
+                    <div className={quickActionIconClassName}>
                       <HeartPulse className="h-4 w-4" />
                     </div>
                     <span className="text-[10px] font-extrabold text-center leading-none">Wellness</span>
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1000,37 +1014,39 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
           </div>
 
           {/* Score Card */}
-          <div className="rounded-3xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white p-6 shadow-xl shadow-purple-500/20 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold text-white border border-white/20 backdrop-blur-md flex items-center gap-1.5">
-                <Award className="h-4 w-4 text-amber-300" />
-                {scoreCard.levelName}
-              </span>
-              <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-md">
-                {scoreCard.rankText}
-              </span>
-            </div>
-
-            <div>
-              <p className="text-xs text-purple-100 font-semibold uppercase tracking-wider">Performa Poin Individu</p>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-4xl font-black tracking-tight text-white">
-                  {scoreCard.totalPoints} <span className="text-xs font-normal text-purple-200">pts</span>
-                </span>
-                <span className="text-xs font-bold text-emerald-200 bg-emerald-500/30 px-2.5 py-0.5 rounded-full border border-emerald-300/30">
-                  +{scoreCard.monthlyPointsEarned} pts bulan ini
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 pt-2 border-t border-white/20">
+          <div className="space-y-3">
+            <HeroKpiCard
+              title="Performa Poin Individu"
+              value={scoreCard.totalPoints}
+              unit="pts"
+              icon={<Award className="size-5" />}
+              watermarkIcon={<Award className="size-16" />}
+              tone="blue"
+              variant="colorful"
+              badge={scoreCard.levelName}
+              trend={{
+                value: scoreCard.monthlyPointsEarned,
+                direction: scoreCard.monthlyPointsEarned > 0 ? "up" : "neutral",
+                label: "pts bulan ini",
+              }}
+              description={scoreCard.rankText}
+              className="rounded-2xl"
+            />
+            <div className="space-y-2 rounded-xl border border-border/70 bg-card p-4">
               <div className="flex items-center justify-between text-xs font-semibold">
-                <span className="text-purple-100">Productivity Index</span>
-                <span className="font-extrabold text-white">{scoreCard.productivityIndex}%</span>
+                <span className="text-muted-foreground">Productivity Index</span>
+                <span className="tabular-nums font-bold text-foreground">{scoreCard.productivityIndex}%</span>
               </div>
-              <div className="h-2.5 w-full rounded-full bg-black/20 overflow-hidden">
+              <div
+                role="progressbar"
+                aria-label="Productivity Index"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={scoreCard.productivityIndex}
+                className="h-2 w-full overflow-hidden rounded-full bg-muted"
+              >
                 <div
-                  className="h-full bg-gradient-to-r from-emerald-300 to-teal-300 rounded-full transition-all duration-500"
+                  className="h-full rounded-full bg-primary transition-all duration-500"
                   style={{ width: `${scoreCard.productivityIndex}%` }}
                 />
               </div>
@@ -1039,10 +1055,10 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
         </div>
 
         {/* Center Bento Column */}
-        <div className="lg:col-span-8 flex flex-col justify-between space-y-6">
+        <div className="flex flex-col justify-between space-y-4 lg:col-span-8">
           {/* Top Row: Attendance & Productivity */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
-            <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 sm:col-span-6 flex flex-col justify-between space-y-4">
+                <div className="flex flex-col justify-between space-y-4 rounded-2xl border border-border/70 bg-card p-5 shadow-xs sm:col-span-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Statistik Kehadiran</p>
@@ -1081,7 +1097,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
               </p>
             </div>
 
-            <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 sm:col-span-6 flex flex-col justify-between space-y-4">
+            <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs sm:col-span-6 flex flex-col justify-between space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Produktivitas Jam Kerja</p>
@@ -1116,7 +1132,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
 
           {/* Middle Row: Last Activity & Scrollable Training List */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
-            <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 sm:col-span-6 flex flex-col justify-between space-y-4">
+            <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs sm:col-span-6 flex flex-col justify-between space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Aktivitas Terakhir</p>
@@ -1124,7 +1140,8 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                 </div>
                 <Link
                   href="/dashboard/activity-hub/my-day"
-                  className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 hover:bg-emerald-100 transition"
+                  className="flex size-9 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground transition hover:bg-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0753e7]/50"
+                  aria-label="Buat aktivitas baru"
                   title="Submit Aktivitas Baru"
                 >
                   <Plus className="h-4 w-4" />
@@ -1137,9 +1154,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                       {lastActivity.title}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400 px-2.5 py-0.5 text-[10px] font-extrabold">
-                      {lastActivity.status}
-                    </span>
+                    <HeroStatusBadge status={lastActivity.status} label={lastActivity.status} />
                   </div>
 
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -1163,7 +1178,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
               )}
             </div>
 
-            <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 sm:col-span-6 flex flex-col justify-between space-y-3">
+            <div className="flex flex-col justify-between space-y-3 rounded-2xl border border-border/70 bg-card p-5 shadow-xs sm:col-span-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sertifikasi & Pelatihan</p>
@@ -1185,9 +1200,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                         <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200 truncate">
                           {tItem.trainingName}
                         </span>
-                        <span className="text-[10px] font-extrabold text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full shrink-0">
-                          {tItem.status}
-                        </span>
+                        <HeroStatusBadge status={tItem.status} label={tItem.status} />
                       </div>
                       <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80 font-medium truncate">
                         {tItem.provider} • Tahun {tItem.completedYear}
@@ -1209,7 +1222,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
 
           {/* Bottom Row: Reminders & Inbox Reminders */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
-            <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 sm:col-span-6 space-y-3">
+            <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-5 shadow-xs sm:col-span-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pengingat Tindakan</p>
@@ -1243,7 +1256,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
               </div>
             </div>
 
-            <div className="rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 sm:col-span-6 space-y-3">
+            <div className="space-y-3 rounded-2xl border border-border/70 bg-card p-5 shadow-xs sm:col-span-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Kotak Masuk & Approval</p>
@@ -1269,17 +1282,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                       <p className="text-[10px] text-slate-400 font-medium truncate">{item.subtitle}</p>
                     </div>
 
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold shrink-0 ${
-                        item.status === "Approved"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400"
-                          : item.status === "Waiting"
-                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-400"
-                          : "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                      }`}
-                    >
-                      {item.status}
-                    </span>
+                    <HeroStatusBadge status={item.status} label={item.status} />
                   </div>
                 ))}
               </div>
@@ -1290,7 +1293,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
 
       {/* AUTOMATIC MOBILE-STYLE FACE RECOGNITION DEKSTOP MODAL */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent showCloseButton={false} className="sm:max-w-6xl max-w-[96vw] overflow-y-auto max-h-[94vh] rounded-3xl p-0 border border-slate-200/80 dark:border-slate-800 shadow-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+        <DialogContent showCloseButton={false} className="sm:max-w-6xl max-w-[96vw] overflow-y-auto max-h-[94vh] rounded-2xl p-0 border border-slate-200/80 dark:border-slate-800 shadow-2xl bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
           {/* Colorful Soft Header Banner */}
           <div
             className={`relative flex items-center justify-between p-4 px-6 text-white ${
@@ -1374,7 +1377,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                   ? "Ganti Password Akun"
                   : "Biometrik AI V2"}
               </span>
-              <span className="text-xs font-extrabold text-white">
+              <DialogTitle className="text-xs font-extrabold text-white">
                 {modalMode === "check-in"
                   ? "Presensi Check-In"
                   : modalMode === "check-out"
@@ -1402,16 +1405,20 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                   : modalMode === "change-password"
                   ? "Form Ubah Password Keamanan Akun"
                   : "Registrasi Wajah Biometrik"}
-              </span>
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Panel tindakan untuk fitur karyawan yang dipilih.
+              </DialogDescription>
             </div>
 
-            <button
+            <Button type="button" variant="ghost" size="denseIcon"
               onClick={() => setModalOpen(false)}
-              className="h-8 w-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition backdrop-blur-md shadow-sm"
+              className="size-9 rounded-lg bg-white/20 text-white shadow-none transition hover:bg-white/30 hover:text-white"
               title="Tutup Modal"
+              aria-label="Tutup modal"
             >
               <X className="h-4 w-4 stroke-[2.5]" />
-            </button>
+            </Button>
           </div>
 
           {modalOpen && (
@@ -1500,6 +1507,7 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
           )}
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AdminPageShell>
   )
 }

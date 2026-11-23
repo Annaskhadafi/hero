@@ -356,7 +356,10 @@ const nextConfig: NextConfig = {
       },
     ]
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, dev }) => {
+    if (dev) {
+      config.cache = false
+    }
     if (isServer) {
       // Prevent face-api.js from being bundled on server
       config.externals = config.externals || []
