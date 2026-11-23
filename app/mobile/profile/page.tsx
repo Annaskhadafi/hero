@@ -96,35 +96,83 @@ export default async function MobileProfilePage() {
     )
     .limit(1);
 
-  const [emp] = authUser?.id
-    ? await db
-        .select({
-          id: employees.id,
-          authUserId: employees.authUserId,
-          email: employees.email,
-          businessCardPublicEnabled: employees.businessCardPublicEnabled,
-          businessCardPublicToken: employees.businessCardPublicToken,
-          phoneNumber: employees.phoneNumber,
-          jobTitle: employees.jobTitle,
-          role: employees.role,
-        })
-        .from(employees)
-        .where(eq(employees.authUserId, authUser.id))
-        .limit(1)
-    : await db
-        .select({
-          id: employees.id,
-          authUserId: employees.authUserId,
-          email: employees.email,
-          businessCardPublicEnabled: employees.businessCardPublicEnabled,
-          businessCardPublicToken: employees.businessCardPublicToken,
-          phoneNumber: employees.phoneNumber,
-          jobTitle: employees.jobTitle,
-          role: employees.role,
-        })
-        .from(employees)
-        .where(sql`lower(${employees.email}) = ${normalizedSessionEmail}`)
-        .limit(1);
+  type ProfileEmp = {
+    id: number;
+    authUserId: string | null;
+    email: string;
+    businessCardPublicEnabled?: boolean;
+    businessCardPublicToken?: string | null;
+    phoneNumber?: string | null;
+    jobTitle?: string | null;
+    role?: string | null;
+  };
+
+  let emp: ProfileEmp | undefined;
+
+  try {
+    const [foundEmp] = authUser?.id
+      ? await db
+          .select({
+            id: employees.id,
+            authUserId: employees.authUserId,
+            email: employees.email,
+            businessCardPublicEnabled: employees.businessCardPublicEnabled,
+            businessCardPublicToken: employees.businessCardPublicToken,
+            phoneNumber: employees.phoneNumber,
+            jobTitle: employees.jobTitle,
+            role: employees.role,
+          })
+          .from(employees)
+          .where(eq(employees.authUserId, authUser.id))
+          .limit(1)
+      : await db
+          .select({
+            id: employees.id,
+            authUserId: employees.authUserId,
+            email: employees.email,
+            businessCardPublicEnabled: employees.businessCardPublicEnabled,
+            businessCardPublicToken: employees.businessCardPublicToken,
+            phoneNumber: employees.phoneNumber,
+            jobTitle: employees.jobTitle,
+            role: employees.role,
+          })
+          .from(employees)
+          .where(sql`lower(${employees.email}) = ${normalizedSessionEmail}`)
+          .limit(1);
+    emp = foundEmp;
+  } catch (empQueryErr) {
+    console.warn("[mobile/profile] Full employee query failed, falling back to base columns:", empQueryErr);
+    try {
+      const [fallbackEmp] = authUser?.id
+        ? await db
+            .select({
+              id: employees.id,
+              authUserId: employees.authUserId,
+              email: employees.email,
+              phoneNumber: employees.phoneNumber,
+              jobTitle: employees.jobTitle,
+              role: employees.role,
+            })
+            .from(employees)
+            .where(eq(employees.authUserId, authUser.id))
+            .limit(1)
+        : await db
+            .select({
+              id: employees.id,
+              authUserId: employees.authUserId,
+              email: employees.email,
+              phoneNumber: employees.phoneNumber,
+              jobTitle: employees.jobTitle,
+              role: employees.role,
+            })
+            .from(employees)
+            .where(sql`lower(${employees.email}) = ${normalizedSessionEmail}`)
+            .limit(1);
+      emp = fallbackEmp ? { ...fallbackEmp, businessCardPublicEnabled: false, businessCardPublicToken: null } : undefined;
+    } catch (fallbackErr) {
+      console.error("[mobile/profile] Fallback employee query also failed:", fallbackErr);
+    }
+  }
 
   const userManagementEmail = emp?.email?.trim().toLowerCase() || normalizedSessionEmail;
   const data = await getDailyActivityEmployeeData(userManagementEmail, { ensureSeed: false });
@@ -140,17 +188,34 @@ export default async function MobileProfilePage() {
   const employeeIds: number[] = empId ? [empId] : []
 
   // Get employee record for contract dates & MCU matching
-  const [hrEmp] = emp?.email ? await db
-    .select({
-      id: employees.id, name: employees.name, email: employees.email,
-      contractDurationStart: employees.contractDurationStart, contractDurationEnd: employees.contractDurationEnd,
-      joinDate: employees.joinDate, birthDate: employees.birthDate,
-      signatureDataUrl: employees.signatureDataUrl,
-      signatureRegisteredAt: employees.signatureRegisteredAt,
-    })
-    .from(employees)
-    .where(eq(employees.email, emp.email))
-    .limit(1) : []
+  let hrEmp: {
+    id: number;
+    name: string;
+    email: string;
+    contractDurationStart: string | Date | null;
+    contractDurationEnd: string | Date | null;
+    joinDate: string | Date | null;
+    birthDate: string | Date | null;
+    signatureDataUrl: string | null;
+    signatureRegisteredAt: string | Date | null;
+  } | undefined;
+
+  try {
+    const [foundHr] = emp?.email ? await db
+      .select({
+        id: employees.id, name: employees.name, email: employees.email,
+        contractDurationStart: employees.contractDurationStart, contractDurationEnd: employees.contractDurationEnd,
+        joinDate: employees.joinDate, birthDate: employees.birthDate,
+        signatureDataUrl: employees.signatureDataUrl,
+        signatureRegisteredAt: employees.signatureRegisteredAt,
+      })
+      .from(employees)
+      .where(eq(employees.email, emp.email))
+      .limit(1) : [];
+    hrEmp = foundHr;
+  } catch (hrErr) {
+    console.warn("[mobile/profile] hrEmp query failed:", hrErr);
+  }
 
   const hrFkId = hrEmp?.id
 

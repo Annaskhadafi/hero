@@ -12,8 +12,10 @@ test('mobile profile page loads cleanly without React error 441 and displays emp
   await new Promise((resolve) => setTimeout(resolve, 3000))
 
   // 3. Verifikasi halaman profil mobile terbuka sukses tanpa pesan error boundary
-  const errorBoundaryTitle = browser.locator('text=Gagal memuat halaman')
-  await expect(errorBoundaryTitle).not.toBeVisible()
+  const errorBoundaryTitle1 = browser.locator('text=Gagal memuat profil')
+  const errorBoundaryTitle2 = browser.locator('text=Gagal memuat halaman')
+  await expect(errorBoundaryTitle1).not.toBeVisible()
+  await expect(errorBoundaryTitle2).not.toBeVisible()
 
   const profileHeader = browser.locator('text=Employee Profile')
   await expect(profileHeader).toBeVisible({ timeout: 20_000 })
