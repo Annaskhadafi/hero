@@ -28,8 +28,8 @@ const testCopy: Record<NotificationCategory, { title: string; body: string; url:
     url: "/mobile/notifications",
   },
   shift_reminders: {
-    title: "Shift reminder test",
-    body: "Shift akan dimulai sebentar lagi. Cek attendance sebelum mulai kerja.",
+    title: "🐾 Meooow! Waktunya Absen Masuk",
+    body: "Meow! 10 menit lagi shift kerja dimulai. Yuk Check In sekarang di HERO! 🐱",
     url: "/mobile/attendance",
   },
   hse_alerts: {

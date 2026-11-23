@@ -3,6 +3,7 @@ import { runApprovalAutomationTick } from "@/lib/approval-blueprint";
 import { runApdReminders } from "@/lib/apd-reminder";
 import { sendDueContractReviewReminders } from "@/app/actions/contract-review";
 import { runAllMinePermitReminders } from "@/lib/mine-permit-reminder";
+import { runAttendanceReminderTick } from "@/lib/attendance-reminders";
 
 function isAuthorizedCronRequest(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -33,16 +34,20 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await runApprovalAutomationTick();
-    const apdResult = await runApdReminders();
-    const contractReviewResult = await sendDueContractReviewReminders();
-    const minePermitResult = await runAllMinePermitReminders();
+    const [result, apdResult, contractReviewResult, minePermitResult, attendanceResult] = await Promise.all([
+      runApprovalAutomationTick(),
+      runApdReminders(),
+      sendDueContractReviewReminders(),
+      runAllMinePermitReminders(),
+      runAttendanceReminderTick(),
+    ]);
     return NextResponse.json({
       ok: true,
       approval: result,
       apd: apdResult,
       contractReview: contractReviewResult,
       minePermit: minePermitResult,
+      attendanceReminder: attendanceResult,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Reminder tick failed.";

@@ -25,12 +25,18 @@ self.addEventListener("push", (event) => {
   }
 
   const title = payload.title || "HERO";
+  const soundUrl = payload.sound || "/sounds/cat-meow.mp3";
   const options = {
     body: payload.body || "Notifikasi baru masuk.",
     icon: payload.icon || "/pwa/hero-cat-20261012-192.png",
     badge: payload.badge || "/pwa/hero-cat-20261012-192.png",
     tag: payload.tag || "hero-notification",
-    data: payload.data || { url: "/mobile/notifications" },
+    sound: soundUrl,
+    vibrate: payload.vibrate || [100, 50, 100, 50, 200],
+    data: payload.data || { url: "/mobile/notifications", sound: soundUrl },
+    actions: payload.actions || [
+      { action: "open", title: "Buka HERO 🐾" },
+    ],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));

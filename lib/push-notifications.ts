@@ -40,6 +40,8 @@ export type PushDispatchInput = {
   body: string;
   url?: string;
   tag?: string;
+  sound?: string;
+  vibrate?: number[];
   requirePreference?: boolean;
   notificationEventId?: number;
   metadata?: Record<string, unknown>;
@@ -127,16 +129,20 @@ function getCategoryPreferenceKey(category: NotificationCategory): keyof Notific
 }
 
 function buildPushPayload(input: PushDispatchInput) {
+  const sound = input.sound ?? (input.category === "shift_reminders" ? "/sounds/cat-meow.mp3" : undefined);
   return {
     title: input.title,
     body: input.body,
     tag: input.tag ?? `${input.category}-${input.employeeId}`,
     icon: "/icon-192.png?v=hero-cat-20261012",
     badge: "/icon-192.png?v=hero-cat-20261012",
+    sound,
+    vibrate: input.vibrate ?? (input.category === "shift_reminders" ? [100, 50, 100, 50, 200] : undefined),
     data: {
       url: input.url ?? "/mobile/notifications",
       category: input.category,
       employeeId: input.employeeId,
+      sound,
       ...input.metadata,
     },
   };
