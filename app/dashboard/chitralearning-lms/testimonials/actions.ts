@@ -174,9 +174,9 @@ export async function getLmsTestimonialStats(): Promise<TestimonialStats> {
     if (totalCount === 0) {
       return {
         totalCount: 0,
-        averageRating: 5.0,
+        averageRating: 0.0,
         ratingCounts: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
-        satisfactionRate: 100,
+        satisfactionRate: 0,
       }
     }
 
@@ -204,9 +204,9 @@ export async function getLmsTestimonialStats(): Promise<TestimonialStats> {
     console.error('[getLmsTestimonialStats] error:', err)
     return {
       totalCount: 0,
-      averageRating: 5.0,
+      averageRating: 0.0,
       ratingCounts: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
-      satisfactionRate: 100,
+      satisfactionRate: 0,
     }
   }
 }

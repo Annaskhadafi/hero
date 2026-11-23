@@ -513,6 +513,15 @@ export function MobileNotificationsCenter({
     setIsBusy(true);
     setFeedback("");
 
+    // Putar suara langsung dari browser jika kategori pengingat absen
+    if (category === "shift_reminders") {
+      try {
+        const audio = new Audio("/sounds/cat-meow.mp3");
+        audio.volume = 1.0;
+        void audio.play().catch(() => {});
+      } catch {}
+    }
+
     try {
       const response = await fetch("/api/push/test", {
         method: "POST",
@@ -527,7 +536,7 @@ export function MobileNotificationsCenter({
         throw new Error(payload.message ?? "Test push gagal.");
       }
 
-      setFeedback("Test push terkirim.");
+      setFeedback("Test push terkirim. 🐾");
       await refreshData();
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Test push gagal.");
@@ -705,14 +714,33 @@ export function MobileNotificationsCenter({
                         <div>
                           <p className="text-sm font-black text-[#082033]">{item.label}</p>
                           <p className="mt-1 text-xs font-semibold leading-5 text-[#486275]">{item.description}</p>
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => void sendTestPush(item.category)}
-                            className="mt-3 text-xs font-black uppercase tracking-[0.14em] text-[#003f78]"
-                          >
-                            Send test
-                          </button>
+                          <div className="mt-3 flex flex-wrap items-center gap-3">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void sendTestPush(item.category)}
+                              className="text-xs font-black uppercase tracking-[0.14em] text-[#003f78]"
+                            >
+                              Send test
+                            </button>
+                            {item.category === "shift_reminders" && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  try {
+                                    const audio = new Audio("/sounds/cat-meow.mp3");
+                                    audio.volume = 1.0;
+                                    void audio.play();
+                                  } catch (err) {
+                                    console.error("Audio error:", err);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700 hover:bg-amber-100"
+                              >
+                                <span>🐾 Dengar Meow 🐱</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <Switch

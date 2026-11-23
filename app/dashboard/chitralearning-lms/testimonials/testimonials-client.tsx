@@ -75,7 +75,45 @@ export function TestimonialsClient({
 }: TestimonialsClientProps) {
   const router = useRouter()
   const [testimonials, setTestimonials] = useState<TestimonialItem[]>(initialTestimonials)
-  const [stats, setStats] = useState<TestimonialStats>(initialStats)
+
+  // Synchronize state when initialTestimonials changes via server revalidation
+  React.useEffect(() => {
+    setTestimonials(initialTestimonials)
+  }, [initialTestimonials])
+
+  // Derive stats dynamically from current testimonials in state so any delete or addition updates scorecard instantly
+  const stats = useMemo<TestimonialStats>(() => {
+    const activeItems = testimonials.filter((t) => t.allowDisplay !== false)
+    const totalCount = activeItems.length
+
+    if (totalCount === 0) {
+      return {
+        totalCount: 0,
+        averageRating: 0.0,
+        ratingCounts: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        satisfactionRate: 0,
+      }
+    }
+
+    const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+    let sum = 0
+    let satisfied = 0
+
+    for (const item of activeItems) {
+      const r = Math.min(Math.max(item.rating || 5, 1), 5) as 1 | 2 | 3 | 4 | 5
+      ratingCounts[r] = (ratingCounts[r] || 0) + 1
+      sum += r
+      if (r >= 4) satisfied++
+    }
+
+    return {
+      totalCount,
+      averageRating: Number((sum / totalCount).toFixed(1)),
+      ratingCounts,
+      satisfactionRate: Math.round((satisfied / totalCount) * 100),
+    }
+  }, [testimonials])
+
   const [isPending, startTransition] = useTransition()
 
   // Filters
@@ -218,6 +256,7 @@ export function TestimonialsClient({
     setDeleteTargetId(null)
     if (res.success) {
       setTestimonials((prev) => prev.filter((t) => t.id !== deleteTargetId))
+      router.refresh()
     }
   }
 
@@ -299,14 +338,14 @@ export function TestimonialsClient({
         />
         <HeroKpiCard
           title="Rata-rata Rating"
-          value={`${stats.averageRating} / 5.0`}
+          value={stats.totalCount > 0 ? `${stats.averageRating.toFixed(1)} / 5.0` : '-'}
           description="Skor kepuasan keseluruhan"
           color="amber"
           icon={Star}
         />
         <HeroKpiCard
           title="Tingkat Kepuasan"
-          value={`${stats.satisfactionRate}%`}
+          value={stats.totalCount > 0 ? `${stats.satisfactionRate}%` : '0%'}
           description="Peserta memberi bintang 4 & 5"
           color="emerald"
           icon={ThumbsUp}
@@ -324,9 +363,11 @@ export function TestimonialsClient({
           {/* Big Score Block */}
           <div className="md:col-span-4 flex flex-col items-center justify-center text-center p-4 border-b md:border-b-0 md:border-r border-slate-100">
             <span className="text-6xl font-black font-heading text-slate-900 tracking-tight">
-              {stats.averageRating.toFixed(1)}
+              {stats.totalCount > 0 ? stats.averageRating.toFixed(1) : '0.0'}
             </span>
-            <div className="mt-3">{renderStars(Math.round(stats.averageRating), 'size-5')}</div>
+            <div className="mt-3">
+              {renderStars(stats.totalCount > 0 ? Math.round(stats.averageRating) : 0, 'size-5')}
+            </div>
             <p className="mt-2 text-xs font-medium text-slate-500">
               Berdasarkan {stats.totalCount} ulasan peserta
             </p>

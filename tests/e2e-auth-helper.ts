@@ -80,6 +80,13 @@ export async function loginToHero(
       await submitBtn.waitFor({ state: 'detached', timeout: 60000 }).catch(() => {})
     }
     await new Promise((resolve) => setTimeout(resolve, 3000))
+
+    // Dismiss birthday or announcement popup if present
+    const dismissBtn = browser.locator('button:has-text("TUTUP / MENGERTI"), button:has-text("Mengerti"), button:has-text("Tutup")').first()
+    if (await dismissBtn.isVisible().catch(() => false)) {
+      await dismissBtn.click().catch(() => {})
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
   } else {
     const emailInput = screen.getByPlaceholder(/Email atau SN/i)
     const passwordInput = screen.getByPlaceholder(/kata sandi/i)

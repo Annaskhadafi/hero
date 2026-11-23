@@ -13,11 +13,18 @@ test('LMS Testimonials feature under Leaderboard with Play Store style reviews a
   await app.open('/dashboard/chitralearning-lms/testimonials')
   await new Promise((r) => setTimeout(r, 3500))
 
+  // Dismiss birthday dialog if visible
+  const dismissBtn = browser.locator('button:has-text("TUTUP / MENGERTI")').first()
+  if (await dismissBtn.isVisible().catch(() => false)) {
+    await dismissBtn.click().catch(() => {})
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+
   // 2. Take screenshot of the Google Playstore style testimonials page
   await app.screenshot('01-lms-testimonials-playstore-view')
 
   // 3. Click "Tulis Testimoni" button to open the 6-question form dialog
-  const writeBtn = screen.getByRole('button', { name: /Tulis Testimoni/i, visible: true })
+  const writeBtn = browser.locator('button:has-text("Tulis Testimoni")').first()
   await writeBtn.click()
   await new Promise((r) => setTimeout(r, 1500))
 
@@ -58,6 +65,23 @@ test('LMS Testimonials feature under Leaderboard with Play Store style reviews a
   await submitBtn.click()
   await new Promise((r) => setTimeout(r, 4000))
 
-  // 7. Verify result and take final screenshot
+  // 7. Verify result and take screenshot
   await app.screenshot('04-lms-testimonials-list-updated')
+
+  // 8. Test deleting a testimonial and verify scorecard reactive update
+  const deleteBtn = screen.getByRole('button', { name: /Hapus ulasan/i, visible: true }).first()
+  if (await deleteBtn.isVisible().catch(() => false)) {
+    await deleteBtn.click()
+    await new Promise((r) => setTimeout(r, 1000))
+
+    // Confirm deletion in HeroConfirmDialog
+    const confirmBtn = screen.getByRole('button', { name: /Ya, Hapus/i, visible: true })
+    if (await confirmBtn.isVisible().catch(() => false)) {
+      await confirmBtn.click()
+      await new Promise((r) => setTimeout(r, 3000))
+    }
+
+    // 9. Take screenshot after deletion verifying scorecard and rating summary updated
+    await app.screenshot('05-lms-testimonials-after-delete')
+  }
 })

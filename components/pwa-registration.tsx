@@ -64,6 +64,35 @@ export function PwaRegistration() {
       }
     };
 
+    const playAudioSound = (soundUrl: string) => {
+      try {
+        const audio = new Audio(soundUrl);
+        audio.volume = 1.0;
+        void audio.play().catch(() => {});
+      } catch {}
+    };
+
+    // Check URL params on initial mount if opened from push notification click
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (searchParams.get("play_sound") === "cat-meow") {
+        playAudioSound("/sounds/cat-meow.mp3");
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("play_sound");
+        window.history.replaceState({}, "", cleanUrl.pathname + (cleanUrl.search ? `?${cleanUrl.search}` : ""));
+      }
+    } catch {}
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === "HERO_PLAY_SOUND") {
+        playAudioSound(event.data.sound || "/sounds/cat-meow.mp3");
+      }
+    };
+
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", handleSwMessage);
+    }
+
     // Auto-recover from stale Next.js Turbopack HMR ChunkLoadErrors & missing module factory errors
     // ponytail: upgrade path -> standard service-worker skipWaiting and Cache-Control header tuning
     const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
@@ -125,6 +154,9 @@ export function PwaRegistration() {
       return () => {
         window.removeEventListener("error", handleChunkError);
         window.removeEventListener("unhandledrejection", handleChunkError);
+        if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+          navigator.serviceWorker.removeEventListener("message", handleSwMessage);
+        }
         window.cancelIdleCallback?.(idleId);
       };
     }
@@ -133,6 +165,9 @@ export function PwaRegistration() {
     return () => {
       window.removeEventListener("error", handleChunkError);
       window.removeEventListener("unhandledrejection", handleChunkError);
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("message", handleSwMessage);
+      }
       globalThis.clearTimeout(timeoutId);
     };
   }, []);
