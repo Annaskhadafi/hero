@@ -13,6 +13,8 @@ import { FaceRegistrationReminderPopup } from "@/components/face-registration-re
 import { getEmployeeDisplayDataByEmail } from "@/lib/hero-admin";
 import { getUserMobilePermissions } from "@/lib/mobile-permissions";
 import { MobilePermissionProvider } from "@/components/mobile/permission-provider";
+import { BirthdayCelebrationPopup } from "@/components/birthday-celebration-popup";
+import { getTodayBirthdayData } from "@/lib/birthday-service";
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 
@@ -44,6 +46,7 @@ export default async function MobileLayout({ children }: { children: ReactNode }
   let isFaceRegistered = true;
   let employeeId = null;
   let siteId = null;
+  let birthdayData: Awaited<ReturnType<typeof getTodayBirthdayData>> = null;
 
   const email = session.user.email;
 
@@ -55,12 +58,13 @@ export default async function MobileLayout({ children }: { children: ReactNode }
   };
 
   try {
-    const [notifRes, broadcastRes, sidebarRes, permRes, empRes] = await Promise.allSettled([
+    const [notifRes, broadcastRes, sidebarRes, permRes, empRes, birthdayRes] = await Promise.allSettled([
       email ? timeoutFallback(getMobileNotificationCount(email), 3500, 0) : Promise.resolve(0),
       timeoutFallback(getEligibleBroadcastsForMobile(), 3500, []),
       email ? timeoutFallback(getSidebarDataForUser(email), 3500, { navMain: [], navSecondary: [], documents: [] } as any) : Promise.resolve({ navMain: [], navSecondary: [], documents: [] }),
       email ? timeoutFallback(getUserMobilePermissions(email), 3500, {}) : Promise.resolve({}),
       email ? timeoutFallback(getEmployeeDisplayDataByEmail(email, session.user.id), 3500, null) : Promise.resolve(null),
+      email ? timeoutFallback(getTodayBirthdayData(email, session.user.id), 3500, null) : Promise.resolve(null),
     ]);
 
     if (notifRes.status === "fulfilled") notificationCount = notifRes.value;
@@ -86,6 +90,10 @@ export default async function MobileLayout({ children }: { children: ReactNode }
       employeeId = empData?.id;
       siteId = empData?.siteId;
     }
+
+    if (birthdayRes.status === "fulfilled") {
+      birthdayData = birthdayRes.value;
+    }
   } catch (err) {
     if (isRedirectError(err) || (err as any)?.digest?.includes("NEXT_REDIRECT")) {
       throw err;
@@ -107,6 +115,7 @@ export default async function MobileLayout({ children }: { children: ReactNode }
           employeeId={employeeId}
           siteId={siteId}
         />
+        <BirthdayCelebrationPopup data={birthdayData} currentUserId={session.user.id} />
       </MobileAppShell>
     </MobilePermissionProvider>
   );
