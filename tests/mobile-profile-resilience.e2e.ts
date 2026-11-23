@@ -25,4 +25,12 @@ test('mobile profile page loads cleanly without React error 441 and displays emp
 
   // 4. Ambil screenshot bukti visual profil mobile normal & sehat
   await app.screenshot('001-mobile-profile-healthy')
+
+  // 5. Buka modal E-Business Card dan ambil bukti visual QR code berdomain hero.chitraparatama.com
+  const businessCardBtn = browser.locator('button:has-text("E-Business Card")').first()
+  if (await businessCardBtn.isVisible()) {
+    await businessCardBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await app.screenshot('002-mobile-business-card-qr-public-domain')
+  }
 })

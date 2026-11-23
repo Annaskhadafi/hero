@@ -42,6 +42,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     `TITLE:${escapeVCard(employee.jobTitle || employee.role)}`,
     `EMAIL;TYPE=WORK:${escapeVCard(employee.email)}`,
     ...(employee.phoneNumber ? [`TEL;TYPE=WORK,VOICE:${escapeVCard(employee.phoneNumber)}`] : []),
+    `URL:https://hero.chitraparatama.com/business-card/${token}`,
     "END:VCARD",
     "",
   ];

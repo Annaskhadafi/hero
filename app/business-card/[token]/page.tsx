@@ -27,7 +27,8 @@ export default async function PublicBusinessCardPage({ params }: { params: Promi
 
   if (!employee || !employee.publicToken || !employee.sharingEnabled || !employee.isActive) notFound();
 
-  const cardUrl = `/business-card/${token}`;
+  const publicBaseUrl = "https://hero.chitraparatama.com";
+  const cardUrl = `${publicBaseUrl}/business-card/${token}`;
   const contactUrl = `/business-card/${token}/contact.vcf`;
   const title = employee.jobTitle || employee.role;
 
@@ -51,7 +52,7 @@ export default async function PublicBusinessCardPage({ params }: { params: Promi
           {employee.phoneNumber ? <a href={`tel:${employee.phoneNumber}`} className="flex min-h-12 items-center gap-3 rounded-xl bg-white/[0.06] px-4 text-sm hover:bg-white/10"><Phone className="size-4 text-blue-200" /> {employee.phoneNumber}</a> : null}
         </div>
         <div className="mt-7 flex items-center gap-4 rounded-2xl bg-white p-4 text-slate-900">
-          <BusinessCardQr value={cardUrl || `/business-card/${token}`} />
+          <BusinessCardQr value={cardUrl} />
           <div><p className="text-sm font-bold">Scan & save contact</p><p className="mt-1 text-xs leading-5 text-slate-500">Scan QR code untuk membuka kartu kontak ini.</p></div>
         </div>
         <a href={contactUrl} className="mt-5 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-sm font-bold shadow-lg shadow-blue-950/30 hover:brightness-110"><ArrowDownToLine className="size-4" /> Add to Contacts</a>

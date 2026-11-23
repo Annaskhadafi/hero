@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { BusinessCardQr } from "@/components/mobile/business-card-qr";
 import { toggleBusinessCardSharingAction } from "@/app/mobile/profile/actions";
 
+const PUBLIC_DOMAIN = "https://hero.chitraparatama.com";
+
 type Props = {
   name: string;
   title: string;
@@ -21,10 +23,10 @@ export function MobileBusinessCard({ name, title, email, phone, enabled, token }
   const [publicToken, setPublicToken] = useState(token);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
-  const [origin, setOrigin] = useState("");
-  const cardUrl = useMemo(() => origin && publicToken ? `${origin}/business-card/${publicToken}` : "", [origin, publicToken]);
-
-  useEffect(() => setOrigin(window.location.origin), []);
+  const cardUrl = useMemo(
+    () => (publicToken ? `${PUBLIC_DOMAIN}/business-card/${publicToken}` : ""),
+    [publicToken]
+  );
 
   function toggleSharing(next: boolean) {
     setMessage("");
@@ -70,7 +72,11 @@ export function MobileBusinessCard({ name, title, email, phone, enabled, token }
           {isEnabled && publicToken ? <>
             <div className="relative mt-6 flex items-center gap-4 rounded-2xl bg-white p-4 text-slate-900">
               <BusinessCardQr value={cardUrl} size={108} />
-              <div><p className="font-bold">Scan to connect</p><p className="mt-1 text-xs leading-5 text-slate-500">Pindai QR untuk melihat kartu dan menyimpan kontak.</p></div>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold">Scan to connect</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Pindai QR untuk melihat kartu dan menyimpan kontak.</p>
+                <p className="mt-1 font-mono text-[10px] text-blue-700 truncate">{cardUrl}</p>
+              </div>
             </div>
             <a href={`/business-card/${publicToken}/contact.vcf`} className="relative mt-4 flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-sm font-bold shadow-lg"><ArrowDownToLine className="size-4" /> Add to Contacts</a>
             <button type="button" onClick={copyLink} disabled={!cardUrl} className="relative mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[.07] text-sm font-semibold disabled:opacity-50"><Copy className="size-4" /> Salin link kartu</button>

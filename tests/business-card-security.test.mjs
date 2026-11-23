@@ -15,6 +15,7 @@ test('public page checks sharing and active status, exposing only contact fields
   assert.ok(page.includes('employees.businessCardPublicEnabled'))
   assert.ok(page.includes('!employee.sharingEnabled'))
   assert.ok(page.includes('!employee.isActive'))
+  assert.ok(page.includes('hero.chitraparatama.com'))
   assert.ok(!/employeeSn|birthDate|domicile|signatureDataUrl|salary/i.test(page))
 })
 
@@ -27,6 +28,7 @@ test('vCard route checks opt-in and active status and disables caching', () => {
   assert.ok(route.includes('BEGIN:VCARD'))
   assert.ok(route.includes('escapeVCard'))
   assert.ok(route.includes('X-Content-Type-Options'))
+  assert.ok(route.includes('hero.chitraparatama.com'))
 })
 
 test('mobile action is authenticated and only changes the current employee', () => {
@@ -54,4 +56,5 @@ test('mobile card uses data-derived background and explicit opt-in disclosure', 
   assert.ok(ui.includes('radial-gradient'))
   assert.ok(ui.includes('Bagikan kartu saya'))
   assert.ok(ui.includes('dapat menonaktifkan kapan saja'))
+  assert.ok(ui.includes('hero.chitraparatama.com'))
 })
