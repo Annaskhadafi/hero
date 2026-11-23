@@ -790,10 +790,16 @@ export function CargoManifestPdfDialog({
           box-sizing: border-box !important;
           overflow: hidden !important;
           position: relative !important;
-          page-break-after: avoid !important;
           page-break-inside: avoid !important;
-          break-after: avoid !important;
           break-inside: avoid !important;
+        }
+        .cargo-manifest-page:not(:last-child) {
+          page-break-after: always !important;
+          break-after: page !important;
+        }
+        .cargo-manifest-page:last-child {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
         }
         @media print {
           html, body {
@@ -807,6 +813,12 @@ export function CargoManifestPdfDialog({
             height: 268mm !important;
             max-height: 268mm !important;
             overflow: hidden !important;
+          }
+          .cargo-manifest-page:not(:last-child) {
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+          .cargo-manifest-page:last-child {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -890,10 +902,14 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
             @page { size: A4 portrait; margin: 0; }
             *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box !important; }
             html, body { width: 100%; max-width: 210mm; margin: 0 !important; padding: 0 !important; overflow: hidden !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background: white !important; }
-            .cargo-manifest-page { width: 100% !important; max-width: 210mm !important; height: 268mm !important; max-height: 268mm !important; box-sizing: border-box !important; overflow: hidden !important; position: relative !important; page-break-after: avoid !important; page-break-inside: avoid !important; break-after: avoid !important; break-inside: avoid !important; }
+            .cargo-manifest-page { width: 100% !important; max-width: 210mm !important; height: 268mm !important; max-height: 268mm !important; box-sizing: border-box !important; overflow: hidden !important; position: relative !important; page-break-inside: avoid !important; break-inside: avoid !important; }
+            .cargo-manifest-page:not(:last-child) { page-break-after: always !important; break-after: page !important; }
+            .cargo-manifest-page:last-child { page-break-after: avoid !important; break-after: avoid !important; }
             @media print {
               html, body { width: 210mm !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
-              .cargo-manifest-page { width: 210mm !important; height: 268mm !important; max-height: 268mm !important; overflow: hidden !important; page-break-after: avoid !important; break-after: avoid !important; }
+              .cargo-manifest-page { width: 210mm !important; height: 268mm !important; max-height: 268mm !important; overflow: hidden !important; }
+              .cargo-manifest-page:not(:last-child) { page-break-after: always !important; break-after: page !important; }
+              .cargo-manifest-page:last-child { page-break-after: avoid !important; break-after: avoid !important; }
             }
             .no-print { display: none !important; }
           </style>
@@ -918,13 +934,16 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
 }
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
-  // Split items into pages with enough reserved space for signatures on the last page.
-  const itemsPerPage = 7
+  // Accommodate up to 20 items on a single page without breaking to a second page,
+  // or paginate with up to 18 items per page for larger manifest batches.
   const pages: (typeof row.items)[] = []
 
   if (row.items.length === 0) {
     pages.push([])
+  } else if (row.items.length <= 20) {
+    pages.push(row.items)
   } else {
+    const itemsPerPage = 18
     for (let i = 0; i < row.items.length; i += itemsPerPage) {
       pages.push(row.items.slice(i, i + itemsPerPage))
     }
@@ -932,327 +951,341 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
 
   return (
     <>
-      {pages.map((pageItems, pageIndex) => (
-        <div
-          key={pageIndex}
-          className="cargo-manifest-page"
-          style={{
-            fontFamily: 'Arial, sans-serif',
-            fontSize: '9.5pt',
-            color: '#000',
-            boxSizing: 'border-box',
-            height: '268mm',
-            maxHeight: '268mm',
-            width: '210mm',
-            maxWidth: '210mm',
-            backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
-            backgroundSize: '100% 100%',
-            backgroundPosition: 'top center',
-            backgroundRepeat: 'no-repeat',
-            padding: '34mm 16mm 44mm 16mm',
-            position: 'relative',
-            overflow: 'hidden',
-            pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'avoid',
-            pageBreakInside: 'avoid',
-          }}
-        >
-          {/* Header - Title Only (Logo sudah di background) */}
-          <div style={{ textAlign: 'right', marginBottom: '10px' }}>
-            <div
-              style={{
-                fontWeight: 700,
-                fontSize: '17pt',
-                color: '#003366',
-                letterSpacing: '1px',
-              }}
-            >
-              CARGO MANIFEST
-            </div>
-            <div style={{ fontSize: '8.5pt', color: '#666', marginTop: '2px' }}>
-              Shipping Document {pages.length > 1 && `- Page ${pageIndex + 1} of ${pages.length}`}
-            </div>
-          </div>
+      {pages.map((pageItems, pageIndex) => {
+        const isCompact = pageItems.length > 10
+        const cellPadding = isCompact ? '2.5px 4px' : '4px 4px'
+        const tableFontSize = isCompact ? '7.5pt' : '8pt'
 
-          {/* Document Info */}
-          <div style={{ marginBottom: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div style={{ fontSize: '9.5pt' }}>
-                <strong>Manifest No:</strong>{' '}
-                <span style={{ color: '#c0392b', fontWeight: 700, fontSize: '10.5pt' }}>
-                  {row.manifestNumber}
-                </span>
-              </div>
-              <div style={{ fontSize: '9.5pt' }}>
-                <strong>Date:</strong> {row.date}
-              </div>
-            </div>
-          </div>
-
-          {/* Shipping Details - Only on first page */}
-          {pageIndex === 0 && (
-            <div
-              style={{
-                border: '1px solid #003366',
-                borderRadius: '4px',
-                padding: '8px 10px',
-                marginBottom: '10px',
-                backgroundColor: 'rgba(248, 249, 250, 0.95)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '6px',
-                  fontSize: '9pt',
-                }}
-              >
-                <div>
-                  <strong>Attention:</strong> {row.attention || '-'}
-                </div>
-                <div>
-                  <strong>Transport Via:</strong> {row.transportVia || '-'}
-                </div>
-                <div>
-                  <strong>Shipped Via:</strong> {row.shippedVia || '-'}
-                </div>
-                <div>
-                  <strong>Final Destination:</strong>{' '}
-                  <span style={{ fontWeight: 600 }}>
-                    {row.finalDestination
-                      ? row.finalDestination.startsWith('PT Chitra Paratama Site')
-                        ? row.finalDestination
-                        : `PT Chitra Paratama Site | ${row.finalDestination}`
-                      : 'PT Chitra Paratama Site | Site / Operations'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Items table */}
-          <table
+        return (
+          <div
+            key={pageIndex}
+            className="cargo-manifest-page"
             style={{
-              borderCollapse: 'collapse',
-              width: '100%',
-              fontSize: '8.5pt',
-              marginBottom: '8px',
-              backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '9pt',
+              color: '#000',
+              boxSizing: 'border-box',
+              height: '268mm',
+              maxHeight: '268mm',
+              width: '210mm',
+              maxWidth: '210mm',
+              backgroundImage: 'url(/ChitraParatama_Stationery_Letterhead_jkt.jpg)',
+              backgroundSize: '100% 100%',
+              backgroundPosition: 'top center',
+              backgroundRepeat: 'no-repeat',
+              padding: '30mm 16mm 40mm 16mm',
+              position: 'relative',
+              overflow: 'hidden',
+              pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'avoid',
+              pageBreakInside: 'avoid',
             }}
           >
-            <thead>
-              <tr style={{ backgroundColor: '#003366', color: '#fff' }}>
-                <th
-                  style={{
-                    border: '1px solid #003366',
-                    padding: '6px 4px',
-                    width: '35px',
-                    textAlign: 'center',
-                  }}
-                >
-                  No
-                </th>
-                <th style={{ border: '1px solid #003366', padding: '6px 4px', textAlign: 'left' }}>
-                  Description of Goods
-                </th>
-                <th
-                  style={{
-                    border: '1px solid #003366',
-                    padding: '6px 4px',
-                    width: '110px',
-                    textAlign: 'left',
-                  }}
-                >
-                  Serial Number
-                </th>
-                <th
-                  style={{
-                    border: '1px solid #003366',
-                    padding: '6px 4px',
-                    width: '45px',
-                    textAlign: 'center',
-                  }}
-                >
-                  Qty
-                </th>
-                <th
-                  style={{
-                    border: '1px solid #003366',
-                    padding: '6px 4px',
-                    width: '90px',
-                    textAlign: 'left',
-                  }}
-                >
-                  Brand
-                </th>
-                <th
-                  style={{
-                    border: '1px solid #003366',
-                    padding: '6px 4px',
-                    width: '110px',
-                    textAlign: 'left',
-                  }}
-                >
-                  Remark
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageItems.length === 0
-                ? Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i}>
-                      <td
-                        style={{
-                          border: '1px solid #ccc',
-                          padding: '6px 4px',
-                          textAlign: 'center',
-                          height: '24px',
-                        }}
-                      >
-                        {i + 1}
-                      </td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>&nbsp;</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>&nbsp;</td>
-                      <td
-                        style={{
-                          border: '1px solid #ccc',
-                          padding: '6px 4px',
-                          textAlign: 'center',
-                        }}
-                      >
-                        &nbsp;
-                      </td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>&nbsp;</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>&nbsp;</td>
-                    </tr>
-                  ))
-                : pageItems.map((item, i) => (
-                    <tr
-                      key={i}
-                      style={{
-                        backgroundColor:
-                          i % 2 === 0 ? 'rgba(255, 255, 255, 0.95)' : 'rgba(249, 249, 249, 0.95)',
-                      }}
-                    >
-                      <td
-                        style={{
-                          border: '1px solid #ccc',
-                          padding: '6px 4px',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {item.no}
-                      </td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>
-                        {item.description}
-                      </td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>
-                        {item.serialNumber}
-                      </td>
-                      <td
-                        style={{
-                          border: '1px solid #ccc',
-                          padding: '6px 4px',
-                          textAlign: 'center',
-                        }}
-                      >
-                        {item.qty}
-                      </td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>{item.brand}</td>
-                      <td style={{ border: '1px solid #ccc', padding: '6px 4px' }}>
-                        {item.remark}
-                      </td>
-                    </tr>
-                  ))}
-            </tbody>
-          </table>
+            {/* Header - Title Only (Logo sudah di background) */}
+            <div style={{ textAlign: 'right', marginBottom: '6px' }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: '15pt',
+                  color: '#003366',
+                  letterSpacing: '1px',
+                }}
+              >
+                CARGO MANIFEST
+              </div>
+              <div style={{ fontSize: '8pt', color: '#666', marginTop: '1px' }}>
+                Shipping Document {pages.length > 1 && `- Page ${pageIndex + 1} of ${pages.length}`}
+              </div>
+            </div>
 
-          {/* Signatures - Only on last page */}
-          {pageIndex === pages.length - 1 && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '20mm',
-                left: '16mm',
-                right: '16mm',
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '20px',
-                fontSize: '8.5pt',
-                backgroundColor: 'rgba(255, 255, 255, 0.86)',
-                paddingTop: '4px',
-              }}
-            >
-              <div style={{ position: 'relative', minHeight: '85px', textAlign: 'center' }}>
-                <div
-                  style={{ marginBottom: row.signatureDataUrl ? '8px' : '54px', fontWeight: 600 }}
-                >
-                  <div>Delivered By</div>
-                  <div>PT Chitra Paratama</div>
+            {/* Document Info */}
+            <div style={{ marginBottom: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5pt' }}>
+                <div>
+                  <strong>Manifest No:</strong>{' '}
+                  <span style={{ color: '#c0392b', fontWeight: 700, fontSize: '9.5pt' }}>
+                    {row.manifestNumber}
+                  </span>
                 </div>
-                {row.signatureDataUrl && (
-                  <img
-                    src={row.signatureDataUrl}
-                    alt="Signature"
-                    style={{
-                      height: '44px',
-                      maxWidth: '100%',
-                      objectFit: 'contain',
-                      margin: '0 auto 4px',
-                    }}
-                  />
-                )}
+                <div>
+                  <strong>Date:</strong> {row.date}
+                </div>
+              </div>
+            </div>
+
+            {/* Shipping Details - Only on first page */}
+            {pageIndex === 0 && (
+              <div
+                style={{
+                  border: '1px solid #003366',
+                  borderRadius: '4px',
+                  padding: '5px 8px',
+                  marginBottom: '6px',
+                  backgroundColor: 'rgba(248, 249, 250, 0.95)',
+                }}
+              >
                 <div
                   style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    borderTop: '1px solid #000',
-                    paddingTop: '3px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '4px',
+                    fontSize: '8pt',
                   }}
                 >
-                  <div style={{ fontWeight: 600 }}>
-                    {row.signatureName && row.signatureName.trim()
-                      ? row.signatureName
-                      : 'Administrator'}
+                  <div>
+                    <strong>Attention:</strong> {row.attention || '-'}
+                  </div>
+                  <div>
+                    <strong>Transport Via:</strong> {row.transportVia || '-'}
+                  </div>
+                  <div>
+                    <strong>Shipped Via:</strong> {row.shippedVia || '-'}
+                  </div>
+                  <div>
+                    <strong>Final Destination:</strong>{' '}
+                    <span style={{ fontWeight: 600 }}>
+                      {row.finalDestination
+                        ? row.finalDestination.startsWith('PT Chitra Paratama Site')
+                          ? row.finalDestination
+                          : `PT Chitra Paratama Site | ${row.finalDestination}`
+                        : 'PT Chitra Paratama Site | Site / Operations'}
+                    </span>
                   </div>
                 </div>
               </div>
-              <div style={{ position: 'relative', minHeight: '85px', textAlign: 'center' }}>
-                <div style={{ marginBottom: '56px', fontWeight: 600 }}>Forwarder</div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    borderTop: '1px solid #000',
-                    paddingTop: '3px',
-                  }}
-                >
-                  <div>&nbsp;</div>
+            )}
+
+            {/* Items table */}
+            <table
+              style={{
+                borderCollapse: 'collapse',
+                width: '100%',
+                fontSize: tableFontSize,
+                marginBottom: '6px',
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              }}
+            >
+              <thead>
+                <tr style={{ backgroundColor: '#003366', color: '#fff' }}>
+                  <th
+                    style={{
+                      border: '1px solid #003366',
+                      padding: '4px 4px',
+                      width: '32px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    No
+                  </th>
+                  <th style={{ border: '1px solid #003366', padding: '4px 4px', textAlign: 'left' }}>
+                    Description of Goods
+                  </th>
+                  <th
+                    style={{
+                      border: '1px solid #003366',
+                      padding: '4px 4px',
+                      width: '110px',
+                      textAlign: 'left',
+                    }}
+                  >
+                    Serial Number
+                  </th>
+                  <th
+                    style={{
+                      border: '1px solid #003366',
+                      padding: '4px 4px',
+                      width: '40px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Qty
+                  </th>
+                  <th
+                    style={{
+                      border: '1px solid #003366',
+                      padding: '4px 4px',
+                      width: '85px',
+                      textAlign: 'left',
+                    }}
+                  >
+                    Brand
+                  </th>
+                  <th
+                    style={{
+                      border: '1px solid #003366',
+                      padding: '4px 4px',
+                      width: '100px',
+                      textAlign: 'left',
+                    }}
+                  >
+                    Remark
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageItems.length === 0
+                  ? Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i}>
+                        <td
+                          style={{
+                            border: '1px solid #ccc',
+                            padding: cellPadding,
+                            textAlign: 'center',
+                            height: '20px',
+                          }}
+                        >
+                          {i + 1}
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding }}>&nbsp;</td>
+                        <td
+                          style={{
+                            border: '1px solid #ccc',
+                            padding: cellPadding,
+                            textAlign: 'center',
+                          }}
+                        >
+                          &nbsp;
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding }}>&nbsp;</td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding }}>&nbsp;</td>
+                      </tr>
+                    ))
+                  : pageItems.map((item, i) => (
+                      <tr
+                        key={i}
+                        style={{
+                          backgroundColor:
+                            i % 2 === 0 ? 'rgba(255, 255, 255, 0.95)' : 'rgba(249, 249, 249, 0.95)',
+                        }}
+                      >
+                        <td
+                          style={{
+                            border: '1px solid #ccc',
+                            padding: cellPadding,
+                            textAlign: 'center',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {item.no}
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.2 }}>
+                          {item.description}
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.2 }}>
+                          {item.serialNumber}
+                        </td>
+                        <td
+                          style={{
+                            border: '1px solid #ccc',
+                            padding: cellPadding,
+                            textAlign: 'center',
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {item.qty}
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.2 }}>
+                          {item.brand}
+                        </td>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.2 }}>
+                          {item.remark}
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+
+            {/* Signatures - Only on last page */}
+            {pageIndex === pages.length - 1 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '22mm',
+                  left: '16mm',
+                  right: '16mm',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: '20px',
+                  fontSize: '8pt',
+                  backgroundColor: 'rgba(255, 255, 255, 0.88)',
+                  paddingTop: '2px',
+                }}
+              >
+                <div style={{ position: 'relative', minHeight: '70px', textAlign: 'center' }}>
+                  <div
+                    style={{
+                      marginBottom: row.signatureDataUrl ? '6px' : '38px',
+                      fontWeight: 600,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    <div>Delivered By</div>
+                    <div>PT Chitra Paratama</div>
+                  </div>
+                  {row.signatureDataUrl && (
+                    <img
+                      src={row.signatureDataUrl}
+                      alt="Signature"
+                      style={{
+                        height: '38px',
+                        maxWidth: '100%',
+                        objectFit: 'contain',
+                        margin: '0 auto 2px',
+                      }}
+                    />
+                  )}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      borderTop: '1px solid #000',
+                      paddingTop: '2px',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600 }}>
+                      {row.signatureName && row.signatureName.trim()
+                        ? row.signatureName
+                        : 'Administrator'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', minHeight: '70px', textAlign: 'center' }}>
+                  <div style={{ marginBottom: '44px', fontWeight: 600 }}>Forwarder</div>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      borderTop: '1px solid #000',
+                      paddingTop: '2px',
+                    }}
+                  >
+                    <div>&nbsp;</div>
+                  </div>
+                </div>
+                <div style={{ position: 'relative', minHeight: '70px', textAlign: 'center' }}>
+                  <div style={{ marginBottom: '44px', fontWeight: 600 }}>Received by</div>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      borderTop: '1px solid #000',
+                      paddingTop: '2px',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600 }}>Customer</div>
+                  </div>
                 </div>
               </div>
-              <div style={{ position: 'relative', minHeight: '85px', textAlign: 'center' }}>
-                <div style={{ marginBottom: '56px', fontWeight: 600 }}>Received by</div>
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    borderTop: '1px solid #000',
-                    paddingTop: '3px',
-                  }}
-                >
-                  <div style={{ fontWeight: 600 }}>Customer</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ))}
+            )}
+          </div>
+        )
+      })}
     </>
   )
 }
