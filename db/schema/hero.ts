@@ -1468,6 +1468,25 @@ export const chitraLearningAuditLogs = pgTable('hero_chitralearning_audit_logs',
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const chitraLearningTestimonials = pgTable('hero_chitralearning_testimonials', {
+  id: serial('id').primaryKey(),
+  employeeId: integer('employee_id')
+    .notNull()
+    .references(() => employees.id, { onDelete: 'cascade' }),
+  courseId: integer('course_id').references(() => chitraLearningCourses.id, {
+    onDelete: 'set null',
+  }),
+  rating: integer('rating').notNull().default(5),
+  trainingTitle: text('training_title').notNull(),
+  experienceReview: text('experience_review').notNull(),
+  knowledgeBenefit: text('knowledge_benefit').notNull(),
+  feedbackSuggestion: text('feedback_suggestion').notNull().default(''),
+  allowDisplay: boolean('allow_display').notNull().default(true),
+  status: text('status').notNull().default('published'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
 export const wellnessRecords = pgTable('hero_wellness_records', {
   id: serial('id').primaryKey(),
   employeeId: integer('employee_id')

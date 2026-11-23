@@ -64,7 +64,10 @@ export function HeroSearchableSelect({
   }, [options, query])
 
   const selectedOptions = React.useMemo(() => {
-    return options.filter((opt) => activeValues.includes(opt.value))
+    return activeValues.map((v) => {
+      const found = options.find((opt) => opt.value === v)
+      return found || { value: v, label: v }
+    })
   }, [options, activeValues])
 
   const handleSelect = (val: string) => {

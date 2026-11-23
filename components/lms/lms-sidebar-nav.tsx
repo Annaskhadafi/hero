@@ -15,6 +15,7 @@ import {
   Trophy,
   ClipboardList,
   FileCheck,
+  MessageSquareQuote,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -49,6 +50,12 @@ const LEARNER_ITEMS = [
     href: '/dashboard/chitralearning-lms/leaderboard',
     icon: Trophy,
     color: 'orange',
+  },
+  {
+    title: 'Testimoni',
+    href: '/dashboard/chitralearning-lms/testimonials',
+    icon: MessageSquareQuote,
+    color: 'rose',
   },
 ]
 

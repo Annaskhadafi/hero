@@ -49,7 +49,7 @@ export async function loginToHero(
 
   // Wait for login form to load
   if (browser?.locator) {
-    const emailLocator = browser.locator('#email, input[name="username"]').first()
+    const emailLocator = browser.locator('#employeeSn, input[name="employeeSn"], #email, input[name="username"], input[name="email"]').first()
     const isVisible = await emailLocator
       .waitFor({ state: 'visible', timeout: 8000 })
       .then(() => true)
@@ -62,7 +62,7 @@ export async function loginToHero(
 
   // Fill credentials
   if (browser?.locator) {
-    const emailInput = browser.locator('#email, input[name="username"]').first()
+    const emailInput = browser.locator('#employeeSn, input[name="employeeSn"], #email, input[name="username"], input[name="email"]').first()
     const passwordInput = browser.locator('#password, input[name="password"]').first()
     const submitBtn = browser
       .locator('button[type="submit"], button:has-text("Masuk ke HERO")')
