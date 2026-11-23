@@ -3,6 +3,7 @@ import { employees, sites } from '@/db/schema/hero'
 import { user as authUser } from '@/db/schema/auth'
 import { eq, and, ne, sql, or } from 'drizzle-orm'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
+import { isBirthdayCelebrationTimeWindow } from '@/lib/birthday-time'
 
 export interface BirthdayPerson {
   id: number
@@ -62,8 +63,15 @@ export async function getTodayBirthdayData(
     const currentEmployee = currentEmployeeRows[0]
     if (!currentEmployee) return null
 
-    // Dapatkan tanggal hari ini dalam timezone Indonesia (WITA / Asia/Makassar)
+    // Dapatkan tanggal dan jam hari ini dalam timezone Indonesia (WITA / Asia/Makassar)
     const now = new Date()
+
+    // Batasan Waktu: Popup ulang tahun HANYA boleh muncul pada jam 08.00 - 10.00 pagi
+    const isWithinTimeWindow = isBirthdayCelebrationTimeWindow(now, 'Asia/Makassar')
+    if (!isWithinTimeWindow && !previewMode) {
+      return null
+    }
+
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Makassar',
       year: 'numeric',

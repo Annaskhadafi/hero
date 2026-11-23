@@ -2,7 +2,7 @@ import { test } from '@e2e-dev/web'
 import { expect } from 'e2e'
 import { loginToHero } from './e2e-auth-helper'
 
-test('mobile birthday celebration popup shows personalized self greeting and coworker announcements', { timeout: 240_000 }, async ({ app, browser, screen }) => {
+test('mobile birthday celebration popup shows personalized self greeting and coworker announcements', { timeout: 360_000 }, async ({ app, browser, screen }) => {
   // 1. Atur viewport ke ukuran smartphone (iPhone 390x844) sebelum navigasi
   await browser.setViewport({ width: 390, height: 844 })
 
@@ -44,4 +44,10 @@ test('mobile birthday celebration popup shows personalized self greeting and cow
     await closeBtn.click()
   }
   await new Promise((resolve) => setTimeout(resolve, 1500))
+
+  // 5. Verifikasi batasan waktu (08.00 - 10.00): di luar jam pagi tanpa preview_birthday, popup tidak muncul
+  await app.open('/mobile/dashboard')
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await expect(modal).not.toBeVisible()
+  await app.screenshot('005-birthday-popup-time-window-restricted')
 })

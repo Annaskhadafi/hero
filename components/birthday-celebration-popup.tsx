@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { Cake, Sparkles, PartyPopper, Heart, X, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { TodayBirthdayResponse } from '@/lib/birthday-service'
+import { isBirthdayCelebrationTimeWindow } from '@/lib/birthday-time'
 
 interface BirthdayCelebrationPopupProps {
   data: TodayBirthdayResponse | null
@@ -77,6 +78,11 @@ function BirthdayCelebrationPopupContent({ data, currentUserId }: BirthdayCelebr
     // Jika mode testing / preview via URL, selalu tampilkan
     if (previewParam) {
       setIsOpen(true)
+      return
+    }
+
+    // Batasan Waktu: Popup ulang tahun HANYA boleh muncul pada jam 08.00 - 10.00 pagi
+    if (!isBirthdayCelebrationTimeWindow()) {
       return
     }
 
