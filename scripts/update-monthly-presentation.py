@@ -315,7 +315,12 @@ def update_monthly_presentation(title, description, screenshots, system="HERO", 
     # Add detail evidence slide
     slide_num = add_detail_slide(prs, title, description, screenshots, system=system)
 
-    prs.save(target_path)
+    temp_target = target_path + ".tmp"
+    prs.save(temp_target)
+    if os.path.exists(temp_target):
+        if os.path.exists(target_path):
+            os.remove(target_path)
+        os.rename(temp_target, target_path)
     print(f"[SUCCESS] Monthly presentation successfully updated: {target_path}")
     return target_path, slide_num
 

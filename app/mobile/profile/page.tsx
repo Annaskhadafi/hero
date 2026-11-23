@@ -11,8 +11,6 @@ import { MobileProfileSettings } from "@/components/mobile/mobile-profile-settin
 import { MobileBusinessCard } from "@/components/mobile/mobile-business-card";
 import { MobileSignatureSection } from "@/components/mobile/mobile-signature-section";
 import { CollapsibleSection } from "@/components/mobile/collapsible-section";
-import { MobileRewardStoreSection } from "@/components/mobile/mobile-reward-store-section";
-import { getRewardStoreData } from "@/app/actions/reward-store";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/db";
 import { user } from "@/db/schema/auth";
@@ -30,6 +28,12 @@ import { cn } from "@/lib/utils";
 function getDateInputValue(value: string | null | undefined) {
   const match = value?.match(/^\d{4}-\d{2}-\d{2}/);
   return match?.[0] ?? "";
+}
+
+function safeToISOString(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 function fd(v: Date | string | null | undefined) {
@@ -151,15 +155,22 @@ export default async function MobileProfilePage() {
   const hrFkId = hrEmp?.id
 
   // ── Queries ────────────────────────────────────────────────
-  const [pointTransactions, trainings, certifications, sickLeaves, mcuRecords, permissionRequests, rewardStoreData] = await Promise.all([
+  const [
+    pointTransactionsRes,
+    trainingsRes,
+    certificationsRes,
+    sickLeavesRes,
+    mcuRecordsRes,
+    permissionRequestsRes,
+  ] = await Promise.allSettled([
     // Points
-    empId ? db.select().from(pointEvents).where(inArray(pointEvents.employeeId, employeeIds)).orderBy(desc(pointEvents.createdAt)).limit(50) : [],
+    empId ? db.select().from(pointEvents).where(inArray(pointEvents.employeeId, employeeIds)).orderBy(desc(pointEvents.createdAt)).limit(50) : Promise.resolve([]),
 
     // Training
-    empId ? db.select().from(trainingRecords).where(inArray(trainingRecords.employeeId, employeeIds)).orderBy(desc(trainingRecords.completedYear)) : [],
+    empId ? db.select().from(trainingRecords).where(inArray(trainingRecords.employeeId, employeeIds)).orderBy(desc(trainingRecords.completedYear)) : Promise.resolve([]),
 
     // SIO Certifications
-    empId ? db.select().from(sioCertifications).where(inArray(sioCertifications.employeeId, employeeIds)).orderBy(desc(sioCertifications.expiryDate)) : [],
+    empId ? db.select().from(sioCertifications).where(inArray(sioCertifications.employeeId, employeeIds)).orderBy(desc(sioCertifications.expiryDate)) : Promise.resolve([]),
 
     // Sick Leave (hcLeaveRequests where leaveType is SAKIT)
     hrFkId ? db
@@ -172,7 +183,7 @@ export default async function MobileProfilePage() {
       .leftJoin(hcLeaveTypes, eq(hcLeaveRequests.leaveTypeId, hcLeaveTypes.id))
       .where(and(eq(hcLeaveRequests.employeeId, hrFkId), eq(hcLeaveTypes.code, 'SAKIT')))
       .orderBy(desc(hcLeaveRequests.startDate))
-      .limit(10) : [],
+      .limit(10) : Promise.resolve([]),
 
     // MCU Records (post-hire employee annual MCU)
     empId ? db
@@ -180,7 +191,7 @@ export default async function MobileProfilePage() {
       .from(employeeMcu)
       .where(eq(employeeMcu.employeeId, empId))
       .orderBy(desc(employeeMcu.mcuDate))
-      .limit(5) : [],
+      .limit(5) : Promise.resolve([]),
 
     // Attendance Permissions (izin sakit & terlambat)
     empId ? (async () => {
@@ -193,11 +204,15 @@ export default async function MobileProfilePage() {
           .orderBy(desc(attendancePermissionRequests.createdAt))
           .limit(20)
       } catch { return [] }
-    })() : [],
+    })() : Promise.resolve([]),
+  ]);
 
-    // Reward Store Data
-    getRewardStoreData(),
-  ])
+  const pointTransactions = pointTransactionsRes.status === "fulfilled" ? pointTransactionsRes.value : [];
+  const trainings = trainingsRes.status === "fulfilled" ? trainingsRes.value : [];
+  const certifications = certificationsRes.status === "fulfilled" ? certificationsRes.value : [];
+  const sickLeaves = sickLeavesRes.status === "fulfilled" ? sickLeavesRes.value : [];
+  const mcuRecords = mcuRecordsRes.status === "fulfilled" ? mcuRecordsRes.value : [];
+  const permissionRequests = permissionRequestsRes.status === "fulfilled" ? permissionRequestsRes.value : [];
 
   // Contract info
   const contractDaysLeft = hrEmp?.contractDurationEnd ? daysLeft(hrEmp.contractDurationEnd) : null
@@ -238,7 +253,7 @@ export default async function MobileProfilePage() {
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl border border-gray-100 bg-white p-4">
           <Trophy className="size-5 text-blue-600" />
-          <p className="mt-3 text-xl font-bold text-gray-900">{data.employee.totalPoints.toLocaleString("id-ID")}</p>
+          <p className="mt-3 text-xl font-bold text-gray-900">{(data.employee.totalPoints ?? 0).toLocaleString("id-ID")}</p>
           <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Total Points</p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-4">
@@ -521,7 +536,7 @@ export default async function MobileProfilePage() {
               <div>
                 <p className="text-xs font-bold text-gray-900">HERO Arcade Reward Store</p>
                 <p className="text-[11px] text-gray-500">
-                  Saldo: <span className="font-semibold text-amber-600">{data.employee.totalPoints.toLocaleString('id-ID')} Pts</span>
+                  Saldo: <span className="font-semibold text-amber-600">{(data.employee.totalPoints ?? 0).toLocaleString('id-ID')} Pts</span>
                 </p>
               </div>
             </div>
@@ -538,11 +553,7 @@ export default async function MobileProfilePage() {
       {/* ── Tanda Tangan Digital ──────────────────── */}
       <MobileSignatureSection
         initialSignatureDataUrl={hrEmp?.signatureDataUrl}
-        initialRegisteredAt={
-          hrEmp?.signatureRegisteredAt
-            ? new Date(hrEmp.signatureRegisteredAt).toISOString()
-            : null
-        }
+        initialRegisteredAt={safeToISOString(hrEmp?.signatureRegisteredAt)}
       />
 
       {/* ── Settings ──────────────────────────────── */}
