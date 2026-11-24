@@ -15,6 +15,21 @@ export type EmailTemplatePreset = {
 
 const RAW_EMAIL_TEMPLATE_PRESETS: EmailTemplatePreset[] = [
   {
+    name: 'HERO Git Release Approval',
+    templateCode: 'hero_git_release_approval',
+    templateType: 'Notification',
+    deliveryChannel: 'email',
+    recipientScope: 'pic',
+    ccEmail: '',
+    subject: '[HERO] Persetujuan commit dan push — {{ticketNumber}}',
+    htmlContent: '',
+    textContent: `Permintaan rilis {{ticketNumber}}.
+Tinjau rincian paket di bawah. Persetujuan commit dan push dilakukan melalui Telegram.`,
+    description: 'Email notification for a tested release package. Approval occurs in Telegram.',
+    variables: ['ticketNumber'],
+    sampleValues: { ticketNumber: 'TKT-0004' },
+  },
+  {
     name: 'Mine Permit Expiry Reminder',
     templateCode: 'hc_employee_mine_permit_reminder',
     templateType: 'Notification',

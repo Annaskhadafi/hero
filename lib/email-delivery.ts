@@ -33,6 +33,8 @@ export type EmailDeliveryPayload = {
   templateCode?: string | null;
   actorEmail?: string | null;
   attachments?: EmailAttachment[];
+
+  messageId?: string;
 };
 
 function usesSecureTransport(encryption: string, port: number) {
@@ -164,7 +166,7 @@ export async function sendEmailViaSmtp(
   });
 
   try {
-    const messageId = `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@${settings.fromEmail.split("@")[1] || "herochitra.com"}>`;
+    const messageId = payload.messageId ?? `<${Date.now()}.${Math.random().toString(36).substring(2, 10)}@${settings.fromEmail.split("@")[1] || "herochitra.com"}>`;
     const isPlainText = payload.format === "plain_text";
     const result = await transporter.sendMail({
       from: formatFromAddress(settings),

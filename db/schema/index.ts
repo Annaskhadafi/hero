@@ -293,6 +293,7 @@ export * from './safety-induction'
 // Helpdesk & Ticketing
 export * from './helpdesk'
 export * from './service-desk'
+export * from './email-release-approval'
 
 // Capital Expenditure Request (CER) & CapEx Budgets
 export * from './cer'

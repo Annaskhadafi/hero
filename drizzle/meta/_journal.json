@@ -393,6 +393,13 @@
       "when": 1795550000000,
       "tag": "0064_business_card_business_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1795550000001,
+      "tag": "0065_email_release_approval",
+      "breakpoints": true
     }
   ]
 }

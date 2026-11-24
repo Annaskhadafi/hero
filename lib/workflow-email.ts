@@ -10,6 +10,10 @@ type WorkflowEmailRequest = {
   to: string | string[]
   cc?: string | string[] | null
   exactCc?: boolean
+  exactRecipients?: boolean
+
+  messageId?: string
+  requiredPlainText?: string
   actorEmail?: string | null
   templateCode?: string | null
   templateName?: string | null
@@ -479,7 +483,7 @@ export async function resolveWorkflowTemplateContent(request: WorkflowTemplateCo
 export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
   const baseRecipients = splitEmails(request.to)
 
-  const recipients = process.env.TEST_OVERRIDE_EMAIL
+  const recipients = !request.exactRecipients && process.env.TEST_OVERRIDE_EMAIL
     ? uniqueEmails([...baseRecipients, process.env.TEST_OVERRIDE_EMAIL])
     : uniqueEmails(baseRecipients)
   if (recipients.length === 0) {
@@ -520,21 +524,26 @@ export async function sendWorkflowEmail(request: WorkflowEmailRequest) {
   const { template, ccList, subject, html, text } = await resolveWorkflowTemplateContent(request)
 
   try {
-    await sendEmailViaSmtp(settings, {
+    const delivery = await sendEmailViaSmtp(settings, {
       to: recipients.join(", "),
       cc: ccList.length > 0 ? ccList : undefined,
       subject,
-      html: html || undefined,
-      text,
+      html: request.requiredPlainText ? undefined : html || undefined,
+      text: request.requiredPlainText ? `${text}\n\n${request.requiredPlainText}` : text,
+      format: request.requiredPlainText ? 'plain_text' : undefined,
       actorEmail: request.actorEmail,
       templateCode: request.templateCode ?? template?.templateCode ?? null,
       templateName: request.templateName ?? template?.name ?? null,
       attachments: request.attachments,
+
+      messageId: request.messageId,
     })
 
     return {
       status: 'sent' as const,
       sentCount: recipients.length,
+      messageId: delivery.messageId,
+      accepted: delivery.accepted,
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Gagal mengirim email via SMTP'
