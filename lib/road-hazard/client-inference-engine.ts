@@ -1,5 +1,7 @@
 'use client'
 
+import { isRoadChitraModelDownloaded, ROADCHITRA_MODEL_CONFIG } from './model-storage'
+
 export interface ClientHazardDetection {
   box: [number, number, number, number]
   class_name: 'Potholes' | 'Corragation' | 'Ruts' | string
@@ -60,6 +62,14 @@ async function getOrtWeb(): Promise<any> {
  */
 export async function initializeClientHazardModel(timeoutMs = 12000): Promise<boolean> {
   if (clientSession) return true
+
+  // Check if user has downloaded the model on this device
+  const isDownloaded = await isRoadChitraModelDownloaded()
+  if (!isDownloaded) {
+    initError = `Model offline ${ROADCHITRA_MODEL_CONFIG.fileName} belum diunduh ke perangkat. Silakan unduh model terlebih dahulu.`
+    return false
+  }
+
   if (isInitializing) {
     let elapsed = 0
     while (isInitializing && elapsed < timeoutMs) {
@@ -104,7 +114,7 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
     const dummyTensor = new ort.Tensor('float32', new Float32Array(1 * 3 * 640 * 640), [1, 3, 640, 640])
     await clientSession.run({ images: dummyTensor }).catch(() => {})
 
-    console.info('[client-hazard-ai] Model loaded successfully in device memory (100% Offline Ready).')
+    console.info('[client-hazard-ai] roadchitra.tflite runtime loaded successfully in device memory (100% Offline Ready).')
     return true
   } catch (err) {
     initError = err instanceof Error ? err.message : String(err)
@@ -138,14 +148,33 @@ export async function runClientDeviceHazardInference(
 ): Promise<ClientHazardInferenceResult> {
   const startTime = performance.now()
 
+  // Ensure model is downloaded first
+  const isDownloaded = await isRoadChitraModelDownloaded()
+  if (!isDownloaded) {
+    return {
+      success: false,
+      mode: 'offline',
+      modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
+      modelVersion: ROADCHITRA_MODEL_CONFIG.version,
+      detections: [],
+      detectionCount: 0,
+      topConfidence: 0,
+      latencyMs: 0,
+      potholesCount: 0,
+      corrugationCount: 0,
+      rutsCount: 0,
+      error: `Model ${ROADCHITRA_MODEL_CONFIG.fileName} belum diunduh ke memori perangkat. Silakan klik Unduh Model terlebih dahulu.`,
+    }
+  }
+
   if (!clientSession) {
     const ready = await initializeClientHazardModel()
     if (!ready || !clientSession) {
       return {
         success: false,
         mode: 'offline',
-        modelName: 'hazardyolo26n-4 (Device Offline)',
-        modelVersion: 'v1.0',
+        modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
+        modelVersion: ROADCHITRA_MODEL_CONFIG.version,
         detections: [],
         detectionCount: 0,
         topConfidence: 0,
@@ -254,8 +283,8 @@ export async function runClientDeviceHazardInference(
     return {
       success: true,
       mode: 'offline',
-      modelName: 'hazardyolo26n-4 (Device Offline)',
-      modelVersion: 'v1.0',
+      modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
+      modelVersion: ROADCHITRA_MODEL_CONFIG.version,
       detections,
       detectionCount: detections.length,
       topConfidence: Number(topConfidence.toFixed(3)),
@@ -270,8 +299,8 @@ export async function runClientDeviceHazardInference(
     return {
       success: false,
       mode: 'offline',
-      modelName: 'hazardyolo26n-4 (Device Offline)',
-      modelVersion: 'v1.0',
+      modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
+      modelVersion: ROADCHITRA_MODEL_CONFIG.version,
       detections: [],
       detectionCount: 0,
       topConfidence: 0,

@@ -13,7 +13,7 @@ import { RoadHazardClientPage } from './road-hazard-client'
 export default async function MobileRoadHazardPage() {
   const session = await getServerSession()
   if (!session?.user) {
-    redirect('/auth/signin?callbackUrl=/mobile/hse/road-hazard')
+    redirect('/sign-in?callbackUrl=/mobile/hse/road-hazard')
   }
 
   const access = await getCurrentMenuPermission('hse_road_hazard')

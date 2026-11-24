@@ -8,7 +8,7 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   browser,
 }) => {
   // 1. Authenticate with standard credentials (71261 / Chitra#71261)
-  await loginToHero(app, screen, browser)
+  await loginToHero(app, screen, browser, '/mobile/hse/road-hazard')
   await new Promise((resolve) => setTimeout(resolve, 2000))
 
   // 2. Open /mobile/hse/road-hazard
@@ -30,8 +30,24 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('button[title*="Split Mode"]').first()).toBeVisible()
   await expect(browser.locator('button[title*="PiP Mode"]').first()).toBeVisible()
 
-  // 7. Verify Multi-Mode (Server ONNX -> Cloud API -> Device Offline)
+  // 7. Verify Default Offline Mode with roadchitra.tflite & Download Banner
   const multiModeBtn = browser.locator('button[title*="Mode:"]').first()
+  await expect(browser.locator('text=DEVICE').first()).toBeVisible()
+  await expect(browser.locator('text=roadchitra').first()).toBeVisible()
+  await app.screenshot('mobile-road-hazard-device-offline-default')
+
+  // Verify Download Banner or Action for roadchitra.tflite
+  const downloadBtn = browser.locator('button:has-text("Unduh roadchitra.tflite"), button:has-text("roadchitra.tflite")').first()
+  if (await downloadBtn.isVisible()) {
+    await app.screenshot('mobile-road-hazard-download-prompt')
+    await downloadBtn.click()
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    await app.screenshot('mobile-road-hazard-download-complete')
+  }
+
+  // Cycle to Server ONNX
+  await multiModeBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=ONNX').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-server-onnx-mode')
 
@@ -41,16 +57,11 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('text=API').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-cloud-api-mode')
 
-  // Cycle to Device Offline
+  // Cycle back to Device Offline
   await multiModeBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=DEVICE').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-device-offline-mode')
-
-  // Cycle back to Server ONNX
-  await multiModeBtn.click()
-  await new Promise((resolve) => setTimeout(resolve, 800))
-  await expect(browser.locator('text=ONNX').first()).toBeVisible()
 
   // 8. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
   await app.screenshot('mobile-road-hazard-live-split-map')

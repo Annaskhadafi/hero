@@ -30,10 +30,13 @@ import {
   X,
   ExternalLink,
   Navigation,
+  Download,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { Progress } from '@/components/ui/progress'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Slider } from '@/components/ui/slider'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -41,6 +44,12 @@ import { HeroConfirmDialog } from '@/components/templates'
 import { RoadHazardLiveMap } from './road-hazard-live-map'
 import { resolveClientUploadUrl } from '@/lib/client-upload-url'
 import { runClientDeviceHazardInference, initializeClientHazardModel } from '@/lib/road-hazard/client-inference-engine'
+import {
+  isRoadChitraModelDownloaded,
+  downloadRoadChitraModel,
+  removeRoadChitraModel,
+  ROADCHITRA_MODEL_CONFIG,
+} from '@/lib/road-hazard/model-storage'
 import { cn } from '@/lib/utils'
 
 export interface DetectedHazardEvent {
@@ -153,8 +162,8 @@ export function RoadHazardCameraView({
   }>({ latitude: null, longitude: null, speedKmh: null, accuracy: null })
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
-  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, System ONNX engine)
-  const [inferenceMode, setInferenceMode] = useState<'system' | 'offline' | 'api'>('system')
+  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, Device Offline roadchitra.tflite)
+  const [inferenceMode, setInferenceMode] = useState<'system' | 'offline' | 'api'>('offline')
   const [scanIntervalMs, setScanIntervalMs] = useState(650)
   const [confThreshold, setConfThreshold] = useState(0.20)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
@@ -164,8 +173,56 @@ export function RoadHazardCameraView({
   const lastSpokenTimeRef = useRef<number>(0)
   const fallbackNotifiedRef = useRef<boolean>(false)
 
-  // Load saved AI preferences on mount
+  // roadchitra.tflite Mobile Offline Model Download State
+  const [isModelDownloaded, setIsModelDownloaded] = useState<boolean>(false)
+  const [isDownloading, setIsDownloading] = useState<boolean>(false)
+  const [downloadProgress, setDownloadProgress] = useState<number>(0)
+  const [downloadedBytes, setDownloadedBytes] = useState<number>(0)
+  const [totalBytes, setTotalBytes] = useState<number>(ROADCHITRA_MODEL_CONFIG.sizeBytes)
+
+  // Download roadchitra.tflite to device Cache Storage
+  const handleDownloadModel = useCallback(async () => {
+    setIsDownloading(true)
+    setDownloadProgress(0)
+    toast.info(`Memulai pengunduhan model ${ROADCHITRA_MODEL_CONFIG.fileName} (${ROADCHITRA_MODEL_CONFIG.sizeFormatted})...`)
+
+    const res = await downloadRoadChitraModel((pct, loaded, total) => {
+      setDownloadProgress(pct)
+      setDownloadedBytes(loaded)
+      setTotalBytes(total)
+    })
+
+    setIsDownloading(false)
+    if (res.success) {
+      setIsModelDownloaded(true)
+      toast.success(`Model ${ROADCHITRA_MODEL_CONFIG.fileName} berhasil disimpan di HP! Mode Offline siap.`)
+      initializeClientHazardModel().catch(() => {})
+    } else {
+      toast.error(res.error || `Gagal mengunduh model ${ROADCHITRA_MODEL_CONFIG.fileName}`)
+    }
+  }, [])
+
+  // Remove roadchitra.tflite from device Cache Storage
+  const handleRemoveModel = useCallback(async () => {
+    await removeRoadChitraModel()
+    setIsModelDownloaded(false)
+    toast.info(`Model ${ROADCHITRA_MODEL_CONFIG.fileName} telah dihapus dari memori perangkat.`)
+  }, [])
+
+  // Load saved AI preferences on mount & check model storage status
   useEffect(() => {
+    let isMounted = true
+
+    // Check if model is already downloaded in device cache
+    isRoadChitraModelDownloaded().then((downloaded) => {
+      if (isMounted) {
+        setIsModelDownloaded(downloaded)
+        if (downloaded) {
+          initializeClientHazardModel().catch(() => {})
+        }
+      }
+    })
+
     try {
       const savedMode = localStorage.getItem('hero_road_hazard_mode')
       if (savedMode === 'offline' || savedMode === 'system' || savedMode === 'api') {
@@ -174,8 +231,9 @@ export function RoadHazardCameraView({
           initializeClientHazardModel().catch(() => {})
         }
       } else {
-        // Default to offline device model
-        initializeClientHazardModel().catch(() => {})
+        // Default to offline device model (roadchitra.tflite)
+        setInferenceMode('offline')
+        try { localStorage.setItem('hero_road_hazard_mode', 'offline') } catch {}
       }
       const savedThreshold = localStorage.getItem('hero_road_hazard_threshold')
       if (savedThreshold && !isNaN(Number(savedThreshold))) {
@@ -183,6 +241,10 @@ export function RoadHazardCameraView({
       }
     } catch {
       // LocalStorage access restricted
+    }
+
+    return () => {
+      isMounted = false
     }
   }, [])
 
@@ -192,8 +254,12 @@ export function RoadHazardCameraView({
       localStorage.setItem('hero_road_hazard_mode', mode)
     } catch {}
     if (mode === 'offline') {
-      initializeClientHazardModel().catch(() => {})
-      toast.success('Beralih ke Model AI Offline di Perangkat (100% Tanpa Sinyal/Server)')
+      if (isModelDownloaded) {
+        initializeClientHazardModel().catch(() => {})
+        toast.success(`Beralih ke Model AI Offline di Perangkat (${ROADCHITRA_MODEL_CONFIG.fileName})`)
+      } else {
+        toast.warning(`Model ${ROADCHITRA_MODEL_CONFIG.fileName} belum diunduh ke HP. Silakan unduh model terlebih dahulu.`)
+      }
     } else if (mode === 'system') {
       toast.info('Beralih ke Mesin System ONNX Server (Lokal Cepat ~43ms)')
     } else {
@@ -568,27 +634,20 @@ export function RoadHazardCameraView({
 
       // 100% Client-Side In-Browser Inference via WebAssembly (Zero Server Traffic / Offline Ready)
       if (inferenceMode === 'offline') {
+        if (!isModelDownloaded) {
+          // Model has not been downloaded to mobile device yet
+          return null
+        }
         try {
           const clientRes = await runClientDeviceHazardInference(video, confThreshold)
           if (clientRes && clientRes.success) {
             return clientRes
           }
           console.warn('[road-hazard] Device offline model failed:', clientRes?.error)
-          if (!fallbackNotifiedRef.current) {
-            fallbackNotifiedRef.current = true
-            toast.info('Model offline perangkat belum siap, beralih otomatis ke Server ONNX lokal.')
-            setInferenceMode('system')
-            try { localStorage.setItem('hero_road_hazard_mode', 'system') } catch {}
-          }
         } catch (err) {
           console.warn('[road-hazard] Offline inference exception:', err)
-          if (!fallbackNotifiedRef.current) {
-            fallbackNotifiedRef.current = true
-            toast.info('Model offline perangkat belum siap, beralih otomatis ke Server ONNX lokal.')
-            setInferenceMode('system')
-            try { localStorage.setItem('hero_road_hazard_mode', 'system') } catch {}
-          }
         }
+        return null
       }
 
       const snapCanvas = document.createElement('canvas')
@@ -638,7 +697,7 @@ export function RoadHazardCameraView({
         )
       })
     },
-    [confThreshold, currentGps, inferenceMode]
+    [confThreshold, currentGps, inferenceMode, isModelDownloaded]
   )
 
   // Live Auto-Scan Loop: Runs whenever camera is active!
@@ -1020,6 +1079,8 @@ export function RoadHazardCameraView({
                 <>
                   <Cpu className="size-3 text-emerald-400 animate-pulse" />
                   <span className="text-emerald-300 font-mono">DEVICE</span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-cyan-300 font-mono text-[9px]">roadchitra</span>
                 </>
               ) : inferenceMode === 'system' ? (
                 <>
@@ -1034,11 +1095,62 @@ export function RoadHazardCameraView({
               )}
               <span className="text-white/40">•</span>
               <span className="text-emerald-400 font-mono">
-                {latencyMs ? `${latencyMs}ms` : 'Aktif'}
+                {inferenceMode === 'offline' && !isModelDownloaded
+                  ? 'Belum Unduh'
+                  : latencyMs ? `${latencyMs}ms` : 'Aktif'}
               </span>
             </div>
           </div>
         </div>
+
+        {/* Offline Model Download Prompt Banner */}
+        {inferenceMode === 'offline' && !isModelDownloaded && (
+          <div className="absolute left-3 right-3 top-20 z-40 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="rounded-xl border border-amber-500/50 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <Download className="size-4 animate-bounce" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-white">Download Model AI Offline</span>
+                      <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-mono text-amber-300 font-bold border border-amber-500/40">
+                        {ROADCHITRA_MODEL_CONFIG.fileName} • {ROADCHITRA_MODEL_CONFIG.sizeFormatted}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-300 leading-tight">
+                      Model AI terbaru perlu diunduh sekali ke perangkat agar dapat mendeteksi bahaya jalan secara offline tanpa sinyal.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {isDownloading ? (
+                <div className="mt-2.5 space-y-1.5 pt-1 border-t border-white/10">
+                  <div className="flex justify-between text-[10px] font-mono font-bold text-amber-300">
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="size-3 animate-spin text-amber-400" />
+                      <span>Mengunduh ke memori HP...</span>
+                    </span>
+                    <span>{downloadProgress}%</span>
+                  </div>
+                  <Progress value={downloadProgress} className="h-2 bg-slate-800" />
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleDownloadModel}
+                  className="mt-2.5 h-8 w-full gap-2 rounded-lg bg-amber-500 hover:bg-amber-400 font-bold text-xs text-slate-950 shadow-md shadow-amber-500/20"
+                >
+                  <Download className="size-3.5" />
+                  <span>Unduh {ROADCHITRA_MODEL_CONFIG.fileName} ({ROADCHITRA_MODEL_CONFIG.sizeFormatted})</span>
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Hazard Alert Banner Notification */}
         {activeAlert && (
@@ -1314,6 +1426,78 @@ export function RoadHazardCameraView({
                       ? '🖥️ Server ONNX: Model dieksekusi di server Next.js lokal (~43ms).'
                       : '☁️ Raray Vision Cloud: Analisis remote via cloud vision (~300ms).'}
                   </p>
+                </div>
+
+                {/* Mobile Offline Model Card (roadchitra.tflite) */}
+                <div className="space-y-2 rounded-xl border border-white/10 bg-black/40 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Cpu className="size-3.5 text-cyan-400" />
+                      <span className="font-semibold text-slate-200">
+                        Model: {ROADCHITRA_MODEL_CONFIG.fileName}
+                      </span>
+                    </div>
+                    <span
+                      className={`rounded px-2 py-0.5 text-[9px] font-bold border ${
+                        isModelDownloaded
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                      }`}
+                    >
+                      {isModelDownloaded ? '✓ Tersimpan di HP' : '⚠️ Belum Diunduh'}
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400">
+                    Model AI terbaru teroptimasi untuk deteksi lubang jalan (Potholes), alur ambles (Ruts), dan jalan bergelombang (Corrugation) di unit hauling tambang ({ROADCHITRA_MODEL_CONFIG.sizeFormatted}).
+                  </p>
+
+                  {isDownloading ? (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-[10px] font-mono font-bold text-amber-300">
+                        <span className="flex items-center gap-1">
+                          <Loader2 className="size-3 animate-spin text-amber-400" />
+                          <span>Mengunduh model ke memori HP...</span>
+                        </span>
+                        <span>{downloadProgress}%</span>
+                      </div>
+                      <Progress value={downloadProgress} className="h-2 bg-slate-800" />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleDownloadModel}
+                        className={`h-8 flex-1 gap-1.5 rounded-lg text-xs font-bold ${
+                          isModelDownloaded
+                            ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border border-white/10'
+                            : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
+                        }`}
+                      >
+                        <Download className="size-3.5" />
+                        <span>
+                          {isModelDownloaded
+                            ? 'Unduh Ulang Model'
+                            : `Unduh Model ${ROADCHITRA_MODEL_CONFIG.fileName} (${ROADCHITRA_MODEL_CONFIG.sizeFormatted})`}
+                        </span>
+                      </Button>
+
+                      {isModelDownloaded && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={handleRemoveModel}
+                          className="h-8 gap-1 rounded-lg text-xs"
+                          title="Hapus cache model dari perangkat"
+                        >
+                          <Trash2 className="size-3.5" />
+                          <span>Hapus</span>
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Sensitivity Threshold (Min 0%, Default 20%) */}
