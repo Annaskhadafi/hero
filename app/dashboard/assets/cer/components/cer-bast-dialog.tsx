@@ -38,7 +38,7 @@ export function CerBastDialog({
 }: CerBastDialogProps) {
   const [isPending, startTransition] = useTransition()
   const [handoverDate, setHandoverDate] = useState<string>(new Date().toISOString().slice(0, 10))
-  const [gaName, setGaName] = useState<string>('Adila Tri Arizona (General Affairs)')
+  const [vendorName, setVendorName] = useState<string>('Vendor / Supplier Rekanan')
   const [notes, setNotes] = useState<string>(
     'Serah terima aset resmi. Fisik barang dan stiker QR code telah terpasang dengan baik.'
   )
@@ -56,7 +56,7 @@ export function CerBastDialog({
       const res = await signCerBastAction({
         cerId: cer.id,
         handoverDate,
-        gaName,
+        gaName: vendorName,
         notes,
       })
 
@@ -87,11 +87,11 @@ export function CerBastDialog({
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div>
-                <span className="text-slate-500">Pihak Pertama (GA):</span>
-                <p className="font-semibold text-slate-800">{gaName}</p>
+                <span className="text-slate-500">Pihak Penyerah (Vendor):</span>
+                <p className="font-semibold text-slate-800">{vendorName}</p>
               </div>
               <div>
-                <span className="text-slate-500">Pihak Kedua (Penerima):</span>
+                <span className="text-slate-500">Pihak Penerima (User):</span>
                 <p className="font-semibold text-slate-800">{cer.applicantName} ({cer.siteName})</p>
               </div>
             </div>
@@ -108,10 +108,10 @@ export function CerBastDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-slate-800">Nama Petugas Penyerah (GA)</Label>
+            <Label className="text-xs font-semibold text-slate-800">Nama Pihak Penyerah (Vendor / Supplier)</Label>
             <Input
-              value={gaName}
-              onChange={(e) => setGaName(e.target.value)}
+              value={vendorName}
+              onChange={(e) => setVendorName(e.target.value)}
               className="h-9 text-xs"
             />
           </div>
