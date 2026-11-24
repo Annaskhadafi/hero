@@ -39,9 +39,11 @@ export const MOBILE_ALWAYS_ALLOWED_HREFS = [
   '/mobile/iframe',
   '/mobile/helpdesk',
   '/mobile/troubleshoot',
+  '/mobile/business-cards',
 ] as const
 
 const desktopToMobileRoutes: Array<{ desktop: string; mobile: string }> = [
+  { desktop: '/dashboard/business-cards', mobile: '/mobile/business-cards' },
   { desktop: '/dashboard/helpdesk', mobile: '/mobile/helpdesk' },
   { desktop: '/dashboard/troubleshoot', mobile: '/mobile/helpdesk' },
   { desktop: '/dashboard/ga/vehicles', mobile: '/mobile/ga/vehicles' },

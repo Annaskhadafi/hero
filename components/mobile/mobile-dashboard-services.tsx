@@ -40,6 +40,7 @@ import {
   PinOff,
   RotateCcw,
   ImagePlus,
+  Camera,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -397,6 +398,15 @@ export function MobileDashboardServices({
       bg: 'bg-blue-500/10 text-blue-600',
       section: 'Operasional',
       description: 'Catatan tugas harian & log kerja',
+    },
+    {
+      title: 'Scan Kartu Nama',
+      href: '/mobile/business-cards',
+      resource: 'business_cards',
+      icon: Camera,
+      bg: 'bg-gradient-to-tr from-blue-500/20 to-indigo-500/20 text-blue-600',
+      section: 'Operasional',
+      description: 'Scan kartu nama fisik di expo via Vision AI',
     },
     {
       title: 'Troubleshoot & Tiket',
