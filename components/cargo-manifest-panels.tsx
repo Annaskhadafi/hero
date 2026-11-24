@@ -62,8 +62,8 @@ function OnlineSignatureInput({
   return (
     <div className="bg-surface-container-low ring-border/40 rounded-2xl p-3.5 ring-1 space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 items-start">
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Nama Penandatangan
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Nama Penandatangan</Label>
           <Input
             name="signatureName"
             value={signatureName}
@@ -71,7 +71,7 @@ function OnlineSignatureInput({
             placeholder="Nama penandatangan..."
             className="h-9"
           />
-        </Label>
+        </div>
         <div className="space-y-1">
           <input type="hidden" name="signatureDataUrl" value={signatureDataUrl} />
           <SignaturePad
@@ -420,8 +420,8 @@ function ManifestFormFields({
       <input type="hidden" name="destinationSLoc" value={destinationSLoc} />
       <input type="hidden" name="destinationSLocDesc" value={destinationSLocDesc} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Gudang Asal (S-Loc Pengirim)
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Gudang Asal (S-Loc Pengirim)</Label>
           <select
             className="border-input bg-background h-9 rounded-lg border px-3 text-sm font-semibold text-foreground"
             value={sourceSLoc}
@@ -438,9 +438,9 @@ function ManifestFormFields({
               </option>
             ))}
           </select>
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Gudang Tujuan (S-Loc Penerima)
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Gudang Tujuan (S-Loc Penerima)</Label>
           <select
             className="border-input bg-background h-9 rounded-lg border px-3 text-sm font-semibold text-foreground"
             value={destinationSLoc}
@@ -466,18 +466,18 @@ function ManifestFormFields({
               </option>
             ))}
           </select>
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Tanggal (Date)
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Tanggal (Date)</Label>
           <Input
             name="date"
             type="date"
             defaultValue={defaultValues?.date ?? new Date().toISOString().split('T')[0]}
             className="h-9"
           />
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Status
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Status</Label>
           <select
             name="status"
             defaultValue={defaultValues?.status ?? 'draft'}
@@ -489,12 +489,14 @@ function ManifestFormFields({
               </option>
             ))}
           </select>
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Attention{' '}
-          <span className="text-muted-foreground text-xs font-normal">
-            (penerima / ditujukan kepada)
-          </span>
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <div className="flex items-center gap-1.5">
+            <Label>Attention</Label>
+            <span className="text-muted-foreground text-xs font-normal">
+              (penerima / ditujukan kepada)
+            </span>
+          </div>
           <Combobox
             value={attention}
             onChange={setAttention}
@@ -502,9 +504,9 @@ function ManifestFormFields({
             placeholder="Nama penerima..."
             allowCustom
           />
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Final Destination
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Final Destination</Label>
           <Combobox
             value={finalDestination}
             onChange={(val) => {
@@ -519,9 +521,9 @@ function ManifestFormFields({
             placeholder="Tujuan akhir pengiriman..."
             allowCustom
           />
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Transport Via
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Transport Via</Label>
           <Combobox
             value={transportVia}
             onChange={handleTransportChange}
@@ -529,9 +531,9 @@ function ManifestFormFields({
             placeholder="Nama ekspedisi / moda..."
             allowCustom
           />
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Note / Catatan
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Note / Catatan</Label>
           <Combobox
             value={shippedVia}
             onChange={handleShippedViaChange}
@@ -539,9 +541,9 @@ function ManifestFormFields({
             placeholder="Catatan pengiriman..."
             allowCustom
           />
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Site
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Site</Label>
           <Combobox
             options={sites.map((s) => s.siteName)}
             value={siteName}
@@ -581,9 +583,9 @@ function ManifestFormFields({
             emptyText="Site tidak ditemukan"
             allowCustom={true}
           />
-        </Label>
-        <Label className="grid gap-1.5 text-sm font-medium">
-          Category Section
+        </div>
+        <div className="grid gap-1.5 text-sm font-medium">
+          <Label>Category Section</Label>
           <select
             className="border-input bg-background h-9 rounded-lg border px-3 text-sm"
             value={sectionId}
@@ -601,7 +603,7 @@ function ManifestFormFields({
               </option>
             ))}
           </select>
-        </Label>
+        </div>
       </div>
       <ItemRowEditor items={items} onChange={onItemsChange} sourceSLoc={sourceSLoc} />
       <OnlineSignatureInput

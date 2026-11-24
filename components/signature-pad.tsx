@@ -226,12 +226,23 @@ export function SignaturePad({
 
     ensureCanvasSize()
 
+    let rafId: number | null = null
     const observer = new ResizeObserver(() => {
-      ensureCanvasSize()
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+      rafId = requestAnimationFrame(() => {
+        ensureCanvasSize()
+      })
     })
 
     observer.observe(container)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+      }
+    }
   }, [ensureCanvasSize, isUsingProfileSig])
 
   const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
