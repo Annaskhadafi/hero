@@ -47,6 +47,12 @@ test('verify Asset Management Workflow settings panel and testing guardrail', as
   const approverSelect = browser.locator('select#testingApproverEmployeeId').first();
   await expect(approverSelect).toBeVisible();
 
+  // Verify all 4 forms in Asset Management Group
+  await expect(browser.locator('text=CER (Pengadaan Aset)').first()).toBeVisible();
+  await expect(browser.locator('text=Asset Borrow (Peminjaman)').first()).toBeVisible();
+  await expect(browser.locator('text=Asset Transfer (Mutasi)').first()).toBeVisible();
+  await expect(browser.locator('text=Asset Disposal (Penghapusan)').first()).toBeVisible();
+
   // 5. Take screenshot of the Asset Management Workflow settings panel
   await app.screenshot('asset-management-workflow-settings');
   await new Promise((resolve) => setTimeout(resolve, 1000));

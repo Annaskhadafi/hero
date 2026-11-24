@@ -647,3 +647,125 @@ export async function sendAssetBorrowExtensionRequestedEmail(params: {
     url: detailLink,
   })
 }
+
+/**
+ * 8. Kirim Notifikasi Pengajuan Penghapusan Aset (Disposal) ke Approver Tahap Aktif
+ */
+export async function sendAssetDisposalSubmittedEmail(params: {
+  approverEmail: string
+  approverName: string
+  approverJobTitle?: string | null
+  applicantName: string
+  disposalNumber: string
+  assetName: string
+  assetNumber?: string | null
+  siteName: string
+  departmentName: string
+  notes?: string | null
+  disposalId: number
+  stepOrder: number
+  totalSteps: number
+}) {
+  const baseUrl = getPublicAppUrl()
+  const detailLink = `${baseUrl}/dashboard/assets/disposal?id=${params.disposalId}`
+  const target = await resolveTargetRecipients(params.approverEmail)
+
+  const html = renderAssetBorrowEmailHtml({
+    borrowNumber: params.disposalNumber,
+    subjectTitle: `Permohonan Penghapusan Aset (Disposal): ${params.assetName}`,
+    badgeText: `Menunggu Persetujuan Tahap ${params.stepOrder} dari ${params.totalSteps}`,
+    badgeBgColor: '#fee2e2',
+    badgeTextColor: '#991b1b',
+    jobTitleInfo: params.approverJobTitle || 'Pemeriksa Penghapusan Aset',
+    borrowerName: params.applicantName,
+    assetName: params.assetName,
+    assetNumber: params.assetNumber,
+    holderName: params.approverName,
+    notesTitle: 'Alasan / Keterangan Penghapusan Unit',
+    notesContent: params.notes || 'Penghapusan aset operasional / afkir / rusak',
+    ctaUrl: detailLink,
+    ctaText: 'Buka Dokumen &amp; Berikan Keputusan &rarr;',
+  })
+
+  await sendWorkflowEmail({
+    to: target.to,
+    templateCode: 'asset_disposal_submitted',
+    templateName: 'Permohonan Penghapusan Aset (Asset Disposal)',
+    variables: {
+      disposalNumber: params.disposalNumber,
+      assetName: params.assetName,
+      applicantName: params.applicantName,
+      siteName: params.siteName,
+      detailLink,
+    },
+    fallbackSubject: `${target.note}[Approval Disposal] Permohonan Penghapusan Aset ${params.disposalNumber} - ${params.assetName}`,
+    fallbackHtml: html,
+    fallbackText: `Yth. ${params.approverName},\n\nTerdapat permohonan penghapusan aset ${params.assetName} (${params.disposalNumber}) yang diajukan oleh ${params.applicantName}.\nLokasi: ${params.siteName} - ${params.departmentName}\n\nSilakan tinjau dan berikan persetujuan di: ${detailLink}`,
+  })
+
+  await notifyWorkflowBellRecipients({
+    recipientEmails: [target.to],
+    eventType: 'asset.disposal_submitted',
+    category: 'approval_requests',
+    title: `Approval Disposal: ${params.disposalNumber}`,
+    body: `${params.applicantName} mengajukan penghapusan aset "${params.assetName}" (${params.disposalNumber}).`,
+    url: detailLink,
+  })
+}
+
+/**
+ * 9. Kirim Notifikasi Final Approved Penghapusan Aset (Disposal) ke Pemohon
+ */
+export async function sendAssetDisposalApprovedEmail(params: {
+  applicantEmail: string
+  applicantName: string
+  disposalNumber: string
+  assetName: string
+  assetNumber?: string | null
+  disposalId: number
+  pdfUrl?: string | null
+}) {
+  const baseUrl = getPublicAppUrl()
+  const detailLink = `${baseUrl}/dashboard/assets/disposal?id=${params.disposalId}`
+  const target = await resolveTargetRecipients(params.applicantEmail)
+
+  const html = renderAssetBorrowEmailHtml({
+    borrowNumber: params.disposalNumber,
+    subjectTitle: `Penghapusan Aset Disetujui Sepenuhnya: ${params.assetName}`,
+    badgeText: 'Disetujui Sepenuhnya (Full Approved)',
+    badgeBgColor: '#dcfce7',
+    badgeTextColor: '#166534',
+    jobTitleInfo: 'Pemberitahuan Hasil Persetujuan Direksi',
+    borrowerName: params.applicantName,
+    assetName: params.assetName,
+    assetNumber: params.assetNumber,
+    holderName: params.applicantName,
+    notesTitle: 'Status Berkas & Pengarsipan',
+    notesContent: 'Permohonan Asset Disposal telah disetujui hingga tahap Direktur. Dokumen Berita Acara resmi PDF telah diterbitkan.',
+    ctaUrl: params.pdfUrl || detailLink,
+    ctaText: params.pdfUrl ? 'Unduh Berita Acara PDF Resmi &rarr;' : 'Lihat Detail Penghapusan &rarr;',
+  })
+
+  await sendWorkflowEmail({
+    to: target.to,
+    templateCode: 'asset_disposal_approved',
+    templateName: 'Persetujuan Final Penghapusan Aset (Asset Disposal)',
+    variables: {
+      disposalNumber: params.disposalNumber,
+      assetName: params.assetName,
+      detailLink,
+    },
+    fallbackSubject: `${target.note}[Disetujui] Penghapusan Aset ${params.disposalNumber} - ${params.assetName} Telah Disetujui`,
+    fallbackHtml: html,
+    fallbackText: `Yth. ${params.applicantName},\n\nPermohonan penghapusan aset ${params.assetName} (${params.disposalNumber}) telah disetujui sepenuhnya oleh Direktur.\n\nSilakan tinjau berkas resmi di: ${detailLink}`,
+  })
+
+  await notifyWorkflowBellRecipients({
+    recipientEmails: [target.to],
+    eventType: 'asset.disposal_approved',
+    category: 'approval_decisions',
+    title: `Disposal Disetujui: ${params.disposalNumber}`,
+    body: `Permohonan penghapusan aset "${params.assetName}" (${params.disposalNumber}) telah disetujui sepenuhnya.`,
+    url: detailLink,
+  })
+}

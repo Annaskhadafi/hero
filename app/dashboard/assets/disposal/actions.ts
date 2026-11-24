@@ -13,7 +13,12 @@ import { revalidatePath } from 'next/cache'
 import { generateAssetDisposalPdf } from '@/lib/asset-disposal-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { assetDisposalInputSchema, type AssetDisposalInput, type DisposalApproverStep } from './schema'
-import { sendAssetRevisionRequestedEmail, sendAssetResubmittedEmail } from '@/lib/asset-approval-email'
+import {
+  sendAssetRevisionRequestedEmail,
+  sendAssetResubmittedEmail,
+  sendAssetDisposalSubmittedEmail,
+  sendAssetDisposalApprovedEmail,
+} from '@/lib/asset-approval-email'
 import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 
 /**
@@ -607,6 +612,11 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
     }
 
     const firstApprover = approvalChain[0]
+    const resolvedFirstApprover = await resolveAssetTestingApprover({
+      approverEmployeeId: firstApprover.approverEmployeeId,
+      approverName: firstApprover.approverName,
+      approverJobTitle: firstApprover.jobTitle,
+    })
 
     // 4. Resolve multi-item summary fields
     const items = input.items && input.items.length > 0 ? input.items : []
@@ -654,8 +664,8 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         status: 'pending',
         currentStepOrder: 1,
         totalSteps: approvalChain.length,
-        currentApproverEmployeeId: firstApprover.approverEmployeeId,
-        currentApproverName: firstApprover.approverName,
+        currentApproverEmployeeId: resolvedFirstApprover.approverEmployeeId,
+        currentApproverName: resolvedFirstApprover.approverName,
         submittedAt: now,
       })
       .returning()
@@ -684,6 +694,37 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         approverRole: resolvedStep.approverJobTitle || step.jobTitle || undefined,
         resolutionSource: 'matrix',
       })
+    }
+
+    // 6. Notify first approver via Email & In-App Notification (routed via Testing Guardrail)
+    if (firstApprover.approverEmployeeId) {
+      try {
+        const [firstEmp] = await db
+          .select({ email: employees.email, name: employees.name, jobTitle: employees.jobTitle })
+          .from(employees)
+          .where(eq(employees.id, firstApprover.approverEmployeeId))
+          .limit(1)
+
+        if (firstEmp?.email) {
+          await sendAssetDisposalSubmittedEmail({
+            approverEmail: firstEmp.email,
+            approverName: resolvedFirstApprover.approverName || firstEmp.name,
+            approverJobTitle: resolvedFirstApprover.approverJobTitle || firstEmp.jobTitle,
+            applicantName,
+            disposalNumber,
+            assetName: topAssetName,
+            assetNumber: topAssetNumber,
+            siteName: input.siteName,
+            departmentName: input.departmentName,
+            notes: topNotes,
+            disposalId: newDisposal.id,
+            stepOrder: 1,
+            totalSteps: approvalChain.length,
+          }).catch((err) => console.error('[createAssetDisposal] Email notify error:', err))
+        }
+      } catch (notifyErr) {
+        console.warn('[createAssetDisposal] Failed to send initial approver email:', notifyErr)
+      }
     }
 
     revalidatePath('/dashboard/assets/disposal')
@@ -790,6 +831,37 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
         })
         .where(eq(assetDisposals.id, id))
 
+      // Notify next approver via Email & In-App Notification (routed via Testing Guardrail)
+      if (nextStep.approverEmployeeId) {
+        try {
+          const [nextEmp] = await db
+            .select({ email: employees.email, name: employees.name, jobTitle: employees.jobTitle })
+            .from(employees)
+            .where(eq(employees.id, nextStep.approverEmployeeId))
+            .limit(1)
+
+          if (nextEmp?.email) {
+            await sendAssetDisposalSubmittedEmail({
+              approverEmail: nextEmp.email,
+              approverName: nextStep.approverName || nextEmp.name,
+              approverJobTitle: nextStep.approverRole || nextEmp.jobTitle,
+              applicantName: disposal.applicantName,
+              disposalNumber: disposal.disposalNumber,
+              assetName: disposal.assetName,
+              assetNumber: disposal.assetNumber,
+              siteName: disposal.siteName,
+              departmentName: disposal.departmentName,
+              notes: disposal.notes,
+              disposalId: disposal.id,
+              stepOrder: nextStep.level || disposal.currentStepOrder + 1,
+              totalSteps: disposal.totalSteps,
+            }).catch((err) => console.error('[approveAssetDisposal] Next step email notify error:', err))
+          }
+        } catch (notifyErr) {
+          console.warn('[approveAssetDisposal] Failed to send next step email:', notifyErr)
+        }
+      }
+
       revalidatePath('/dashboard/assets/disposal')
       revalidatePath('/dashboard/approval')
 
@@ -889,6 +961,19 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
           newValue: 'DISPOSED',
           changeRemark: `Disposal aset disetujui penuh via permohonan ${disposal.disposalNumber}. Catatan: ${decisionNote.trim()}`,
         })
+      }
+
+      // Notify Applicant of full approval (routed via Testing Guardrail)
+      if (applicant?.email) {
+        await sendAssetDisposalApprovedEmail({
+          applicantEmail: applicant.email,
+          applicantName: applicant.name || disposal.applicantName,
+          disposalNumber: disposal.disposalNumber,
+          assetName: disposal.assetName,
+          assetNumber: disposal.assetNumber,
+          disposalId: disposal.id,
+          pdfUrl,
+        }).catch((err) => console.error('[approveAssetDisposal] Final approved email notify error:', err))
       }
 
       revalidatePath('/dashboard/assets/disposal')
