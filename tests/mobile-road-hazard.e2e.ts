@@ -30,10 +30,11 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('button[title*="Split Mode"]').first()).toBeVisible()
   await expect(browser.locator('button[title*="PiP Mode"]').first()).toBeVisible()
 
-  // 7. Verify Default Offline Mode with roadchitra.tflite & Download Banner
+  // 7. Verify Default Offline Mode with roadchitra.tflite, 5 FPS, & Download Banner
   const multiModeBtn = browser.locator('button[title*="Mode:"]').first()
   await expect(browser.locator('text=DEVICE').first()).toBeVisible()
   await expect(browser.locator('text=roadchitra').first()).toBeVisible()
+  await expect(browser.locator('text=5 FPS').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-device-offline-default')
 
   // Verify Download Banner or Action for roadchitra.tflite

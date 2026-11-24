@@ -162,9 +162,9 @@ export function RoadHazardCameraView({
   }>({ latitude: null, longitude: null, speedKmh: null, accuracy: null })
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
-  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, Device Offline roadchitra.tflite)
+  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, Device Offline roadchitra.tflite at 5 FPS)
   const [inferenceMode, setInferenceMode] = useState<'system' | 'offline' | 'api'>('offline')
-  const [scanIntervalMs, setScanIntervalMs] = useState(650)
+  const [scanIntervalMs, setScanIntervalMs] = useState(200) // Default: 200ms = 5 FPS for smooth real-time tracking
   const [confThreshold, setConfThreshold] = useState(0.20)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
   const [autoSnapThreshold, setAutoSnapThreshold] = useState(0.50)
@@ -238,6 +238,10 @@ export function RoadHazardCameraView({
       const savedThreshold = localStorage.getItem('hero_road_hazard_threshold')
       if (savedThreshold && !isNaN(Number(savedThreshold))) {
         setConfThreshold(Number(savedThreshold))
+      }
+      const savedInterval = localStorage.getItem('hero_road_hazard_scan_interval')
+      if (savedInterval && !isNaN(Number(savedInterval))) {
+        setScanIntervalMs(Number(savedInterval))
       }
     } catch {
       // LocalStorage access restricted
@@ -708,15 +712,20 @@ export function RoadHazardCameraView({
 
     if (cameraActive) {
       const speed = currentGps.speedKmh ?? 0
-      let dynamicInterval = 1200 // Standby preview scan
 
-      if (isRecording) {
-        if (speed <= 5) {
-          dynamicInterval = Math.max(scanIntervalMs, 1000)
-        } else if (speed >= 20) {
-          dynamicInterval = Math.min(scanIntervalMs, 480)
+      // Real-time scan interval:
+      // In offline mode (device roadchitra.tflite), runs at targeted 5 FPS (200ms) both in preview and recording
+      // for smooth continuous bounding box tracking without network bottlenecks.
+      let dynamicInterval = scanIntervalMs // Default 200ms = 5 FPS
+
+      if (inferenceMode !== 'offline') {
+        // Server ONNX / Cloud API modes: throttle to avoid queuing HTTP requests over mobile network
+        if (!isRecording) {
+          dynamicInterval = Math.max(scanIntervalMs, 600)
+        } else if (speed <= 5) {
+          dynamicInterval = Math.max(scanIntervalMs, 500)
         } else {
-          dynamicInterval = scanIntervalMs
+          dynamicInterval = Math.max(scanIntervalMs, 350)
         }
       }
 
@@ -1073,7 +1082,7 @@ export function RoadHazardCameraView({
               <span>{formatTimer(elapsedSeconds)}</span>
             </div>
 
-            {/* AI Multi-Mode & Latency Badge */}
+            {/* AI Multi-Mode, FPS & Latency Badge */}
             <div className="flex items-center gap-1 rounded bg-black/70 px-2 py-0.5 text-[10px] font-bold border border-white/10 shadow backdrop-blur-sm">
               {inferenceMode === 'offline' ? (
                 <>
@@ -1081,16 +1090,28 @@ export function RoadHazardCameraView({
                   <span className="text-emerald-300 font-mono">DEVICE</span>
                   <span className="text-white/40">•</span>
                   <span className="text-cyan-300 font-mono text-[9px]">roadchitra</span>
+                  <span className="text-white/40">•</span>
+                  <span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[9px] font-mono font-bold text-emerald-300 border border-emerald-500/30">
+                    {Math.round(1000 / scanIntervalMs)} FPS
+                  </span>
                 </>
               ) : inferenceMode === 'system' ? (
                 <>
                   <Zap className="size-3 fill-amber-400 text-amber-400 animate-pulse" />
                   <span className="text-amber-300 font-mono">ONNX</span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-amber-300 font-mono text-[9px]">
+                    {Math.round(1000 / scanIntervalMs)} FPS
+                  </span>
                 </>
               ) : (
                 <>
                   <Cloud className="size-3 text-cyan-400" />
                   <span className="text-cyan-300 font-mono">API</span>
+                  <span className="text-white/40">•</span>
+                  <span className="text-cyan-300 font-mono text-[9px]">
+                    {Math.round(1000 / scanIntervalMs)} FPS
+                  </span>
                 </>
               )}
               <span className="text-white/40">•</span>
@@ -1557,17 +1578,32 @@ export function RoadHazardCameraView({
 
                 <div className="space-y-1.5 pt-2">
                   <div className="flex justify-between text-slate-300">
-                    <span>Kecepatan Live Scan AI</span>
-                    <span className="font-bold text-amber-400">{(scanIntervalMs / 1000).toFixed(2)}s</span>
+                    <span className="flex items-center gap-1.5">
+                      <Gauge className="size-3.5 text-amber-400" />
+                      <span>Kecepatan Live Scan AI</span>
+                    </span>
+                    <span className="font-bold text-amber-400 font-mono">
+                      {Math.round(1000 / scanIntervalMs)} FPS ({(scanIntervalMs / 1000).toFixed(2)}s)
+                    </span>
                   </div>
                   <Slider
                     value={[scanIntervalMs]}
-                    min={400}
-                    max={2500}
+                    min={100}
+                    max={1000}
                     step={50}
-                    onValueChange={(val) => setScanIntervalMs(val[0])}
+                    onValueChange={(val) => {
+                      setScanIntervalMs(val[0])
+                      try { localStorage.setItem('hero_road_hazard_scan_interval', String(val[0])) } catch {}
+                    }}
                   />
-                  <p className="text-[10px] text-slate-400">Rekomendasi 0.5s - 0.7s untuk unit hauling bergerak</p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span>10 FPS (100ms)</span>
+                    <span className="text-emerald-300 font-bold">5 FPS (200ms • Realtime)</span>
+                    <span>1 FPS (1000ms)</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Kecepatan default 5 FPS (~200ms) memberikan pelacakan visual objek lubang & alur jalan yang mulus secara real-time di HP tanpa membebani baterai.
+                  </p>
                 </div>
               </div>
             </SheetContent>
