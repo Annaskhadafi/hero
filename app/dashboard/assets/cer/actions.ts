@@ -2395,19 +2395,15 @@ export async function confirmAssetReceivedAction(input: {
   const seq = String((bastCount?.count || 0) + 1).padStart(3, '0')
   const bastNumber = `BAST/CP/${siteCode}/${monthRoman}/${year}/${seq}`
 
-  const gaName = input.gaName || 'Adila Tri Arizona (General Affairs)'
-
   // Generate Official BAST PDF with Logo & Digital Signatures!
   let bastPdfUrl: string | null = null
+  let bastBuffer: Uint8Array | null = null
   try {
-    const bastBuffer = await generateCerBastPdf({
+    bastBuffer = await generateCerBastPdf({
       bastNumber,
       cerNumber: request.req.cerNumber,
       subject: request.req.subject,
       handoverDate: input.receivedDate || now,
-      gaName,
-      gaSignedAt: now,
-      gaSignatureUrl: null,
       userName: request.applicantName || 'Pemohon',
       userJobTitle: request.applicantJobTitle || 'Pemohon Pengadaan',
       applicantName: request.applicantName || 'Pemohon',
@@ -2452,7 +2448,7 @@ export async function confirmAssetReceivedAction(input: {
     cerRequestId: effectiveCerId,
     bastNumber,
     handoverDate: input.receivedDate || now.toISOString().slice(0, 10),
-    gaEmployeeName: gaName,
+    gaEmployeeName: request.req.vendorName || 'Vendor / Supplier',
     userEmployeeName: request.applicantName || 'Pemohon',
     userSignatureUrl: input.receiverSignatureUrl || null,
     userSignedAt: now,
@@ -2461,9 +2457,10 @@ export async function confirmAssetReceivedAction(input: {
     notes: input.receiverNotes || '',
   })
 
-  // Send Notification to Procurement & CC Evo Dwi asynchronously
+  // Send Notification to Syamsul Bahri & Evo Dwi (Finance Tagging) asynchronously
   void sendCerAssetReceivedEmail({
     applicantName: request.applicantName || 'Pemohon',
+    applicantEmail: request.applicantEmail,
     cerNumber: request.req.cerNumber,
     subject: request.req.subject,
     siteId: request.req.siteId,
@@ -2471,6 +2468,9 @@ export async function confirmAssetReceivedAction(input: {
     receivedDate: input.receivedDate,
     receiverNotes: input.receiverNotes,
     cerId: effectiveCerId,
+    bastNumber,
+    bastPdfUrl,
+    pdfBuffer: bastBuffer || undefined,
   }).catch((err) => console.error('[cer] Asset received email error:', err))
 
   revalidatePath('/dashboard/assets/cer')
@@ -2561,7 +2561,7 @@ export async function signCerBastAction(input: {
     .leftJoin(centralServiceAssets, eq(cerItems.assetId, centralServiceAssets.id))
     .where(eq(cerItems.cerRequestId, input.cerId))
 
-  const gaName = input.gaName || 'Adila Tri Arizona (General Affairs)'
+  const vendorName = request.req.vendorName || 'Vendor / Supplier'
 
   // Generate BAST PDF
   const bastBuffer = await generateCerBastPdf({
@@ -2569,14 +2569,13 @@ export async function signCerBastAction(input: {
     cerNumber: request.req.cerNumber,
     subject: request.req.subject,
     handoverDate: input.handoverDate || now,
-    gaName,
-    gaSignedAt: now,
     userName: request.applicantName || 'Pemohon',
     userJobTitle: request.applicantJobTitle,
     userDepartment: request.deptName,
     userSite: request.siteName,
     userSignedAt: now,
     notes: input.notes,
+    vendorName,
     items: items.map((row) => ({
       assetNumber: row.assetNum || '-',
       serialNumber: row.assetSerial || row.it.serialNumber || '-',
@@ -2596,9 +2595,9 @@ export async function signCerBastAction(input: {
     cerRequestId: input.cerId,
     bastNumber,
     handoverDate: input.handoverDate || now.toISOString().slice(0, 10),
-    gaEmployeeName: gaName,
+    gaEmployeeName: vendorName,
     userEmployeeName: request.applicantName || 'Pemohon',
-    gaSignedAt: now,
+    gaSignedAt: null,
     userSignedAt: now,
     pdfUrl,
     status: 'completed',
@@ -2614,7 +2613,7 @@ export async function signCerBastAction(input: {
     })
     .where(eq(cerRequests.id, input.cerId))
 
-  // Send Email with BAST PDF to User, CC GA (Adila & Bagas)
+  // Send Email with BAST PDF to Syamsul & Evo (Finance Tagging), CC Pemohon & Tim Procurement
   if (request.applicantEmail) {
     await sendCerBastCompletedEmail({
       applicantEmail: request.applicantEmail,
@@ -2622,7 +2621,6 @@ export async function signCerBastAction(input: {
       bastNumber,
       cerNumber: request.req.cerNumber,
       subject: request.req.subject,
-      gaName,
       handoverDate: input.handoverDate || formatIndoDate(now),
       pdfBuffer: bastBuffer,
       pdfUrl,

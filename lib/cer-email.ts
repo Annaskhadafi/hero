@@ -777,11 +777,12 @@ export async function sendCerRejectedEmail(params: {
 }
 
 /**
- * 5. Notifikasi Konfirmasi Penerimaan Fisik Aset CER
- * Kirim ke Procurement & CC Evo Dwi
+ * 5. Notifikasi Konfirmasi Penerimaan Fisik Aset & BAST CER
+ * Kirim ke Finance Tagging (Syamsul Bahri & Evo Dwi) & CC Pemohon + Procurement
  */
 export async function sendCerAssetReceivedEmail(params: {
   applicantName: string
+  applicantEmail?: string | null
   cerNumber: string
   subject: string
   siteId?: number | null
@@ -789,50 +790,75 @@ export async function sendCerAssetReceivedEmail(params: {
   receivedDate: string
   receiverNotes?: string
   cerId: number
+  bastNumber?: string | null
+  bastPdfUrl?: string | null
+  pdfBuffer?: Buffer | Uint8Array | null
 }) {
   const baseUrl = getPublicAppUrl()
-  const config = await getCerNotificationConfig()
   const viewLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}`
 
-  let procurementTarget = config.procurementEmail
-  if (params.siteId && config.procurementSiteOverrides[String(params.siteId)]) {
-    procurementTarget = config.procurementSiteOverrides[String(params.siteId)]
+  // Sesuai requirement: Kirim ke Syamsul Bahri & Evo Dwi (Finance Asset Tagging)
+  const financeTaggingEmails = [
+    'syamsul.bahri@chitraparatama.co.id',
+    'evo.yulianti@chitraparatama.co.id',
+  ]
+
+  const ccEmails = [
+    params.applicantEmail,
+    'sofyan.darmawan@chitraparatama.co.id',
+    'nico.saputra@chitraparatama.co.id',
+    'abdul.rajab@chitraparatama.co.id',
+  ].filter(Boolean) as string[]
+
+  const attachments: EmailAttachment[] = []
+  if (params.pdfBuffer && params.bastNumber) {
+    attachments.push({
+      filename: `${params.bastNumber.replace(/\//g, '_')}.pdf`,
+      content: Buffer.from(params.pdfBuffer),
+      contentType: 'application/pdf',
+    })
   }
 
-  const recipients = [procurementTarget].filter(Boolean)
-  const ccEmails = [config.evoDwiEmail].filter(Boolean)
-
   await sendWorkflowEmail({
-    to: recipients,
+    to: financeTaggingEmails,
     cc: ccEmails,
     templateCode: 'cer_asset_received',
-    templateName: 'Konfirmasi Penerimaan Fisik Aset CER',
+    templateName: 'Konfirmasi Penerimaan Fisik Aset & BAST CER',
     variables: {
       cerNumber: params.cerNumber,
+      bastNumber: params.bastNumber || '-',
       subject: params.subject,
       applicantName: params.applicantName,
       siteName: params.siteName,
       receivedDate: params.receivedDate,
       receiverNotes: params.receiverNotes || 'Barang diterima lengkap dan sesuai spesifikasi.',
+      pdfDownloadUrl: params.bastPdfUrl || viewLink,
       viewLink,
     },
-    fallbackSubject: `[Aset Diterima] Konfirmasi Fisik ${params.cerNumber} - ${params.subject} di ${params.siteName}`,
-    fallbackText: `Pemohon ${params.applicantName} telah mengonfirmasi penerimaan fisik barang untuk CER ${params.cerNumber} di ${params.siteName}. Detail: ${viewLink}`,
+    fallbackSubject: `[Aset Diterima & BAST] ${params.bastNumber ? `${params.bastNumber} - ` : ''}${params.cerNumber} - ${params.subject} di ${params.siteName}`,
+    fallbackText: `Pemohon ${params.applicantName} telah mengonfirmasi penerimaan fisik barang dan menandatangani BAST untuk CER ${params.cerNumber} di ${params.siteName}. Dokumen BAST resmi telah terbit. Detail: ${viewLink}`,
+    attachments: attachments.length > 0 ? attachments : undefined,
   })
 
+  // Bell notification ke Syamsul, Evo, dan Pemohon
+  const bellRecipients = [
+    ...financeTaggingEmails,
+    params.applicantEmail,
+  ].filter(Boolean) as string[]
+
   await notifyWorkflowBellRecipients({
-    recipientEmails: recipients.concat(ccEmails),
+    recipientEmails: bellRecipients,
     eventType: 'cer.asset_received',
     category: 'info',
-    title: `Aset Diterima: ${params.cerNumber}`,
-    body: `Pemohon ${params.applicantName} telah menerima fisik aset untuk CER "${params.subject}".`,
+    title: `Aset Diterima & BAST Terbit: ${params.cerNumber}`,
+    body: `Pemohon ${params.applicantName} telah menerima fisik aset dan menerbitkan BAST untuk CER "${params.subject}".`,
     url: viewLink,
   })
 }
 
 /**
  * 6. Notifikasi BAST Serah Terima Selesai Diterbitkan
- * Kirim ke Pemohon, CC GA (Adila & Bagas)
+ * Kirim ke Syamsul Bahri & Evo Dwi (Finance Tagging), CC Pemohon & Tim Procurement
  */
 export async function sendCerBastCompletedEmail(params: {
   applicantEmail: string
@@ -840,18 +866,27 @@ export async function sendCerBastCompletedEmail(params: {
   bastNumber: string
   cerNumber: string
   subject: string
-  gaName: string
+  gaName?: string | null
   handoverDate: string
   pdfBuffer?: Buffer | Uint8Array
   pdfUrl?: string
   cerId: number
 }) {
   const baseUrl = getPublicAppUrl()
-  const config = await getCerNotificationConfig()
   const viewLink = `${baseUrl}/dashboard/assets/cer?id=${params.cerId}`
 
-  const recipients = [params.applicantEmail].filter(Boolean)
-  const ccEmails = [config.gaAdilaEmail, config.gaBagasEmail].filter(Boolean)
+  // Sesuai requirement: Notifikasi BAST dikirimkan ke Syamsul & Evo
+  const financeTaggingEmails = [
+    'syamsul.bahri@chitraparatama.co.id',
+    'evo.yulianti@chitraparatama.co.id',
+  ]
+
+  const ccEmails = [
+    params.applicantEmail,
+    'sofyan.darmawan@chitraparatama.co.id',
+    'nico.saputra@chitraparatama.co.id',
+    'abdul.rajab@chitraparatama.co.id',
+  ].filter(Boolean) as string[]
 
   const attachments: EmailAttachment[] = []
   if (params.pdfBuffer) {
@@ -863,7 +898,7 @@ export async function sendCerBastCompletedEmail(params: {
   }
 
   await sendWorkflowEmail({
-    to: recipients,
+    to: financeTaggingEmails,
     cc: ccEmails,
     templateCode: 'cer_bast_completed',
     templateName: 'BAST Serah Terima Aset Selesai Diterbitkan',
@@ -872,7 +907,6 @@ export async function sendCerBastCompletedEmail(params: {
       cerNumber: params.cerNumber,
       subject: params.subject,
       applicantName: params.applicantName,
-      gaName: params.gaName,
       handoverDate: params.handoverDate,
       pdfDownloadUrl: params.pdfUrl || viewLink,
       viewLink,
@@ -883,11 +917,11 @@ export async function sendCerBastCompletedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: recipients.concat(ccEmails),
+    recipientEmails: financeTaggingEmails.concat(params.applicantEmail).filter(Boolean) as string[],
     eventType: 'cer.bast_completed',
     category: 'info',
     title: `BAST Diterbitkan: ${params.bastNumber}`,
-    body: `Berita Acara Serah Terima Aset "${params.subject}" telah selesai diterbitkan.`,
+    body: `Berita Acara Serah Terima Aset "${params.subject}" telah selesai diterbitkan dan aset telah diterima oleh ${params.applicantName}.`,
     url: viewLink,
   })
 }

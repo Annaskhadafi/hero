@@ -19,7 +19,7 @@ export interface CerBastPdfData {
   cerNumber: string
   subject: string
   handoverDate: Date | string
-  gaName: string
+  gaName?: string | null
   gaJobTitle?: string | null
   gaSignedAt?: Date | string | null
   gaSignatureUrl?: string | null
@@ -201,7 +201,7 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
 
   // Col 4
   page.drawText('VENDOR / PENYERAH BARANG', { x: marginX + colW * 3 + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
-  page.drawText(data.vendorName || data.gaName || 'Supplier / Rekanan', { x: marginX + colW * 3 + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
+  page.drawText(data.vendorName || 'Supplier / Rekanan', { x: marginX + colW * 3 + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
   if (data.kelompokAset) {
     page.drawText(`Kelompok: ${data.kelompokAset}`, { x: marginX + colW * 3 + 10, y: metaRow3Y, size: 7, font: fontRegular, color: darkNavy })
   }
@@ -466,15 +466,15 @@ export async function generateCerBastPdf(data: CerBastPdfData): Promise<Uint8Arr
   // 5. Signature Grid (Work Order Style Horizontal 2-Columns)
   const sigColumns = [
     {
-      header: 'YANG MENYERAHKAN',
-      name: data.vendorName || data.gaName || 'Vendor / Ekspedisi',
-      jobTitle: 'Supplier / Penyerah Barang',
+      header: 'YANG MENYERAHKAN (VENDOR / SUPPLIER)',
+      name: data.vendorName || 'Vendor / Supplier Rekanan',
+      jobTitle: 'Pihak Penyerah / Ekspedisi',
       sigUrl: null,
       isApproved: true,
       date: formatIndoDate(data.handoverDate || data.receivedAt),
     },
     {
-      header: 'YANG MENERIMA',
+      header: 'YANG MENERIMA (PENGADAAN / USER)',
       name: data.applicantName || data.userName,
       jobTitle: data.applicantJobTitle || data.userJobTitle || 'Pemohon Pengadaan',
       sigUrl: data.receiverSignatureUrl || data.userSignatureUrl || null,

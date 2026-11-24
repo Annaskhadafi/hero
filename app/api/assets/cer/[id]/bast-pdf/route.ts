@@ -101,7 +101,6 @@ export async function GET(
       userSite: cer.siteName || '-',
       siteName: cer.siteName || '-',
       vendorName: cer.vendorName || 'Supplier / Rekanan',
-      gaName: 'General Affairs / PIC Logistik',
       kelompokAset: cer.kelompokAset || undefined,
       assetCategory: cer.assetCategory,
       subject: cer.subject,

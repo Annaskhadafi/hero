@@ -1085,6 +1085,10 @@ export async function approveAssetTransfer(
             pdfBuffer: pdfBytes ? Buffer.from(pdfBytes) : undefined,
             pdfUrl: pdfUrl || undefined,
             transferId: id,
+            cc: [
+              'syamsul.bahri@chitraparatama.co.id',
+              'evo.yulianti@chitraparatama.co.id',
+            ],
           })
         }
 
@@ -1104,7 +1108,13 @@ export async function approveAssetTransfer(
             .from(employees)
             .where(inArray(employees.id, empIdsToNotify as number[]))
 
-          const emails = empRows.map((e) => e.email).filter(Boolean)
+          const emails = Array.from(
+            new Set([
+              ...empRows.map((e) => e.email).filter(Boolean),
+              'syamsul.bahri@chitraparatama.co.id',
+              'evo.yulianti@chitraparatama.co.id',
+            ])
+          )
           if (emails.length > 0) {
             await notifyWorkflowBellRecipients({
               recipientEmails: emails,

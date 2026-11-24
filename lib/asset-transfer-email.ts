@@ -9,16 +9,28 @@ import { resolveAssetTestingEmail } from '@/lib/asset-testing-guard'
 
 // =========================================================================
 // TESTING GUARDRAIL (Sesuai instruksi sistem & modul CER):
-// Selama proses pengetesan, seluruh notifikasi email dialihkan ke:
-// Gilang Suryo Wirawan (gilang.suryo@chitraparatama.co.id)
+// Selama proses pengetesan, seluruh notifikasi email dialihkan ke admin testing.
 // =========================================================================
 export const ASSET_TRANSFER_TESTING_RECIPIENT_OVERRIDE = 'gilang.suryo@chitraparatama.co.id'
 
-async function resolveTargetRecipients(originalRecipients: string | string[] | undefined): Promise<{
+/**
+ * Tim Accounting & Asset resmi yang selalu di-CC pada notifikasi mutasi aset
+ */
+export const ASSET_TRANSFER_ACCOUNTING_CC_EMAILS = [
+  'syamsul.bahri@chitraparatama.co.id',
+  'evo.yulianti@chitraparatama.co.id',
+]
+
+async function resolveTargetRecipients(
+  originalRecipients: string | string[] | undefined,
+  ccRecipients?: string | string[] | undefined
+): Promise<{
   to: string[]
+  cc: string[]
   note: string
+  isTesting: boolean
 }> {
-  return await resolveAssetTestingEmail(originalRecipients)
+  return await resolveAssetTestingEmail(originalRecipients, ccRecipients)
 }
 
 export interface AssetTransferSubmittedEmailParams {
@@ -162,13 +174,13 @@ export type AssetTransferEmailParamsCompat = AssetTransferSubmittedEmailParams
 export async function sendAssetTransferSubmittedEmail(params: AssetTransferSubmittedEmailParams) {
   const baseUrl = getPublicAppUrl()
   const approvalLink = params.approvalUrl || `${baseUrl}/dashboard/approval`
-  const target = await resolveTargetRecipients(params.approverEmail)
+  const target = await resolveTargetRecipients(params.approverEmail, params.cc)
 
   const emailHtml = buildAssetTransferSubmittedEmailHtml(params, approvalLink)
 
   await sendWorkflowEmail({
     to: target.to,
-    cc: params.cc,
+    cc: target.cc.length > 0 ? target.cc : undefined,
     templateCode: 'asset_transfer_submitted',
     templateName: 'Pengajuan / Tahap Approval Mutasi Aset',
     variables: {
@@ -208,6 +220,7 @@ export async function sendAssetTransferFullApprovedEmail(params: {
   pdfBuffer?: Buffer | Uint8Array
   pdfUrl?: string
   transferId: number
+  cc?: string | string[]
 }) {
   const baseUrl = getPublicAppUrl()
   const viewLink = `${baseUrl}/dashboard/assets/transfer`
@@ -216,7 +229,14 @@ export async function sendAssetTransferFullApprovedEmail(params: {
     new Set([params.applicantEmail, params.currentHolderEmail, params.newHolderEmail].filter(Boolean))
   ) as string[]
 
-  const target = await resolveTargetRecipients(recipients)
+  const mergedCc = Array.from(
+    new Set([
+      ...ASSET_TRANSFER_ACCOUNTING_CC_EMAILS,
+      ...(Array.isArray(params.cc) ? params.cc : [params.cc].filter(Boolean)),
+    ])
+  ) as string[]
+
+  const target = await resolveTargetRecipients(recipients, mergedCc)
 
   const attachments: EmailAttachment[] = []
   if (params.pdfBuffer) {
@@ -263,6 +283,9 @@ export async function sendAssetTransferFullApprovedEmail(params: {
                 </h2>
                 <div style="font-size:12px;color:#047857;font-weight:600">
                   &bull; Seluruh 4 tahap persetujuan telah ditandatangani secara digital &bull; Dokumen Berita Acara A4 terlampir
+                </div>
+                <div style="font-size:11px;color:#64748b;margin-top:5px">
+                  CC: <strong style="color:#0f172a">Syamsul Bahri</strong> (Accounting &amp; Asset Supervisor) &bull; <strong style="color:#0f172a">Evo Dwi Yulianti</strong> (Accounting &amp; Asset Staff)
                 </div>
               </div>
 
@@ -319,6 +342,7 @@ export async function sendAssetTransferFullApprovedEmail(params: {
 
   await sendWorkflowEmail({
     to: target.to,
+    cc: target.cc.length > 0 ? target.cc : undefined,
     templateCode: 'asset_transfer_full_approved',
     templateName: 'Mutasi Aset Disetujui Penuh (Berita Acara Terbit)',
     variables: {

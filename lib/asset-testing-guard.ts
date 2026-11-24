@@ -77,24 +77,31 @@ export async function getAssetWorkflowConfig(): Promise<AssetWorkflowTestingConf
  * Bila testing mode aktif, email dialihkan ke admin testing.
  */
 export async function resolveAssetTestingEmail(
-  originalRecipients: string | string[] | undefined | null
-): Promise<{ to: string[]; note: string; isTesting: boolean }> {
+  originalRecipients: string | string[] | undefined | null,
+  ccRecipients?: string | string[] | undefined | null
+): Promise<{ to: string[]; cc: string[]; note: string; isTesting: boolean }> {
   const origList = (Array.isArray(originalRecipients) ? originalRecipients : [originalRecipients ?? ''])
     .map((e) => e?.trim())
     .filter(Boolean) as string[]
+  const ccList = (Array.isArray(ccRecipients) ? ccRecipients : [ccRecipients ?? ''])
+    .map((e) => e?.trim())
+    .filter(Boolean) as string[]
+  const ccNote = ccList.length > 0 ? ` (CC: ${ccList.join(', ')})` : ''
 
   const config = await getAssetWorkflowConfig()
 
   if (config.isTestingMode && config.testingRecipientEmail) {
     return {
       to: [config.testingRecipientEmail],
-      note: origList.length > 0 ? `[TESTING: Asli -> ${origList.join(', ')}] ` : '[TESTING] ',
+      cc: [],
+      note: origList.length > 0 ? `[TESTING: Asli -> ${origList.join(', ')}${ccNote}] ` : '[TESTING] ',
       isTesting: true,
     }
   }
 
   return {
     to: origList,
+    cc: ccList,
     note: '',
     isTesting: false,
   }
