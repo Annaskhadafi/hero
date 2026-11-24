@@ -37,6 +37,7 @@ import {
   Layers,
   Paperclip,
   ExternalLink,
+  CircleDollarSign,
 } from 'lucide-react'
 import { resolveUploadUrl } from '@/lib/resolve-upload-url'
 import { toast } from 'sonner'
@@ -59,7 +60,7 @@ export interface AssetApprovalDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: AssetApprovalDialogTarget | null
-  onApprove: (data: { decisionNote: string; signatureUrl: string }) => Promise<void>
+  onApprove: (data: { decisionNote: string; signatureUrl: string; itemEstimates?: any[] }) => Promise<void>
   onReject: (data: { rejectionReason: string }) => Promise<void>
   onRevert?: (data: { revertReason: string }) => Promise<void>
   allowRevert?: boolean
@@ -103,6 +104,16 @@ export function AssetApprovalDialog({
     }>
   >([])
   const [isSubmittingTagging, setIsSubmittingTagging] = useState(false)
+
+  // Disposal Price Estimation specific state (Procurement: Abd.Rajab & Sofyan Darmawan)
+  const [disposalEstimates, setDisposalEstimates] = useState<
+    Array<{
+      assetId?: number
+      assetNumber: string
+      assetName: string
+      estimatedSalePrice: number
+    }>
+  >([])
 
   // Load user profile signature & full document details on open
   useEffect(() => {
@@ -169,8 +180,19 @@ export function AssetApprovalDialog({
 
       const docKelompok = (docData.doc.kelompokAset || '').trim()
       setKelompokAset(docKelompok || '')
+
+      if (item?.subType === 'ASSET_DISPOSAL') {
+        setDisposalEstimates(
+          docData.doc.items.map((it: any) => ({
+            assetId: it.assetId,
+            assetNumber: it.assetNumber || '',
+            assetName: it.assetName,
+            estimatedSalePrice: Number(it.estimatedSalePrice) || 0,
+          }))
+        )
+      }
     }
-  }, [docData])
+  }, [docData, item?.subType])
 
   // Detect whether current review step is Asset Tagging
   const isAssetTaggingStep =
@@ -185,6 +207,23 @@ export function AssetApprovalDialog({
             a.decisionNote?.toLowerCase().includes('tagging') ||
             (a.approverName || '').toLowerCase().includes('syamsul bahri'))
       ))
+
+  // Detect whether current review step is Disposal Price Estimation by Procurement
+  const isDisposalPriceEstimationStep =
+    item?.subType === 'ASSET_DISPOSAL' &&
+    docData?.doc?.disposalType === 'Penjualan' &&
+    (docData?.currentLevel === 3 ||
+      docData?.doc?.currentStepOrder === 3 ||
+      docData?.doc?.approvals?.some(
+        (a: any) =>
+          a.level === docData?.currentLevel &&
+          (a.title?.toLowerCase().includes('procurement') ||
+            a.decisionNote?.toLowerCase().includes('procurement') ||
+            (a.approverName || '').toLowerCase().includes('rajab') ||
+            (a.approverName || '').toLowerCase().includes('sofyan'))
+      ) ||
+      item?.stepLabel?.toLowerCase().includes('procurement') ||
+      item?.title?.toLowerCase().includes('procurement'))
 
   // Live preview doc data for CerDocumentView
   const displayDoc = React.useMemo(() => {
@@ -204,6 +243,27 @@ export function AssetApprovalDialog({
       }),
     }
   }, [docData, isAssetTaggingStep, kelompokAset, taggingItems])
+
+  // Live preview doc data for AssetDisposalDocumentView
+  const disposalDisplayDoc = React.useMemo(() => {
+    if (item?.subType !== 'ASSET_DISPOSAL' || !docData?.doc) return docData?.doc
+    if (!isDisposalPriceEstimationStep) return docData.doc
+    return {
+      ...docData.doc,
+      items: docData.doc.items.map((it: any) => {
+        const match = disposalEstimates.find(
+          (d) =>
+            (d.assetNumber && d.assetNumber === it.assetNumber) ||
+            (d.assetId && d.assetId === it.assetId)
+        )
+        return match ? { ...it, estimatedSalePrice: match.estimatedSalePrice } : it
+      }),
+      totalEstimatedSalePrice: disposalEstimates.reduce(
+        (acc, it) => acc + (Number(it.estimatedSalePrice) || 0),
+        0
+      ),
+    }
+  }, [docData, isDisposalPriceEstimationStep, disposalEstimates, item?.subType])
 
   const handleItemAssetNumberChange = (itemId: number, value: string) => {
     setTaggingItems((prev) =>
@@ -345,7 +405,7 @@ export function AssetApprovalDialog({
 
   const handleApprove = () => {
     const finalSig = liveSignatureUrl || (sigMode === 'profile' && profileSig ? profileSig : null)
-    if (!finalSig) {
+    if (!isDisposalPriceEstimationStep && !finalSig) {
       toast.error('Silakan bubuhkan tanda tangan (coretan, upload gambar, atau TTD profil) sebelum menyetujui.')
       return
     }
@@ -353,8 +413,13 @@ export function AssetApprovalDialog({
     startTransition(async () => {
       try {
         await onApprove({
-          decisionNote: note.trim() || 'Disetujui',
-          signatureUrl: finalSig,
+          decisionNote:
+            note.trim() ||
+            (isDisposalPriceEstimationStep
+              ? 'Estimasi harga penjualan telah diinput oleh Tim Procurement.'
+              : 'Disetujui'),
+          signatureUrl: isDisposalPriceEstimationStep ? '' : (finalSig || ''),
+          itemEstimates: isDisposalPriceEstimationStep ? disposalEstimates : undefined,
         })
       } catch (err: any) {
         toast.error(err?.message || 'Gagal menyetujui pengajuan aset.')
@@ -683,6 +748,85 @@ export function AssetApprovalDialog({
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            ) : isDisposalPriceEstimationStep ? (
+              /* Area Input Estimasi Harga Penjualan oleh Tim Procurement (Tanpa TTD) */
+              <div className="space-y-3 rounded-xl border-2 border-emerald-200 bg-gradient-to-b from-emerald-50/70 to-emerald-50/20 p-3.5 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-emerald-600 text-white rounded-lg shadow-2xs">
+                    <CircleDollarSign className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                      Input Estimasi Harga Penjualan
+                    </h4>
+                    <p className="text-[11px] text-slate-600">
+                      Tim Procurement (Abd.Rajab / Sofyan Darmawan)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-emerald-100/70 p-2.5 text-[11px] text-emerald-950 border border-emerald-200 leading-relaxed">
+                  <p className="font-semibold flex items-center gap-1.5 text-emerald-900">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                    Taksiran Nilai Penjualan Aset
+                  </p>
+                  <p className="text-[11px] mt-0.5 text-emerald-800">
+                    Silakan inputkan estimasi harga jual per item aset. Tim Procurement tidak perlu membubuhkan tanda tangan digital pada tahap ini.
+                  </p>
+                </div>
+
+                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                  {disposalEstimates.map((unit, idx) => (
+                    <div
+                      key={unit.assetNumber || idx}
+                      className="p-2.5 bg-white rounded-lg border border-slate-200 shadow-2xs space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-900 truncate">
+                          {idx + 1}. {unit.assetName}
+                        </span>
+                        <span className="text-slate-500 font-mono text-[11px] shrink-0 ml-1">
+                          {unit.assetNumber || '-'}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-700 flex items-center justify-between">
+                          <span>Estimasi Harga Jual (Rp) <span className="text-rose-500">*</span></span>
+                          <span className="font-mono text-[10px] text-emerald-700 font-bold">
+                            Rp {Number(unit.estimatedSalePrice || 0).toLocaleString('id-ID')}
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={unit.estimatedSalePrice || ''}
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0
+                            setDisposalEstimates((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, estimatedSalePrice: val } : item
+                              )
+                            )
+                          }}
+                          placeholder="0"
+                          className="w-full h-8 px-2.5 text-xs font-mono font-semibold bg-slate-50 border border-slate-300 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Total Akumulasi Estimasi */}
+                <div className="flex items-center justify-between pt-1 border-t border-emerald-200 text-xs font-bold text-slate-800">
+                  <span>Total Estimasi Penjualan:</span>
+                  <span className="text-emerald-700 font-mono">
+                    Rp{' '}
+                    {disposalEstimates
+                      .reduce((acc, it) => acc + (Number(it.estimatedSalePrice) || 0), 0)
+                      .toLocaleString('id-ID')}
+                  </span>
                 </div>
               </div>
             ) : (

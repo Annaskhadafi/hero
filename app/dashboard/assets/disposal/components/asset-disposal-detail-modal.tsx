@@ -46,12 +46,20 @@ export function AssetDisposalDetailModal({
 
   const getStatusTone = (status: string) => {
     switch (status?.toLowerCase()) {
+      case 'completed':
+        return { label: 'Selesai (Disposal & Lelang Selesai)', status: 'approved' as const }
+      case 'waiting_auction_docs':
+        return { label: 'Menunggu Lampiran Lelang', status: 'pending' as const }
+      case 'waiting_finance_docs':
+        return { label: 'Menunggu Dokumen Finance', status: 'pending' as const }
       case 'approved':
         return { label: 'Disetujui Penuh', status: 'approved' as const }
       case 'rejected':
         return { label: 'Ditolak', status: 'rejected' as const }
       case 'cancelled':
         return { label: 'Dibatalkan', status: 'draft' as const }
+      case 'needs_revision':
+        return { label: 'Perlu Revisi', status: 'pending' as const }
       case 'pending':
       default:
         return { label: 'Menunggu Persetujuan', status: 'pending' as const }
@@ -158,6 +166,9 @@ export function AssetDisposalDetailModal({
                       <th className="px-3 py-2">Nomor Aset</th>
                       <th className="w-24 px-3 py-2 text-center">Tahun Beli</th>
                       <th className="px-3 py-2">Nilai Terakhir Aset</th>
+                      {item.disposalType === 'Penjualan' && (
+                        <th className="px-3 py-2 text-blue-900 font-extrabold">Estimasi Harga Penjualan</th>
+                      )}
                       <th className="px-3 py-2">Alasan Penghapusan</th>
                     </tr>
                   </thead>
@@ -171,6 +182,11 @@ export function AssetDisposalDetailModal({
                         <td className="px-3 py-2 font-mono font-semibold text-emerald-800">
                           {it.bookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(it.bookValue)}` : 'Rp 0'}
                         </td>
+                        {item.disposalType === 'Penjualan' && (
+                          <td className="px-3 py-2 font-mono font-bold text-blue-900">
+                            {it.estimatedSalePrice ? `Rp ${new Intl.NumberFormat('id-ID').format(it.estimatedSalePrice)}` : 'Rp 0'}
+                          </td>
+                        )}
                         <td className="px-3 py-2 text-rose-800 text-[11px] font-medium">{it.notes || '-'}</td>
                       </tr>
                     ))}
@@ -178,7 +194,7 @@ export function AssetDisposalDetailModal({
                   <tfoot>
                     <tr className="border-t-2 border-slate-300 bg-slate-50/90 font-bold text-slate-900">
                       <td colSpan={4} className="px-3 py-2 text-right uppercase text-[10px]">
-                        Total Nilai Terakhir Aset:
+                        {item.disposalType === 'Penjualan' ? 'Total Akumulasi:' : 'Total Nilai Terakhir Aset:'}
                       </td>
                       <td className="px-3 py-2 font-mono text-emerald-800 font-extrabold">
                         Rp {new Intl.NumberFormat('id-ID').format(
@@ -186,6 +202,14 @@ export function AssetDisposalDetailModal({
                           (item.items || []).reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
                         )}
                       </td>
+                      {item.disposalType === 'Penjualan' && (
+                        <td className="px-3 py-2 font-mono text-blue-900 font-extrabold">
+                          Rp {new Intl.NumberFormat('id-ID').format(
+                            item.totalEstimatedSalePrice ||
+                            (item.items || []).reduce((acc: number, it: any) => acc + (Number(it.estimatedSalePrice) || 0), 0)
+                          )}
+                        </td>
+                      )}
                       <td className="px-3 py-2 text-[10px] text-muted-foreground font-normal">
                         ({(item.items || []).length} Unit Aset)
                       </td>
@@ -265,6 +289,122 @@ export function AssetDisposalDetailModal({
                   </a>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* DOKUMEN HASIL LELANG (PROCUREMENT) */}
+          {item.auctionDocuments && (
+            <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-amber-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText className="size-4 text-amber-700" />
+                  Lampiran Hasil Lelang (Procurement)
+                </h4>
+                {item.auctionSubmittedAt && (
+                  <span className="text-[10px] font-mono text-amber-800">
+                    Disubmit: {formatDateTime(item.auctionSubmittedAt)}
+                  </span>
+                )}
+              </div>
+              {item.auctionDocuments.checklist && item.auctionDocuments.checklist.length > 0 && (
+                <div className="mb-3 space-y-1 bg-white/80 p-2.5 rounded-lg border border-amber-200/80">
+                  <span className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                    Dokumen yang Diserahkan:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.auctionDocuments.checklist.map((c: string, idx: number) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center text-[10px] bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded font-medium"
+                      >
+                        ✓ {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {item.auctionDocuments.files && item.auctionDocuments.files.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {item.auctionDocuments.files.map((f: any, idx: number) => (
+                    <a
+                      key={idx}
+                      href={f.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between p-2 rounded-lg border border-amber-200 bg-white hover:bg-amber-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <FileText className="size-4 text-amber-600 shrink-0" />
+                        <span className="truncate font-medium text-slate-800 text-[11px]">{f.fileName}</span>
+                      </div>
+                      <span className="text-[10px] text-amber-800 font-bold shrink-0">Buka</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+              {item.auctionDocuments.notes && (
+                <p className="mt-2 text-[11px] text-slate-600 italic bg-white/70 p-2 rounded border border-amber-200">
+                  Catatan: {item.auctionDocuments.notes}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* DOKUMEN FINANCE & ACCOUNTING */}
+          {item.financeDocuments && (
+            <div className="bg-purple-50/50 p-4 rounded-xl border border-purple-200">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-purple-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText className="size-4 text-purple-700" />
+                  Dokumen Administrasi Keuangan (Finance &amp; Accounting)
+                </h4>
+                {item.financeSubmittedAt && (
+                  <span className="text-[10px] font-mono text-purple-800">
+                    Disubmit: {formatDateTime(item.financeSubmittedAt)}
+                  </span>
+                )}
+              </div>
+              {item.financeDocuments.checklist && item.financeDocuments.checklist.length > 0 && (
+                <div className="mb-3 space-y-1 bg-white/80 p-2.5 rounded-lg border border-purple-200/80">
+                  <span className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                    Dokumen yang Diserahkan:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.financeDocuments.checklist.map((c: string, idx: number) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center text-[10px] bg-purple-100 text-purple-900 border border-purple-300 px-2 py-0.5 rounded font-medium"
+                      >
+                        ✓ {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {item.financeDocuments.files && item.financeDocuments.files.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {item.financeDocuments.files.map((f: any, idx: number) => (
+                    <a
+                      key={idx}
+                      href={f.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between p-2 rounded-lg border border-purple-200 bg-white hover:bg-purple-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <FileText className="size-4 text-purple-600 shrink-0" />
+                        <span className="truncate font-medium text-slate-800 text-[11px]">{f.fileName}</span>
+                      </div>
+                      <span className="text-[10px] text-purple-800 font-bold shrink-0">Buka</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+              {item.financeDocuments.notes && (
+                <p className="mt-2 text-[11px] text-slate-600 italic bg-white/70 p-2 rounded border border-purple-200">
+                  Catatan: {item.financeDocuments.notes}
+                </p>
+              )}
             </div>
           )}
 

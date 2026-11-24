@@ -8,6 +8,8 @@ export interface AssetDisposalItem {
   assetName: string
   assetNumber?: string | null
   purchaseYear?: string | null
+  bookValue?: number | null
+  estimatedSalePrice?: number | null
   notes?: string | null
 }
 
@@ -25,6 +27,8 @@ export interface AssetDisposalDocumentData {
   assetName: string
   assetNumber?: string | null
   purchaseYear?: string | null
+  totalBookValue?: number | null
+  totalEstimatedSalePrice?: number | null
   notes: string
   items?: AssetDisposalItem[] | null
   attachments?: Array<{
@@ -90,8 +94,18 @@ export function AssetDisposalDocumentView({
   liveSignatureUrl?: string | null
   currentLevel?: number
 }) {
+  const isSale = doc.disposalType === 'Penjualan'
+
   const approvalCols = doc.approvals && doc.approvals.length > 0
-    ? doc.approvals.map((app) => {
+    ? doc.approvals
+        // Procurement does not sign in the formal managerial signature block
+        .filter(
+          (app) =>
+            !app.title.toLowerCase().includes('procurement') &&
+            !app.approverName.toLowerCase().includes('rajab') &&
+            !app.approverName.toLowerCase().includes('sofyan')
+        )
+        .map((app) => {
         const isCurrent = currentLevel === app.level && app.status !== 'approved'
         const sigUrl =
           app.status === 'approved' && app.signatureUrl
@@ -280,6 +294,11 @@ export function AssetDisposalDocumentView({
                         <th className="px-2.5 py-1.5">NOMOR ASET</th>
                         <th className="w-20 px-2.5 py-1.5 text-center">TAHUN BELI</th>
                         <th className="px-2.5 py-1.5 text-right">NILAI TERAKHIR (SAP)</th>
+                        {isSale && (
+                          <th className="px-2.5 py-1.5 text-right font-extrabold text-blue-900">
+                            ESTIMASI HARGA PENJUALAN
+                          </th>
+                        )}
                         <th className="px-2.5 py-1.5">DEPARTEMEN / LOKASI</th>
                         <th className="px-2.5 py-1.5">KONDISI FISIK / ALASAN PENGHAPUSAN</th>
                       </tr>
@@ -302,6 +321,11 @@ export function AssetDisposalDocumentView({
                           <td className="px-2.5 py-2 font-mono font-bold text-slate-900 text-right">
                             {it.bookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(it.bookValue)}` : 'Rp 0'}
                           </td>
+                          {isSale && (
+                            <td className="px-2.5 py-2 font-mono font-bold text-blue-900 text-right">
+                              {it.estimatedSalePrice ? `Rp ${new Intl.NumberFormat('id-ID').format(it.estimatedSalePrice)}` : 'Rp 0'}
+                            </td>
+                          )}
                           <td className="px-2.5 py-2 text-slate-800">
                             {doc.departmentName} • {doc.siteName}
                           </td>
@@ -314,7 +338,7 @@ export function AssetDisposalDocumentView({
                     <tfoot>
                       <tr className="border-t-2 border-slate-400 bg-slate-50 font-bold text-slate-900 text-xs">
                         <td colSpan={4} className="px-2.5 py-1.5 text-right uppercase text-[10px] tracking-wider text-slate-700">
-                          TOTAL NILAI TERAKHIR ASET:
+                          {isSale ? 'TOTAL NILAI AKUMULASI:' : 'TOTAL NILAI TERAKHIR ASET:'}
                         </td>
                         <td className="px-2.5 py-1.5 font-mono font-extrabold text-emerald-900 text-right">
                           Rp {new Intl.NumberFormat('id-ID').format(
@@ -322,8 +346,16 @@ export function AssetDisposalDocumentView({
                             rawItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
                           )}
                         </td>
+                        {isSale && (
+                          <td className="px-2.5 py-1.5 font-mono font-extrabold text-blue-900 text-right">
+                            Rp {new Intl.NumberFormat('id-ID').format(
+                              doc.totalEstimatedSalePrice ||
+                              rawItems.reduce((acc: number, it: any) => acc + (Number(it.estimatedSalePrice) || 0), 0)
+                            )}
+                          </td>
+                        )}
                         <td colSpan={2} className="px-2.5 py-1.5 text-[10px] font-medium text-slate-600">
-                          (Akumulasi Book Value {rawItems.length} Unit Aset)
+                          {isSale ? '(Total Nilai Buku SAP & Estimasi Penjualan)' : `(Akumulasi Book Value ${rawItems.length} Unit Aset)`}
                         </td>
                       </tr>
                     </tfoot>

@@ -18,6 +18,9 @@ import {
   sendAssetResubmittedEmail,
   sendAssetDisposalSubmittedEmail,
   sendAssetDisposalApprovedEmail,
+  sendAssetDisposalAuctionReadyEmail,
+  sendAssetDisposalFinanceReadyEmail,
+  sendAssetDisposalCompletedEmail,
 } from '@/lib/asset-approval-email'
 import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 
@@ -117,13 +120,19 @@ export async function getAssetDisposals(params?: {
         const calculatedTotalBookValue =
           Number(item.totalBookValue) ||
           parsedItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+        const calculatedTotalEstimatedSalePrice =
+          Number(item.totalEstimatedSalePrice) ||
+          parsedItems.reduce((acc: number, it: any) => acc + (Number(it.estimatedSalePrice) || 0), 0)
         return {
           ...item,
           disposalType: item.disposalType || 'Penghapusan',
           items: parsedItems,
           attachments: JSON.parse(item.attachments || '[]'),
+          auctionDocuments: item.auctionDocuments ? JSON.parse(item.auctionDocuments) : null,
+          financeDocuments: item.financeDocuments ? JSON.parse(item.financeDocuments) : null,
           submitterSignatureUrl: item.applicantSignatureUrl || null,
           totalBookValue: calculatedTotalBookValue,
+          totalEstimatedSalePrice: calculatedTotalEstimatedSalePrice,
           canEditRevision: Boolean(item.status === 'needs_revision' && (isCreator || isSuperAdmin)),
         }
       }),
@@ -206,6 +215,9 @@ export async function getAssetDisposalDetail(id: number) {
     const calculatedTotalBookValue =
       Number(disposal.totalBookValue) ||
       parsedItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+    const calculatedTotalEstimatedSalePrice =
+      Number(disposal.totalEstimatedSalePrice) ||
+      parsedItems.reduce((acc: number, it: any) => acc + (Number(it.estimatedSalePrice) || 0), 0)
 
     return {
       success: true,
@@ -213,7 +225,10 @@ export async function getAssetDisposalDetail(id: number) {
         ...disposal,
         items: parsedItems,
         totalBookValue: calculatedTotalBookValue,
+        totalEstimatedSalePrice: calculatedTotalEstimatedSalePrice,
         attachments: JSON.parse(disposal.attachments || '[]'),
+        auctionDocuments: disposal.auctionDocuments ? JSON.parse(disposal.auctionDocuments) : null,
+        financeDocuments: disposal.financeDocuments ? JSON.parse(disposal.financeDocuments) : null,
         approvalSteps,
         applicantSignatureUrl: disposal.applicantSignatureUrl || null,
         submitterSignatureUrl: disposal.applicantSignatureUrl || null,
@@ -231,8 +246,9 @@ export async function getAssetDisposalDetail(id: number) {
 /**
  * Dynamic Approval Hierarchy Resolver:
  * Resolves standard organizational chain up to Director, ensuring Amama Ira is mandatory before General Manager.
+ * If disposalType === 'Penjualan', inserts Procurement (Rajab & Sofyan) between Manager and Finance for price estimation.
  */
-export async function getDisposalDefaultApprovers(applicantEmployeeId?: number) {
+export async function getDisposalDefaultApprovers(applicantEmployeeId?: number, disposalType?: string) {
   try {
     // 1. Fetch Amama Ira (Finance & Accounting Supervisor - ID 1341, SN 76436)
     const [amamaIra] = await db
@@ -267,7 +283,18 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number) 
       .where(or(ilike(employees.jobTitle, '%Director%'), eq(employees.id, 10)))
       .limit(1)
 
-    // 4. Resolve applicant's Section Head and Dept Head
+    // 4. Fetch Procurement (Abd.Rajab ID 985 / Sofyan Darmawan ID 1143) for sale category
+    const [procurement] = await db
+      .select({
+        id: employees.id,
+        name: employees.name,
+        jobTitle: employees.jobTitle,
+      })
+      .from(employees)
+      .where(or(ilike(employees.name, '%Rajab%'), eq(employees.id, 985), ilike(employees.name, '%Sofyan Darmawan%')))
+      .limit(1)
+
+    // 5. Resolve applicant's Section Head and Dept Head
     let step1Approver: { id: number; name: string; jobTitle: string } | null = null
     let step2Approver: { id: number; name: string; jobTitle: string } | null = null
 
@@ -342,44 +369,90 @@ export async function getDisposalDefaultApprovers(applicantEmployeeId?: number) 
       }
     }
 
-    // Assemble the complete 5-step hierarchy
-    const defaultSteps: DisposalApproverStep[] = [
-      {
-        level: 1,
-        title: 'Step 1: Atasan Langsung / Section Head (Mengetahui)',
-        approverEmployeeId: step1Approver.id,
-        approverName: step1Approver.name,
-        jobTitle: step1Approver.jobTitle,
-      },
-      {
-        level: 2,
-        title: 'Step 2: Department Head / Manager (Menyetujui)',
-        approverEmployeeId: step2Approver.id,
-        approverName: step2Approver.name,
-        jobTitle: step2Approver.jobTitle,
-      },
-      {
-        level: 3,
-        title: 'Step 3: Verifikasi by Finance & Accounting (Amama Ira)',
-        approverEmployeeId: amamaIra?.id || 1341,
-        approverName: amamaIra?.name || 'Amama Ira Amalia Priyono',
-        jobTitle: amamaIra?.jobTitle || 'Finance & Accounting Supervisor',
-      },
-      {
-        level: 4,
-        title: 'Step 4: General Manager (Otorisasi GM)',
-        approverEmployeeId: generalManager?.id || 940,
-        approverName: generalManager?.name || 'Person Sihaloho',
-        jobTitle: generalManager?.jobTitle || 'General Manager',
-      },
-      {
-        level: 5,
-        title: 'Step 5: Director (Persetujuan Final)',
-        approverEmployeeId: director?.id || 10,
-        approverName: director?.name || 'Hidayat Rahman',
-        jobTitle: director?.jobTitle || 'Director',
-      },
-    ]
+    // Assemble hierarchy: If Penjualan, insert Procurement (Rajab & Sofyan) as Step 3
+    const isSale = disposalType === 'Penjualan'
+    const defaultSteps: DisposalApproverStep[] = isSale
+      ? [
+          {
+            level: 1,
+            title: 'Step 1: Atasan Langsung / Section Head (Mengetahui)',
+            approverEmployeeId: step1Approver.id,
+            approverName: step1Approver.name,
+            jobTitle: step1Approver.jobTitle,
+          },
+          {
+            level: 2,
+            title: 'Step 2: Department Head / Manager (Menyetujui)',
+            approverEmployeeId: step2Approver.id,
+            approverName: step2Approver.name,
+            jobTitle: step2Approver.jobTitle,
+          },
+          {
+            level: 3,
+            title: 'Step 3: Procurement (Input Estimasi Harga Penjualan)',
+            approverEmployeeId: procurement?.id || 985,
+            approverName: procurement?.name || 'Abd.Rajab',
+            jobTitle: procurement?.jobTitle || 'Procurement Coordinator',
+          },
+          {
+            level: 4,
+            title: 'Step 4: Verifikasi by Finance & Accounting (Amama Ira)',
+            approverEmployeeId: amamaIra?.id || 1341,
+            approverName: amamaIra?.name || 'Amama Ira Amalia Priyono',
+            jobTitle: amamaIra?.jobTitle || 'Finance & Accounting Supervisor',
+          },
+          {
+            level: 5,
+            title: 'Step 5: General Manager (Otorisasi GM)',
+            approverEmployeeId: generalManager?.id || 940,
+            approverName: generalManager?.name || 'Person Sihaloho',
+            jobTitle: generalManager?.jobTitle || 'General Manager',
+          },
+          {
+            level: 6,
+            title: 'Step 6: Director (Persetujuan Final)',
+            approverEmployeeId: director?.id || 10,
+            approverName: director?.name || 'Hidayat Rahman',
+            jobTitle: director?.jobTitle || 'Director',
+          },
+        ]
+      : [
+          {
+            level: 1,
+            title: 'Step 1: Atasan Langsung / Section Head (Mengetahui)',
+            approverEmployeeId: step1Approver.id,
+            approverName: step1Approver.name,
+            jobTitle: step1Approver.jobTitle,
+          },
+          {
+            level: 2,
+            title: 'Step 2: Department Head / Manager (Menyetujui)',
+            approverEmployeeId: step2Approver.id,
+            approverName: step2Approver.name,
+            jobTitle: step2Approver.jobTitle,
+          },
+          {
+            level: 3,
+            title: 'Step 3: Verifikasi by Finance & Accounting (Amama Ira)',
+            approverEmployeeId: amamaIra?.id || 1341,
+            approverName: amamaIra?.name || 'Amama Ira Amalia Priyono',
+            jobTitle: amamaIra?.jobTitle || 'Finance & Accounting Supervisor',
+          },
+          {
+            level: 4,
+            title: 'Step 4: General Manager (Otorisasi GM)',
+            approverEmployeeId: generalManager?.id || 940,
+            approverName: generalManager?.name || 'Person Sihaloho',
+            jobTitle: generalManager?.jobTitle || 'General Manager',
+          },
+          {
+            level: 5,
+            title: 'Step 5: Director (Persetujuan Final)',
+            approverEmployeeId: director?.id || 10,
+            approverName: director?.name || 'Hidayat Rahman',
+            jobTitle: director?.jobTitle || 'Director',
+          },
+        ]
 
     return {
       success: true,
@@ -585,7 +658,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
     if (input.customApprovers && input.customApprovers.length > 0) {
       approvalChain = input.customApprovers
     } else {
-      const defRes = await getDisposalDefaultApprovers(applicantEmployeeId || undefined)
+      const defRes = await getDisposalDefaultApprovers(applicantEmployeeId || undefined, input.disposalType)
       approvalChain = defRes.approvers || []
     }
 
@@ -601,6 +674,32 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         success: false,
         message:
           'Validasi Alur Approval: Verifikasi by Finance & Accounting (Amama Ira) wajib disertakan dalam rantai approval.',
+      }
+    }
+
+    // Guardrail for Penjualan: Validate that Procurement (Rajab / Sofyan) occurs BEFORE Amama Ira
+    if (input.disposalType === 'Penjualan') {
+      const procIndex = approvalChain.findIndex(
+        (s) =>
+          s.approverEmployeeId === 985 ||
+          s.approverEmployeeId === 1143 ||
+          s.approverName.toLowerCase().includes('rajab') ||
+          s.approverName.toLowerCase().includes('sofyan') ||
+          s.title.toLowerCase().includes('procurement')
+      )
+      if (procIndex === -1) {
+        return {
+          success: false,
+          message:
+            'Validasi Alur Approval: Step peninjauan Procurement (Rajab & Sofyan) wajib disertakan untuk kategori Penjualan.',
+        }
+      }
+      if (procIndex > amamaIndex) {
+        return {
+          success: false,
+          message:
+            'Validasi Alur Approval: Step Procurement (Input Estimasi Harga) wajib diposisikan SEBELUM Verifikasi Finance (Amama Ira).',
+        }
       }
     }
 
@@ -629,6 +728,10 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
     const items = input.items && input.items.length > 0 ? input.items : []
     const totalBookValue = items.reduce(
       (acc, it) => acc + (Number(it.bookValue) || 0),
+      0
+    )
+    const totalEstimatedSalePrice = items.reduce(
+      (acc, it) => acc + (Number(it.estimatedSalePrice) || 0),
       0
     )
     const firstItem = items[0]
@@ -663,6 +766,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         notes: topNotes,
         items: JSON.stringify(items),
         totalBookValue,
+        totalEstimatedSalePrice,
         attachments: JSON.stringify(input.attachments || []),
         applicantEmployeeId,
         applicantName,
@@ -756,7 +860,12 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
 /**
  * Approve current step / Final Approve by Director
  */
-export async function approveAssetDisposal(id: number, decisionNote: string, signatureUrl?: string) {
+export async function approveAssetDisposal(
+  id: number,
+  decisionNote: string,
+  signatureUrl?: string,
+  itemEstimates?: Array<{ assetId?: number; assetNumber?: string; estimatedSalePrice: number }>
+) {
   try {
     const session = await getServerSession()
     if (!session?.user) {
@@ -807,6 +916,33 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
     }
 
     const now = new Date()
+
+    // 0. Update item estimates if submitted by Procurement
+    if (itemEstimates && itemEstimates.length > 0) {
+      try {
+        const rawItems = JSON.parse(disposal.items || '[]')
+        const updatedItems = rawItems.map((it: any) => {
+          const match = itemEstimates.find(
+            (e) => (e.assetNumber && e.assetNumber === it.assetNumber) || (e.assetId && e.assetId === it.assetId)
+          )
+          return match ? { ...it, estimatedSalePrice: Number(match.estimatedSalePrice) || 0 } : it
+        })
+        const newTotalEst = updatedItems.reduce(
+          (acc: number, it: any) => acc + (Number(it.estimatedSalePrice) || 0),
+          0
+        )
+        await db
+          .update(assetDisposals)
+          .set({
+            items: JSON.stringify(updatedItems),
+            totalEstimatedSalePrice: newTotalEst,
+            updatedAt: now,
+          })
+          .where(eq(assetDisposals.id, id))
+      } catch (err) {
+        console.warn('[approveAssetDisposal] Failed to parse and update item estimates:', err)
+      }
+    }
 
     // 1. Mark current step as Approved
     await db
@@ -939,10 +1075,12 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
         console.error('[approveAssetDisposal] PDF generation error:', pdfErr)
       }
 
+      const isSale = disposal.disposalType === 'Penjualan'
+
       await db
         .update(assetDisposals)
         .set({
-          status: 'approved',
+          status: isSale ? 'waiting_auction_docs' : 'approved',
           pdfUrl: pdfUrl || undefined,
           approvedAt: now,
           updatedAt: now,
@@ -971,7 +1109,26 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
         })
       }
 
-      // Notify Applicant of full approval (routed via Testing Guardrail)
+      if (isSale) {
+        // Penjualan: Notify Procurement to submit auction documents
+        await sendAssetDisposalAuctionReadyEmail({
+          procurementEmails: ['abdul.rajab@chitraparatama.co.id', 'sofyan.darmawan@chitraparatama.co.id'],
+          disposalNumber: disposal.disposalNumber,
+          assetName: disposal.assetName,
+          disposalId: disposal.id,
+        }).catch((err) => console.error('[approveAssetDisposal] Auction ready notify error:', err))
+
+        revalidatePath('/dashboard/assets/disposal')
+        revalidatePath('/dashboard/approval')
+        revalidatePath('/dashboard/central-service/assets')
+
+        return {
+          success: true,
+          message: `Permohonan ${disposal.disposalNumber} telah disetujui Direktur. Proses berlanjut ke Tim Procurement untuk unggah lampiran hasil lelang.`,
+        }
+      }
+
+      // Non-penjualan: Notify Applicant of full approval
       if (applicant?.email) {
         await sendAssetDisposalApprovedEmail({
           applicantEmail: applicant.email,
@@ -996,6 +1153,159 @@ export async function approveAssetDisposal(id: number, decisionNote: string, sig
   } catch (error: any) {
     console.error('[approveAssetDisposal] Error:', error)
     return { success: false, message: error?.message || 'Gagal memproses persetujuan Asset Disposal.' }
+  }
+}
+
+/**
+ * Post-Approval Step 1: Procurement submits Auction Documents
+ */
+export async function submitDisposalAuctionDocumentsAction(params: {
+  disposalId: number
+  checklist: string[]
+  files: Array<{ fileName: string; fileUrl: string; fileSize?: number }>
+  notes?: string
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Sesi anda telah berakhir. Silakan login kembali.' }
+    }
+
+    if (!params.checklist || params.checklist.length === 0) {
+      return { success: false, message: 'Pilih minimal 1 jenis lampiran lelang yang disertakan.' }
+    }
+
+    const [disposal] = await db
+      .select()
+      .from(assetDisposals)
+      .where(eq(assetDisposals.id, params.disposalId))
+      .limit(1)
+
+    if (!disposal) {
+      return { success: false, message: 'Permohonan disposal tidak ditemukan.' }
+    }
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const now = new Date()
+
+    const auctionPayload = JSON.stringify({
+      checklist: params.checklist,
+      files: params.files,
+      notes: params.notes || '',
+    })
+
+    await db
+      .update(assetDisposals)
+      .set({
+        status: 'waiting_finance_docs',
+        auctionDocuments: auctionPayload,
+        auctionSubmittedAt: now,
+        auctionSubmittedById: empContext?.employeeId || null,
+        updatedAt: now,
+      })
+      .where(eq(assetDisposals.id, params.disposalId))
+
+    // Notify Finance (Syamsul & Evo) to submit finance documents
+    await sendAssetDisposalFinanceReadyEmail({
+      financeEmails: ['syamsul.bahri@chitraparatama.co.id', 'evo.yulianti@chitraparatama.co.id'],
+      disposalNumber: disposal.disposalNumber,
+      assetName: disposal.assetName,
+      disposalId: disposal.id,
+    }).catch((err) => console.error('[submitDisposalAuctionDocumentsAction] Finance notify error:', err))
+
+    revalidatePath('/dashboard/assets/disposal')
+
+    return {
+      success: true,
+      message: `Lampiran hasil lelang untuk ${disposal.disposalNumber} berhasil disubmit. Alur berlanjut ke Tim Finance & Accounting.`,
+    }
+  } catch (error: any) {
+    console.error('[submitDisposalAuctionDocumentsAction] Error:', error)
+    return {
+      success: false,
+      message: error?.message || 'Gagal menyimpan lampiran lelang.',
+    }
+  }
+}
+
+/**
+ * Post-Approval Step 2: Finance submits Finance Documents & Completes Process
+ */
+export async function submitDisposalFinanceDocumentsAction(params: {
+  disposalId: number
+  checklist: string[]
+  files: Array<{ fileName: string; fileUrl: string; fileSize?: number }>
+  notes?: string
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Sesi anda telah berakhir. Silakan login kembali.' }
+    }
+
+    if (!params.checklist || params.checklist.length === 0) {
+      return { success: false, message: 'Pilih minimal 1 jenis dokumen keuangan yang disertakan.' }
+    }
+
+    const [disposal] = await db
+      .select()
+      .from(assetDisposals)
+      .where(eq(assetDisposals.id, params.disposalId))
+      .limit(1)
+
+    if (!disposal) {
+      return { success: false, message: 'Permohonan disposal tidak ditemukan.' }
+    }
+
+    const [applicant] = await db
+      .select({ email: employees.email, name: employees.name })
+      .from(employees)
+      .where(eq(employees.id, disposal.applicantEmployeeId || 0))
+      .limit(1)
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const now = new Date()
+
+    const financePayload = JSON.stringify({
+      checklist: params.checklist,
+      files: params.files,
+      notes: params.notes || '',
+    })
+
+    await db
+      .update(assetDisposals)
+      .set({
+        status: 'completed',
+        financeDocuments: financePayload,
+        financeSubmittedAt: now,
+        financeSubmittedById: empContext?.employeeId || null,
+        updatedAt: now,
+      })
+      .where(eq(assetDisposals.id, params.disposalId))
+
+    // Send final completion email to Applicant with CC to Procurement and Finance
+    await sendAssetDisposalCompletedEmail({
+      applicantEmail: applicant?.email || 'applicant@chitraparatama.co.id',
+      applicantName: applicant?.name || disposal.applicantName,
+      procurementEmails: ['abdul.rajab@chitraparatama.co.id', 'sofyan.darmawan@chitraparatama.co.id'],
+      financeEmails: ['syamsul.bahri@chitraparatama.co.id', 'evo.yulianti@chitraparatama.co.id'],
+      disposalNumber: disposal.disposalNumber,
+      assetName: disposal.assetName,
+      disposalId: disposal.id,
+    }).catch((err) => console.error('[submitDisposalFinanceDocumentsAction] Completed notify error:', err))
+
+    revalidatePath('/dashboard/assets/disposal')
+
+    return {
+      success: true,
+      message: `Dokumen Finance untuk ${disposal.disposalNumber} berhasil disubmit. Seluruh proses disposal & lelang telah selesai (Completed).`,
+    }
+  } catch (error: any) {
+    console.error('[submitDisposalFinanceDocumentsAction] Error:', error)
+    return {
+      success: false,
+      message: error?.message || 'Gagal menyimpan dokumen Finance.',
+    }
   }
 }
 

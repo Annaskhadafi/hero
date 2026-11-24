@@ -33,10 +33,14 @@ import {
   FileText,
   AlertTriangle,
   Download,
+  Gavel,
+  Receipt,
+  CircleDollarSign,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AssetDisposalFormDialog } from './asset-disposal-form-dialog'
 import { AssetDisposalDetailModal } from './asset-disposal-detail-modal'
+import { AssetDisposalPostApprovalModal } from './asset-disposal-post-approval-modal'
 import { AssetApprovalDialog, type AssetApprovalDialogTarget } from '@/components/asset-approval-dialog'
 import {
   getAssetDisposals,
@@ -145,6 +149,9 @@ export function AssetDisposalDashboard({
   const [editingDisposal, setEditingDisposal] = React.useState<any | null>(null)
   const [selectedDisposal, setSelectedDisposal] = React.useState<any | null>(null)
   const [isDetailOpen, setIsDetailOpen] = React.useState(false)
+
+  // Post-Approval Modal (Lampiran Lelang Procurement & Dokumen Finance)
+  const [postApprovalTarget, setPostApprovalTarget] = React.useState<{ item: any; mode: 'auction' | 'finance' } | null>(null)
 
   // AssetApprovalDialog (Split 2-Panel Review seperti Asset Borrow)
   const [reviewTarget, setReviewTarget] = React.useState<AssetApprovalDialogTarget | null>(null)
@@ -262,6 +269,12 @@ export function AssetDisposalDashboard({
 
   const getStatusTone = (status: string) => {
     switch (status?.toLowerCase()) {
+      case 'completed':
+        return { label: 'Selesai (Disposal & Lelang Selesai)', status: 'approved' as const }
+      case 'waiting_auction_docs':
+        return { label: 'Menunggu Lampiran Lelang', status: 'pending' as const }
+      case 'waiting_finance_docs':
+        return { label: 'Menunggu Dokumen Finance', status: 'pending' as const }
       case 'approved':
         return { label: 'Disetujui Penuh', status: 'approved' as const }
       case 'rejected':
@@ -349,6 +362,11 @@ export function AssetDisposalDashboard({
             <span className="text-[10px] text-muted-foreground">
               SAP Book Value
             </span>
+            {row.disposalType === 'Penjualan' && Number(row.totalEstimatedSalePrice) > 0 && (
+              <span className="text-[10px] text-emerald-700 font-mono font-semibold block mt-0.5" title="Estimasi Harga Penjualan dari Tim Procurement">
+                Est: Rp {new Intl.NumberFormat('id-ID').format(Number(row.totalEstimatedSalePrice))}
+              </span>
+            )}
           </div>
         )
       },
@@ -420,8 +438,10 @@ export function AssetDisposalDashboard({
       options: [
         { label: 'Semua Status', value: 'all' },
         { label: 'Menunggu Persetujuan', value: 'pending' },
+        { label: 'Menunggu Lampiran Lelang', value: 'waiting_auction_docs' },
+        { label: 'Menunggu Dokumen Finance', value: 'waiting_finance_docs' },
+        { label: 'Disetujui Penuh / Selesai', value: 'approved' },
         { label: 'Perlu Revisi', value: 'needs_revision' },
-        { label: 'Disetujui Penuh', value: 'approved' },
         { label: 'Ditolak', value: 'rejected' },
       ],
     },
@@ -624,6 +644,34 @@ export function AssetDisposalDashboard({
                       </Button>
                     )}
 
+                    {/* 2b. Submit Lampiran Lelang (Procurement / Super Admin / Pemohon) */}
+                    {row.status === 'waiting_auction_docs' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPostApprovalTarget({ item: row, mode: 'auction' })}
+                        className="h-8 gap-1 border-purple-300 bg-purple-50 px-2.5 text-xs font-semibold text-purple-800 hover:bg-purple-100 shadow-2xs"
+                      >
+                        <Gavel className="size-3.5 text-purple-600" />
+                        Lampiran Lelang
+                      </Button>
+                    )}
+
+                    {/* 2c. Submit Dokumen Finance (Finance / Super Admin) */}
+                    {row.status === 'waiting_finance_docs' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPostApprovalTarget({ item: row, mode: 'finance' })}
+                        className="h-8 gap-1 border-emerald-300 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 shadow-2xs"
+                      >
+                        <Receipt className="size-3.5 text-emerald-600" />
+                        Dokumen Finance
+                      </Button>
+                    )}
+
                     {/* 3. View Detail */}
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -743,11 +791,16 @@ export function AssetDisposalDashboard({
         item={reviewTarget}
         allowRevert={true}
         isSubmitting={isAssetSubmitting}
-        onApprove={async ({ decisionNote, signatureUrl }) => {
+        onApprove={async ({ decisionNote, signatureUrl, itemEstimates }) => {
           if (!reviewTarget) return
           setIsAssetSubmitting(true)
           try {
-            const res = await approveAssetDisposal(reviewTarget.targetId, decisionNote, signatureUrl)
+            const res = await approveAssetDisposal(
+              reviewTarget.targetId,
+              decisionNote,
+              signatureUrl,
+              itemEstimates
+            )
             if (res.success) {
               toast.success(res.message || 'Persetujuan disposal berhasil dicatat.')
               setIsAssetApprovalOpen(false)
@@ -814,6 +867,22 @@ export function AssetDisposalDashboard({
         isSubmitting={isCancelling}
         onConfirm={handleConfirmCancel}
       />
+
+      {/* POST-APPROVAL MODAL: AUCTION & FINANCE DOCUMENTS */}
+      {postApprovalTarget && (
+        <AssetDisposalPostApprovalModal
+          open={Boolean(postApprovalTarget)}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setPostApprovalTarget(null)
+          }}
+          item={postApprovalTarget.item}
+          mode={postApprovalTarget.mode}
+          onSuccess={() => {
+            setPostApprovalTarget(null)
+            refreshData()
+          }}
+        />
+      )}
     </div>
   )
 }

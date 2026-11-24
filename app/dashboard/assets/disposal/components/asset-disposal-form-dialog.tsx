@@ -41,7 +41,11 @@ import {
 import { uploadFile } from '@/app/actions/upload'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import { SignaturePad } from '@/components/signature-pad'
-import { createAssetDisposal, resubmitAssetDisposalAction } from '../actions'
+import {
+  createAssetDisposal,
+  resubmitAssetDisposalAction,
+  getDisposalDefaultApprovers,
+} from '../actions'
 import { type DisposalApproverStep, type DisposalAttachment } from '../schema'
 
 export interface DisposalFormItem {
@@ -723,7 +727,20 @@ export function AssetDisposalFormDialog({
                   { value: 'Donasi', label: 'Donasi' },
                 ]}
                 value={disposalType}
-                onChange={(val) => setDisposalType((val as any) || 'Penghapusan')}
+                onChange={async (val) => {
+                  const newType = (val as any) || 'Penghapusan'
+                  setDisposalType(newType)
+                  if (!initialData?.id) {
+                    try {
+                      const res = await getDisposalDefaultApprovers(currentEmployee?.id, newType)
+                      if (res.success && res.approvers && res.approvers.length > 0) {
+                        setApprovers(res.approvers)
+                      }
+                    } catch (e) {
+                      console.error('[AssetDisposalFormDialog] failed to load default approvers for', newType, e)
+                    }
+                  }
+                }}
                 placeholder="Pilih jenis disposal..."
               />
             </HeroFormField>
@@ -741,6 +758,19 @@ export function AssetDisposalFormDialog({
               />
             </HeroFormField>
           </div>
+
+          {/* Banner Informasi Khusus Kategori Penjualan */}
+          {disposalType === 'Penjualan' && (
+            <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900 flex items-start gap-2 shadow-2xs">
+              <Sparkles className="size-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-emerald-950">Alur Khusus Kategori Penjualan &amp; Lelang</p>
+                <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                  Rantai persetujuan otomatis menyertakan <strong>Tim Procurement (Abd.Rajab / Sofyan Darmawan)</strong> untuk input estimasi harga penjualan sebelum verifikasi Finance. Setelah disetujui penuh Direktur, proses akan dilanjutkan ke tahap upload berkas lelang (Procurement) dan dokumen perpajakan/SAP (Finance).
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pt-1">
             <Info className="h-3.5 w-3.5 text-blue-600 shrink-0" />
@@ -1044,6 +1074,10 @@ export function AssetDisposalFormDialog({
             {approvers && approvers.length > 0 ? (
               <div className="space-y-2.5">
                 {approvers.map((s, idx) => {
+                  const isProcurement =
+                    s.title.toLowerCase().includes('procurement') ||
+                    s.approverName.toLowerCase().includes('rajab') ||
+                    s.approverName.toLowerCase().includes('sofyan')
                   const isAmama =
                     s.approverEmployeeId === 1341 ||
                     s.approverName.toLowerCase().includes('amama ira')
@@ -1058,7 +1092,9 @@ export function AssetDisposalFormDialog({
                     <div
                       key={idx}
                       className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border text-xs gap-2 transition-all ${
-                        isAmama
+                        isProcurement
+                          ? 'border-emerald-300 bg-emerald-50/70 shadow-2xs'
+                          : isAmama
                           ? 'border-indigo-300 bg-indigo-50/70 shadow-2xs'
                           : isDirector || isGM
                           ? 'border-blue-200 bg-blue-50/40'
@@ -1069,7 +1105,9 @@ export function AssetDisposalFormDialog({
                         <Badge
                           variant="outline"
                           className={`text-[10px] font-bold px-2 py-0.5 shrink-0 ${
-                            isAmama
+                            isProcurement
+                              ? 'border-emerald-400 bg-emerald-100 text-emerald-900 font-extrabold'
+                              : isAmama
                               ? 'border-indigo-400 bg-indigo-100 text-indigo-900 font-extrabold'
                               : isDirector || isGM
                               ? 'border-blue-400 bg-blue-100 text-blue-800'
@@ -1084,6 +1122,11 @@ export function AssetDisposalFormDialog({
                             <span className="font-semibold text-slate-900 truncate">
                               {s.approverName}
                             </span>
+                            {isProcurement && (
+                              <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
+                                Estimasi Harga: Tim Procurement
+                              </Badge>
+                            )}
                             {isAmama && (
                               <Badge className="bg-indigo-600 text-white text-[9px] px-1.5 py-0 h-4 font-bold">
                                 Special Verification: Finance &amp; Accounting

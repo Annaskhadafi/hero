@@ -34,9 +34,22 @@ export const assetDisposals = pgTable('hero_asset_disposals', {
   disposalDate: date('disposal_date').notNull(),
   disposalType: text('disposal_type').notNull().default('Penghapusan'), // 'Penjualan' | 'Penghapusan' | 'Donasi'
   notes: text('notes').notNull(),
-  items: text('items').notNull().default('[]'), // JSON array: [{ id?, assetId?, assetName, assetNumber, purchaseYear, bookValue?, notes }]
+  items: text('items').notNull().default('[]'), // JSON array: [{ id?, assetId?, assetName, assetNumber, purchaseYear, bookValue?, estimatedSalePrice?, notes }]
   totalBookValue: doublePrecision('total_book_value').default(0),
+  totalEstimatedSalePrice: doublePrecision('total_estimated_sale_price').default(0),
   attachments: text('attachments').notNull().default('[]'), // JSON array: [{ fileName, fileUrl, fileSize, mimeType }]
+
+  // Dokumen Pasca-Approval (Lelang & Finance)
+  auctionDocuments: text('auction_documents'), // JSON: { checklist: string[], files: Array<{ fileName, fileUrl, fileSize }> }
+  auctionSubmittedAt: timestamp('auction_submitted_at'),
+  auctionSubmittedById: integer('auction_submitted_by_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
+  financeDocuments: text('finance_documents'), // JSON: { checklist: string[], files: Array<{ fileName, fileUrl, fileSize }> }
+  financeSubmittedAt: timestamp('finance_submitted_at'),
+  financeSubmittedById: integer('finance_submitted_by_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
 
   // Pengaju (Dibuat Oleh)
   applicantEmployeeId: integer('applicant_employee_id').references(() => employees.id, {

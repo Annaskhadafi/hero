@@ -19,12 +19,14 @@ export async function approveAssetManagementItemAction({
   approvalId,
   decisionNote,
   signatureUrl,
+  itemEstimates,
 }: {
   subType: 'CER' | 'ASSET_BORROW' | 'ASSET_TRANSFER' | 'ASSET_DISPOSAL'
   targetId: number
   approvalId: number
   decisionNote: string
   signatureUrl?: string
+  itemEstimates?: Array<{ assetId?: number; assetNumber?: string; estimatedSalePrice: number }>
 }) {
   try {
     let res: any
@@ -35,7 +37,7 @@ export async function approveAssetManagementItemAction({
     } else if (subType === 'ASSET_TRANSFER') {
       res = await approveAssetTransfer(targetId, decisionNote, undefined, signatureUrl)
     } else if (subType === 'ASSET_DISPOSAL') {
-      res = await approveAssetDisposal(targetId, decisionNote, signatureUrl)
+      res = await approveAssetDisposal(targetId, decisionNote, signatureUrl, itemEstimates)
     } else {
       return { success: false, message: 'Jenis aset tidak valid.' }
     }
@@ -523,7 +525,9 @@ export async function getAssetManagementItemDetailAction({
           disposalDate: assetDisposals.disposalDate,
           disposalType: assetDisposals.disposalType,
           totalBookValue: assetDisposals.totalBookValue,
+          totalEstimatedSalePrice: assetDisposals.totalEstimatedSalePrice,
           status: assetDisposals.status,
+          currentStepOrder: assetDisposals.currentStepOrder,
           applicantName: assetDisposals.applicantName,
           applicantSn: employees.employeeSn,
           applicantJobTitle: employees.jobTitle,
@@ -570,7 +574,7 @@ export async function getAssetManagementItemDetailAction({
       return {
         success: true,
         subType: 'ASSET_DISPOSAL' as const,
-        currentLevel: resolvedCurrentLevel,
+        currentLevel: disposal.currentStepOrder || resolvedCurrentLevel || 1,
         pdfUrl: `/api/assets/disposal/${disposal.id}/pdf`,
         summary: {
           documentNumber: disposal.disposalNumber,
@@ -587,7 +591,9 @@ export async function getAssetManagementItemDetailAction({
           disposalDate: disposal.disposalDate,
           disposalType: disposal.disposalType,
           totalBookValue: disposal.totalBookValue,
+          totalEstimatedSalePrice: disposal.totalEstimatedSalePrice || 0,
           status: disposal.status,
+          currentStepOrder: disposal.currentStepOrder || 1,
           applicantName: disposal.applicantName,
           applicantSn: disposal.applicantSn,
           applicantJobTitle: disposal.applicantJobTitle,
