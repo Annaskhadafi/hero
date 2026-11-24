@@ -1,6 +1,6 @@
 import React from "react";
 import { fetchSafetyShoesMatrix } from "@/lib/apd-inventory-data";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ManualEntryModal } from "./manual-entry-modal";
@@ -59,6 +59,12 @@ export default async function SafetyShoesInventoryPage({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/dashboard/summary">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 border-emerald-600/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50">
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              Summary APD
+            </Button>
+          </Link>
           <EmployeeCrudModal sites={allSites} />
           <ManualEntryModal employees={allEmployees} />
         </div>

@@ -59,6 +59,10 @@ export function SafetyShoesTableClient({
     return Object.keys(groupedSections).sort((a, b) => a.localeCompare(b));
   }, [groupedSections]);
 
+  const validYears = useMemo(() => {
+    return (years || []).filter((y) => typeof y === "number" && !isNaN(y) && y >= 1970);
+  }, [years]);
+
   const renderTable = (rowsToRender: SafetyShoesMatrixRow[]) => (
     <div className="w-full overflow-auto">
       <table className="w-full text-sm">
@@ -71,7 +75,7 @@ export function SafetyShoesTableClient({
             <th className="h-10 px-4 text-left font-medium">Section</th>
             <th className="h-10 px-4 text-left font-medium">Size</th>
             <th className="h-10 px-4 text-left font-medium">Attachment</th>
-            {years.map((y) => (
+            {validYears.map((y) => (
               <th key={y} colSpan={2} className="h-10 px-4 text-center font-medium border-l border-border/50">
                 {y}
               </th>
@@ -80,7 +84,7 @@ export function SafetyShoesTableClient({
           </tr>
           <tr className="border-b border-border text-xs">
             <th colSpan={7}></th>
-            {years.map((y) => (
+            {validYears.map((y) => (
               <React.Fragment key={`sub-${y}`}>
                 <th className="h-8 px-2 font-medium border-l border-border/50 text-center">I</th>
                 <th className="h-8 px-2 font-medium border-l border-border/50 text-center">II</th>
@@ -92,7 +96,7 @@ export function SafetyShoesTableClient({
         <tbody className="divide-y divide-border bg-card">
           {rowsToRender.length === 0 ? (
             <tr>
-              <td colSpan={8 + (years.length * 2)} className="p-8 text-center text-muted-foreground">
+              <td colSpan={8 + (validYears.length * 2)} className="p-8 text-center text-muted-foreground">
                 {searchQuery ? `Tidak ada karyawan yang cocok dengan pencarian "${searchQuery}".` : "Belum ada data karyawan Central Service di section/site ini."}
               </td>
             </tr>
@@ -120,7 +124,7 @@ export function SafetyShoesTableClient({
                     initialUrl={row.attachmentUrl} 
                   />
                 </td>
-                {years.map((y) => {
+                {validYears.map((y) => {
                   const datesArray = row.history[y.toString()] || [];
                   const date1 = datesArray[0];
                   const date2 = datesArray[1];

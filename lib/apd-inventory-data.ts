@@ -186,34 +186,45 @@ export async function fetchSafetyShoesMatrix() {
 
     if (asset.assignedAt) {
       const assignedDate = new Date(asset.assignedAt);
-      row.records.push({
-        id: asset.id,
-        assignedAt: assignedDate,
-        size: asset.size,
-        attachmentUrl: asset.attachmentUrl,
-      });
+      if (!isNaN(assignedDate.getTime())) {
+        row.records.push({
+          id: asset.id,
+          assignedAt: assignedDate,
+          size: asset.size,
+          attachmentUrl: asset.attachmentUrl,
+        });
 
-      const assetYear = assignedDate.getFullYear();
-      if (!row.history[assetYear.toString()]) {
-        row.history[assetYear.toString()] = [];
-      }
-      if (row.history[assetYear.toString()].length < 2) {
-        row.history[assetYear.toString()].push(assignedDate);
+        const assetYear = assignedDate.getFullYear();
+        if (!isNaN(assetYear) && assetYear >= 1970) {
+          if (!row.history[assetYear.toString()]) {
+            row.history[assetYear.toString()] = [];
+          }
+          if (row.history[assetYear.toString()].length < 2) {
+            row.history[assetYear.toString()].push(assignedDate);
+          }
+        }
       }
     }
   }
 
   // Calculate dynamic columns (all years present in the matrix)
   const allYears = new Set<number>();
-  for (let y = currentYear; y >= minYear; y--) allYears.add(y);
+  for (let y = currentYear; y >= minYear; y--) {
+    if (!isNaN(y)) allYears.add(y);
+  }
   
   for (const row of Array.from(employeeMap.values())) {
     for (const yearStr of Object.keys(row.history || {})) {
-      allYears.add(parseInt(yearStr, 10));
+      const parsedYear = parseInt(yearStr, 10);
+      if (!isNaN(parsedYear) && parsedYear >= 1970 && parsedYear <= 2100) {
+        allYears.add(parsedYear);
+      }
     }
   }
   
-  const sortedYears = Array.from(allYears).sort((a, b) => b - a);
+  const sortedYears = Array.from(allYears)
+    .filter((y) => typeof y === "number" && !isNaN(y) && y >= 1970)
+    .sort((a, b) => b - a);
 
   return {
     rows: Array.from(employeeMap.values()),

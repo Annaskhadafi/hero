@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   FileSpreadsheet,
   FileText,
   Filter,
+  History,
   Loader2,
   Plus,
   Printer,
@@ -199,7 +201,33 @@ export function SummaryList({ sections, currentEmployeeId = 0 }: SummaryListProp
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-9 border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs cursor-pointer"
+            title="Lihat matriks riwayat pemakaian & penggantian sepatu safety per karyawan"
+          >
+            <Link href="/dashboard/apd/inventory/safety-shoes">
+              <History className="mr-1.5 size-4 text-blue-600" />
+              Masa Pakai / Matrix Sepatu
+            </Link>
+          </Button>
+
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-9 border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs cursor-pointer"
+            title="Lihat inventaris seluruh APD, tanggal assign, dan due date pergantian"
+          >
+            <Link href="/dashboard/apd/inventory">
+              <ShieldCheck className="mr-1.5 size-4 text-amber-600" />
+              Inventory &amp; Due Date APD
+            </Link>
+          </Button>
+
           <Button
             onClick={exportToExcel}
             variant="outline"
