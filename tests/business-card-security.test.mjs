@@ -51,10 +51,10 @@ test('migration keeps existing employees opted out', () => {
   assert.ok(migration.includes('business_card_public_token'))
 })
 
-test('mobile card uses data-derived background and explicit opt-in disclosure', () => {
+test('mobile card uses the shared Executive profile and explicit opt-in disclosure', () => {
   const ui = read('components/mobile/mobile-business-card.tsx')
-  assert.ok(ui.includes('radial-gradient'))
-  assert.ok(ui.includes('Bagikan kartu saya'))
-  assert.ok(ui.includes('dapat menonaktifkan kapan saja'))
+  assert.ok(ui.includes('<EmployeeEcard'))
+  assert.ok(ui.includes('Share my card'))
+  assert.ok(ui.includes('Turn sharing off at any time'))
   assert.ok(ui.includes('hero.chitraparatama.com'))
 })
