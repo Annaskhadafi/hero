@@ -53,6 +53,7 @@ const ALLOWED_UPLOAD_PREFIXES = new Set([
   'troubleshooting-attachments',
   'troubleshooting',
   'service-desk',
+  'business-cards',
 ])
 
 function getContentType(fileName: string) {
@@ -281,7 +282,8 @@ export async function GET(
       path[0] === 'asset-transfer' ||
       path[0] === 'asset-borrow' ||
       path[0] === 'asset-disposal' ||
-      path[0] === 'asset-disposals'
+      path[0] === 'asset-disposals' ||
+      path[0] === 'business-cards'
 
     const isSensitive = !isRootUpload && !isPublicPrefix
     if (isSensitive) {

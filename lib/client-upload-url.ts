@@ -34,7 +34,7 @@ export function resolveClientUploadUrl(
     // 3. Extract known S3 key prefix pattern from direct S3 URLs
     const cleanUrl = trimmed.split('?')[0].split('#')[0]
     const match = cleanUrl.match(
-      /(?:upload|uploads|curhat|curhat-attachments|attendance-photos|activity-photos|profile-photos|lms-materials|lms-covers|chitralearning|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|cer|cer-bast|cer-attachments|hse-osm|reward-store|training-requests|marital-status|ga-house-rental|hrga-kerjasama|asset-transfer|asset-borrow|asset-disposal|asset-disposals|rfr|road-hazard|twibbon-templates|troubleshooting-attachments|troubleshooting|service-desk)\/[^\r\n]+/i
+      /(?:upload|uploads|curhat|curhat-attachments|attendance-photos|activity-photos|profile-photos|lms-materials|lms-covers|chitralearning|mcu-wellness-results|mcu-referral-letters|mcu-results|offering-letters|sop-win-requests|sop-win|emergency-reports|safety|face-attendance|face-attendance-v2|contract-review-attachment|public-career-cv|cer|cer-bast|cer-attachments|hse-osm|reward-store|training-requests|marital-status|ga-house-rental|hrga-kerjasama|asset-transfer|asset-borrow|asset-disposal|asset-disposals|rfr|road-hazard|twibbon-templates|troubleshooting-attachments|troubleshooting|service-desk|business-cards)\/[^\r\n]+/i
     )
     if (match) {
       relative = `/api/uploads/${match[0]}`

@@ -332,3 +332,6 @@ export * from './twibbon'
 export * from './asset-transfer'
 export * from './asset-borrow'
 export * from './asset-disposal'
+
+// Expo & Sales - Business Card Scanner
+export * from './expo-business-cards'
