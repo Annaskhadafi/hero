@@ -56,6 +56,8 @@ export function formatRupiah(amount: number | string | null | undefined): string
   return new Intl.NumberFormat('id-ID').format(num)
 }
 
+import { resolveAssetTestingEmail } from '@/lib/asset-testing-guard'
+
 // =========================================================================
 // TESTING GUARDRAIL (Sesuai instruksi user):
 // Selama proses pengetesan, semua notifikasi hingga PDF dialihkan ke:
@@ -67,37 +69,7 @@ async function resolveTargetRecipients(originalRecipients: string | string[] | u
   to: string[]
   note: string
 }> {
-  const origList = (Array.isArray(originalRecipients) ? originalRecipients : [originalRecipients ?? '']).filter(Boolean)
-  try {
-    const [cfg] = await db
-      .select({
-        isTestingMode: cerWorkflowConfigs.isTestingMode,
-        testingRecipientEmail: cerWorkflowConfigs.testingRecipientEmail,
-      })
-      .from(cerWorkflowConfigs)
-      .limit(1)
-
-    if (cfg?.isTestingMode && cfg.testingRecipientEmail) {
-      return {
-        to: [cfg.testingRecipientEmail],
-        note: `[TESTING: Asli -> ${origList.join(', ')}] `,
-      }
-    }
-  } catch (err) {
-    console.warn('Failed to load cerWorkflowConfigs for email override:', err)
-  }
-
-  if (CER_TESTING_RECIPIENT_OVERRIDE) {
-    return {
-      to: [CER_TESTING_RECIPIENT_OVERRIDE],
-      note: `[TESTING: Asli -> ${origList.join(', ')}] `,
-    }
-  }
-
-  return {
-    to: origList,
-    note: '',
-  }
+  return await resolveAssetTestingEmail(originalRecipients)
 }
 
 export interface SendCerSubmittedEmailParams {

@@ -379,6 +379,7 @@ export const cerWorkflowConfigs = pgTable('hero_cer_workflow_configs', {
   autoSkipEmptyHierarchy: boolean('auto_skip_empty_hierarchy').notNull().default(true),
   isTestingMode: boolean('is_testing_mode').notNull().default(true),
   testingRecipientEmail: text('testing_recipient_email').notNull().default('gilang.suryo@chitraparatama.co.id'),
+  testingApproverEmployeeId: integer('testing_approver_employee_id').references(() => employees.id, { onDelete: 'set null' }),
   updatedByEmployeeId: integer('updated_by_employee_id').references(() => employees.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

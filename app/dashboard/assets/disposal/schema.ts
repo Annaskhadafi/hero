@@ -16,17 +16,19 @@ export const disposalApproverStepSchema = z.object({
 })
 
 export const disposalItemInputSchema = z.object({
-  id: z.coerce.number().optional().nullable(),
+  id: z.any().optional().nullable(),
   assetId: z.coerce.number().optional().nullable(),
   assetName: z.string().min(2, 'Nama aset wajib diisi minimal 2 karakter'),
   assetNumber: z.string().optional().nullable(),
   purchaseYear: z.string().optional().nullable(),
+  bookValue: z.coerce.number().optional().nullable().default(0),
   notes: z.string().min(3, 'Catatan / alasan penghapusan aset wajib diisi minimal 3 karakter'),
 })
 
 export const assetDisposalInputSchema = z.object({
   // Items array: supports multiple assets in 1 disposal
   items: z.array(disposalItemInputSchema).min(1, 'Minimal harus mengisi 1 rincian aset untuk diajukan disposal'),
+  totalBookValue: z.coerce.number().optional().nullable().default(0),
   // Fallback single asset fields
   assetId: z.coerce.number().optional().nullable(),
   assetName: z.string().optional().nullable(),

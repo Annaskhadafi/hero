@@ -4069,11 +4069,11 @@ export async function getWorkflowStudioConsoleData() {
 
 export async function getNotificationCenterData() {
   const [events, deliveries, reminders, submissions, inboxRows] = await Promise.all([
-    db.select().from(notificationEvents).orderBy(desc(notificationEvents.createdAt)),
-    db.select().from(notificationDeliveries).orderBy(desc(notificationDeliveries.createdAt)),
-    db.select().from(reminderJobs).orderBy(desc(reminderJobs.reminderAt)),
-    db.select().from(formSubmissions).orderBy(desc(formSubmissions.createdAt)),
-    db.select().from(inboxItems).orderBy(desc(inboxItems.createdAt)),
+    db.select().from(notificationEvents).orderBy(desc(notificationEvents.createdAt)).limit(100),
+    db.select().from(notificationDeliveries).orderBy(desc(notificationDeliveries.createdAt)).limit(100),
+    db.select().from(reminderJobs).orderBy(desc(reminderJobs.reminderAt)).limit(100),
+    db.select().from(formSubmissions).orderBy(desc(formSubmissions.createdAt)).limit(100),
+    db.select().from(inboxItems).orderBy(desc(inboxItems.createdAt)).limit(100),
   ])
 
   return {

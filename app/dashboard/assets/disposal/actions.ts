@@ -1,6 +1,7 @@
 'use server'
 
 import { db } from '@/db'
+import { onechitaDb } from '@/db/onechitra-db'
 import { assetDisposals, type AssetDisposalRow } from '@/db/schema/asset-disposal'
 import { centralServiceAssets, centralServiceAssetHistories } from '@/db/schema/central-service'
 import { approvals, employees, masterDepartments, masterSections, sites } from '@/db/schema/hero'
@@ -13,6 +14,7 @@ import { generateAssetDisposalPdf } from '@/lib/asset-disposal-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { assetDisposalInputSchema, type AssetDisposalInput, type DisposalApproverStep } from './schema'
 import { sendAssetRevisionRequestedEmail, sendAssetResubmittedEmail } from '@/lib/asset-approval-email'
+import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 
 /**
  * Fetch Asset Disposal list with filtering, pagination, and KPI counts
@@ -100,11 +102,16 @@ export async function getAssetDisposals(params?: {
         const isCreator =
           (currentUserId && item.createdById === currentUserId) ||
           (currentEmpId && item.applicantEmployeeId === currentEmpId)
+        const parsedItems = JSON.parse(item.items || '[]')
+        const calculatedTotalBookValue =
+          Number(item.totalBookValue) ||
+          parsedItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
         return {
           ...item,
-          items: JSON.parse(item.items || '[]'),
+          items: parsedItems,
           attachments: JSON.parse(item.attachments || '[]'),
           submitterSignatureUrl: item.applicantSignatureUrl || null,
+          totalBookValue: calculatedTotalBookValue,
           canEditRevision: Boolean(item.status === 'needs_revision' && (isCreator || isSuperAdmin)),
         }
       }),
@@ -183,11 +190,17 @@ export async function getAssetDisposalDetail(id: number) {
           (empContext?.employeeId && disposal.applicantEmployeeId === empContext.employeeId))
     )
 
+    const parsedItems = JSON.parse(disposal.items || '[]')
+    const calculatedTotalBookValue =
+      Number(disposal.totalBookValue) ||
+      parsedItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+
     return {
       success: true,
       data: {
         ...disposal,
-        items: JSON.parse(disposal.items || '[]'),
+        items: parsedItems,
+        totalBookValue: calculatedTotalBookValue,
         attachments: JSON.parse(disposal.attachments || '[]'),
         approvalSteps,
         applicantSignatureUrl: disposal.applicantSignatureUrl || null,
@@ -436,6 +449,34 @@ export async function getDisposalFormData() {
       .orderBy(centralServiceAssets.description)
       .limit(300)
 
+    // Query SAP book values for active assets
+    const bookValueMap = new Map<string, number>()
+    try {
+      const assetNumbers = assetList
+        .map((a) => a.assetNumber?.trim())
+        .filter((no): no is string => Boolean(no))
+
+      if (assetNumbers.length > 0) {
+        const sapRes = await onechitaDb.query(
+          `SELECT asset_no, SUM(COALESCE(curr_book_value, 0)) AS book_value 
+           FROM public.cp_asset_balances 
+           WHERE asset_no = ANY($1) 
+           GROUP BY asset_no`,
+          [assetNumbers]
+        )
+        for (const row of sapRes.rows) {
+          bookValueMap.set(String(row.asset_no).trim(), Number(row.book_value) || 0)
+        }
+      }
+    } catch (sapErr) {
+      console.warn('[getDisposalFormData] Could not fetch SAP book values:', sapErr)
+    }
+
+    const assetsWithBookValue = assetList.map((a) => ({
+      ...a,
+      bookValue: a.assetNumber ? (bookValueMap.get(a.assetNumber.trim()) ?? 0) : 0,
+    }))
+
     // 6. Fetch default approvers
     const approversRes = await getDisposalDefaultApprovers(currentEmployee?.id)
 
@@ -459,7 +500,7 @@ export async function getDisposalFormData() {
       sites: siteList,
       departments: deptList,
       sections: secList,
-      assets: assetList,
+      assets: assetsWithBookValue,
       defaultApprovers: approversRes.approvers || [],
       allEmployees,
     }
@@ -569,6 +610,10 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
 
     // 4. Resolve multi-item summary fields
     const items = input.items && input.items.length > 0 ? input.items : []
+    const totalBookValue = items.reduce(
+      (acc, it) => acc + (Number(it.bookValue) || 0),
+      0
+    )
     const firstItem = items[0]
     const topAssetName = firstItem
       ? items.length > 1
@@ -599,6 +644,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         disposalDate: input.disposalDate,
         notes: topNotes,
         items: JSON.stringify(items),
+        totalBookValue,
         attachments: JSON.stringify(input.attachments || []),
         applicantEmployeeId,
         applicantName,
@@ -617,11 +663,17 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
     // 5. Insert steps into hero_approvals for central inbox integration
     for (let i = 0; i < approvalChain.length; i++) {
       const step = approvalChain[i]
+      const resolvedStep = await resolveAssetTestingApprover({
+        approverEmployeeId: step.approverEmployeeId,
+        approverName: step.approverName,
+        approverJobTitle: step.jobTitle,
+      })
+
       await db.insert(approvals).values({
         assetDisposalId: newDisposal.id,
         level: i + 1,
-        approverName: step.approverName,
-        approverEmployeeId: step.approverEmployeeId,
+        approverName: resolvedStep.approverName || step.approverName,
+        approverEmployeeId: resolvedStep.approverEmployeeId,
         status: i === 0 ? 'Pending' : 'Draft',
         submittedAt: now,
         activityType: 'asset_disposal',
@@ -629,7 +681,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         activityTitle: `Disposal Aset: ${input.assetName} (${input.assetNumber || '-'})`,
         formName: 'Asset Disposal',
         decisionNote: step.title,
-        approverRole: step.jobTitle || undefined,
+        approverRole: resolvedStep.approverJobTitle || step.jobTitle || undefined,
         resolutionSource: 'matrix',
       })
     }
@@ -1147,6 +1199,9 @@ export async function resubmitAssetDisposalAction(input: {
       .limit(1)
 
     const items = input.items && input.items.length > 0 ? input.items : undefined
+    const totalBookValue = items
+      ? items.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+      : disposal.totalBookValue
     let topAssetName = disposal.assetName
     let topAssetNumber = disposal.assetNumber
     let topPurchaseYear = disposal.purchaseYear
@@ -1169,6 +1224,7 @@ export async function resubmitAssetDisposalAction(input: {
           assetNumber: topAssetNumber,
           purchaseYear: topPurchaseYear,
           items: items ? JSON.stringify(items) : disposal.items,
+          totalBookValue,
           notes: input.notes !== undefined ? input.notes : disposal.notes,
           attachments: input.attachments ? JSON.stringify(input.attachments) : disposal.attachments,
           status: 'pending',

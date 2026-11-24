@@ -29,6 +29,7 @@ import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { isSuperAdminRole } from '@/lib/role-utils'
 import { isSuperAdminUser } from './utils'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
+import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 import {
   sendCerSubmittedEmail,
   sendCerRevisionRequestedEmail,
@@ -607,11 +608,17 @@ export async function createCerRequestAction(input: {
 
   // Create approval rows in hero_approvals
   for (const s of steps) {
+    const resolvedS = await resolveAssetTestingApprover({
+      approverEmployeeId: s.approverEmployeeId,
+      approverName: s.approverName,
+      approverJobTitle: s.label,
+    })
+
     await db.insert(approvals).values({
       cerRequestId: newRequest.id,
       level: s.stepOrder,
-      approverName: s.approverName,
-      approverEmployeeId: s.approverEmployeeId,
+      approverName: resolvedS.approverName || s.approverName,
+      approverEmployeeId: resolvedS.approverEmployeeId,
       status: s.stepOrder === 1 ? 'Pending' : 'Draft',
       submittedAt: now,
       decisionNote: s.label,

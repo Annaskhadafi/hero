@@ -8,6 +8,7 @@ import {
   FileText,
   HeartHandshake,
   History,
+  Layers,
   Mail,
   RadioTower,
   Server,
@@ -48,6 +49,7 @@ import {
 import { getNotificationCenterData } from "@/lib/approval-blueprint";
 import { getServerSession } from "@/lib/auth-session";
 import { getCerNotificationConfig } from "@/lib/cer-email";
+import { getAssetWorkflowConfig } from "@/lib/asset-testing-guard";
 import {
   getEmailDeliveryLogsData,
   getEmailSmtpSettingsData,
@@ -134,7 +136,7 @@ export default async function EmailSettingsPage() {
     redirect("/dashboard");
   }
 
-  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, maritalStatusConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, cerConfig, employees, session] = await Promise.all([
+  const [logs, notifications, smtpSettings, templates, pwaPushSettings, hseSafetyConfig, apdSummaryConfig, maritalStatusConfig, attendanceConfig, humanCapitalConfig, csForecastConfig, apdConfig, formWoConfig, cerConfig, assetWorkflowConfig, employees, session] = await Promise.all([
     getEmailDeliveryLogsData(),
     getNotificationCenterData(),
     getEmailSmtpSettingsData(),
@@ -149,6 +151,7 @@ export default async function EmailSettingsPage() {
     getApdNotificationConfigData(),
     getFormWoNotificationConfigData(),
     getCerNotificationConfig(),
+    getAssetWorkflowConfig(),
     getActiveEmployeesForSelect(),
     getServerSession(),
   ]);
@@ -272,8 +275,8 @@ export default async function EmailSettingsPage() {
             value="cer"
             className="shrink-0 gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-xs cursor-pointer"
           >
-            <FileText className="size-3.5" />
-            <span>Pengadaan Aset (CER)</span>
+            <Layers className="size-3.5" />
+            <span>Asset Management Workflow</span>
           </TabsTrigger>
           <TabsTrigger
             value="bell"
@@ -357,7 +360,15 @@ export default async function EmailSettingsPage() {
         </TabsContent>
 
         <TabsContent value="cer">
-          <CerNotificationSettingsPanel config={cerConfig} employees={employees} />
+          <CerNotificationSettingsPanel
+            config={{
+              ...cerConfig,
+              isTestingMode: assetWorkflowConfig.isTestingMode,
+              testingRecipientEmail: assetWorkflowConfig.testingRecipientEmail,
+              testingApproverEmployeeId: assetWorkflowConfig.testingApproverEmployeeId,
+            }}
+            employees={employees}
+          />
         </TabsContent>
 
         <TabsContent value="bell">

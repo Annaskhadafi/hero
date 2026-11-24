@@ -9306,6 +9306,7 @@ export async function getEmailDeliveryLogsData() {
     .from(emailDeliveryLogs)
     .leftJoin(employees, eq(emailDeliveryLogs.employeeId, employees.id))
     .orderBy(desc(emailDeliveryLogs.createdAt))
+    .limit(200)
 }
 
 export async function getEmailTemplatesData() {

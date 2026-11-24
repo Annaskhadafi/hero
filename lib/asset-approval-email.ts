@@ -2,11 +2,19 @@ import { sendWorkflowEmail } from '@/lib/workflow-email'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
 import { getPublicAppUrl } from '@/lib/auth-config'
 import type { EmailAttachment } from '@/lib/email-delivery'
+import { resolveAssetTestingEmail } from '@/lib/asset-testing-guard'
 
 const ASSET_TESTING_RECIPIENT_OVERRIDE: string | null =
   process.env.NODE_ENV === 'production' ? null : 'gilang.suryo@chitraparatama.co.id'
 
 async function resolveTargetRecipients(originalEmail: string): Promise<{ to: string; note: string }> {
+  const result = await resolveAssetTestingEmail(originalEmail)
+  if (result.isTesting) {
+    return {
+      to: result.to[0] || 'gilang.suryo@chitraparatama.co.id',
+      note: result.note,
+    }
+  }
   if (ASSET_TESTING_RECIPIENT_OVERRIDE) {
     return {
       to: ASSET_TESTING_RECIPIENT_OVERRIDE,
@@ -266,7 +274,7 @@ export async function sendAssetBorrowSubmittedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.holderEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.borrow_submitted',
     category: 'approval_requests',
     title: `Peminjaman Aset: ${params.borrowNumber}`,
@@ -328,7 +336,7 @@ export async function sendAssetBorrowApprovedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.borrowerEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.borrow_approved',
     category: 'approval_requests',
     title: `Peminjaman Disetujui: ${params.borrowNumber}`,
@@ -389,7 +397,7 @@ export async function sendAssetBorrowReturnRequestedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.holderEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.borrow_return_requested',
     category: 'approval_requests',
     title: `Pengembalian Aset Diajukan: ${params.borrowNumber}`,
@@ -450,7 +458,7 @@ export async function sendAssetBorrowReturnedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.borrowerEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.borrow_returned',
     category: 'approval_requests',
     title: `Peminjaman Selesai: ${params.borrowNumber}`,
@@ -512,7 +520,7 @@ export async function sendAssetRevisionRequestedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.revision_needed',
     category: 'approval_requests',
     title: `Revisi Diperlukan: ${params.documentNumber}`,
@@ -571,7 +579,7 @@ export async function sendAssetResubmittedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.approverEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.resubmitted',
     category: 'approval_requests',
     title: `Pengajuan Diperbaiki: ${params.documentNumber}`,
@@ -631,7 +639,7 @@ export async function sendAssetBorrowExtensionRequestedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [ASSET_TESTING_RECIPIENT_OVERRIDE || params.holderEmail],
+    recipientEmails: [target.to],
     eventType: 'asset.extension_requested',
     category: 'approval_requests',
     title: `Perpanjangan Diminta: ${params.borrowNumber}`,

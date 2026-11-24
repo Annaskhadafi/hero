@@ -25,8 +25,9 @@ export interface DisposalPdfData {
   assetName: string
   assetNumber?: string | null
   purchaseYear?: string | null
+  totalBookValue?: number | null
   notes: string
-  items?: Array<{ assetName: string; assetNumber?: string | null; purchaseYear?: string | null; notes?: string | null }>
+  items?: Array<{ assetName: string; assetNumber?: string | null; purchaseYear?: string | null; bookValue?: number | null; notes?: string | null }>
   attachments?: Array<{ fileName: string; fileUrl: string; fileSize?: number; mimeType?: string }>
   submittedAt?: Date | string | null
   approvedAt?: Date | string | null
@@ -217,18 +218,23 @@ export async function generateAssetDisposalPdf(data: DisposalPdfData): Promise<U
   })
 
   const cols = [
-    { label: 'NO', w: 32, align: 'center' },
-    { label: 'NAMA ASET', w: 220, align: 'left' },
-    { label: 'NOMOR ASET', w: 120, align: 'left' },
-    { label: 'TAHUN BELI', w: 80, align: 'center' },
-    { label: 'DEPARTEMEN / LOKASI', w: 180, align: 'left' },
-    { label: 'KONDISI TEKNIS & ALASAN DISPOSAL', w: contentW - (32 + 220 + 120 + 80 + 180), align: 'left' },
+    { label: 'NO', w: 28, align: 'center' },
+    { label: 'NAMA ASET', w: 180, align: 'left' },
+    { label: 'NOMOR ASET', w: 105, align: 'left' },
+    { label: 'TAHUN BELI', w: 65, align: 'center' },
+    { label: 'NILAI TERAKHIR (RP)', w: 110, align: 'right' },
+    { label: 'DEPARTEMEN / LOKASI', w: 140, align: 'left' },
+    { label: 'KONDISI TEKNIS & ALASAN DISPOSAL', w: contentW - (28 + 180 + 105 + 65 + 110 + 140), align: 'left' },
   ]
 
   let curColX = marginX
   for (const c of cols) {
     const textW = fontBold.widthOfTextAtSize(c.label, 6.5)
-    const textX = c.align === 'center' ? curColX + (c.w - textW) / 2 : curColX + 6
+    const textX = c.align === 'center'
+      ? curColX + (c.w - textW) / 2
+      : c.align === 'right'
+        ? curColX + c.w - textW - 6
+        : curColX + 6
     page.drawText(c.label, {
       x: textX,
       y: curY - 12,
@@ -241,11 +247,17 @@ export async function generateAssetDisposalPdf(data: DisposalPdfData): Promise<U
 
   curY -= thH
 
-  const pdfItems = data.items && data.items.length > 0
+  const pdfItems: Array<{
+    assetName: string
+    assetNumber?: string | null
+    purchaseYear?: string | null
+    bookValue?: number | null
+    notes?: string | null
+  }> = data.items && data.items.length > 0
     ? data.items
-    : [{ assetName: data.assetName, assetNumber: data.assetNumber, purchaseYear: data.purchaseYear, notes: data.notes }]
+    : [{ assetName: data.assetName, assetNumber: data.assetNumber, purchaseYear: data.purchaseYear, bookValue: data.totalBookValue || 0, notes: data.notes }]
 
-  const rowH = 20
+  const rowH = 19
   for (let idx = 0; idx < Math.min(pdfItems.length, 5); idx++) {
     const item = pdfItems[idx]
     page.drawRectangle({
@@ -258,21 +270,71 @@ export async function generateAssetDisposalPdf(data: DisposalPdfData): Promise<U
       borderWidth: 0.5,
     })
 
+    const itVal = Number(item.bookValue) || 0
+    const itValFormatted = itVal > 0 ? `Rp ${new Intl.NumberFormat('id-ID').format(itVal)}` : 'Rp 0'
+
     let cellX = marginX
-    page.drawText(String(idx + 1), { x: cellX + 12, y: curY - 13, size: 7, font: fontRegular, color: textGray })
+    page.drawText(String(idx + 1), { x: cellX + 10, y: curY - 12.5, size: 7, font: fontRegular, color: textGray })
     cellX += cols[0].w
-    page.drawText((item.assetName || '').substring(0, 36), { x: cellX + 6, y: curY - 13, size: 7.5, font: fontBold, color: textDark })
+    page.drawText((item.assetName || '').substring(0, 32), { x: cellX + 5, y: curY - 12.5, size: 7.5, font: fontBold, color: textDark })
     cellX += cols[1].w
-    page.drawText(item.assetNumber || '-', { x: cellX + 6, y: curY - 13, size: 7.5, font: fontBold, color: darkNavy })
+    page.drawText(item.assetNumber || '-', { x: cellX + 5, y: curY - 12.5, size: 7.5, font: fontBold, color: darkNavy })
     cellX += cols[2].w
-    page.drawText(item.purchaseYear || '-', { x: cellX + 28, y: curY - 13, size: 7, font: fontRegular, color: textDark })
+    page.drawText(item.purchaseYear || '-', { x: cellX + 22, y: curY - 12.5, size: 7, font: fontRegular, color: textDark })
     cellX += cols[3].w
-    page.drawText(`${data.departmentName} • ${data.siteName}`, { x: cellX + 6, y: curY - 13, size: 7, font: fontRegular, color: textDark })
+    const valW = fontBold.widthOfTextAtSize(itValFormatted, 7)
+    page.drawText(itValFormatted, { x: cellX + cols[4].w - valW - 6, y: curY - 12.5, size: 7, font: fontBold, color: rgb(0.05, 0.45, 0.25) })
     cellX += cols[4].w
-    page.drawText((item.notes || data.notes || '').substring(0, 38), { x: cellX + 6, y: curY - 13, size: 6.5, font: fontRegular, color: rgb(0.65, 0.1, 0.1) })
+    page.drawText(`${data.departmentName} • ${data.siteName}`, { x: cellX + 5, y: curY - 12.5, size: 7, font: fontRegular, color: textDark })
+    cellX += cols[5].w
+    page.drawText((item.notes || data.notes || '').substring(0, 36), { x: cellX + 5, y: curY - 12.5, size: 6.5, font: fontRegular, color: rgb(0.65, 0.1, 0.1) })
 
     curY -= rowH
   }
+
+  // Total Row Footer in Table
+  const totalVal = (data as any).totalBookValue || pdfItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+  const totalValFormatted = `Rp ${new Intl.NumberFormat('id-ID').format(totalVal)}`
+  const totalRowH = 18
+  page.drawRectangle({
+    x: marginX,
+    y: curY - totalRowH,
+    width: contentW,
+    height: totalRowH,
+    color: bgLight,
+    borderColor: borderGray,
+    borderWidth: 0.5,
+  })
+
+  const totalLabel = 'TOTAL NILAI TERAKHIR ASET:'
+  const totalLabelW = fontBold.widthOfTextAtSize(totalLabel, 7)
+  const first4ColsW = cols[0].w + cols[1].w + cols[2].w + cols[3].w
+  page.drawText(totalLabel, {
+    x: marginX + first4ColsW - totalLabelW - 8,
+    y: curY - 12,
+    size: 7,
+    font: fontBold,
+    color: textDark,
+  })
+
+  const totalValW = fontBold.widthOfTextAtSize(totalValFormatted, 7.5)
+  page.drawText(totalValFormatted, {
+    x: marginX + first4ColsW + cols[4].w - totalValW - 6,
+    y: curY - 12,
+    size: 7.5,
+    font: fontBold,
+    color: rgb(0.05, 0.45, 0.25),
+  })
+
+  page.drawText(`(${pdfItems.length} Unit Aset)`, {
+    x: marginX + first4ColsW + cols[4].w + 6,
+    y: curY - 12,
+    size: 6.5,
+    font: fontRegular,
+    color: textGray,
+  })
+
+  curY -= totalRowH
 
   // 4. Yellow Bar
   curY -= 6

@@ -1,4 +1,4 @@
-import { date, integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+import { date, doublePrecision, integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { user } from '@/db/schema/auth'
 import { centralServiceAssets } from '@/db/schema/central-service'
@@ -33,7 +33,8 @@ export const assetDisposals = pgTable('hero_asset_disposals', {
   // Informasi Transaksi & Catatan
   disposalDate: date('disposal_date').notNull(),
   notes: text('notes').notNull(),
-  items: text('items').notNull().default('[]'), // JSON array: [{ id?, assetId?, assetName, assetNumber, purchaseYear, notes }]
+  items: text('items').notNull().default('[]'), // JSON array: [{ id?, assetId?, assetName, assetNumber, purchaseYear, bookValue?, notes }]
+  totalBookValue: doublePrecision('total_book_value').default(0),
   attachments: text('attachments').notNull().default('[]'), // JSON array: [{ fileName, fileUrl, fileSize, mimeType }]
 
   // Pengaju (Dibuat Oleh)

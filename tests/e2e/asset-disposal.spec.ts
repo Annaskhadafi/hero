@@ -165,6 +165,13 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     await notesInput2.fill('Komponen internal aus dan rusak permanen, suku cadang unit sudah diskontinu.')
     console.log('✓ Successfully selected 2 assets from Master Data HERO!')
 
+    // 2b-bis. Verify Kolom Nilai Terakhir Aset & Summary Card Total Akumulasi
+    const bookValueLabel = page.locator('label:has-text("Nilai Terakhir Aset")').first()
+    await expect(bookValueLabel).toBeVisible()
+    const totalBookValueCard = page.locator('text=Total Nilai Terakhir Aset').first()
+    await expect(totalBookValueCard).toBeVisible()
+    console.log('✓ Verified: Kolom "Nilai Terakhir Aset" dan Total Akumulasi Nilai Terakhir Aset tampil dengan sempurna!')
+
     // 2c. Verify Group 4: Approval Hierarchy with Amama Ira
     const amamaBadge = page.locator('text=Amama Ira').first()
     await expect(amamaBadge).toBeVisible({ timeout: 8000 })
@@ -278,6 +285,11 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     // Verify Download PDF is present
     await expect(page.locator('button:has-text("Download PDF (A4)")')).toBeVisible()
 
+    // Verify Nilai Terakhir Aset column & Total footer in Detail Modal
+    await expect(page.locator('th:has-text("Nilai Terakhir Aset")').first()).toBeVisible()
+    await expect(page.locator('text=Total Nilai Terakhir Aset:').first()).toBeVisible()
+    console.log('✓ Verified: Kolom Nilai Terakhir Aset dan Footer Total terlihat di Modal Detail!')
+
     // Verify redundant action buttons are REMOVED
     expect(await page.locator('button:has-text("Batalkan Pengajuan")').count()).toBe(0)
     expect(await page.locator('button:has-text("Tolak")').count()).toBe(0)
@@ -310,7 +322,9 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
 
     // Verify A4 Landscape Document View contains units
     await expect(printArea.getByText('Total 2 Unit Aset').first()).toBeVisible()
-    console.log('✓ A4 Landscape Document View accurately rendered 2 assets!')
+    await expect(printArea.getByText('NILAI TERAKHIR (SAP)').first()).toBeVisible()
+    await expect(printArea.getByText('TOTAL NILAI TERAKHIR ASET:').first()).toBeVisible()
+    console.log('✓ A4 Landscape Document View accurately rendered 2 assets & Nilai Terakhir Aset column with total footer!')
 
     // Verify Typo "AKTIVA" is corrected to "ASET" on yellow banner
     await expect(printArea.getByText('BERITA ACARA PENGHENTIAN ASET: ASET DIHAPUS DARI DAFTAR INVENTARIS AKTIF').first()).toBeVisible()

@@ -5,6 +5,8 @@ import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center
 import { getPublicAppUrl } from '@/lib/auth-config'
 import type { EmailAttachment } from '@/lib/email-delivery'
 
+import { resolveAssetTestingEmail } from '@/lib/asset-testing-guard'
+
 // =========================================================================
 // TESTING GUARDRAIL (Sesuai instruksi sistem & modul CER):
 // Selama proses pengetesan, seluruh notifikasi email dialihkan ke:
@@ -16,37 +18,7 @@ async function resolveTargetRecipients(originalRecipients: string | string[] | u
   to: string[]
   note: string
 }> {
-  const origList = (Array.isArray(originalRecipients) ? originalRecipients : [originalRecipients ?? '']).filter(Boolean)
-  try {
-    const [cfg] = await db
-      .select({
-        isTestingMode: cerWorkflowConfigs.isTestingMode,
-        testingRecipientEmail: cerWorkflowConfigs.testingRecipientEmail,
-      })
-      .from(cerWorkflowConfigs)
-      .limit(1)
-
-    if (cfg?.isTestingMode && cfg.testingRecipientEmail) {
-      return {
-        to: [cfg.testingRecipientEmail],
-        note: `[TESTING: Asli -> ${origList.join(', ')}] `,
-      }
-    }
-  } catch (err) {
-    console.warn('[asset-transfer-email] Failed to load testing config for email override:', err)
-  }
-
-  if (ASSET_TRANSFER_TESTING_RECIPIENT_OVERRIDE) {
-    return {
-      to: [ASSET_TRANSFER_TESTING_RECIPIENT_OVERRIDE],
-      note: `[TESTING: Asli -> ${origList.join(', ')}] `,
-    }
-  }
-
-  return {
-    to: origList,
-    note: '',
-  }
+  return await resolveAssetTestingEmail(originalRecipients)
 }
 
 export interface AssetTransferSubmittedEmailParams {

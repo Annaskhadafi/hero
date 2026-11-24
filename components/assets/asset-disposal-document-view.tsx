@@ -269,7 +269,8 @@ export function AssetDisposalDocumentView({
                         <th className="w-10 px-2.5 py-1.5 text-center">NO</th>
                         <th className="px-2.5 py-1.5">NAMA ASET</th>
                         <th className="px-2.5 py-1.5">NOMOR ASET</th>
-                        <th className="w-24 px-2.5 py-1.5 text-center">TAHUN BELI</th>
+                        <th className="w-20 px-2.5 py-1.5 text-center">TAHUN BELI</th>
+                        <th className="px-2.5 py-1.5 text-right">NILAI TERAKHIR (SAP)</th>
                         <th className="px-2.5 py-1.5">DEPARTEMEN / LOKASI</th>
                         <th className="px-2.5 py-1.5">KONDISI FISIK / ALASAN PENGHAPUSAN</th>
                       </tr>
@@ -289,6 +290,9 @@ export function AssetDisposalDocumentView({
                           <td className="px-2.5 py-2 text-center font-mono text-slate-800">
                             {it.purchaseYear || '-'}
                           </td>
+                          <td className="px-2.5 py-2 font-mono font-bold text-slate-900 text-right">
+                            {it.bookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(it.bookValue)}` : 'Rp 0'}
+                          </td>
                           <td className="px-2.5 py-2 text-slate-800">
                             {doc.departmentName} • {doc.siteName}
                           </td>
@@ -298,6 +302,22 @@ export function AssetDisposalDocumentView({
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-400 bg-slate-50 font-bold text-slate-900 text-xs">
+                        <td colSpan={4} className="px-2.5 py-1.5 text-right uppercase text-[10px] tracking-wider text-slate-700">
+                          TOTAL NILAI TERAKHIR ASET:
+                        </td>
+                        <td className="px-2.5 py-1.5 font-mono font-extrabold text-emerald-900 text-right">
+                          Rp {new Intl.NumberFormat('id-ID').format(
+                            doc.totalBookValue ||
+                            rawItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+                          )}
+                        </td>
+                        <td colSpan={2} className="px-2.5 py-1.5 text-[10px] font-medium text-slate-600">
+                          (Akumulasi Book Value {rawItems.length} Unit Aset)
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               </>

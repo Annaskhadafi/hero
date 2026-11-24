@@ -317,6 +317,28 @@ export function AssetDisposalDashboard({
       },
     },
     {
+      key: 'totalBookValue',
+      header: 'Nilai Terakhir Aset',
+      sortable: true,
+      exportValue: (row: any) => {
+        const val = Number(row.totalBookValue) || 0
+        return `Rp ${new Intl.NumberFormat('id-ID').format(val)}`
+      },
+      render: (row: any) => {
+        const val = Number(row.totalBookValue) || 0
+        return (
+          <div className="flex flex-col">
+            <span className="font-mono font-bold text-xs text-emerald-800">
+              {val > 0 ? `Rp ${new Intl.NumberFormat('id-ID').format(val)}` : 'Rp 0'}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              SAP Book Value
+            </span>
+          </div>
+        )
+      },
+    },
+    {
       key: 'unitKerja',
       header: 'Unit Kerja & Site',
       render: (row: any) => (

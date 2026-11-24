@@ -10,6 +10,7 @@ import {
 import { centralServiceAssets } from '@/db/schema/central-service'
 import { employees, sites, masterDepartments, approvals } from '@/db/schema/hero'
 import { createNotificationEventForEmployee } from '@/lib/push-notifications'
+import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 import { generateAssetBorrowPdf } from '@/lib/asset-borrow-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { getServerSession } from '@/lib/auth-session'
@@ -494,12 +495,20 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
 
       newBorrow = inserted
 
+      // Resolusi testing guardrail untuk approver in-app
+      const resolvedHolder = await resolveAssetTestingApprover({
+        approverEmployeeId: holder.id,
+        approverName: holder.name,
+        approverEmail: holder.email,
+        approverJobTitle: 'Pemegang Aset (Holder)',
+      })
+
       // Sync to hero_approvals for central Approval Inbox
       await tx.insert(approvals).values({
         assetBorrowId: inserted.id,
         level: 1,
-        approverName: holder.name,
-        approverEmployeeId: holder.id,
+        approverName: resolvedHolder.approverName || holder.name,
+        approverEmployeeId: resolvedHolder.approverEmployeeId || holder.id,
         status: 'Pending',
         formName: 'Formulir Peminjaman Aset (Asset Borrow)',
         activityType: 'ASSET_BORROW',
@@ -525,6 +534,14 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
 
     const createdRecord: AssetBorrowRow = newBorrow
 
+    // Resolusi testing guardrail untuk notifikasi lonceng & email
+    const resolvedHolder = await resolveAssetTestingApprover({
+      approverEmployeeId: holder.id,
+      approverName: holder.name,
+      approverEmail: holder.email,
+      approverJobTitle: 'Pemegang Aset (Holder)',
+    })
+
     // Send Notification to Holder
     if (holder.email) {
       await sendAssetBorrowSubmittedEmail({
@@ -543,10 +560,10 @@ export async function createAssetBorrow(rawInput: AssetBorrowInput) {
     }
 
     await createNotificationEventForEmployee({
-      employeeId: holder.id,
+      employeeId: resolvedHolder.approverEmployeeId || holder.id,
       eventType: 'asset_borrow_submitted',
       category: 'approval_requests',
-      title: `Peminjaman Aset Baru: ${createdRecord.borrowNumber}`,
+      title: `${resolvedHolder.isTesting ? '[TESTING] ' : ''}Peminjaman Aset Baru: ${createdRecord.borrowNumber}`,
       body: `${borrower.name} mengajukan peminjaman aset "${asset.description}". Memerlukan persetujuan Anda sebagai Holder.`,
       url: '/dashboard/assets/borrow',
     }).catch((err) => console.error('[createAssetBorrow] Bell notify error:', err))

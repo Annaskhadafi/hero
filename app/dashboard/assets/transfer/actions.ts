@@ -8,6 +8,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessContext, isSuperAdminRole } from '@/lib/hero-access'
 import { isSuperAdminUser } from '@/lib/role-utils'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
+import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 import { and, desc, eq, ilike, or, sql, asc, inArray, gte, lte } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { generateAssetTransferPdf } from '@/lib/asset-transfer-pdf'
@@ -555,12 +556,18 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
 
     // 7. Insert 4 steps into hero_approvals for central inbox integration
     for (const step of approvalChain) {
+      const resolvedStep = await resolveAssetTestingApprover({
+        approverEmployeeId: step.approverEmployeeId,
+        approverName: step.approverName,
+        approverEmail: step.approverEmail,
+      })
+
       await db.insert(approvals).values({
         assetTransferId: newTransfer.id,
         level: step.level,
-        approverName: step.approverName,
-        approverEmployeeId: step.approverEmployeeId,
-        approverEmail: step.approverEmail,
+        approverName: resolvedStep.approverName || step.approverName,
+        approverEmployeeId: resolvedStep.approverEmployeeId,
+        approverEmail: resolvedStep.approverEmail,
         status: step.status,
         submittedAt: now,
         reviewedAt: step.reviewedAt,
@@ -592,6 +599,12 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
               ? input.equipmentChecklist.join(', ')
               : 'Unit Lengkap beserta perlengkapan standar')
 
+          const resolvedNotify = await resolveAssetTestingApprover({
+            approverEmployeeId: notifyApproverId,
+            approverName: activeApproverEmp.name || initialApproverName,
+            approverEmail: activeApproverEmp.email,
+          })
+
           // Send CER-style Email notification
           await sendAssetTransferSubmittedEmail({
             approverEmail: activeApproverEmp.email,
@@ -617,12 +630,12 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
             approvalUrl: `${appUrl}/dashboard/approval`,
           })
 
-          // Send in-app Bell Notification
+          // Send in-app Bell Notification (redirect to testing approver if testing mode)
           await notifyWorkflowBellRecipients({
-            recipientEmails: [activeApproverEmp.email],
+            recipientEmails: [resolvedNotify.approverEmail || activeApproverEmp.email],
             eventType: 'asset_transfer.approval_requested',
             category: 'approval_requests',
-            title: `Persetujuan Transfer Aset: ${transferNumber}`,
+            title: `${resolvedNotify.isTesting ? '[TESTING] ' : ''}Persetujuan Transfer Aset: ${transferNumber}`,
             body: `Permohonan transfer aset "${asset.description}" (${currentHolder.name} -> ${newHolder.name}) menunggu persetujuan Anda.`,
             url: '/dashboard/approval',
           })

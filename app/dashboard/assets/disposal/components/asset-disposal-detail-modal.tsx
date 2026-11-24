@@ -161,6 +161,7 @@ export function AssetDisposalDetailModal({
                       <th className="px-3 py-2">Nama Aset</th>
                       <th className="px-3 py-2">Nomor Aset</th>
                       <th className="w-24 px-3 py-2 text-center">Tahun Beli</th>
+                      <th className="px-3 py-2">Nilai Terakhir Aset</th>
                       <th className="px-3 py-2">Alasan Penghapusan</th>
                     </tr>
                   </thead>
@@ -171,14 +172,33 @@ export function AssetDisposalDetailModal({
                         <td className="px-3 py-2 font-semibold text-slate-900">{it.assetName}</td>
                         <td className="px-3 py-2 font-mono text-slate-800">{it.assetNumber || '-'}</td>
                         <td className="px-3 py-2 text-center font-mono text-slate-700">{it.purchaseYear || '-'}</td>
+                        <td className="px-3 py-2 font-mono font-semibold text-emerald-800">
+                          {it.bookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(it.bookValue)}` : 'Rp 0'}
+                        </td>
                         <td className="px-3 py-2 text-rose-800 text-[11px] font-medium">{it.notes || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-50/90 font-bold text-slate-900">
+                      <td colSpan={4} className="px-3 py-2 text-right uppercase text-[10px]">
+                        Total Nilai Terakhir Aset:
+                      </td>
+                      <td className="px-3 py-2 font-mono text-emerald-800 font-extrabold">
+                        Rp {new Intl.NumberFormat('id-ID').format(
+                          item.totalBookValue ||
+                          (item.items || []).reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-[10px] text-muted-foreground font-normal">
+                        ({(item.items || []).length} Unit Aset)
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Nama Aset</span>
                   <span className="font-bold text-foreground text-sm">{item.assetName}</span>
@@ -190,6 +210,12 @@ export function AssetDisposalDetailModal({
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Tahun Pembelian</span>
                   <span className="font-semibold text-foreground">{item.purchaseYear || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Nilai Terakhir Aset</span>
+                  <span className="font-mono font-bold text-emerald-800 block">
+                    {item.totalBookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(item.totalBookValue)}` : 'Rp 0'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-[11px]">Status Master Aset</span>

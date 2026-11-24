@@ -36,6 +36,7 @@ import {
   Upload,
   UserCheck,
   PackageCheck,
+  CircleDollarSign,
 } from 'lucide-react'
 import { uploadFile } from '@/app/actions/upload'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
@@ -49,6 +50,7 @@ export interface DisposalFormItem {
   assetName: string
   assetNumber: string
   purchaseYear: string
+  bookValue?: number | null
   notes: string
   serialNumber?: string | null
   location?: string | null
@@ -71,6 +73,7 @@ interface AssetDisposalFormDialogProps {
     location: string
     section?: string | null
     purchaseDate?: string | Date | null
+    bookValue?: number | null
     status: string
   }>
   currentEmployee: any | null
@@ -133,10 +136,15 @@ export function AssetDisposalFormDialog({
 
   // Options for Master Assets Searchable Select
   const assetOptions = React.useMemo(() => {
-    return assets.map((a) => ({
-      value: String(a.id),
-      label: `${a.description} ${a.assetNumber ? `[${a.assetNumber}]` : ''} - ${a.location}`,
-    }))
+    return assets.map((a) => {
+      const bvText = a.bookValue
+        ? ` · Book Value: Rp ${new Intl.NumberFormat('id-ID').format(a.bookValue)}`
+        : ''
+      return {
+        value: String(a.id),
+        label: `${a.description} ${a.assetNumber ? `[${a.assetNumber}]` : ''} - ${a.location}${bvText}`,
+      }
+    })
   }, [assets])
 
   // Options for Employee Searchable Select in Approver Routing
@@ -191,6 +199,7 @@ export function AssetDisposalFormDialog({
               assetName: it.assetName || '',
               assetNumber: it.assetNumber || '',
               purchaseYear: it.purchaseYear || '',
+              bookValue: Number(it.bookValue) || 0,
               notes: it.notes || '',
             }))
           )
@@ -202,6 +211,7 @@ export function AssetDisposalFormDialog({
               assetName: initialData.assetName || '',
               assetNumber: initialData.assetNumber || '',
               purchaseYear: initialData.purchaseYear || '',
+              bookValue: Number(initialData.totalBookValue) || 0,
               notes: initialData.notes || '',
             },
           ])
@@ -253,6 +263,7 @@ export function AssetDisposalFormDialog({
             assetName: '',
             assetNumber: '',
             purchaseYear: '',
+            bookValue: 0,
             notes: '',
           },
         ])
@@ -272,6 +283,7 @@ export function AssetDisposalFormDialog({
         assetName: '',
         assetNumber: '',
         purchaseYear: '',
+        bookValue: 0,
         notes: '',
       },
     ])
@@ -302,6 +314,7 @@ export function AssetDisposalFormDialog({
                 assetName: '',
                 assetNumber: '',
                 purchaseYear: '',
+                bookValue: 0,
                 serialNumber: null,
                 location: null,
                 section: null,
@@ -330,6 +343,7 @@ export function AssetDisposalFormDialog({
                 assetName: found.description,
                 assetNumber: found.assetNumber || '',
                 purchaseYear: py,
+                bookValue: (found as any).bookValue ?? 0,
                 serialNumber: found.serialNumber || null,
                 location: found.location || null,
                 section: found.section || null,
@@ -538,8 +552,10 @@ export function AssetDisposalFormDialog({
         assetName: it.assetName.trim(),
         assetNumber: it.assetNumber.trim() || null,
         purchaseYear: it.purchaseYear.trim() || null,
+        bookValue: Number(it.bookValue) || 0,
         notes: it.notes.trim(),
       }))
+      const totalBookValue = items.reduce((acc, it) => acc + (Number(it.bookValue) || 0), 0)
 
       if (initialData?.id) {
         // Resubmit / Revision Mode
@@ -560,6 +576,7 @@ export function AssetDisposalFormDialog({
         // Create New Mode
         const payload = {
           items: formattedItems,
+          totalBookValue,
           departmentId: departmentId ? Number(departmentId) : null,
           departmentName: departmentName || 'Departemen',
           sectionId: sectionId ? Number(sectionId) : null,
@@ -773,9 +790,9 @@ export function AssetDisposalFormDialog({
                   />
                 </HeroFormField>
 
-                {/* 4 Kolom Terpadu: Nama Aset, No. Aset, Tahun Pembelian, dan Alasan Penghapusan */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <div className="sm:col-span-2">
+                {/* Kolom Terpadu: Nama Aset, No. Aset, Tahun Pembelian, Nilai Terakhir Aset (SAP Book Value), dan Alasan */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div className="sm:col-span-4">
                     <HeroFormField label="Nama Aset (Auto-filled)" required>
                       <HeroInput
                         value={it.assetName}
@@ -786,23 +803,38 @@ export function AssetDisposalFormDialog({
                     </HeroFormField>
                   </div>
 
-                  <HeroFormField label="Nomor Aset">
-                    <HeroInput
-                      value={it.assetNumber || '-'}
-                      disabled
-                      placeholder="-"
-                      className="bg-white font-mono font-semibold text-slate-800"
-                    />
-                  </HeroFormField>
+                  <div className="sm:col-span-3">
+                    <HeroFormField label="Nomor Aset">
+                      <HeroInput
+                        value={it.assetNumber || '-'}
+                        disabled
+                        placeholder="-"
+                        className="bg-white font-mono font-semibold text-slate-800"
+                      />
+                    </HeroFormField>
+                  </div>
 
-                  <HeroFormField label="Tahun Pembelian">
-                    <HeroInput
-                      value={it.purchaseYear || '-'}
-                      onChange={(e) => handleItemFieldChange(it.id, 'purchaseYear', e.target.value)}
-                      placeholder="Contoh: 2021"
-                      className="bg-white text-slate-800"
-                    />
-                  </HeroFormField>
+                  <div className="sm:col-span-2">
+                    <HeroFormField label="Tahun Pembelian">
+                      <HeroInput
+                        value={it.purchaseYear || '-'}
+                        onChange={(e) => handleItemFieldChange(it.id, 'purchaseYear', e.target.value)}
+                        placeholder="Contoh: 2021"
+                        className="bg-white text-slate-800"
+                      />
+                    </HeroFormField>
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <HeroFormField label="Nilai Terakhir Aset">
+                      <HeroInput
+                        value={it.bookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(it.bookValue)}` : 'Rp 0'}
+                        disabled
+                        placeholder="Rp 0"
+                        className="bg-slate-100 font-mono font-bold text-emerald-800 border-slate-300"
+                      />
+                    </HeroFormField>
+                  </div>
                 </div>
 
                 {/* Metadata Tambahan Aset */}
@@ -818,6 +850,9 @@ export function AssetDisposalFormDialog({
                     {it.status && (
                       <span>• <strong>Status Master:</strong> {it.status}</span>
                     )}
+                    <span className="ml-auto font-mono text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
+                      Book Value SAP: {it.bookValue ? `Rp ${new Intl.NumberFormat('id-ID').format(it.bookValue)}` : 'Rp 0'}
+                    </span>
                   </div>
                 )}
 
@@ -837,6 +872,28 @@ export function AssetDisposalFormDialog({
                 </HeroFormField>
               </div>
             ))}
+
+            {/* Ringkasan Total Akumulasi Nilai Terakhir Aset */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50/70 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
+                  <CircleDollarSign className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-emerald-950 uppercase tracking-wide block">
+                    Total Nilai Terakhir Aset ({items.length} Unit)
+                  </span>
+                  <span className="text-[11px] text-emerald-800">
+                    Akumulasi nilai buku (Book Value SAP) seluruh aset yang diajukan
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-sm sm:text-base font-extrabold font-mono text-emerald-900 bg-white px-3.5 py-1.5 rounded-lg border border-emerald-300 shadow-2xs inline-block">
+                  Rp {new Intl.NumberFormat('id-ID').format(items.reduce((acc, it) => acc + (Number(it.bookValue) || 0), 0))}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -18,7 +18,7 @@ import {
   hseSafetyNotificationConfig,
   notificationChannelSettings,
 } from "@/db/schema/hero";
-import { cerNotificationConfigs } from "@/db/schema/cer";
+import { cerNotificationConfigs, cerWorkflowConfigs } from "@/db/schema/cer";
 import { sendEmailViaSmtp, type EmailTransportSettings } from "@/lib/email-delivery";
 import { EMAIL_TEMPLATE_PRESET_MAP, EMAIL_TEMPLATE_PRESETS } from "@/lib/email-template-presets";
 import { getServerSession } from "@/lib/auth-session";
@@ -178,6 +178,12 @@ const cerNotificationSchema = z.object({
   itBimaEmail: z.string().trim().default("bima@chitraparatama.com"),
   budgetValidatorEmail: z.string().trim().default("budget.controller@chitraparatama.com"),
   isActive: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()),
+  isTestingMode: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()).default(true),
+  testingRecipientEmail: z.string().trim().default("gilang.suryo@chitraparatama.co.id"),
+  testingApproverEmployeeId: z.preprocess(
+    (value) => (value && value !== "" && value !== "null" ? Number(value) : null),
+    z.number().nullable().optional()
+  ),
 });
 
 async function filterEmailsFromUserManagement(raw: string) {
@@ -1437,12 +1443,38 @@ export async function saveCerNotificationConfigAction(
       await db.insert(cerNotificationConfigs).values(values);
     }
 
+    // Persist Asset Workflow Testing Guardrail Config
+    const [existingWorkflow] = await db
+      .select({ id: cerWorkflowConfigs.id })
+      .from(cerWorkflowConfigs)
+      .limit(1);
+
+    const workflowValues = {
+      isTestingMode: parsed.data.isTestingMode,
+      testingRecipientEmail: parsed.data.testingRecipientEmail || "gilang.suryo@chitraparatama.co.id",
+      testingApproverEmployeeId: parsed.data.testingApproverEmployeeId ?? 1255,
+      updatedAt: new Date(),
+    };
+
+    if (existingWorkflow) {
+      await db
+        .update(cerWorkflowConfigs)
+        .set(workflowValues)
+        .where(eq(cerWorkflowConfigs.id, existingWorkflow.id));
+    } else {
+      await db.insert(cerWorkflowConfigs).values(workflowValues);
+    }
+
     revalidatePath("/dashboard/settings/email");
     revalidatePath("/dashboard/assets/cer");
+    revalidatePath("/dashboard/assets/borrow");
+    revalidatePath("/dashboard/assets/transfer");
+    revalidatePath("/dashboard/assets/disposal");
+    revalidatePath("/dashboard/approval");
 
     return {
       status: "success",
-      message: "Pengaturan penerima email CER berhasil disimpan.",
+      message: "Pengaturan Asset Management Workflow & Testing Guardrail berhasil disimpan.",
     };
   } catch (error) {
     return {
