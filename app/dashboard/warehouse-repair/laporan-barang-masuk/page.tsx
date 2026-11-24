@@ -4,7 +4,7 @@ import {
   getWarehouseRepairTypes,
   getWarehouseRepairUnits,
 } from "@/app/actions/warehouse-repair"
-import { WarehouseRepairReportsTable } from "@/components/warehouse-repair"
+import { WarehouseRepairReportsTable } from "@/components/warehouse-repair/warehouse-repair-reports-table"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { redirect } from "next/navigation"
 

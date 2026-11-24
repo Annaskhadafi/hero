@@ -21,6 +21,11 @@ import {
   warehouseRepairItems,
   warehouseRepairUnits,
 } from '@/db/schema/warehouse-repair'
+import {
+  transferStockBetweenSLocs,
+  revertStockTransferForReference,
+} from '@/app/actions/warehouse-repair'
+import { resolveRepairSiteFromText } from '@/lib/repair-master'
 
 // ─── Ensure tables exist ──────────────────────────────────────────────────────
 
@@ -67,7 +72,11 @@ async function ensureCargoManifestTables() {
         add column if not exists signature_name text not null default '',
         add column if not exists signature_data_url text not null default '',
         add column if not exists site_id integer references hero_cargo_master_sites(id) on delete set null,
-        add column if not exists section_id integer references hero_master_sections(id) on delete set null
+        add column if not exists section_id integer references hero_master_sections(id) on delete set null,
+        add column if not exists source_sloc text not null default 'RS01',
+        add column if not exists source_sloc_desc text not null default 'CP Balikpapan',
+        add column if not exists destination_sloc text not null default '',
+        add column if not exists destination_sloc_desc text not null default ''
     `)
     cargoManifestTablesEnsured = true
   })().catch((err) => {
@@ -92,6 +101,10 @@ export type CargoManifestRecord = {
   transportVia: string
   shippedVia: string
   finalDestination: string
+  sourceSLoc: string
+  sourceSLocDesc: string
+  destinationSLoc: string
+  destinationSLocDesc: string
   signatureName: string
   signatureDataUrl: string
   status: string
@@ -200,6 +213,10 @@ export async function getCargoManifests(): Promise<CargoManifestRecord[]> {
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
       finalDestination: cargoManifests.finalDestination,
+      sourceSLoc: cargoManifests.sourceSLoc,
+      sourceSLocDesc: cargoManifests.sourceSLocDesc,
+      destinationSLoc: cargoManifests.destinationSLoc,
+      destinationSLocDesc: cargoManifests.destinationSLocDesc,
       signatureName: cargoManifests.signatureName,
       signatureDataUrl: cargoManifests.signatureDataUrl,
       status: cargoManifests.status,
@@ -278,6 +295,10 @@ export async function getCargoManifestById(id: number): Promise<CargoManifestRec
       transportVia: cargoManifests.transportVia,
       shippedVia: cargoManifests.shippedVia,
       finalDestination: cargoManifests.finalDestination,
+      sourceSLoc: cargoManifests.sourceSLoc,
+      sourceSLocDesc: cargoManifests.sourceSLocDesc,
+      destinationSLoc: cargoManifests.destinationSLoc,
+      destinationSLocDesc: cargoManifests.destinationSLocDesc,
       signatureName: cargoManifests.signatureName,
       signatureDataUrl: cargoManifests.signatureDataUrl,
       status: cargoManifests.status,
@@ -411,6 +432,10 @@ const manageCargoManifestSchema = z.object({
   transportVia: z.string().trim().max(200).optional().default(''),
   shippedVia: z.string().trim().max(200).optional().default(''),
   finalDestination: z.string().trim().max(200).optional().default(''),
+  sourceSLoc: z.string().trim().max(50).optional().default('RS01'),
+  sourceSLocDesc: z.string().trim().max(100).optional().default('CP Balikpapan'),
+  destinationSLoc: z.string().trim().max(50).optional().default(''),
+  destinationSLocDesc: z.string().trim().max(100).optional().default(''),
   signatureName: z.string().trim().max(200).optional().default(''),
   signatureDataUrl: z.string().trim().max(250_000).optional().default(''),
   status: z.string().trim().max(50).optional().default('draft'),
@@ -431,11 +456,61 @@ export async function manageCargoManifestAction(
   const data = parsed.data
   const now = new Date()
 
+  const resolveSLocs = async () => {
+    let srcCode = data.sourceSLoc || 'RS01'
+    let srcDesc = data.sourceSLocDesc || 'CP Balikpapan'
+    let dstCode = data.destinationSLoc || ''
+    let dstDesc = data.destinationSLocDesc || ''
+
+    if (!dstCode) {
+      const siteResolved = resolveRepairSiteFromText(data.finalDestination)
+      if (siteResolved) {
+        dstCode = siteResolved.siteCode
+        dstDesc = siteResolved.siteName
+      } else if (data.siteId) {
+        const [s] = await db
+          .select({ name: cargoMasterSites.siteName })
+          .from(cargoMasterSites)
+          .where(eq(cargoMasterSites.id, data.siteId))
+          .limit(1)
+        if (s) {
+          const fromSite = resolveRepairSiteFromText(s.name)
+          if (fromSite) {
+            dstCode = fromSite.siteCode
+            dstDesc = fromSite.siteName
+          }
+        }
+      }
+    }
+
+    if (!srcDesc) {
+      const found = resolveRepairSiteFromText(srcCode)
+      if (found) srcDesc = found.siteName
+    }
+    if (!dstDesc && dstCode) {
+      const found = resolveRepairSiteFromText(dstCode)
+      if (found) dstDesc = found.siteName
+    }
+
+    return { srcCode, srcDesc, dstCode, dstDesc }
+  }
+
+  const revalidateAllCargo = () => {
+    revalidatePath('/dashboard/cargo-manifest')
+    revalidatePath('/dashboard/warehouse-repair')
+    revalidatePath('/dashboard/warehouse-repair/laporan-stok')
+    revalidatePath('/dashboard/warehouse-repair/barang-keluar')
+    revalidatePath('/dashboard/warehouse-repair/barang-masuk')
+    revalidatePath('/dashboard/warehouse-repair/barang')
+  }
+
   try {
     if (data.intent === 'create') {
       const access = await requireCargoAccess('create')
       const manifestNumber = await generateManifestNumber()
       const dateValue = data.date || new Date().toISOString().split('T')[0]
+      const { srcCode, srcDesc, dstCode, dstDesc } = await resolveSLocs()
+
       const [inserted] = await db
         .insert(cargoManifests)
         .values({
@@ -447,6 +522,10 @@ export async function manageCargoManifestAction(
           transportVia: data.transportVia ?? '',
           shippedVia: data.shippedVia ?? '',
           finalDestination: data.finalDestination ?? '',
+          sourceSLoc: srcCode,
+          sourceSLocDesc: srcDesc,
+          destinationSLoc: dstCode,
+          destinationSLocDesc: dstDesc,
           signatureName: data.signatureName ?? '',
           signatureDataUrl: data.signatureDataUrl ?? '',
           status: data.status ?? 'draft',
@@ -460,10 +539,32 @@ export async function manageCargoManifestAction(
         await db
           .insert(cargoManifestItems)
           .values(items.map((item) => ({ ...item, manifestId: inserted.id })))
+
+        // Bidirectional Warehouse Stock Transfer
+        if (dstCode && srcCode !== dstCode) {
+          await transferStockBetweenSLocs(db, {
+            fromSLoc: srcCode,
+            fromSLocDesc: srcDesc,
+            toSLoc: dstCode,
+            toSLocDesc: dstDesc,
+            transactionDate: dateValue,
+            referenceType: 'cargo_manifest',
+            referenceNo: manifestNumber,
+            items: items.map((item) => ({
+              itemCode: item.serialNumber,
+              itemName: item.description,
+              materialDesc: item.description,
+              qty: item.qty,
+              no: item.no,
+              remark: item.remark,
+            })),
+            note: `Transfer ke ${dstCode} (${dstDesc}) via Cargo Manifest ${manifestNumber}`,
+          })
+        }
       }
       await syncCargoMasterData(data)
 
-      revalidatePath('/dashboard/cargo-manifest')
+      revalidateAllCargo()
       return {
         status: 'success',
         message: `Cargo Manifest ${manifestNumber} berhasil dibuat.`,
@@ -475,6 +576,18 @@ export async function manageCargoManifestAction(
       if (!data.id) return { status: 'error', message: 'ID manifest tidak valid.' }
       await assertCargoManifestAccess(data.id, 'edit')
 
+      const [existing] = await db
+        .select({ manifestNumber: cargoManifests.manifestNumber })
+        .from(cargoManifests)
+        .where(eq(cargoManifests.id, data.id))
+        .limit(1)
+
+      if (existing) {
+        await revertStockTransferForReference(db, existing.manifestNumber)
+      }
+
+      const { srcCode, srcDesc, dstCode, dstDesc } = await resolveSLocs()
+
       await db
         .update(cargoManifests)
         .set({
@@ -485,6 +598,10 @@ export async function manageCargoManifestAction(
           transportVia: data.transportVia ?? '',
           shippedVia: data.shippedVia ?? '',
           finalDestination: data.finalDestination ?? '',
+          sourceSLoc: srcCode,
+          sourceSLocDesc: srcDesc,
+          destinationSLoc: dstCode,
+          destinationSLocDesc: dstDesc,
           signatureName: data.signatureName ?? '',
           signatureDataUrl: data.signatureDataUrl ?? '',
           status: data.status ?? 'draft',
@@ -499,10 +616,31 @@ export async function manageCargoManifestAction(
         await db
           .insert(cargoManifestItems)
           .values(items.map((item) => ({ ...item, manifestId: data.id! })))
+
+        if (existing && dstCode && srcCode !== dstCode) {
+          await transferStockBetweenSLocs(db, {
+            fromSLoc: srcCode,
+            fromSLocDesc: srcDesc,
+            toSLoc: dstCode,
+            toSLocDesc: dstDesc,
+            transactionDate: data.date || new Date().toISOString().split('T')[0],
+            referenceType: 'cargo_manifest',
+            referenceNo: existing.manifestNumber,
+            items: items.map((item) => ({
+              itemCode: item.serialNumber,
+              itemName: item.description,
+              materialDesc: item.description,
+              qty: item.qty,
+              no: item.no,
+              remark: item.remark,
+            })),
+            note: `Transfer ke ${dstCode} (${dstDesc}) via Cargo Manifest ${existing.manifestNumber}`,
+          })
+        }
       }
       await syncCargoMasterData(data)
 
-      revalidatePath('/dashboard/cargo-manifest')
+      revalidateAllCargo()
       return { status: 'success', message: 'Cargo Manifest berhasil diperbarui.' }
     }
 
@@ -515,15 +653,26 @@ export async function manageCargoManifestAction(
         .set({ status: data.status ?? 'draft', updatedAt: now })
         .where(eq(cargoManifests.id, data.id))
 
-      revalidatePath('/dashboard/cargo-manifest')
+      revalidateAllCargo()
       return { status: 'success', message: 'Status berhasil diperbarui.' }
     }
 
     if (data.intent === 'delete') {
       if (!data.id) return { status: 'error', message: 'ID manifest tidak valid.' }
       await assertCargoManifestAccess(data.id, 'delete')
+
+      const [existing] = await db
+        .select({ manifestNumber: cargoManifests.manifestNumber })
+        .from(cargoManifests)
+        .where(eq(cargoManifests.id, data.id))
+        .limit(1)
+
+      if (existing) {
+        await revertStockTransferForReference(db, existing.manifestNumber)
+      }
+
       await db.delete(cargoManifests).where(eq(cargoManifests.id, data.id))
-      revalidatePath('/dashboard/cargo-manifest')
+      revalidateAllCargo()
       return { status: 'success', message: 'Cargo Manifest berhasil dihapus.' }
     }
 
@@ -687,6 +836,10 @@ export async function createCargoManifestFromOutbound(
         transportVia: 'Land Transport / Expediter',
         shippedVia: 'Warehouse Repair Outbound',
         finalDestination: finalDest,
+        sourceSLoc: outbound.storageLocation || 'RS01',
+        sourceSLocDesc: outbound.storageLocationDesc || 'CP Balikpapan',
+        destinationSLoc: outbound.destinationSLoc || '',
+        destinationSLocDesc: outbound.destinationSLocDesc || '',
         signatureName: creatorName,
         createdByEmployeeId: access.employee.id,
         status: 'draft',
@@ -758,6 +911,8 @@ export async function createCargoManifestFromMultipleOutbound(
         itemCode: warehouseRepairItems.itemCode,
         materialDesc: warehouseRepairItems.materialDesc,
         unitName: warehouseRepairUnits.unitName,
+        storageLocation: warehouseRepairItems.storageLocation,
+        storageLocationDesc: warehouseRepairItems.storageLocationDesc,
       })
       .from(warehouseRepairOutbound)
       .leftJoin(warehouseRepairItems, eq(warehouseRepairOutbound.itemId, warehouseRepairItems.id))
@@ -791,6 +946,10 @@ export async function createCargoManifestFromMultipleOutbound(
         transportVia: 'Land Transport / Expediter',
         shippedVia: 'Warehouse Repair Outbound',
         finalDestination,
+        sourceSLoc: records[0]?.storageLocation || 'RS01',
+        sourceSLocDesc: records[0]?.storageLocationDesc || 'CP Balikpapan',
+        destinationSLoc: destSlocs || '',
+        destinationSLocDesc: destSlocDescs || '',
         signatureName: creatorName,
         createdByEmployeeId: access.employee.id,
         status: 'draft',

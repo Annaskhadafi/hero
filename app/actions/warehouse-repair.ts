@@ -1,6 +1,6 @@
 "use server"
 
-import { eq, sql, and, gte, lte, desc } from "drizzle-orm"
+import { eq, sql, and, or, gte, lte, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/db"
 import {
@@ -15,6 +15,7 @@ import { resolveUploadUrl } from "@/lib/s3-storage"
 
 // Revalidation paths
 const REVAL_PATHS = [
+  "/dashboard/cargo-manifest",
   "/dashboard/warehouse-repair",
   "/dashboard/warehouse-repair/barang",
   "/dashboard/warehouse-repair/jenis",
@@ -406,6 +407,65 @@ export async function createWarehouseRepairOutbound(input: any) {
         .where(eq(warehouseRepairItems.id, input.itemId))
 
       if (outboundType === "Stock Transfer" && destinationSLoc) {
+        // 1. Find or create destination item at destinationSLoc
+        const [destItem] = await tx
+          .select()
+          .from(warehouseRepairItems)
+          .where(
+            and(
+              eq(warehouseRepairItems.storageLocation, destinationSLoc),
+              or(
+                eq(warehouseRepairItems.itemCode, item.itemCode),
+                eq(warehouseRepairItems.itemName, item.itemName)
+              )
+            )
+          )
+          .limit(1)
+
+        let destItemId: number
+        if (destItem) {
+          destItemId = destItem.id
+          await tx
+            .update(warehouseRepairItems)
+            .set({
+              stock: destItem.stock + input.quantity,
+              updatedAt: new Date(),
+            })
+            .where(eq(warehouseRepairItems.id, destItem.id))
+        } else {
+          const [insertedDest] = await tx
+            .insert(warehouseRepairItems)
+            .values({
+              itemCode: item.itemCode,
+              itemName: item.itemName,
+              materialDesc: item.materialDesc,
+              storageLocation: destinationSLoc,
+              storageLocationDesc: destinationSLocDesc || destinationSLoc,
+              typeId: item.typeId,
+              unitId: item.unitId,
+              minimumStock: item.minimumStock || 0,
+              stock: input.quantity,
+              photoUrl: item.photoUrl || "",
+              isActive: true,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning({ id: warehouseRepairItems.id })
+          destItemId = insertedDest.id
+        }
+
+        // 2. Insert into Inbound for destination SLoc
+        await tx.insert(warehouseRepairInbound).values({
+          transactionNo: `WR-IN-${transactionNo}`,
+          transactionDate: input.transactionDate,
+          itemId: destItemId,
+          quantity: input.quantity,
+          targetSLoc: destinationSLoc,
+          targetSLocDesc: destinationSLocDesc,
+          note: `Transfer masuk dari ${item.storageLocation || 'RS01'} (${transactionNo}): ${input.note || ''}`,
+        })
+
+        // 3. Insert transfer log
         await tx.insert(warehouseRepairTransfers).values({
           transactionNo: `TRF-${transactionNo}`,
           transactionDate: input.transactionDate,
@@ -565,6 +625,40 @@ export async function deleteWarehouseRepairOutbound(id: number) {
             updatedAt: new Date(),
           })
           .where(eq(warehouseRepairItems.id, trx.itemId))
+
+        if (trx.outboundType === "Stock Transfer" && trx.destinationSLoc) {
+          const [destItem] = await tx
+            .select()
+            .from(warehouseRepairItems)
+            .where(
+              and(
+                eq(warehouseRepairItems.storageLocation, trx.destinationSLoc),
+                or(
+                  eq(warehouseRepairItems.itemCode, item.itemCode),
+                  eq(warehouseRepairItems.itemName, item.itemName)
+                )
+              )
+            )
+            .limit(1)
+
+          if (destItem) {
+            await tx
+              .update(warehouseRepairItems)
+              .set({
+                stock: Math.max(0, destItem.stock - trx.quantity),
+                updatedAt: new Date(),
+              })
+              .where(eq(warehouseRepairItems.id, destItem.id))
+          }
+
+          await tx
+            .delete(warehouseRepairInbound)
+            .where(eq(warehouseRepairInbound.transactionNo, `WR-IN-${trx.transactionNo}`))
+
+          await tx
+            .delete(warehouseRepairTransfers)
+            .where(eq(warehouseRepairTransfers.transactionNo, `TRF-${trx.transactionNo}`))
+        }
       }
 
       await tx.delete(warehouseRepairOutbound).where(eq(warehouseRepairOutbound.id, id))
@@ -841,22 +935,76 @@ export async function createWarehouseRepairTransfer(input: {
         note: `Transfer ke ${input.toSLoc} (${input.toSLocDesc})`,
       })
 
-      // 3. Deduct stock or update storage location
+      // 3. Deduct stock from source item
       const newStock = item.stock - input.quantity
-      const updatePayload: any = {
-        stock: newStock,
-        updatedAt: new Date(),
-      }
-
-      if (input.updateItemLocation || newStock === 0) {
-        updatePayload.storageLocation = input.toSLoc
-        updatePayload.storageLocationDesc = input.toSLocDesc
-      }
-
       await tx
         .update(warehouseRepairItems)
-        .set(updatePayload)
+        .set({
+          stock: newStock,
+          storageLocation: input.fromSLoc || item.storageLocation || "RS01",
+          storageLocationDesc: input.fromSLocDesc || item.storageLocationDesc || "CP Balikpapan",
+          updatedAt: new Date(),
+        })
         .where(eq(warehouseRepairItems.id, input.itemId))
+
+      // 4. Increase / create stock at destination SLoc
+      const [destItem] = await tx
+        .select()
+        .from(warehouseRepairItems)
+        .where(
+          and(
+            eq(warehouseRepairItems.storageLocation, input.toSLoc),
+            or(
+              eq(warehouseRepairItems.itemCode, item.itemCode),
+              eq(warehouseRepairItems.itemName, item.itemName)
+            )
+          )
+        )
+        .limit(1)
+
+      let destItemId: number
+      if (destItem) {
+        destItemId = destItem.id
+        await tx
+          .update(warehouseRepairItems)
+          .set({
+            stock: destItem.stock + input.quantity,
+            updatedAt: new Date(),
+          })
+          .where(eq(warehouseRepairItems.id, destItem.id))
+      } else {
+        const [insertedDest] = await tx
+          .insert(warehouseRepairItems)
+          .values({
+            itemCode: item.itemCode,
+            itemName: item.itemName,
+            materialDesc: item.materialDesc,
+            storageLocation: input.toSLoc,
+            storageLocationDesc: input.toSLocDesc,
+            typeId: item.typeId,
+            unitId: item.unitId,
+            minimumStock: item.minimumStock || 0,
+            stock: input.quantity,
+            photoUrl: item.photoUrl || "",
+            isActive: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning({ id: warehouseRepairItems.id })
+        destItemId = insertedDest.id
+      }
+
+      // 5. Insert Inbound transaction for destination SLoc
+      const inboundNo = `WR-IN-TRF-${Math.floor(10000 + Math.random() * 90000)}`
+      await tx.insert(warehouseRepairInbound).values({
+        transactionNo: inboundNo,
+        transactionDate: input.transactionDate,
+        itemId: destItemId,
+        quantity: input.quantity,
+        targetSLoc: input.toSLoc,
+        targetSLocDesc: input.toSLocDesc,
+        note: `Transfer masuk dari ${input.fromSLoc || item.storageLocation || "RS01"}`,
+      })
     })
 
     revalidateAll()
@@ -908,5 +1056,363 @@ export async function getWarehouseRepairTransfers() {
     console.error("[Postgres] Error fetching transfers:", error)
     return []
   }
+}
+
+// 26. Helper: Transfer stock between S-Locs (bidirectional: deduct source, add destination, record outbound, inbound, transfer)
+export type TransferBetweenSLocsItem = {
+  itemCode?: string
+  itemName?: string
+  materialDesc?: string
+  qty: number
+  sourceItemId?: number
+  no?: number
+  remark?: string
+}
+
+export type TransferBetweenSLocsOptions = {
+  fromSLoc: string
+  fromSLocDesc: string
+  toSLoc: string
+  toSLocDesc: string
+  transactionDate?: string
+  referenceType?: "cargo_manifest" | "manual_transfer"
+  referenceNo: string // e.g. "CM-000329"
+  items: TransferBetweenSLocsItem[]
+  note?: string
+}
+
+export async function transferStockBetweenSLocs(
+  txOrDb: any,
+  options: TransferBetweenSLocsOptions
+) {
+  const dateValue = options.transactionDate || new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const results = []
+
+  for (let i = 0; i < options.items.length; i++) {
+    const item = options.items[i]
+    if (!item.qty || item.qty <= 0) continue
+
+    // 1. Find source item at fromSLoc
+    let sourceItem = null
+
+    if (item.sourceItemId) {
+      const [found] = await txOrDb
+        .select()
+        .from(warehouseRepairItems)
+        .where(eq(warehouseRepairItems.id, item.sourceItemId))
+        .limit(1)
+      sourceItem = found
+    }
+
+    if (!sourceItem) {
+      // Search matching fromSLoc
+      const candidates = await txOrDb
+        .select()
+        .from(warehouseRepairItems)
+        .where(
+          and(
+            eq(warehouseRepairItems.isActive, true),
+            or(
+              eq(warehouseRepairItems.storageLocation, options.fromSLoc),
+              sql`${warehouseRepairItems.storageLocation} IS NULL AND ${options.fromSLoc === "RS01"}`
+            )
+          )
+        )
+
+      sourceItem = candidates.find((c: any) => {
+        if (item.itemCode && c.itemCode?.toLowerCase() === item.itemCode.toLowerCase()) return true
+        if (item.itemName && c.itemName?.toLowerCase() === item.itemName.toLowerCase()) return true
+        if (item.materialDesc && c.materialDesc?.toLowerCase() === item.materialDesc.toLowerCase()) return true
+        return false
+      })
+
+      // If still not found, search regardless of location
+      if (!sourceItem) {
+        const allItems = await txOrDb
+          .select()
+          .from(warehouseRepairItems)
+          .where(eq(warehouseRepairItems.isActive, true))
+
+        sourceItem = allItems.find((c: any) => {
+          if (item.itemCode && c.itemCode?.toLowerCase() === item.itemCode.toLowerCase()) return true
+          if (item.itemName && c.itemName?.toLowerCase() === item.itemName.toLowerCase()) return true
+          if (item.materialDesc && c.materialDesc?.toLowerCase() === item.materialDesc.toLowerCase()) return true
+          return false
+        })
+      }
+    }
+
+    let sourceItemId: number
+    if (sourceItem) {
+      sourceItemId = sourceItem.id
+      const newStock = Math.max(0, sourceItem.stock - item.qty)
+      await txOrDb
+        .update(warehouseRepairItems)
+        .set({
+          stock: newStock,
+          storageLocation: options.fromSLoc,
+          storageLocationDesc: options.fromSLocDesc,
+          updatedAt: now,
+        })
+        .where(eq(warehouseRepairItems.id, sourceItem.id))
+    } else {
+      // Create placeholder source item with 0 stock
+      const cleanCode = item.itemCode || `ITM-${Math.floor(1000 + Math.random() * 9000)}`
+      const cleanName = item.itemName || item.materialDesc || "Barang Transfer"
+      const [newSource] = await txOrDb
+        .insert(warehouseRepairItems)
+        .values({
+          itemCode: cleanCode,
+          itemName: cleanName,
+          materialDesc: item.materialDesc || cleanName,
+          storageLocation: options.fromSLoc,
+          storageLocationDesc: options.fromSLocDesc,
+          minimumStock: 0,
+          stock: 0,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: warehouseRepairItems.id })
+      sourceItemId = newSource.id
+      sourceItem = {
+        id: sourceItemId,
+        itemCode: cleanCode,
+        itemName: cleanName,
+        materialDesc: item.materialDesc || cleanName,
+        typeId: null,
+        unitId: null,
+        photoUrl: "",
+        minimumStock: 0,
+      }
+    }
+
+    // 2. Find or create destination item at toSLoc
+    const [destItem] = await txOrDb
+      .select()
+      .from(warehouseRepairItems)
+      .where(
+        and(
+          eq(warehouseRepairItems.storageLocation, options.toSLoc),
+          or(
+            eq(warehouseRepairItems.itemCode, sourceItem.itemCode),
+            eq(warehouseRepairItems.itemName, sourceItem.itemName)
+          )
+        )
+      )
+      .limit(1)
+
+    let destItemId: number
+    if (destItem) {
+      destItemId = destItem.id
+      await txOrDb
+        .update(warehouseRepairItems)
+        .set({
+          stock: destItem.stock + item.qty,
+          updatedAt: now,
+        })
+        .where(eq(warehouseRepairItems.id, destItem.id))
+    } else {
+      const [newDest] = await txOrDb
+        .insert(warehouseRepairItems)
+        .values({
+          itemCode: sourceItem.itemCode,
+          itemName: sourceItem.itemName,
+          materialDesc: sourceItem.materialDesc,
+          storageLocation: options.toSLoc,
+          storageLocationDesc: options.toSLocDesc,
+          typeId: sourceItem.typeId,
+          unitId: sourceItem.unitId,
+          minimumStock: sourceItem.minimumStock || 0,
+          stock: item.qty,
+          photoUrl: sourceItem.photoUrl || "",
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning({ id: warehouseRepairItems.id })
+      destItemId = newDest.id
+    }
+
+    // 3. Insert or update Outbound transaction (Barang Keluar)
+    const cleanRef = options.referenceNo.replace(/[^a-zA-Z0-9-]/g, "_")
+    const itemSeq = item.no || i + 1
+    const outboundTxNo = `WR-OUT-${cleanRef}-${itemSeq}`
+    const noteText =
+      options.note ||
+      `Transfer ke ${options.toSLoc} (${options.toSLocDesc}) via ${options.referenceNo}`
+
+    const [existingOut] = await txOrDb
+      .select({ id: warehouseRepairOutbound.id })
+      .from(warehouseRepairOutbound)
+      .where(eq(warehouseRepairOutbound.transactionNo, outboundTxNo))
+      .limit(1)
+
+    if (existingOut) {
+      await txOrDb
+        .update(warehouseRepairOutbound)
+        .set({
+          quantity: item.qty,
+          itemId: sourceItemId,
+          destinationSLoc: options.toSLoc,
+          destinationSLocDesc: options.toSLocDesc,
+          note: noteText,
+        })
+        .where(eq(warehouseRepairOutbound.id, existingOut.id))
+    } else {
+      await txOrDb.insert(warehouseRepairOutbound).values({
+        transactionNo: outboundTxNo,
+        transactionDate: dateValue,
+        itemId: sourceItemId,
+        quantity: item.qty,
+        outboundType: "Stock Transfer",
+        destinationSLoc: options.toSLoc,
+        destinationSLocDesc: options.toSLocDesc,
+        note: noteText,
+        createdAt: now,
+      })
+    }
+
+    // 4. Insert or update Inbound transaction (Barang Masuk)
+    const inboundTxNo = `WR-IN-${cleanRef}-${itemSeq}`
+    const inNoteText = `Transfer masuk dari ${options.fromSLoc} (${options.fromSLocDesc}) via ${options.referenceNo}`
+
+    const [existingIn] = await txOrDb
+      .select({ id: warehouseRepairInbound.id })
+      .from(warehouseRepairInbound)
+      .where(eq(warehouseRepairInbound.transactionNo, inboundTxNo))
+      .limit(1)
+
+    if (existingIn) {
+      await txOrDb
+        .update(warehouseRepairInbound)
+        .set({
+          quantity: item.qty,
+          itemId: destItemId,
+          targetSLoc: options.toSLoc,
+          targetSLocDesc: options.toSLocDesc,
+          note: inNoteText,
+        })
+        .where(eq(warehouseRepairInbound.id, existingIn.id))
+    } else {
+      await txOrDb.insert(warehouseRepairInbound).values({
+        transactionNo: inboundTxNo,
+        transactionDate: dateValue,
+        itemId: destItemId,
+        quantity: item.qty,
+        targetSLoc: options.toSLoc,
+        targetSLocDesc: options.toSLocDesc,
+        note: inNoteText,
+        createdAt: now,
+      })
+    }
+
+    // 5. Insert or update Transfer record
+    const transferTxNo = `WR-TRF-${cleanRef}-${itemSeq}`
+    const [existingTrf] = await txOrDb
+      .select({ id: warehouseRepairTransfers.id })
+      .from(warehouseRepairTransfers)
+      .where(eq(warehouseRepairTransfers.transactionNo, transferTxNo))
+      .limit(1)
+
+    if (existingTrf) {
+      await txOrDb
+        .update(warehouseRepairTransfers)
+        .set({
+          quantity: item.qty,
+          itemId: sourceItemId,
+          fromSLoc: options.fromSLoc,
+          fromSLocDesc: options.fromSLocDesc,
+          toSLoc: options.toSLoc,
+          toSLocDesc: options.toSLocDesc,
+          note: `Stock Transfer via ${options.referenceNo}`,
+        })
+        .where(eq(warehouseRepairTransfers.id, existingTrf.id))
+    } else {
+      await txOrDb.insert(warehouseRepairTransfers).values({
+        transactionNo: transferTxNo,
+        transactionDate: dateValue,
+        itemId: sourceItemId,
+        fromSLoc: options.fromSLoc,
+        fromSLocDesc: options.fromSLocDesc,
+        toSLoc: options.toSLoc,
+        toSLocDesc: options.toSLocDesc,
+        quantity: item.qty,
+        note: `Stock Transfer via ${options.referenceNo}`,
+        createdAt: now,
+      })
+    }
+
+    results.push({ sourceItemId, destItemId, qty: item.qty })
+  }
+
+  return results
+}
+
+// 27. Helper: Revert stock transfer for a reference number
+export async function revertStockTransferForReference(txOrDb: any, referenceNo: string) {
+  const cleanRef = referenceNo.replace(/[^a-zA-Z0-9-]/g, "_")
+
+  // 1. Revert outbounds
+  const outbounds = await txOrDb
+    .select()
+    .from(warehouseRepairOutbound)
+    .where(sql`${warehouseRepairOutbound.transactionNo} LIKE ${`WR-OUT-${cleanRef}-%`}`)
+
+  for (const out of outbounds) {
+    const [sourceItem] = await txOrDb
+      .select()
+      .from(warehouseRepairItems)
+      .where(eq(warehouseRepairItems.id, out.itemId))
+      .limit(1)
+
+    if (sourceItem) {
+      await txOrDb
+        .update(warehouseRepairItems)
+        .set({
+          stock: sourceItem.stock + out.quantity,
+          updatedAt: new Date(),
+        })
+        .where(eq(warehouseRepairItems.id, sourceItem.id))
+    }
+  }
+
+  // 2. Revert inbounds
+  const inbounds = await txOrDb
+    .select()
+    .from(warehouseRepairInbound)
+    .where(sql`${warehouseRepairInbound.transactionNo} LIKE ${`WR-IN-${cleanRef}-%`}`)
+
+  for (const inb of inbounds) {
+    const [destItem] = await txOrDb
+      .select()
+      .from(warehouseRepairItems)
+      .where(eq(warehouseRepairItems.id, inb.itemId))
+      .limit(1)
+
+    if (destItem) {
+      await txOrDb
+        .update(warehouseRepairItems)
+        .set({
+          stock: Math.max(0, destItem.stock - inb.quantity),
+          updatedAt: new Date(),
+        })
+        .where(eq(warehouseRepairItems.id, destItem.id))
+    }
+  }
+
+  // 3. Delete transaction logs
+  await txOrDb
+    .delete(warehouseRepairOutbound)
+    .where(sql`${warehouseRepairOutbound.transactionNo} LIKE ${`WR-OUT-${cleanRef}-%`}`)
+
+  await txOrDb
+    .delete(warehouseRepairInbound)
+    .where(sql`${warehouseRepairInbound.transactionNo} LIKE ${`WR-IN-${cleanRef}-%`}`)
+
+  await txOrDb
+    .delete(warehouseRepairTransfers)
+    .where(sql`${warehouseRepairTransfers.transactionNo} LIKE ${`WR-TRF-${cleanRef}-%`}`)
 }
 

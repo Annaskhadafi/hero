@@ -1,5 +1,5 @@
 import { getWarehouseRepairTypes } from "@/app/actions/warehouse-repair"
-import { WarehouseRepairTypesTable } from "@/components/warehouse-repair"
+import { WarehouseRepairMasterTable } from "@/components/warehouse-repair/warehouse-repair-master-tables"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { redirect } from "next/navigation"
 
@@ -9,5 +9,5 @@ export default async function WarehouseRepairJenisPage() {
     redirect("/dashboard")
   }
   const types = await getWarehouseRepairTypes()
-  return <WarehouseRepairTypesTable types={types} access={access} />
+  return <WarehouseRepairMasterTable type="types" data={types} access={access} />
 }

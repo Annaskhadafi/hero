@@ -1,5 +1,5 @@
 import { getWarehouseRepairDashboardData } from "@/app/actions/warehouse-repair"
-import { WarehouseRepairOverview } from "@/components/warehouse-repair"
+import { WarehouseRepairOverview } from "@/components/warehouse-repair/warehouse-repair-overview"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { redirect } from "next/navigation"
 

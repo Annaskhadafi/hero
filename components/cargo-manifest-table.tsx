@@ -301,12 +301,19 @@ export function CargoManifestTable({
                     <TableCell>{manifest.attention || '-'}</TableCell>
                     <TableCell>{manifest.transportVia || '-'}</TableCell>
                     <TableCell>
-                      <span
-                        className="block max-w-[200px] truncate text-xs"
-                        title={manifest.finalDestination || undefined}
-                      >
-                        {manifest.finalDestination || '-'}
-                      </span>
+                      <div className="space-y-0.5">
+                        <span
+                          className="block max-w-[200px] truncate text-xs font-medium"
+                          title={manifest.finalDestination || undefined}
+                        >
+                          {manifest.finalDestination || '-'}
+                        </span>
+                        {manifest.destinationSLoc && (
+                          <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            {manifest.sourceSLoc || 'RS01'} → {manifest.destinationSLoc}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <span className="text-muted-foreground text-xs tabular-nums">

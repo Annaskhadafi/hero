@@ -33,6 +33,8 @@ import {
   type MasterRecipientRecord,
   type MasterSiteRecord,
 } from '@/app/actions/cargo-master'
+import { getWarehouseRepairItems } from '@/app/actions/warehouse-repair'
+import { DEFAULT_REPAIR_SITES, resolveRepairSiteFromText } from '@/lib/repair-master'
 import { Combobox } from '@/components/ui/combobox'
 import { SignaturePad } from '@/components/signature-pad'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
@@ -104,17 +106,29 @@ const STATUS_OPTIONS = ['draft', 'sent', 'delivered', 'cancelled']
 function ItemRowEditor({
   items,
   onChange,
+  sourceSLoc = 'RS01',
 }: {
   items: ItemRow[]
   onChange: (items: ItemRow[]) => void
+  sourceSLoc?: string
 }) {
   const [goodsOptions, setGoodsOptions] = useState<string[]>([])
   const [goodsData, setGoodsData] = useState<MasterGoodsRecord[]>([])
+  const [repairItems, setRepairItems] = useState<any[]>([])
 
   useEffect(() => {
-    getMasterGoods().then((data) => {
-      setGoodsData(data)
-      setGoodsOptions(data.map((g) => g.goodsName))
+    Promise.all([getMasterGoods(), getWarehouseRepairItems()]).then(([goods, rItems]) => {
+      setGoodsData(goods)
+      setRepairItems(rItems)
+      const optionsSet = new Set<string>()
+      goods.forEach((g) => {
+        if (g.goodsName) optionsSet.add(g.goodsName)
+      })
+      rItems.forEach((r) => {
+        if (r.itemName) optionsSet.add(r.itemName)
+        if (r.materialDesc && r.materialDesc !== r.itemName) optionsSet.add(r.materialDesc)
+      })
+      setGoodsOptions(Array.from(optionsSet).sort())
     })
   }, [])
 
@@ -128,23 +142,46 @@ function ItemRowEditor({
     onChange(items.filter((_, i) => i !== idx).map((r, i) => ({ ...r, no: i + 1 })))
 
   const updateRow = (idx: number, field: keyof ItemRow, value: string | number) => {
-    // If description changed, auto-fill brand from master data
     if (field === 'description' && typeof value === 'string') {
-      const matchedGoods = goodsData.find((g) => g.goodsName === value.trim())
-      if (matchedGoods && matchedGoods.brand) {
-        onChange(
-          items.map((r, i) =>
-            i === idx ? { ...r, description: value, brand: matchedGoods.brand } : r
-          )
-        )
-      } else {
-        onChange(items.map((r, i) => (i === idx ? { ...r, [field]: value } : r)))
-      }
+      const trimmed = value.trim()
+      const matchedGoods = goodsData.find((g) => g.goodsName === trimmed)
+      const matchedRepair = repairItems.find(
+        (r) =>
+          r.itemName?.toLowerCase() === trimmed.toLowerCase() ||
+          r.materialDesc?.toLowerCase() === trimmed.toLowerCase() ||
+          r.itemCode?.toLowerCase() === trimmed.toLowerCase()
+      )
+
+      onChange(
+        items.map((r, i) => {
+          if (i !== idx) return r
+          const brand = matchedGoods?.brand || ''
+          const serialNumber = matchedRepair?.itemCode || r.serialNumber
+          let remark = r.remark
+          if (matchedRepair) {
+            const locStock = repairItems.find(
+              (ri) =>
+                ri.id === matchedRepair.id ||
+                (ri.itemCode === matchedRepair.itemCode &&
+                  (ri.storageLocation === sourceSLoc || (!ri.storageLocation && sourceSLoc === 'RS01')))
+            )
+            const available = locStock ? locStock.stock : matchedRepair.stock
+            remark = `Stok asal (${sourceSLoc}): ${available} pcs`
+          }
+          return {
+            ...r,
+            description: value,
+            serialNumber,
+            brand,
+            remark: remark || r.remark,
+          }
+        })
+      )
 
       // Auto-add to master goods if description is new
-      if (value.trim() && !goodsOptions.includes(value.trim())) {
+      if (trimmed && !goodsOptions.includes(trimmed)) {
         createMasterGoods({
-          goodsName: value.trim(),
+          goodsName: trimmed,
           category: '',
           brand: '',
           unit: 'pcs',
@@ -158,7 +195,7 @@ function ItemRowEditor({
           if (result.status === 'success') {
             getMasterGoods().then((data) => {
               setGoodsData(data)
-              setGoodsOptions(data.map((g) => g.goodsName))
+              setGoodsOptions((prev) => Array.from(new Set([...prev, trimmed])).sort())
             })
           }
         })
@@ -300,6 +337,16 @@ function ManifestFormFields({
   const [sections, setSections] = useState<Array<{ id: number; name: string; code: string }>>([])
   const [sectionId, setSectionId] = useState<string>(defaultValues?.sectionId?.toString() || '')
   const [sectionName, setSectionName] = useState<string>(defaultValues?.sectionName || '')
+  const [sourceSLoc, setSourceSLoc] = useState<string>(defaultValues?.sourceSLoc || 'RS01')
+  const [sourceSLocDesc, setSourceSLocDesc] = useState<string>(
+    defaultValues?.sourceSLocDesc || 'CP Balikpapan'
+  )
+  const [destinationSLoc, setDestinationSLoc] = useState<string>(
+    defaultValues?.destinationSLoc || ''
+  )
+  const [destinationSLocDesc, setDestinationSLocDesc] = useState<string>(
+    defaultValues?.destinationSLocDesc || ''
+  )
 
   useEffect(() => {
     // Load master data
@@ -368,7 +415,58 @@ function ManifestFormFields({
       <input type="hidden" name="shippedVia" value={shippedVia} />
       <input type="hidden" name="siteId" value={siteId} />
       <input type="hidden" name="sectionId" value={sectionId} />
+      <input type="hidden" name="sourceSLoc" value={sourceSLoc} />
+      <input type="hidden" name="sourceSLocDesc" value={sourceSLocDesc} />
+      <input type="hidden" name="destinationSLoc" value={destinationSLoc} />
+      <input type="hidden" name="destinationSLocDesc" value={destinationSLocDesc} />
       <div className="grid gap-3 sm:grid-cols-2">
+        <Label className="grid gap-1.5 text-sm font-medium">
+          Gudang Asal (S-Loc Pengirim)
+          <select
+            className="border-input bg-background h-9 rounded-lg border px-3 text-sm font-semibold text-foreground"
+            value={sourceSLoc}
+            onChange={(e) => {
+              const code = e.target.value
+              setSourceSLoc(code)
+              const matched = DEFAULT_REPAIR_SITES.find((s) => s.siteCode === code)
+              if (matched) setSourceSLocDesc(matched.siteName)
+            }}
+          >
+            {DEFAULT_REPAIR_SITES.map((site) => (
+              <option key={`src-${site.siteCode}`} value={site.siteCode}>
+                {site.siteCode} - {site.siteName}
+              </option>
+            ))}
+          </select>
+        </Label>
+        <Label className="grid gap-1.5 text-sm font-medium">
+          Gudang Tujuan (S-Loc Penerima)
+          <select
+            className="border-input bg-background h-9 rounded-lg border px-3 text-sm font-semibold text-foreground"
+            value={destinationSLoc}
+            onChange={(e) => {
+              const code = e.target.value
+              setDestinationSLoc(code)
+              const matched = DEFAULT_REPAIR_SITES.find((s) => s.siteCode === code)
+              if (matched) {
+                setDestinationSLocDesc(matched.siteName)
+                if (
+                  !finalDestination ||
+                  DEFAULT_REPAIR_SITES.some((s) => s.siteName === finalDestination)
+                ) {
+                  setFinalDestination(matched.siteName)
+                }
+              }
+            }}
+          >
+            <option value="">Pilih Gudang / Site Tujuan...</option>
+            {DEFAULT_REPAIR_SITES.map((site) => (
+              <option key={`dst-${site.siteCode}`} value={site.siteCode}>
+                {site.siteCode} - {site.siteName}
+              </option>
+            ))}
+          </select>
+        </Label>
         <Label className="grid gap-1.5 text-sm font-medium">
           Tanggal (Date)
           <Input
@@ -409,7 +507,14 @@ function ManifestFormFields({
           Final Destination
           <Combobox
             value={finalDestination}
-            onChange={setFinalDestination}
+            onChange={(val) => {
+              setFinalDestination(val)
+              const resolved = resolveRepairSiteFromText(val)
+              if (resolved && !destinationSLoc) {
+                setDestinationSLoc(resolved.siteCode)
+                setDestinationSLocDesc(resolved.siteName)
+              }
+            }}
             options={locations}
             placeholder="Tujuan akhir pengiriman..."
             allowCustom
@@ -442,6 +547,17 @@ function ManifestFormFields({
             value={siteName}
             onChange={async (name) => {
               const site = sites.find((s) => s.siteName === name)
+              const resolved = resolveRepairSiteFromText(name)
+              if (resolved) {
+                setDestinationSLoc(resolved.siteCode)
+                setDestinationSLocDesc(resolved.siteName)
+                if (
+                  !finalDestination ||
+                  DEFAULT_REPAIR_SITES.some((s) => s.siteName === finalDestination)
+                ) {
+                  setFinalDestination(resolved.siteName)
+                }
+              }
               if (site) {
                 setSiteId(site.id.toString())
                 setSiteName(site.siteName)
@@ -487,7 +603,7 @@ function ManifestFormFields({
           </select>
         </Label>
       </div>
-      <ItemRowEditor items={items} onChange={onItemsChange} />
+      <ItemRowEditor items={items} onChange={onItemsChange} sourceSLoc={sourceSLoc} />
       <OnlineSignatureInput
         defaultName={defaultValues?.signatureName}
         defaultSignature={defaultValues?.signatureDataUrl}

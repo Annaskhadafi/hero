@@ -1,5 +1,5 @@
 import { getWarehouseRepairInbound, getWarehouseRepairItems } from "@/app/actions/warehouse-repair"
-import { WarehouseRepairInboundTable } from "@/components/warehouse-repair"
+import { WarehouseRepairInboundTable } from "@/components/warehouse-repair/warehouse-repair-transaction-tables"
 import { getCurrentMenuPermission } from "@/lib/hero-access"
 import { redirect } from "next/navigation"
 

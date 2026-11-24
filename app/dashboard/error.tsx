@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,9 +12,37 @@ export default function DashboardError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const [isReloading, setIsReloading] = useState(false)
+
+  const isChunkError =
+    error?.message?.includes("Loading chunk") ||
+    error?.message?.includes("ChunkLoadError") ||
+    error?.name === "ChunkLoadError" ||
+    error?.message?.toLowerCase().includes("failed to fetch dynamically imported module")
+
   useEffect(() => {
     console.error("[Dashboard] Error caught by dashboard error boundary:", error)
-  }, [error])
+
+    if (isChunkError && typeof window !== "undefined") {
+      const lastChunkReload = sessionStorage.getItem("hero_last_chunk_reload")
+      const now = Date.now()
+      // Auto-reload once within 20 seconds to load new build assets cleanly
+      if (!lastChunkReload || now - Number(lastChunkReload) > 20000) {
+        sessionStorage.setItem("hero_last_chunk_reload", String(now))
+        setIsReloading(true)
+        window.location.reload()
+      }
+    }
+  }, [error, isChunkError])
+
+  const handleRetry = () => {
+    if (isChunkError && typeof window !== "undefined") {
+      setIsReloading(true)
+      window.location.reload()
+    } else {
+      reset()
+    }
+  }
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center p-6">
@@ -24,9 +52,13 @@ export default function DashboardError({
         </div>
 
         <div className="space-y-1">
-          <h2 className="text-lg font-black text-slate-900">Gagal Memuat Halaman Dashboard</h2>
+          <h2 className="text-lg font-black text-slate-900">
+            {isChunkError ? "Pembaruan Versi Sistem" : "Gagal Memuat Halaman Dashboard"}
+          </h2>
           <p className="text-xs text-slate-500">
-            Terjadi kendala saat menampilkan komponen halaman dashboard.
+            {isChunkError
+              ? "Sistem sedang memuat berkas pembaruan aplikasi terbaru dari server. Silakan muat ulang halaman."
+              : "Terjadi kendala saat menampilkan komponen halaman dashboard."}
           </p>
         </div>
 
@@ -43,11 +75,12 @@ export default function DashboardError({
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
           <Button
             type="button"
-            onClick={() => reset()}
+            onClick={handleRetry}
+            disabled={isReloading}
             className="w-full bg-[#003461] hover:bg-[#00284d] text-white font-bold h-9 text-xs"
           >
-            <RefreshCw className="mr-2 size-3.5" />
-            Coba Lagi
+            <RefreshCw className={`mr-2 size-3.5 ${isReloading ? "animate-spin" : ""}`} />
+            {isReloading ? "Memuat Ulang..." : isChunkError ? "Muat Ulang Halaman" : "Coba Lagi"}
           </Button>
 
           <Button

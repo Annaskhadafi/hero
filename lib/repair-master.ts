@@ -24,6 +24,75 @@ export function normalizeRepairMasterCode(value: string) {
   return value.trim().toUpperCase()
 }
 
+export function resolveRepairSiteFromText(
+  text: string | null | undefined
+): DefaultRepairSite | null {
+  if (!text) return null
+  const cleaned = text.trim().toLowerCase()
+  if (!cleaned) return null
+
+  // Direct code match
+  for (const site of DEFAULT_REPAIR_SITES) {
+    if (site.siteCode.toLowerCase() === cleaned) return site
+  }
+
+  // Keyword match
+  if (cleaned.includes('sangatta') || cleaned.includes('rs02')) {
+    return { siteCode: 'RS02', siteName: 'CP Sangatta' }
+  }
+  if (cleaned.includes('balikpapan') || cleaned.includes('rs01')) {
+    return { siteCode: 'RS01', siteName: 'CP Balikpapan' }
+  }
+  if (cleaned.includes('bmb') || cleaned.includes('rs03')) {
+    return { siteCode: 'RS03', siteName: 'CP BMB' }
+  }
+  if (cleaned.includes('bib') || cleaned.includes('rs04')) {
+    return { siteCode: 'RS04', siteName: 'CP BIB' }
+  }
+  if (cleaned.includes('kim') || cleaned.includes('rs07')) {
+    return { siteCode: 'RS07', siteName: 'CP KIM' }
+  }
+  if (cleaned.includes('berau') || cleaned.includes('rs08')) {
+    return { siteCode: 'RS08', siteName: 'CP Berau' }
+  }
+  if (cleaned.includes('sis tanjung') || cleaned.includes('rs14')) {
+    return { siteCode: 'RS14', siteName: 'CP SIS TANJUNG' }
+  }
+  if (
+    cleaned.includes('buma') ||
+    cleaned.includes('adaro') ||
+    cleaned.includes('tanjung') ||
+    cleaned.includes('0201')
+  ) {
+    return { siteCode: '0201', siteName: 'CP BUMA TANJUNG' }
+  }
+  if (cleaned.includes('sbs') || cleaned.includes('0202')) {
+    return { siteCode: '0202', siteName: 'CP SBS' }
+  }
+  if (cleaned.includes('malinau') || cleaned.includes('kpuc') || cleaned.includes('0203')) {
+    return { siteCode: '0203', siteName: 'CP Malinau' }
+  }
+  if (cleaned.includes('banyuwangi') || cleaned.includes('0204')) {
+    return { siteCode: '0204', siteName: 'CP Banyuwangi' }
+  }
+  if (cleaned.includes('sorowako') || cleaned.includes('vale') || cleaned.includes('0205')) {
+    return { siteCode: '0205', siteName: 'CP Sorowako' }
+  }
+  if (cleaned.includes('bengkulu') || cleaned.includes('0206')) {
+    return { siteCode: '0206', siteName: 'CP Bengkulu' }
+  }
+  if (cleaned.includes('mhu') || cleaned.includes('cons')) {
+    return { siteCode: 'CONS', siteName: 'CP MHU' }
+  }
+
+  // Fallback match on siteName
+  for (const site of DEFAULT_REPAIR_SITES) {
+    if (cleaned.includes(site.siteName.toLowerCase())) return site
+  }
+
+  return null
+}
+
 type RepairMasterStockFields = {
   materialCode: string
   valuationStockValue?: string | null
