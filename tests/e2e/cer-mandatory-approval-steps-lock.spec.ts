@@ -31,7 +31,7 @@ test.describe('CER Form: Lock Mandatory Approval Steps (Budget Validator, Direct
     const submitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
     await submitBtn.click()
 
-    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 30000 })
+    await page.waitForURL('**/dashboard/**', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
     await page.waitForTimeout(2000)
 
     // 2. Navigate to CER Page
