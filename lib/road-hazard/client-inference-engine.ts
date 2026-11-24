@@ -84,7 +84,7 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
 
   try {
     const ort = await getOrtWeb()
-    const modelUrl = '/models/hazardyolo26n-4.onnx'
+    const modelUrl = '/models/roadchitra.onnx'
 
     const createPromise = (async () => {
       try {

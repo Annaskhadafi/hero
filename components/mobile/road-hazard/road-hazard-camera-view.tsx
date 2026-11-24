@@ -96,8 +96,8 @@ export function RoadHazardCameraView({
   const [torchOn, setTorchOn] = useState(false)
   const [hasTorch, setHasTorch] = useState(false)
 
-  // Layout View Mode (Split, PiP, Cam, Map)
-  const [viewMode, setViewMode] = useState<ViewMode>('split')
+  // Layout View Mode (Default: 'cam' - Peta tertutup, kamera layar penuh)
+  const [viewMode, setViewMode] = useState<ViewMode>('cam')
 
   // Fullscreen Dashcam Mode (True edge-to-edge for vehicle mounting)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -1100,7 +1100,9 @@ export function RoadHazardCameraView({
                   <Zap className="size-3 fill-amber-400 text-amber-400 animate-pulse" />
                   <span className="text-amber-300 font-mono">ONNX</span>
                   <span className="text-white/40">•</span>
-                  <span className="text-amber-300 font-mono text-[9px]">
+                  <span className="text-cyan-300 font-mono text-[9px]">roadchitra</span>
+                  <span className="text-white/40">•</span>
+                  <span className="rounded bg-amber-500/20 px-1 py-0.2 text-[9px] font-mono font-bold text-amber-300 border border-amber-500/30">
                     {Math.round(1000 / scanIntervalMs)} FPS
                   </span>
                 </>
@@ -1444,7 +1446,7 @@ export function RoadHazardCameraView({
                     {inferenceMode === 'offline'
                       ? '⚡ 100% Offline di HP (WASM/WebGL): Sangat cocok untuk area blank spot tambang tanpa sinyal.'
                       : inferenceMode === 'system'
-                      ? '🖥️ Server ONNX: Model dieksekusi di server Next.js lokal (~43ms).'
+                      ? '🖥️ Server ONNX (roadchitra.onnx): Model dieksekusi di server Next.js lokal real-time (~40-60ms).'
                       : '☁️ Raray Vision Cloud: Analisis remote via cloud vision (~300ms).'}
                   </p>
                 </div>

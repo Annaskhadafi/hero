@@ -20,8 +20,9 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('text=Road Hazard AI & Record').first()).toBeVisible()
   await expect(browser.locator('text=HSE & SAFETY AI').first()).toBeVisible()
 
-  // 4. Verify Live Map Widget presence (OpenStreetMap)
-  await expect(browser.locator('text=Live Route Map').first()).toBeVisible()
+  // 4. Verify Map is Closed by Default (Full Camera View)
+  await expect(browser.locator('button[title*="Tampilkan Peta"], button[title*="Kamera Penuh"]').first()).toBeVisible()
+  await app.screenshot('mobile-road-hazard-default-map-closed')
 
   // 5. Verify Speedometer & GPS HUD
   await expect(browser.locator('text=km/h').first()).toBeVisible()
@@ -46,10 +47,11 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
     await app.screenshot('mobile-road-hazard-download-complete')
   }
 
-  // Cycle to Server ONNX
+  // Cycle to Server ONNX (roadchitra.onnx)
   await multiModeBtn.click()
   await new Promise((resolve) => setTimeout(resolve, 800))
   await expect(browser.locator('text=ONNX').first()).toBeVisible()
+  await expect(browser.locator('text=roadchitra').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-server-onnx-mode')
 
   // Cycle to Cloud API
@@ -64,7 +66,11 @@ test('mobile road hazard AI: in-vehicle dashcam mode with live map widget and sn
   await expect(browser.locator('text=DEVICE').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-device-offline-mode')
 
-  // 8. Take screenshot of Live Split View (Camera Top + OpenStreetMap Widget Bottom)
+  // 8. Open Split Mode (Camera Top + OpenStreetMap Widget Bottom)
+  const openSplitBtn = browser.locator('button[title*="Split Mode"]').first()
+  await openSplitBtn.click()
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await expect(browser.locator('text=Live Route Map').first()).toBeVisible()
   await app.screenshot('mobile-road-hazard-live-split-map')
 
   // 9. Test PiP mode toggle & Fullscreen Dashcam

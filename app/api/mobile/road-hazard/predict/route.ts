@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer())
 
     let normalizedDetections: any[] = []
-    let modelName = 'hazardyolo26n-4 (Local ONNX)'
-    let modelVersion = 'v1.0'
+    let modelName = 'roadchitra.onnx (Local ONNX)'
+    let modelVersion = 'v2.0-roadchitra'
     let predictionId: string = randomUUID()
     let latencyMs = 0
     let topConfidence = 0
@@ -189,9 +189,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Persistently save snapshot file whenever a hazard is detected OR when an explicit snap is taken
+    // 2. Persistently save snapshot file only when an explicit snap / auto-snapshot event is recorded
     let savedPhotoUrl = ''
-    if (isSnap || normalizedDetections.length > 0) {
+    if (isSnap) {
       const ext = file.type.includes('png') ? 'png' : file.type.includes('webp') ? 'webp' : 'jpg'
       const filename = `${randomUUID()}.${ext}`
       const s3Key = `road-hazard/${filename}`

@@ -40,10 +40,13 @@ async function getOrt(): Promise<any> {
 }
 
 function getModelPath(): string {
-  const primaryPath = join(process.cwd(), 'Weight', 'hazardyolo26n-4.onnx')
+  const primaryPath = join(process.cwd(), 'Weight', 'roadchitra.onnx')
   if (existsSync(primaryPath)) return primaryPath
 
-  const fallbackPath = 'D:\\\[01] PROJECT\\HERO\\Weight\\hazardyolo26n-4.onnx'
+  const publicPath = join(process.cwd(), 'public', 'models', 'roadchitra.onnx')
+  if (existsSync(publicPath)) return publicPath
+
+  const fallbackPath = 'D:\\\[01] PROJECT\\HERO\\Weight\\roadchitra.onnx'
   if (existsSync(fallbackPath)) return fallbackPath
 
   throw new Error(`Berkas model ONNX tidak ditemukan di ${primaryPath} atau ${fallbackPath}`)
@@ -106,7 +109,7 @@ export async function runLocalOnnxHazardInference(params: {
     const outputTensor = outputs.output0
 
     if (!outputTensor || !outputTensor.data) {
-      throw new Error('Invalid output tensor from hazardyolo26n-4.onnx')
+      throw new Error('Invalid output tensor from roadchitra.onnx')
     }
 
     const outputData = outputTensor.data as Float32Array
@@ -169,8 +172,8 @@ export async function runLocalOnnxHazardInference(params: {
     return {
       success: true,
       mode: 'system',
-      modelName: 'hazardyolo26n-4 (Local ONNX)',
-      modelVersion: 'v1.0',
+      modelName: 'roadchitra.onnx (Local ONNX)',
+      modelVersion: 'v2.0-roadchitra',
       detections,
       detectionCount: detections.length,
       topConfidence: Number(topConfidence.toFixed(3)),
@@ -185,8 +188,8 @@ export async function runLocalOnnxHazardInference(params: {
     return {
       success: false,
       mode: 'system',
-      modelName: 'hazardyolo26n-4 (Local ONNX)',
-      modelVersion: 'v1.0',
+      modelName: 'roadchitra.onnx (Local ONNX)',
+      modelVersion: 'v2.0-roadchitra',
       detections: [],
       detectionCount: 0,
       topConfidence: 0,
