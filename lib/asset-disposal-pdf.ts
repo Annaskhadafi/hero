@@ -15,6 +15,7 @@ export interface DisposalPdfApprovalStep {
 export interface DisposalPdfData {
   disposalNumber: string
   disposalDate: string | Date
+  disposalType?: string | null
   status: string
   applicantName: string
   applicantSn?: string | null
@@ -175,8 +176,9 @@ export async function generateAssetDisposalPdf(data: DisposalPdfData): Promise<U
   const metaRow3Y = curY - 38
 
   // Col 1
-  page.drawText('TANGGAL PENGAJUAN', { x: marginX + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
+  page.drawText('TANGGAL & JENIS DISPOSAL', { x: marginX + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })
   page.drawText(formatIndoDate(data.disposalDate), { x: marginX + 10, y: metaRow2Y, size: 8, font: fontBold, color: textDark })
+  page.drawText(`Jenis: ${(data.disposalType || 'Penghapusan').toUpperCase()}`, { x: marginX + 10, y: metaRow3Y, size: 7, font: fontBold, color: rgb(0.05, 0.45, 0.25) })
 
   // Col 2
   page.drawText('PEMOHON (DISPOSAL APPLICANT)', { x: marginX + colW + 10, y: metaRow1Y, size: 6.5, font: fontBold, color: textGray })

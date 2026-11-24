@@ -41,6 +41,7 @@ export const assetDisposalInputSchema = z.object({
   siteId: z.coerce.number().min(1, 'Cabang / Site wajib dipilih'),
   siteName: z.string().min(1, 'Nama Cabang / Site wajib diisi'),
   disposalDate: z.string().min(1, 'Tanggal pengajuan disposal wajib diisi'),
+  disposalType: z.enum(['Penjualan', 'Penghapusan', 'Donasi']).default('Penghapusan'),
   notes: z.string().optional().nullable(),
   attachments: z.array(disposalAttachmentSchema).default([]),
   applicantEmployeeId: z.coerce.number().optional().nullable(),

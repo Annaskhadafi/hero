@@ -14,6 +14,7 @@ export interface AssetDisposalItem {
 export interface AssetDisposalDocumentData {
   disposalNumber: string
   disposalDate: string | Date
+  disposalType?: string | null
   status: string
   applicantName: string
   applicantSn?: string | null
@@ -191,13 +192,21 @@ export function AssetDisposalDocumentView({
 
         {/* Metadata Section */}
         <div className="mt-3.5 rounded-lg border border-slate-300 bg-slate-50/70 p-3">
-          <div className="grid grid-cols-4 gap-x-4 gap-y-2 text-[11px]">
+          <div className="grid grid-cols-5 gap-x-4 gap-y-2 text-[11px]">
             <div>
               <span className="block text-[10px] font-semibold text-slate-500 uppercase">
                 Tanggal Pengajuan
               </span>
               <span className="font-bold text-slate-900">
                 {formatIndoDate(doc.disposalDate)}
+              </span>
+            </div>
+            <div>
+              <span className="block text-[10px] font-semibold text-slate-500 uppercase">
+                Jenis Disposal
+              </span>
+              <span className="font-extrabold uppercase text-slate-900">
+                {doc.disposalType || 'Penghapusan'}
               </span>
             </div>
             <div>

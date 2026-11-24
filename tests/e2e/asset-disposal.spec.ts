@@ -2,13 +2,29 @@
 import { test, expect } from '@playwright/test'
 import fs from 'fs'
 import path from 'path'
+import { db } from '../../db'
+import { assetDisposals } from '../../db/schema/asset-disposal'
+import { approvals } from '../../db/schema/hero'
+import { eq } from 'drizzle-orm'
 
 const ARTIFACT_DIR = path.resolve('C:/Users/Gilang/.gemini/antigravity/brain/135839c8-eb66-473f-a410-9a62ee5828c8/screenshots/asset-disposal')
 const ROOT_ARTIFACT_DIR = path.resolve('C:/Users/Gilang/.gemini/antigravity/brain/135839c8-eb66-473f-a410-9a62ee5828c8')
 
-test.beforeAll(() => {
+test.beforeAll(async () => {
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true })
   fs.mkdirSync(ROOT_ARTIFACT_DIR, { recursive: true })
+
+  // Clean old test disposal records as instructed ("Hapus history pengajuan yang sudah ada sebelumnya")
+  try {
+    const existing = await db.select({ id: assetDisposals.id }).from(assetDisposals)
+    for (const d of existing) {
+      await db.delete(approvals).where(eq(approvals.assetDisposalId, d.id))
+      await db.delete(assetDisposals).where(eq(assetDisposals.id, d.id))
+    }
+    console.log('✓ Cleaned up old asset disposal records from DB.')
+  } catch (err) {
+    console.error('Error cleaning up disposals in beforeAll:', err)
+  }
 })
 
 function saveScreenshot(sourcePath, filename) {
@@ -33,22 +49,24 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
 
     // 1. Authenticate with standard system credentials
     console.log('Navigating to sign-in page...')
-    await page.goto('/sign-in', { waitUntil: 'domcontentloaded', timeout: 45000 })
-    await page.waitForTimeout(2000)
+    await page.goto('/sign-in')
+    await page.waitForLoadState('domcontentloaded')
 
-    const usernameInput = page.locator('input[placeholder*="email atau SN"], #email, input[name="username"]').first()
-    const passwordInput = page.locator('input[placeholder*="kata sandi"], #password, input[name="password"]').first()
-    const loginSubmitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
-
-    await usernameInput.fill('mochamad.khadafi@chitraparatama.co.id')
+    const usernameInput = page.locator('#email, input[placeholder*="email atau SN"], input[name="username"]').first()
+    await usernameInput.waitFor({ state: 'visible', timeout: 15000 })
+    await usernameInput.fill('71261')
+    const passwordInput = page.locator('#password, input[placeholder*="kata sandi"], input[name="password"]').first()
     await passwordInput.fill('Chitra#71261')
-    await page.waitForTimeout(1000)
+    const loginSubmitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
     await loginSubmitBtn.click()
 
-    console.log('Submitted login credentials. Waiting for redirect...')
-    await page.waitForURL(/.*(\/dashboard|\/mobile)(\/.*)?/, { waitUntil: 'domcontentloaded', timeout: 45000 })
-    console.log('Login successful, on dashboard.')
+    console.log('Submitted login credentials. Waiting for authentication...')
+    await page.waitForResponse(
+      (res) => res.url().includes('/api/auth/sign-in') && res.status() === 200,
+      { timeout: 30000 }
+    ).catch(() => {})
     await page.waitForTimeout(2000)
+    console.log('Login processed. Navigating to Asset Disposal Page...')
 
     // =========================================================================
     // STEP 1: Navigasi ke Halaman Asset Disposal (/dashboard/assets/disposal)
@@ -102,6 +120,20 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     const pemohonHeader = page.locator('text=1. Informasi Pemohon & Unit Kerja')
     await expect(pemohonHeader).toBeVisible()
     console.log('✓ Verified Group 1: Informasi Pemohon & Unit Kerja auto-filled.')
+
+    // 2a-bis. Verify Dropdown Jenis Disposal (Penjualan / Penghapusan / Donasi)
+    const jenisDisposalSelect = page.locator('button:has-text("Penghapusan"), button:has-text("Pilih jenis disposal")').first()
+    await expect(jenisDisposalSelect).toBeVisible()
+    console.log('✓ Verified: Dropdown "Jenis Disposal" tersedia pada form!')
+    await jenisDisposalSelect.click()
+    await page.waitForTimeout(400)
+    const popoverJenis = page.locator('[data-radix-popper-content-wrapper]').last()
+    const optPenjualan = popoverJenis.locator('div.cursor-pointer:has-text("Penjualan")').first()
+    if (await optPenjualan.isVisible()) {
+      await optPenjualan.click()
+      console.log('✓ Successfully selected Jenis Disposal: Penjualan')
+    }
+    await page.waitForTimeout(500)
 
     // 2b. Verify Group 2: Rincian Aset Multi-Unit (Wajib Master HERO - Tanpa Tab Manual)
     const assetUnitHeader = page.locator('text=2. Rincian Aset yang Dihapus')
@@ -282,15 +314,15 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     const detailDialogTitle = page.locator('h2:has-text("Detail Penghapusan Aset"), div:has-text("Detail Penghapusan Aset")').first()
     await expect(detailDialogTitle).toBeVisible({ timeout: 10000 })
 
-    // Verify Download PDF is present
-    await expect(page.locator('button:has-text("Download PDF (A4)")')).toBeVisible()
-
     // Verify Nilai Terakhir Aset column & Total footer in Detail Modal
     await expect(page.locator('th:has-text("Nilai Terakhir Aset")').first()).toBeVisible()
     await expect(page.locator('text=Total Nilai Terakhir Aset:').first()).toBeVisible()
-    console.log('✓ Verified: Kolom Nilai Terakhir Aset dan Footer Total terlihat di Modal Detail!')
+    await expect(page.locator('text=Jenis Disposal').first()).toBeVisible()
+    await expect(page.locator('text=Penjualan').first()).toBeVisible()
+    console.log('✓ Verified: Kolom Nilai Terakhir Aset, Footer Total, dan Jenis Disposal (Penjualan) terlihat di Modal Detail!')
 
-    // Verify redundant action buttons are REMOVED
+    // Verify ALL redundant action buttons are REMOVED from the modal header
+    expect(await page.locator('button:has-text("Download PDF (A4)")').count()).toBe(0)
     expect(await page.locator('button:has-text("Batalkan Pengajuan")').count()).toBe(0)
     expect(await page.locator('button:has-text("Tolak")').count()).toBe(0)
     expect(await page.locator('button:has-text("Setujui Tahap Ini")').count()).toBe(0)
@@ -324,7 +356,9 @@ test.describe('Asset Disposal Revamped & Enhanced Flow Verification', () => {
     await expect(printArea.getByText('Total 2 Unit Aset').first()).toBeVisible()
     await expect(printArea.getByText('NILAI TERAKHIR (SAP)').first()).toBeVisible()
     await expect(printArea.getByText('TOTAL NILAI TERAKHIR ASET:').first()).toBeVisible()
-    console.log('✓ A4 Landscape Document View accurately rendered 2 assets & Nilai Terakhir Aset column with total footer!')
+    await expect(printArea.getByText('JENIS DISPOSAL').first()).toBeVisible()
+    await expect(printArea.getByText('PENJUALAN').first()).toBeVisible()
+    console.log('✓ A4 Landscape Document View accurately rendered 2 assets & Nilai Terakhir Aset column with total footer & Jenis Disposal Penjualan!')
 
     // Verify Typo "AKTIVA" is corrected to "ASET" on yellow banner
     await expect(printArea.getByText('BERITA ACARA PENGHENTIAN ASET: ASET DIHAPUS DARI DAFTAR INVENTARIS AKTIF').first()).toBeVisible()

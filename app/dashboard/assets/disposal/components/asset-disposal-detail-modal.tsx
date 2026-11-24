@@ -5,10 +5,8 @@ import {
   HeroDetailModal,
   HeroStatusBadge,
 } from '@/components/templates'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
-  Download,
   FileText,
   User,
   Clock,
@@ -60,11 +58,6 @@ export function AssetDisposalDetailModal({
     }
   }
 
-  const handleDownloadPdf = () => {
-    if (!item.id) return
-    window.open(`/api/assets/disposal/${item.id}/pdf`, '_blank')
-  }
-
   const statusTone = getStatusTone(item.status)
   const approvalSteps = item.approvalSteps || []
 
@@ -80,21 +73,6 @@ export function AssetDisposalDetailModal({
           status={statusTone.status}
           label={statusTone.label}
         />
-      }
-      actions={
-        <div className="flex items-center gap-2">
-          {/* Download PDF Button */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleDownloadPdf}
-            className="h-9 gap-1.5 text-xs text-primary border-primary/40 hover:bg-primary/5"
-          >
-            <Download className="size-4" />
-            Download PDF (A4)
-          </Button>
-        </div>
       }
     >
         <div className="space-y-6 text-xs">
@@ -117,7 +95,7 @@ export function AssetDisposalDetailModal({
               <User className="size-4 text-primary" />
               1. Informasi Pemohon & Unit Kerja
             </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               <div>
                 <span className="text-muted-foreground block text-[11px]">Dibuat Oleh</span>
                 <span className="font-semibold text-foreground">{item.applicantName}</span>
@@ -136,6 +114,24 @@ export function AssetDisposalDetailModal({
               <div>
                 <span className="text-muted-foreground block text-[11px]">Cabang / Site</span>
                 <span className="font-semibold text-foreground">{item.siteName}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[11px]">Jenis Disposal</span>
+                <div className="mt-0.5">
+                  {item.disposalType === 'Penjualan' ? (
+                    <span className="inline-flex items-center text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                      🏷️ Penjualan
+                    </span>
+                  ) : item.disposalType === 'Donasi' ? (
+                    <span className="inline-flex items-center text-[11px] font-bold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">
+                      🎁 Donasi
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+                      🗑️ Penghapusan
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

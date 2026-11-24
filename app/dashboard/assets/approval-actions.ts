@@ -521,6 +521,8 @@ export async function getAssetManagementItemDetailAction({
           id: assetDisposals.id,
           disposalNumber: assetDisposals.disposalNumber,
           disposalDate: assetDisposals.disposalDate,
+          disposalType: assetDisposals.disposalType,
+          totalBookValue: assetDisposals.totalBookValue,
           status: assetDisposals.status,
           applicantName: assetDisposals.applicantName,
           applicantSn: employees.employeeSn,
@@ -583,6 +585,8 @@ export async function getAssetManagementItemDetailAction({
         doc: {
           disposalNumber: disposal.disposalNumber,
           disposalDate: disposal.disposalDate,
+          disposalType: disposal.disposalType,
+          totalBookValue: disposal.totalBookValue,
           status: disposal.status,
           applicantName: disposal.applicantName,
           applicantSn: disposal.applicantSn,

@@ -32,6 +32,7 @@ export const assetDisposals = pgTable('hero_asset_disposals', {
 
   // Informasi Transaksi & Catatan
   disposalDate: date('disposal_date').notNull(),
+  disposalType: text('disposal_type').notNull().default('Penghapusan'), // 'Penjualan' | 'Penghapusan' | 'Donasi'
   notes: text('notes').notNull(),
   items: text('items').notNull().default('[]'), // JSON array: [{ id?, assetId?, assetName, assetNumber, purchaseYear, bookValue?, notes }]
   totalBookValue: doublePrecision('total_book_value').default(0),

@@ -312,6 +312,21 @@ export function AssetDisposalDashboard({
                 </Badge>
               )}
             </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              {row.disposalType === 'Penjualan' ? (
+                <span className="inline-flex items-center text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                  🏷️ Penjualan
+                </span>
+              ) : row.disposalType === 'Donasi' ? (
+                <span className="inline-flex items-center text-[10px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded">
+                  🎁 Donasi
+                </span>
+              ) : (
+                <span className="inline-flex items-center text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+                  🗑️ Penghapusan
+                </span>
+              )}
+            </div>
           </div>
         )
       },
@@ -389,6 +404,16 @@ export function AssetDisposalDashboard({
 
   // Filters definition
   const filters: HeroTableFilter[] = React.useMemo(() => [
+    {
+      key: 'disposalType',
+      label: 'Jenis Disposal',
+      options: [
+        { label: 'Semua Jenis', value: 'all' },
+        { label: 'Penjualan', value: 'Penjualan' },
+        { label: 'Penghapusan', value: 'Penghapusan' },
+        { label: 'Donasi', value: 'Donasi' },
+      ],
+    },
     {
       key: 'status',
       label: 'Status Disposal',

@@ -105,6 +105,7 @@ export function AssetDisposalFormDialog({
   const [siteId, setSiteId] = React.useState<string>('')
   const [siteName, setSiteName] = React.useState<string>('')
   const [disposalDate, setDisposalDate] = React.useState<Date | undefined>(new Date())
+  const [disposalType, setDisposalType] = React.useState<'Penjualan' | 'Penghapusan' | 'Donasi'>('Penghapusan')
 
   // 2. Unit Items Repeater (Group 2 - 100% Wajib Master Data HERO)
   const [items, setItems] = React.useState<DisposalFormItem[]>([
@@ -189,6 +190,7 @@ export function AssetDisposalFormDialog({
         if (initialData.siteId) setSiteId(String(initialData.siteId))
         setSiteName(initialData.siteName || '')
         if (initialData.disposalDate) setDisposalDate(new Date(initialData.disposalDate))
+        if (initialData.disposalType) setDisposalType(initialData.disposalType)
 
         // Prepopulate items
         if (initialData.items && Array.isArray(initialData.items) && initialData.items.length > 0) {
@@ -267,6 +269,8 @@ export function AssetDisposalFormDialog({
             notes: '',
           },
         ])
+        setDisposalDate(new Date())
+        setDisposalType('Penghapusan')
         setAttachments([])
         setApprovers(defaultApprovers.length > 0 ? defaultApprovers : [])
       }
@@ -561,6 +565,7 @@ export function AssetDisposalFormDialog({
         // Resubmit / Revision Mode
         const res = await resubmitAssetDisposalAction({
           id: initialData.id,
+          disposalType,
           items: formattedItems,
           notes: formattedItems.map((it) => `${it.assetName}: ${it.notes}`).join('; '),
           attachments,
@@ -577,6 +582,7 @@ export function AssetDisposalFormDialog({
         const payload = {
           items: formattedItems,
           totalBookValue,
+          disposalType,
           departmentId: departmentId ? Number(departmentId) : null,
           departmentName: departmentName || 'Departemen',
           sectionId: sectionId ? Number(sectionId) : null,
@@ -699,6 +705,39 @@ export function AssetDisposalFormDialog({
                 value={siteName || '-'}
                 disabled
                 className="bg-slate-100/90 text-slate-800 font-medium"
+              />
+            </HeroFormField>
+          </div>
+
+          {/* Parameter Pengajuan: Jenis Disposal & Tanggal Pengajuan */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-200/80">
+            <HeroFormField
+              label="Jenis Disposal *"
+              required
+              helperText="Pilih peruntukan atau kategori disposal aset"
+            >
+              <HeroSearchableSelect
+                options={[
+                  { value: 'Penjualan', label: 'Penjualan' },
+                  { value: 'Penghapusan', label: 'Penghapusan' },
+                  { value: 'Donasi', label: 'Donasi' },
+                ]}
+                value={disposalType}
+                onChange={(val) => setDisposalType((val as any) || 'Penghapusan')}
+                placeholder="Pilih jenis disposal..."
+              />
+            </HeroFormField>
+
+            <HeroFormField
+              label="Tanggal Pengajuan Disposal *"
+              required
+              helperText="Tanggal pembuatan dokumen formulir berita acara"
+            >
+              <HeroDatePicker
+                value={disposalDate}
+                onChange={(date) => setDisposalDate(date || new Date())}
+                placeholder="Pilih tanggal pengajuan..."
+                className="w-full"
               />
             </HeroFormField>
           </div>

@@ -27,6 +27,7 @@ import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 export async function getAssetDisposals(params?: {
   search?: string
   status?: string
+  disposalType?: string
   page?: number
   pageSize?: number
 }) {
@@ -48,6 +49,7 @@ export async function getAssetDisposals(params?: {
 
     const search = params?.search?.trim() || ''
     const statusFilter = params?.status?.trim() || ''
+    const disposalTypeFilter = params?.disposalType?.trim() || ''
     const page = Math.max(1, params?.page || 1)
     const pageSize = Math.max(1, Math.min(100, params?.pageSize || 25))
     const offset = (page - 1) * pageSize
@@ -69,6 +71,10 @@ export async function getAssetDisposals(params?: {
 
     if (statusFilter && statusFilter !== 'all') {
       conditions.push(eq(assetDisposals.status, statusFilter))
+    }
+
+    if (disposalTypeFilter && disposalTypeFilter !== 'all') {
+      conditions.push(eq(assetDisposals.disposalType, disposalTypeFilter))
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined
@@ -113,6 +119,7 @@ export async function getAssetDisposals(params?: {
           parsedItems.reduce((acc: number, it: any) => acc + (Number(it.bookValue) || 0), 0)
         return {
           ...item,
+          disposalType: item.disposalType || 'Penghapusan',
           items: parsedItems,
           attachments: JSON.parse(item.attachments || '[]'),
           submitterSignatureUrl: item.applicantSignatureUrl || null,
@@ -652,6 +659,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         siteId: input.siteId,
         siteName: input.siteName,
         disposalDate: input.disposalDate,
+        disposalType: input.disposalType || 'Penghapusan',
         notes: topNotes,
         items: JSON.stringify(items),
         totalBookValue,
@@ -688,7 +696,7 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
         submittedAt: now,
         activityType: 'asset_disposal',
         requestNumber: disposalNumber,
-        activityTitle: `Disposal Aset: ${input.assetName} (${input.assetNumber || '-'})`,
+        activityTitle: `Disposal Aset (${input.disposalType || 'Penghapusan'}): ${input.assetName} (${input.assetNumber || '-'})`,
         formName: 'Asset Disposal',
         decisionNote: step.title,
         approverRole: resolvedStep.approverJobTitle || step.jobTitle || undefined,
@@ -1240,6 +1248,7 @@ export async function revertAssetDisposalAction(id: number, revertReason: string
 export async function resubmitAssetDisposalAction(input: {
   id: number
   notes?: string
+  disposalType?: 'Penjualan' | 'Penghapusan' | 'Donasi'
   items?: any[]
   attachments?: Array<{ fileName: string; fileUrl: string; fileSize?: number }>
 }) {
@@ -1310,6 +1319,7 @@ export async function resubmitAssetDisposalAction(input: {
           purchaseYear: topPurchaseYear,
           items: items ? JSON.stringify(items) : disposal.items,
           totalBookValue,
+          disposalType: input.disposalType !== undefined ? input.disposalType : disposal.disposalType,
           notes: input.notes !== undefined ? input.notes : disposal.notes,
           attachments: input.attachments ? JSON.stringify(input.attachments) : disposal.attachments,
           status: 'pending',
