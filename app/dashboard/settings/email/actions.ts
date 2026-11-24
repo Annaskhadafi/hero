@@ -171,13 +171,13 @@ const csForecastDailyReportSchema = z.object({
 });
 
 const cerNotificationSchema = z.object({
-  procurementEmail: z.string().trim().default("procurement@chitraparatama.com"),
-  evoDwiEmail: z.string().trim().default("evo.dwi@chitraparatama.com"),
-  gaAdilaEmail: z.string().trim().default("adila@chitraparatama.com"),
-  gaBagasEmail: z.string().trim().default("bagas@chitraparatama.com"),
-  itBimaEmail: z.string().trim().default("bima@chitraparatama.com"),
-  budgetValidatorEmail: z.string().trim().default("budget.controller@chitraparatama.com"),
-  isActive: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()),
+  procurementEmail: z.string().trim().optional(),
+  evoDwiEmail: z.string().trim().optional(),
+  gaAdilaEmail: z.string().trim().optional(),
+  gaBagasEmail: z.string().trim().optional(),
+  itBimaEmail: z.string().trim().optional(),
+  budgetValidatorEmail: z.string().trim().optional(),
+  isActive: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()).default(true),
   isTestingMode: z.preprocess((value) => value === "true" || value === true || value === "on", z.boolean()).default(true),
   testingRecipientEmail: z.string().trim().default("gilang.suryo@chitraparatama.co.id"),
   testingApproverEmployeeId: z.preprocess(
@@ -1419,18 +1419,18 @@ export async function saveCerNotificationConfigAction(
 
   try {
     const [existing] = await db
-      .select({ id: cerNotificationConfigs.id })
+      .select()
       .from(cerNotificationConfigs)
       .limit(1);
 
     const values = {
-      procurementEmail: parsed.data.procurementEmail,
-      evoDwiEmail: parsed.data.evoDwiEmail,
-      gaAdilaEmail: parsed.data.gaAdilaEmail,
-      gaBagasEmail: parsed.data.gaBagasEmail,
-      itBimaEmail: parsed.data.itBimaEmail,
-      budgetValidatorEmail: parsed.data.budgetValidatorEmail,
-      isActive: parsed.data.isActive,
+      procurementEmail: parsed.data.procurementEmail || existing?.procurementEmail || "procurement@chitraparatama.com",
+      evoDwiEmail: parsed.data.evoDwiEmail || existing?.evoDwiEmail || "evo.dwi@chitraparatama.com",
+      gaAdilaEmail: parsed.data.gaAdilaEmail || existing?.gaAdilaEmail || "adila@chitraparatama.com",
+      gaBagasEmail: parsed.data.gaBagasEmail || existing?.gaBagasEmail || "bagas@chitraparatama.com",
+      itBimaEmail: parsed.data.itBimaEmail || existing?.itBimaEmail || "bima@chitraparatama.com",
+      budgetValidatorEmail: parsed.data.budgetValidatorEmail || existing?.budgetValidatorEmail || "budget.controller@chitraparatama.com",
+      isActive: parsed.data.isActive ?? existing?.isActive ?? true,
       updatedAt: new Date(),
     };
 

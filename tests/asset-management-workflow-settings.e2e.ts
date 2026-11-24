@@ -53,6 +53,9 @@ test('verify Asset Management Workflow settings panel and testing guardrail', as
   await expect(browser.locator('text=Asset Transfer (Mutasi)').first()).toBeVisible();
   await expect(browser.locator('text=Asset Disposal (Penghapusan)').first()).toBeVisible();
 
+  // Verify that old CER PIC distribution section is removed
+  await expect(browser.locator('text=Distribusi Dokumen & PIC Pengadaan Aset')).toHaveCount(0);
+
   // 5. Take screenshot of the Asset Management Workflow settings panel
   await app.screenshot('asset-management-workflow-settings');
   await new Promise((resolve) => setTimeout(resolve, 1000));
