@@ -934,18 +934,32 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
 }
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
-  // Accommodate up to 20 items on a single page without breaking to a second page,
-  // or paginate with up to 18 items per page for larger manifest batches.
+  // Accommodate up to 30 items on a single page before breaking to a new page ("mentok" layout),
+  // and efficiently paginate larger batches:
+  // - Page 1 (with shipping details box): up to 30 items
+  // - Middle pages (without shipping details or signatures): up to 38 items
+  // - Last page (with signatures): up to 34 items
   const pages: (typeof row.items)[] = []
 
   if (row.items.length === 0) {
     pages.push([])
-  } else if (row.items.length <= 20) {
+  } else if (row.items.length <= 30) {
     pages.push(row.items)
   } else {
-    const itemsPerPage = 18
-    for (let i = 0; i < row.items.length; i += itemsPerPage) {
-      pages.push(row.items.slice(i, i + itemsPerPage))
+    const FIRST_PAGE_MAX = 30
+    const MIDDLE_PAGE_MAX = 38
+    const LAST_PAGE_MAX = 34
+
+    pages.push(row.items.slice(0, FIRST_PAGE_MAX))
+    let remaining = row.items.slice(FIRST_PAGE_MAX)
+
+    while (remaining.length > 0) {
+      if (remaining.length <= LAST_PAGE_MAX) {
+        pages.push(remaining)
+        break
+      }
+      pages.push(remaining.slice(0, MIDDLE_PAGE_MAX))
+      remaining = remaining.slice(MIDDLE_PAGE_MAX)
     }
   }
 
