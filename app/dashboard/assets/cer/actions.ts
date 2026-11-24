@@ -515,6 +515,45 @@ export async function createCerRequestAction(input: {
   }> = []
 
   if (input.customApprovers && input.customApprovers.length > 0) {
+    // Guardrail: Validate that mandatory steps are present
+    // 1. Budget Validator (Amama Ira & Febrian Dani)
+    // 2. Director (Hidayat Rahman)
+    // 3. Asset Tagging (Syamsul Bahri / Evo Dwi)
+    const hasAmama = input.customApprovers.some(
+      (ca) =>
+        (ca.approverName || '').toLowerCase().includes('amama') ||
+        ca.approverEmployeeId === 1341
+    )
+    const hasFebrian = input.customApprovers.some(
+      (ca) =>
+        (ca.approverName || '').toLowerCase().includes('febrian') ||
+        ca.approverEmployeeId === 960
+    )
+    const hasDirector = input.customApprovers.some(
+      (ca) =>
+        (ca.label || '').toLowerCase().includes('director') ||
+        (ca.approverName || '').toLowerCase().includes('hidayat') ||
+        ca.approverEmployeeId === 10
+    )
+    const hasAssetTagging = input.customApprovers.some(
+      (ca) =>
+        (ca.label || '').toLowerCase().includes('tagging') ||
+        (ca.label || '').toLowerCase().includes('nomor aset') ||
+        (ca.label || '').toLowerCase().includes('no.aset') ||
+        (ca.label || '').toLowerCase().includes('kelompok aset') ||
+        (ca.approverName || '').toLowerCase().includes('syamsul') ||
+        (ca.approverName || '').toLowerCase().includes('evo') ||
+        ca.approverEmployeeId === 990
+    )
+
+    if (!hasAmama || !hasFebrian || !hasDirector || !hasAssetTagging) {
+      return {
+        success: false,
+        message:
+          'Validasi Alur Approval: Tahapan wajib (Budget Validator Amama Ira & Febrian Dani, Director Hidayat Rahman, dan Asset Tagging) tidak boleh dihapus.',
+      }
+    }
+
     steps = input.customApprovers.map((ca, idx) => ({
       stepOrder: idx + 1,
       label: ca.label,
@@ -2018,6 +2057,42 @@ export async function resubmitCerRequestAction(input: ResubmitCerRequestInput) {
   } | null = null
 
   if (input.customApprovers && input.customApprovers.length > 0) {
+    // Guardrail: Validate that mandatory steps are present
+    const hasAmama = input.customApprovers.some(
+      (ca) =>
+        (ca.approverName || '').toLowerCase().includes('amama') ||
+        ca.approverEmployeeId === 1341
+    )
+    const hasFebrian = input.customApprovers.some(
+      (ca) =>
+        (ca.approverName || '').toLowerCase().includes('febrian') ||
+        ca.approverEmployeeId === 960
+    )
+    const hasDirector = input.customApprovers.some(
+      (ca) =>
+        (ca.label || '').toLowerCase().includes('director') ||
+        (ca.approverName || '').toLowerCase().includes('hidayat') ||
+        ca.approverEmployeeId === 10
+    )
+    const hasAssetTagging = input.customApprovers.some(
+      (ca) =>
+        (ca.label || '').toLowerCase().includes('tagging') ||
+        (ca.label || '').toLowerCase().includes('nomor aset') ||
+        (ca.label || '').toLowerCase().includes('no.aset') ||
+        (ca.label || '').toLowerCase().includes('kelompok aset') ||
+        (ca.approverName || '').toLowerCase().includes('syamsul') ||
+        (ca.approverName || '').toLowerCase().includes('evo') ||
+        ca.approverEmployeeId === 990
+    )
+
+    if (!hasAmama || !hasFebrian || !hasDirector || !hasAssetTagging) {
+      return {
+        success: false,
+        message:
+          'Validasi Alur Approval: Tahapan wajib (Budget Validator Amama Ira & Febrian Dani, Director Hidayat Rahman, dan Asset Tagging) tidak boleh dihapus.',
+      }
+    }
+
     // Delete unapproved approvals from database
     for (const a of existingApprovals) {
       if ((a.status || '').toLowerCase() !== 'approved') {

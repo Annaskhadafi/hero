@@ -41,6 +41,7 @@ import {
   Package,
   Paperclip,
   Check,
+  Lock,
   ChevronUp,
   ChevronDown,
   PenLine,
@@ -123,6 +124,74 @@ const formatFileSize = (bytes?: number) => {
   if (!bytes) return '0 KB'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+}
+
+/**
+ * Identifies mandatory CER approval steps that cannot be deleted or bypassed:
+ * 1. Budget Validator (Amama Ira & Febrian Dani)
+ * 2. Director (Hidayat Rahman, cc Freshya)
+ * 3. Asset Tagging (Syamsul Bahri / Evo Dwi)
+ */
+export function isMandatoryCerStep(step?: {
+  label?: string | null
+  approverName?: string | null
+  approverEmployeeId?: number | null
+}) {
+  if (!step) {
+    return {
+      isMandatory: false,
+      isBudgetValidator: false,
+      isDirector: false,
+      isAssetTagging: false,
+      stepName: '',
+    }
+  }
+
+  const lbl = (step.label || '').toLowerCase()
+  const name = (step.approverName || '').toLowerCase()
+  const empId = step.approverEmployeeId
+
+  // 1. Budget Validator (Dual: Amama Ira Amalia Priyono & Febrian Dani)
+  const isBudgetValidator =
+    lbl.includes('budget') ||
+    name.includes('amama') ||
+    name.includes('febrian') ||
+    empId === 1341 ||
+    empId === 960
+
+  // 2. Director (Hidayat Rahman, cc Freshya Ochtovita)
+  const isDirector =
+    lbl.includes('director') ||
+    name.includes('hidayat') ||
+    empId === 10
+
+  // 3. Asset Tagging (Syamsul Bahri / Evo Dwi)
+  const isAssetTagging =
+    lbl.includes('tagging') ||
+    lbl.includes('nomor aset') ||
+    lbl.includes('no.aset') ||
+    lbl.includes('kelompok aset') ||
+    name.includes('syamsul') ||
+    name.includes('evo') ||
+    empId === 990
+
+  const isMandatory = isBudgetValidator || isDirector || isAssetTagging
+
+  const stepName = isBudgetValidator
+    ? 'Budget Validator (Amama Ira & Febrian Dani)'
+    : isDirector
+    ? 'Director (Hidayat Rahman)'
+    : isAssetTagging
+    ? 'Asset Tagging (Syamsul Bahri / Evo Dwi)'
+    : 'Approver Wajib'
+
+  return {
+    isMandatory,
+    isBudgetValidator,
+    isDirector,
+    isAssetTagging,
+    stepName,
+  }
 }
 
 export function CerFormDialog({
@@ -393,8 +462,15 @@ export function CerFormDialog({
 
   // Change employee on an approver step
   const handleApproverEmployeeChange = (index: number, newEmpIdStr: string) => {
-    if (previewSteps[index]?.isLocked) {
+    const currentStep = previewSteps[index]
+    if (currentStep?.isLocked) {
       toast.error('Approver yang sudah menyetujui (Approved) terkunci dan tidak dapat diubah.')
+      return
+    }
+
+    const mandatoryCheck = isMandatoryCerStep(currentStep)
+    if (mandatoryCheck.isMandatory) {
+      toast.error(`Approver pada tahapan ${mandatoryCheck.stepName} telah ditetapkan dan tidak dapat diubah.`)
       return
     }
 
@@ -424,8 +500,15 @@ export function CerFormDialog({
 
   // Remove an approver step
   const handleRemoveApprover = (index: number) => {
-    if (previewSteps[index]?.isLocked) {
+    const currentStep = previewSteps[index]
+    if (currentStep?.isLocked) {
       toast.error('Approver yang sudah menyetujui (Approved) terkunci dan tidak dapat dihapus.')
+      return
+    }
+
+    const mandatoryCheck = isMandatoryCerStep(currentStep)
+    if (mandatoryCheck.isMandatory) {
+      toast.error(`Tahapan ${mandatoryCheck.stepName} merupakan tahapan wajib dan tidak boleh dihapus dari alur persetujuan CER.`)
       return
     }
 
@@ -1556,9 +1639,14 @@ export function CerFormDialog({
                   {previewSteps && previewSteps.length > 0 ? (
                     <div className="space-y-2.5">
                       {previewSteps.map((s, idx) => {
-                        const isBima = s.label.toLowerCase().includes('bima')
-                        const isDirector = s.label.toLowerCase().includes('director')
-                        const isGM = s.label.toLowerCase().includes('general manager')
+                        const isBima = s.label?.toLowerCase().includes('bima')
+                        const isGM = s.label?.toLowerCase().includes('general manager')
+                        const mandatoryInfo = isMandatoryCerStep(s)
+                        const isMandatory = mandatoryInfo.isMandatory
+                        const isBudgetValidator = mandatoryInfo.isBudgetValidator
+                        const isDirector = mandatoryInfo.isDirector
+                        const isAssetTagging = mandatoryInfo.isAssetTagging
+
                         return (
                           <div
                             key={idx}
@@ -1567,6 +1655,10 @@ export function CerFormDialog({
                                 ? 'border-indigo-200 bg-indigo-50/60'
                                 : isDirector || isGM
                                 ? 'border-blue-200 bg-blue-50/40'
+                                : isBudgetValidator
+                                ? 'border-purple-200 bg-purple-50/40'
+                                : isAssetTagging
+                                ? 'border-amber-200 bg-amber-50/40'
                                 : 'border-slate-200 bg-slate-50/50'
                             }`}
                           >
@@ -1578,13 +1670,17 @@ export function CerFormDialog({
                                     ? 'border-indigo-400 bg-indigo-100 text-indigo-800'
                                     : isDirector || isGM
                                     ? 'border-blue-400 bg-blue-100 text-blue-800'
+                                    : isBudgetValidator
+                                    ? 'border-purple-400 bg-purple-100 text-purple-800'
+                                    : isAssetTagging
+                                    ? 'border-amber-400 bg-amber-100 text-amber-800'
                                     : 'border-slate-300 text-slate-700 bg-white'
                                 }`}
                               >
                                 Tahap {s.stepOrder}
                               </Badge>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-semibold text-slate-900 truncate">
                                     {(s.approverName || 'Pilih Approver').replace(/\s*\(BIMA Supervisor\)/gi, '')}
                                   </span>
@@ -1598,18 +1694,28 @@ export function CerFormDialog({
                                       CC &amp; Co-Approve: Freshya (Board Secretary)
                                     </Badge>
                                   )}
+                                  {isAssetTagging && (
+                                    <Badge className="bg-amber-600 text-white text-[9px] px-1.5 py-0 h-4 font-normal">
+                                      CC: Evo Dwi
+                                    </Badge>
+                                  )}
                                 </div>
                                 <span className="text-[11px] text-slate-600 truncate block">
                                   {isBima
                                     ? 'BIMA Supervisor'
-                                    : s.label?.toLowerCase().includes('budget')
+                                    : isBudgetValidator
                                     ? 'Budget Validator'
-                                    : s.label?.toLowerCase().includes('tagging')
+                                    : isAssetTagging
                                     ? 'Asset Tagging'
                                     : s.jobTitle || s.label}
                                   {isDirector && (
                                     <span className="text-blue-700 font-medium ml-1">
                                       (CC: Freshya Ochtovita)
+                                    </span>
+                                  )}
+                                  {isAssetTagging && (
+                                    <span className="text-amber-700 font-medium ml-1">
+                                      (CC: Evo Dwi)
                                     </span>
                                   )}
                                 </span>
@@ -1649,8 +1755,8 @@ export function CerFormDialog({
                                   </Button>
                                 </div>
 
-                                {/* Change Employee Dropdown */}
-                                {employeeOptions.length > 0 && (
+                                {/* Change Employee Dropdown (only for non-mandatory steps) */}
+                                {employeeOptions.length > 0 && !isMandatory && (
                                   <div className="w-52">
                                     <HeroSearchableSelect
                                       options={employeeOptions}
@@ -1662,17 +1768,27 @@ export function CerFormDialog({
                                   </div>
                                 )}
 
-                                {/* Delete Button */}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-slate-400 hover:text-rose-600"
-                                  onClick={() => handleRemoveApprover(idx)}
-                                  title="Hapus Approver"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {/* Delete Button or Mandatory Badge */}
+                                {!isMandatory ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                                    onClick={() => handleRemoveApprover(idx)}
+                                    title="Hapus Approver"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="h-7 px-2.5 border-amber-300 bg-amber-50 text-amber-800 text-[10px] font-semibold flex items-center gap-1 shrink-0"
+                                    title={`Tahapan wajib ${mandatoryInfo.stepName} - tidak dapat dihapus`}
+                                  >
+                                    <Lock className="h-3 w-3 text-amber-600" /> Wajib
+                                  </Badge>
+                                )}
                               </div>
                             )}
                           </div>
