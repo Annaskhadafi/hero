@@ -12,18 +12,19 @@ test('sharing is opt-in by default and public token is opaque', () => {
 
 test('public page checks sharing and active status, exposing only contact fields', () => {
   const page = read('app/business-card/[token]/page.tsx')
-  assert.ok(page.includes('employees.businessCardPublicEnabled'))
-  assert.ok(page.includes('!employee.sharingEnabled'))
-  assert.ok(page.includes('!employee.isActive'))
+  const resolver = read('lib/public-employee-ecard.ts')
+  assert.ok(page.includes('getPublicEmployeeEcard(token)'))
+  assert.ok(resolver.includes('eq(employees.businessCardPublicEnabled, true)'))
+  assert.ok(resolver.includes('eq(employees.isActive, true)'))
+  assert.ok(!/employeeSn|birthDate|domicile|signatureDataUrl|salary/i.test(resolver))
   assert.ok(page.includes('hero.chitraparatama.com'))
   assert.ok(!/employeeSn|birthDate|domicile|signatureDataUrl|salary/i.test(page))
 })
 
 test('vCard route checks opt-in and active status and disables caching', () => {
   const route = read('app/business-card/[token]/contact.vcf/route.ts')
-  assert.ok(route.includes('employees.businessCardPublicEnabled'))
-  assert.ok(route.includes('!employee.sharingEnabled'))
-  assert.ok(route.includes('!employee.isActive'))
+  assert.ok(route.includes('getPublicEmployeeEcard(token)'))
+  assert.ok(route.includes('if (!employee)'))
   assert.ok(route.includes('private, no-store'))
   assert.ok(route.includes('BEGIN:VCARD'))
   assert.ok(route.includes('escapeVCard'))
@@ -42,7 +43,7 @@ test('profile page connects the mobile card using authenticated employee share f
   const page = read('app/mobile/profile/page.tsx')
   assert.ok(page.includes('<MobileBusinessCard'))
   assert.ok(page.includes('businessCardPublicEnabled: employees.businessCardPublicEnabled'))
-  assert.ok(page.includes('token={emp?.businessCardPublicToken'))
+  assert.ok(page.includes('token={emp?.businessCardPublicAlias || emp?.businessCardPublicToken'))
 })
 
 test('migration keeps existing employees opted out', () => {

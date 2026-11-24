@@ -124,6 +124,7 @@ export const employees = pgTable('hero_employees', {
   isActive: boolean('is_active').notNull().default(true),
   businessCardPublicEnabled: boolean('business_card_public_enabled').notNull().default(false),
   businessCardPublicToken: text('business_card_public_token').unique(),
+  businessCardPublicAlias: text('business_card_public_alias').unique(),
   invitationToken: text('invitation_token'),
   invitationExpiresAt: timestamp('invitation_expires_at'),
   invitationAcceptedAt: timestamp('invitation_accepted_at'),

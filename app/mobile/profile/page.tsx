@@ -102,6 +102,7 @@ export default async function MobileProfilePage() {
     email: string;
     businessCardPublicEnabled?: boolean;
     businessCardPublicToken?: string | null;
+    businessCardPublicAlias?: string | null;
     phoneNumber?: string | null;
     jobTitle?: string | null;
     role?: string | null;
@@ -118,6 +119,7 @@ export default async function MobileProfilePage() {
             email: employees.email,
             businessCardPublicEnabled: employees.businessCardPublicEnabled,
             businessCardPublicToken: employees.businessCardPublicToken,
+            businessCardPublicAlias: employees.businessCardPublicAlias,
             phoneNumber: employees.phoneNumber,
             jobTitle: employees.jobTitle,
             role: employees.role,
@@ -132,6 +134,7 @@ export default async function MobileProfilePage() {
             email: employees.email,
             businessCardPublicEnabled: employees.businessCardPublicEnabled,
             businessCardPublicToken: employees.businessCardPublicToken,
+            businessCardPublicAlias: employees.businessCardPublicAlias,
             phoneNumber: employees.phoneNumber,
             jobTitle: employees.jobTitle,
             role: employees.role,
@@ -311,7 +314,7 @@ export default async function MobileProfilePage() {
         email={userManagementEmail}
         phone={emp?.phoneNumber || data.employee.phoneNumber || ""}
         enabled={emp?.businessCardPublicEnabled ?? false}
-        token={emp?.businessCardPublicToken ?? null}
+        token={emp?.businessCardPublicAlias || emp?.businessCardPublicToken || null}
       />
 
       {/* ── Stats ────────────────────────────────── */}

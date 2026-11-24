@@ -144,11 +144,6 @@ export async function toggleBusinessCardSharingAction(enabled: boolean): Promise
   const employee = await getCurrentUserManagementEmployee(session.user);
   if (!employee) return { ok: false, message: "Data karyawan tidak ditemukan." };
 
-  const [current] = await db
-    .select({ token: employees.businessCardPublicToken })
-    .from(employees)
-    .where(eq(employees.id, employee.id))
-    .limit(1);
 
   if (!enabled) {
     await db.update(employees)
@@ -158,10 +153,19 @@ export async function toggleBusinessCardSharingAction(enabled: boolean): Promise
     return { ok: true, message: "Kartu kontak publik dinonaktifkan." };
   }
 
-  const token = current?.token ?? `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
-  await db.update(employees)
-    .set({ businessCardPublicEnabled: true, businessCardPublicToken: token })
-    .where(eq(employees.id, employee.id));
+  const legacy = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+  const token = await db.transaction(async (tx) => {
+    const [updated] = await tx.update(employees)
+      .set({ businessCardPublicEnabled: true, businessCardPublicToken: sql`coalesce(${employees.businessCardPublicToken}, ${legacy})` })
+      .where(and(eq(employees.id, employee.id), eq(employees.isActive, true), ne(employees.employmentStatus, 'inactive')))
+      .returning({ id: employees.id });
+    if (!updated) return null;
+    const result = await tx.execute<{ alias: string | null }>(sql`select allocate_employee_ecard_alias(${updated.id}) as alias`);
+    const alias = result.rows[0]?.alias;
+    if (!alias) throw new Error('Employee e-card alias allocation failed');
+    return alias;
+  });
+  if (!token) return { ok: false, message: "Kartu kontak tidak dapat diaktifkan." };
   revalidatePath("/mobile/profile");
   return { ok: true, message: "Kartu kontak publik diaktifkan.", token };
 }

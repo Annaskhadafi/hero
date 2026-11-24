@@ -1,8 +1,6 @@
-import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { db } from "@/db";
-import { employees } from "@/db/schema/hero";
+import { getPublicEmployeeEcard } from '@/lib/public-employee-ecard';
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,21 +11,8 @@ function escapeVCard(value: string) {
 
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  if (!/^[A-Za-z0-9_-]{64}$/.test(token)) {
-    return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
-  }
-
-  const [employee] = await db.select({
-    name: employees.name,
-    jobTitle: employees.jobTitle,
-    role: employees.role,
-    email: employees.email,
-    phoneNumber: employees.phoneNumber,
-    sharingEnabled: employees.businessCardPublicEnabled,
-    isActive: employees.isActive,
-  }).from(employees).where(eq(employees.businessCardPublicToken, token)).limit(1);
-
-  if (!employee || !employee.sharingEnabled || !employee.isActive) {
+  const employee = await getPublicEmployeeEcard(token);
+  if (!employee) {
     return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
 
@@ -42,7 +27,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
     `TITLE:${escapeVCard(employee.jobTitle || employee.role)}`,
     `EMAIL;TYPE=WORK:${escapeVCard(employee.email)}`,
     ...(employee.phoneNumber ? [`TEL;TYPE=WORK,VOICE:${escapeVCard(employee.phoneNumber)}`] : []),
-    `URL:https://hero.chitraparatama.com/business-card/${token}`,
+    `URL:https://hero.chitraparatama.com/business-card/${employee.publicIdentifier}`,
     "END:VCARD",
     "",
   ];

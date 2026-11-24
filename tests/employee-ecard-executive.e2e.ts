@@ -37,7 +37,7 @@ test('employee e-card shares and revokes the real profile and vCard', async ({ a
     assert.deepEqual(await statuses(card), [200, 200])
     await browser.locator('button:has-text("Show QR")').click()
     await expect(browser.locator('img[alt="Scan to open this digital business card"]')).toBeVisible()
-    assert.equal(await browser.evaluate(() => document.querySelector('[role="dialog"] a[href^="https://hero.chitraparatama.com/business-card/"]')?.getAttribute('href') ?? ''), `https://hero.chitraparatama.com${card}`)
+    assert.equal(await browser.evaluate(() => document.querySelector('[role="dialog"] a[href^="https://hero.chitraparatama.com/business-card/"]')?.getAttribute('href') ?? ''), `https://hero.chitraparatama.com/business-card/nara-contoh`)
     await app.screenshot('owner-executive-qr')
     await browser.locator('[role="dialog"] button:has-text("Tutup")').last().click()
   } finally {

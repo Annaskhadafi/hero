@@ -400,6 +400,13 @@
       "when": 1795550000001,
       "tag": "0065_email_release_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1795550000002,
+      "tag": "0066_employee_ecard_alias",
+      "breakpoints": true
     }
   ]
 }
