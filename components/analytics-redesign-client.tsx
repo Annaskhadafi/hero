@@ -65,7 +65,7 @@ import {
 } from "@/components/ui/dialog"
 
 const quickActionButtonClassName =
-  "flex h-auto min-h-[4.5rem] w-full flex-col gap-1.5 rounded-xl border border-border/70 bg-white px-2.5 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-700 shadow-none hover:bg-muted/35 hover:text-primary focus-visible:ring-2 focus-visible:ring-[#0753e7]/40 dark:bg-slate-900 dark:text-slate-200"
+  "flex h-auto min-h-[4.5rem] w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-white px-2.5 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-700 shadow-none hover:bg-muted/35 hover:text-primary focus-visible:ring-2 focus-visible:ring-[#0753e7]/40 dark:bg-slate-900 dark:text-slate-200"
 const quickActionIconClassName =
   "flex size-8 items-center justify-center rounded-lg bg-[#0753e7] text-white shadow-xs transition group-hover:scale-105 [&_svg]:size-4"
 
@@ -913,16 +913,17 @@ export function AnalyticsRedesignClient({ data }: { data: IndividualDashboardDat
                     <span className="text-[10px] font-extrabold text-center leading-none">Pengajuan Lembur</span>
                   </Button>
 
-                  <Link
-                    href="/dashboard/chitralearning-lms"
-                    className={quickActionButtonClassName}
-                    title="Buka Platform Learning Management System Chitra LMS"
-                  >
-                    <div className={quickActionIconClassName}>
-                      <GraduationCap className="h-4 w-4" />
-                    </div>
-                    <span className="text-[10px] font-extrabold text-center leading-none">Chitra LMS</span>
-                  </Link>
+                  <Button asChild variant="ghost" className={quickActionButtonClassName}>
+                    <Link
+                      href="/dashboard/chitralearning-lms"
+                      title="Buka Platform Learning Management System Chitra LMS"
+                    >
+                      <div className={quickActionIconClassName}>
+                        <GraduationCap className="h-4 w-4" />
+                      </div>
+                      <span className="text-[10px] font-extrabold text-center leading-none">Chitra LMS</span>
+                    </Link>
+                  </Button>
                 </div>
 
                 {/* Row 3: 3 Reporting, Info & HR Complaint Actions */}
