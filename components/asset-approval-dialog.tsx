@@ -614,7 +614,7 @@ export function AssetApprovalDialog({
                       Tahap Asset Tagging &amp; Penomoran
                     </h4>
                     <p className="text-[11px] text-slate-600">
-                      Syamsul Bahri <span className="font-semibold text-indigo-700">cc Evo Dwi Yulianti</span>
+                      Syamsul Bahri <span className="font-semibold text-indigo-700">(cc &amp; co-approval: Evo Dwi Yulianti)</span>
                     </p>
                   </div>
                 </div>

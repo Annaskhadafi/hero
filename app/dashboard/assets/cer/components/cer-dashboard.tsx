@@ -69,19 +69,38 @@ export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboard
   // Tab 1: Semua CER di HERO (Seluruh pengajuan lintas pemohon untuk view umum & tracking)
   const allRequests = data.requests
 
-  // Tab 2: Daftar Pengajuan Saya (Pengajuan milik user yang login atau pending approval pada dirinya)
+  // Tab 2: Daftar Pengajuan Saya (Pengajuan milik user yang login atau pending approval/co-approval pada dirinya)
   const myRequests = data.requests.filter((r) => {
     if (!data.currentEmployee) return true
     const isMine =
       r.applicantEmployeeId === data.currentEmployee.id ||
       (data.currentEmployee.email && r.applicantEmail === data.currentEmployee.email)
-    const isPendingOnMe = r.approvals?.some(
-      (a) =>
-        a.status === 'Pending' &&
-        (a.approverEmployeeId === data.currentEmployee?.id ||
-          (data.currentEmployee?.name &&
-            a.approverName.toLowerCase().includes(data.currentEmployee.name.toLowerCase())))
+
+    const isFreshya = Boolean(
+      data.currentEmployee?.id === 974 ||
+      data.currentEmployee?.email?.toLowerCase().includes('freshya')
     )
+    const isEvoDwi = Boolean(
+      data.currentEmployee?.id === 1006 ||
+      data.currentEmployee?.email?.toLowerCase().includes('evo')
+    )
+
+    const isPendingOnMe = r.approvals?.some((a) => {
+      if (a.status !== 'Pending') return false
+      const nameMatches =
+        Boolean(data.currentEmployee?.name && a.approverName.toLowerCase().includes(data.currentEmployee.name.toLowerCase()))
+      const idMatches = a.approverEmployeeId === data.currentEmployee?.id
+      const freshyaCoApprove =
+        isFreshya &&
+        (a.approverName.toLowerCase().includes('director') ||
+          a.approverName.toLowerCase().includes('hidayat') ||
+          (a.decisionNote && a.decisionNote.toLowerCase().includes('director')))
+      const evoDwiCoApprove =
+        isEvoDwi &&
+        (a.approverName.toLowerCase().includes('syamsul') ||
+          (a.decisionNote && (a.decisionNote.toLowerCase().includes('tagging') || a.decisionNote.toLowerCase().includes('nomor aset'))))
+      return nameMatches || idMatches || freshyaCoApprove || evoDwiCoApprove
+    })
     return isMine || isPendingOnMe
   })
 

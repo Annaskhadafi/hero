@@ -31,13 +31,13 @@ test.describe('CER Form: Lock Mandatory Approval Steps (Budget Validator, Direct
     const submitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
     await submitBtn.click()
 
-    await page.waitForURL('**/dashboard/**', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 30000 })
     await page.waitForTimeout(2000)
 
     // 2. Navigate to CER Page
     console.log('Navigating to CER Page (/dashboard/assets/cer)...')
     await page.goto('/dashboard/assets/cer')
-    await page.waitForLoadState('networkidle').catch(() => {})
+    await page.waitForLoadState('domcontentloaded')
     await page.waitForTimeout(2000)
 
     // 3. Open "Buat Form CER" dialog
@@ -91,8 +91,11 @@ test.describe('CER Form: Lock Mandatory Approval Steps (Budget Validator, Direct
     await expect(amamaTrash).toHaveCount(0)
     console.log('✓ Verified: Budget Validator Amama Ira is locked with "Wajib" badge and NO delete button!')
 
-    // Find Febrian Dani row
-    const daniRow = dialog.locator('.rounded-lg.border', { hasText: 'Febrian Dani' }).first()
+    // Find Febrian Dani row as Budget Validator
+    const daniRow = dialog
+      .locator('.rounded-lg.border', { hasText: 'Febrian Dani' })
+      .filter({ hasText: 'Budget Validator' })
+      .first()
     await expect(daniRow).toBeVisible({ timeout: 10000 })
     // Verify Febrian Dani has "Wajib" lock badge
     await expect(daniRow.locator('text=Wajib')).toBeVisible()
@@ -120,8 +123,8 @@ test.describe('CER Form: Lock Mandatory Approval Steps (Budget Validator, Direct
     // =========================================================================
     const assetTaggingRow = dialog.locator('.rounded-lg.border', { hasText: 'Asset Tagging' }).first()
     await expect(assetTaggingRow).toBeVisible({ timeout: 10000 })
-    // Verify Asset Tagging has "CC: Evo Dwi"
-    await expect(assetTaggingRow.locator('text=CC: Evo Dwi').first()).toBeVisible()
+    // Verify Asset Tagging has "CC & Co-Approve: Evo Dwi"
+    await expect(assetTaggingRow.locator('text=Evo Dwi').first()).toBeVisible()
     // Verify Asset Tagging has "Wajib" lock badge
     await expect(assetTaggingRow.locator('text=Wajib')).toBeVisible()
     // Verify Asset Tagging row has NO delete button (Trash2)

@@ -384,14 +384,31 @@ export function CerTable({
               </TableRow>
             ) : (
               filteredRequests.map((r, idx) => {
-                // Check if current user is the current pending approver
-                const currentPendingApproval = r.approvals.find(
-                  (a) =>
-                    a.status === 'Pending' &&
-                    currentEmployee &&
-                    (a.approverName.toLowerCase().includes(currentEmployee.name.toLowerCase()) ||
-                      r.currentApproverEmployeeId === currentEmployee.id)
+                const isFreshya = Boolean(
+                  currentEmployee?.id === 974 ||
+                  currentEmployee?.email?.toLowerCase().includes('freshya')
                 )
+                const isEvoDwi = Boolean(
+                  currentEmployee?.id === 1006 ||
+                  currentEmployee?.email?.toLowerCase().includes('evo')
+                )
+
+                // Check if current user is the current pending approver or authorized co-approver
+                const currentPendingApproval = r.approvals.find((a) => {
+                  if (a.status !== 'Pending' || !currentEmployee) return false
+                  const nameMatches = a.approverName.toLowerCase().includes(currentEmployee.name.toLowerCase())
+                  const idMatches = r.currentApproverEmployeeId === currentEmployee.id || a.approverEmployeeId === currentEmployee.id
+                  const freshyaCoApprove =
+                    isFreshya &&
+                    (a.approverName.toLowerCase().includes('director') ||
+                      a.approverName.toLowerCase().includes('hidayat') ||
+                      (a.decisionNote && a.decisionNote.toLowerCase().includes('director')))
+                  const evoDwiCoApprove =
+                    isEvoDwi &&
+                    (a.approverName.toLowerCase().includes('syamsul') ||
+                      (a.decisionNote && (a.decisionNote.toLowerCase().includes('tagging') || a.decisionNote.toLowerCase().includes('nomor aset'))))
+                  return nameMatches || idMatches || freshyaCoApprove || evoDwiCoApprove
+                })
 
                 const isApplicant = currentEmployee && r.applicantEmployeeId === currentEmployee.id;
                 const canManageLifecycle = Boolean(isApplicant) || isSuperAdmin;

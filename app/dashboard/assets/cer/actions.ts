@@ -833,8 +833,8 @@ export async function approveCerStepAction(approvalId: number, decisionNote?: st
       : 'Disetujui oleh Freshya Ochtovita (Board Secretary a.n. Director)'
   } else if (isEvoDwi && isAssetTaggingStep && !isApprover) {
     finalDecisionNote = decisionNote
-      ? `${decisionNote} (Diproses oleh Evo Dwi Yulianti a.n. Syamsul Bahri)`
-      : 'Diproses oleh Evo Dwi Yulianti a.n. Syamsul Bahri'
+      ? `${decisionNote} (Disetujui oleh Evo Dwi Yulianti - Co-Approval Asset Tagging a.n. Syamsul Bahri)`
+      : 'Disetujui oleh Evo Dwi Yulianti (Co-Approval Asset Tagging a.n. Syamsul Bahri)'
   }
 
   // Mark current approval step Approved & save signature
@@ -1114,7 +1114,24 @@ export async function rejectCerStepAction(approvalId: number, rejectReason: stri
     (currentApproval.approverEmployeeId === sessionEmp.id ||
       (currentApproval.approverName && sessionEmp.name && currentApproval.approverName.toLowerCase().includes(sessionEmp.name.toLowerCase())))
 
-  if (!isSuperAdmin && !isApprover) {
+  const isFreshya =
+    sessionEmp?.id === 974 || session.user.email.toLowerCase().includes('freshya')
+
+  const isCurrentDirectorStep =
+    Boolean(currentApproval.decisionNote && currentApproval.decisionNote.toLowerCase().includes('director')) ||
+    Boolean(currentApproval.approverName && currentApproval.approverName.toLowerCase().includes('director')) ||
+    currentApproval.approverEmployeeId === 10
+
+  // Evo Dwi (id: 1006) co-access with Syamsul Bahri (id: 990) for Asset Tagging step
+  const isEvoDwi =
+    sessionEmp?.id === 1006 || session.user.email.toLowerCase().includes('evo')
+
+  const isAssetTaggingStep =
+    Boolean(currentApproval.decisionNote && (currentApproval.decisionNote.toLowerCase().includes('tagging') || currentApproval.decisionNote.toLowerCase().includes('nomor aset'))) ||
+    currentApproval.approverEmployeeId === 990 ||
+    Boolean(currentApproval.approverName && currentApproval.approverName.toLowerCase().includes('syamsul'))
+
+  if (!isSuperAdmin && !isApprover && !(isFreshya && isCurrentDirectorStep) && !(isEvoDwi && isAssetTaggingStep)) {
     return {
       success: false,
       message: 'Akses ditolak: Anda tidak memiliki wewenang untuk menolak pengajuan CER ini.',
@@ -1124,6 +1141,13 @@ export async function rejectCerStepAction(approvalId: number, rejectReason: stri
   const cerId = currentApproval.cerRequestId
   const now = new Date()
 
+  let finalRejectionNote = `Ditolak: ${rejectReason}`
+  if (isFreshya && isCurrentDirectorStep && !isApprover) {
+    finalRejectionNote = `Ditolak oleh Freshya Ochtovita (Board Secretary a.n. Director): ${rejectReason}`
+  } else if (isEvoDwi && isAssetTaggingStep && !isApprover) {
+    finalRejectionNote = `Ditolak oleh Evo Dwi Yulianti (Co-Approval Asset Tagging a.n. Syamsul Bahri): ${rejectReason}`
+  }
+
   // Mark current approval step Rejected
   await db
     .update(approvals)
@@ -1131,7 +1155,7 @@ export async function rejectCerStepAction(approvalId: number, rejectReason: stri
       status: 'Rejected',
       reviewedAt: now,
       rejectionReason: rejectReason,
-      decisionNote: `Ditolak: ${rejectReason}`,
+      decisionNote: finalRejectionNote,
     })
     .where(eq(approvals.id, approvalId))
 
@@ -1605,15 +1629,39 @@ export async function revertCerStepAction(approvalId: number, revertNote: string
     (currentApproval.approverEmployeeId === sessionEmp.id ||
       (currentApproval.approverName && sessionEmp.name && currentApproval.approverName.toLowerCase().includes(sessionEmp.name.toLowerCase())))
 
-  if (!isSuperAdmin && !isApprover) {
+  const isFreshya =
+    sessionEmp?.id === 974 || session.user.email.toLowerCase().includes('freshya')
+
+  const isCurrentDirectorStep =
+    Boolean(currentApproval.decisionNote && currentApproval.decisionNote.toLowerCase().includes('director')) ||
+    Boolean(currentApproval.approverName && currentApproval.approverName.toLowerCase().includes('director')) ||
+    currentApproval.approverEmployeeId === 10
+
+  // Evo Dwi (id: 1006) co-access with Syamsul Bahri (id: 990) for Asset Tagging step
+  const isEvoDwi =
+    sessionEmp?.id === 1006 || session.user.email.toLowerCase().includes('evo')
+
+  const isAssetTaggingStep =
+    Boolean(currentApproval.decisionNote && (currentApproval.decisionNote.toLowerCase().includes('tagging') || currentApproval.decisionNote.toLowerCase().includes('nomor aset'))) ||
+    currentApproval.approverEmployeeId === 990 ||
+    Boolean(currentApproval.approverName && currentApproval.approverName.toLowerCase().includes('syamsul'))
+
+  if (!isSuperAdmin && !isApprover && !(isFreshya && isCurrentDirectorStep) && !(isEvoDwi && isAssetTaggingStep)) {
     return {
       success: false,
-      message: 'Akses ditolak: Anda tidak memiliki wewenang untuk menolak pengajuan CER ini.',
+      message: 'Akses ditolak: Anda tidak memiliki wewenang untuk meminta revisi pengajuan CER ini.',
     }
   }
 
   const cerId = currentApproval.cerRequestId
   const now = new Date()
+
+  let finalRevertNote = `Revisi diminta: ${revertNote}`
+  if (isFreshya && isCurrentDirectorStep && !isApprover) {
+    finalRevertNote = `Revisi diminta oleh Freshya Ochtovita (Board Secretary a.n. Director): ${revertNote}`
+  } else if (isEvoDwi && isAssetTaggingStep && !isApprover) {
+    finalRevertNote = `Revisi diminta oleh Evo Dwi Yulianti (Co-Approval Asset Tagging a.n. Syamsul Bahri): ${revertNote}`
+  }
 
   // Mark current approval step Reverted
   await db
@@ -1622,7 +1670,7 @@ export async function revertCerStepAction(approvalId: number, revertNote: string
       status: 'Reverted',
       reviewedAt: now,
       rejectionReason: revertNote,
-      decisionNote: `Revisi diminta: ${revertNote}`,
+      decisionNote: finalRevertNote,
     })
     .where(eq(approvals.id, approvalId))
 

@@ -114,6 +114,13 @@ export function buildCerSubmittedEmailHtml(params: SendCerSubmittedEmailParams, 
     isDirectorStep ||
     (Array.isArray(params.cc) ? params.cc.some((c) => c.includes('freshya')) : Boolean(params.cc?.includes('freshya')))
 
+  const isAssetTaggingStep =
+    Boolean(effectiveJobTitle && (effectiveJobTitle.toLowerCase().includes('tagging') || effectiveJobTitle.toLowerCase().includes('nomor aset'))) ||
+    Boolean(params.approverName && params.approverName.toLowerCase().includes('syamsul'))
+  const hasAssetTaggingEvoCc =
+    isAssetTaggingStep ||
+    (Array.isArray(params.cc) ? params.cc.some((c) => c.includes('evo')) : Boolean(params.cc?.includes('evo')))
+
   const renderedItemRows =
     params.items && params.items.length > 0
       ? params.items
@@ -171,6 +178,7 @@ export function buildCerSubmittedEmailHtml(params: SendCerSubmittedEmailParams, 
                 <div style="font-size:12px;color:#64748b">
                   Job Title: <strong style="color:#2563eb">${effectiveJobTitle}</strong>
                   ${hasBoardSecretaryCc ? ` &bull; <strong style="color:#4338ca">CC &amp; Co-Approval: Freshya Ochtovita (Board Secretary)</strong>` : ''}
+                  ${hasAssetTaggingEvoCc ? ` &bull; <strong style="color:#d97706">CC &amp; Co-Approval: Evo Dwi Yulianti (Finance Tagging)</strong>` : ''}
                 </div>
               </div>
 

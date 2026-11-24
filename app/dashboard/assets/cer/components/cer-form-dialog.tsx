@@ -151,13 +151,21 @@ export function isMandatoryCerStep(step?: {
   const name = (step.approverName || '').toLowerCase()
   const empId = step.approverEmployeeId
 
-  // 1. Budget Validator (Dual: Amama Ira Amalia Priyono & Febrian Dani)
-  const isBudgetValidator =
+  // Check if this step is explicitly a Budget Validator / Controller step
+  const isBudgetStep =
     lbl.includes('budget') ||
+    lbl.includes('controller') ||
+    lbl.includes('validator')
+
+  // 1. Budget Validator (Dual: Amama Ira Amalia Priyono & Febrian Dani)
+  // NOTE: Febrian Dani has 2 potential roles:
+  // - Managerial biasa (e.g. Atasan Langsung, Department Manager): NOT locked, can be reordered/deleted
+  // - Budget Controller / Validator: LOCKED, cannot be deleted!
+  const isBudgetValidator =
+    isBudgetStep ||
     name.includes('amama') ||
-    name.includes('febrian') ||
     empId === 1341 ||
-    empId === 960
+    (isBudgetStep && (name.includes('febrian') || empId === 960))
 
   // 2. Director (Hidayat Rahman, cc Freshya Ochtovita)
   const isDirector =
@@ -1696,7 +1704,7 @@ export function CerFormDialog({
                                   )}
                                   {isAssetTagging && (
                                     <Badge className="bg-amber-600 text-white text-[9px] px-1.5 py-0 h-4 font-normal">
-                                      CC: Evo Dwi
+                                      CC &amp; Co-Approve: Evo Dwi (Finance Tagging)
                                     </Badge>
                                   )}
                                 </div>
@@ -1715,7 +1723,7 @@ export function CerFormDialog({
                                   )}
                                   {isAssetTagging && (
                                     <span className="text-amber-700 font-medium ml-1">
-                                      (CC: Evo Dwi)
+                                      (CC &amp; Co-Approval: Evo Dwi)
                                     </span>
                                   )}
                                 </span>
@@ -1805,7 +1813,7 @@ export function CerFormDialog({
                     <div className="space-y-0.5 text-[11px]">
                       <p className="font-semibold">Alur Persetujuan &amp; Penomoran Pasca-Direksi:</p>
                       <p>
-                        Setelah persetujuan penuh hingga Direksi, dokumen otomatis diteruskan ke tim Finance (<strong>Syamsul Bahri &amp; Evo Dwi</strong>) untuk penginputan <em>Kelompok Aset &amp; Nomor Aset</em> sebelum form dinyatakan selesai (full approved) dan dokumen resmi PDF diterbitkan.
+                        Setelah persetujuan penuh hingga Direksi, dokumen otomatis diteruskan ke tim Finance (<strong>Syamsul Bahri &amp; Evo Dwi</strong>) untuk penginputan <em>Kelompok Aset &amp; Nomor Aset</em>. Evo Dwi memiliki kewenangan sebagai Co-Approval resmi jika Syamsul Bahri berhalangan.
                       </p>
                     </div>
                   </div>
