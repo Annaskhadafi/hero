@@ -196,6 +196,8 @@ export function CardDetailModal({
               <div>
                 <span className="text-slate-400 text-[11px]">Perusahaan / Instansi</span>
                 <p className="font-semibold text-slate-900">{card.companyName || '-'}</p>
+                {card.businessCategory && <p>Kategori Usaha: {card.businessCategory}</p>}
+                {card.productsServices && <p>Produk / Layanan: {card.productsServices}</p>}
               </div>
             </div>
 

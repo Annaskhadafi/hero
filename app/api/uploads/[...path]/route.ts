@@ -5,6 +5,10 @@ import {
   isS3UploadConfigured,
 } from '@/lib/s3-storage'
 import { getServerSession } from '@/lib/auth-session'
+import { db } from '@/db'
+import { expoBusinessCards } from '@/db/schema/expo-business-cards'
+import { and, eq } from 'drizzle-orm'
+import { getAuthenticatedSession } from '@/lib/rbac'
 import sharp from 'sharp'
 
 export const dynamic = 'force-dynamic'
@@ -143,7 +147,8 @@ function createStreamingResponse(
   contentType: string,
   fileName: string,
   isThumbnail: boolean | undefined,
-  request: Request
+  request: Request,
+  isPrivate = false
 ): NextResponse {
   const isSafeInline = contentType.startsWith('image/') || contentType === 'application/pdf'
   const rangeHeader = request.headers.get('range')
@@ -162,14 +167,14 @@ function createStreamingResponse(
       headers.set('Content-Range', `bytes ${start}-${safeEnd}/${fileBuffer.length}`)
       headers.set('Content-Length', chunk.length.toString())
       headers.set('Accept-Ranges', 'bytes')
-      headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+      headers.set('Cache-Control', isPrivate ? 'private, no-store' : 'public, max-age=31536000, immutable')
       headers.set('X-Content-Type-Options', 'nosniff')
       headers.set(
         'Content-Disposition',
         `${isSafeInline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileName)}"`
       )
 
-      return new NextResponse(chunk, {
+      return new NextResponse(new Uint8Array(chunk), {
         status: 206,
         headers,
       })
@@ -180,17 +185,29 @@ function createStreamingResponse(
   headers.set('Content-Type', contentType)
   headers.set('Content-Length', fileBuffer.length.toString())
   headers.set('Accept-Ranges', 'bytes')
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  headers.set('Cache-Control', isPrivate ? 'private, no-store' : 'public, max-age=31536000, immutable')
   headers.set('X-Content-Type-Options', 'nosniff')
   headers.set(
     'Content-Disposition',
     `${isSafeInline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(fileName)}"`
   )
 
-  return new NextResponse(fileBuffer, {
+  return new NextResponse(new Uint8Array(fileBuffer), {
     status: 200,
     headers,
   })
+}
+
+async function authorizeBusinessCardPhoto(path: string[]) {
+  if (!path.some((segment) => segment.toLowerCase().includes('business-cards'))) return null
+  if (path[0] !== 'business-cards' || !/^business-cards\/(?:[a-f0-9]{64}\/)?[a-f0-9-]{36}\.[a-z0-9]+$/i.test(path.join('/'))) return false
+  const session = await getAuthenticatedSession('business_cards', 'view').catch(() => null)
+  if (!session?.user?.id) return false
+  const [owned] = await db.select({ id: expoBusinessCards.id }).from(expoBusinessCards).where(and(
+    eq(expoBusinessCards.createdById, session.user.id),
+    eq(expoBusinessCards.cardImageUrl, `/api/uploads/${path.join('/')}`),
+  )).limit(1)
+  return Boolean(owned)
 }
 
 export async function HEAD(
@@ -205,12 +222,14 @@ export async function HEAD(
       return new NextResponse(null, { status: 400 })
     }
 
+    const privatePhoto = await authorizeBusinessCardPhoto(path)
+    if (privatePhoto === false) return new NextResponse(null, { status: 404, headers: { 'Cache-Control': 'private, no-store' } })
     const relativePath = path.join('/')
     const fileName = path[path.length - 1]
 
     if (isS3UploadConfigured()) {
       try {
-        const metadata = await getS3ObjectMetadataForProxy(relativePath)
+        const metadata = await getS3ObjectMetadataForProxy(relativePath, privatePhoto === true)
         if (metadata) {
           const headers = new Headers()
           headers.set('Content-Type', metadata.contentType || getContentType(fileName))
@@ -218,7 +237,7 @@ export async function HEAD(
             headers.set('Content-Length', metadata.contentLength.toString())
           }
           headers.set('Accept-Ranges', 'bytes')
-          headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+          headers.set('Cache-Control', privatePhoto ? 'private, no-store' : 'public, max-age=31536000, immutable')
           headers.set('X-Content-Type-Options', 'nosniff')
           return new NextResponse(null, { status: 200, headers })
         }
@@ -282,15 +301,18 @@ export async function GET(
       path[0] === 'asset-transfer' ||
       path[0] === 'asset-borrow' ||
       path[0] === 'asset-disposal' ||
-      path[0] === 'asset-disposals' ||
-      path[0] === 'business-cards'
+      path[0] === 'asset-disposals'
 
-    const isSensitive = !isRootUpload && !isPublicPrefix
+    const privatePhoto = await authorizeBusinessCardPhoto(path)
+    if (privatePhoto === false) return new NextResponse(null, { status: 404, headers: { 'Cache-Control': 'private, no-store' } })
+    const isBusinessCardImage = privatePhoto === true
+    const isSensitive = !isRootUpload && !isPublicPrefix && !isBusinessCardImage
     if (isSensitive) {
       const session = await getServerSession()
-      if (!session?.user?.email) {
+      if (!session?.user?.id) {
         return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
       }
+
     }
 
     const relativePath = path.join('/')
@@ -307,7 +329,7 @@ export async function GET(
     // 2. Fetch from S3 proxy with fast, targeted lookup
     if (isS3UploadConfigured()) {
       try {
-        const object = await getS3ObjectForProxy(relativePath)
+        const object = await getS3ObjectForProxy(relativePath, isBusinessCardImage)
         if (object && object.body) {
           const rawBuffer = Buffer.from(object.body)
 
@@ -320,7 +342,7 @@ export async function GET(
             fileName,
             targetWidth
           )
-          return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request)
+          return createStreamingResponse(fileBuffer, contentType, fileName, isThumbnail, request, isBusinessCardImage)
         }
       } catch (error) {
         console.warn('Failed to proxy S3 upload key:', relativePath, error)

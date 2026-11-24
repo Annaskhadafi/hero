@@ -25,16 +25,19 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import type { ExpoBusinessCard } from '@/db/schema/expo-business-cards';
 import { resolveUploadUrl } from '@/lib/resolve-upload-url';
-import { getBusinessCardsAction } from '@/app/actions/business-card';
+import { HeroConfirmDialog } from '@/components/templates';
+import { deleteBusinessCardAction, getBusinessCardsAction } from '@/app/actions/business-card';
 import { ScanCardDialog } from '@/app/dashboard/business-cards/components/scan-card-dialog';
 import { CardDetailModal } from '@/app/dashboard/business-cards/components/card-detail-modal';
 import { CardFormDialog } from '@/app/dashboard/business-cards/components/card-form-dialog';
 
 interface MobileBusinessCardsClientProps {
   initialCards: ExpoBusinessCard[];
+  canEdit: boolean;
+  canDelete: boolean;
 }
 
-export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsClientProps) {
+export function MobileBusinessCardsClient({ initialCards, canEdit, canDelete }: MobileBusinessCardsClientProps) {
   const [cards, setCards] = React.useState<ExpoBusinessCard[]>(initialCards);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [activeFilter, setActiveFilter] = React.useState<'all' | 'hot' | 'warm' | 'partner'>('all');
@@ -45,6 +48,21 @@ export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsC
   const [isDetailOpen, setIsDetailOpen] = React.useState(false);
   const [isFormOpen, setIsFormOpen] = React.useState(false);
   const [selectedCard, setSelectedCard] = React.useState<ExpoBusinessCard | null>(null);
+
+  const [deleteCard, setDeleteCard] = React.useState<ExpoBusinessCard | null>(null);
+  const [deleteError, setDeleteError] = React.useState('');
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const confirmDelete = async () => {
+    if (!deleteCard || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const response = await deleteBusinessCardAction(deleteCard.id);
+      if (!response.success) { setDeleteError('Gagal menghapus kartu nama.'); return; }
+      setDeleteCard(null);
+      await loadData();
+    } catch { setDeleteError('Gagal menghapus kartu nama.'); }
+    finally { setIsDeleting(false); }
+  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -150,13 +168,13 @@ export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsC
               Jepret kartu nama fisik dan simpan kontak langsung ke sistem.
             </p>
           </div>
-          <Button
+          {canEdit && (<Button
             onClick={() => setIsScanOpen(true)}
             className="h-10 px-4 bg-white text-blue-700 hover:bg-blue-50 font-bold text-xs rounded-xl shrink-0 shadow-xs flex items-center gap-1.5 active:scale-95 transition-transform"
           >
             <Camera className="size-4 text-blue-600" />
             <span>Scan Sekarang</span>
-          </Button>
+          </Button>)}
         </div>
 
         {/* KPI Metric Pills */}
@@ -264,13 +282,13 @@ export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsC
                   ? `Tidak ada kontak yang cocok dengan "${searchQuery}".`
                   : 'Mulai jepret kartu nama orang saat di expo untuk menyimpan kontak.'}
               </p>
-              <Button
+              {canEdit && (<Button
                 onClick={() => setIsScanOpen(true)}
                 className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl gap-1.5 mt-1"
               >
                 <Camera className="size-3.5" />
                 Scan Kartu Nama
-              </Button>
+              </Button>)}
             </div>
           ) : (
             filteredCards.map((card) => {
@@ -407,6 +425,7 @@ export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsC
                     >
                       Detail
                     </Button>
+                    {canDelete && <Button variant="outline" className="h-9" onClick={() => { setDeleteError(''); setDeleteCard(card); }}>Hapus</Button>}
                   </div>
                 </div>
               );
@@ -416,15 +435,18 @@ export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsC
       </div>
 
       {/* Floating Action Button (FAB) on Mobile */}
-      <div className="fixed bottom-6 right-5 z-40">
+      {canEdit && (<div className="fixed bottom-6 right-5 z-40">
         <Button
           onClick={() => setIsScanOpen(true)}
           className="size-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl flex items-center justify-center p-0 active:scale-95 transition-transform ring-4 ring-blue-500/20"
         >
           <Camera className="size-6" />
         </Button>
-      </div>
+      </div>)}
 
+      <HeroConfirmDialog open={Boolean(deleteCard)} onOpenChange={open => { if (!open) setDeleteCard(null); }}
+        title="Hapus kartu nama?" description={deleteError || `Kartu ${deleteCard?.contactName ?? ''} akan dihapus.`}
+        tone="destructive" confirmLabel="Hapus" loading={isDeleting} onConfirm={confirmDelete} />
       {/* Modals */}
       <ScanCardDialog
         open={isScanOpen}
@@ -436,11 +458,11 @@ export function MobileBusinessCardsClient({ initialCards }: MobileBusinessCardsC
         card={selectedCard}
         open={isDetailOpen}
         onOpenChange={setIsDetailOpen}
-        onEdit={(card) => {
+        onEdit={canEdit ? (card) => {
           setIsDetailOpen(false);
           setSelectedCard(card);
           setIsFormOpen(true);
-        }}
+        } : undefined}
       />
 
       <CardFormDialog

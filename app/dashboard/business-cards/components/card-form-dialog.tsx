@@ -1,5 +1,6 @@
 'use client';
 
+import { businessCategoryOptions } from './scan-card-dialog';
 import * as React from 'react';
 import { HeroFormDialog, HeroFormField, HeroInput, HeroSearchableSelect, HeroTextarea } from '@/components/templates';
 import { saveBusinessCardAction, type BusinessCardFormInput } from '@/app/actions/business-card';
@@ -54,6 +55,8 @@ export function CardFormDialog({
       setFormData({
         id: card.id,
         expoName: card.expoName || '',
+        businessCategory: card.businessCategory,
+        productsServices: card.productsServices,
         contactName: card.contactName || '',
         companyName: card.companyName || '',
         jobTitle: card.jobTitle || '',
@@ -128,7 +131,7 @@ export function CardFormDialog({
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <HeroFormField label="Nama Acara Expo / Event">
+          <HeroFormField label="Nama Acara Expo / Event (opsional)">
             <HeroInput
               placeholder="Contoh: Mining Indonesia 2026"
               value={formData.expoName}
@@ -179,6 +182,14 @@ export function CardFormDialog({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <HeroFormField label="Kategori Usaha">
+              <HeroSearchableSelect options={businessCategoryOptions(formData.businessCategory)} value={formData.businessCategory || ''}
+                onChange={value => setFormData(prev => ({ ...prev, businessCategory: typeof value === 'string' ? value : '' }))} placeholder="Pilih Kategori Usaha" />
+            </HeroFormField>
+            <HeroFormField label="Produk / Layanan">
+              <HeroInput placeholder="Produk atau layanan perusahaan" value={formData.productsServices ?? ''}
+                onChange={e => setFormData(prev => ({ ...prev, productsServices: e.target.value }))} />
+            </HeroFormField>
           <HeroFormField label="Kategori Kontak">
             <HeroSearchableSelect
               options={CATEGORY_OPTIONS}

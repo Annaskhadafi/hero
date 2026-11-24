@@ -29,8 +29,9 @@ Fitur ini diimplementasikan di atas arsitektur standar HERO (Next.js App Router,
 - **Rasional**: Menjaga integritas arsitektur HERO tanpa hardcoded presigned URL 1 jam, sehingga tautan foto persisten di semua environment.
 
 ### Decision 3: Vision AI Extraction Pipeline
-- **Pilihan**: Membuat modul terisolasi `lib/business-card-ai.ts` yang memanfaatkan endpoint Vision AI aktif (OpenAI/OpenRouter/Gemini compatible) untuk mengekstrak data kartu nama ke dalam skema JSON terstruktur.
-- **Rasional**: Mirip dengan pola yang sudah sukses diimplementasikan pada `lib/mcu-wellness-ai.ts`.
+- Gunakan `OPENAI_BASE_URL`, `OPENAI_API_KEY`, dan `OPENAI_MODEL` sebagai satu konfigurasi server-side. Jangan fallback ke kredensial domain lain atau membuat kontak dummy pada kegagalan.
+- Dialog bersama mobile dan desktop memotong gambar di browser sebelum mengirim `File` hasil crop untuk S3 dan OpenAI. Nama acara opsional. Tambahkan kolom nullable untuk kategori usaha dan produk/layanan tanpa menebak nilai kartu lama.
+- Gunakan permission `business_cards` dan pemilik dari session pada list, perubahan, penghapusan, dan proxy foto. Ekspor memakai data dari list terotorisasi. Foto lama hanya dapat dibaca jika terhubung ke kartu pemilik; preview pra-simpan memakai URL lokal browser.
 
 ### Decision 4: Antarmuka UI Baku `@/components/templates`
 - **Pilihan**: Menggunakan `HeroDataTable` untuk listing data (mendukung instant search, filter expo, ekspor Excel/PDF) dan `HeroDetailModal` untuk document preview berdampingan (gambar kartu nama + data kontak).

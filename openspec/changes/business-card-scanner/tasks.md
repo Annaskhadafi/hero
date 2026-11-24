@@ -21,6 +21,12 @@
 - [x] 4.1 Daftarkan resource `business-cards` pada `lib/navigation.ts` dan sinkronkan permission RBAC — verify: menu Business Cards muncul di sidebar sesuai hak akses pengguna
 - [x] 4.2 Buat dan jalankan skenario pengujian E2E otomatis di `tests/business-card-scanner.e2e.ts` lengkap dengan screenshot verifikasi — verify: `npx e2e run tests/business-card-scanner.e2e.ts` berhasil PASS dan menghasilkan screenshot UI
 
+## 5. Private scanned business cards
+
+- [x] 5.1 Use the shared OpenAI configuration and expose truthful failure; verify synthetic image extraction and provider-error handling.
+- [x] 5.2 Add nullable business fields and verify the additive migration and owner-only server access, including direct photos, list/export, edit, and delete.
+- [x] 5.3 Add manual crop and editable business fields to shared forms, and keep event optional; verify mobile and desktop E2E with screenshots and monthly report.
+
 ## Workflow follow-up
 
 - Arsipkan change dengan `openspec archive business-card-scanner --yes` setelah seluruh task selesai diimplementasikan dan diverifikasi.

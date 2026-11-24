@@ -1,12 +1,79 @@
 'use client';
 
 import * as React from 'react';
-import { Camera, Upload, Sparkles, Loader2, Check, RefreshCw, Image as ImageIcon } from 'lucide-react';
+import { Camera, Upload, Sparkles, Loader2, Check, Move, ScanLine } from 'lucide-react';
+
+const BUSINESS_CATEGORIES = ['Otomotif', 'Konstruksi', 'Pendidikan', 'Energi', 'Keuangan', 'Kesehatan', 'Manufaktur', 'Pertambangan', 'Ritel', 'Teknologi', 'Logistik', 'Lainnya'];
+
+export function businessCategoryOptions(value?: string | null) {
+  return [...new Set([...BUSINESS_CATEGORIES, ...(value ? [value] : [])])].map(label => ({ value: label, label }));
+}
+
+type CropRect = { x: number; y: number; width: number; height: number };
+
+/** Pointer- and keyboard-operable crop rectangle; coordinates are normalized to the image. */
+function CardCropper({ src, onCropChange }: { src: string; onCropChange: (crop: CropRect) => void }) {
+  const [crop, setCrop] = React.useState<CropRect>({ x: 0.08, y: 0.18, width: 0.84, height: 0.64 });
+  const stageRef = React.useRef<HTMLDivElement>(null);
+  const gesture = React.useRef<{ startX: number; startY: number; crop: CropRect; mode: 'move' | 'resize' } | null>(null);
+  const update = (next: CropRect) => {
+    const width = Math.max(0.15, Math.min(1, next.width));
+    const height = Math.max(0.15, Math.min(1, next.height));
+    const bounded = { x: Math.max(0, Math.min(1 - width, next.x)), y: Math.max(0, Math.min(1 - height, next.y)), width, height };
+    setCrop(bounded);
+    onCropChange(bounded);
+  };
+  const handlePointerDown = (event: React.PointerEvent, mode: 'move' | 'resize') => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.current = { startX: event.clientX, startY: event.clientY, crop, mode };
+  };
+  const handlePointerMove = (event: React.PointerEvent) => {
+    if (!gesture.current || !stageRef.current) return;
+    const bounds = stageRef.current.getBoundingClientRect();
+    const dx = (event.clientX - gesture.current.startX) / bounds.width;
+    const dy = (event.clientY - gesture.current.startY) / bounds.height;
+    const start = gesture.current.crop;
+    update(gesture.current.mode === 'move'
+      ? { ...start, x: start.x + dx, y: start.y + dy }
+      : { ...start, width: start.width + dx, height: start.height + dy });
+  };
+  const keyboardAdjust = (event: React.KeyboardEvent, mode: 'move' | 'resize') => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 0.05 : 0.01;
+    const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+    const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+    update(mode === 'move' ? { ...crop, x: crop.x + dx, y: crop.y + dy } : { ...crop, width: crop.width + dx, height: crop.height + dy });
+  };
+  return <div className="space-y-2">
+    <div ref={stageRef} className="relative mx-auto w-fit max-w-full overflow-hidden rounded-lg bg-slate-950 touch-none select-none">
+      {/* eslint-disable-next-line @next/next/no-img-element */}<img src={src} alt="Source business card for cropping" className="block max-h-[38vh] max-w-full w-auto h-auto" draggable={false} />
+      <div role="group" tabIndex={0} onKeyDown={(e) => keyboardAdjust(e, 'move')} onPointerDown={(e) => handlePointerDown(e, 'move')} onPointerMove={handlePointerMove} onPointerUp={() => { gesture.current = null; }} onPointerCancel={() => { gesture.current = null; }} className="absolute cursor-move border-2 border-blue-400 bg-blue-400/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" style={{ left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${crop.width * 100}%`, height: `${crop.height * 100}%` }} aria-label="Geser bingkai potong">
+        <span className="absolute left-1 top-1 rounded bg-slate-950/70 px-1.5 py-1 text-[10px] text-white"><Move className="inline size-3 mr-1"/>Geser</span>
+        <button type="button" aria-label="Ubah ukuran bingkai potong" onKeyDown={(e) => { e.stopPropagation(); keyboardAdjust(e, 'resize'); }} onPointerDown={(e) => { e.stopPropagation(); handlePointerDown(e, 'resize'); }} onPointerMove={handlePointerMove} onPointerUp={() => { gesture.current = null; }} className="absolute bottom-0 right-0 size-11 cursor-se-resize rounded-tl-lg bg-blue-600 text-white touch-none"><ScanLine className="mx-auto size-4"/></button>
+      </div>
+    </div>
+    <p className="text-xs text-muted-foreground">Geser bingkai atau tarik sudut kanan bawah untuk mengubah ukuran. Gunakan tombol panah jika memakai keyboard.</p>
+  </div>;
+}
+
+function cropImageBlob(image: HTMLImageElement, crop: CropRect): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  const width = Math.max(1, Math.floor(image.naturalWidth * crop.width));
+  const height = Math.max(1, Math.floor(image.naturalHeight * crop.height));
+  const scale = Math.min(1, 1800 / Math.max(width, height));
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return Promise.reject(new Error('Canvas is unavailable.'));
+  context.drawImage(image, Math.floor(image.naturalWidth * crop.x), Math.floor(image.naturalHeight * crop.y), width, height, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Unable to create cropped image.')), 'image/jpeg', 0.92));
+}
 import { Button } from '@/components/ui/button';
 import { HeroFormField, HeroInput, HeroSearchableSelect, HeroTextarea } from '@/components/templates';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { scanBusinessCardAction, saveBusinessCardAction, type BusinessCardFormInput } from '@/app/actions/business-card';
-import { resolveUploadUrl } from '@/lib/resolve-upload-url';
 
 interface ScanCardDialogProps {
   open: boolean;
@@ -37,86 +104,72 @@ export function ScanCardDialog({
 }: ScanCardDialogProps) {
   const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
-
-  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = React.useState<string>('');
+  const generation = React.useRef(0);
+  const [sourceUrl, setSourceUrl] = React.useState('');
+  const [previewUrl, setPreviewUrl] = React.useState('');
+  const [crop, setCrop] = React.useState<CropRect>({ x: 0.08, y: 0.18, width: 0.84, height: 0.64 });
+  const [scanStatus, setScanStatus] = React.useState('');
   const [isScanning, setIsScanning] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string>('');
 
-  const [formData, setFormData] = React.useState<BusinessCardFormInput>({
-    expoName: initialExpoName,
-    contactName: '',
-    companyName: '',
-    jobTitle: '',
-    phoneNumber: '',
-    email: '',
-    address: '',
-    website: '',
-    cardImageUrl: '',
-    notes: '',
-    category: 'lead',
-    rating: 'warm',
-  });
-
+  const emptyForm = React.useCallback((): BusinessCardFormInput => ({
+    expoName: initialExpoName, contactName: '', companyName: '', jobTitle: '', phoneNumber: '',
+    email: '', address: '', website: '', cardImageUrl: '', notes: '', category: 'lead', rating: 'warm',
+  }), [initialExpoName]);
+  const [formData, setFormData] = React.useState(emptyForm);
+  React.useEffect(() => () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); }, [sourceUrl]);
+  React.useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
   React.useEffect(() => {
-    if (open) {
-      setFormData((prev) => ({
-        ...prev,
-        expoName: prev.expoName || initialExpoName,
-      }));
-    } else {
-      // Reset state on close
-      setSelectedFile(null);
+    if (!open) {
+      generation.current++;
+      setSourceUrl('');
       setPreviewUrl('');
+      setIsScanning(false);
       setErrorMessage('');
+      setScanStatus('');
+      setFormData(emptyForm());
     }
-  }, [open, initialExpoName]);
+  }, [open, emptyForm]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setSelectedFile(file);
-    const localUrl = URL.createObjectURL(file);
-    setPreviewUrl(localUrl);
+    e.target.value = '';
+    generation.current++;
+    setSourceUrl(URL.createObjectURL(file));
+    setPreviewUrl('');
+    setFormData(prev => ({ ...emptyForm(), expoName: prev.expoName, notes: prev.notes }));
+    setCrop({ x: 0.08, y: 0.18, width: 0.84, height: 0.64 });
     setErrorMessage('');
-
-    // Trigger AI Scan automatically
-    await processCardFile(file);
+    setScanStatus('');
   };
 
-  const processCardFile = async (file: File) => {
+  const confirmCrop = async () => {
+    const request = ++generation.current;
     setIsScanning(true);
     setErrorMessage('');
-
     try {
+      const image = new Image();
+      image.src = sourceUrl;
+      await image.decode();
+      const blob = await cropImageBlob(image, crop);
+      if (generation.current !== request) return;
       const data = new FormData();
-      data.append('file', file);
-      const res = await scanBusinessCardAction(data);
-
-      if (res.success && res.extracted) {
-        setFormData((prev) => ({
-          ...prev,
-          contactName: res.extracted?.contactName || prev.contactName,
-          companyName: res.extracted?.companyName || prev.companyName,
-          jobTitle: res.extracted?.jobTitle || prev.jobTitle,
-          phoneNumber: res.extracted?.phoneNumber || prev.phoneNumber,
-          email: res.extracted?.email || prev.email,
-          address: res.extracted?.address || prev.address,
-          website: res.extracted?.website || prev.website,
-          notes: res.extracted?.notes || prev.notes,
-          category: res.extracted?.category || prev.category,
-          rating: res.extracted?.rating || prev.rating,
-          cardImageUrl: res.cardImageUrl || prev.cardImageUrl,
-        }));
-      } else {
-        setErrorMessage(res.error || 'Gagal mengekstrak data dari kartu nama. Silakan lengkapi manual.');
+      data.append('file', new File([blob], 'business-card.jpg', { type: 'image/jpeg' }));
+      const result = await scanBusinessCardAction(data);
+      if (generation.current !== request) return;
+      if (result.cardImageUrl) {
+        setPreviewUrl(URL.createObjectURL(blob));
+        setSourceUrl('');
+        setFormData(prev => ({ ...prev, ...(result.extracted ?? {}), cardImageUrl: result.cardImageUrl! }));
       }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Terjadi kesalahan saat memindai kartu nama.');
+      if (result.success && result.extracted) setScanStatus('Data berhasil diekstrak. Periksa sebelum menyimpan.');
+      else setErrorMessage(result.extractionFailed ? 'Ekstraksi otomatis gagal. Silakan isi data secara manual.' : result.error || 'Gagal memproses foto.');
+    } catch {
+      if (generation.current === request) setErrorMessage('Gagal memproses foto. Coba JPG, PNG, atau WebP.');
     } finally {
-      setIsScanning(false);
+      if (generation.current === request) setIsScanning(false);
     }
   };
 
@@ -180,7 +233,13 @@ export function ScanCardDialog({
         <form onSubmit={handleSave} className="space-y-5">
           {/* Capture Trigger Area */}
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-4">
-            {previewUrl ? (
+            {sourceUrl ? (
+              <div className="space-y-3">
+                <CardCropper key={sourceUrl} src={sourceUrl} onCropChange={setCrop} />
+                <Button type="button" className="h-9" disabled={isScanning} onClick={() => void confirmCrop()}>{isScanning ? 'Menganalisis…' : 'Potong & Pindai'}</Button>
+                <Button type="button" variant="outline" className="ms-2 h-9" disabled={isScanning} onClick={() => fileInputRef.current?.click()}>Ganti Berkas</Button>
+              </div>
+            ) : previewUrl ? (
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <div className="relative size-32 rounded-lg border border-slate-200 overflow-hidden bg-black shrink-0 shadow-sm">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -206,8 +265,8 @@ export function ScanCardDialog({
                       </>
                     ) : (
                       <>
-                        <Check className="size-3.5 text-emerald-600" />
-                        <span>Foto siap & data berhasil diekstrak!</span>
+                        {scanStatus && <Check className="size-3.5 text-emerald-600" />}
+                        <span>{scanStatus || 'Foto tersimpan. Lengkapi data secara manual.'}</span>
                       </>
                     )}
                   </div>
@@ -280,7 +339,7 @@ export function ScanCardDialog({
 
           {/* Form Fields: Editable after AI extraction */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-            <HeroFormField label="Nama Acara Expo / Event" tooltip="Nama pameran tempat kartu ini didapat">
+            <HeroFormField label="Nama Acara Expo / Event (opsional)" tooltip="Nama pameran tempat kartu ini didapat">
               <HeroInput
                 placeholder="Contoh: Mining Indonesia 2026"
                 value={formData.expoName}
@@ -337,6 +396,14 @@ export function ScanCardDialog({
               />
             </HeroFormField>
 
+            <HeroFormField label="Kategori Usaha">
+              <HeroSearchableSelect options={businessCategoryOptions(formData.businessCategory)} value={formData.businessCategory || ''}
+                onChange={value => setFormData(prev => ({ ...prev, businessCategory: typeof value === 'string' ? value : '' }))} placeholder="Pilih Kategori Usaha" />
+            </HeroFormField>
+            <HeroFormField label="Produk / Layanan">
+              <HeroInput placeholder="Produk atau layanan perusahaan" value={formData.productsServices ?? ''}
+                onChange={e => setFormData(prev => ({ ...prev, productsServices: e.target.value }))} />
+            </HeroFormField>
             <HeroFormField label="Kategori Kontak">
               <HeroSearchableSelect
                 options={CATEGORY_OPTIONS}
@@ -388,7 +455,7 @@ export function ScanCardDialog({
             <Button
               type="submit"
               className="h-9 bg-blue-600 hover:bg-blue-700 text-white font-medium gap-1.5"
-              disabled={isSaving || isScanning}
+              disabled={isSaving || isScanning || Boolean(sourceUrl)}
             >
               {isSaving ? (
                 <>

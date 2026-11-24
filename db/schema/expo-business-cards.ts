@@ -10,6 +10,8 @@ export const expoBusinessCards = pgTable('expo_business_cards', {
   email: text('email').notNull().default(''),
   address: text('address').notNull().default(''),
   website: text('website').notNull().default(''),
+  businessCategory: text('business_category'),
+  productsServices: text('products_services'),
   cardImageUrl: text('card_image_url').notNull().default(''),
   notes: text('notes').notNull().default(''),
   category: text('category').notNull().default('lead'), // 'lead' | 'client' | 'vendor' | 'partner' | 'other'

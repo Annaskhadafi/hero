@@ -429,6 +429,7 @@ export function resolveS3ObjectKey(objectUrl: string | null) {
 }
 
 function buildTargetedCandidateKeys(cleanKey: string, bareFilename: string): string[] {
+  if (cleanKey.startsWith('business-cards/')) return [cleanKey]
   const list: string[] = [cleanKey]
 
   if (cleanKey.startsWith('upload/')) {
@@ -455,7 +456,7 @@ function buildTargetedCandidateKeys(cleanKey: string, bareFilename: string): str
   return Array.from(new Set(list))
 }
 
-export async function getS3ObjectMetadataForProxy(objectUrl: string | null) {
+export async function getS3ObjectMetadataForProxy(objectUrl: string | null, allowPrivateBusinessCard = false) {
   if (!objectUrl || !isS3UploadConfigured()) {
     return null
   }
@@ -473,6 +474,7 @@ export async function getS3ObjectMetadataForProxy(objectUrl: string | null) {
   }
 
   const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
+  if (cleanKey.split('/').includes('business-cards') && !allowPrivateBusinessCard) return null
   const bareFilename = cleanKey.split('/').pop() || cleanKey
   const candidateKeys = buildTargetedCandidateKeys(cleanKey, bareFilename)
   const client = getS3Client()
@@ -504,7 +506,7 @@ export async function getS3ObjectMetadataForProxy(objectUrl: string | null) {
   return null
 }
 
-export async function getS3ObjectForProxy(objectUrl: string | null) {
+export async function getS3ObjectForProxy(objectUrl: string | null, allowPrivateBusinessCard = false) {
   if (!objectUrl || !isS3UploadConfigured()) {
     return null
   }
@@ -522,6 +524,7 @@ export async function getS3ObjectForProxy(objectUrl: string | null) {
   }
 
   const cleanKey = decodeURIComponent(primaryKey).replace(/^\/+/, '')
+  if (cleanKey.split('/').includes('business-cards') && !allowPrivateBusinessCard) return null
   const bareFilename = cleanKey.split('/').pop() || cleanKey
 
   // Distinct candidate keys - targeted lookups for S3

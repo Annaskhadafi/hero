@@ -6,6 +6,7 @@ Saat menghadiri expo atau pameran industri (seperti pameran pertambangan, alat b
 
 ## What Changes
 
+- **Penyempurnaan Scanner**: Crop manual sebelum upload/ekstraksi, konfigurasi OpenAI HERO, acara opsional, kategori usaha dan produk/layanan yang dapat dikoreksi, serta akses privat untuk pemilik.
 - **Penyimpanan Berkas Kartu Nama**: Integrasi upload foto kartu nama ke S3 persisten via proxy `/api/uploads/business-cards/*` dengan resolusi URL aman `resolveUploadUrl`.
 - **Ekstraksi Vision AI**: Layanan ekstraksi terstruktur menggunakan model Vision untuk membaca Nama, Jabatan, Perusahaan, Nomor HP/WhatsApp, Email, Alamat, Website, serta catatan tambahan.
 - **Formulir Cepat & Penyesuaian**: Antarmuka review hasil scan yang memungkinkan pengguna memverifikasi data, memilih/mengisi nama acara expo, serta menambahkan catatan peluang kerja sama.
