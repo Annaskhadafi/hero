@@ -330,8 +330,7 @@ export async function uploadAnyFileToS3(
     } catch (putError: any) {
       lastError = putError
       s3Client = null // Reset cached client so subsequent attempts create fresh HTTP connection
-      const isAbortedByUser = abortSignal?.aborted && !abortSignal?.reason?.name?.includes('Timeout')
-      if (isAbortedByUser || attempt === maxAttempts) {
+      if (abortSignal?.aborted || attempt === maxAttempts) {
         break
       }
       const errMsg = putError?.cause?.message || putError?.message || putError

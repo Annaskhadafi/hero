@@ -149,6 +149,7 @@ export function ScanCardDialog({
     const request = ++generation.current;
     setIsScanning(true);
     setErrorMessage('');
+    let phase: 'crop' | 'request' = 'crop';
     try {
       const image = new Image();
       image.src = sourceUrl;
@@ -157,6 +158,7 @@ export function ScanCardDialog({
       if (generation.current !== request) return;
       const data = new FormData();
       data.append('file', new File([blob], 'business-card.jpg', { type: 'image/jpeg' }));
+      phase = 'request';
       const result = await scanBusinessCardAction(data);
       if (generation.current !== request) return;
       if (result.cardImageUrl) {
@@ -167,7 +169,9 @@ export function ScanCardDialog({
       if (result.success && result.extracted) setScanStatus('Data berhasil diekstrak. Periksa sebelum menyimpan.');
       else setErrorMessage(result.extractionFailed ? 'Ekstraksi otomatis gagal. Silakan isi data secara manual.' : result.error || 'Gagal memproses foto.');
     } catch {
-      if (generation.current === request) setErrorMessage('Gagal memproses foto. Coba JPG, PNG, atau WebP.');
+      if (generation.current === request) setErrorMessage(phase === 'crop'
+        ? 'Foto tidak bisa dipotong di perangkat ini. Coba pilih foto lain.'
+        : 'Tidak mendapat respons dari server. Coba pindai lagi; hasil potong tetap tersedia.');
     } finally {
       if (generation.current === request) setIsScanning(false);
     }

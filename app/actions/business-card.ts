@@ -57,18 +57,17 @@ export async function scanBusinessCardAction(formData: FormData): Promise<{
       return { success: false, error: 'File gambar kartu nama tidak ditemukan' };
     }
 
-    // 1. Upload to persistent S3 storage
-    const { key } = await uploadAnyFileToS3(file, imagePrefix(session.user.id));
-    const cardImageUrl = `/api/uploads/${key}`;
-
-    // 2. Read buffer for Vision AI
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const fileBase64 = buffer.toString('base64');
-    const mimeType = file.type || 'image/jpeg';
-
-    // 3. Extract contact entities via AI Vision
-    const aiResult = await extractBusinessCardFromImage({ fileBase64, mimeType });
+    const fileBase64 = Buffer.from(await file.arrayBuffer()).toString('base64');
+    const upload = uploadAnyFileToS3(file, imagePrefix(session.user.id), AbortSignal.timeout(12_000))
+      .catch(() => {
+        console.warn('[business-card] cropped photo upload failed');
+        return null;
+      });
+    const extraction = extractBusinessCardFromImage({ fileBase64, mimeType: file.type });
+    const stored = await upload;
+    if (!stored) return { success: false, error: 'Foto belum tersimpan. Coba lagi saat koneksi stabil; hasil potong tetap tersedia.' };
+    const cardImageUrl = `/api/uploads/${stored.key}`;
+    const aiResult = await extraction;
 
     if (aiResult.isMockFallback) {
       return { success: false, extractionFailed: true, cardImageUrl, error: 'Ekstraksi kartu nama gagal' };

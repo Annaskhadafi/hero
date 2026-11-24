@@ -31,7 +31,9 @@ test('business-card photo proxy authenticates and binds image key to an owned re
 test('scan requires authentication and persistent upload; extraction fallback is never success', () => {
   const actions = read('app/actions/business-card.ts')
   assert.match(actions, /getAuthenticatedSession\('business_cards', 'create'\)/)
-  assert.match(actions, /await uploadAnyFileToS3\(file, imagePrefix\(session\.user\.id\)\)/)
+  assert.match(actions, /uploadAnyFileToS3\(file, imagePrefix\(session\.user\.id\), AbortSignal\.timeout\(12_000\)\)/)
+  assert.ok(actions.indexOf('const extraction =') < actions.indexOf('const stored = await upload'))
+  assert.match(actions, /if \(!stored\) return \{ success: false/)
   assert.match(actions, /!validated\.cardImageUrl\.startsWith\(imageBase\)/)
   assert.match(actions, /extractionFailed: true/)
   assert.match(actions, /if \(aiResult\.isMockFallback\)/)
