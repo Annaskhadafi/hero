@@ -1052,21 +1052,21 @@ export function CargoManifestDirectExport({ row }: { row: CargoManifestRecord })
 }
 
 function PdfContent({ row }: { row: CargoManifestRecord }) {
-  // Accommodate up to 30 items on a single page before breaking to a new page (with generous signature clearance),
+  // Accommodate up to 35 items on a single page before breaking to a new page (with generous signature clearance),
   // and efficiently paginate larger batches:
-  // - Page 1 (with shipping details box & signatures): up to 30 items
-  // - Middle pages (without shipping details or signatures): up to 38 items
-  // - Last page (with signatures): up to 34 items
+  // - Page 1 (with shipping details box & signatures): up to 35 items
+  // - Middle pages (without shipping details or signatures): up to 42 items
+  // - Last page (with signatures): up to 38 items
   const pages: (typeof row.items)[] = []
 
   if (row.items.length === 0) {
     pages.push([])
-  } else if (row.items.length <= 30) {
+  } else if (row.items.length <= 35) {
     pages.push(row.items)
   } else {
-    const FIRST_PAGE_MAX = 30
-    const MIDDLE_PAGE_MAX = 38
-    const LAST_PAGE_MAX = 34
+    const FIRST_PAGE_MAX = 35
+    const MIDDLE_PAGE_MAX = 42
+    const LAST_PAGE_MAX = 38
 
     pages.push(row.items.slice(0, FIRST_PAGE_MAX))
     let remaining = row.items.slice(FIRST_PAGE_MAX)
@@ -1085,8 +1085,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
     <>
       {pages.map((pageItems, pageIndex) => {
         const isCompact = pageItems.length > 10
-        const cellPadding = isCompact ? '1.8px 4px' : '4px 4px'
-        const tableFontSize = isCompact ? '7.2pt' : '8pt'
+        const cellPadding = isCompact ? '1.2px 4px' : '4px 4px'
+        const tableFontSize = isCompact ? '6.8pt' : '8pt'
 
         return (
           <div
@@ -1094,7 +1094,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
             className="cargo-manifest-page"
             style={{
               fontFamily: 'Arial, sans-serif',
-              fontSize: '8.5pt',
+              fontSize: '8pt',
               color: '#000',
               boxSizing: 'border-box',
               height: '268mm',
@@ -1105,7 +1105,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
               backgroundSize: '100% 100%',
               backgroundPosition: 'top center',
               backgroundRepeat: 'no-repeat',
-              padding: '29mm 16mm 38mm 16mm',
+              padding: '28mm 16mm 36mm 16mm',
               position: 'relative',
               overflow: 'hidden',
               pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'avoid',
@@ -1113,11 +1113,11 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
             }}
           >
             {/* Header - Title Only (Logo sudah di background) */}
-            <div style={{ textAlign: 'right', marginBottom: '4px' }}>
+            <div style={{ textAlign: 'right', marginBottom: '3px' }}>
               <div
                 style={{
                   fontWeight: 700,
-                  fontSize: '14pt',
+                  fontSize: '13.5pt',
                   color: '#003366',
                   letterSpacing: '1px',
                 }}
@@ -1130,11 +1130,11 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
             </div>
 
             {/* Document Info */}
-            <div style={{ marginBottom: '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8pt' }}>
+            <div style={{ marginBottom: '3px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '7.8pt' }}>
                 <div>
                   <strong>Manifest No:</strong>{' '}
-                  <span style={{ color: '#c0392b', fontWeight: 700, fontSize: '9pt' }}>
+                  <span style={{ color: '#c0392b', fontWeight: 700, fontSize: '8.8pt' }}>
                     {row.manifestNumber}
                   </span>
                 </div>
@@ -1150,8 +1150,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                 style={{
                   border: '1px solid #003366',
                   borderRadius: '4px',
-                  padding: '4px 8px',
-                  marginBottom: '5px',
+                  padding: '3px 7px',
+                  marginBottom: '4px',
                   backgroundColor: 'rgba(248, 249, 250, 0.95)',
                 }}
               >
@@ -1159,8 +1159,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   style={{
                     display: 'grid',
                     gridTemplateColumns: '1fr 1fr',
-                    gap: '3px',
-                    fontSize: '7.5pt',
+                    gap: '2px',
+                    fontSize: '7.2pt',
                   }}
                 >
                   <div>
@@ -1192,7 +1192,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                 borderCollapse: 'collapse',
                 width: '100%',
                 fontSize: tableFontSize,
-                marginBottom: '5px',
+                marginBottom: '4px',
                 backgroundColor: 'rgba(255, 255, 255, 0.95)',
               }}
             >
@@ -1201,21 +1201,21 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   <th
                     style={{
                       border: '1px solid #003366',
-                      padding: '3px 4px',
-                      width: '30px',
+                      padding: '2.5px 4px',
+                      width: '28px',
                       textAlign: 'center',
                     }}
                   >
                     No
                   </th>
-                  <th style={{ border: '1px solid #003366', padding: '3px 4px', textAlign: 'left' }}>
+                  <th style={{ border: '1px solid #003366', padding: '2.5px 4px', textAlign: 'left' }}>
                     Description of Goods
                   </th>
                   <th
                     style={{
                       border: '1px solid #003366',
-                      padding: '3px 4px',
-                      width: '110px',
+                      padding: '2.5px 4px',
+                      width: '105px',
                       textAlign: 'left',
                     }}
                   >
@@ -1224,8 +1224,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   <th
                     style={{
                       border: '1px solid #003366',
-                      padding: '3px 4px',
-                      width: '38px',
+                      padding: '2.5px 4px',
+                      width: '36px',
                       textAlign: 'center',
                     }}
                   >
@@ -1234,8 +1234,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   <th
                     style={{
                       border: '1px solid #003366',
-                      padding: '3px 4px',
-                      width: '85px',
+                      padding: '2.5px 4px',
+                      width: '80px',
                       textAlign: 'left',
                     }}
                   >
@@ -1244,8 +1244,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                   <th
                     style={{
                       border: '1px solid #003366',
-                      padding: '3px 4px',
-                      width: '100px',
+                      padding: '2.5px 4px',
+                      width: '95px',
                       textAlign: 'left',
                     }}
                   >
@@ -1295,15 +1295,15 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                             border: '1px solid #ccc',
                             padding: cellPadding,
                             textAlign: 'center',
-                            lineHeight: 1.15,
+                            lineHeight: 1.1,
                           }}
                         >
                           {item.no}
                         </td>
-                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.15 }}>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.1 }}>
                           {item.description}
                         </td>
-                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.15 }}>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.1 }}>
                           {item.serialNumber}
                         </td>
                         <td
@@ -1311,15 +1311,15 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                             border: '1px solid #ccc',
                             padding: cellPadding,
                             textAlign: 'center',
-                            lineHeight: 1.15,
+                            lineHeight: 1.1,
                           }}
                         >
                           {item.qty}
                         </td>
-                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.15 }}>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.1 }}>
                           {item.brand}
                         </td>
-                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.15 }}>
+                        <td style={{ border: '1px solid #ccc', padding: cellPadding, lineHeight: 1.1 }}>
                           {item.remark}
                         </td>
                       </tr>
@@ -1332,21 +1332,21 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
               <div
                 style={{
                   position: 'absolute',
-                  bottom: '28mm',
+                  bottom: '26mm',
                   left: '16mm',
                   right: '16mm',
                   display: 'grid',
                   gridTemplateColumns: '1fr 1fr 1fr',
                   gap: '24px',
-                  fontSize: '8.5pt',
+                  fontSize: '8pt',
                   backgroundColor: 'rgba(255, 255, 255, 0.88)',
-                  paddingTop: '4px',
+                  paddingTop: '3px',
                 }}
               >
-                <div style={{ position: 'relative', minHeight: '95px', textAlign: 'center' }}>
+                <div style={{ position: 'relative', minHeight: '90px', textAlign: 'center' }}>
                   <div
                     style={{
-                      marginBottom: row.signatureDataUrl ? '10px' : '58px',
+                      marginBottom: row.signatureDataUrl ? '8px' : '54px',
                       fontWeight: 600,
                       lineHeight: 1.25,
                     }}
@@ -1359,7 +1359,7 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                       src={row.signatureDataUrl}
                       alt="Signature"
                       style={{
-                        height: '50px',
+                        height: '46px',
                         maxWidth: '100%',
                         objectFit: 'contain',
                         margin: '0 auto 4px',
@@ -1383,8 +1383,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                     </div>
                   </div>
                 </div>
-                <div style={{ position: 'relative', minHeight: '95px', textAlign: 'center' }}>
-                  <div style={{ marginBottom: '66px', fontWeight: 600, lineHeight: 1.25 }}>
+                <div style={{ position: 'relative', minHeight: '90px', textAlign: 'center' }}>
+                  <div style={{ marginBottom: '62px', fontWeight: 600, lineHeight: 1.25 }}>
                     Forwarder
                   </div>
                   <div
@@ -1400,8 +1400,8 @@ function PdfContent({ row }: { row: CargoManifestRecord }) {
                     <div>&nbsp;</div>
                   </div>
                 </div>
-                <div style={{ position: 'relative', minHeight: '95px', textAlign: 'center' }}>
-                  <div style={{ marginBottom: '66px', fontWeight: 600, lineHeight: 1.25 }}>
+                <div style={{ position: 'relative', minHeight: '90px', textAlign: 'center' }}>
+                  <div style={{ marginBottom: '62px', fontWeight: 600, lineHeight: 1.25 }}>
                     Received by
                   </div>
                   <div
