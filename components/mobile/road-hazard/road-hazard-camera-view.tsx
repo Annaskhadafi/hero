@@ -162,9 +162,9 @@ export function RoadHazardCameraView({
   }>({ latitude: null, longitude: null, speedKmh: null, accuracy: null })
   const [pathCoordinates, setPathCoordinates] = useState<[number, number][]>([])
 
-  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, Device Offline roadchitra.tflite at 5 FPS)
+  // AI Dual/Tri Mode & Settings (Default: 20% sensitivity, Device Offline roadchitra.tflite at ~30 FPS)
   const [inferenceMode, setInferenceMode] = useState<'system' | 'offline' | 'api'>('offline')
-  const [scanIntervalMs, setScanIntervalMs] = useState(200) // Default: 200ms = 5 FPS for smooth real-time tracking
+  const [scanIntervalMs, setScanIntervalMs] = useState(33) // Default: 33ms (~30 FPS, mirrors flutter-Yolo continuous stream)
   const [confThreshold, setConfThreshold] = useState(0.20)
   const [autoSnapEnabled, setAutoSnapEnabled] = useState(true)
   const [autoSnapThreshold, setAutoSnapThreshold] = useState(0.50)
@@ -283,6 +283,8 @@ export function RoadHazardCameraView({
 
   // AI live detection feedback
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const isAnalyzingRef = useRef(false)
+  const lastScanTimeRef = useRef(0)
   const [activeAlert, setActiveAlert] = useState<{
     type: string
     conf: number
@@ -522,8 +524,10 @@ export function RoadHazardCameraView({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    canvas.width = videoWidth
-    canvas.height = videoHeight
+    if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
+      canvas.width = videoWidth
+      canvas.height = videoHeight
+    }
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     detections.forEach((det) => {
@@ -704,20 +708,41 @@ export function RoadHazardCameraView({
     [confThreshold, currentGps, inferenceMode, isModelDownloaded]
   )
 
-  // Live Auto-Scan Loop: Runs whenever camera is active!
-  // Standby preview mode (before recording): relaxed 1200ms scan to show real-time live detection
-  // Active recording mode: adaptive 480ms - 900ms scan with GPS tracking, sound alerts, and auto-snap
+  // Live Auto-Scan Loop: Frame-driven rAF loop (mirrors flutter-Yolo STRATEGY_KEEP_ONLY_LATEST)
+  // Avoids setInterval teardown on every frame and immediately processes the latest frame when ready.
+  const latestStateRef = useRef({
+    analyzeFrame,
+    drawDetections,
+    playAlertSound,
+    speakVoiceAlert,
+    triggerHaptic,
+    captureVideoSnapshot,
+    autoSnapEnabled,
+    autoSnapThreshold,
+    currentGps,
+    isRecording,
+  })
+  latestStateRef.current = {
+    analyzeFrame,
+    drawDetections,
+    playAlertSound,
+    speakVoiceAlert,
+    triggerHaptic,
+    captureVideoSnapshot,
+    autoSnapEnabled,
+    autoSnapThreshold,
+    currentGps,
+    isRecording,
+  }
+
   useEffect(() => {
-    let intervalTimer: NodeJS.Timeout | null = null
+    let rafId: number | null = null
+    let cancelled = false
 
     if (cameraActive) {
       const speed = currentGps.speedKmh ?? 0
 
-      // Real-time scan interval:
-      // In offline mode (device roadchitra.tflite), runs at targeted 5 FPS (200ms) both in preview and recording
-      // for smooth continuous bounding box tracking without network bottlenecks.
-      let dynamicInterval = scanIntervalMs // Default 200ms = 5 FPS
-
+      let dynamicInterval = scanIntervalMs
       if (inferenceMode !== 'offline') {
         // Server ONNX / Cloud API modes: throttle to avoid queuing HTTP requests over mobile network
         if (!isRecording) {
@@ -729,74 +754,90 @@ export function RoadHazardCameraView({
         }
       }
 
-      intervalTimer = setInterval(async () => {
-        if (isAnalyzing) return
-        setIsAnalyzing(true)
+      const tick = async () => {
+        if (cancelled) return
 
-        try {
-          const res = await analyzeFrame(false)
-          if (res?.success) {
-            setLatencyMs(res.latencyMs || null)
-            const detections = res.detections || []
+        const now = performance.now()
+        if (!isAnalyzingRef.current && now - lastScanTimeRef.current >= dynamicInterval) {
+          isAnalyzingRef.current = true
+          lastScanTimeRef.current = now
+          setIsAnalyzing(true)
 
-            if (videoRef.current) {
-              drawDetections(detections, videoRef.current.videoWidth, videoRef.current.videoHeight)
-            }
+          try {
+            const st = latestStateRef.current
+            const res = await st.analyzeFrame(false)
+            if (!cancelled && res?.success) {
+              setLatencyMs(res.latencyMs || null)
+              const detections = res.detections || []
 
-            if (detections.length > 0) {
-              const topDet = detections[0]
-              const hazardName = topDet.hazard_type || topDet.class_name || 'Potholes'
-              setActiveAlert({
-                type: hazardName,
-                conf: topDet.confidence,
-              })
+              if (videoRef.current) {
+                st.drawDetections(detections, videoRef.current.videoWidth, videoRef.current.videoHeight)
+              }
 
-              // Only play sound and auto-save events when actively recording trip
-              if (isRecording) {
-                playAlertSound()
-                speakVoiceAlert(hazardName)
-                triggerHaptic()
+              if (detections.length > 0) {
+                const topDet = detections[0]
+                const hazardName = topDet.hazard_type || topDet.class_name || 'Potholes'
+                setActiveAlert({
+                  type: hazardName,
+                  conf: topDet.confidence,
+                })
 
-                // Auto-snap condition
-                if (autoSnapEnabled && topDet.confidence >= autoSnapThreshold) {
-                  let cleanUrl = res.photoUrl || ''
-                  let annotatedUrl = res.annotatedPhotoUrl || ''
-                  if (videoRef.current) {
-                    const localSnap = captureVideoSnapshot(videoRef.current, detections)
-                    cleanUrl = cleanUrl || localSnap.cleanUrl
-                    annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
+                // Only play sound and auto-save events when actively recording trip
+                if (st.isRecording) {
+                  st.playAlertSound()
+                  st.speakVoiceAlert(hazardName)
+                  st.triggerHaptic()
+
+                  // Auto-snap condition
+                  if (st.autoSnapEnabled && topDet.confidence >= st.autoSnapThreshold) {
+                    let cleanUrl = res.photoUrl || ''
+                    let annotatedUrl = res.annotatedPhotoUrl || ''
+                    if (videoRef.current) {
+                      const localSnap = st.captureVideoSnapshot(videoRef.current, detections)
+                      cleanUrl = cleanUrl || localSnap.cleanUrl
+                      annotatedUrl = localSnap.annotatedUrl || annotatedUrl || cleanUrl
+                    }
+
+                    const newEv: DetectedHazardEvent = {
+                      id: "auto-" + Date.now(),
+                      hazardType: topDet.hazard_type || 'Potholes',
+                      confidence: topDet.confidence,
+                      latitude: st.currentGps.latitude,
+                      longitude: st.currentGps.longitude,
+                      speedKmh: st.currentGps.speedKmh,
+                      photoUrl: cleanUrl,
+                      annotatedPhotoUrl: annotatedUrl,
+                      detectionBoxes: detections,
+                      timestamp: new Date().toLocaleTimeString('id-ID'),
+                      isManualSnap: false,
+                      notes: 'Auto-captured oleh AI Road Hazard',
+                    }
+                    setEvents((prev) => [newEv, ...prev])
                   }
+                }
 
-                  const newEv: DetectedHazardEvent = {
-                    id: "auto-" + Date.now(),
-                    hazardType: topDet.hazard_type || 'Potholes',
-                    confidence: topDet.confidence,
-                    latitude: currentGps.latitude,
-                    longitude: currentGps.longitude,
-                    speedKmh: currentGps.speedKmh,
-                    photoUrl: cleanUrl,
-                    annotatedPhotoUrl: annotatedUrl,
-                    detectionBoxes: detections,
-                    timestamp: new Date().toLocaleTimeString('id-ID'),
-                    isManualSnap: false,
-                    notes: 'Auto-captured oleh AI Road Hazard',
-                  }
-                  setEvents((prev) => [newEv, ...prev])
+                setTimeout(() => setActiveAlert(null), 2200)
+              } else {
+                if (canvasRef.current) {
+                  const ctx = canvasRef.current.getContext('2d')
+                  ctx?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
                 }
               }
-
-              setTimeout(() => setActiveAlert(null), 2200)
-            } else {
-              if (canvasRef.current) {
-                const ctx = canvasRef.current.getContext('2d')
-                ctx?.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-              }
+            }
+          } finally {
+            isAnalyzingRef.current = false
+            if (!cancelled) {
+              setIsAnalyzing(false)
             }
           }
-        } finally {
-          setIsAnalyzing(false)
         }
-      }, dynamicInterval)
+
+        if (!cancelled) {
+          rafId = requestAnimationFrame(tick)
+        }
+      }
+
+      rafId = requestAnimationFrame(tick)
     } else {
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d')
@@ -805,25 +846,10 @@ export function RoadHazardCameraView({
     }
 
     return () => {
-      if (intervalTimer) clearInterval(intervalTimer)
+      cancelled = true
+      if (rafId !== null) cancelAnimationFrame(rafId)
     }
-  }, [
-    cameraActive,
-    isRecording,
-    scanIntervalMs,
-    currentGps.speedKmh,
-    currentGps.latitude,
-    currentGps.longitude,
-    analyzeFrame,
-    drawDetections,
-    playAlertSound,
-    speakVoiceAlert,
-    triggerHaptic,
-    autoSnapEnabled,
-    autoSnapThreshold,
-    currentGps,
-    isAnalyzing,
-  ])
+  }, [cameraActive, isRecording, inferenceMode, scanIntervalMs, currentGps.speedKmh])
 
   // Manual Snap Shoot - Always captures frame
   const handleSnapShoot = async () => {
@@ -1590,21 +1616,21 @@ export function RoadHazardCameraView({
                   </div>
                   <Slider
                     value={[scanIntervalMs]}
-                    min={100}
+                    min={33}
                     max={1000}
-                    step={50}
+                    step={10}
                     onValueChange={(val) => {
                       setScanIntervalMs(val[0])
                       try { localStorage.setItem('hero_road_hazard_scan_interval', String(val[0])) } catch {}
                     }}
                   />
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
-                    <span>10 FPS (100ms)</span>
-                    <span className="text-emerald-300 font-bold">5 FPS (200ms • Realtime)</span>
+                    <span className="text-emerald-300 font-bold">30 FPS (33ms • Realtime)</span>
+                    <span>5 FPS (200ms)</span>
                     <span>1 FPS (1000ms)</span>
                   </div>
                   <p className="text-[10px] text-slate-400">
-                    Kecepatan default 5 FPS (~200ms) memberikan pelacakan visual objek lubang & alur jalan yang mulus secara real-time di HP tanpa membebani baterai.
+                    Kecepatan default 30 FPS (~33ms) menggunakan GPU WebGPU/WebGL & buffer pra-alokasi agar pelacakan lubang & alur jalan secepat aplikasi native.
                   </p>
                 </div>
               </div>

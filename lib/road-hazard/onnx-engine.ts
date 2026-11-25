@@ -95,11 +95,17 @@ export async function runLocalOnnxHazardInference(params: {
     // 3. Convert HWC (RGBRGB...) to NCHW (RRR... GGG... BBB...) float32 normalized [0.0, 1.0]
     const planeSize = 640 * 640
     const floatArr = new Float32Array(3 * planeSize)
+    const inv255 = 1 / 255
+    let r = 0
+    let g = planeSize
+    let b = planeSize * 2
+    let pIdx = 0
 
     for (let i = 0; i < planeSize; i++) {
-      floatArr[i] = rawData[i * 3] / 255.0                     // R
-      floatArr[planeSize + i] = rawData[i * 3 + 1] / 255.0     // G
-      floatArr[planeSize * 2 + i] = rawData[i * 3 + 2] / 255.0 // B
+      floatArr[r++] = rawData[pIdx] * inv255
+      floatArr[g++] = rawData[pIdx + 1] * inv255
+      floatArr[b++] = rawData[pIdx + 2] * inv255
+      pIdx += 3
     }
 
     const inputTensor = new ort.Tensor('float32', floatArr, [1, 3, 640, 640])

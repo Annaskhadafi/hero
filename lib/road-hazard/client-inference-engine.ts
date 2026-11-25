@@ -12,6 +12,7 @@ export interface ClientHazardDetection {
 export interface ClientHazardInferenceResult {
   success: boolean
   mode: 'offline'
+  executionProvider?: 'webgpu' | 'webgl' | 'wasm'
   modelName: string
   modelVersion: string
   detections: ClientHazardDetection[]
@@ -24,10 +25,61 @@ export interface ClientHazardInferenceResult {
   error?: string
 }
 
+const MODEL_INPUT_SIZE = 640
+const PLANE_SIZE = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE
+const INV_255 = 1 / 255
+
 let ortModule: any = null
 let clientSession: any = null
+let activeExecutionProvider: 'webgpu' | 'webgl' | 'wasm' | null = null
 let isInitializing = false
 let initError: string | null = null
+let isModelVerifiedInCache = false
+
+// Reusable preprocessing buffers (allocated once, zero per-frame GC churn — mirrors flutter-Yolo ObjectDetector)
+let prepCanvas: HTMLCanvasElement | OffscreenCanvas | null = null
+let prepCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null
+let reusableFloatInput: Float32Array | null = null
+let reusableInputTensor: any = null
+
+function ensurePreprocessingBuffers(ort: any) {
+  if (!prepCanvas || !prepCtx) {
+    if (typeof OffscreenCanvas !== 'undefined') {
+      prepCanvas = new OffscreenCanvas(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE)
+    } else {
+      const c = document.createElement('canvas')
+      c.width = MODEL_INPUT_SIZE
+      c.height = MODEL_INPUT_SIZE
+      prepCanvas = c
+    }
+    prepCtx = prepCanvas.getContext('2d', {
+      willReadFrequently: true,
+      alpha: false,
+    }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+    if (!prepCtx) {
+      throw new Error('Canvas 2D context not available')
+    }
+  }
+
+  if (!reusableFloatInput) {
+    reusableFloatInput = new Float32Array(3 * PLANE_SIZE)
+  }
+
+  if (!reusableInputTensor) {
+    reusableInputTensor = new ort.Tensor('float32', reusableFloatInput, [
+      1,
+      3,
+      MODEL_INPUT_SIZE,
+      MODEL_INPUT_SIZE,
+    ])
+  }
+
+  return {
+    ctx: prepCtx,
+    floatArr: reusableFloatInput,
+    inputTensor: reusableInputTensor,
+  }
+}
 
 export function isClientHazardModelLoading(): boolean {
   return isInitializing
@@ -44,8 +96,12 @@ async function getOrtWeb(): Promise<any> {
       // Configure local WASM paths so browser works 100% offline without internet
       if (ortModule.env?.wasm) {
         ortModule.env.wasm.wasmPaths = '/onnxruntime-web/'
-        ortModule.env.wasm.numThreads = 1
+        ortModule.env.wasm.simd = true
         ortModule.env.wasm.proxy = false
+        // Multi-threaded WASM when Cross-Origin Isolated (SharedArrayBuffer available), else 1 thread
+        const canThread = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
+        const hwCores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 2 : 2
+        ortModule.env.wasm.numThreads = canThread ? Math.min(4, Math.max(1, hwCores)) : 1
       }
     } catch (err) {
       console.warn('[client-hazard-ai] Failed importing onnxruntime-web:', err)
@@ -87,18 +143,42 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
     const modelUrl = '/models/roadchitra.onnx'
 
     const createPromise = (async () => {
-      try {
-        return await ort.InferenceSession.create(modelUrl, {
-          executionProviders: ['webgl', 'wasm'],
-          graphOptimizationLevel: 'all',
-        })
-      } catch (gpuErr) {
-        console.info('[client-hazard-ai] WebGL EP failed, falling back to WASM CPU:', gpuErr)
-        return await ort.InferenceSession.create(modelUrl, {
-          executionProviders: ['wasm'],
-          graphOptimizationLevel: 'all',
-        })
+      // Accelerator ladder (mirrors flutter-Yolo LiteRtModel): WebGPU -> WebGL -> WASM SIMD
+      const hasWebGpu =
+        typeof navigator !== 'undefined' &&
+        'gpu' in navigator &&
+        Boolean(await (navigator as any).gpu?.requestAdapter?.().catch(() => null))
+
+      if (hasWebGpu) {
+        try {
+          const s = await ort.InferenceSession.create(modelUrl, {
+            executionProviders: ['webgpu'],
+            graphOptimizationLevel: 'all',
+          })
+          activeExecutionProvider = 'webgpu'
+          return s
+        } catch (gpuErr) {
+          console.info('[client-hazard-ai] WebGPU EP failed, trying WebGL:', gpuErr)
+        }
       }
+
+      try {
+        const s = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['webgl'],
+          graphOptimizationLevel: 'all',
+        })
+        activeExecutionProvider = 'webgl'
+        return s
+      } catch (webglErr) {
+        console.info('[client-hazard-ai] WebGL EP failed, falling back to WASM CPU:', webglErr)
+      }
+
+      const s = await ort.InferenceSession.create(modelUrl, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      })
+      activeExecutionProvider = 'wasm'
+      return s
     })()
 
     const timeoutPromise = new Promise((_, reject) =>
@@ -109,12 +189,15 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
     )
 
     clientSession = await Promise.race([createPromise, timeoutPromise])
+    isModelVerifiedInCache = true
 
-    // Warm-up inference with blank dummy input to prime JIT compiler
-    const dummyTensor = new ort.Tensor('float32', new Float32Array(1 * 3 * 640 * 640), [1, 3, 640, 640])
-    await clientSession.run({ images: dummyTensor }).catch(() => {})
+    // Warm-up inference with reusable buffer to prime GPU shaders / JIT compiler
+    const { inputTensor } = ensurePreprocessingBuffers(ort)
+    await clientSession.run({ images: inputTensor }).catch(() => {})
 
-    console.info('[client-hazard-ai] roadchitra.tflite runtime loaded successfully in device memory (100% Offline Ready).')
+    console.info(
+      `[client-hazard-ai] Model ready on ${activeExecutionProvider?.toUpperCase() || 'WASM'} (100% Offline Ready).`
+    )
     return true
   } catch (err) {
     initError = err instanceof Error ? err.message : String(err)
@@ -148,23 +231,26 @@ export async function runClientDeviceHazardInference(
 ): Promise<ClientHazardInferenceResult> {
   const startTime = performance.now()
 
-  // Ensure model is downloaded first
-  const isDownloaded = await isRoadChitraModelDownloaded()
-  if (!isDownloaded) {
-    return {
-      success: false,
-      mode: 'offline',
-      modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
-      modelVersion: ROADCHITRA_MODEL_CONFIG.version,
-      detections: [],
-      detectionCount: 0,
-      topConfidence: 0,
-      latencyMs: 0,
-      potholesCount: 0,
-      corrugationCount: 0,
-      rutsCount: 0,
-      error: `Model ${ROADCHITRA_MODEL_CONFIG.fileName} belum diunduh ke memori perangkat. Silakan klik Unduh Model terlebih dahulu.`,
+  // Skip async Cache Storage check once session is already verified in memory
+  if (!clientSession && !isModelVerifiedInCache) {
+    const isDownloaded = await isRoadChitraModelDownloaded()
+    if (!isDownloaded) {
+      return {
+        success: false,
+        mode: 'offline',
+        modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
+        modelVersion: ROADCHITRA_MODEL_CONFIG.version,
+        detections: [],
+        detectionCount: 0,
+        topConfidence: 0,
+        latencyMs: 0,
+        potholesCount: 0,
+        corrugationCount: 0,
+        rutsCount: 0,
+        error: `Model ${ROADCHITRA_MODEL_CONFIG.fileName} belum diunduh ke memori perangkat. Silakan klik Unduh Model terlebih dahulu.`,
+      }
     }
+    isModelVerifiedInCache = true
   }
 
   if (!clientSession) {
@@ -187,35 +273,28 @@ export async function runClientDeviceHazardInference(
     }
   }
 
-  const origW = video.videoWidth || 640
+  const origW = video.videoWidth || MODEL_INPUT_SIZE
   const origH = video.videoHeight || 480
 
   try {
     const ort = await getOrtWeb()
 
-    // 1. Draw frame to 640x640 offscreen canvas
-    const canvas = document.createElement('canvas')
-    canvas.width = 640
-    canvas.height = 640
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (!ctx) throw new Error('Canvas 2D context not available')
+    // 1. Reuse pre-allocated 640x640 offscreen canvas & Float32Array (zero GC churn)
+    const { ctx, floatArr, inputTensor } = ensurePreprocessingBuffers(ort)
+    ctx.drawImage(video, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE)
+    const pixels = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data
 
-    ctx.drawImage(video, 0, 0, 640, 640)
-    const imgData = ctx.getImageData(0, 0, 640, 640)
-    const pixels = imgData.data
-
-    // 2. Preprocess to Float32Array NCHW [1, 3, 640, 640] normalized [0, 1]
-    const floatArr = new Float32Array(1 * 3 * 640 * 640)
-    const channelSize = 640 * 640
-
-    for (let i = 0; i < channelSize; i++) {
-      const pIdx = i * 4
-      floatArr[i] = pixels[pIdx] / 255.0                  // Red
-      floatArr[channelSize + i] = pixels[pIdx + 1] / 255.0  // Green
-      floatArr[channelSize * 2 + i] = pixels[pIdx + 2] / 255.0 // Blue
+    // 2. Fast planar NCHW conversion with precomputed reciprocal (mirrors ImageUtils.kt)
+    let r = 0
+    let g = PLANE_SIZE
+    let b = PLANE_SIZE * 2
+    let pIdx = 0
+    for (let i = 0; i < PLANE_SIZE; i++) {
+      floatArr[r++] = pixels[pIdx] * INV_255
+      floatArr[g++] = pixels[pIdx + 1] * INV_255
+      floatArr[b++] = pixels[pIdx + 2] * INV_255
+      pIdx += 4
     }
-
-    const inputTensor = new ort.Tensor('float32', floatArr, [1, 3, 640, 640])
 
     // 3. Run inference
     const outputs = await clientSession.run({ images: inputTensor })
@@ -283,7 +362,8 @@ export async function runClientDeviceHazardInference(
     return {
       success: true,
       mode: 'offline',
-      modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (Device Offline)`,
+      executionProvider: activeExecutionProvider || 'wasm',
+      modelName: `${ROADCHITRA_MODEL_CONFIG.fileName} (${(activeExecutionProvider || 'wasm').toUpperCase()})`,
       modelVersion: ROADCHITRA_MODEL_CONFIG.version,
       detections,
       detectionCount: detections.length,
