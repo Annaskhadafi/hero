@@ -150,8 +150,8 @@ export function AssetDisposalDashboard({
   const [selectedDisposal, setSelectedDisposal] = React.useState<any | null>(null)
   const [isDetailOpen, setIsDetailOpen] = React.useState(false)
 
-  // Post-Approval Modal (Lampiran Lelang Procurement & Dokumen Finance)
-  const [postApprovalTarget, setPostApprovalTarget] = React.useState<{ item: any; mode: 'auction' | 'finance' } | null>(null)
+  // Post-Approval Modal (Berita Acara Pengaju, Lampiran Lelang Procurement, & Dokumen Finance)
+  const [postApprovalTarget, setPostApprovalTarget] = React.useState<{ item: any; mode: 'berita_acara' | 'auction' | 'finance' } | null>(null)
 
   // AssetApprovalDialog (Split 2-Panel Review seperti Asset Borrow)
   const [reviewTarget, setReviewTarget] = React.useState<AssetApprovalDialogTarget | null>(null)
@@ -267,10 +267,18 @@ export function AssetDisposalDashboard({
     }).format(d)
   }
 
-  const getStatusTone = (status: string) => {
+  const getStatusTone = (status: string, disposalType?: string) => {
     switch (status?.toLowerCase()) {
       case 'completed':
-        return { label: 'Selesai (Disposal & Lelang Selesai)', status: 'approved' as const }
+        return {
+          label: disposalType === 'Penjualan' ? 'Selesai (Disposal & Lelang Selesai)' : 'Selesai (Disposal Selesai)',
+          status: 'approved' as const,
+        }
+      case 'waiting_ba_disposal':
+        return {
+          label: disposalType === 'Donasi' ? 'Menunggu BA Donasi (Pengaju)' : 'Menunggu Berita Acara (Pengaju)',
+          status: 'pending' as const,
+        }
       case 'waiting_auction_docs':
         return { label: 'Menunggu Lampiran Lelang', status: 'pending' as const }
       case 'waiting_finance_docs':
@@ -398,9 +406,9 @@ export function AssetDisposalDashboard({
       key: 'status',
       header: 'Status & Approver',
       sortable: true,
-      exportValue: (row: any) => getStatusTone(row.status).label,
+      exportValue: (row: any) => getStatusTone(row.status, row.disposalType).label,
       render: (row: any) => {
-        const tone = getStatusTone(row.status)
+        const tone = getStatusTone(row.status, row.disposalType)
         return (
           <div className="flex flex-col items-start gap-1">
             <HeroStatusBadge status={tone.status} label={tone.label} />
@@ -438,6 +446,7 @@ export function AssetDisposalDashboard({
       options: [
         { label: 'Semua Status', value: 'all' },
         { label: 'Menunggu Persetujuan', value: 'pending' },
+        { label: 'Menunggu Berita Acara', value: 'waiting_ba_disposal' },
         { label: 'Menunggu Lampiran Lelang', value: 'waiting_auction_docs' },
         { label: 'Menunggu Dokumen Finance', value: 'waiting_finance_docs' },
         { label: 'Disetujui Penuh / Selesai', value: 'approved' },
@@ -644,7 +653,21 @@ export function AssetDisposalDashboard({
                       </Button>
                     )}
 
-                    {/* 2b. Submit Lampiran Lelang (Procurement / Super Admin / Pemohon) */}
+                    {/* 2b. Submit Berita Acara (Pengaju / Super Admin) */}
+                    {row.status === 'waiting_ba_disposal' && (isCreator || isAdmin) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPostApprovalTarget({ item: row, mode: 'berita_acara' })}
+                        className="h-8 gap-1 border-blue-300 bg-blue-50 px-2.5 text-xs font-semibold text-blue-800 hover:bg-blue-100 shadow-2xs"
+                      >
+                        <FileText className="size-3.5 text-blue-600" />
+                        {row.disposalType === 'Donasi' ? 'BA Donasi' : 'Berita Acara'}
+                      </Button>
+                    )}
+
+                    {/* 2c. Submit Lampiran Lelang (Procurement / Super Admin / Pemohon) */}
                     {row.status === 'waiting_auction_docs' && (
                       <Button
                         type="button"
@@ -658,7 +681,7 @@ export function AssetDisposalDashboard({
                       </Button>
                     )}
 
-                    {/* 2c. Submit Dokumen Finance (Finance / Super Admin) */}
+                    {/* 2d. Submit Dokumen Finance (Finance / Super Admin) */}
                     {row.status === 'waiting_finance_docs' && (
                       <Button
                         type="button"

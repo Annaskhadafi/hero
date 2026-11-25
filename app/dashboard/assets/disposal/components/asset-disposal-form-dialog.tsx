@@ -526,6 +526,14 @@ export function AssetDisposalFormDialog({
       }
     }
 
+    // 1b. Validate Proposal Attachment for Donasi
+    if (disposalType === 'Donasi') {
+      if (!attachments || attachments.length === 0) {
+        toast.error('Pengajuan Kategori Donasi wajib melampirkan berkas Proposal Donasi.')
+        return
+      }
+    }
+
     // 2. Validate Approvers & Guardrail Amama Ira
     const amamaIndex = approvers.findIndex(
       (s) =>
@@ -975,10 +983,12 @@ export function AssetDisposalFormDialog({
               </div>
               <div>
                 <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                  3. Dokumen Lampiran Pendukung
+                  3. Dokumen Lampiran Pendukung {disposalType === 'Donasi' && <span className="text-rose-500">* (Wajib Proposal Donasi)</span>}
                 </h4>
                 <p className="text-[11px] text-slate-500">
-                  Unggah foto kondisi aset, Berita Acara Kerusakan, estimasi biaya perbaikan, atau berkas pendukung lainnya
+                  {disposalType === 'Donasi'
+                    ? 'Wajib melampirkan berkas Proposal Donasi resmi sebelum mengirimkan permohonan'
+                    : 'Unggah foto kondisi aset, Berita Acara Kerusakan, estimasi biaya perbaikan, atau berkas pendukung lainnya'}
                 </p>
               </div>
             </div>
@@ -994,6 +1004,15 @@ export function AssetDisposalFormDialog({
               {isUploading ? 'Mengunggah...' : 'Pilih Berkas'}
             </Button>
           </div>
+
+          {disposalType === 'Donasi' && (
+            <div className="rounded-lg bg-purple-50/80 border border-purple-200 p-2.5 text-[11px] text-purple-950 flex items-start gap-2">
+              <Sparkles className="h-4 w-4 text-purple-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Kategori Donasi:</strong> Wajib melampirkan berkas <strong>Proposal Donasi</strong> resmi pada lampiran di bawah ini sebelum mengirimkan permohonan.
+              </span>
+            </div>
+          )}
 
           <input
             ref={fileInputRef}

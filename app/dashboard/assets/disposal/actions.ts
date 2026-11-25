@@ -21,6 +21,8 @@ import {
   sendAssetDisposalAuctionReadyEmail,
   sendAssetDisposalFinanceReadyEmail,
   sendAssetDisposalCompletedEmail,
+  sendAssetDisposalBaReadyEmail,
+  sendAssetDisposalBaSubmittedEmail,
 } from '@/lib/asset-approval-email'
 import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 
@@ -128,6 +130,7 @@ export async function getAssetDisposals(params?: {
           disposalType: item.disposalType || 'Penghapusan',
           items: parsedItems,
           attachments: JSON.parse(item.attachments || '[]'),
+          baDocuments: item.baDocuments ? JSON.parse(item.baDocuments) : null,
           auctionDocuments: item.auctionDocuments ? JSON.parse(item.auctionDocuments) : null,
           financeDocuments: item.financeDocuments ? JSON.parse(item.financeDocuments) : null,
           submitterSignatureUrl: item.applicantSignatureUrl || null,
@@ -227,6 +230,7 @@ export async function getAssetDisposalDetail(id: number) {
         totalBookValue: calculatedTotalBookValue,
         totalEstimatedSalePrice: calculatedTotalEstimatedSalePrice,
         attachments: JSON.parse(disposal.attachments || '[]'),
+        baDocuments: disposal.baDocuments ? JSON.parse(disposal.baDocuments) : null,
         auctionDocuments: disposal.auctionDocuments ? JSON.parse(disposal.auctionDocuments) : null,
         financeDocuments: disposal.financeDocuments ? JSON.parse(disposal.financeDocuments) : null,
         approvalSteps,
@@ -662,6 +666,17 @@ export async function createAssetDisposal(rawInput: AssetDisposalInput) {
       approvalChain = defRes.approvers || []
     }
 
+    // Guardrail for Donasi: Validate mandatory proposal attachment
+    if (input.disposalType === 'Donasi') {
+      const atts = input.attachments || []
+      if (atts.length === 0) {
+        return {
+          success: false,
+          message: 'Validasi Pengajuan Donasi: Berkas Proposal Donasi wajib diunggah sebelum mengirimkan pengajuan.',
+        }
+      }
+    }
+
     // Guardrail: Validate that Amama Ira (ID 1341 / SN 76436) exists in the chain
     const amamaIndex = approvalChain.findIndex(
       (s) =>
@@ -1076,11 +1091,19 @@ export async function approveAssetDisposal(
       }
 
       const isSale = disposal.disposalType === 'Penjualan'
+      const isDeletionOrDonation = disposal.disposalType === 'Penghapusan' || disposal.disposalType === 'Donasi'
+
+      let nextStatus = 'approved'
+      if (isSale) {
+        nextStatus = 'waiting_auction_docs'
+      } else if (isDeletionOrDonation) {
+        nextStatus = 'waiting_ba_disposal'
+      }
 
       await db
         .update(assetDisposals)
         .set({
-          status: isSale ? 'waiting_auction_docs' : 'approved',
+          status: nextStatus,
           pdfUrl: pdfUrl || undefined,
           approvedAt: now,
           updatedAt: now,
@@ -1126,9 +1149,32 @@ export async function approveAssetDisposal(
           success: true,
           message: `Permohonan ${disposal.disposalNumber} telah disetujui Direktur. Proses berlanjut ke Tim Procurement untuk unggah lampiran hasil lelang.`,
         }
+      } else if (isDeletionOrDonation) {
+        // Penghapusan & Donasi: Notify Applicant to submit Berita Acara
+        const baLabel = disposal.disposalType === 'Donasi' ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'
+
+        if (applicant?.email) {
+          await sendAssetDisposalBaReadyEmail({
+            applicantEmail: applicant.email,
+            applicantName: applicant.name || disposal.applicantName,
+            disposalNumber: disposal.disposalNumber,
+            assetName: disposal.assetName,
+            disposalId: disposal.id,
+            disposalType: disposal.disposalType,
+          }).catch((err) => console.error('[approveAssetDisposal] BA ready notify error:', err))
+        }
+
+        revalidatePath('/dashboard/assets/disposal')
+        revalidatePath('/dashboard/approval')
+        revalidatePath('/dashboard/central-service/assets')
+
+        return {
+          success: true,
+          message: `Permohonan ${disposal.disposalNumber} telah disetujui Direktur. Proses berlanjut ke Pengaju untuk mengunggah ${baLabel}.`,
+        }
       }
 
-      // Non-penjualan: Notify Applicant of full approval
+      // Fallback: Notify Applicant of full approval
       if (applicant?.email) {
         await sendAssetDisposalApprovedEmail({
           applicantEmail: applicant.email,
@@ -1153,6 +1199,85 @@ export async function approveAssetDisposal(
   } catch (error: any) {
     console.error('[approveAssetDisposal] Error:', error)
     return { success: false, message: error?.message || 'Gagal memproses persetujuan Asset Disposal.' }
+  }
+}
+
+/**
+ * Post-Approval Step 1 (Penghapusan & Donasi): Applicant submits Berita Acara (BA)
+ */
+export async function submitDisposalBaDocumentsAction(params: {
+  disposalId: number
+  checklist: string[]
+  files: Array<{ fileName: string; fileUrl: string; fileSize?: number }>
+  notes?: string
+}) {
+  try {
+    const session = await getServerSession()
+    if (!session?.user) {
+      return { success: false, message: 'Sesi anda telah berakhir. Silakan login kembali.' }
+    }
+
+    if (!params.checklist || params.checklist.length === 0) {
+      return { success: false, message: 'Pilih minimal 1 jenis dokumen Berita Acara yang disertakan.' }
+    }
+
+    if (!params.files || params.files.length === 0) {
+      return { success: false, message: 'Wajib mengunggah minimal 1 berkas scan/foto Berita Acara yang telah ditandatangani.' }
+    }
+
+    const [disposal] = await db
+      .select()
+      .from(assetDisposals)
+      .where(eq(assetDisposals.id, params.disposalId))
+      .limit(1)
+
+    if (!disposal) {
+      return { success: false, message: 'Permohonan disposal tidak ditemukan.' }
+    }
+
+    const empContext = await getCurrentEmployeeAccessContext()
+    const now = new Date()
+
+    const baPayload = JSON.stringify({
+      checklist: params.checklist,
+      files: params.files,
+      notes: params.notes || '',
+    })
+
+    await db
+      .update(assetDisposals)
+      .set({
+        status: 'waiting_finance_docs',
+        baDocuments: baPayload,
+        baSubmittedAt: now,
+        baSubmittedById: empContext?.employeeId || null,
+        updatedAt: now,
+      })
+      .where(eq(assetDisposals.id, params.disposalId))
+
+    // Notify Finance (Syamsul & Evo) to submit SAP disposal documents
+    await sendAssetDisposalBaSubmittedEmail({
+      financeEmails: ['syamsul.bahri@chitraparatama.co.id', 'evo.yulianti@chitraparatama.co.id'],
+      disposalNumber: disposal.disposalNumber,
+      assetName: disposal.assetName,
+      disposalId: disposal.id,
+      disposalType: disposal.disposalType,
+    }).catch((err) => console.error('[submitDisposalBaDocumentsAction] Finance notify error:', err))
+
+    revalidatePath('/dashboard/assets/disposal')
+
+    const baLabel = disposal.disposalType === 'Donasi' ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'
+
+    return {
+      success: true,
+      message: `${baLabel} untuk ${disposal.disposalNumber} berhasil disubmit. Alur berlanjut ke Tim Finance & Accounting untuk Dokumen Disposal SAP.`,
+    }
+  } catch (error: any) {
+    console.error('[submitDisposalBaDocumentsAction] Error:', error)
+    return {
+      success: false,
+      message: error?.message || 'Gagal menyimpan Berita Acara.',
+    }
   }
 }
 
@@ -1247,6 +1372,10 @@ export async function submitDisposalFinanceDocumentsAction(params: {
       return { success: false, message: 'Pilih minimal 1 jenis dokumen keuangan yang disertakan.' }
     }
 
+    if (!params.files || params.files.length === 0) {
+      return { success: false, message: 'Wajib mengunggah minimal 1 berkas Dokumen Disposal SAP.' }
+    }
+
     const [disposal] = await db
       .select()
       .from(assetDisposals)
@@ -1283,22 +1412,28 @@ export async function submitDisposalFinanceDocumentsAction(params: {
       })
       .where(eq(assetDisposals.id, params.disposalId))
 
-    // Send final completion email to Applicant with CC to Procurement and Finance
+    // Send final completion email to Applicant (CC conditional based on disposalType)
+    const isSale = disposal.disposalType === 'Penjualan'
     await sendAssetDisposalCompletedEmail({
       applicantEmail: applicant?.email || 'applicant@chitraparatama.co.id',
       applicantName: applicant?.name || disposal.applicantName,
-      procurementEmails: ['abdul.rajab@chitraparatama.co.id', 'sofyan.darmawan@chitraparatama.co.id'],
+      procurementEmails: isSale ? ['abdul.rajab@chitraparatama.co.id', 'sofyan.darmawan@chitraparatama.co.id'] : undefined,
       financeEmails: ['syamsul.bahri@chitraparatama.co.id', 'evo.yulianti@chitraparatama.co.id'],
       disposalNumber: disposal.disposalNumber,
       assetName: disposal.assetName,
       disposalId: disposal.id,
+      disposalType: disposal.disposalType,
     }).catch((err) => console.error('[submitDisposalFinanceDocumentsAction] Completed notify error:', err))
 
     revalidatePath('/dashboard/assets/disposal')
 
+    const successMessage = isSale
+      ? `Dokumen Finance untuk ${disposal.disposalNumber} berhasil disubmit. Seluruh proses disposal & lelang telah selesai (Completed).`
+      : `Dokumen Disposal SAP untuk ${disposal.disposalNumber} berhasil disubmit. Seluruh proses disposal telah selesai (Completed).`
+
     return {
       success: true,
-      message: `Dokumen Finance untuk ${disposal.disposalNumber} berhasil disubmit. Seluruh proses disposal & lelang telah selesai (Completed).`,
+      message: successMessage,
     }
   } catch (error: any) {
     console.error('[submitDisposalFinanceDocumentsAction] Error:', error)

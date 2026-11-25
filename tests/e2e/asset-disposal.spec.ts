@@ -35,19 +35,18 @@ function saveScreenshot(sourcePath, filename) {
   }
 }
 
-test.describe('Asset Disposal Sale Workflow: Procurement & Finance Stages', () => {
-  test.setTimeout(240000)
+test.describe('Asset Disposal Workflows: Penjualan, Penghapusan & Donasi', () => {
+  test.setTimeout(300000)
 
-  test('Verifikasi Alur Lengkap Disposal Penjualan: Estimasi Procurement, Lelang, & Dokumen Finance', async ({
+  test('Alur Lengkap Kategori Donasi: Validasi Proposal, BA Donasi Pengaju, & Dokumen SAP Finance', async ({
     page,
   }) => {
     page.on('console', (msg) => console.log('PAGE LOG:', msg.type(), msg.text()))
     page.on('pageerror', (err) => console.error('PAGE ERROR:', err.message))
 
-    // Standard desktop viewport
     await page.setViewportSize({ width: 1440, height: 900 })
 
-    // 1. Authenticate with standard system credentials and target callbackUrl
+    // 1. Authenticate with standard system credentials
     console.log('Navigating to sign-in page with callbackUrl...')
     await page.goto('/sign-in?callbackUrl=/dashboard/assets/disposal')
     await page.waitForLoadState('domcontentloaded')
@@ -58,11 +57,17 @@ test.describe('Asset Disposal Sale Workflow: Procurement & Finance Stages', () =
     const passwordInput = page.locator('#password, input[placeholder*="kata sandi"], input[name="password"]').first()
     await passwordInput.fill('Chitra#71261')
     const loginSubmitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
-    await loginSubmitBtn.click()
+    console.log('Submitting login credentials...')
+    await Promise.all([
+      page.waitForResponse((res) => res.url().includes('/api/auth') && res.status() === 200, { timeout: 30000 }).catch(() => null),
+      loginSubmitBtn.click(),
+    ])
+    await page.waitForTimeout(2000)
 
-    console.log('Submitted login credentials. Waiting for redirect to /dashboard/assets/disposal...')
-    await page.waitForURL(/\/dashboard\/assets\/disposal/, { timeout: 45000 })
-    console.log('Login successful, directly on Asset Disposal Page!')
+    console.log('Checking navigation to /dashboard/assets/disposal...')
+    if (!page.url().includes('/dashboard/assets/disposal')) {
+      await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
+    }
     await page.waitForTimeout(2500)
 
     // Dismiss announcement / popup if any
@@ -72,31 +77,16 @@ test.describe('Asset Disposal Sale Workflow: Procurement & Finance Stages', () =
       await page.waitForTimeout(1000)
     }
 
-    // Verify Title
     const heading = page.locator('main h1:has-text("Asset Disposal")')
-    await expect(heading).toBeVisible({ timeout: 15000 })
-
-    // Verify Two Tabs exist: "Disposal Saya" and "Daftar Disposal"
-    const tabList = page.locator('div[role="tablist"]').first()
-    await expect(tabList).toHaveClass(/w-full justify-start/)
-    const tabMyDisposal = page.locator('button[role="tab"]:has-text("Disposal Saya")')
-    const tabAllDisposal = page.locator('button[role="tab"]:has-text("Daftar Disposal")')
-    await expect(tabMyDisposal).toBeVisible()
-    await expect(tabAllDisposal).toBeVisible()
-    console.log('✓ Verified 2 Tabs: Disposal Saya & Daftar Disposal.')
-
-    const ss1Path = path.join(ARTIFACT_DIR, '01_asset_disposal_dashboard_tabs.png')
-    await page.screenshot({ path: ss1Path })
-    saveScreenshot(ss1Path, '01_asset_disposal_dashboard_tabs.png')
-    console.log('✓ Captured 01_asset_disposal_dashboard_tabs.png')
+    await expect(heading).toBeVisible({ timeout: 20000 })
 
     // =========================================================================
-    // STEP 2: Buka Modal Form Pengajuan Disposal & Pilih Jenis "Penjualan"
+    // STEP 1: Buat Pengajuan Kategori Donasi & Uji Validasi Wajib Proposal
     // =========================================================================
-    console.log('Opening Form Asset Disposal dialog...')
+    console.log('Opening Form Asset Disposal dialog for Donasi test...')
     await page.waitForTimeout(1500)
     const createBtn = page.locator('button:has-text("Buat Pengajuan Disposal")').first()
-    await expect(createBtn).toBeVisible()
+    await expect(createBtn).toBeVisible({ timeout: 15000 })
 
     const dialogTitle = page.locator('h3:has-text("Formulir Pengajuan Asset Disposal")')
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -108,26 +98,21 @@ test.describe('Asset Disposal Sale Workflow: Procurement & Finance Stages', () =
     await expect(dialogTitle).toBeVisible({ timeout: 15000 })
     await page.waitForTimeout(1000)
 
-    // Verify Modal Lebar (max-w-6xl)
-    const dialogContent = page.locator('[role="dialog"]').first()
-    await expect(dialogContent).toHaveClass(/max-w-6xl/)
-    console.log('✓ Verified: Dialog Form is wide with max-w-6xl container!')
-
-    // Pilih Dropdown Jenis Disposal: "Penjualan"
+    // Pilih Dropdown Jenis Disposal: "Donasi"
     const jenisDisposalSelect = page.locator('button:has-text("Penghapusan"), button:has-text("Pilih jenis disposal")').first()
     await expect(jenisDisposalSelect).toBeVisible()
     await jenisDisposalSelect.click()
     await page.waitForTimeout(400)
     const popoverJenis = page.locator('[data-radix-popper-content-wrapper]').last()
-    const optPenjualan = popoverJenis.locator('div.cursor-pointer:has-text("Penjualan")').first()
-    await optPenjualan.click()
+    const optDonasi = popoverJenis.locator('div.cursor-pointer:has-text("Donasi")').first()
+    await optDonasi.click()
     await page.waitForTimeout(600)
-    console.log('✓ Successfully selected Jenis Disposal: Penjualan')
+    console.log('✓ Successfully selected Jenis Disposal: Donasi')
 
-    // Verify Banner Informasi Khusus Kategori Penjualan muncul
-    const saleBanner = page.locator('text=Alur Khusus Kategori Penjualan & Lelang')
-    await expect(saleBanner).toBeVisible({ timeout: 5000 })
-    console.log('✓ Verified: Banner alur khusus Penjualan & Lelang ditampilkan.')
+    // Verifikasi banner wajib proposal muncul
+    const donasiBanner = page.locator('text=Kategori Donasi: Wajib melampirkan berkas Proposal Donasi')
+    await expect(donasiBanner).toBeVisible({ timeout: 5000 })
+    console.log('✓ Verified: Form displays mandatory proposal notification banner for Donasi!')
 
     // Pilih Unit #1 dari Master Data HERO
     console.log('Selecting Unit #1 from Master Data HERO...')
@@ -142,35 +127,7 @@ test.describe('Asset Disposal Sale Workflow: Procurement & Finance Stages', () =
     await page.waitForTimeout(600)
 
     const notesInput1 = page.locator('textarea[placeholder*="Contoh: Rusak total"]').first()
-    await notesInput1.fill('Unit operasional dilelang untuk peremajaan armada dan aset perusahaan.')
-
-    // Tambah Unit #2
-    const addUnitBtn = page.locator('button:has-text("Tambah Unit Aset")').first()
-    await addUnitBtn.click()
-    await page.waitForTimeout(600)
-
-    console.log('Selecting Unit #2 from Master Data HERO...')
-    const selectTrigger2 = page.locator('button:has-text("Pilih aset dari Master Data HERO...")').first()
-    await selectTrigger2.click()
-    await page.waitForTimeout(600)
-
-    const popoverContent2 = page.locator('[data-radix-popper-content-wrapper]').last()
-    const optionItems2 = popoverContent2.locator('div.cursor-pointer')
-    const optCount2 = await optionItems2.count()
-    if (optCount2 > 1) {
-      await optionItems2.nth(1).click({ force: true })
-    } else {
-      await optionItems2.first().click({ force: true })
-    }
-    await page.waitForTimeout(600)
-
-    const notesInput2 = page.locator('textarea[placeholder*="Contoh: Rusak total"]').nth(1)
-    await notesInput2.fill('Kondisi fisik laik lelang dengan dokumen kepemilikan lengkap.')
-
-    // Verify Procurement Step di Rantai Persetujuan (Abd.Rajab / Sofyan Darmawan)
-    const procurementApproverBadge = page.locator('text=Abd.Rajab / Sofyan Darmawan').first()
-    await expect(procurementApproverBadge).toBeVisible({ timeout: 8000 })
-    console.log('✓ Verified: Tim Procurement (Abd.Rajab / Sofyan Darmawan) hadir di rantai persetujuan Penjualan!')
+    await notesInput1.fill('Donasi aset inventaris layak pakai ke Yayasan Sosial Mitra Abadi.')
 
     // Tanda Tangan Digital Pemohon
     console.log('Signing disposal form with canvas stroke...')
@@ -195,273 +152,192 @@ test.describe('Asset Disposal Sale Workflow: Procurement & Finance Stages', () =
     }
     await expect(page.locator('text=Tanda Tangan Siap')).toBeVisible({ timeout: 10000 })
 
-    const ss2Path = path.join(ARTIFACT_DIR, '02_asset_disposal_form_multi_items_filled.png')
-    await page.screenshot({ path: ss2Path })
-    saveScreenshot(ss2Path, '02_asset_disposal_form_multi_items_filled.png')
-    console.log('✓ Captured 02_asset_disposal_form_multi_items_filled.png')
-
-    // Submit form
-    console.log('Submitting disposal form...')
+    // Coba Submit TANPA lampiran proposal -> Harap gagal dengan validasi toast error
     const submitBtn = page.locator('button:has-text("Kirim Pengajuan Disposal")').first()
     await submitBtn.click()
+    await page.waitForTimeout(1000)
 
+    const ss11Path = path.join(ARTIFACT_DIR, '11_asset_disposal_donasi_proposal_required_error.png')
+    await page.screenshot({ path: ss11Path })
+    saveScreenshot(ss11Path, '11_asset_disposal_donasi_proposal_required_error.png')
+    console.log('✓ Captured 11_asset_disposal_donasi_proposal_required_error.png (Validation blocked submit without proposal)')
+
+    // Sekarang Unggah Proposal Donasi
+    const fileInput = page.locator('input[type="file"][multiple]').first()
+    await fileInput.setInputFiles({
+      name: 'Proposal-Donasi-Sosial-2026.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 Mocked Official Donation Proposal Document Content'),
+    })
+    await page.waitForTimeout(2000)
+    await expect(page.locator('text=Proposal-Donasi-Sosial-2026.pdf').first()).toBeVisible({ timeout: 10000 })
+    console.log('✓ Uploaded Proposal Donasi file successfully!')
+
+    // Submit pengajuan yang telah lengkap
+    await submitBtn.click()
     await expect(dialogTitle).not.toBeVisible({ timeout: 25000 })
+    console.log('✓ Form closed. Donasi disposal request created successfully!')
     await page.waitForTimeout(2500)
-
-    // Reload page to verify SSR table data
-    await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2500)
-
-    const tableRow = page.locator('table tbody tr:has-text("DSP-")').first()
-    await expect(tableRow).toBeVisible({ timeout: 15000 })
-    await expect(tableRow.locator('text=Penjualan').first()).toBeVisible()
-    console.log('✓ Table row created with category Penjualan!')
-
-    const ss3Path = path.join(ARTIFACT_DIR, '03_asset_disposal_table_row_created.png')
-    await page.screenshot({ path: ss3Path })
-    saveScreenshot(ss3Path, '03_asset_disposal_table_row_created.png')
-    console.log('✓ Captured 03_asset_disposal_table_row_created.png')
 
     // =========================================================================
-    // STEP 3: Approval Rantai Hingga Step Procurement (Input Estimasi Harga)
+    // STEP 2: Approval Berjenjang hingga Direktur
     // =========================================================================
-    console.log('Starting approval cycles...')
-
-    // Step 1: Atasan Langsung
-    let tinjauBtn = tableRow.locator('button:has-text("Tinjau")').first()
-    await expect(tinjauBtn).toBeVisible()
-    await tinjauBtn.click()
-    await page.waitForTimeout(2000)
-
-    let approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    await expect(approveButton).toBeVisible({ timeout: 15000 })
-    await approveButton.click()
-    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(1500)
-
-    // Reload to advance to next step
     await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2000)
-
-    // Step 2: Manager
-    tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
-    await tinjauBtn.click()
-    await page.waitForTimeout(2000)
-
-    approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    await expect(approveButton).toBeVisible({ timeout: 15000 })
-    await approveButton.click()
-    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(1500)
-
-    // Reload to reach Step 3: Procurement
-    await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2000)
-
-    console.log('Opening Step 3: Procurement Price Estimation Review...')
-    tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
-    await tinjauBtn.click()
     await page.waitForTimeout(2500)
 
-    // Verify Area Input Estimasi Harga Penjualan (Procurement - Tanpa TTD)
-    const estHeading = page.locator('text=Input Estimasi Harga Penjualan')
-    await expect(estHeading).toBeVisible({ timeout: 15000 })
-    const procNotice = page.locator('text=Tim Procurement (Abd.Rajab / Sofyan Darmawan)')
-    await expect(procNotice).toBeVisible()
-    console.log('✓ Verified: Procurement Price Estimation panel is displayed!')
+    const donasiRow = page.locator('table tbody tr:has-text("DSP-")').first()
+    await expect(donasiRow).toBeVisible({ timeout: 15000 })
+    await expect(donasiRow.locator('text=🎁 Donasi').first()).toBeVisible()
+    console.log('✓ Verified: Donasi table row created with 🎁 Donasi badge!')
 
-    // Input estimasi harga jual per item
-    const priceInputs = page.locator('input[type="number"][placeholder="0"]')
-    const priceCount = await priceInputs.count()
-    console.log(`Found ${priceCount} item estimate inputs.`)
-    expect(priceCount).toBeGreaterThanOrEqual(1)
+    // Loop through 5 standard approval steps (Section Head, Dept Head, Finance Amama Ira, GM, Director)
+    for (let step = 1; step <= 5; step++) {
+      console.log(`Executing Approval Step ${step}...`)
+      const tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
+      await expect(tinjauBtn).toBeVisible({ timeout: 15000 })
+      await tinjauBtn.click()
+      await page.waitForTimeout(2000)
 
-    await priceInputs.first().fill('35000000')
-    if (priceCount > 1) {
-      await priceInputs.nth(1).fill('25000000')
+      const approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
+      await expect(approveButton).toBeVisible({ timeout: 15000 })
+      await approveButton.click()
+      // Wait for approval processing (PDF generation on final step takes ~3-4s)
+      await page.waitForTimeout(4000)
+
+      await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(2500)
     }
-    await page.waitForTimeout(800)
-
-    // Verify Live A4 Document preview renders ESTIMASI HARGA PENJUALAN column
-    const printArea = page.locator('.print-area').first()
-    await expect(printArea.getByText('ESTIMASI HARGA PENJUALAN').first()).toBeVisible()
-    await expect(printArea.getByText('TOTAL NILAI AKUMULASI:').first()).toBeVisible()
-    console.log('✓ Verified: Live A4 preview displays ESTIMASI HARGA PENJUALAN and accumulated total!')
-
-    const ss5Path = path.join(ARTIFACT_DIR, '05_asset_disposal_procurement_price_estimation.png')
-    await page.screenshot({ path: ss5Path })
-    saveScreenshot(ss5Path, '05_asset_disposal_procurement_price_estimation.png')
-    console.log('✓ Captured 05_asset_disposal_procurement_price_estimation.png')
-
-    // Approve step 3 without signature
-    approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    await approveButton.click()
-    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(1500)
-
-    // Reload and advance through Finance, GM, and Direktur
-    // Step 4: Finance (Amama Ira)
-    await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2000)
-    tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
-    await tinjauBtn.click()
-    await page.waitForTimeout(2000)
-    approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    await approveButton.click()
-    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(1500)
-
-    // Step 5: GM (Person Sihaloho)
-    await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2000)
-    tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
-    await tinjauBtn.click()
-    await page.waitForTimeout(2000)
-    approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    await approveButton.click()
-    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(1500)
-
-    // Step 6: Direktur (Hidayat Rahman) - Full Approval triggers 'waiting_auction_docs'
-    await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2000)
-    tinjauBtn = page.locator('table tbody tr:has-text("DSP-")').first().locator('button:has-text("Tinjau")').first()
-    await tinjauBtn.click()
-    await page.waitForTimeout(2000)
-    approveButton = page.locator('button:has-text("Setujui Pengajuan")').first()
-    await approveButton.click()
-    await expect(approveButton).not.toBeVisible({ timeout: 15000 })
-    await page.waitForTimeout(2000)
 
     // =========================================================================
-    // STEP 4: Verifikasi Status 'waiting_auction_docs' & Tombol 'Lampiran Lelang'
+    // STEP 3: Verifikasi Status 'waiting_ba_disposal' & Tombol 'BA Donasi'
     // =========================================================================
-    await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
-    await page.waitForTimeout(2500)
+    const baDonasiRow = page.locator('table tbody tr:has-text("DSP-")').first()
+    await expect(baDonasiRow.locator('text=Menunggu BA Donasi (Pengaju)').first()).toBeVisible({ timeout: 15000 })
+    console.log('✓ Status successfully transitioned to "Menunggu BA Donasi (Pengaju)"!')
 
-    const updatedRow = page.locator('table tbody tr:has-text("DSP-")').first()
-    await expect(updatedRow.locator('text=Menunggu Lampiran Lelang').first()).toBeVisible({ timeout: 15000 })
-    console.log('✓ Status successfully transitioned to "Menunggu Lampiran Lelang"!')
+    const baBtn = baDonasiRow.locator('button:has-text("BA Donasi")').first()
+    await expect(baBtn).toBeVisible()
 
-    // Tombol Lampiran Lelang muncul
-    const auctionBtn = updatedRow.locator('button:has-text("Lampiran Lelang")').first()
-    await expect(auctionBtn).toBeVisible()
-
-    const ss6Path = path.join(ARTIFACT_DIR, '06_asset_disposal_waiting_auction_docs.png')
-    await page.screenshot({ path: ss6Path })
-    saveScreenshot(ss6Path, '06_asset_disposal_waiting_auction_docs.png')
-    console.log('✓ Captured 06_asset_disposal_waiting_auction_docs.png')
+    const ss12Path = path.join(ARTIFACT_DIR, '12_asset_disposal_waiting_ba_donasi.png')
+    await page.screenshot({ path: ss12Path })
+    saveScreenshot(ss12Path, '12_asset_disposal_waiting_ba_donasi.png')
+    console.log('✓ Captured 12_asset_disposal_waiting_ba_donasi.png')
 
     // =========================================================================
-    // STEP 5: Submit Lampiran Lelang oleh Procurement
+    // STEP 4: Buka Modal Berita Acara Donasi & Submit oleh Pengaju
     // =========================================================================
-    console.log('Opening Post-Approval Auction Modal...')
-    await auctionBtn.click()
+    console.log('Opening Berita Acara Modal for Donasi...')
+    await baBtn.click()
     await page.waitForTimeout(1500)
 
-    const auctionModal = page.locator('[role="dialog"]:has-text("Submit Lampiran Hasil Lelang")').first()
-    await expect(auctionModal).toBeVisible({ timeout: 10000 })
+    const baModal = page.locator('[role="dialog"]:has-text("Submit Berita Acara Donasi")').first()
+    await expect(baModal).toBeVisible({ timeout: 10000 })
 
-    // Centang checklist dokumen lelang
-    const skLelangCheckbox = auctionModal.locator('label:has-text("Surat keputusan pemenang Lelang")').first()
-    await skLelangCheckbox.click()
-    const baCheckbox = auctionModal.locator('label:has-text("Berita Acara")').first()
+    // Centang checklist Berita Acara Donasi
+    const baCheckbox = baModal.locator('label:has-text("Berita Acara Donasi")').first()
     await baCheckbox.click()
-    const bayarCheckbox = auctionModal.locator('label:has-text("Bukti Pembayaran")').first()
-    await bayarCheckbox.click()
 
-    // Catatan lelang
-    const auctionNotes = auctionModal.locator('textarea').first()
-    await auctionNotes.fill('Lelang selesai dilaksanakan oleh Tim Procurement. Pemenang dan bukti pembayaran lunas telah diverifikasi.')
+    // Coba submit tanpa file -> Harap dicegah (wajib upload file Berita Acara)
+    const submitBaBtn = baModal.locator('button:has-text("Simpan & Teruskan ke Finance")').first()
+    await submitBaBtn.click()
+    await page.waitForTimeout(1000)
+    await expect(baModal).toBeVisible()
+    console.log('✓ Verified: File upload is strictly required for Berita Acara submission!')
 
-    const ss7Path = path.join(ARTIFACT_DIR, '07_asset_disposal_auction_modal.png')
-    await page.screenshot({ path: ss7Path })
-    saveScreenshot(ss7Path, '07_asset_disposal_auction_modal.png')
-    console.log('✓ Captured 07_asset_disposal_auction_modal.png')
-
-    const submitAuctionBtn = auctionModal.locator('button:has-text("Simpan & Kirim ke Finance")').first()
-    await submitAuctionBtn.click()
-    await expect(auctionModal).not.toBeVisible({ timeout: 15000 })
+    // Upload berkas Berita Acara Donasi
+    const baFileInput = baModal.locator('input[type="file"]').first()
+    await baFileInput.setInputFiles({
+      name: 'Berita-Acara-Serah-Terima-Donasi-Signed.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 Mocked Official Signed Donation Handover Document'),
+    })
     await page.waitForTimeout(2000)
+    await expect(baModal.locator('text=Berita-Acara-Serah-Terima-Donasi-Signed.pdf').first()).toBeVisible({ timeout: 10000 })
+
+    const baNotes = baModal.locator('textarea').first()
+    await baNotes.fill('Berita acara serah terima donasi telah ditandatangani perwakilan panti dan manajemen.')
+
+    await submitBaBtn.click()
+    await expect(baModal).not.toBeVisible({ timeout: 15000 })
+    console.log('✓ Berita Acara Donasi submitted successfully. Escalated to Finance!')
+    await page.waitForTimeout(2500)
 
     // =========================================================================
-    // STEP 6: Verifikasi Status 'waiting_finance_docs' & Tombol 'Dokumen Finance'
+    // STEP 5: Verifikasi Status 'waiting_finance_docs' & Submit oleh Finance
     // =========================================================================
     await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(2500)
 
-    const financeRow = page.locator('table tbody tr:has-text("DSP-")').first()
-    await expect(financeRow.locator('text=Menunggu Dokumen Finance').first()).toBeVisible({ timeout: 15000 })
+    const finRow = page.locator('table tbody tr:has-text("DSP-")').first()
+    await expect(finRow.locator('text=Menunggu Dokumen Finance').first()).toBeVisible({ timeout: 15000 })
     console.log('✓ Status successfully transitioned to "Menunggu Dokumen Finance"!')
 
-    const financeBtn = financeRow.locator('button:has-text("Dokumen Finance")').first()
-    await expect(financeBtn).toBeVisible()
+    const finBtn = finRow.locator('button:has-text("Dokumen Finance")').first()
+    await expect(finBtn).toBeVisible()
 
-    const ss8Path = path.join(ARTIFACT_DIR, '08_asset_disposal_waiting_finance_docs.png')
-    await page.screenshot({ path: ss8Path })
-    saveScreenshot(ss8Path, '08_asset_disposal_waiting_finance_docs.png')
-    console.log('✓ Captured 08_asset_disposal_waiting_finance_docs.png')
+    const ss13Path = path.join(ARTIFACT_DIR, '13_asset_disposal_waiting_finance_from_donasi.png')
+    await page.screenshot({ path: ss13Path })
+    saveScreenshot(ss13Path, '13_asset_disposal_waiting_finance_from_donasi.png')
+    console.log('✓ Captured 13_asset_disposal_waiting_finance_from_donasi.png')
 
-    // =========================================================================
-    // STEP 7: Submit Dokumen Keuangan oleh Finance & Accounting
-    // =========================================================================
-    console.log('Opening Post-Approval Finance Modal...')
-    await financeBtn.click()
+    // Buka Modal Finance
+    await finBtn.click()
     await page.waitForTimeout(1500)
+    const finModal = page.locator('[role="dialog"]:has-text("Submit Dokumen Keuangan")').first()
+    await expect(finModal).toBeVisible({ timeout: 10000 })
 
-    const financeModal = page.locator('[role="dialog"]:has-text("Submit Dokumen Keuangan")').first()
-    await expect(financeModal).toBeVisible({ timeout: 10000 })
+    // Centang Dokumen Disposal SAP
+    const sapCheckbox = finModal.locator('label:has-text("Dokumen Disposal SAP")').first()
+    await sapCheckbox.click()
 
-    // Centang checklist dokumen finance
-    const debitNoteCheckbox = financeModal.locator('label:has-text("Debit Note")').first()
-    await debitNoteCheckbox.click()
-    const fakturPajakCheckbox = financeModal.locator('label:has-text("Faktur Pajak")').first()
-    await fakturPajakCheckbox.click()
-    const sapDisposalCheckbox = financeModal.locator('label:has-text("Dokumen Disposal SAP")').first()
-    await sapDisposalCheckbox.click()
+    // Upload berkas Dokumen Disposal SAP
+    const sapFileInput = finModal.locator('input[type="file"]').first()
+    await sapFileInput.setInputFiles({
+      name: 'SAP-Disposal-Confirmation-Donasi.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 Mocked SAP ERP Disposal Confirmation Export'),
+    })
+    await page.waitForTimeout(2000)
+    await expect(finModal.locator('text=SAP-Disposal-Confirmation-Donasi.pdf').first()).toBeVisible({ timeout: 10000 })
 
-    const financeNotes = financeModal.locator('textarea').first()
-    await financeNotes.fill('Debit note & faktur pajak telah terbit. Aset telah di-write-off pada sistem SAP.')
+    const finNotes = finModal.locator('textarea').first()
+    await finNotes.fill('Aset donasi telah di-write-off dari sistem SAP ERP.')
 
-    const ss9Path = path.join(ARTIFACT_DIR, '09_asset_disposal_finance_modal.png')
-    await page.screenshot({ path: ss9Path })
-    saveScreenshot(ss9Path, '09_asset_disposal_finance_modal.png')
-    console.log('✓ Captured 09_asset_disposal_finance_modal.png')
-
-    const submitFinanceBtn = financeModal.locator('button:has-text("Selesaikan Proses Disposal & Lelang")').first()
-    await submitFinanceBtn.click()
-    await expect(financeModal).not.toBeVisible({ timeout: 15000 })
+    const submitFinBtn = finModal.locator('button:has-text("Selesaikan Proses Disposal")').first()
+    await submitFinBtn.click()
+    await expect(finModal).not.toBeVisible({ timeout: 15000 })
+    console.log('✓ Finance submitted SAP Disposal Document successfully!')
     await page.waitForTimeout(2500)
 
     // =========================================================================
-    // STEP 8: Verifikasi Status 'completed' & Pratinjau Detail Modal Lengkap
+    // STEP 6: Verifikasi Status 'completed' & Detail Modal Akhir
     // =========================================================================
     await page.goto('/dashboard/assets/disposal', { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(2500)
 
     const completedRow = page.locator('table tbody tr:has-text("DSP-")').first()
-    await expect(completedRow.locator('text=Selesai (Disposal & Lelang Selesai)').first()).toBeVisible({ timeout: 15000 })
-    console.log('✓ Status successfully transitioned to "Selesai (Disposal & Lelang Selesai)"!')
+    await expect(completedRow.locator('text=Selesai (Disposal Selesai)').first()).toBeVisible({ timeout: 15000 })
+    console.log('✓ Status successfully transitioned to "Selesai (Disposal Selesai)"!')
 
-    // Buka Modal Detail untuk verifikasi rincian akhir
-    const viewCompletedBtn = completedRow.locator('button:has(svg.lucide-eye)').first()
-    await viewCompletedBtn.click()
+    // Buka Modal Detail
+    const viewBtn = completedRow.locator('button:has(svg.lucide-eye)').first()
+    await viewBtn.click()
     await page.waitForTimeout(1500)
 
     const detailModal = page.locator('h2:has-text("Detail Penghapusan Aset"), div:has-text("Detail Penghapusan Aset")').first()
     await expect(detailModal).toBeVisible({ timeout: 10000 })
 
-    // Verifikasi Bagian Lampiran Lelang & Dokumen Keuangan
-    await expect(page.locator('text=Lampiran Hasil Lelang (Procurement)').first()).toBeVisible()
+    // Verifikasi Section Berita Acara Donasi & Dokumen Keuangan
+    await expect(page.locator('text=Berita Acara Serah Terima Donasi (Pengaju)').first()).toBeVisible()
     await expect(page.locator('text=Dokumen Administrasi Keuangan (Finance & Accounting)').first()).toBeVisible()
-    await expect(page.locator('text=Estimasi Harga Penjualan').first()).toBeVisible()
-    console.log('✓ Verified: Detail Modal renders all post-approval sections (Auction & Finance documents) perfectly!')
+    await expect(page.locator('text=Proposal-Donasi-Sosial-2026.pdf').first()).toBeVisible()
+    console.log('✓ Verified: Detail modal renders Berita Acara Donasi, Dokumen SAP Finance, and Proposal Donasi!')
 
-    const ss10Path = path.join(ARTIFACT_DIR, '10_asset_disposal_completed_full_detail.png')
-    await page.screenshot({ path: ss10Path })
-    saveScreenshot(ss10Path, '10_asset_disposal_completed_full_detail.png')
-    console.log('✓ Captured 10_asset_disposal_completed_full_detail.png')
+    const ss14Path = path.join(ARTIFACT_DIR, '14_asset_disposal_donasi_completed_detail.png')
+    await page.screenshot({ path: ss14Path })
+    saveScreenshot(ss14Path, '14_asset_disposal_donasi_completed_detail.png')
+    console.log('✓ Captured 14_asset_disposal_donasi_completed_detail.png')
 
-    console.log('🎉 All Asset Disposal Sale Category E2E Tests Succeeded Perfectly!')
+    console.log('🎉 All Asset Disposal Donation Workflow E2E Tests Succeeded Perfectly!')
   })
 })

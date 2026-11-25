@@ -14,6 +14,7 @@ import {
   Paperclip,
   ShieldCheck,
   Trash2,
+  ClipboardCheck,
 } from 'lucide-react'
 
 interface AssetDisposalDetailModalProps {
@@ -47,7 +48,21 @@ export function AssetDisposalDetailModal({
   const getStatusTone = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'completed':
-        return { label: 'Selesai (Disposal & Lelang Selesai)', status: 'approved' as const }
+        return {
+          label:
+            item?.disposalType === 'Penjualan'
+              ? 'Selesai (Disposal & Lelang Selesai)'
+              : 'Selesai (Disposal Selesai)',
+          status: 'approved' as const,
+        }
+      case 'waiting_ba_disposal':
+        return {
+          label:
+            item?.disposalType === 'Donasi'
+              ? 'Menunggu BA Donasi (Pengaju)'
+              : 'Menunggu Berita Acara (Pengaju)',
+          status: 'pending' as const,
+        }
       case 'waiting_auction_docs':
         return { label: 'Menunggu Lampiran Lelang', status: 'pending' as const }
       case 'waiting_finance_docs':
@@ -289,6 +304,66 @@ export function AssetDisposalDetailModal({
                   </a>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* DOKUMEN BERITA ACARA (PENGAJU) */}
+          {item.baDocuments && (
+            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-blue-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <ClipboardCheck className="size-4 text-blue-700" />
+                  {item.disposalType === 'Donasi'
+                    ? 'Berita Acara Serah Terima Donasi (Pengaju)'
+                    : 'Berita Acara Penghapusan Aset (Pengaju)'}
+                </h4>
+                {item.baSubmittedAt && (
+                  <span className="text-[10px] font-mono text-blue-800">
+                    Disubmit: {formatDateTime(item.baSubmittedAt)}
+                  </span>
+                )}
+              </div>
+              {item.baDocuments.checklist && item.baDocuments.checklist.length > 0 && (
+                <div className="mb-3 space-y-1 bg-white/80 p-2.5 rounded-lg border border-blue-200/80">
+                  <span className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
+                    Dokumen yang Diserahkan:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.baDocuments.checklist.map((c: string, idx: number) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center text-[10px] bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded font-medium"
+                      >
+                        ✓ {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {item.baDocuments.files && item.baDocuments.files.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {item.baDocuments.files.map((f: any, idx: number) => (
+                    <a
+                      key={idx}
+                      href={f.fileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between p-2 rounded-lg border border-blue-200 bg-white hover:bg-blue-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <FileText className="size-4 text-blue-600 shrink-0" />
+                        <span className="truncate font-medium text-slate-800 text-[11px]">{f.fileName}</span>
+                      </div>
+                      <span className="text-[10px] text-blue-800 font-bold shrink-0">Buka</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+              {item.baDocuments.notes && (
+                <p className="mt-2 text-[11px] text-slate-600 italic bg-white/70 p-2 rounded border border-blue-200">
+                  Catatan: {item.baDocuments.notes}
+                </p>
+              )}
             </div>
           )}
 

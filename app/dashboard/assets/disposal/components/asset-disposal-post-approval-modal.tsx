@@ -22,10 +22,12 @@ import {
   Building2,
   Gavel,
   Receipt,
+  ClipboardCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { uploadFile } from '@/app/actions/upload'
 import {
+  submitDisposalBaDocumentsAction,
   submitDisposalAuctionDocumentsAction,
   submitDisposalFinanceDocumentsAction,
 } from '../actions'
@@ -40,7 +42,7 @@ interface AssetDisposalPostApprovalModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   item: any | null
-  mode: 'auction' | 'finance'
+  mode: 'berita_acara' | 'auction' | 'finance'
   onSuccess?: () => void
 }
 
@@ -73,7 +75,16 @@ export function AssetDisposalPostApprovalModal({
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   const isAuction = mode === 'auction'
-  const checklistOptions = isAuction ? AUCTION_CHECKLIST_OPTIONS : FINANCE_CHECKLIST_OPTIONS
+  const isBeritaAcara = mode === 'berita_acara'
+  const isFinance = mode === 'finance'
+  const isDonation = item?.disposalType === 'Donasi'
+
+  const baOptions = isDonation ? ['Berita Acara Donasi'] : ['Berita Acara Aset Disposal']
+  const checklistOptions = isAuction
+    ? AUCTION_CHECKLIST_OPTIONS
+    : isBeritaAcara
+    ? baOptions
+    : FINANCE_CHECKLIST_OPTIONS
 
   // Reset state when modal opens
   React.useEffect(() => {
@@ -139,11 +150,27 @@ export function AssetDisposalPostApprovalModal({
       return
     }
 
+    if ((isBeritaAcara || isFinance) && uploadedFiles.length === 0) {
+      toast.error(
+        isBeritaAcara
+          ? `Wajib mengunggah minimal 1 berkas scan/foto ${isDonation ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'} yang telah ditandatangani.`
+          : 'Wajib mengunggah minimal 1 berkas Dokumen Disposal SAP.'
+      )
+      return
+    }
+
     setIsSubmitting(true)
     try {
       let res: any
       if (isAuction) {
         res = await submitDisposalAuctionDocumentsAction({
+          disposalId: item.id,
+          checklist: selectedChecklist,
+          files: uploadedFiles,
+          notes,
+        })
+      } else if (isBeritaAcara) {
+        res = await submitDisposalBaDocumentsAction({
           disposalId: item.id,
           checklist: selectedChecklist,
           files: uploadedFiles,
@@ -172,6 +199,14 @@ export function AssetDisposalPostApprovalModal({
     }
   }
 
+  const modalTitle = isAuction
+    ? 'Submit Lampiran Hasil Lelang (Procurement)'
+    : isBeritaAcara
+    ? isDonation
+      ? 'Submit Berita Acara Donasi (Pengaju)'
+      : 'Submit Berita Acara Aset Disposal (Pengaju)'
+    : 'Submit Dokumen Keuangan (Finance & Accounting)'
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-6 overflow-hidden flex flex-col max-h-[90vh]">
@@ -179,16 +214,20 @@ export function AssetDisposalPostApprovalModal({
           <div className="flex items-center gap-2.5">
             <div
               className={`p-2 rounded-lg text-white ${
-                isAuction ? 'bg-amber-600' : 'bg-purple-600'
+                isAuction ? 'bg-amber-600' : isBeritaAcara ? 'bg-blue-600' : 'bg-purple-600'
               }`}
             >
-              {isAuction ? <Gavel className="size-5" /> : <Receipt className="size-5" />}
+              {isAuction ? (
+                <Gavel className="size-5" />
+              ) : isBeritaAcara ? (
+                <ClipboardCheck className="size-5" />
+              ) : (
+                <Receipt className="size-5" />
+              )}
             </div>
             <div>
               <DialogTitle className="text-base font-bold text-slate-900">
-                {isAuction
-                  ? 'Submit Lampiran Hasil Lelang (Procurement)'
-                  : 'Submit Dokumen Keuangan (Finance & Accounting)'}
+                {modalTitle}
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500 font-mono mt-0.5">
                 Pengajuan: {item.disposalNumber} • {item.assetName}
@@ -203,6 +242,8 @@ export function AssetDisposalPostApprovalModal({
             className={`rounded-lg p-3 border text-xs leading-relaxed ${
               isAuction
                 ? 'bg-amber-50/80 border-amber-200 text-amber-950'
+                : isBeritaAcara
+                ? 'bg-blue-50/80 border-blue-200 text-blue-950'
                 : 'bg-purple-50/80 border-purple-200 text-purple-950'
             }`}
           >
@@ -210,11 +251,16 @@ export function AssetDisposalPostApprovalModal({
               <CheckCircle2 className="size-4 shrink-0" />
               {isAuction
                 ? 'Checklist Berkas Lelang & Pemenang (Wajib Diserahkan)'
+                : isBeritaAcara
+                ? `Checklist Berkas ${isDonation ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'} (Wajib Diserahkan)`
                 : 'Checklist Berkas Administrasi Keuangan (Wajib Diserahkan)'}
             </p>
             <p className="text-[11px] text-slate-600">
-              Centang dokumen yang Anda lampirkan dan unggah berkas fisik/digitalnya pada kolom
-              di bawah. Anda dapat mengunggah lebih dari 1 file sekaligus.
+              {isBeritaAcara
+                ? `Centang checklist dan unggah berkas fisik/scan resmi ${isDonation ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'} yang telah ditandatangani pihak terkait.`
+                : isFinance
+                ? 'Centang checklist dan unggah berkas Dokumen Disposal SAP dari sistem SAP ERP.'
+                : 'Centang dokumen yang Anda lampirkan dan unggah berkas fisik/digitalnya pada kolom di bawah.'}
             </p>
           </div>
 
@@ -239,79 +285,75 @@ export function AssetDisposalPostApprovalModal({
                     <Checkbox
                       checked={checked}
                       onCheckedChange={() => handleToggleChecklist(opt)}
+                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                     />
-                    <span>{opt}</span>
+                    <span className="flex-1">{opt}</span>
                   </label>
                 )
               })}
             </div>
           </div>
 
-          {/* Multi-File Upload Box */}
-          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3.5">
+          {/* Upload File / Lampiran */}
+          <div className="space-y-2.5 rounded-lg border border-slate-200 bg-slate-50/60 p-3.5">
             <div className="flex items-center justify-between">
               <span className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
-                2. Unggah Berkas Dokumen <span className="text-rose-500">*</span>:
+                2. Unggah Berkas Dokumen Fisik / Digital {isBeritaAcara || isFinance ? <span className="text-rose-500">* (Wajib)</span> : '(Opsional)'}:
               </span>
-              <span className="text-[11px] text-slate-500 font-mono">
-                {uploadedFiles.length} Berkas Terunggah
-              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="h-7 text-xs gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                <UploadCloud className="size-3.5" />
+                {isUploading ? 'Mengunggah...' : 'Pilih Berkas'}
+              </Button>
             </div>
 
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              onChange={handleFileUpload}
+              accept="application/pdf,image/*"
               className="hidden"
-              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx"
+              onChange={handleFileUpload}
             />
 
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-5 text-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-blue-50/20"
-            >
-              {isUploading ? (
-                <div className="flex flex-col items-center justify-center gap-2 text-slate-600">
-                  <Loader2 className="size-6 animate-spin text-blue-600" />
-                  <span className="text-xs font-medium">Sedang mengunggah berkas...</span>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-1.5 text-slate-600">
-                  <UploadCloud className="size-7 text-blue-600" />
-                  <p className="text-xs font-semibold text-slate-800">
-                    Klik untuk memilih berkas atau seret ke sini
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    Mendukung PDF, Excel, Word, atau Gambar (Maks. 25MB per file)
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* List Berkas Terunggah */}
-            {uploadedFiles.length > 0 && (
-              <div className="space-y-1.5 pt-2 max-h-40 overflow-y-auto">
+            {uploadedFiles.length === 0 ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-white rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer transition-all text-center"
+              >
+                <Paperclip className="size-5 text-slate-400 mb-1" />
+                <p className="text-xs font-medium text-slate-600">
+                  Klik di sini untuk mengunggah dokumen fisik / scan PDF
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  Format: PDF, PNG, JPG (Maks 15 MB per berkas)
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {uploadedFiles.map((f, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-2 rounded-md bg-slate-50 border border-slate-200 text-xs"
+                    className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-white"
                   >
-                    <div className="flex items-center gap-2 truncate max-w-[85%]">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
                       <FileText className="size-4 text-blue-600 shrink-0" />
-                      <span className="truncate font-medium text-slate-800">{f.fileName}</span>
-                      {f.fileSize ? (
-                        <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                          ({(f.fileSize / 1024).toFixed(0)} KB)
-                        </span>
-                      ) : null}
+                      <span className="truncate text-xs font-medium text-slate-800" title={f.fileName}>
+                        {f.fileName}
+                      </span>
                     </div>
                     <Button
                       type="button"
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       onClick={() => handleRemoveFile(idx)}
-                      className="size-7 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                      className="size-6 text-slate-400 hover:text-rose-600"
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
@@ -363,10 +405,15 @@ export function AssetDisposalPostApprovalModal({
                 <CheckCircle2 className="size-3.5" />
                 Simpan & Kirim ke Finance
               </>
+            ) : isBeritaAcara ? (
+              <>
+                <CheckCircle2 className="size-3.5" />
+                Simpan & Teruskan ke Finance
+              </>
             ) : (
               <>
                 <CheckCircle2 className="size-3.5" />
-                Selesaikan Proses Disposal & Lelang
+                Selesaikan Proses Disposal
               </>
             )}
           </Button>

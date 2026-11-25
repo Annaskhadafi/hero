@@ -39,7 +39,12 @@ export const assetDisposals = pgTable('hero_asset_disposals', {
   totalEstimatedSalePrice: doublePrecision('total_estimated_sale_price').default(0),
   attachments: text('attachments').notNull().default('[]'), // JSON array: [{ fileName, fileUrl, fileSize, mimeType }]
 
-  // Dokumen Pasca-Approval (Lelang & Finance)
+  // Dokumen Pasca-Approval (Berita Acara Pengaju, Lelang Procurement, & Finance)
+  baDocuments: text('ba_documents'), // JSON: { checklist: string[], files: Array<{ fileName, fileUrl, fileSize }>, notes?: string }
+  baSubmittedAt: timestamp('ba_submitted_at'),
+  baSubmittedById: integer('ba_submitted_by_id').references(() => employees.id, {
+    onDelete: 'set null',
+  }),
   auctionDocuments: text('auction_documents'), // JSON: { checklist: string[], files: Array<{ fileName, fileUrl, fileSize }> }
   auctionSubmittedAt: timestamp('auction_submitted_at'),
   auctionSubmittedById: integer('auction_submitted_by_id').references(() => employees.id, {

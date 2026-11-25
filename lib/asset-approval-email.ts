@@ -845,27 +845,34 @@ export async function sendAssetDisposalFinanceReadyEmail(params: {
 export async function sendAssetDisposalCompletedEmail(params: {
   applicantEmail: string
   applicantName: string
-  procurementEmails: string[]
-  financeEmails: string[]
+  procurementEmails?: string[]
+  financeEmails?: string[]
   disposalNumber: string
   assetName: string
   disposalId: number
+  disposalType?: string
 }) {
   const baseUrl = getPublicAppUrl()
   const detailLink = `${baseUrl}/dashboard/assets/disposal?id=${params.disposalId}`
   const target = await resolveTargetRecipients(params.applicantEmail)
 
+  const isSale = params.disposalType === 'Penjualan'
+  const titleText = isSale ? 'Proses Disposal & Lelang Selesai' : 'Proses Disposal Selesai'
+  const badgeLabel = isSale ? 'Selesai (Disposal & Lelang Selesai)' : 'Selesai (Disposal Selesai)'
+
   const html = renderAssetBorrowEmailHtml({
     borrowNumber: params.disposalNumber,
-    subjectTitle: `Proses Disposal & Lelang Selesai: ${params.assetName}`,
-    badgeText: 'Selesai (Disposal & Lelang Selesai)',
+    subjectTitle: `${titleText}: ${params.assetName}`,
+    badgeText: badgeLabel,
     badgeBgColor: '#dcfce7',
     badgeTextColor: '#166534',
     jobTitleInfo: 'Pemberitahuan Penyelesaian Menyeluruh',
     borrowerName: params.applicantName,
     assetName: params.assetName,
     notesTitle: 'Keterangan Akhir',
-    notesContent: 'Seluruh tahapan persetujuan direksi, pelaksanaan lelang oleh Procurement, dan penerbitan dokumen administrasi oleh Finance & Accounting telah selesai secara lengkap.',
+    notesContent: isSale
+      ? 'Seluruh tahapan persetujuan direksi, pelaksanaan lelang oleh Procurement, dan penerbitan dokumen administrasi oleh Finance & Accounting telah selesai secara lengkap.'
+      : 'Seluruh tahapan persetujuan direksi, penyerahan Berita Acara oleh Pengaju, dan penerbitan Dokumen Disposal SAP oleh Finance & Accounting telah selesai secara lengkap.',
     ctaUrl: detailLink,
     ctaText: 'Lihat Arsip Lengkap Disposal &rarr;',
   })
@@ -873,10 +880,89 @@ export async function sendAssetDisposalCompletedEmail(params: {
   await sendWorkflowEmail({
     to: target.to,
     templateCode: 'asset_disposal_completed',
-    templateName: 'Penyelesaian Lengkap Proses Disposal & Lelang Aset',
+    templateName: 'Penyelesaian Lengkap Proses Disposal Aset',
     variables: { disposalNumber: params.disposalNumber, assetName: params.assetName, detailLink },
-    fallbackSubject: `${target.note}[Selesai] Proses Disposal & Lelang ${params.disposalNumber} - ${params.assetName} Telah Selesai`,
+    fallbackSubject: `${target.note}[Selesai] ${titleText} ${params.disposalNumber} - ${params.assetName}`,
     fallbackHtml: html,
-    fallbackText: `Yth. ${params.applicantName},\n\nSeluruh proses disposal dan lelang untuk aset ${params.assetName} (${params.disposalNumber}) telah selesai secara lengkap.\n\nTinjau arsip di: ${detailLink}`,
+    fallbackText: `Yth. ${params.applicantName},\n\nSeluruh proses disposal untuk aset ${params.assetName} (${params.disposalNumber}) telah selesai secara lengkap.\n\nTinjau arsip di: ${detailLink}`,
+  })
+}
+
+export async function sendAssetDisposalBaReadyEmail(params: {
+  applicantEmail: string
+  applicantName: string
+  disposalNumber: string
+  assetName: string
+  disposalId: number
+  disposalType: string
+}) {
+  const isDonation = params.disposalType === 'Donasi'
+  const baLabel = isDonation ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'
+  const baseUrl = getPublicAppUrl()
+  const detailLink = `${baseUrl}/dashboard/assets/disposal?id=${params.disposalId}`
+  const target = await resolveTargetRecipients(params.applicantEmail)
+
+  const html = renderAssetBorrowEmailHtml({
+    borrowNumber: params.disposalNumber,
+    subjectTitle: `Disposal Disetujui Direktur - Menunggu ${baLabel}: ${params.assetName}`,
+    badgeText: `Menunggu ${baLabel} (Pengaju)`,
+    badgeBgColor: '#fef3c7',
+    badgeTextColor: '#92400e',
+    jobTitleInfo: 'Penugasan Unggah Berita Acara',
+    borrowerName: params.applicantName,
+    assetName: params.assetName,
+    notesTitle: 'Instruksi Tindak Lanjut',
+    notesContent: `Permohonan disposal aset (${params.disposalType}) telah disetujui penuh oleh Direktur. Mohon segera mengunggah scan/foto berkas ${baLabel} fisik yang telah ditandatangani.`,
+    ctaUrl: detailLink,
+    ctaText: `Unggah ${baLabel} &rarr;`,
+  })
+
+  await sendWorkflowEmail({
+    to: target.to,
+    templateCode: 'asset_disposal_ba_ready',
+    templateName: 'Penugasan Unggah Berita Acara Asset Disposal',
+    variables: { disposalNumber: params.disposalNumber, assetName: params.assetName, detailLink },
+    fallbackSubject: `${target.note}[Berita Acara] Penghapusan Aset ${params.disposalNumber} - Menunggu ${baLabel}`,
+    fallbackHtml: html,
+    fallbackText: `Permohonan disposal aset ${params.assetName} (${params.disposalNumber}) telah disetujui Direktur. Mohon unggah ${baLabel} di: ${detailLink}`,
+  })
+}
+
+export async function sendAssetDisposalBaSubmittedEmail(params: {
+  financeEmails: string[]
+  disposalNumber: string
+  assetName: string
+  disposalId: number
+  disposalType: string
+}) {
+  const isDonation = params.disposalType === 'Donasi'
+  const baLabel = isDonation ? 'Berita Acara Donasi' : 'Berita Acara Aset Disposal'
+  const baseUrl = getPublicAppUrl()
+  const detailLink = `${baseUrl}/dashboard/assets/disposal?id=${params.disposalId}`
+  const target = await resolveTargetRecipients(params.financeEmails[0] || 'syamsul.bahri@chitraparatama.co.id')
+
+  const html = renderAssetBorrowEmailHtml({
+    borrowNumber: params.disposalNumber,
+    subjectTitle: `${baLabel} Telah Diunggah: ${params.assetName}`,
+    badgeText: 'Menunggu Dokumen SAP (Finance & Accounting)',
+    badgeBgColor: '#f3e8ff',
+    badgeTextColor: '#6b21a8',
+    jobTitleInfo: 'Penugasan Unggah Dokumen Disposal SAP',
+    borrowerName: 'Tim Finance & Accounting',
+    assetName: params.assetName,
+    notesTitle: 'Instruksi Tindak Lanjut',
+    notesContent: `Pengaju telah mengunggah kelengkapan ${baLabel}. Mohon Tim Finance & Accounting untuk mengunggah Dokumen Disposal SAP guna menyelesaikan proses disposal.`,
+    ctaUrl: detailLink,
+    ctaText: 'Unggah Dokumen SAP &rarr;',
+  })
+
+  await sendWorkflowEmail({
+    to: target.to,
+    templateCode: 'asset_disposal_ba_submitted',
+    templateName: 'Penugasan Dokumen SAP Asset Disposal',
+    variables: { disposalNumber: params.disposalNumber, assetName: params.assetName, detailLink },
+    fallbackSubject: `${target.note}[Finance] Penghapusan Aset ${params.disposalNumber} - Menunggu Dokumen Disposal SAP`,
+    fallbackHtml: html,
+    fallbackText: `${baLabel} aset ${params.assetName} (${params.disposalNumber}) telah diunggah. Mohon unggah Dokumen Disposal SAP di: ${detailLink}`,
   })
 }
