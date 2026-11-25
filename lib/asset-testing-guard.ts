@@ -109,7 +109,9 @@ export async function resolveAssetTestingEmail(
 
 /**
  * Resolusi approver in-app & penugasan langkah approval (hero_approvals) untuk testing.
- * Bila testing mode aktif, approver dialihkan ke akun Admin testing (Gilang).
+ * CATATAN PENTING: Untuk menjaga keaslian tampilan dokumen preview PDF dan alur resmi,
+ * identitas approver asli (nama, ID, email, jabatan) TETAP DIPERTAHANKAN 100%.
+ * Pengalihan hak akses dilakukan via `isAssetTestingApprover` dan pengalihan notifikasi via `resolveAssetTestingEmail`.
  */
 export async function resolveAssetTestingApprover<
   T extends {
@@ -118,25 +120,23 @@ export async function resolveAssetTestingApprover<
     approverEmail?: string | null
     approverJobTitle?: string | null
   }
->(original: T): Promise<T & { isTesting: boolean; originalApproverName?: string | null }> {
+>(original: T): Promise<T & { isTesting: boolean; testingApproverEmployeeId?: number | null; testingApproverName?: string | null }> {
   const config = await getAssetWorkflowConfig()
 
   if (config.isTestingMode && config.testingApproverEmployeeId) {
     return {
       ...original,
-      approverEmployeeId: config.testingApproverEmployeeId,
-      approverName: config.testingApproverName || 'Gilang Suryo Wirawan',
-      approverEmail: config.testingApproverEmail || config.testingRecipientEmail,
-      approverJobTitle: config.testingApproverJobTitle || original.approverJobTitle,
-      originalApproverName: original.approverName,
       isTesting: true,
+      testingApproverEmployeeId: config.testingApproverEmployeeId,
+      testingApproverName: config.testingApproverName || 'Gilang Suryo Wirawan',
     }
   }
 
   return {
     ...original,
     isTesting: false,
-    originalApproverName: original.approverName,
+    testingApproverEmployeeId: null,
+    testingApproverName: null,
   }
 }
 

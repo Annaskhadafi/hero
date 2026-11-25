@@ -30,6 +30,7 @@ import {
   PenTool,
   RotateCcw,
   Search,
+  ShieldAlert,
   Square,
   Settings,
   Trash2,
@@ -2433,6 +2434,12 @@ export function InboxTab({
                       <span className="text-[11px] font-bold text-slate-600 font-mono truncate">
                         {item.documentNumber}
                       </span>
+                      {(item as any).testingBadgeLabel && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold">
+                          <ShieldAlert className="size-3 text-amber-600" />
+                          {(item as any).testingBadgeLabel}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -2760,6 +2767,12 @@ export function InboxTab({
                         >
                           {item.categoryLabel}
                         </span>
+                        {(item as any).testingBadgeLabel && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold">
+                            <ShieldAlert className="size-2.5 text-amber-600" />
+                            {(item as any).testingBadgeLabel}
+                          </span>
+                        )}
                         <p className="text-foreground font-semibold">{item.employeeName}</p>
                         <p className="text-muted-foreground text-xs font-mono">{item.documentNumber}</p>
                       </div>

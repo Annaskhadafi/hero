@@ -88,6 +88,7 @@ import { user as authUser } from '@/db/schema/auth'
 import { isSuperAdminRole } from '@/lib/hero-access'
 import { isSuperAdminUser } from '@/lib/role-utils'
 import { notifyWorkflowBellRecipients } from '@/lib/workflow-notification-center'
+import { isAssetTestingApprover } from '@/lib/asset-testing-guard'
 
 type ApprovalRecordRow = {
   approvalId: number
@@ -4491,6 +4492,8 @@ export interface AssetManagementInboxItem {
   submittedAt: Date
   url: string
   totalAmount?: number
+  isTestingOverride?: boolean
+  testingBadgeLabel?: string
   rawAssetItem: {
     documentNumber: string
     requesterName: string
@@ -4510,6 +4513,7 @@ export async function getAssetManagementInboxItems(
     const normalizedEmployeeName = normalizeMatchValue(currentEmployee?.name)
 
     const isUserSuperAdmin = Boolean((currentEmployee?.role && isSuperAdminRole(currentEmployee.role)) || isSuperAdminUser(currentEmployee, null))
+    const isTestingApprover = await isAssetTestingApprover(currentEmployee?.id)
 
     const pendingApprovals = await db
       .select({
@@ -4541,7 +4545,7 @@ export async function getAssetManagementInboxItems(
       .orderBy(desc(approvals.submittedAt))
 
     const userApprovals = pendingApprovals.filter((appr) => {
-      if (isUserSuperAdmin) return true
+      if (isUserSuperAdmin || isTestingApprover) return true
       const emailMatches =
         (normalizedEmail && normalizeMatchValue(appr.approverEmail) === normalizedEmail) ||
         (employeeEmailNorm && normalizeMatchValue(appr.approverEmail) === employeeEmailNorm)
@@ -4619,6 +4623,9 @@ export async function getAssetManagementInboxItems(
     const items: AssetManagementInboxItem[] = []
 
     for (const appr of userApprovals) {
+      const isOverrideForUser = Boolean(isTestingApprover && appr.approverEmployeeId !== currentEmployee?.id)
+      const testingBadgeLabel = isOverrideForUser ? 'Mode Testing (Override Gilang)' : undefined
+
       if (appr.cerRequestId && cerMap.has(appr.cerRequestId)) {
         const c = cerMap.get(appr.cerRequestId)!
         items.push({
@@ -4642,6 +4649,8 @@ export async function getAssetManagementInboxItems(
           submittedAt: c.createdAt,
           url: '/dashboard/assets/cer',
           totalAmount: c.totalEstimatedPrice ? Number(c.totalEstimatedPrice) : undefined,
+          isTestingOverride: isOverrideForUser,
+          testingBadgeLabel,
           rawAssetItem: {
             documentNumber: c.cerNumber,
             requesterName: c.applicantName || '-',
@@ -4678,6 +4687,8 @@ export async function getAssetManagementInboxItems(
           dueAt: new Date(new Date(b.createdAt).getTime() + 3 * 24 * 60 * 60 * 1000),
           submittedAt: b.createdAt,
           url: '/dashboard/assets/borrow',
+          isTestingOverride: isOverrideForUser,
+          testingBadgeLabel,
           rawAssetItem: {
             documentNumber: b.borrowNumber,
             requesterName: b.borrowerName,
@@ -4715,6 +4726,8 @@ export async function getAssetManagementInboxItems(
           dueAt: new Date(new Date(t.createdAt).getTime() + 3 * 24 * 60 * 60 * 1000),
           submittedAt: t.createdAt,
           url: '/dashboard/assets/transfer',
+          isTestingOverride: isOverrideForUser,
+          testingBadgeLabel,
           rawAssetItem: {
             documentNumber: t.transferNumber,
             requesterName: t.currentHolderName,
@@ -4753,6 +4766,8 @@ export async function getAssetManagementInboxItems(
           dueAt: new Date(new Date(d.createdAt).getTime() + 3 * 24 * 60 * 60 * 1000),
           submittedAt: d.createdAt,
           url: '/dashboard/assets/disposal',
+          isTestingOverride: isOverrideForUser,
+          testingBadgeLabel,
           rawAssetItem: {
             documentNumber: d.disposalNumber,
             requesterName: d.applicantName,
