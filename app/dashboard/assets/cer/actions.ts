@@ -29,7 +29,7 @@ import { getCurrentMenuPermission } from '@/lib/hero-access'
 import { isSuperAdminRole } from '@/lib/role-utils'
 import { isSuperAdminUser } from './utils'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
-import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
+import { isAssetTestingApprover, resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 import {
   sendCerSubmittedEmail,
   sendCerRevisionRequestedEmail,
@@ -819,7 +819,9 @@ export async function approveCerStepAction(approvalId: number, decisionNote?: st
     currentApproval.approverEmployeeId === 990 ||
     Boolean(currentApproval.approverName && currentApproval.approverName.toLowerCase().includes('syamsul'))
 
-  if (!isSuperAdmin && !isApprover && !(isFreshya && isCurrentDirectorStep) && !(isEvoDwi && isAssetTaggingStep)) {
+  const isTestingApprover = await isAssetTestingApprover(sessionEmp?.id)
+
+  if (!isSuperAdmin && !isApprover && !(isFreshya && isCurrentDirectorStep) && !(isEvoDwi && isAssetTaggingStep) && !isTestingApprover) {
     return {
       success: false,
       message: 'Akses ditolak: Anda tidak memiliki wewenang untuk menyetujui tahapan pengajuan CER ini.',
@@ -2161,13 +2163,18 @@ export async function resubmitCerRequestAction(input: ResubmitCerRequestInput) {
         continue
       }
 
+      const resolvedStep = await resolveAssetTestingApprover({
+        approverEmployeeId: stepItem.approverEmployeeId,
+        approverName: stepItem.approverName,
+      })
+
       // First unapproved step becomes Pending
       const status = !hasFoundFirstPending ? 'Pending' : 'Draft'
       if (!hasFoundFirstPending) {
         hasFoundFirstPending = true
         nextPendingApprover = {
-          approverEmployeeId: stepItem.approverEmployeeId,
-          approverName: stepItem.approverName,
+          approverEmployeeId: resolvedStep.approverEmployeeId,
+          approverName: resolvedStep.approverName,
           title: stepItem.label,
           level: stepLevel,
         }
@@ -2177,8 +2184,8 @@ export async function resubmitCerRequestAction(input: ResubmitCerRequestInput) {
         cerRequestId: input.cerId,
         level: stepLevel,
         formName: stepItem.label,
-        approverEmployeeId: stepItem.approverEmployeeId,
-        approverName: stepItem.approverName,
+        approverEmployeeId: resolvedStep.approverEmployeeId,
+        approverName: resolvedStep.approverName,
         status,
         submittedAt: now,
         decisionNote: status === 'Pending' ? 'Resubmitted oleh pemohon (Perlu Peninjauan)' : '',

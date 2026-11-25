@@ -63,11 +63,10 @@ import { resolveAssetTestingEmail } from '@/lib/asset-testing-guard'
 // Selama proses pengetesan, semua notifikasi hingga PDF dialihkan ke:
 // Gilang Suryo Wirawan (gilang.suryo@chitraparatama.co.id)
 // =========================================================================
-export const CER_TESTING_RECIPIENT_OVERRIDE = 'gilang.suryo@chitraparatama.co.id'
-
 async function resolveTargetRecipients(originalRecipients: string | string[] | undefined): Promise<{
   to: string[]
   note: string
+  isTesting: boolean
 }> {
   return await resolveAssetTestingEmail(originalRecipients)
 }
@@ -504,7 +503,7 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
   // Send Workflow Email with Full HTML Content
   await sendWorkflowEmail({
     to: target.to,
-    cc: CER_TESTING_RECIPIENT_OVERRIDE ? undefined : resolvedCc,
+    cc: target.isTesting ? undefined : resolvedCc,
     templateCode: 'cer_request_submitted',
     templateName: 'Pengajuan CER Baru Membutuhkan Approval',
     variables: {
@@ -534,7 +533,7 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
 
   // Bell Notification to primary approver
   await notifyWorkflowBellRecipients({
-    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.approverEmail],
+    recipientEmails: target.isTesting ? target.to : [params.approverEmail],
     eventType: 'cer.approval_needed',
     category: 'approval_requests',
     title: `Persetujuan CER: ${params.cerNumber}`,
@@ -545,7 +544,7 @@ export async function sendCerSubmittedEmail(params: SendCerSubmittedEmailParams)
   // Bell Notification to Freshya if Director step
   if (isDirectorStep) {
     await notifyWorkflowBellRecipients({
-      recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || 'freshya.ochtovita@chitraparatama.co.id'],
+      recipientEmails: target.isTesting ? target.to : ['freshya.ochtovita@chitraparatama.co.id'],
       eventType: 'cer.approval_needed',
       category: 'approval_requests',
       title: `Persetujuan CER (Director): ${params.cerNumber}`,
@@ -589,9 +588,9 @@ export async function sendCerRevisionRequestedEmail(
   })
 
   // Ensure BOTH applicant and any override recipient receive in-app Notification Center / Header Bell
-  const bellRecipients = Array.from(
-    new Set([params.applicantEmail, CER_TESTING_RECIPIENT_OVERRIDE].filter(Boolean))
-  )
+  const bellRecipients = target.isTesting
+    ? target.to
+    : [params.applicantEmail].filter(Boolean)
 
   await notifyWorkflowBellRecipients({
     recipientEmails: bellRecipients,
@@ -633,7 +632,7 @@ export async function sendCerResubmittedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.approverEmail],
+    recipientEmails: target.isTesting ? target.to : [params.approverEmail],
     eventType: 'cer.resubmitted',
     category: 'approval_requests',
     title: `CER Diperbaiki: ${params.cerNumber}`,
@@ -697,7 +696,7 @@ export async function sendCerFullApprovedEmail(params: {
 
   await sendWorkflowEmail({
     to: target.to,
-    cc: CER_TESTING_RECIPIENT_OVERRIDE ? undefined : ccEmails,
+    cc: target.isTesting ? undefined : ccEmails,
     templateCode: 'cer_full_approved',
     templateName: 'Pengajuan CER Full Approved (Dokumen Resmi Terbit)',
     variables: {
@@ -717,12 +716,14 @@ export async function sendCerFullApprovedEmail(params: {
 
   // Sinkronkan ke Notification Center HERO (Bell):
   // Notifikasi in-app untuk pemohon dan tim procurement (Sofyan, Nico, Rajab)
-  const bellRecipients = [
-    params.applicantEmail,
-    'sofyan.darmawan@chitraparatama.co.id',
-    'nico.saputra@chitraparatama.co.id',
-    'abdul.rajab@chitraparatama.co.id',
-  ].filter(Boolean)
+  const bellRecipients = target.isTesting
+    ? target.to
+    : [
+        params.applicantEmail,
+        'sofyan.darmawan@chitraparatama.co.id',
+        'nico.saputra@chitraparatama.co.id',
+        'abdul.rajab@chitraparatama.co.id',
+      ].filter(Boolean)
 
   await notifyWorkflowBellRecipients({
     recipientEmails: bellRecipients,
@@ -767,7 +768,7 @@ export async function sendCerRejectedEmail(params: {
   })
 
   await notifyWorkflowBellRecipients({
-    recipientEmails: [CER_TESTING_RECIPIENT_OVERRIDE || params.applicantEmail],
+    recipientEmails: target.isTesting ? target.to : [params.applicantEmail],
     eventType: 'cer.rejected',
     category: 'approval_requests',
     title: `CER Ditolak: ${params.cerNumber}`,

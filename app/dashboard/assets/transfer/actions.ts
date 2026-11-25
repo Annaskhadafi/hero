@@ -8,7 +8,7 @@ import { getServerSession } from '@/lib/auth-session'
 import { getCurrentEmployeeAccessContext, isSuperAdminRole } from '@/lib/hero-access'
 import { isSuperAdminUser } from '@/lib/role-utils'
 import { resolveApprovalRouteForActivity } from '@/lib/approval-engine'
-import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
+import { isAssetTestingApprover, resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 import { and, desc, eq, ilike, or, sql, asc, inArray, gte, lte } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { generateAssetTransferPdf } from '@/lib/asset-transfer-pdf'
@@ -521,6 +521,11 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
     const initialApproverName = isApplicantCurrentHolder ? step2ApproverName : step1ApproverName
     const initialApproverId = isApplicantCurrentHolder ? step2ApproverId : step1ApproverId
 
+    const resolvedInitialApprover = await resolveAssetTestingApprover({
+      approverEmployeeId: initialApproverId,
+      approverName: initialApproverName,
+    })
+
     // 6. Insert Asset Transfer Record
     const [newTransfer] = await db
       .insert(assetTransfers)
@@ -545,8 +550,8 @@ export async function createAssetTransfer(rawInput: AssetTransferInput) {
         status: 'pending',
         currentStepOrder: initialStepOrder,
         currentApproverTitle: initialApproverTitle,
-        currentApproverName: initialApproverName,
-        currentApproverEmployeeId: initialApproverId,
+        currentApproverName: resolvedInitialApprover.approverName || initialApproverName,
+        currentApproverEmployeeId: resolvedInitialApprover.approverEmployeeId,
         createdById: session.user.id,
         applicantEmployeeId: currentEmp?.id || currentHolder.id,
         applicantSignatureUrl: input.applicantSignatureUrl,
@@ -791,8 +796,9 @@ export async function approveAssetTransfer(
       return { success: false, message: 'Pengajuan transfer ini tidak dalam status menunggu persetujuan.' }
     }
 
+    const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
     const isCurrentApprover = empContext?.employeeId && transfer.currentApproverEmployeeId === empContext.employeeId
-    if (!isSuperAdmin && !isCurrentApprover) {
+    if (!isSuperAdmin && !isCurrentApprover && !isTestingApprover) {
       return { success: false, message: 'Anda tidak memiliki hak akses untuk menyetujui tahap ini.' }
     }
 

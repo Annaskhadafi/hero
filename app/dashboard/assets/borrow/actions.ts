@@ -10,7 +10,7 @@ import {
 import { centralServiceAssets } from '@/db/schema/central-service'
 import { employees, sites, masterDepartments, approvals } from '@/db/schema/hero'
 import { createNotificationEventForEmployee } from '@/lib/push-notifications'
-import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
+import { isAssetTestingApprover, resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 import { generateAssetBorrowPdf } from '@/lib/asset-borrow-pdf'
 import { saveGeneratedPdfUpload } from '@/lib/save-pdf-upload'
 import { getServerSession } from '@/lib/auth-session'
@@ -613,8 +613,9 @@ export async function approveAssetBorrow(id: number, decisionNote: string, signa
     const empContext = await getCurrentEmployeeAccessContext()
     const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
     const isHolder = Boolean(empContext?.employeeId && borrow.holderEmployeeId === empContext.employeeId)
+    const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
 
-    if (!isHolder && !isSuperAdmin) {
+    if (!isHolder && !isSuperAdmin && !isTestingApprover) {
       return {
         success: false,
         message: 'Anda tidak memiliki hak akses untuk menyetujui peminjaman ini. Hanya Holder Aset saat ini yang berwenang.',
@@ -868,8 +869,9 @@ export async function revertAssetBorrowAction(id: number, revertReason: string) 
     const empContext = await getCurrentEmployeeAccessContext()
     const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
     const isHolder = Boolean(empContext?.employeeId && borrow.holderEmployeeId === empContext.employeeId)
+    const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
 
-    if (!isHolder && !isSuperAdmin) {
+    if (!isHolder && !isSuperAdmin && !isTestingApprover) {
       return {
         success: false,
         message: 'Anda tidak memiliki hak akses untuk merevert pengajuan ini.',
@@ -1215,8 +1217,9 @@ export async function confirmAssetBorrowReturn(rawInput: AssetBorrowConfirmRetur
     const empContext = await getCurrentEmployeeAccessContext()
     const isSuperAdmin = isSuperAdminRole(empContext?.roleName)
     const isHolder = Boolean(empContext?.employeeId && borrow.holderEmployeeId === empContext.employeeId)
+    const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
 
-    if (!isHolder && !isSuperAdmin) {
+    if (!isHolder && !isSuperAdmin && !isTestingApprover) {
       return {
         success: false,
         message: 'Hanya Holder Aset (atau Super Admin) yang berwenang mengonfirmasi penerimaan fisik aset.',

@@ -139,3 +139,17 @@ export async function resolveAssetTestingApprover<
     originalApproverName: original.approverName,
   }
 }
+
+/**
+ * Memeriksa apakah karyawan saat ini adalah Approver Pengujian yang sah saat mode testing aktif.
+ */
+export async function isAssetTestingApprover(employeeId: number | null | undefined): Promise<boolean> {
+  if (!employeeId) return false
+  const config = await getAssetWorkflowConfig()
+  return Boolean(
+    config.isTestingMode &&
+    config.testingApproverEmployeeId &&
+    Number(employeeId) === Number(config.testingApproverEmployeeId)
+  )
+}
+

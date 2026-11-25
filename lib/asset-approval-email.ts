@@ -4,24 +4,16 @@ import { getPublicAppUrl } from '@/lib/auth-config'
 import type { EmailAttachment } from '@/lib/email-delivery'
 import { resolveAssetTestingEmail } from '@/lib/asset-testing-guard'
 
-const ASSET_TESTING_RECIPIENT_OVERRIDE: string | null =
-  process.env.NODE_ENV === 'production' ? null : 'gilang.suryo@chitraparatama.co.id'
-
-async function resolveTargetRecipients(originalEmail: string): Promise<{ to: string; note: string }> {
+async function resolveTargetRecipients(originalEmail: string): Promise<{ to: string; note: string; isTesting: boolean }> {
   const result = await resolveAssetTestingEmail(originalEmail)
   if (result.isTesting) {
     return {
       to: result.to[0] || 'gilang.suryo@chitraparatama.co.id',
       note: result.note,
+      isTesting: true,
     }
   }
-  if (ASSET_TESTING_RECIPIENT_OVERRIDE) {
-    return {
-      to: ASSET_TESTING_RECIPIENT_OVERRIDE,
-      note: `[TESTING: Original Recipient -> ${originalEmail}] `,
-    }
-  }
-  return { to: originalEmail, note: '' }
+  return { to: originalEmail, note: '', isTesting: false }
 }
 
 export type AssetModuleType = 'ASSET_BORROW' | 'ASSET_TRANSFER' | 'ASSET_DISPOSAL'

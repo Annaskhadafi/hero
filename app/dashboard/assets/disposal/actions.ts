@@ -24,7 +24,7 @@ import {
   sendAssetDisposalBaReadyEmail,
   sendAssetDisposalBaSubmittedEmail,
 } from '@/lib/asset-approval-email'
-import { resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
+import { isAssetTestingApprover, resolveAssetTestingApprover } from '@/lib/asset-testing-guard'
 
 /**
  * Fetch Asset Disposal list with filtering, pagination, and KPI counts
@@ -920,9 +920,11 @@ export async function approveAssetDisposal(
       return { success: false, message: 'Tahap approval aktif tidak ditemukan.' }
     }
 
+    const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
+
     // Permission check
     const isAuthorized =
-      isSuperAdmin || (empContext?.employeeId && currentStep.approverEmployeeId === empContext.employeeId)
+      isSuperAdmin || (empContext?.employeeId && currentStep.approverEmployeeId === empContext.employeeId) || isTestingApprover
     if (!isAuthorized) {
       return {
         success: false,
@@ -1603,11 +1605,12 @@ export async function revertAssetDisposalAction(id: number, revertReason: string
     const empContext = await getCurrentEmployeeAccessContext()
     const isSuperAdmin =
       isSuperAdminRole(empContext?.roleName) || isSuperAdminUser(empContext as any, session?.user)
+    const isTestingApprover = await isAssetTestingApprover(empContext?.employeeId)
     const isCurrentApprover = Boolean(
       empContext?.employeeId && disposal.currentApproverEmployeeId === empContext.employeeId
     )
 
-    if (!isSuperAdmin && !isCurrentApprover) {
+    if (!isSuperAdmin && !isCurrentApprover && !isTestingApprover) {
       return {
         success: false,
         message: 'Anda tidak memiliki hak akses untuk merevert permohonan Asset Disposal ini.',
