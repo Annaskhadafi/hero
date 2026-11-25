@@ -20,7 +20,7 @@ test.describe('CER Form: Lock Mandatory Approval Steps (Budget Validator, Direct
   }) => {
     // 1. Set desktop viewport & navigate to sign-in
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/sign-in')
+    await page.goto('/sign-in', { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('domcontentloaded')
 
     const emailInput = page.locator('input[placeholder*="email atau SN" i], #email, input[name="username"]').first()
@@ -31,7 +31,7 @@ test.describe('CER Form: Lock Mandatory Approval Steps (Budget Validator, Direct
     const submitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first()
     await submitBtn.click()
 
-    await page.waitForURL('**/dashboard/**', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+    await expect(page).not.toHaveURL(/\/sign-in/, { timeout: 30000 })
     await page.waitForTimeout(2000)
 
     // 2. Navigate to CER Page

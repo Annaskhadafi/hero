@@ -39,6 +39,8 @@ import {
   FileSignature,
   QrCode,
   Download,
+  FileDown,
+  FileCheck,
   Loader2,
   ExternalLink,
   Clock,
@@ -281,6 +283,104 @@ export function CerTable({
     }
   }
 
+  // Detailed status renderer with pending recipient info
+  const renderDetailedStatus = (r: CerOverviewData['requests'][number]) => {
+    const currentPendingStep = r.approvals?.find((a) => a.status === 'Pending')
+
+    switch (r.status) {
+      case 'in_review': {
+        const approverName = currentPendingStep?.approverName || r.currentApproverName || 'Approver'
+        const roleOrJob = currentPendingStep ? formatApproverRoleOrJobTitle(currentPendingStep) : 'Tahap Approval'
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 font-semibold text-[11px]">
+              In Review
+            </Badge>
+            <span className="text-[10px] text-blue-600 font-medium max-w-[180px] leading-tight text-center">
+              Menunggu: {approverName} ({roleOrJob})
+            </span>
+          </div>
+        )
+      }
+      case 'pending_finance_check': {
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700 font-semibold text-[11px]">
+              Input No. Aset
+            </Badge>
+            <span className="text-[10px] text-indigo-600 font-medium max-w-[180px] leading-tight text-center">
+              Finance: Syamsul Bahri / Evo Dwi (Tagging &amp; No. Aset)
+            </span>
+          </div>
+        )
+      }
+      case 'full_approved': {
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 font-semibold text-[11px]">
+              Full Approved
+            </Badge>
+            <span className="text-[10px] text-emerald-600 font-medium max-w-[180px] leading-tight text-center">
+              Menunggu Penerimaan: {r.applicantName}
+            </span>
+          </div>
+        )
+      }
+      case 'need_revision': {
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 font-semibold text-[11px]">
+              Perlu Revisi
+            </Badge>
+            <span className="text-[10px] text-amber-600 font-medium max-w-[180px] leading-tight text-center">
+              Menunggu Revisi: {r.applicantName}
+            </span>
+          </div>
+        )
+      }
+      case 'received': {
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-700 font-semibold text-[11px]">
+              Barang Diterima
+            </Badge>
+            <span className="text-[10px] text-purple-600 font-medium max-w-[180px] leading-tight text-center">
+              Proses BAST: {r.applicantName}
+            </span>
+          </div>
+        )
+      }
+      case 'completed': {
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-green-200 bg-green-50 text-green-800 font-semibold text-[11px]">
+              BAST Selesai
+            </Badge>
+            <span className="text-[10px] text-green-700 font-medium max-w-[180px] leading-tight text-center">
+              Aset Diterima ({r.bastNumber || 'BAST Terbit'})
+            </span>
+          </div>
+        )
+      }
+      case 'rejected': {
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700 font-semibold text-[11px]">
+              Ditolak
+            </Badge>
+          </div>
+        )
+      }
+      default: {
+        return (
+          <Badge variant="secondary" className="text-[11px]">
+            {r.status}
+          </Badge>
+        )
+      }
+    }
+  }
+
   // Open Review Action (2-Column Work Order Style Review Modal)
   const handleOpenReview = (cer: typeof requests[number], appStepId: number) => {
     const pendingStep = cer.approvals.find((a) => a.id === appStepId)
@@ -372,13 +472,15 @@ export function CerTable({
               <TableHead className="text-xs">Kategori Aset</TableHead>
               <TableHead className="text-right text-xs">Estimasi Nilai</TableHead>
               <TableHead className="text-center text-xs">Status</TableHead>
-              <TableHead className="w-28 text-center text-xs">Aksi</TableHead>
+              {mode !== 'all_requests' && (
+                <TableHead className="w-52 text-center text-xs">Aksi</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredRequests.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-xs text-slate-500">
+                <TableCell colSpan={mode === 'all_requests' ? 7 : 8} className="py-8 text-center text-xs text-slate-500">
                   Tidak ada data pengajuan CER yang cocok dengan kriteria filter.
                 </TableCell>
               </TableRow>
@@ -452,219 +554,165 @@ export function CerTable({
                     <TableCell className="text-right font-semibold text-xs text-slate-900">
                       Rp {formatRupiah(r.totalEstimatedPrice)}
                     </TableCell>
-                    <TableCell className="text-center">{renderStatusBadge(r.status)}</TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {mode === 'all_requests' ? (
-                          /* Tab 1: Daftar Pengajuan (Semua CER di HERO) - Hanya View Saja, Tanpa Tombol Action Apapun */
-                          <TooltipProvider delayDuration={150}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedCer(r)
-                                    setIsDetailOpen(true)
-                                  }}
-                                  className="h-7 w-7 p-0 text-slate-500 hover:text-blue-700 hover:bg-blue-50"
-                                  title="Lihat Detail Pengajuan"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top">
-                                <p className="text-xs">Lihat Detail Pengajuan</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : mode === 'receiving' ? (
-                          /* Tab Penerimaan & BAST */
-                          <div className="flex items-center justify-center gap-1.5">
-                            {r.status === 'completed' || r.status === 'received' ? (
-                              /* Setelah Aset Dikonfirmasi Terima: Tombol Detail BAST & Hapus */
-                              <TooltipProvider delayDuration={150}>
-                                <div className="flex items-center justify-center gap-1">
-                                  {/* 1. Lihat Detail BAST Modal */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                          setSelectedCer(r)
-                                          setIsReceiveOpen(true)
-                                        }}
-                                        className="h-7 w-7 p-0 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                                        title="Lihat Detail BAST"
-                                      >
-                                        <Eye className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">
-                                      <p className="text-xs">Lihat Detail BAST</p>
-                                    </TooltipContent>
-                                  </Tooltip>
+                    <TableCell className="text-center">{renderDetailedStatus(r)}</TableCell>
+                    {mode !== 'all_requests' && (
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
 
-                                  {/* 2. Hapus Pengajuan (Jika Admin/Finance) */}
-                                  {(canDeleteThisRow || isFinanceOrAdmin) && (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => setCerToDelete(r)}
-                                          className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                          title="Hapus Pengajuan"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </Button>
-                                      </TooltipTrigger>
-                                      <TooltipContent side="top">
-                                        <p className="text-xs">Hapus Pengajuan</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  )}
-                                </div>
-                              </TooltipProvider>
-                            ) : (
-                              /* Status Belum Diterima (full_approved): Tombol Konfirmasi Terima + Hapus */
-                              <>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedCer(r)
-                                    setIsReceiveOpen(true)
-                                  }}
-                                  className="h-7 border-purple-300 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 gap-1.5"
-                                  title="Konfirmasi Penerimaan Aset Fisik & Terbitkan BAST"
-                                >
-                                  <PackageCheck className="h-3.5 w-3.5 text-purple-600" />
-                                  Konfirmasi Terima
-                                </Button>
-                                {(canDeleteThisRow || isFinanceOrAdmin) && (
+                          {/* 1. Approver Decision (If pending on current user or user is Super Admin) */}
+                          {pendingStep && (Boolean(currentPendingApproval) || isSuperAdmin) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenReview(r, pendingStep.id)}
+                              className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100 gap-1"
+                              title={isSuperAdmin && !currentPendingApproval ? 'Admin can approve' : 'Tinjau dan Berikan Keputusan'}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                              Tinjau
+                            </Button>
+                          )}
+
+                          {/* 2. Finance Check Input No. Aset */}
+                          {r.status === 'pending_finance_check' && (isFinanceOrAdmin || isEvoDwi || currentEmployee?.id === 990 || isSuperAdmin) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setFinanceCheckCer(r)
+                                setIsFinanceCheckOpen(true)
+                              }}
+                              className="h-7 border-indigo-300 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100 gap-1"
+                              title="Input Nomor Aset & Verifikasi Finance"
+                            >
+                              <FileSignature className="h-3 w-3" /> Input No. Aset
+                            </Button>
+                          )}
+
+                          {/* 3. Revert / Resubmit (If status = need_revision and user is applicant or Admin) */}
+                          {r.status === 'need_revision' && canManageLifecycle && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={isRevisionLoading}
+                              onClick={() => handleStartRevision(r.id)}
+                              className="h-7 border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 gap-1"
+                              title="Revisi isi formulir dan urutan persetujuan"
+                            >
+                              {isRevisionLoading ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Edit className="h-3 w-3" />
+                              )}
+                              Revisi Pengajuan
+                            </Button>
+                          )}
+
+                          {/* 4. Konfirmasi Penerimaan Aset & BAST (HANYA Pengaju & Super Admin) */}
+                          {(r.status === 'full_approved' || r.status === 'received') && canManageLifecycle && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCer(r)
+                                setIsReceiveOpen(true)
+                              }}
+                              className="h-7 border-purple-300 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 gap-1.5"
+                              title="Konfirmasi Penerimaan Aset Fisik & Terbitkan BAST"
+                            >
+                              <PackageCheck className="h-3.5 w-3.5 text-purple-600" />
+                              Terima Aset &amp; BAST
+                            </Button>
+                          )}
+
+                          {/* 5. Unduh Dokumen CER (PDF) */}
+                          {r.pdfUrl && (
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <a
+                                    href={resolveUploadUrl(r.pdfUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex"
+                                  >
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                      title="Unduh Dokumen CER (PDF)"
+                                    >
+                                      <FileDown className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </a>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">Unduh Dokumen CER (PDF)</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+
+                          {/* 5b. Unduh Dokumen BAST */}
+                          {r.bastPdfUrl && (
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <a
+                                    href={resolveUploadUrl(r.bastPdfUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex"
+                                  >
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                      title="Unduh Berita Acara Serah Terima (BAST)"
+                                    >
+                                      <FileCheck className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </a>
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">Unduh Dokumen BAST (PDF)</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+
+                          {/* 6. Batalkan & Hapus Pengajuan */}
+                          {canDeleteThisRow && (
+                            <TooltipProvider delayDuration={150}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
                                   <Button
                                     type="button"
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => setCerToDelete(r)}
                                     className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                    title="Hapus Pengajuan"
+                                    title="Batalkan & Hapus Pengajuan"
                                   >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          /* Tab Daftar Pengajuan: Tombol standar alur pengajuan CER */
-                          <>
-                            {/* 1. Detail View */}
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedCer(r)
-                                setIsDetailOpen(true)
-                              }}
-                              className="h-7 w-7 p-0 text-slate-500 hover:text-blue-700"
-                              title="Lihat Detail"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </Button>
-
-                            {/* 2. Approver Decision (If pending on current user or user is Super Admin) */}
-                            {pendingStep && (Boolean(currentPendingApproval) || isSuperAdmin) && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenReview(r, pendingStep.id)}
-                                className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
-                                title={isSuperAdmin && !currentPendingApproval ? 'Admin can approve' : undefined}
-                              >
-                                Tinjau
-                              </Button>
-                            )}
-
-                            {/* 2b. Finance Check Input No. Aset */}
-                            {r.status === 'pending_finance_check' && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setFinanceCheckCer(r)
-                                  setIsFinanceCheckOpen(true)
-                                }}
-                                className="h-7 border-indigo-300 bg-indigo-50 px-2 text-[11px] font-semibold text-indigo-800 hover:bg-indigo-100 gap-1"
-                              >
-                                <FileSignature className="h-3 w-3" /> Input No. Aset
-                              </Button>
-                            )}
-
-                            {/* 3. Revert / Resubmit (If status = need_revision and user is applicant or Admin) */}
-                            {r.status === 'need_revision' && canManageLifecycle && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                disabled={isRevisionLoading}
-                                onClick={() => handleStartRevision(r.id)}
-                                className="h-7 border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 gap-1"
-                                title="Revisi isi formulir dan urutan persetujuan"
-                              >
-                                {isRevisionLoading ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Edit className="h-3 w-3" />
-                                )}
-                                Revisi Pengajuan
-                              </Button>
-                            )}
-
-                            {/* 4. Konfirmasi Penerimaan (HANYA Pengaju & Super Admin) */}
-                            {r.status === 'full_approved' && canManageLifecycle && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedCer(r)
-                                  setIsReceiveOpen(true)
-                                }}
-                                className="h-7 border-purple-300 bg-purple-50 px-2 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 gap-1"
-                              >
-                                <PackageCheck className="h-3 w-3" /> Terima
-                              </Button>
-                            )}
-
-
-                            {/* 6. Hapus Pengajuan (Super Admin / Finance, atau Pemohon jika belum BAST/received) */}
-                            {canDeleteThisRow && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setCerToDelete(r)}
-                                className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                title="Hapus Pengajuan"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </>
-                        )}
+                                </TooltipTrigger>
+                                <TooltipContent side="top">
+                                  <p className="text-xs">Batalkan &amp; Hapus Pengajuan</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                       </div>
                     </TableCell>
-                  </TableRow>
+                  )}
+                </TableRow>
                 )
               })
             )}
@@ -956,15 +1004,15 @@ export function CerTable({
       <HeroConfirmDialog
         open={Boolean(cerToDelete)}
         onOpenChange={(open) => !open && setCerToDelete(null)}
-        title="Hapus Pengajuan CER"
+        title="Batalkan & Hapus Pengajuan CER"
         description={
           <span>
-            Apakah Anda yakin ingin menghapus permohonan CER <strong>{cerToDelete?.cerNumber}</strong> ({cerToDelete?.subject})?
+            Apakah Anda yakin ingin membatalkan dan menghapus pengajuan CER <strong>{cerToDelete?.cerNumber}</strong> ({cerToDelete?.subject})?
             Seluruh data rincian unit dan tracking approval akan dihapus secara permanen, serta pagu anggaran yang telah teralokasi akan dikembalikan.
           </span>
         }
-        confirmLabel="Ya, Hapus Pengajuan"
-        cancelLabel="Batal"
+        confirmLabel="Ya, Batalkan & Hapus"
+        cancelLabel="Kembali"
         tone="destructive"
         isProcessing={isDeleting || isPending}
         onConfirm={handleDeleteCer}

@@ -22,21 +22,17 @@ import { CerTable } from './cer-table'
 import { CerFormDialog } from './cer-form-dialog'
 import type { CerOverviewData } from '../actions'
 
-export type CerTabKey = 'all_requests' | 'my_requests' | 'receiving' | 'requests'
+export type CerTabKey = 'my_requests' | 'all_requests'
 
 export interface CerDashboardProps {
   data: CerOverviewData
   defaultTab?: CerTabKey | string
 }
 
-export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboardProps) {
+export function CerDashboard({ data, defaultTab = 'my_requests' }: CerDashboardProps) {
   const router = useRouter()
-  const initialTab = ['all_requests', 'my_requests', 'receiving'].includes(defaultTab as any)
-    ? (defaultTab as 'all_requests' | 'my_requests' | 'receiving')
-    : defaultTab === 'requests'
-    ? 'my_requests'
-    : 'all_requests'
-  const [activeTab, setActiveTab] = useState<'all_requests' | 'my_requests' | 'receiving'>(initialTab)
+  const initialTab = defaultTab === 'all_requests' ? 'all_requests' : 'my_requests'
+  const [activeTab, setActiveTab] = useState<'my_requests' | 'all_requests'>(initialTab)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const refreshData = () => {
@@ -103,11 +99,6 @@ export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboard
     })
     return isMine || isPendingOnMe
   })
-
-  // Tab 3: Filter for Receiving & BAST Tab
-  const receivingRequests = data.requests.filter((r) =>
-    ['full_approved', 'received', 'completed'].includes(r.status)
-  )
 
   return (
     <div className="space-y-6">
@@ -208,17 +199,6 @@ export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboard
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="space-y-4">
         <TabsList className="h-10 w-full justify-start rounded-lg border border-slate-200/80 bg-slate-100/80 p-1 text-slate-600">
           <TabsTrigger
-            value="all_requests"
-            className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
-          >
-            <Layers className="h-3.5 w-3.5 text-blue-600" />
-            Daftar Pengajuan
-            <Badge className="ml-1 rounded-full border-0 bg-blue-100 text-[10px] text-blue-800">
-              {allRequests.length}
-            </Badge>
-          </TabsTrigger>
-
-          <TabsTrigger
             value="my_requests"
             className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
           >
@@ -230,32 +210,18 @@ export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboard
           </TabsTrigger>
 
           <TabsTrigger
-            value="receiving"
+            value="all_requests"
             className="gap-2 rounded-md px-3 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
           >
-            <PackageCheck className="h-3.5 w-3.5 text-purple-600" />
-            Penerimaan &amp; BAST
-            <Badge className="ml-1 rounded-full border-0 bg-purple-100 text-[10px] text-purple-800">
-              {receivingRequests.length}
+            <Layers className="h-3.5 w-3.5 text-blue-600" />
+            Daftar Pengajuan
+            <Badge className="ml-1 rounded-full border-0 bg-blue-100 text-[10px] text-blue-800">
+              {allRequests.length}
             </Badge>
           </TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: ALL REQUESTS (VIEW ONLY - SEMUA CER HERO) */}
-        <TabsContent value="all_requests" className="space-y-4">
-          <CerTable
-            requests={allRequests}
-            mode="all_requests"
-            currentEmployee={data.currentEmployee}
-            isFinanceOrAdmin={data.isFinanceOrAdmin}
-            sites={data.sites}
-            departments={data.departments}
-            sections={data.sections}
-            onRefresh={refreshData}
-          />
-        </TabsContent>
-
-        {/* TAB 2: MY REQUESTS (PENGAJUAN SAYA DENGAN ACTION ALUR KERJA) */}
+        {/* TAB 1: MY REQUESTS (PENGAJUAN SAYA DENGAN ACTION ALUR KERJA LENGKAP & BAST) */}
         <TabsContent value="my_requests" className="space-y-4">
           <CerTable
             requests={myRequests}
@@ -269,26 +235,11 @@ export function CerDashboard({ data, defaultTab = 'all_requests' }: CerDashboard
           />
         </TabsContent>
 
-        {/* TAB 2: RECEIVING & BAST FOCUSED */}
-        <TabsContent value="receiving" className="space-y-4">
-          <div className="rounded-xl border border-purple-200/80 bg-purple-50/60 p-4">
-            <div className="flex items-start gap-3">
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-purple-600 text-white">
-                <PackageCheck className="size-4" />
-              </span>
-              <div>
-                <h3 className="text-sm font-bold text-purple-950">Workspace Penerimaan Fisik &amp; BAST Aset</h3>
-                <p className="mt-0.5 text-xs text-purple-800/80">
-                  Daftar pengajuan CER yang telah Full Approved dan siap/sedang dalam tahap penerimaan fisik barang oleh
-                  PIC lokasi, pendaftaran inventaris aset, pencetakan stiker QR code, dan penerbitan Berita Acara Serah Terima (BAST).
-                </p>
-              </div>
-            </div>
-          </div>
-
+        {/* TAB 2: ALL REQUESTS (VIEW UNIFORM SEMUA CER HERO TANPA KOLOM AKSI) */}
+        <TabsContent value="all_requests" className="space-y-4">
           <CerTable
-            requests={receivingRequests}
-            mode="receiving"
+            requests={allRequests}
+            mode="all_requests"
             currentEmployee={data.currentEmployee}
             isFinanceOrAdmin={data.isFinanceOrAdmin}
             sites={data.sites}
