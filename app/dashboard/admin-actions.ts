@@ -989,6 +989,7 @@ async function syncV2ScheduleFromFieldBreakPlans(
 }
 
 function revalidateSchedulingV2Paths() {
+  revalidatePath('/dashboard/scheduling-timesheet', 'layout')
   revalidatePath('/dashboard/scheduling-timesheet')
   revalidatePath('/dashboard/scheduling-timesheet/schedule-v2')
   revalidatePath('/dashboard/scheduling-timesheet/field-break')
