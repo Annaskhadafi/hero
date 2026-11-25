@@ -826,6 +826,8 @@ export function RoadHazardCameraView({
             }
           } finally {
             isAnalyzingRef.current = false
+            // Give the main UI/video thread one frame to breathe after heavy WASM inference
+            lastScanTimeRef.current = performance.now()
             if (!cancelled) {
               setIsAnalyzing(false)
             }

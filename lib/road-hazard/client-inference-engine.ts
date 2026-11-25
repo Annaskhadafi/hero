@@ -37,25 +37,19 @@ let initError: string | null = null
 let isModelVerifiedInCache = false
 
 // Reusable preprocessing buffers (allocated once, zero per-frame GC churn — mirrors flutter-Yolo ObjectDetector)
-let prepCanvas: HTMLCanvasElement | OffscreenCanvas | null = null
-let prepCtx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null
+let prepCanvas: HTMLCanvasElement | null = null
+let prepCtx: CanvasRenderingContext2D | null = null
 let reusableFloatInput: Float32Array | null = null
-let reusableInputTensor: any = null
 
-function ensurePreprocessingBuffers(ort: any) {
+function ensurePreprocessingBuffers() {
   if (!prepCanvas || !prepCtx) {
-    if (typeof OffscreenCanvas !== 'undefined') {
-      prepCanvas = new OffscreenCanvas(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE)
-    } else {
-      const c = document.createElement('canvas')
-      c.width = MODEL_INPUT_SIZE
-      c.height = MODEL_INPUT_SIZE
-      prepCanvas = c
-    }
+    const c = document.createElement('canvas')
+    c.width = MODEL_INPUT_SIZE
+    c.height = MODEL_INPUT_SIZE
+    prepCanvas = c
     prepCtx = prepCanvas.getContext('2d', {
       willReadFrequently: true,
-      alpha: false,
-    }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+    })
     if (!prepCtx) {
       throw new Error('Canvas 2D context not available')
     }
@@ -65,19 +59,9 @@ function ensurePreprocessingBuffers(ort: any) {
     reusableFloatInput = new Float32Array(3 * PLANE_SIZE)
   }
 
-  if (!reusableInputTensor) {
-    reusableInputTensor = new ort.Tensor('float32', reusableFloatInput, [
-      1,
-      3,
-      MODEL_INPUT_SIZE,
-      MODEL_INPUT_SIZE,
-    ])
-  }
-
   return {
     ctx: prepCtx,
     floatArr: reusableFloatInput,
-    inputTensor: reusableInputTensor,
   }
 }
 
@@ -143,6 +127,22 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
     const modelUrl = '/models/roadchitra.onnx'
 
     const createPromise = (async () => {
+      const { floatArr } = ensurePreprocessingBuffers()
+      const testAndWarmup = async (ep: 'webgpu' | 'webgl' | 'wasm') => {
+        const s = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: [ep],
+          graphOptimizationLevel: 'all',
+        })
+        // Warm up inside fallback path (mirrors LiteRtModel.kt): some GPU drivers compile but fail on first run
+        const warmupTensor = new ort.Tensor('float32', floatArr, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE])
+        const out = await s.run({ images: warmupTensor })
+        if (!out?.output0?.data) {
+          throw new Error(`${ep} returned invalid output tensor during warmup`)
+        }
+        activeExecutionProvider = ep
+        return s
+      }
+
       // Accelerator ladder (mirrors flutter-Yolo LiteRtModel): WebGPU -> WebGL -> WASM SIMD
       const hasWebGpu =
         typeof navigator !== 'undefined' &&
@@ -151,34 +151,19 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
 
       if (hasWebGpu) {
         try {
-          const s = await ort.InferenceSession.create(modelUrl, {
-            executionProviders: ['webgpu'],
-            graphOptimizationLevel: 'all',
-          })
-          activeExecutionProvider = 'webgpu'
-          return s
+          return await testAndWarmup('webgpu')
         } catch (gpuErr) {
           console.info('[client-hazard-ai] WebGPU EP failed, trying WebGL:', gpuErr)
         }
       }
 
       try {
-        const s = await ort.InferenceSession.create(modelUrl, {
-          executionProviders: ['webgl'],
-          graphOptimizationLevel: 'all',
-        })
-        activeExecutionProvider = 'webgl'
-        return s
+        return await testAndWarmup('webgl')
       } catch (webglErr) {
         console.info('[client-hazard-ai] WebGL EP failed, falling back to WASM CPU:', webglErr)
       }
 
-      const s = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['wasm'],
-        graphOptimizationLevel: 'all',
-      })
-      activeExecutionProvider = 'wasm'
-      return s
+      return await testAndWarmup('wasm')
     })()
 
     const timeoutPromise = new Promise((_, reject) =>
@@ -190,10 +175,6 @@ export async function initializeClientHazardModel(timeoutMs = 12000): Promise<bo
 
     clientSession = await Promise.race([createPromise, timeoutPromise])
     isModelVerifiedInCache = true
-
-    // Warm-up inference with reusable buffer to prime GPU shaders / JIT compiler
-    const { inputTensor } = ensurePreprocessingBuffers(ort)
-    await clientSession.run({ images: inputTensor }).catch(() => {})
 
     console.info(
       `[client-hazard-ai] Model ready on ${activeExecutionProvider?.toUpperCase() || 'WASM'} (100% Offline Ready).`
@@ -279,8 +260,8 @@ export async function runClientDeviceHazardInference(
   try {
     const ort = await getOrtWeb()
 
-    // 1. Reuse pre-allocated 640x640 offscreen canvas & Float32Array (zero GC churn)
-    const { ctx, floatArr, inputTensor } = ensurePreprocessingBuffers(ort)
+    // 1. Reuse pre-allocated 640x640 canvas & Float32Array (zero GC churn)
+    const { ctx, floatArr } = ensurePreprocessingBuffers()
     ctx.drawImage(video, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE)
     const pixels = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data
 
@@ -295,6 +276,9 @@ export async function runClientDeviceHazardInference(
       floatArr[b++] = pixels[pIdx + 2] * INV_255
       pIdx += 4
     }
+
+    // Wrap reusableFloatInput in a fresh Tensor handle per run (zero copy, prevents stale GPU buffer caching)
+    const inputTensor = new ort.Tensor('float32', floatArr, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE])
 
     // 3. Run inference
     const outputs = await clientSession.run({ images: inputTensor })
