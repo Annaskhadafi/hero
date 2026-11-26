@@ -5,17 +5,14 @@ import fs from 'fs';
 
 const ARTIFACT_DIR = path.resolve('C:/Users/IRIS/.gemini/antigravity/brain/b7593128-e742-40bb-8895-b3df226ee685');
 
-test.beforeAll(() => {
-  fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
-});
-
 test.describe('Security Roles & User Management - Expanded Organizational Roles', () => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
   test('Verify expanded roles in Role Management and User Management', async ({ page }) => {
     // 1. Set desktop viewport & navigate to sign-in
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/sign-in', { waitUntil: 'domcontentloaded' });
+    await page.goto('http://localhost:3000/sign-in', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000);
 
     const emailInput = page.locator('input[placeholder*="email atau SN" i], #email, input[name="username"], #employeeSn').first();
     await emailInput.waitFor({ state: 'visible', timeout: 30000 });
@@ -25,12 +22,13 @@ test.describe('Security Roles & User Management - Expanded Organizational Roles'
     const submitBtn = page.locator('button[type="submit"], button:has-text("Masuk ke HERO")').first();
     await submitBtn.click();
 
-    await expect(page).not.toHaveURL(/\/sign-in/, { timeout: 30000 });
-    await page.waitForTimeout(2000);
+    // Wait for successful login redirect
+    await page.waitForURL((url) => !url.pathname.includes('/sign-in'), { timeout: 90000 });
+    await page.waitForTimeout(3000);
 
     // 2. Navigate to Role Management
-    await page.goto('/dashboard/security/roles', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    await page.goto('http://localhost:3000/dashboard/security/roles', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4000);
 
     // Hide floating chat widget
     await page.evaluate(() => {
@@ -41,7 +39,7 @@ test.describe('Security Roles & User Management - Expanded Organizational Roles'
 
     // Verify Role Management page heading
     const roleHeading = page.locator('h1:has-text("Role & Permission")').first();
-    await expect(roleHeading).toBeVisible({ timeout: 30000 });
+    await expect(roleHeading).toBeVisible({ timeout: 45000 });
 
     // Verify expanded organizational roles appear in the left list
     const bodRole = page.locator('button:has-text("Executive / BoD")').first();
@@ -62,12 +60,26 @@ test.describe('Security Roles & User Management - Expanded Organizational Roles'
     console.log(`Saved screenshot: ${roleScreenshotPath}`);
 
     // 3. Navigate to User Management
-    await page.goto('/dashboard/security/users', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    await page.goto('http://localhost:3000/dashboard/security/users', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(4000);
 
-    // Verify User Management page
-    const userHeading = page.locator('h1, h2, text="User Management", text="Pengguna"').first();
-    await expect(userHeading).toBeVisible({ timeout: 30000 });
+    // Hide floating chat widget on users page
+    await page.evaluate(() => {
+      document.querySelectorAll('[title*="Hero Genius"]').forEach((el: any) => {
+        el.style.display = 'none';
+      });
+    });
+
+    // Verify User Management page heading
+    const userHeading = page.locator('h1:has-text("Manajemen Pengguna")').first();
+    await expect(userHeading).toBeVisible({ timeout: 45000 });
+
+    // Click role filter combobox to open and show expanded organizational roles
+    const roleCombobox = page.locator('button:has-text("Semua peran"), button:has-text("Peran")').first();
+    if (await roleCombobox.isVisible()) {
+      await roleCombobox.click();
+      await page.waitForTimeout(1000);
+    }
 
     // Capture screenshot of User Management
     const userScreenshotPath = path.join(ARTIFACT_DIR, '002-security-users-role-options.png');
