@@ -9580,5 +9580,32 @@ export async function saveDailyActivityWorkflowSettings(settings: DailyActivityW
   }
 }
 
+export async function getSessionSignaturesAction(sessionId: number): Promise<{
+  success: boolean
+  signatures: Record<number, string | null>
+}> {
+  try {
+    const approvals = await db
+      .select({
+        stepOrder: dailyActivityApprovals.stepOrder,
+        signatureDataUrl: dailyActivityApprovals.signatureDataUrl,
+      })
+      .from(dailyActivityApprovals)
+      .where(eq(dailyActivityApprovals.sessionId, sessionId))
+
+    const signatures: Record<number, string | null> = {}
+    for (const a of approvals) {
+      if (a.stepOrder) {
+        signatures[a.stepOrder] = a.signatureDataUrl || null
+      }
+    }
+    return { success: true, signatures }
+  } catch (err: any) {
+    console.error('Error fetching session signatures:', err)
+    return { success: false, signatures: {} }
+  }
+}
+
+
 
 

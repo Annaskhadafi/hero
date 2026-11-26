@@ -112,6 +112,7 @@ import {
   generateTestDailyActivityApproval,
   sendDueDailyActivityReminders,
   saveDailyActivityWorkflowSettings,
+  getSessionSignaturesAction,
 } from '@/app/dashboard/activity-hub/actions'
 import { getUserSignatureAction } from '@/app/actions/user-signature'
 import {
@@ -775,6 +776,32 @@ async function uploadActivityPhoto(file: File): Promise<string> {
   )
   const currentBatchDoc = selectedBatchRows[batchReviewIndex] || selectedBatchRows[0] || null
   const [currentBatchQrDataUrl, setCurrentBatchQrDataUrl] = useState<string | null>(null)
+
+  const [loadedSignatures, setLoadedSignatures] = useState<Record<number, Record<number, string | null>>>({})
+  const activeSignatureSessionId = previewTarget?.sessionId || currentBatchDoc?.sessionId || null
+
+  useEffect(() => {
+    if (!activeSignatureSessionId) return
+    if (loadedSignatures[activeSignatureSessionId]) return
+
+    let isMounted = true
+    getSessionSignaturesAction(activeSignatureSessionId)
+      .then((res) => {
+        if (isMounted && res.success && res.signatures) {
+          setLoadedSignatures((prev) => ({
+            ...prev,
+            [activeSignatureSessionId]: res.signatures,
+          }))
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load session signatures:', err)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [activeSignatureSessionId, loadedSignatures])
 
   useEffect(() => {
     if (!currentBatchDoc?.sessionId) {
@@ -2976,13 +3003,15 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         const remark1 = isStep1Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step1?.remarks
-                        const isApproved1 = step1?.status === 'approved' && Boolean(step1?.signatureDataUrl)
+                        const batchDocSignatures = loadedSignatures[currentBatchDoc.sessionId] || {}
+                        const sig1 = step1?.signatureDataUrl || batchDocSignatures[1] || batchDocSignatures[step1?.stepOrder ?? 1] || null
+                        const isApproved1 = step1?.status === 'approved' && Boolean(sig1)
                         return (
                           <div>
                             <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
                             <div className="h-16 flex items-end">
-                              {isApproved1 && step1?.signatureDataUrl ? (
-                                <img src={step1.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                              {isApproved1 && sig1 ? (
+                                <img src={sig1} alt="TTD" className="h-14 object-contain" />
                               ) : (
                                 <span className="text-slate-400 italic text-[7.5pt]">(Belum Disetujui)</span>
                               )}
@@ -3005,13 +3034,15 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                         const remark2 = isStep2Active && approvalRemarks[currentBatchDoc.sessionId]
                           ? approvalRemarks[currentBatchDoc.sessionId]
                           : step2?.remarks
-                        const isApproved2 = step2?.status === 'approved' && Boolean(step2?.signatureDataUrl)
+                        const batchDocSignatures = loadedSignatures[currentBatchDoc.sessionId] || {}
+                        const sig2 = step2?.signatureDataUrl || batchDocSignatures[2] || batchDocSignatures[step2?.stepOrder ?? 2] || null
+                        const isApproved2 = step2?.status === 'approved' && Boolean(sig2)
                         return (
                           <div>
                             <div className="text-[7pt] text-gray-500 mb-1">Leader / Supervisor Signature</div>
                             <div className="h-16 flex items-end">
-                              {isApproved2 && step2?.signatureDataUrl ? (
-                                <img src={step2.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                              {isApproved2 && sig2 ? (
+                                <img src={sig2} alt="TTD" className="h-14 object-contain" />
                               ) : (
                                 <span className="text-slate-400 italic text-[7.5pt]"></span>
                               )}
@@ -3283,12 +3314,16 @@ async function uploadActivityPhoto(file: File): Promise<string> {
             const originalHeightMm = 297
             const marginOffsetMm = -Math.round(originalHeightMm * (1 - effectiveScale))
 
+            const previewDocSignatures = loadedSignatures[previewTarget.sessionId] || {}
             const step1 = previewTarget.approvals.find(a => a.stepOrder === 1)
             const step2 = previewTarget.approvals.find(a => a.stepOrder === 2)
             const step3 = previewTarget.approvals.find(a => a.stepOrder === 3)
-            const isSigned1 = step1?.status === 'approved' && Boolean(step1?.signatureDataUrl)
-            const isApproved2 = step2?.status === 'approved' && Boolean(step2?.signatureDataUrl)
-            const isApproved3 = step3?.status === 'approved' && Boolean(step3?.signatureDataUrl)
+            const sig1 = step1?.signatureDataUrl || previewDocSignatures[1] || previewDocSignatures[step1?.stepOrder ?? 1] || null
+            const isSigned1 = step1?.status === 'approved' && Boolean(sig1)
+            const sig2 = step2?.signatureDataUrl || previewDocSignatures[2] || previewDocSignatures[step2?.stepOrder ?? 2] || null
+            const isApproved2 = step2?.status === 'approved' && Boolean(sig2)
+            const sig3 = step3?.signatureDataUrl || previewDocSignatures[3] || previewDocSignatures[step3?.stepOrder ?? 3] || null
+            const isApproved3 = step3?.status === 'approved' && Boolean(sig3)
 
             return (
               <div
@@ -3466,8 +3501,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       <div>
                         <div className="text-[7pt] text-gray-500 mb-1">Employee Signature</div>
                         <div className="h-16 flex items-end">
-                          {isSigned1 && step1?.signatureDataUrl ? (
-                            <img src={step1.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                          {isSigned1 && sig1 ? (
+                            <img src={sig1} alt="TTD" className="h-14 object-contain" />
                           ) : (
                             <span className="text-slate-400 italic text-[7.5pt]">(Belum Disetujui)</span>
                           )}
@@ -3482,8 +3517,8 @@ async function uploadActivityPhoto(file: File): Promise<string> {
                       <div>
                         <div className="text-[7pt] text-gray-500 mb-1">Leader / PJO Signature</div>
                         <div className="h-16 flex items-end">
-                          {isApproved2 && step2?.signatureDataUrl ? (
-                            <img src={step2.signatureDataUrl} alt="TTD" className="h-14 object-contain" />
+                          {isApproved2 && sig2 ? (
+                            <img src={sig2} alt="TTD" className="h-14 object-contain" />
                           ) : (
                             <span className="text-slate-400 italic text-[7.5pt]"></span>
                           )}

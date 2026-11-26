@@ -121,7 +121,7 @@ declare global {
   var heroGovernanceSeedVersion: string | undefined
 }
 
-const HERO_GOVERNANCE_SEED_VERSION = 'central-service-apd-request-cer-v2'
+const HERO_GOVERNANCE_SEED_VERSION = 'org-roles-v1'
 
 export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 350): Promise<T> {
   let attempt = 0
@@ -422,8 +422,38 @@ const GOVERNANCE_ROLE_SEEDS = [
     scope: 'all_sites',
   },
   {
+    name: 'Executive / BoD',
+    description:
+      'Akses eksekutif seluruh site untuk monitoring kinerja korporat, ringkasan KPI eksekutif, dan laporan finansial.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'General Manager',
+    description:
+      'Monitoring dan supervisi operasional lintas departemen, approval operasional tingkat tinggi, dan koordinasi site.',
+    scope: 'all_sites',
+  },
+  {
     name: 'Site Admin',
     description: 'Operasional site, approval, report, dan koordinasi manpower.',
+    scope: 'site',
+  },
+  {
+    name: 'PJO SITE',
+    description:
+      'Penanggung Jawab Operasional site, approval SPL, timesheet, dan operasional lapangan.',
+    scope: 'site',
+  },
+  {
+    name: 'Central Services Manager',
+    description:
+      'Kontrol operasional workshop, perbaikan dan vulkanisir ban (retread), manajemen aset CS, dan technical field support.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Tyre Technician / Field Service',
+    description:
+      'Teknisi lapangan untuk inspeksi ban, pencatatan daily activity, jobcard perbaikan, dan timesheet operasional.',
     scope: 'site',
   },
   {
@@ -432,8 +462,33 @@ const GOVERNANCE_ROLE_SEEDS = [
     scope: 'all_sites',
   },
   {
-    name: 'HSE',
-    description: 'Akses penuh untuk modul HSE, safety tools, dan MCU Wellness.',
+    name: 'HR-GA Officer',
+    description:
+      'Pengelolaan administrasi karyawan, presensi, cuti/izin, kendaraan operasional, ATK, dan fasilitas rental site.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Training Specialist',
+    description:
+      'Pengelolaan program pelatihan, kurikulum Chitra Learning LMS, sertifikasi, dan evaluasi kompetensi.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Wellness Specialist',
+    description:
+      'Pengelolaan program kesehatan kerja karyawan, fit to work, MCU wellness, dan konseling karyawan.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'HSE Manager',
+    description:
+      'Pengawasan kepatuhan K3, persetujuan investigasi insiden, izin kerja risiko tinggi (PTW), dan HIRADC lintas site.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'HSE Officer',
+    description:
+      'Inspeksi keselamatan kerja lapangan, pelaporan bahaya (road hazard/OSM), observasi emergency, dan audit APD.',
     scope: 'all_sites',
   },
   {
@@ -446,6 +501,60 @@ const GOVERNANCE_ROLE_SEEDS = [
     name: 'Quality Auditor',
     description: 'Pelaksanaan audit 5R lapangan, input temuan, dan monitoring perbaikan.',
     scope: 'site',
+  },
+  {
+    name: 'Internal Audit Representative',
+    description:
+      'Pemeriksaan kepatuhan prosedur, evaluasi proses bisnis, dan audit kepatuhan tata kelola perusahaan.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Finance & Accounting Manager',
+    description:
+      'Otorisasi anggaran, review laporan keuangan, approval CER, dan perencanaan finansial korporat.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Accounting & Asset Officer',
+    description:
+      'Pengelolaan pembukuan, pencatatan aset tetap, verifikasi faktur tagihan, dan rekonsiliasi keuangan.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Treasury & Billing Officer',
+    description:
+      'Pengelolaan arus kas, penagihan invoice pelanggan, pembayaran vendor operasional, dan pengelolaan kas kecil.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Supply Chain Manager',
+    description:
+      'Supervisi rantai pasok terpadu, perencanaan kebutuhan material, manajemen logistik, dan kepatuhan pengadaan.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Procurement Officer',
+    description:
+      'Pengadaan barang/jasa, pengajuan PO/RFR, pembelian ATK & APD, dan evaluasi vendor.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Warehouse & Inventory Officer',
+    description:
+      'Pengelolaan gudang, stock opname material, pencatatan mutasi barang masuk/keluar, dan cargo manifest.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Sales Operation Manager',
+    description:
+      'Monitoring pergerakan sales nasional/regional, persetujuan penawaran harga, dan supervisi kuotasi MAESTRO.',
+    scope: 'all_sites',
+  },
+  {
+    name: 'Sales Specialist',
+    description:
+      'Manajemen relasi pelanggan, monitoring order, penawaran harga, dan pencarian prospek pasar.',
+    scope: 'all_sites',
   },
   {
     name: 'Khusus Mas Rendi',

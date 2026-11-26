@@ -16,7 +16,7 @@ import {
   masterSections,
   sites,
 } from '@/db/schema/hero'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { ApprovalListingClient, type SessionApprovalRow } from './client'
 import { getDailyActivityWorkflowSettings } from '@/app/dashboard/activity-hub/actions'
 import { DEFAULT_DAILY_ACTIVITY_SETTINGS } from '@/lib/workflow-settings-defaults'
@@ -94,7 +94,6 @@ export default async function DailyActivityApprovalListPage() {
 
     const userRole = ((session?.user as any)?.role || '').toLowerCase()
     const accessRole = (currentEmployee?.accessRole || '').toLowerCase()
-    const roleCol = ((currentEmployee as any)?.role || '').toLowerCase()
     const jobTitleLower = (currentEmployee?.jobTitle || '').toLowerCase()
     const isAdmin =
       userRole === 'admin' ||
@@ -109,18 +108,48 @@ export default async function DailyActivityApprovalListPage() {
       accessRole === 'hr' ||
       normalizedEmail === 'chitra.operation.hero@gmail.com'
 
-    // Fetch sites where current employee is the registered Site Head (PJO)
-    const headedSites = currentEmployee?.id
-      ? await safeQuery(
-          () =>
-            db
-              .select({ id: sites.id })
-              .from(sites)
-              .where(eq(sites.headEmployeeId, currentEmployee.id)),
-          [],
-          'fetchHeadedSites'
-        )
-      : []
+    // Fetch headed sites and team session IDs in parallel for RLS scoping
+    const [headedSites, teamMemberSessionIds, assignedApproverSessionIds] = await Promise.all([
+      currentEmployee?.id
+        ? safeQuery(
+            () =>
+              db
+                .select({ id: sites.id })
+                .from(sites)
+                .where(eq(sites.headEmployeeId, currentEmployee.id)),
+            [],
+            'fetchHeadedSites'
+          )
+        : Promise.resolve([]),
+      currentEmployee?.id
+        ? safeQuery(
+            () =>
+              db
+                .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
+                .from(dailyActivitySessionTeamMembers)
+                .where(eq(dailyActivitySessionTeamMembers.employeeId, currentEmployee.id)),
+            [],
+            'fetchTeamMemberSessionIds'
+          )
+        : Promise.resolve([]),
+      !isAdmin && currentEmployee?.id
+        ? safeQuery(
+            () =>
+              db
+                .select({ sessionId: dailyActivityApprovals.sessionId })
+                .from(dailyActivityApprovals)
+                .where(
+                  or(
+                    eq(dailyActivityApprovals.approverEmployeeId, currentEmployee.id),
+                    sql`lower(${dailyActivityApprovals.approverEmail}) = ${normalizedEmail}`
+                  )
+                ),
+            [],
+            'fetchAssignedApproverSessionIds'
+          )
+        : Promise.resolve([]),
+    ])
+
     const siteIdsSet = new Set(headedSites.map((s) => s.id))
     if (currentEmployee?.siteId) {
       siteIdsSet.add(currentEmployee.siteId)
@@ -151,19 +180,8 @@ export default async function DailyActivityApprovalListPage() {
       jobTitleLower.includes('manager') ||
       accessRole.includes('manager')
 
-    // Fetch all sessions where current employee participated as team member
-    const teamMemberSessionIds = currentEmployee?.id
-      ? await safeQuery(
-          () =>
-            db
-              .select({ sessionId: dailyActivitySessionTeamMembers.sessionId })
-              .from(dailyActivitySessionTeamMembers)
-              .where(eq(dailyActivitySessionTeamMembers.employeeId, currentEmployee.id)),
-          [],
-          'fetchTeamMemberSessionIds'
-        )
-      : []
     const userTeamSessionIdSet = new Set(teamMemberSessionIds.map((t) => t.sessionId))
+    const assignedSessionIdSet = new Set(assignedApproverSessionIds.map((a) => a.sessionId))
 
     const sessionConditions = [isNull(dailyActivitySessions.deletedAt)]
     if (!isAdmin) {
@@ -176,70 +194,176 @@ export default async function DailyActivityApprovalListPage() {
       }
     }
 
-    // Get latest sessions with their approval status (up to 1,000 sessions for complete visibility)
-    const rawSessions = await safeQuery(
-      () =>
-        db
-          .select({
-            sessionId: dailyActivitySessions.id,
-            sessionCode: dailyActivitySessions.sessionCode,
-            workDate: dailyActivitySessions.workDate,
-            shiftCode: dailyActivitySessions.shiftCode,
-            sessionStatus: dailyActivitySessions.status,
-            employeeId: dailyActivitySessions.employeeId,
-            employeeName: employees.name,
-            employeeSn: employees.employeeSn,
-            department: employees.department,
-            section: employees.section,
-            siteName: sites.name,
-            siteId: dailyActivitySessions.siteId,
-            summaryRemark: dailyActivitySessions.summaryRemark,
-          })
-          .from(dailyActivitySessions)
-          .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
-          .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
-          .where(and(...sessionConditions))
-          .orderBy(desc(dailyActivitySessions.id))
-          .limit(isAdmin ? 1500 : 1000),
-      [],
-      'fetchRawSessions'
-    )
-
-    // Get all approvals for these sessions
-    const rawSessionIds = rawSessions.map((s) => s.sessionId).filter(Boolean)
-    const allApprovals =
-      rawSessionIds.length > 0
-        ? await safeQuery(
-            () =>
-              db
-                .select({
-                  sessionId: dailyActivityApprovals.sessionId,
-                  stepOrder: dailyActivityApprovals.stepOrder,
-                  stepLabel: dailyActivityApprovals.stepLabel,
-                  approverRole: dailyActivityApprovals.approverRole,
-                  status: dailyActivityApprovals.status,
-                  approverName: dailyActivityApprovals.approverName,
-                  approverEmail: dailyActivityApprovals.approverEmail,
-                  approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
-                  signatureDataUrl: dailyActivityApprovals.signatureDataUrl,
-                  remarks: dailyActivityApprovals.remarks,
-                  signedAt: dailyActivityApprovals.signedAt,
-                })
-                .from(dailyActivityApprovals)
-                .where(inArray(dailyActivityApprovals.sessionId, rawSessionIds))
-                .orderBy(asc(dailyActivityApprovals.stepOrder)),
-            [],
-            'fetchAllApprovals'
-          )
-        : []
-
-    const approvalsBySessionMap = new Map<number, typeof allApprovals>()
-    for (const a of allApprovals) {
-      if (!approvalsBySessionMap.has(a.sessionId)) {
-        approvalsBySessionMap.set(a.sessionId, [])
-      }
-      approvalsBySessionMap.get(a.sessionId)!.push(a)
-    }
+    // Stage 1 Parallel Execution: Fetch sessions (capped at 300 for peak performance) AND all master lookup data in parallel
+    const [
+      rawSessions,
+      employeeList,
+      siteList,
+      libraryList,
+      sectionList,
+      departmentList,
+      routeTemplateRows,
+      routeGroupRows,
+      routeItemRows,
+      initialSettings,
+    ] = await Promise.all([
+      safeQuery(
+        () =>
+          db
+            .select({
+              sessionId: dailyActivitySessions.id,
+              sessionCode: dailyActivitySessions.sessionCode,
+              workDate: dailyActivitySessions.workDate,
+              shiftCode: dailyActivitySessions.shiftCode,
+              sessionStatus: dailyActivitySessions.status,
+              employeeId: dailyActivitySessions.employeeId,
+              employeeName: employees.name,
+              employeeSn: employees.employeeSn,
+              department: employees.department,
+              section: employees.section,
+              siteName: sites.name,
+              siteId: dailyActivitySessions.siteId,
+              summaryRemark: dailyActivitySessions.summaryRemark,
+            })
+            .from(dailyActivitySessions)
+            .leftJoin(employees, eq(dailyActivitySessions.employeeId, employees.id))
+            .leftJoin(sites, eq(dailyActivitySessions.siteId, sites.id))
+            .where(and(...sessionConditions))
+            .orderBy(desc(dailyActivitySessions.id))
+            .limit(isAdmin ? 300 : 200),
+        [],
+        'fetchRawSessions'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: employees.id,
+              name: employees.name,
+              employeeId: employees.employeeSn,
+              email: employees.email,
+              jobTitle: employees.jobTitle,
+              department: employees.department,
+              section: employees.section,
+              siteId: employees.siteId,
+              directManagerId: employees.directManagerId,
+              sectionId: employees.sectionId,
+              departmentId: employees.departmentId,
+            })
+            .from(employees)
+            .where(eq(employees.isActive, true)),
+        [],
+        'fetchEmployeeList'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: sites.id,
+              name: sites.name,
+              location: sites.location,
+              headEmployeeId: sites.headEmployeeId,
+            })
+            .from(sites)
+            .where(eq(sites.isActive, true)),
+        [],
+        'fetchSiteList'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityLibraries.id,
+              code: activityLibraries.activityCode,
+              name: activityLibraries.activityName,
+              basePoints: activityLibraries.basePoints,
+              category: activityLibraries.category,
+              requiresPhoto: activityLibraries.requiresPhoto,
+              requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
+              requiresDuration: activityLibraries.requiresDuration,
+              requiresLocationGps: activityLibraries.requiresLocationGps,
+              requiresTireCount: activityLibraries.requiresTireCount,
+              requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
+            })
+            .from(activityLibraries)
+            .where(eq(activityLibraries.isActive, true))
+            .orderBy(asc(activityLibraries.activityCode)),
+        [],
+        'fetchLibraryList'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: masterSections.id,
+              headEmployeeId: masterSections.headEmployeeId,
+            })
+            .from(masterSections),
+        [],
+        'fetchMasterSections'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: masterDepartments.id,
+              headEmployeeId: masterDepartments.headEmployeeId,
+            })
+            .from(masterDepartments),
+        [],
+        'fetchMasterDepartments'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityRouteTemplates.id,
+              routeCode: activityRouteTemplates.routeCode,
+              routeName: activityRouteTemplates.routeName,
+              siteId: activityRouteTemplates.siteId,
+              departmentId: activityRouteTemplates.departmentId,
+              sectionId: activityRouteTemplates.sectionId,
+              mobileEnabled: activityRouteTemplates.mobileEnabled,
+            })
+            .from(activityRouteTemplates)
+            .where(eq(activityRouteTemplates.isActive, true))
+            .orderBy(asc(activityRouteTemplates.routeName)),
+        [],
+        'fetchRouteTemplates'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityRouteGroups.id,
+              routeTemplateId: activityRouteGroups.routeTemplateId,
+              groupKey: activityRouteGroups.groupKey,
+              groupName: activityRouteGroups.groupName,
+              sortOrder: activityRouteGroups.sortOrder,
+            })
+            .from(activityRouteGroups)
+            .orderBy(asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
+        [],
+        'fetchRouteGroups'
+      ),
+      safeQuery(
+        () =>
+          db
+            .select({
+              id: activityRouteItems.id,
+              routeGroupId: activityRouteItems.routeGroupId,
+              libraryActivityId: activityRouteItems.libraryActivityId,
+              itemCode: activityRouteItems.itemCode,
+              itemLabel: activityRouteItems.itemLabel,
+              sortOrder: activityRouteItems.sortOrder,
+            })
+            .from(activityRouteItems)
+            .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
+        [],
+        'fetchRouteItems'
+      ),
+      getDailyActivityWorkflowSettings().catch(() => DEFAULT_DAILY_ACTIVITY_SETTINGS),
+    ])
 
     // Row-Level Security (RLS) Filter: Admin sees ALL, users strictly see their own / assigned sessions
     const sessions = rawSessions.filter((s) => {
@@ -252,14 +376,7 @@ export default async function DailyActivityApprovalListPage() {
       if (currentEmployee?.name && (s.summaryRemark || '').toLowerCase().includes(currentEmployee.name.toLowerCase().trim())) return true
 
       // Assigned approver for any step of this session
-      const sessionApps = approvalsBySessionMap.get(s.sessionId) || []
-      const isAssignedApprover = sessionApps.some(
-        (a) =>
-          (currentEmployee?.id && a.approverEmployeeId === currentEmployee.id) ||
-          (a.approverEmail && a.approverEmail.trim().toLowerCase() === normalizedEmail) ||
-          (currentEmployee?.name && a.approverName && a.approverName.trim().toLowerCase() === currentEmployee.name.trim().toLowerCase())
-      )
-      if (isAssignedApprover) return true
+      if (assignedSessionIdSet.has(s.sessionId)) return true
 
       // Section Head / Leader
       if (isSectionHeadOrLeader && currentEmployee?.section && s.section === currentEmployee.section) return true
@@ -272,8 +389,31 @@ export default async function DailyActivityApprovalListPage() {
 
     const sessionIds = sessions.map((s) => s.sessionId).filter(Boolean)
 
-    // Get all session items, item counts, and team members safely
-    const [allItems, itemCounts, allTeamMembers] = await Promise.all([
+    // Stage 2 Parallel Execution: Get all session items, item counts, approvals, and team members safely for the filtered sessions only
+    const [allApprovals, allItems, itemCounts, allTeamMembers] = await Promise.all([
+      sessionIds.length > 0
+        ? safeQuery(
+            () =>
+              db
+                .select({
+                  sessionId: dailyActivityApprovals.sessionId,
+                  stepOrder: dailyActivityApprovals.stepOrder,
+                  stepLabel: dailyActivityApprovals.stepLabel,
+                  approverRole: dailyActivityApprovals.approverRole,
+                  status: dailyActivityApprovals.status,
+                  approverName: dailyActivityApprovals.approverName,
+                  approverEmail: dailyActivityApprovals.approverEmail,
+                  approverEmployeeId: dailyActivityApprovals.approverEmployeeId,
+                  remarks: dailyActivityApprovals.remarks,
+                  signedAt: dailyActivityApprovals.signedAt,
+                })
+                .from(dailyActivityApprovals)
+                .where(inArray(dailyActivityApprovals.sessionId, sessionIds))
+                .orderBy(asc(dailyActivityApprovals.stepOrder)),
+            [],
+            'fetchAllApprovals'
+          )
+        : Promise.resolve([]),
       sessionIds.length > 0
         ? safeQuery(
             () =>
@@ -410,152 +550,12 @@ export default async function DailyActivityApprovalListPage() {
           approverName: a.approverName || '',
           approverEmail: a.approverEmail || null,
           approverEmployeeId: a.approverEmployeeId ? Number(a.approverEmployeeId) : null,
-          signatureDataUrl: a.signatureDataUrl || null,
+          signatureDataUrl: null,
           signedAt: a.signedAt ? new Date(a.signedAt).toISOString() : null,
         })
         approvalsBySession.set(a.sessionId, list)
       }
     }
-
-    // Batch 1: Primary master data
-    const [employeeList, siteList, libraryList] = await Promise.all([
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: employees.id,
-              name: employees.name,
-              employeeId: employees.employeeSn,
-              email: employees.email,
-              jobTitle: employees.jobTitle,
-              department: employees.department,
-              section: employees.section,
-              siteId: employees.siteId,
-              directManagerId: employees.directManagerId,
-              sectionId: employees.sectionId,
-              departmentId: employees.departmentId,
-            })
-            .from(employees)
-            .where(eq(employees.isActive, true)),
-        [],
-        'fetchEmployeeList'
-      ),
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: sites.id,
-              name: sites.name,
-              location: sites.location,
-              headEmployeeId: sites.headEmployeeId,
-            })
-            .from(sites)
-            .where(eq(sites.isActive, true)),
-        [],
-        'fetchSiteList'
-      ),
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: activityLibraries.id,
-              code: activityLibraries.activityCode,
-              name: activityLibraries.activityName,
-              basePoints: activityLibraries.basePoints,
-              category: activityLibraries.category,
-              requiresPhoto: activityLibraries.requiresPhoto,
-              requiresEquipmentNo: activityLibraries.requiresEquipmentNo,
-              requiresDuration: activityLibraries.requiresDuration,
-              requiresLocationGps: activityLibraries.requiresLocationGps,
-              requiresTireCount: activityLibraries.requiresTireCount,
-              requiresMaterialUsed: activityLibraries.requiresMaterialUsed,
-            })
-            .from(activityLibraries)
-            .where(eq(activityLibraries.isActive, true))
-            .orderBy(asc(activityLibraries.activityCode)),
-        [],
-        'fetchLibraryList'
-      ),
-    ])
-
-    // Batch 2: Structural lookup tables
-    const [sectionList, departmentList] = await Promise.all([
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: masterSections.id,
-              headEmployeeId: masterSections.headEmployeeId,
-            })
-            .from(masterSections),
-        [],
-        'fetchMasterSections'
-      ),
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: masterDepartments.id,
-              headEmployeeId: masterDepartments.headEmployeeId,
-            })
-            .from(masterDepartments),
-        [],
-        'fetchMasterDepartments'
-      ),
-    ])
-
-    // Batch 3: Route folders and activities
-    const [routeTemplateRows, routeGroupRows, routeItemRows] = await Promise.all([
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: activityRouteTemplates.id,
-              routeCode: activityRouteTemplates.routeCode,
-              routeName: activityRouteTemplates.routeName,
-              siteId: activityRouteTemplates.siteId,
-              departmentId: activityRouteTemplates.departmentId,
-              sectionId: activityRouteTemplates.sectionId,
-              mobileEnabled: activityRouteTemplates.mobileEnabled,
-            })
-            .from(activityRouteTemplates)
-            .where(eq(activityRouteTemplates.isActive, true))
-            .orderBy(asc(activityRouteTemplates.routeName)),
-        [],
-        'fetchRouteTemplates'
-      ),
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: activityRouteGroups.id,
-              routeTemplateId: activityRouteGroups.routeTemplateId,
-              groupKey: activityRouteGroups.groupKey,
-              groupName: activityRouteGroups.groupName,
-              sortOrder: activityRouteGroups.sortOrder,
-            })
-            .from(activityRouteGroups)
-            .orderBy(asc(activityRouteGroups.sortOrder), asc(activityRouteGroups.id)),
-        [],
-        'fetchRouteGroups'
-      ),
-      safeQuery(
-        () =>
-          db
-            .select({
-              id: activityRouteItems.id,
-              routeGroupId: activityRouteItems.routeGroupId,
-              libraryActivityId: activityRouteItems.libraryActivityId,
-              itemCode: activityRouteItems.itemCode,
-              itemLabel: activityRouteItems.itemLabel,
-              sortOrder: activityRouteItems.sortOrder,
-            })
-            .from(activityRouteItems)
-            .orderBy(asc(activityRouteItems.sortOrder), asc(activityRouteItems.id)),
-        [],
-        'fetchRouteItems'
-      ),
-    ])
 
     const itemsByGroupId = new Map<number, any[]>()
     for (const item of routeItemRows || []) {
@@ -723,8 +723,6 @@ export default async function DailyActivityApprovalListPage() {
       requiresTireCount: Boolean(l.requiresTireCount),
       requiresMaterialUsed: Boolean(l.requiresMaterialUsed),
     }))
-
-    const initialSettings = await getDailyActivityWorkflowSettings()
 
     return (
       <ApprovalListingClient
