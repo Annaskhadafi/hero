@@ -1,5 +1,6 @@
 // Trigger recompile
 export * from "./hero";
+export * from "./daily-activity-supervisor-notes";
 export * from "./road-hazard";
 export { user, session, account, verification } from "./auth";
 export { instagramImageHistory } from "./instagram-history";

@@ -91,6 +91,8 @@ import {
   HeroKpiCard,
   HeroSearchableSelect,
   HeroStatusBadge,
+  HeroFormDialog,
+  HeroTextarea,
 } from '@/components/templates'
 import {
   Table,
@@ -107,6 +109,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { deleteDailyActivityRecordAction } from './actions'
+import { addDailyActivitySupervisorNote, getDailyActivitySupervisorNotes, getDailyActivitySupervisorNoteSummaries } from '@/app/actions/daily-activity-supervisor-notes'
 
 interface ClientDashboardProps {
   initialData: DailyActivityDashboardData
@@ -406,6 +409,52 @@ export function DailyActivityClientDashboard({
   }, [lightboxPhoto?.url])
 
   const [isAddActivityModalOpen, setIsAddActivityModalOpen] = useState(false)
+  const [noteTarget, setNoteTarget] = useState<{ sessionId: number; itemId: number; label: string } | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [noteHistory, setNoteHistory] = useState<Array<{ id: number; note: string; authorName: string; createdAt: Date | string }>>([])
+  const [noteLoading, setNoteLoading] = useState(false)
+  const [noteCanWrite, setNoteCanWrite] = useState(false)
+  const [noteUnavailable, setNoteUnavailable] = useState(false)
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteRevision, setNoteRevision] = useState(0)
+
+  const openSupervisorNotes = async (sessionId: number, itemId: number, label: string) => {
+    setNoteTarget({ sessionId, itemId, label })
+    setNoteText('')
+    setNoteHistory([])
+    setNoteCanWrite(false)
+    setNoteUnavailable(false)
+    setNoteLoading(true)
+    try {
+      const result = await getDailyActivitySupervisorNotes(sessionId, itemId)
+      setNoteHistory(result.ok ? result.notes : [])
+      setNoteCanWrite(result.ok && result.canWrite)
+      setNoteUnavailable(!result.ok)
+    } catch {
+      setNoteUnavailable(true)
+    } finally {
+      setNoteLoading(false)
+    }
+  }
+
+  const submitSupervisorNote = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!noteTarget || !noteCanWrite || noteSaving || !noteText.trim()) return
+    setNoteSaving(true)
+    try {
+      const result = await addDailyActivitySupervisorNote(noteTarget.sessionId, noteTarget.itemId, noteText)
+      if (!result.ok) { toast.error('Catatan tidak dapat disimpan. Periksa akses atau isi catatan.'); return }
+      setNoteHistory((current) => [...current, result.note])
+      setNoteText('')
+      setNoteRevision((current) => current + 1)
+      toast.success('Catatan atasan berhasil ditambahkan.')
+    } catch {
+      toast.error('Catatan tidak dapat disimpan. Coba lagi.')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
 
   // Delete state
   const [deletingEmployee, setDeletingEmployee] = useState<EmployeeActivityRow | null>(null)
@@ -785,6 +834,19 @@ export function DailyActivityClientDashboard({
     const start = (currentPage - 1) * pageSize
     return sortedEmployees.slice(start, start + pageSize)
   }, [sortedEmployees, currentPage, pageSize])
+
+  const [noteSummaries, setNoteSummaries] = useState<Awaited<ReturnType<typeof getDailyActivitySupervisorNoteSummaries>>>([])
+  useEffect(() => {
+    let active = true
+    setNoteSummaries([])
+    const ids = [...new Set(paginatedEmployees.flatMap((employee) => employee.tasks.flatMap((task) => task.supervisorNoteItemId ? [task.supervisorNoteItemId] : [])))]
+    const batches = Array.from({ length: Math.ceil(ids.length / 250) }, (_, i) => ids.slice(i * 250, (i + 1) * 250))
+    void Promise.all(batches.map((batch) => getDailyActivitySupervisorNoteSummaries(batch)))
+      .then((results) => { if (active) setNoteSummaries(results.flat()) })
+      .catch(() => { if (active) setNoteSummaries([]) })
+    return () => { active = false }
+  }, [paginatedEmployees, noteRevision])
+  const noteSummaryByTask = useMemo(() => new Map(noteSummaries.map((summary) => [`${summary.sessionId}-${summary.itemId}`, summary])), [noteSummaries])
 
   const unsubmittedTotalPages = Math.max(1, Math.ceil(sortedUnsubmittedEmployees.length / pageSize))
   const paginatedUnsubmittedEmployees = useMemo(() => {
@@ -2154,13 +2216,14 @@ export function DailyActivityClientDashboard({
                       )}
                     </button>
                   </TableHead>
+                  <TableHead className="py-3 px-4 font-semibold text-slate-500">Catatan Atasan</TableHead>
                   <TableHead className="py-3 px-4 font-semibold text-slate-500 text-center">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-slate-100">
                 {paginatedEmployees.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="py-8 text-center text-slate-400">
+                    <TableCell colSpan={15} className="py-8 text-center text-slate-400">
                       Tidak ada aktivitas karyawan yang sesuai dengan kriteria filter.
                     </TableCell>
                   </TableRow>
@@ -2375,6 +2438,20 @@ export function DailyActivityClientDashboard({
                         <TableCell className="py-3 px-4">{renderStatusBadge(emp.status)}</TableCell>
                         <TableCell className="py-3 px-4">{renderProgressBar(emp.progress, emp.status)}</TableCell>
                         <TableCell className="py-3 px-4 text-slate-500 whitespace-nowrap">{emp.lastUpdate}</TableCell>
+                        <TableCell className="py-3 px-4">
+                          <div className="flex flex-col gap-1">
+                            {emp.tasks.every((task) => !noteSummaryByTask.has(`${task.sessionId}-${task.supervisorNoteItemId}`)) && <span className="text-slate-400">—</span>}
+                            {emp.tasks.filter((task, index, tasks) => tasks.findIndex((other) => other.supervisorNoteItemId === task.supervisorNoteItemId) === index).map((task) => {
+                              const summary = noteSummaryByTask.get(`${task.sessionId}-${task.supervisorNoteItemId}`)
+                              if (!summary) return null
+                              return <div key={summary.itemId} className="max-w-52 text-xs">
+                                <div className="truncate font-medium">{task.label}</div>
+                                <div className="line-clamp-2 break-words text-muted-foreground">{summary.latest ?? 'Belum ada catatan'}</div>
+                                <div className="text-muted-foreground">{summary.count} catatan</div>
+                              </div>
+                            })}
+                          </div>
+                        </TableCell>
                         <TableCell className="py-3 px-4 text-center">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -2387,6 +2464,13 @@ export function DailyActivityClientDashboard({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="text-xs">
+                              {emp.tasks.filter((task, index, tasks) => tasks.findIndex((other) => other.supervisorNoteItemId === task.supervisorNoteItemId) === index).map((task) => {
+                                const summary = noteSummaryByTask.get(`${task.sessionId}-${task.supervisorNoteItemId}`)
+                                if (!summary) return null
+                                return <DropdownMenuItem key={summary.itemId} className="h-9" onSelect={() => void openSupervisorNotes(summary.sessionId, summary.itemId, task.label)}>
+                                  <FileText className="mr-2 size-4" />{summary.canWrite ? 'Catatan Atasan' : 'Lihat Catatan Atasan'} — {task.label}
+                                </DropdownMenuItem>
+                              })}
                               <DropdownMenuItem
                                 onClick={() =>
                                   setActiveDetailItem({
@@ -3614,6 +3698,29 @@ export function DailyActivityClientDashboard({
         </DialogContent>
       </Dialog>
 
+
+      <HeroFormDialog
+        open={Boolean(noteTarget)}
+        onOpenChange={(open) => { if (!open && !noteLoading && !noteSaving) setNoteTarget(null) }}
+        title={`Catatan Atasan${noteTarget ? ` — ${noteTarget.label}` : ''}`}
+        description="Riwayat masukan atasan untuk aktivitas ini."
+        onSubmit={noteCanWrite ? submitSupervisorNote : undefined}
+        submitLabel="Tambah Catatan"
+        isSubmitting={noteSaving}
+        maxWidth="lg"
+      >
+        {noteLoading ? <p className="text-sm text-muted-foreground">Memuat riwayat catatan…</p> : noteUnavailable ? <p className="text-sm text-muted-foreground">Catatan tidak tersedia.</p> : noteHistory.length ? (
+          <ol className="space-y-3">
+            {noteHistory.map((note) => (
+              <li key={note.id} className="rounded-md border border-border/70 p-3">
+                <div className="mb-1 flex justify-between gap-3 text-xs text-muted-foreground"><strong>{note.authorName}</strong><time>{new Date(note.createdAt).toLocaleString('id-ID')}</time></div>
+                <p className="whitespace-pre-wrap text-sm">{note.note}</p>
+              </li>
+            ))}
+          </ol>
+        ) : <p className="text-sm text-muted-foreground">Belum ada catatan atasan.</p>}
+        {noteCanWrite && <label className="block space-y-1.5 text-sm font-medium">Catatan<HeroTextarea value={noteText} onChange={(event) => setNoteText(event.target.value)} maxLength={1000} showCount rows={4} placeholder="Tulis masukan untuk aktivitas ini…" /></label>}
+      </HeroFormDialog>
 
       {/* ── Modal Tambah Aktivitas ── */}
       <Dialog open={isAddActivityModalOpen} onOpenChange={setIsAddActivityModalOpen}>

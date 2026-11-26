@@ -57,23 +57,8 @@ export interface UnsubmittedEmployeeRow {
   expectedShift: 'Pagi' | 'Siang' | 'Malam'
 }
 
-export interface ActivityTaskItem {
-  id: number
-  sessionId?: number
-  sessionCode?: string
-  label: string
-  groupName?: string
-  unitNumber?: string
-  status: 'Selesai' | 'Berjalan' | 'Menunggu' | 'Terlambat'
-  progress: number
-  startedAt?: string
-  endedAt?: string
-  durationLabel?: string
-  points?: number
-  remarks?: string
-  photoUrl?: string | null
-  photos?: string[]
-}
+import type { ActivityTaskItem } from './daily-activity-types'
+export type { ActivityTaskItem } from './daily-activity-types'
 
 export interface EmployeeSessionMeta {
   id: number
@@ -1491,6 +1476,7 @@ export async function getDailyActivityDashboardData(
             for (const u of itemUnits) {
               allTasks.push({
                 id: item.id,
+                supervisorNoteItemId: item.id,
                 sessionId: s.id,
                 sessionCode: s.sessionCode,
                 label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',
@@ -1510,6 +1496,7 @@ export async function getDailyActivityDashboardData(
           } else {
             allTasks.push({
               id: item.id,
+              supervisorNoteItemId: item.id,
               sessionId: s.id,
               sessionCode: s.sessionCode,
               label: item.snapshotLabel || item.remark || 'Aktivitas Lapangan',

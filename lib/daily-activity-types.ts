@@ -44,6 +44,7 @@ export interface ActivityTaskItem {
   remarks?: string
   photoUrl?: string | null
   photos?: string[]
+  supervisorNoteItemId?: number
 }
 
 export interface EmployeeSessionMeta {

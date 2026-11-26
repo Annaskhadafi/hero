@@ -39,6 +39,7 @@ import { MyDayFilterBar } from "@/components/my-day/my-day-filter-bar";
 import { MyDayEmptyState } from "@/components/my-day/my-day-empty-state";
 import { MyDayActivityLogTable } from "@/components/my-day/my-day-activity-log-table";
 import { MyDayAssignmentsTable } from "@/components/my-day/my-day-assignments-table";
+import { SupervisorNoteReader } from "@/components/my-day/supervisor-note-reader";
 import { TableMultiFilter } from "@/components/ui/table-multi-filter";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -369,6 +370,7 @@ export default async function MyDayPage({
   return (
     <div className="space-y-4">
       {/* 1. Header Bar (Minimalist, Compact) */}
+      <SupervisorNoteReader />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-0.5">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">

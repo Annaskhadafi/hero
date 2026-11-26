@@ -407,6 +407,13 @@
       "when": 1795550000002,
       "tag": "0066_employee_ecard_alias",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795550000003,
+      "tag": "0067_daily_activity_supervisor_notes",
+      "breakpoints": true
     }
   ]
 }
